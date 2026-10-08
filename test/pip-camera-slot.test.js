@@ -9,43 +9,32 @@
  */
 const assert = require('assert');
 const fs = require('fs');
-const os = require('os');
 const path = require('path');
 
 const root = path.join(__dirname, '..');
 const read = (p) => fs.readFileSync(path.join(root, p), 'utf8');
 
-const tmp = path.join(os.tmpdir(), `ov-pip-${Date.now()}.db`);
-process.env.DB_PATH = tmp;
 const db = require('../server/db/database');
-db.initDb();
 
-const Database = require('better-sqlite3');
-{
-    const w = new Database(tmp);
-    w.pragma('foreign_keys = OFF');
-    w.prepare('INSERT INTO users (id, username) OVERRIDING SYSTEM VALUE VALUES (1, ?) ON CONFLICT DO NOTHING').run('owner');
-    w.prepare('INSERT INTO users (id, username) OVERRIDING SYSTEM VALUE VALUES (2, ?) ON CONFLICT DO NOTHING').run('someone-else');
-    const ms = w.prepare('INSERT INTO managed_streams (id, user_id, title, stream_key) OVERRIDING SYSTEM VALUE VALUES (?,?,?,?)');
-    ms.run(10, 1, 'Screen', 'key-screen');
-    ms.run(11, 1, 'Webcam', 'key-cam');
-    ms.run(12, 2, 'Other user slot', 'key-other');
-    w.close();
-}
+(async () => {
+await db.initDb();
+await db.run("INSERT INTO users (id, username, password_hash) OVERRIDING SYSTEM VALUE VALUES (1, 'owner', 'x'), (2, 'someone-else', 'x')");
+await db.run(`INSERT INTO managed_streams (id, user_id, title, stream_key) OVERRIDING SYSTEM VALUE VALUES
+    (10, 1, 'Screen', 'key-screen'), (11, 1, 'Webcam', 'key-cam'), (12, 2, 'Other user slot', 'key-other')`);
 
 // ── A: schema carries the linkage ────────────────────────────────────────────────────
-const cols = new Database(tmp, { readonly: true }).prepare('PRAGMA table_info(managed_streams)').all().map(c => c.name);
+const cols = (await db.all("SELECT column_name AS name FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'managed_streams'")).map(c => c.name);
 assert.ok(cols.includes('pip_source_msid'), 'managed_streams needs pip_source_msid');
 assert.ok(cols.includes('pip_defaults'), 'managed_streams needs pip_defaults for the starting geometry');
 console.log('OK A: slot linkage and default geometry columns exist');
 
 // ── B: no overlay until one is configured ────────────────────────────────────────────
-assert.strictEqual(db.getPipOverlayForManagedStream(10), null, 'unconfigured slot must report no overlay');
+assert.strictEqual(await db.getPipOverlayForManagedStream(10), null, 'unconfigured slot must report no overlay');
 console.log('OK B: unconfigured slot reports no overlay');
 
 // ── C: configured but the camera is offline -> resolves, marked not live ─────────────
-db.updateManagedStream(10, 1, { pip_source_msid: 11, pip_defaults: { x: 0.7, y: 0.6, w: 0.3 } });
-let ov = db.getPipOverlayForManagedStream(10);
+await db.updateManagedStream(10, 1, { pip_source_msid: 11, pip_defaults: { x: 0.7, y: 0.6, w: 0.3 } });
+let ov = await db.getPipOverlayForManagedStream(10);
 assert.ok(ov, 'a configured overlay must resolve');
 assert.strictEqual(ov.source_msid, 11);
 assert.strictEqual(ov.live, false, 'no live session yet');
@@ -54,24 +43,19 @@ assert.deepStrictEqual(ov.defaults, { x: 0.7, y: 0.6, w: 0.3 }, 'broadcaster def
 console.log('OK C: configured-but-offline resolves with live=false so the player renders nothing');
 
 // ── D: camera goes live -> the player gets a stream id ───────────────────────────────
-{
-    const w = new Database(tmp);
-    w.pragma('foreign_keys = OFF');
-    w.prepare('INSERT INTO streams (id, user_id, managed_stream_id, is_live) OVERRIDING SYSTEM VALUE VALUES (?,?,?,1)').run(500, 1, 11);
-    w.close();
-}
-ov = db.getPipOverlayForManagedStream(10);
+await db.run('INSERT INTO streams (id, user_id, managed_stream_id, is_live) OVERRIDING SYSTEM VALUE VALUES (500, 1, 11, 1)');
+ov = await db.getPipOverlayForManagedStream(10);
 assert.strictEqual(ov.live, true, 'a live camera slot must report live');
 assert.strictEqual(ov.stream_id, 500, 'the player needs the live stream id to consume');
 console.log('OK D: a live camera slot hands the player a stream id to consume');
 
 // ── E: self-reference is refused — it would ask the player to render itself ──────────
-db.updateManagedStream(11, 1, { pip_source_msid: 11 });
-assert.strictEqual(db.getPipOverlayForManagedStream(11), null, 'a slot pointing at itself must resolve to nothing');
+await db.updateManagedStream(11, 1, { pip_source_msid: 11 });
+assert.strictEqual(await db.getPipOverlayForManagedStream(11), null, 'a slot pointing at itself must resolve to nothing');
 console.log('OK E: self-reference resolves to no overlay');
 
 // ── F: candidate list excludes the slot being configured ─────────────────────────────
-const cands = db.getPipCandidateSlots(1, 10).map(c => c.id);
+const cands = (await db.getPipCandidateSlots(1, 10)).map(c => c.id);
 assert.ok(cands.includes(11), 'the owner\'s other slots are candidates');
 assert.ok(!cands.includes(10), 'a slot must not offer itself as its own camera');
 assert.ok(!cands.includes(12), 'another user\'s slot must not appear in this owner\'s list');
@@ -170,6 +154,5 @@ console.log('OK I: geometry persists, hide is recoverable, audio defaults to mut
     console.log('OK K: every corner/size default round-trips and stays inside the player box');
 }
 
-try { fs.unlinkSync(tmp); } catch { /* */ }
-for (const ext of ['-wal', '-shm']) { try { fs.unlinkSync(tmp + ext); } catch { /* */ } }
 console.log('✅ PiP camera slot test passed');
+})().catch((e) => { console.error(e); process.exit(1); });

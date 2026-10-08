@@ -53,13 +53,13 @@ async function notifyFollowersGoLive(streamer, stream, { force = false } = {}) {
 
     let followerLiveIds = [];
     try { followerLiveIds = await db.getFollowerIds(streamer.id) || []; } catch { /* */ }
-    const { ids: followerNetworkIds, unlinked } = toNetworkIds(followerLiveIds);
+    const { ids: followerNetworkIds, unlinked } = await toNetworkIds(followerLiveIds);
     console.log(`[GoLive] ${streamer.username} (slot ${slot}): ${followerLiveIds.length} follower(s), ${followerNetworkIds.length} reachable on openvibe.network${unlinked ? `, ${unlinked} never linked` : ''}`);
 
     const payload = {
         streamer: {
             id: streamer.id,
-            network_id: toNetworkId(streamer.id),
+            network_id: await toNetworkId(streamer.id),
             username: streamer.username,
             display_name: streamer.display_name || null,
             avatar_url: streamer.avatar_url || null,
@@ -106,7 +106,7 @@ async function _fallback(streamer, stream, followerNetworkIds) {
         title: `${streamer.display_name || streamer.username} is live!`,
         message: stream?.title || 'Started streaming',
         icon: '🔴',
-        sender_id: toNetworkId(streamer.id),
+        sender_id: await toNetworkId(streamer.id),
         sender_name: streamer.display_name || streamer.username,
         sender_avatar: streamer.avatar_url || null,
         url: _channelUrl(streamer),

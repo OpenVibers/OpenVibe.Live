@@ -12,7 +12,6 @@
 'use strict';
 const assert = require('assert');
 const fs = require('fs');
-const os = require('os');
 const path = require('path');
 
 const root = path.join(__dirname, '..');
@@ -84,25 +83,25 @@ assert.deepStrictEqual([r.opened.length, r.toasts.length], [0, 1], 'a guest is t
 console.log('OK a guest gets a sign-in message');
 
 // ── the channel page resolves that slot segment to the live session on it ──
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ov-viewer-preview-'));
-process.env.DB_PATH = path.join(tmp, 'live.db');
-process.env.DATA_DIR = tmp;
+(async () => {
 const log = console.log;
 console.log = (...a) => { if (!/^\[/.test(String(a[0]))) log(...a); };
 const db = require('../server/db/database');
-db.initDb();
-db.getDb().prepare(`INSERT INTO users (id, username, display_name, email, password_hash, role, created_at) OVERRIDING SYSTEM VALUE
+await db.initDb();
+await db.getDb().prepare(`INSERT INTO users (id, username, display_name, email, password_hash, role, created_at) OVERRIDING SYSTEM VALUE
     VALUES (3, 'alice', 'alice', 'alice@x', 'x', 'streamer', '2025-01-01 00:00:00')`).run();
-const ch = db.ensureChannel(3);
-db.createManagedStream({ user_id: 3, channel_id: ch.id, slug: 'desk', title: 'Desk', protocol: 'webrtc', stream_key: 'k'.repeat(40) });
-db.createManagedStream({ user_id: 3, channel_id: ch.id, slug: 'garden', title: 'Garden', protocol: 'webrtc', stream_key: 'g'.repeat(40) });
-const live = Number(db.createStream({ user_id: 3, channel_id: ch.id, managed_stream_id: 2, title: 'Garden live', protocol: 'webrtc' }).lastInsertRowid);
+const ch = await db.ensureChannel(3);
+await db.run(`INSERT INTO managed_streams (id, user_id, channel_id, slug, title, protocol, stream_key) OVERRIDING SYSTEM VALUE
+    VALUES (1, 3, ?, 'desk', 'Desk', 'webrtc', ?), (2, 3, ?, 'garden', 'Garden', 'webrtc', ?)`, [ch.id, 'k'.repeat(40), ch.id, 'g'.repeat(40)]);
+await db.run(`INSERT INTO streams (id, user_id, channel_id, managed_stream_id, title, protocol, is_live, started_at) OVERRIDING SYSTEM VALUE
+    VALUES (1, 3, ?, 2, 'Garden live', 'webrtc', 1, ov_now())`, [ch.id]);
+const live = 1;
 assert.strictEqual(live, 1);
 // GET /api/streams/channel/:username/resolve/:ref (server/streaming/routes.js) resolves the segment
 // with getManagedStreamByIdOrSlug, then takes that slot's live session.
-assert.strictEqual(db.getManagedStreamByIdOrSlug(3, 'garden').id, 2, 'the new URL resolves to the slot on air');
-assert.strictEqual(db.getManagedStreamByIdOrSlug(3, '2').id, 2);
-assert.strictEqual(db.getManagedStreamByIdOrSlug(3, String(live)).slug, 'desk', 'the old URL (stream id 1) resolved to the other slot');
+assert.strictEqual((await db.getManagedStreamByIdOrSlug(3, 'garden')).id, 2, 'the new URL resolves to the slot on air');
+assert.strictEqual((await db.getManagedStreamByIdOrSlug(3, '2')).id, 2);
+assert.strictEqual((await db.getManagedStreamByIdOrSlug(3, String(live))).slug, 'desk', 'the old URL (stream id 1) resolved to the other slot');
 console.log = log;
 console.log('OK the slot segment resolves to the slot on air (the stream id resolved to another slot)');
 
@@ -112,4 +111,4 @@ assert.match(bc, /function toggleBroadcastPreview\(\)/, 'next to the local-previ
 console.log('OK the live controls carry the Viewer button');
 
 console.log('\n✅ viewer-style preview checks passed');
-process.exit(0);
+})().catch((e) => { console.error(e); process.exit(1); });

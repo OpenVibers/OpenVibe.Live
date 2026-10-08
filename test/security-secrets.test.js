@@ -19,6 +19,13 @@
  */
 const assert = require('assert');
 const crawl = require('./security-crawl');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+const http = require('http');
+const net = require('net');
+const { createRequire } = require('module');
+const rootRequire = createRequire(path.join(__dirname, '..', 'package.json'));
 
 let failures = 0;
 async function check(name, fn) {
@@ -70,35 +77,35 @@ const SETTINGS = {
 };
 const SETTING_NEEDLES = Object.fromEntries(Object.entries(SETTINGS).map(([k, v]) => [k, v.includes('{') ? 'sentinel-not-a-secret-google-sa' : v]));
 
-const SEED = `
+const SEED = `(async () => {
     const db = require('./server/db/database');
-    db.initDb();
+    await db.initDb();
     const S = JSON.parse(process.env.SETTINGS_SEED);
-    const mk = (u, role, owner) => {
-        const id = Number(db.createUser({ username: u, password_hash: 'x', display_name: u, email: u + '@example.test', stream_key: null }).lastInsertRowid);
-        db.run('UPDATE users SET role = ?, is_owner = ? WHERE id = ?', [role, owner ? 1 : 0, id]);
-        db.ensureChannel(id);
-        db.getDb().prepare("INSERT INTO linked_accounts (user_id, service, service_user_id, service_username) VALUES (?, 'network', ?, ?)").run(id, String(9000 + id), u);
+    const mk = async (u, role, owner) => {
+        await db.createUser({ username: u, password_hash: 'x', display_name: u, email: u + '@example.test', stream_key: null });
+        const id = (await db.get('SELECT id FROM users WHERE username = ?', [u])).id;
+        await db.run('UPDATE users SET role = ?, is_owner = ? WHERE id = ?', [role, owner ? 1 : 0, id]);
+        await db.ensureChannel(id);
+        await db.getDb().prepare("INSERT INTO linked_accounts (user_id, service, service_user_id, service_username) VALUES (?, 'network', ?, ?)").run(id, String(9000 + id), u);
         return id;
     };
     const ids = {
-        streamer: mk('secstreamer', 'streamer'), viewer: mk('secviewer', 'user'), mod: mk('secmod', 'global_mod'),
-        admin: mk('secadmin', 'admin'), owner: mk('secowner', 'admin', true),
+        streamer: await mk('secstreamer', 'streamer'), viewer: await mk('secviewer', 'user'), mod: await mk('secmod', 'global_mod'),
+        admin: await mk('secadmin', 'admin'), owner: await mk('secowner', 'admin', true),
     };
-    for (const [k, v] of Object.entries(S)) db.setSetting(k, v);
-    db.setSetting('tts_enabled', '1');
-    const ch = db.getChannelByUserId(ids.streamer);
+    for (const [k, v] of Object.entries(S)) await db.setSetting(k, v);
+    await db.setSetting('tts_enabled', '1');
+    const ch = await db.getChannelByUserId(ids.streamer);
     ids.channel = ch.id;
-    ids.live = Number(db.createStream({ user_id: ids.streamer, channel_id: ch.id, title: 'Live now', protocol: 'webrtc' }).lastInsertRowid);
-    ids.ended = Number(db.createStream({ user_id: ids.streamer, channel_id: ch.id, title: 'Earlier', protocol: 'webrtc' }).lastInsertRowid);
-    db.endStream(ids.ended);
-    db.run("UPDATE streams SET last_heartbeat = datetime('now') WHERE id = ?", [ids.live]);
+    ids.live = Number((await db.createStream({ user_id: ids.streamer, channel_id: ch.id, title: 'Live now', protocol: 'webrtc' })).lastInsertRowid);
+    ids.ended = Number((await db.createStream({ user_id: ids.streamer, channel_id: ch.id, title: 'Earlier', protocol: 'webrtc' })).lastInsertRowid);
+    await db.endStream(ids.ended);
+    await db.run("UPDATE streams SET last_heartbeat = datetime('now') WHERE id = ?", [ids.live]);
     const ev = require('./server/events/stream-events');
-    const events = [ev.envelopeFor('started', ids.live), ev.envelopeFor('ended', ids.ended),
+    const events = [await ev.envelopeFor('started', ids.live), await ev.envelopeFor('ended', ids.ended),
         require('./server/events/release-events').envelopeFor({ head: 'a'.repeat(40), previous: 'b'.repeat(40), commits: [] })];
-    db.close();
-    console.log(JSON.stringify({ ids, events }));
-`;
+    return { ids, events };
+})()`;
 
 function hits(text, needles) {
     return Object.entries(needles).filter(([, v]) => v && String(text).includes(v)).map(([k]) => k);
@@ -106,7 +113,7 @@ function hits(text, needles) {
 
 (async () => {
     const tmp = crawl.tempEnv('secrets');
-    const seeded = crawl.seed(tmp, SEED, { ...PROD_LIKE, ...ENV, NODE_ENV: 'test', SETTINGS_SEED: JSON.stringify(SETTINGS) });
+    const seeded = await crawl.seed(tmp, SEED, { ...PROD_LIKE, ...ENV, NODE_ENV: 'test', SETTINGS_SEED: JSON.stringify(SETTINGS) });
     assert.ok(seeded && seeded.ids, 'seed printed its ids');
     const { ids, events } = seeded;
 

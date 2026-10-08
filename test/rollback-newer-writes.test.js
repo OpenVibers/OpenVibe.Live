@@ -4,7 +4,8 @@
  * week while keeping the database the newer release migrated and wrote to. So a database this code
  * initialised and wrote to (its newest tables and columns filled) must still boot and work under the
  * release of seven days ago: that release's initDb runs over the newer schema without an error, reads
- * what it knows (users, streams, follows, settings) and writes (a user, a stream, a follow).
+ * what it knows (users, streams, follows, settings) and writes (a user, a stream, a follow). Across the move to
+ * PostgreSQL (plan T4) it skips: a rollback to a SQLite release reads the SQLite file kept at the cutover.
  *
  * The older release is checked out next to this one (it shares this checkout's node_modules) by
  * test/helpers/old-release.js, which also keeps a concurrently running test file off the same git
@@ -34,20 +35,29 @@ if (!old) {
     old = String(probe).trim();
 }
 if (!old) { console.log('rollback with newer writes: skipped (no git history to take the older release from)'); process.exit(0); }
+// Across the move to PostgreSQL (plan T4) the two releases never share a database: a rollback to a SQLite release reads
+// the SQLite file `ovhost data switch live` kept read-only at the cutover. Once the older release is on PostgreSQL too,
+// this test runs: both releases on one database.
+try { execFileSync('git', ['-C', ROOT, 'cat-file', '-e', `${old}:migrations/0002_live.sql`], { stdio: 'ignore' }); } catch {
+    console.log(`rollback with newer writes: skipped (the release of ${old.slice(0, 8)} runs on SQLite and this one on PostgreSQL: a rollback across the switch reads the SQLite file kept at the cutover, not this database)`);
+    process.exit(0);
+}
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ov-live-rollback-'));
-const dbPath = path.join(tmp, 'live.db');
+const dataDir = path.join(tmp, 'data');
 let release = null;
 const cleanup = () => {
     if (release) release.remove();
     fs.rmSync(tmp, { recursive: true, force: true });
 };
 
-// One release against the database, in its own process: prints one JSON line.
+// One release against the database (an embedded PGlite database under DATA_DIR, which every release opens the same
+// way), in its own process: prints one JSON line.
 function runIn(dir, script) {
-    const r = spawnSync(process.execPath, ['-e', script], {
-        cwd: dir, encoding: 'utf8', timeout: 120000,
-        env: { ...process.env, DB_PATH: dbPath, NODE_ENV: 'test', LIVE_DRILL: '' },
+    const env = { ...process.env, DATA_DIR: dataDir, NODE_ENV: 'test', LIVE_DRILL: '' };
+    delete env.DATABASE_URL; delete env.DATABASE_DIRECT_URL;
+    const r = spawnSync(process.execPath, ['-e', `(async () => {${script}})().then(() => process.exit(0), (e) => { process.stderr.write(String(e.stack || e)); process.exit(1); });`], {
+        cwd: dir, encoding: 'utf8', timeout: 120000, env,
     });
     const line = String(r.stdout || '').trim().split('\n').filter((l) => l.startsWith('{')).pop();
     return { code: r.status, out: line ? JSON.parse(line) : null, stderr: String(r.stderr || '').slice(-1500) };
@@ -57,18 +67,19 @@ try {
     // 1. This release: a fresh database, migrated and written through today's features.
     const now = runIn(ROOT, `
         console.log = () => {}; console.warn = () => {};
-        const db = require('./server/db/database'); db.initDb(); const d = db.getDb();
-        db.createUser({ username: 'newer', display_name: 'Newer', password_hash: 'x' });
-        const u = db.getUserByUsername('newer');
-        const s = db.createStream({ user_id: u.id, title: 'written by the newer release', category: 'tech', protocol: 'webrtc', is_nsfw: 0 });
-        db.endStream(s.lastInsertRowid);
-        db.setSetting('rollback_probe', 'newer');
-        // Tables the newer release added, filled the way it fills them.
-        try { require('./server/events/search-documents').ensureSchema(); d.prepare("INSERT INTO search_doc_pushes (user_id, hash, revision) VALUES (?, 'h', 1)").run(u.id); } catch (e) {}
-        try { require('./server/events/search-media-documents').ensureSchema(); d.prepare("INSERT INTO search_media_pushes (kind, media_id, hash, revision) VALUES ('vod', 1, 'h', 1)").run(); } catch (e) {}
-        db.recordEasterEggSolve('2026-01-01', 'rollback-probe', u.id);
-        const tables = d.prepare("SELECT COUNT(*) AS n FROM sqlite_master WHERE type = 'table'").get().n;
-        process.stdout.write(JSON.stringify({ ok: true, user: u.id, tables }) + '\\n');
+        const db = require('./server/db/database'); await db.initDb(); const d = db.getDb();
+        await db.createUser({ username: 'newer', display_name: 'Newer', password_hash: 'x' });
+        const u = await db.getUserByUsername('newer');
+        const s = await db.createStream({ user_id: u.id, title: 'written by the newer release', category: 'tech', protocol: 'webrtc', is_nsfw: 0 });
+        await db.endStream(s.lastInsertRowid);
+        await db.setSetting('rollback_probe', 'newer');
+        // Tables the newer release fills.
+        await d.prepare("INSERT INTO search_doc_pushes (user_id, hash, revision) VALUES (?, 'h', 1)").run(u.id);
+        await d.prepare("INSERT INTO search_media_pushes (kind, media_id, hash, revision) VALUES ('vod', 1, 'h', 1)").run();
+        await db.recordEasterEggSolve('2026-01-01', 'rollback-probe', u.id);
+        const tables = await d.value("SELECT count(*) FROM information_schema.tables WHERE table_schema = current_schema()");
+        await db.close();
+        process.stdout.write(JSON.stringify({ ok: true, user: u.id, tables: Number(tables) }) + '\\n');
     `);
     assert.strictEqual(now.code, 0, `the current release could not prepare the database:\n${now.stderr}`);
 
@@ -77,19 +88,20 @@ try {
     const back = runIn(release.dir, `
         console.log = () => {}; console.warn = () => {};
         const errors = [];
-        const origError = console.error; console.error = (...a) => errors.push(a.join(' ').slice(0, 300));
-        const db = require('./server/db/database'); db.initDb();
-        const u = db.getUserByUsername('newer');
+        console.error = (...a) => errors.push(a.join(' ').slice(0, 300));
+        const db = require('./server/db/database'); await db.initDb();
+        const u = await db.getUserByUsername('newer');
         if (!u) throw new Error('the older release cannot read the user the newer one wrote');
-        if (db.getSetting('rollback_probe') !== 'newer') throw new Error('settings unreadable');
-        db.createUser({ username: 'older', display_name: 'Older', password_hash: 'x' });
-        const o = db.getUserByUsername('older');
-        const s = db.createStream({ user_id: o.id, title: 'written after the rollback', category: 'irl', protocol: 'webrtc', is_nsfw: 0 });
-        db.endStream(s.lastInsertRowid);
-        db.followUser(o.id, u.id);
-        const live = db.getLiveStreams();
-        // A boot error the older code logged while migrating a newer schema counts as a failure.
-        const bootErrors = errors.filter((e) => /\\[DB\\].*(error|failed)|SqliteError/i.test(e));
+        if (await db.getSetting('rollback_probe') !== 'newer') throw new Error('settings unreadable');
+        await db.createUser({ username: 'older', display_name: 'Older', password_hash: 'x' });
+        const o = await db.getUserByUsername('older');
+        const s = await db.createStream({ user_id: o.id, title: 'written after the rollback', category: 'irl', protocol: 'webrtc', is_nsfw: 0 });
+        await db.endStream(s.lastInsertRowid);
+        await db.run('INSERT INTO follows (follower_id, streamer_id) VALUES (?, ?)', [o.id, u.id]);
+        const live = await db.getLiveStreams();
+        // A boot error the older code logged while opening a newer schema counts as a failure.
+        const bootErrors = errors.filter((e) => /\\[DB\\].*(error|failed)|DbError/i.test(e));
+        await db.close();
         process.stdout.write(JSON.stringify({ ok: bootErrors.length === 0, bootErrors, live: Array.isArray(live) ? live.length : -1 }) + '\\n');
     `);
     assert.strictEqual(back.code, 0, `the release of ${old.slice(0, 8)} failed on the newer database:\n${back.stderr}`);
@@ -98,8 +110,9 @@ try {
     // 3. And this release again, after the rollback wrote: roll forward works too.
     const forward = runIn(ROOT, `
         console.log = () => {}; console.warn = () => {};
-        const db = require('./server/db/database'); db.initDb();
-        const o = db.getUserByUsername('older');
+        const db = require('./server/db/database'); await db.initDb();
+        const o = await db.getUserByUsername('older');
+        await db.close();
         process.stdout.write(JSON.stringify({ ok: !!o }) + '\\n');
     `);
     assert.strictEqual(forward.code, 0, forward.stderr);

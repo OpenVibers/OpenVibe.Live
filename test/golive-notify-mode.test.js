@@ -52,7 +52,7 @@ console.log = (...a) => { logs.push(a.join(' ')); };
         assert.ok(logs.some((l) => l.includes("caster: left to Network's live.stream.started consumer (GOLIVE_NOTIFY=events)")));
         // The event path is intact: a new stream row still queues live.stream.started.
         await db.createStream({ user_id: 601, title: 'three', protocol: 'rtmp' });
-        assert.strictEqual((await db.getDb().prepare("SELECT COUNT(*) AS c FROM event_outbox WHERE envelope ILIKE '%live.stream.started%'").get()).c, 1);
+        assert.strictEqual((await db.getDb().prepare("SELECT COUNT(*) AS c FROM event_outbox WHERE envelope::text ILIKE '%live.stream.started%'").get()).c, 1);
 
         // Any other value keeps both paths.
         process.env.GOLIVE_NOTIFY = 'both';
