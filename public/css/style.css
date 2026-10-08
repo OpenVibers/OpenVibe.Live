@@ -921,19 +921,15 @@ html { -webkit-tap-highlight-color: transparent; }
     overflow: visible;
     transition: background 0.4s ease, border-color 0.4s ease, box-shadow 0.4s ease, backdrop-filter 0.4s ease;
 }
-/* At the top of the home hero the nav bar is transparent so it blends into the hero; its
-   glass background fades in the moment you scroll down. A soft top scrim keeps the nav text
-   readable over the hero art. */
-.navbar.nav-hero-top {
+/* At the top of the home hero the bar is transparent so it blends into the hero, and its glass background fades in the
+   moment you scroll: body.ov-nav-overlay (app.js, the home route) plus the shared navbar's own .ovnav-top state, which
+   also draws the soft scrim that keeps the nav text readable over the hero art (openvibe-shared 2.15.0). */
+body.ov-nav-overlay .navbar.ovnav-top {
     background: transparent;
     border-bottom-color: transparent;
     box-shadow: none;
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
-}
-.navbar.nav-hero-top::before {
-    content: ''; position: absolute; inset: 0; z-index: -1; pointer-events: none;
-    background: linear-gradient(180deg, rgba(0,0,0,0.38) 0%, transparent 100%);
 }
 /* Home hero rises UNDER the transparent nav (its art fills the very top); the copy is padded
    clear of the nav so nothing hides behind it. */
@@ -11414,7 +11410,9 @@ body.ov-panel-open #floating-chat-fab { opacity: 0; pointer-events: none; transf
     backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
     --ovnav-h: var(--navbar-h);
 }
-.openvibe-navbar.navbar.nav-hero-top { background: transparent; border-bottom-color: transparent; box-shadow: none; backdrop-filter: none; -webkit-backdrop-filter: none; }
+/* Over the home hero at the very top (body.ov-nav-overlay from app.js, .ovnav-top from the shared navbar): no background
+   at all, the hero shows through under the navbar's own soft scrim. */
+body.ov-nav-overlay .openvibe-navbar.navbar.ovnav-top { background: transparent; border-bottom-color: transparent; box-shadow: none; backdrop-filter: none; -webkit-backdrop-filter: none; }
 .openvibe-navbar.navbar .openvibe-navbar-links a.ovnav-link { font-size: 0.86rem; padding: 7px 11px; border-radius: 10px; }
 .openvibe-navbar.navbar .openvibe-navbar-links a.ovnav-link.active { color: var(--text-primary); background: color-mix(in srgb, var(--accent) 16%, transparent); }
 .openvibe-navbar.navbar .openvibe-navbar-dropdown { position: fixed; top: calc(var(--navbar-h) + 6px); right: 8px; }
