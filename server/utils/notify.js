@@ -19,18 +19,18 @@ let _db = null;
 function db() { if (!_db) _db = require('../db/database'); return _db; }
 
 /** Live user id → Network user id (or null). */
-function toNetworkId(liveUserId) {
+async function toNetworkId(liveUserId) {
     if (liveUserId == null) return null;
     try {
-        const row = db().get("SELECT service_user_id FROM linked_accounts WHERE service = 'network' AND user_id = ?", [liveUserId]);
+        const row = await db().get("SELECT service_user_id FROM linked_accounts WHERE service = 'network' AND user_id = ?", [liveUserId]);
         const n = row && parseInt(row.service_user_id, 10);
         return Number.isInteger(n) && n > 0 ? n : null;
     } catch { return null; }
 }
 /** Batch translate; returns { ids: number[] (unique network ids), unlinked: number } */
-function toNetworkIds(liveUserIds) {
+async function toNetworkIds(liveUserIds) {
     const ids = new Set(); let unlinked = 0;
-    for (const id of (liveUserIds || [])) { const n = toNetworkId(id); if (n) ids.add(n); else unlinked++; }
+    for (const id of (liveUserIds || [])) { const n = await toNetworkId(id); if (n) ids.add(n); else unlinked++; }
     return { ids: [...ids], unlinked };
 }
 
@@ -54,24 +54,25 @@ async function _post(path, body, retried = false) {
  * Push a single notification to a (LIVE) user. Fire-and-forget — does not block or throw.
  * Pass `network_user_id` instead of `user_id` to skip translation.
  */
-function pushNotification(payload) {
+async function _pushNotification(payload) {
     if (!payload) return;
-    const networkId = payload.network_user_id || toNetworkId(payload.user_id);
+    const networkId = payload.network_user_id || await toNetworkId(payload.user_id);
     if (!networkId) { if (payload.user_id) console.log(`[Notify] user ${payload.user_id} has no linked network account — skipped ${payload.type || 'notification'}`); return; }
     const { user_id, network_user_id, ...rest } = payload;
     void user_id; void network_user_id;
     // sender_id is shown/deduped on the network side — translate it too when it is a Live id.
-    if (rest.sender_id != null && !rest.sender_network_id) rest.sender_id = toNetworkId(rest.sender_id) || null;
+    if (rest.sender_id != null && !rest.sender_network_id) rest.sender_id = await toNetworkId(rest.sender_id) || null;
     delete rest.sender_network_id;
     _post('/internal/notifications/push', { ...rest, user_id: networkId, service: rest.service || 'live' })
         .then(r => { if (r && !r.ok) console.warn(`[Notify] Push failed: ${r.status}`); })
         .catch(err => console.warn('[Notify] Push error:', err.message));
 }
+function pushNotification(payload) { _pushNotification(payload).catch(err => console.warn('[Notify] Push error:', err.message)); }
 
 // Register this user as having a linked OpenVibe.Live account on openvibe.network so it
 // appears under their Linked Services. Fire-and-forget + deduped per process.
 const _linkedReported = new Map();   // live user id → what was last reported (so a new avatar or name is sent again)
-function reportLinkedAccount(user) {
+async function _reportLinkedAccount(user) {
     if (!user?.id || !require('../net/network-principal').configured()) return;
     // The Network adopts this picture and name when the account has none of its own, which is what makes the
     // same face appear on every OpenVibe site. Relative upload paths are made absolute against this site.
@@ -80,7 +81,7 @@ function reportLinkedAccount(user) {
     const sig = `${avatar || ''}|${user.display_name || ''}|${user.username || ''}`;
     if (_linkedReported.get(user.id) === sig) return;
     _linkedReported.set(user.id, sig);
-    const networkId = toNetworkId(user.id);
+    const networkId = await toNetworkId(user.id);
     if (!networkId) { _linkedReported.delete(user.id); return; }
     _post('/internal/link-account', {
         user_id: networkId,
@@ -91,31 +92,33 @@ function reportLinkedAccount(user) {
         display_name: user.display_name || null,
     }).catch(() => { _linkedReported.delete(user.id); });
 }
+function reportLinkedAccount(user) { _reportLinkedAccount(user).catch(err => console.warn('[Notify] Link error:', err.message)); }
 
 /**
  * The user picked a new avatar here. The avatar belongs to the network account, so say so explicitly: unlike the
  * sign-in report above (which only fills an empty picture), this one replaces whatever the Network had.
  */
-function reportAvatarChange(user) {
+async function _reportAvatarChange(user) {
     if (!user?.id || !require('../net/network-principal').configured()) return;
-    const networkId = toNetworkId(user.id);
+    const networkId = await toNetworkId(user.id);
     if (!networkId) return;
     _post('/internal/user-avatar', { user_id: networkId, avatar_url: user.avatar_url || null, origin: 'live' })
         .then(r => { if (r && !r.ok) console.warn(`[Notify] avatar sync refused (${r.status})`); }).catch(() => {});
 }
+function reportAvatarChange(user) { _reportAvatarChange(user).catch(err => console.warn('[Notify] Avatar error:', err.message)); }
 
 /**
  * Push the same notification to many LIVE users (translated, deduped, chunked to the
  * network's 1000-per-call limit).
  */
-function pushBulkNotification(userIds, data, { alreadyNetworkIds = false } = {}) {
+async function _pushBulkNotification(userIds, data, { alreadyNetworkIds = false } = {}) {
     if (!userIds?.length) return;
-    const { ids, unlinked } = alreadyNetworkIds ? { ids: [...new Set(userIds)], unlinked: 0 } : toNetworkIds(userIds);
+    const { ids, unlinked } = alreadyNetworkIds ? { ids: [...new Set(userIds)], unlinked: 0 } : await toNetworkIds(userIds);
     if (unlinked) console.log(`[Notify] ${unlinked} of ${userIds.length} recipient(s) have no linked network account — skipped`);
     if (!ids.length) return;
     const body = { ...data, service: data.service || 'live' };
     // A Live id never goes as a Network id: without a mapping there is no sender (a block check on Network would match the wrong person).
-    if (body.sender_id != null && !alreadyNetworkIds) body.sender_id = toNetworkId(body.sender_id) || null;
+    if (body.sender_id != null && !alreadyNetworkIds) body.sender_id = await toNetworkId(body.sender_id) || null;
     for (let i = 0; i < ids.length; i += 1000) {
         const chunk = ids.slice(i, i + 1000);
         _post('/internal/notifications/push-bulk', { ...body, user_ids: chunk })
@@ -123,6 +126,7 @@ function pushBulkNotification(userIds, data, { alreadyNetworkIds = false } = {})
             .catch(err => console.warn('[Notify] Bulk push error:', err.message));
     }
 }
+function pushBulkNotification(userIds, data, options) { _pushBulkNotification(userIds, data, options).catch(err => console.warn('[Notify] Bulk push error:', err.message)); }
 
 /** Build sender info object from a (Live) user row. */
 function actorInfo(user, fallback = 'Someone') {
@@ -137,12 +141,13 @@ function actorInfo(user, fallback = 'Someone') {
  * Mark notifications as read on openvibe.network by type and optional URL pattern.
  * @param {number} userId  LIVE user id
  */
-function markNotificationsRead(userId, type, urlPattern) {
+async function _markNotificationsRead(userId, type, urlPattern) {
     if (!userId || !type) return;
-    const networkId = toNetworkId(userId);
+    const networkId = await toNetworkId(userId);
     if (!networkId) return;
     _post('/internal/notifications/mark-read', { user_id: networkId, type, url_pattern: urlPattern || null })
         .catch(err => console.warn('[Notify] Mark-read error:', err.message));
 }
+function markNotificationsRead(userId, type, urlPattern) { _markNotificationsRead(userId, type, urlPattern).catch(err => console.warn('[Notify] Mark-read error:', err.message)); }
 
 module.exports = { reportAvatarChange, pushNotification, pushBulkNotification, actorInfo, markNotificationsRead, reportLinkedAccount, toNetworkId, toNetworkIds, OV_NETWORK_INTERNAL_URL };

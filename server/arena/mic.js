@@ -25,66 +25,17 @@ const XP_PER_LEVEL = 50;
 const XP_MOMENT = 0.8;   // × quality
 const XP_HYPE = 1;
 
-let _ready = false;
-async function ensureTables() {
-    if (_ready) return;
-    await db.run(`CREATE TABLE IF NOT EXISTS arena_trash_levels (
-        user_id INTEGER PRIMARY KEY,
-        xp INTEGER DEFAULT 0,
-        level INTEGER DEFAULT 1,
-        angles_cleared INTEGER DEFAULT 0,
-        topics_conquered INTEGER DEFAULT 0,
-        beef_hits INTEGER DEFAULT 0,
-        best_line TEXT,
-        best_line_vod_id INTEGER,
-        best_line_sec INTEGER,
-        best_line_score REAL DEFAULT 0,
-        updated_at DATETIME DEFAULT ov_now()
-    )`);
-    for (const col of ['topic_moments INTEGER DEFAULT 0', 'topics_joined INTEGER DEFAULT 0', 'mic_moments INTEGER DEFAULT 0']) { try { await db.run(`ALTER TABLE arena_trash_levels ADD COLUMN ${col}`); } catch { /* exists */ } }
-    await db.run(`CREATE TABLE IF NOT EXISTS arena_xp_log (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id INTEGER NOT NULL,
-        amount INTEGER NOT NULL,
-        reason TEXT NOT NULL,
-        ref_id INTEGER,
-        created_at DATETIME DEFAULT ov_now()
-    )`);
-    await db.run('CREATE INDEX IF NOT EXISTS idx_arena_xp_log_user ON arena_xp_log (user_id, created_at)');
-    await db.run(`CREATE TABLE IF NOT EXISTS arena_mic_moments (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id INTEGER NOT NULL,
-        stream_id INTEGER,
-        vod_id INTEGER,
-        sec INTEGER,
-        kind TEXT NOT NULL DEFAULT 'trash',
-        target_user_id INTEGER,
-        beef_id INTEGER,
-        aimed_at TEXT,
-        text TEXT NOT NULL,
-        about TEXT,
-        quality REAL DEFAULT 0,
-        announcer TEXT,
-        said_at DATETIME,
-        created_at DATETIME DEFAULT ov_now()
-    )`);
-    await db.run('CREATE INDEX IF NOT EXISTS idx_arena_mic_user ON arena_mic_moments (user_id, id)');
-    await db.run('CREATE INDEX IF NOT EXISTS idx_arena_mic_created ON arena_mic_moments (created_at)');
-    _ready = true;
-}
 
 function parseJson(t, f = null) { try { return t ? JSON.parse(t) : f; } catch { return f; } }
 function arena() { return require('./arena-service'); }
 function levelFor(xp) { return 1 + Math.floor((Number(xp) || 0) / XP_PER_LEVEL); }
 async function levelRow(userId) {
-    await ensureTables();
     return await db.get('SELECT * FROM arena_trash_levels WHERE user_id = ?', [userId]) || { user_id: userId, xp: 0, level: 1, beef_hits: 0, mic_moments: 0, best_line: null, best_line_score: 0 };
 }
 
 // ── XP / Trash Level ─────────────────────────────────────────
 
 async function addXp(userId, amount, reason, refId = null, extra = {}) {
-    await ensureTables();
     amount = Math.round(Number(amount) || 0);
     if (amount <= 0) return await levelRow(userId);
     const before = await levelRow(userId);
@@ -109,8 +60,7 @@ async function addXp(userId, amount, reason, refId = null, extra = {}) {
 }
 
 async function recentXp(userId, days = 7) {
-    await ensureTables();
-    return (await db.get(`SELECT COALESCE(SUM(amount), 0) AS xp FROM arena_xp_log WHERE user_id = ? AND created_at >= datetime('now', ?)`, [userId, `-${days} days`]))?.xp || 0;
+    return (await db.get(`SELECT COALESCE(SUM(amount), 0)::bigint AS xp FROM arena_xp_log WHERE user_id = ? AND created_at >= datetime('now', ?)`, [userId, `-${days} days`]))?.xp || 0;
 }
 
 async function levelView(userId) {
@@ -125,7 +75,6 @@ async function levelView(userId) {
 }
 
 async function levelsLeaderboard(limit = 10) {
-    await ensureTables();
     const roster = await arena().loadRoster();
     return (await Promise.all((await db.all('SELECT * FROM arena_trash_levels WHERE xp > 0 ORDER BY xp DESC LIMIT ?', [limit]))
         .map(async r => ({ ...await fighterBrief(r.user_id, roster), xp: r.xp, level: levelFor(r.xp), beef_hits: r.beef_hits || 0, mic_moments: r.mic_moments || 0, best_line: r.best_line ? { text: r.best_line, vod_id: r.best_line_vod_id, sec: r.best_line_sec, score: r.best_line_score } : null }))));
@@ -145,7 +94,7 @@ async function fighterBrief(userId, roster) {
         user: f ? f.user : (await db.getUserById(userId) ? arena().publicUser(await db.getUserById(userId)) : { id: userId, username: `user${userId}`, display_name: `user${userId}` }),
         fighter_name: await nameOf(userId),
         rank: f ? roster.order.indexOf(userId) + 1 : null,
-        image_url: (async () => { try { return await arena().getFighterImageUrl(userId); } catch { return null; } })(),
+        image_url: await (async () => { try { return await arena().getFighterImageUrl(userId); } catch { return null; } })(),
         live: !!await db.get('SELECT 1 FROM streams WHERE user_id = ? AND is_live = 1 LIMIT 1', [userId]),
         level: levelFor((await levelRow(userId)).xp || 0),
     };
@@ -159,13 +108,12 @@ async function fighterBrief(userId, roster) {
  * are paid by beef.recordHit. Returns the row or null when the line is behaviour-filtered.
  */
 async function addMoment({ userId, streamId = null, vodId = null, sec = null, kind = 'trash', targetUserId = null, beefId = null, aimedAt = null, text, about = null, quality = 0, announcer = null, saidAt = null }) {
-    await ensureTables();
     const t = String(text || '').replace(/\s+/g, ' ').trim().slice(0, 240);
     if (!t) return null;
     try { if (arena()._isBannedText(t)) return null; } catch { /* */ }
     const q = Math.max(0, Math.min(10, Number(quality) || 0));
     const r = await db.run(`INSERT INTO arena_mic_moments (user_id, stream_id, vod_id, sec, kind, target_user_id, beef_id, aimed_at, text, about, quality, announcer, said_at)
-                      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, ov_now()))`,
+                      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?::text, ov_now())) RETURNING id`,
         [userId, streamId, vodId, sec == null ? null : Math.max(0, Math.floor(sec)), kind, targetUserId, beefId, aimedAt ? String(aimedAt).slice(0, 80) : null, t, about ? String(about).slice(0, 80) : null, q, announcer ? String(announcer).slice(0, 140) : null, saidAt]);
     const id = Number(r.lastInsertRowid);
     if (kind === 'trash' || kind === 'callout') await addXp(userId, q * XP_MOMENT, kind === 'callout' ? 'mic_callout' : 'mic_trash', id, { moment: true, line: t, lineScore: q, lineVodId: vodId, lineSec: sec });
@@ -174,7 +122,6 @@ async function addMoment({ userId, streamId = null, vodId = null, sec = null, ki
 
 /** Same line (or near enough) from the same fighter in the last 6 h → don't file it twice. */
 async function isDuplicate(userId, text) {
-    await ensureTables();
     const norm = String(text || '').toLowerCase().replace(/[^a-z0-9 ]/g, '').replace(/\s+/g, ' ').trim();
     if (!norm) return false;
     const rows = await db.all(`SELECT text FROM arena_mic_moments WHERE user_id = ? AND created_at >= datetime('now', '-6 hours') ORDER BY id DESC LIMIT 40`, [userId]);
@@ -185,7 +132,7 @@ async function momentView(m, roster) {
     const brief = await fighterBrief(m.user_id, roster);
     return {
         id: m.id, kind: m.kind, user: brief.user, fighter_name: brief.fighter_name, rank: brief.rank, image_url: brief.image_url, level: brief.level, live: brief.live,
-        target: m.target_user_id ? (async () => { const b = await fighterBrief(m.target_user_id, roster); return { user: b.user, fighter_name: b.fighter_name, rank: b.rank }; })() : null,
+        target: m.target_user_id ? await (async () => { const b = await fighterBrief(m.target_user_id, roster); return { user: b.user, fighter_name: b.fighter_name, rank: b.rank }; })() : null,
         beef_id: m.beef_id || null, aimed_at: m.aimed_at || null, text: m.text, about: m.about, quality: Number(m.quality) || 0, announcer: m.announcer || null,
         stream_id: m.stream_id, vod_id: m.vod_id, sec: m.sec, at: m.said_at || m.created_at,
     };
@@ -193,7 +140,6 @@ async function momentView(m, roster) {
 
 /** The shit-talk feed: newest judged lines across the roster. */
 async function feed({ limit = 40, since = null, userId = null } = {}) {
-    await ensureTables();
     const roster = await arena().loadRoster();
     const params = [];
     // The feed shows bangers only; weak lines still count for stats/XP but never headline the page.
@@ -205,27 +151,24 @@ async function feed({ limit = 40, since = null, userId = null } = {}) {
 }
 async function momentsFor(userId, limit = 12) { return await feed({ limit, userId }); }
 async function bestLines(userId, limit = 5) {
-    await ensureTables();
     const roster = await arena().loadRoster();
     return (await Promise.all((await db.all('SELECT * FROM arena_mic_moments WHERE user_id = ? AND quality >= 5 ORDER BY quality DESC, id DESC LIMIT ?', [userId, limit])).map(async m => await momentView(m, roster))));
 }
 async function latestFor(userId) {
-    await ensureTables();
     const m = await db.get('SELECT * FROM arena_mic_moments WHERE user_id = ? ORDER BY COALESCE(said_at, created_at) DESC, id DESC LIMIT 1', [userId]);
     return m ? await momentView(m, await arena().loadRoster()) : null;
 }
 
 /** Aggregates the ratings are built from. All from the mic ledger + beefs — nothing else. */
 async function micStats(userId, days = 30) {
-    await ensureTables();
     const win = `-${days} days`;
-    const m = await db.get(`SELECT COUNT(*) AS n, COALESCE(AVG(quality), 0) AS avg_q, COALESCE(MAX(quality), 0) AS best_q,
-                             COALESCE(SUM(kind IN ('beef_hit', 'callout')), 0) AS beef_hits, COALESCE(SUM(kind = 'trash'), 0) AS trash,
-                             COALESCE(SUM(quality >= 7), 0) AS bangers
+    const m = await db.get(`SELECT COUNT(*) AS n, COALESCE(AVG(quality), 0)::float8 AS avg_q, COALESCE(MAX(quality), 0) AS best_q,
+                             COUNT(*) FILTER (WHERE kind IN ('beef_hit', 'callout')) AS beef_hits, COUNT(*) FILTER (WHERE kind = 'trash') AS trash,
+                             COUNT(*) FILTER (WHERE quality >= 7) AS bangers
                       FROM arena_mic_moments WHERE user_id = ? AND created_at >= datetime('now', ?)`, [userId, win]) || {};
     let b = {};
-    try { b = await db.get(`SELECT COALESCE(SUM(b_user_id = ?), 0) AS targeted, COALESCE(SUM(b_user_id = ? AND responded = 1), 0) AS answered, COALESCE(SUM(winner_user_id = ?), 0) AS wins, COALESCE(SUM(status = 'resolved' AND winner_user_id IS NOT NULL AND winner_user_id != ?), 0) AS losses, COALESCE(SUM(status = 'resolved' AND resolution = 'forfeit' AND winner_user_id != ? AND winner_user_id IS NOT NULL), 0) AS ducked FROM arena_beefs WHERE a_user_id = ? OR b_user_id = ?`, [userId, userId, userId, userId, userId, userId, userId]) || {}; } catch { b = {}; }
-    const speechMin = (async () => { try { return ((await db.get(`SELECT COALESCE(SUM(COALESCE(end_sec, start_sec + 3) - start_sec), 0) AS s FROM stream_timeline_events WHERE user_id = ? AND kind = 'speech' AND created_at >= datetime('now', ?)`, [userId, win]))?.s || 0) / 60; } catch { return 0; } })();
+    try { b = await db.get(`SELECT COUNT(*) FILTER (WHERE b_user_id = ?) AS targeted, COUNT(*) FILTER (WHERE b_user_id = ? AND responded = 1) AS answered, COUNT(*) FILTER (WHERE winner_user_id = ?) AS wins, COUNT(*) FILTER (WHERE status = 'resolved' AND winner_user_id IS NOT NULL AND winner_user_id != ?) AS losses, COUNT(*) FILTER (WHERE status = 'resolved' AND resolution = 'forfeit' AND winner_user_id != ? AND winner_user_id IS NOT NULL) AS ducked FROM arena_beefs WHERE a_user_id = ? OR b_user_id = ?`, [userId, userId, userId, userId, userId, userId, userId]) || {}; } catch { b = {}; }
+    const speechMin = await (async () => { try { return ((await db.get(`SELECT COALESCE(SUM(COALESCE(end_sec, start_sec + 3) - start_sec), 0)::bigint AS s FROM stream_timeline_events WHERE user_id = ? AND kind = 'speech' AND created_at >= datetime('now', ?)`, [userId, win]))?.s || 0) / 60; } catch { return 0; } })();
     const hours = Math.max(speechMin / 60, 0.05);
     const targeted = b.targeted || 0;
     return {
@@ -238,7 +181,7 @@ async function micStats(userId, days = 30) {
 }
 
 module.exports = {
-    ensureTables, addXp, recentXp, levelView, levelFor, levelRow, levelsLeaderboard, nameOf, fighterBrief,
+    addXp, recentXp, levelView, levelFor, levelRow, levelsLeaderboard, nameOf, fighterBrief,
     addMoment, momentView, feed, momentsFor, bestLines, latestFor, micStats, isDuplicate,
     XP_PER_LEVEL, XP_MOMENT, XP_HYPE,
 };

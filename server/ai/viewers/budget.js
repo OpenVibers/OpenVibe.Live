@@ -78,7 +78,7 @@ async function byoProvider(cfg) {
  * 'shared' stopped counting anything once AI_SERVICE=remote went live.
  */
 async function globalViewerSpendToday() {
-    try { return (await db.get("SELECT COALESCE(SUM(cost_usd),0) AS c FROM ai_usage WHERE source = ? AND COALESCE(provider,'shared') <> 'byo' AND created_at >= date('now')", [SOURCE]))?.c || 0; } catch { return 0; }
+    try { return (await db.get("SELECT COALESCE(SUM(cost_usd),0)::float8 AS c FROM ai_usage WHERE source = ? AND COALESCE(provider,'shared') <> 'byo' AND created_at >= to_char(ov_ts(ov_now()), 'YYYY-MM-DD')", [SOURCE]))?.c || 0; } catch { return 0; }
 }
 
 /**
@@ -91,7 +91,7 @@ async function globalViewerSpendToday() {
  */
 async function status(userId) {
     const st = await budgetStatus(userId);
-    const kill = (async () => { const v = await db.getSetting('ai_viewers_enabled'); return v === false || v === 'false' || v === 0 || v === '0'; })();
+    const kill = await (async () => { const v = await db.getSetting('ai_viewers_enabled'); return v === false || v === 'false' || v === 0 || v === '0'; })();
     let mode = 'normal';
     let reason = st.reason;
     if (kill) { mode = 'silent'; reason = 'kill_switch'; }

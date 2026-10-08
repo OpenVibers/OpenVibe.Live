@@ -25,7 +25,7 @@ const router = express.Router();
 
 router.use(async (req, res, next) => { if (!await arena.arenaEnabled()) return res.status(404).json({ error: 'Arena is disabled' }); next(); });
 const fail = (res, err, msg) => { console.error('[Arena]', msg, err.message); res.status(500).json({ error: msg }); };
-const userFrom = async (param) => (/^\d+$/.test(String(param)) ? await db.getUserById(Number(param)) : await db.getUserByUsername(String(param).replace(/^@/, '')));
+const userFrom = async (param) => (/^\d+$/.test(String(param)) ? await db.getUserById(Number(param)) : await db.get('SELECT * FROM users WHERE lower(username) = lower(?)', [String(param).replace(/^@/, '')]));
 
 router.get('/status', async (req, res) => { try { res.json(await arena.status()); } catch (err) { fail(res, err, 'Arena unavailable'); } });
 
@@ -98,7 +98,7 @@ router.get('/console/:user', async (req, res) => {
         res.json({
             fighter: brief, on_roster: !!roster.byId[user.id], live: !!liveStream, stream: liveStream || null,
             transcribed: liveStream ? !!await db.get(`SELECT 1 FROM stream_timeline_events WHERE stream_id = ? AND kind = 'speech' AND created_at >= datetime('now', '-30 minutes') LIMIT 1`, [liveStream.id]) : false,
-            listener: listener.consoleState(user.id),
+            listener: await listener.consoleState(user.id),
             level: await mic.levelView(user.id),
             mic: await mic.micStats(user.id),
             open_beefs: (await Promise.all((await beef.openBeefsFor(user.id)).map(async b => await beef.beefView(b, roster)))),

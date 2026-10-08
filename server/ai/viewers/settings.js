@@ -100,7 +100,7 @@ function coerce(key, v, limits) {
 }
 
 /** Validate + clamp a partial settings object (unknown keys dropped). */
-function sanitize(input, limits = adminLimits()) {
+function sanitize(input, limits = { maxRoster: 12, maxLinesPerMin: 12 }) {
     const out = {};
     for (const [k, v] of Object.entries(input || {})) {
         const c = coerce(k, v, limits);
@@ -123,7 +123,7 @@ function sanitize(input, limits = adminLimits()) {
 /** Fully-resolved settings for a channel: built-in ← admin defaults ← row (+ legacy columns). */
 async function getSettings(userId, cfgRow = null) {
     const cfg = cfgRow || await db.getChannelAiConfig(userId) || {};
-    const limits = adminLimits();
+    const limits = await adminLimits();
     const base = {};
     for (const [k, sp] of Object.entries(SCHEMA)) base[k] = typeof sp.def === 'object' ? { ...sp.def } : sp.def;
     const admin = sanitize(await adminDefaults(), limits);
@@ -144,7 +144,7 @@ async function getSettings(userId, cfgRow = null) {
 async function updateSettings(userId, partial) {
     const cfg = await db.getChannelAiConfig(userId) || {};
     const current = _parseJson(cfg.settings_json);
-    const clean = sanitize(partial);
+    const clean = sanitize(partial, await adminLimits());
     const merged = { ...current, ...clean };
     if (partial && partial.byo && current.byo) merged.byo = { ...current.byo, ...clean.byo };
     if (partial && partial.slots && current.slots) merged.slots = { ...current.slots, ...clean.slots };
@@ -154,8 +154,8 @@ async function updateSettings(userId, partial) {
 
 /** Schema description for the UI (defaults resolved with admin overrides). */
 async function describe() {
-    const admin = sanitize(await adminDefaults());
-    const limits = adminLimits();
+    const limits = await adminLimits();
+    const admin = sanitize(await adminDefaults(), limits);
     return Object.entries(SCHEMA).map(([key, sp]) => ({
         key, type: sp.type, help: sp.help,
         def: admin[key] !== undefined ? admin[key] : sp.def,

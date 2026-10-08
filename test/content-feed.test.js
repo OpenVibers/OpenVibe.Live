@@ -14,31 +14,28 @@
  */
 'use strict';
 const assert = require('assert');
-const fs = require('fs');
-const os = require('os');
-const path = require('path');
 const http = require('http');
 
-const tmp = path.join(os.tmpdir(), `ov-content-feed-${process.pid}.db`);
-process.env.DB_PATH = tmp;
 process.env.NODE_ENV = 'test';
 const quiet = console.log;
 console.log = (...a) => { if (!/^\[/.test(String(a[0]))) quiet(...a); };
 console.warn = () => {};
 
 const db = require('../server/db/database');
-db.initDb();
+
+(async () => {
+await db.initDb();
 const raw = db.getDb();
-const addUser = (id, username, banned = 0) => raw.prepare(
+const addUser = async (id, username, banned = 0) => await raw.prepare(
     `INSERT INTO users (id, username, display_name, email, password_hash, role, is_banned, avatar_url, created_at) OVERRIDING SYSTEM VALUE
      VALUES (?, ?, ?, ?, 'x', 'streamer', ?, ?, '2025-01-01 00:00:00')`).run(id, username, username.toUpperCase(), `${username}@x`, banned, `https://media.test/a/${username}.png`);
-addUser(3, 'alice');
-addUser(4, 'bob');
-addUser(9, 'banned', 1);
-db.ensureChannel(3);
-const chan = db.getChannelByUserId(3);
-const streamId = Number(db.createStream({ user_id: 3, channel_id: chan.id, title: 'Night stream', protocol: 'rtmp' }).lastInsertRowid);
-db.endStream(streamId);
+await addUser(3, 'alice');
+await addUser(4, 'bob');
+await addUser(9, 'banned', 1);
+await db.ensureChannel(3);
+const chan = await db.getChannelByUserId(3);
+const streamId = Number((await db.createStream({ user_id: 3, channel_id: chan.id, title: 'Night stream', protocol: 'rtmp' })).lastInsertRowid);
+await db.endStream(streamId);
 
 const MIN = 60_000;
 const at = (minsAgo) => new Date(Date.now() - minsAgo * MIN).toISOString().replace('T', ' ').slice(0, 19);
@@ -113,10 +110,9 @@ pastesClient.request = async (method, p, { query = {}, act = {} } = {}) => {
 };
 
 // ── Live's own AI recaps ──
-require('../server/recap/recap').ensureTable();
 const recapJson = (headline, peak) => JSON.stringify({ stream: { id: streamId, title: 'Night stream', duration_seconds: 3600, peak_viewers: peak }, write: { headline, summary: 'A good night.', grade: 'A' }, vod: { id: 1, thumbnail_url: 'https://media.test/t/vod-1.jpg' } });
-raw.prepare('INSERT INTO stream_recaps (stream_id, user_id, json, ai, created_at) VALUES (?, 3, ?, 1, ?)').run(streamId, recapJson('What a night', 12), at(33));
-raw.prepare('INSERT INTO stream_recaps (stream_id, user_id, json, ai, created_at) VALUES (?, 3, ?, 0, ?)').run(streamId + 1000, recapJson('Template recap', 99), at(3));
+await raw.prepare('INSERT INTO stream_recaps (stream_id, user_id, json, ai, created_at) VALUES (?, 3, ?, 1, ?)').run(streamId, recapJson('What a night', 12), at(33));
+await raw.prepare('INSERT INTO stream_recaps (stream_id, user_id, json, ai, created_at) VALUES (?, 3, ?, 0, ?)').run(streamId + 1000, recapJson('Template recap', 99), at(3));
 
 const feed = require('../server/content/feed');
 const { findSecrets } = require('../server/web/serializers');
@@ -331,7 +327,7 @@ server.on('listening', async () => {
 
     await check('the auto-clip flag sync marks only the AI\'s own clips in Media', async () => {
         const job = require('../server/ai/auto-clip-job');
-        db.setState('auto_clip_log', JSON.stringify([
+        await db.setState('auto_clip_log', JSON.stringify([
             { clip_id: 101, stream_id: streamId, ts: Date.now() },
             { clip_id: 102, stream_id: streamId, ts: Date.now(), dedup: true },           // someone else's clip handed back
             { clip_id: 103, stream_id: streamId, ts: Date.now() },                        // a viewer's clip under the AI's log entry
@@ -357,7 +353,7 @@ server.on('listening', async () => {
     });
 
     server.close();
-    for (const f of [tmp, `${tmp}-wal`, `${tmp}-shm`]) { try { fs.unlinkSync(f); } catch { /* */ } }
     quiet(failures ? `\n${failures} check(s) failed` : '\ncontent feed: all checks passed');
     process.exit(failures ? 1 : 0);
 });
+})().catch((e) => { console.error(e); process.exit(1); });

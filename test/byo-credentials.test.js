@@ -7,15 +7,10 @@
 //   - a model change keeps AI's stored key, a new address without the key is refused, byo_key null removes it.
 //   node test/byo-credentials.test.js
 const assert = require('assert');
-const fs = require('fs');
-const os = require('os');
-const path = require('path');
 const http = require('http');
 const crypto = require('crypto');
 const { serviceAuth } = require('openvibe-contracts');
 
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ov-live-byo-'));
-process.env.DB_PATH = path.join(tmp, 'live.db');
 process.env.NODE_ENV = 'test';
 process.env.OV_OAUTH_CLIENT_ID = 'live';
 process.env.OV_OAUTH_CLIENT_SECRET = 'live-secret';
@@ -67,22 +62,22 @@ const ai = http.createServer((req, res) => {
     process.env.OV_NETWORK_INTERNAL_URL = `http://127.0.0.1:${network.address().port}`;
     process.env.OV_AI_INTERNAL_URL = `http://127.0.0.1:${ai.address().port}`;
     const db = require('../server/db/database');
-    db.initDb();
+    await db.initDb();
     const byo = require('../server/ai/byo-credentials');
     const budget = require('../server/ai/viewers/budget');
     const d = db.getDb();
     const SUBJECT = 'usr_01JAB2C3D4E5F6G7H8J9K0MNP1';
-    d.prepare("INSERT INTO users (id, username, password_hash) OVERRIDING SYSTEM VALUE VALUES (30, 'dana', '$sso$'), (31, 'nolink', '$sso$')").run();
-    d.prepare("INSERT INTO linked_accounts (user_id, service, service_user_id, service_username, subject_id) VALUES (30, 'network', '300', 'dana', ?)").run(SUBJECT);
-    db.setSetting('ai_enabled', 'true');
-    db.upsertChannelAiConfig(30, { enabled: 1, use_shared_key: 0, byo_key: LOCAL_KEY, byo_base_url: 'https://openrouter.ai/api/v1', byo_model: 'gpt-4o-mini' });
-    db.upsertChannelAiConfig(31, { enabled: 1, use_shared_key: 0, byo_key: LOCAL_KEY });
+    await d.prepare("INSERT INTO users (id, username, password_hash) OVERRIDING SYSTEM VALUE VALUES (30, 'dana', '$sso$'), (31, 'nolink', '$sso$')").run();
+    await d.prepare("INSERT INTO linked_accounts (user_id, service, service_user_id, service_username, subject_id) VALUES (30, 'network', '300', 'dana', ?)").run(SUBJECT);
+    await db.setSetting('ai_enabled', 'true');
+    await db.upsertChannelAiConfig(30, { enabled: 1, use_shared_key: 0, byo_key: LOCAL_KEY, byo_base_url: 'https://openrouter.ai/api/v1', byo_model: 'gpt-4o-mini' });
+    await db.upsertChannelAiConfig(31, { enabled: 1, use_shared_key: 0, byo_key: LOCAL_KEY });
     try {
         // ── The move ──
         assert.strictEqual(await byo.moveLocal(30), 'moved');
         const put = calls.find((c) => c.method === 'PUT');
         assert.deepStrictEqual([put.url, put.body.provider, put.body.base_url, put.body.api_key, put.body.models], [`/api/v1/credentials/${SUBJECT}`, 'openai', 'https://openrouter.ai/api/v1', LOCAL_KEY, { chat: 'gpt-4o-mini' }]);
-        const cfg = db.getChannelAiConfig(30);
+        const cfg = await db.getChannelAiConfig(30);
         assert.deepStrictEqual([cfg.byo_key, cfg.byo_in_ai], ['', 1], "Live's copy is erased");
         assert.strictEqual(await byo.moveLocal(30), 'none', 'moving again changes nothing');
         assert.strictEqual(await byo.moveLocal(31), 'credentials.no_subject', 'no Network account: the key stays until one is linked');
@@ -90,37 +85,36 @@ const ai = http.createServer((req, res) => {
         // ── The viewers run on AI with the credential ──
         const n = calls.length;
         const director = require('../server/ai/viewers/director');
-        const reply = await director.quickReply({ stableText: 'roster', situationText: '', bot: { username: 'goosebot' }, streamerLine: 'say hi', provider: budget.byoProvider(db.getChannelAiConfig(30)), ownerUserId: 30 });
+        const reply = await director.quickReply({ stableText: 'roster', situationText: '', bot: { username: 'goosebot' }, streamerLine: 'say hi', provider: await budget.byoProvider(await db.getChannelAiConfig(30)), ownerUserId: 30 });
         assert.strictEqual(reply.text, 'hi from the streamer key');
         const runCall = calls.slice(n).find((c) => c.url.startsWith('/api/v1/runs'));
         assert.deepStrictEqual([runCall.body.workflow, runCall.body.credential], ['live.viewers.reply', { subject: SUBJECT }]);
         assert.ok(!JSON.stringify(runCall.body).includes(LOCAL_KEY), 'the key is not in the run');
-        const usage = d.prepare("SELECT provider, owner_user_id FROM ai_usage WHERE source = 'ai_viewers' ORDER BY id DESC LIMIT 1").get();
+        const usage = await d.prepare("SELECT provider, owner_user_id FROM ai_usage WHERE source = 'ai_viewers' ORDER BY id DESC LIMIT 1").get();
         assert.deepStrictEqual([usage.provider, usage.owner_user_id], ['byo', 30], 'metered as the streamer\'s own');
         // A key in AI without a subject never falls back to the shared key.
-        db.upsertChannelAiConfig(31, { byo_key: '', byo_in_ai: 1 });
+        await db.upsertChannelAiConfig(31, { byo_key: '', byo_in_ai: 1 });
         const m = calls.length;
-        assert.strictEqual(await director.quickReply({ stableText: 's', situationText: '', bot: { username: 'b' }, streamerLine: 'x', provider: budget.byoProvider(db.getChannelAiConfig(31)) || { none: true }, ownerUserId: 31 }), null);
+        assert.strictEqual(await director.quickReply({ stableText: 's', situationText: '', bot: { username: 'b' }, streamerLine: 'x', provider: await budget.byoProvider(await db.getChannelAiConfig(31)) || { none: true }, ownerUserId: 31 }), null);
         assert.strictEqual(calls.length, m, 'nothing was called');
 
         // ── Saving the config ──
         let fields = { byo_model: 'gpt-4o' };
-        assert.strictEqual(await byo.applyConfig(30, db.getChannelAiConfig(30), undefined, fields), null);
+        assert.strictEqual(await byo.applyConfig(30, await db.getChannelAiConfig(30), undefined, fields), null);
         const modelPut = calls[calls.length - 1];
         assert.deepStrictEqual([modelPut.method, modelPut.body.api_key, modelPut.body.models.chat], ['PUT', undefined, 'gpt-4o'], 'a model change keeps the stored key');
         fields = { byo_base_url: 'https://attacker.example/v1' };
-        const refused = await byo.applyConfig(30, db.getChannelAiConfig(30), undefined, fields);
+        const refused = await byo.applyConfig(30, await db.getChannelAiConfig(30), undefined, fields);
         assert.deepStrictEqual([refused.status, refused.code], [400, 'credential.key_required'], 'a new address needs the key again');
         fields = {};
-        assert.strictEqual(await byo.applyConfig(30, db.getChannelAiConfig(30), 'sk-new-EXAMPLE-1111', fields), null);
+        assert.strictEqual(await byo.applyConfig(30, await db.getChannelAiConfig(30), 'sk-new-EXAMPLE-1111', fields), null);
         assert.deepStrictEqual([fields.byo_key, fields.byo_in_ai], ['', 1], 'a new key is never saved in Live');
         fields = {};
-        assert.strictEqual(await byo.applyConfig(30, db.getChannelAiConfig(30), null, fields), null);
+        assert.strictEqual(await byo.applyConfig(30, await db.getChannelAiConfig(30), null, fields), null);
         assert.deepStrictEqual([calls[calls.length - 1].method, fields.byo_in_ai], ['DELETE', 0]);
         assert.ok(!stored.has(SUBJECT));
     } finally {
         network.close(); ai.close();
-        fs.rmSync(tmp, { recursive: true, force: true });
     }
     console.log('byo credentials: all checks passed');
 })().catch((e) => { console.error(e); process.exit(1); });

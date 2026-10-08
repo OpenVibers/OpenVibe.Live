@@ -5,15 +5,10 @@
 // heuristic.
 //   node test/arena-judge-ai.test.js
 const assert = require('assert');
-const fs = require('fs');
-const os = require('os');
-const path = require('path');
 const http = require('http');
 const crypto = require('crypto');
 const { serviceAuth } = require('openvibe-contracts');
 
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ov-live-arena-ai-'));
-process.env.DB_PATH = path.join(tmp, 'live.db');
 process.env.NODE_ENV = 'test';
 process.env.OV_OAUTH_CLIENT_ID = 'live';
 process.env.OV_OAUTH_CLIENT_SECRET = 'live-secret';
@@ -50,10 +45,9 @@ const ai = http.createServer((req, res) => {
     process.env.OV_NETWORK_INTERNAL_URL = `http://127.0.0.1:${network.address().port}`;
     process.env.OV_AI_INTERNAL_URL = `http://127.0.0.1:${ai.address().port}`;
     const db = require('../server/db/database');
-    db.initDb();
-    db.setSetting('ai_enabled', 'true');
+    await db.initDb();
+    await db.setSetting('ai_enabled', 'true');
     const listener = require('../server/arena/listener');
-    require('../server/arena/arena-service').ensureTables();
     try {
         answer = { is_trash_talk: true, garbled: false, quality: 12, best_line: 'chat you are the worst mods i have ever seen', about: 'the mods', aimed_at: 'The Mods', announcer: 'OH!', flagged: false };
         const mic = await listener._judgeMic(7, 'chat you are the worst mods i have ever seen');
@@ -66,7 +60,7 @@ const ai = http.createServer((req, res) => {
         const fallback = await listener._judgeMic(7, 'you are all clowns and nobody in chat can beat me');
         assert.strictEqual(fallback.fallback, true, 'no answer: the heuristic');
 
-        db.getDb().prepare("INSERT INTO users (id, username, display_name, password_hash) OVERRIDING SYSTEM VALUE VALUES (8, 'ann', 'Ann', '$sso$')").run();
+        await db.getDb().prepare("INSERT INTO users (id, username, display_name, password_hash) OVERRIDING SYSTEM VALUE VALUES (8, 'ann', 'Ann', '$sso$')").run();
         const roster = { byId: { 8: { user: { username: 'ann', display_name: 'Ann' } } } };
         answer = { about_target: true, aimed_at_target: true, quality: 7, best_line: 'ann your stream is so boring even your bots left', about: 'her stream', announcer: 'Ouch', flagged: false };
         const beef = await listener._judgeBeef(7, 8, 'ann your stream is so boring even your bots left', roster, { context: 'called her washed', named: true, how: 'exact' });
@@ -77,7 +71,6 @@ const ai = http.createServer((req, res) => {
         assert.deepStrictEqual([beef.aimed_at_target, beef.quality, beef.fallback], [true, 7, false]);
     } finally {
         network.close(); ai.close();
-        fs.rmSync(tmp, { recursive: true, force: true });
     }
     console.log('arena judge via AI: all checks passed');
     process.exit(0);

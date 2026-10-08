@@ -51,7 +51,7 @@ function cachedFile(key) {
     return null;
 }
 
-async function todayCount() { try { return (await db.get(`SELECT COUNT(*) AS n FROM ai_usage WHERE kind = 'tts' AND created_at >= date('now')`))?.n || 0; } catch { return 0; } }
+async function todayCount() { try { return (await db.get(`SELECT COUNT(*) AS n FROM ai_usage WHERE kind = 'tts' AND created_at >= to_char(ov_ts(ov_now()), 'YYYY-MM-DD')`))?.n || 0; } catch { return 0; } }
 
 async function synth(voice, text, username) {
     if (_synthOverride) return _synthOverride(voice, text, username);

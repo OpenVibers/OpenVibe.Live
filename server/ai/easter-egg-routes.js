@@ -19,7 +19,7 @@ router.get('/daily', optionalAuth, async (req, res) => {
         if (!pub) return res.json({ egg: null });
         const mine = await eggJob.revealedFor(_solverKey(req));
         let firstSolvers = [];
-        try { firstSolvers = (await db.all('SELECT u.username, u.display_name FROM easter_egg_solves s JOIN users u ON u.id = s.user_id WHERE s.egg_date = ? ORDER BY s.rowid ASC LIMIT 3', [pub.date]) || []).map(r => r.display_name || r.username); } catch { firstSolvers = []; }
+        try { firstSolvers = (await db.all('SELECT u.username, u.display_name FROM easter_egg_solves s JOIN users u ON u.id = s.user_id WHERE s.egg_date = ? ORDER BY s.id ASC LIMIT 3', [pub.date]) || []).map(r => r.display_name || r.username); } catch { firstSolvers = []; }
         res.json({
             egg: {
                 ...pub,

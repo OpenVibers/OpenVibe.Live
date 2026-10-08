@@ -128,7 +128,7 @@ function normalizeRequest(raw, { flat = false } = {}) {
 // ── Live rows ────────────────────────────────────────────────
 
 const userById = async (id) => await db.get('SELECT id, username FROM users WHERE id = ?', [id]);
-const userBySlug = async (slug) => await db.get('SELECT id, username FROM users WHERE username = ? COLLATE NOCASE', [slug]);
+const userBySlug = async (slug) => await db.get('SELECT id, username FROM users WHERE lower(username) = lower(?)', [slug]);
 const streamById = async (id) => await db.get(`SELECT s.id, s.user_id, s.managed_stream_id, ms.slug AS slot_slug
     FROM streams s LEFT JOIN managed_streams ms ON ms.id = s.managed_stream_id WHERE s.id = ?`, [id]);
 const slotById = async (id) => await db.get('SELECT id, user_id, slug FROM managed_streams WHERE id = ?', [id]);

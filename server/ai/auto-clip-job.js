@@ -181,15 +181,16 @@ async function _backfillPool(limit) {
         if (rows.length) {
             const clipped = new Set();
             for (const c of await _clipLog()) { if (c.vod_id) clipped.add(c.vod_id); if (c.stream_id) clipped.add(`s${c.stream_id}`); }
-            return (await Promise.all(rows
-                .filter(v => v.stream_id && !clipped.has(v.id) && !clipped.has(`s${v.stream_id}`))
-                .filter(v => _derivationOn(v.user_id))
-                .filter(v => {
-                    try { return (db.get('SELECT COUNT(*) AS c FROM stream_memories WHERE stream_id = ?', [v.stream_id])?.c || 0) > 0; }
-                    catch { return false; }
-                })
-                .slice(0, limit)
-                .map(async v => ({
+            const candidates = [];
+            for (const v of rows) {
+                if (!v.stream_id || clipped.has(v.id) || clipped.has(`s${v.stream_id}`)) continue;
+                if (!await _derivationOn(v.user_id)) continue;
+                try {
+                    if ((await db.get('SELECT COUNT(*) AS c FROM stream_memories WHERE stream_id = ?', [v.stream_id]))?.c > 0) candidates.push(v);
+                } catch { /* skip an unreadable stream */ }
+                if (candidates.length >= limit) break;
+            }
+            return (await Promise.all(candidates.map(async v => ({
                     vod_id: v.id, stream_id: v.stream_id, user_id: v.user_id, username: v.username,
                     title: v.title || '',
                     ai_overview: (db.getVodAiState && (await db.getVodAiState(v.id))?.ai_overview_short) || '',

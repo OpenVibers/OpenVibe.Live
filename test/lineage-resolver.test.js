@@ -19,7 +19,6 @@ const contracts = require('openvibe-contracts');
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ov-lineage-'));
 const keys = crypto.generateKeyPairSync('rsa', { modulusLength: 2048, publicKeyEncoding: { type: 'spki', format: 'pem' }, privateKeyEncoding: { type: 'pkcs8', format: 'pem' } });
 fs.writeFileSync(path.join(tmp, 'network.pem'), keys.publicKey);
-process.env.DB_PATH = path.join(tmp, 'live.db');
 process.env.OV_NETWORK_PUBLIC_KEY = path.join(tmp, 'network.pem');
 process.env.OV_NETWORK_URL = 'https://openvibe.network';
 process.env.OV_OAUTH_CLIENT_ID = 'live';
@@ -111,16 +110,16 @@ function checkContract(out, label) {
     process.env.OV_OAUTH_CLIENT_SECRET = 'k'.repeat(40);
 
     const db = require('../server/db/database');
-    db.initDb();
+    await db.initDb();
     const d = db.getDb();
     const users = [[17, 'alice', 'Alice Wonder'], [18, 'bob', 'alice'], [19, 'carol', 'Carol'], [20, 'dave', 'streamqueen'], [21, 'mallory', 'Alice Wonder'], [22, 'erin', 'Erin']];
-    for (const [id, name, display] of users) d.prepare("INSERT INTO users (id, username, display_name, password_hash) OVERRIDING SYSTEM VALUE VALUES (?, ?, ?, 'x')").run(id, name, display);
+    for (const [id, name, display] of users) await d.prepare("INSERT INTO users (id, username, display_name, password_hash) OVERRIDING SYSTEM VALUE VALUES (?, ?, ?, 'x')").run(id, name, display);
     const channelOf = {};
-    for (const id of [17, 18, 19, 21, 22]) channelOf[id] = Number(d.prepare('INSERT INTO channels (user_id) VALUES (?)').run(id).lastInsertRowid);
+    for (const id of [17, 18, 19, 21, 22]) channelOf[id] = Number((await d.prepare('INSERT INTO channels (user_id) VALUES (?) RETURNING id').run(id)).lastInsertRowid);
     const link = d.prepare("INSERT INTO linked_accounts (user_id, service, service_user_id, subject_id) VALUES (?, 'network', ?, ?)");
-    link.run(17, '57', ALICE); link.run(18, '58', BOB); link.run(19, '59', SHARED); link.run(20, '60', null); link.run(21, '61', SHARED);
-    d.prepare("INSERT INTO managed_streams (id, user_id, slug, stream_key) OVERRIDING SYSTEM VALUE VALUES (3, 17, 'garage-cam', 'k3'), (4, 18, 'desk', 'k4')").run();
-    d.prepare("INSERT INTO streams (id, user_id, managed_stream_id, channel_id, title) OVERRIDING SYSTEM VALUE VALUES (9, 17, 3, ?, 'a'), (10, 18, 4, ?, 'b'), (11, 17, 3, ?, 'c')").run(channelOf[17], channelOf[18], channelOf[17]);
+    await link.run(17, '57', ALICE); await link.run(18, '58', BOB); await link.run(19, '59', SHARED); await link.run(20, '60', null); await link.run(21, '61', SHARED);
+    await d.prepare("INSERT INTO managed_streams (id, user_id, slug, stream_key) OVERRIDING SYSTEM VALUE VALUES (3, 17, 'garage-cam', 'k3'), (4, 18, 'desk', 'k4')").run();
+    await d.prepare("INSERT INTO streams (id, user_id, managed_stream_id, channel_id, title) OVERRIDING SYSTEM VALUE VALUES (9, 17, 3, ?, 'a'), (10, 18, 4, ?, 'b'), (11, 17, 3, ?, 'c')").run(channelOf[17], channelOf[18], channelOf[17]);
 
     const lineage = require('../server/lineage/resolver');
     const resolve = async (input, label = JSON.stringify(input)) => checkContract(await lineage.resolve(input), label);
@@ -222,7 +221,7 @@ function checkContract(out, label) {
     await expectUnresolved({ legacy_ids: { live_user_id: 999 } }, 'not_found');
 
     // ── A deleted stream with a surviving VOD ────────────────
-    d.prepare('DELETE FROM streams WHERE id = 11').run();
+    await d.prepare('DELETE FROM streams WHERE id = 11').run();
     await expectResolved({ vod_id: '48' }, { channel: aliceChannel, rule: 'stream_lookup', confidence: 'derived', via: ['vod:48', 'slot:3', 'user:17'],
         stream: { id: '11', slot_id: '3', slot_slug: 'garage-cam', missing: true }, vod: { id: '48', stream_id: '11', slot_id: '3' } });
     await expectResolved({ vod_id: '43' }, { rule: 'stream_lookup', stream: { id: '999999', slot_id: '3', slot_slug: 'garage-cam', missing: true } });
@@ -248,7 +247,7 @@ function checkContract(out, label) {
     await expectUnresolved({ owner_subject: NOBODY }, 'not_found');
     r = await expectUnresolved({ slug: 'dave' }, 'not_found');
     assert.match(r.detail, /has no channel yet/);
-    assert.strictEqual(d.prepare('SELECT COUNT(*) AS n FROM channels WHERE user_id = 20').get().n, 0, 'resolving never creates a channel');
+    assert.strictEqual((await d.prepare('SELECT COUNT(*) AS n FROM channels WHERE user_id = 20').get()).n, 0, 'resolving never creates a channel');
     assert.deepStrictEqual((({ status, userId, rule }) => ({ status, userId, rule }))(await lineage.resolveOwner({ slug: 'dave' })), { status: 'resolved', userId: 20, rule: 'explicit_slug' });
     assert.strictEqual((await lineage.resolveOwner({ vod_id: '47' })).userId, 999, 'resolveOwner reports the owner a record names');
     await expectUnresolved({}, 'no_input');
@@ -313,15 +312,15 @@ function checkContract(out, label) {
     assert.deepStrictEqual([res.status, res.json.reason], [200, 'conflict']);
     await call('GET', 'slug=mallory&vod_id=42');
     // The operator view (D20 remaining 2): unresolved answers are counted by inputs and reason; resolved ones are not.
-    const ops = require('../server/lineage/unresolved').list();
+    const ops = await require('../server/lineage/unresolved').list();
     const byRef = Object.fromEntries(ops.unresolved.map((u) => [`${u.ref}|${u.reason}`, u]));
     assert.deepStrictEqual([byRef['slug=mallory vod_id=42|conflict'].count, byRef['slug=mallory vod_id=42|conflict'].last_caller], [2, 'svc:community'], 'counted per ref and reason, GET and POST alike');
     assert.ok(byRef['display_name=Alice Wonder|display_name_only'], 'a display name offered alone is kept as offered');
     assert.ok(!Object.keys(byRef).some((k) => k.startsWith('clip_id=7 network_user_id=57') || k.startsWith('live_user_id=17 slug=alice')), 'resolved answers are not recorded');
     assert.ok(['conflict', 'display_name_only'].every((r) => ops.by_reason[r] && ops.by_reason[r].refs >= 1), JSON.stringify(ops.by_reason));
     assert.ok(ops.unresolved.some((u) => u.last_caller === 'live:clip-owner' && u.reason === 'source_unavailable'), "Live's own clip-owner check records too (Media down earlier in this test)");
-    assert.ok(require('../server/lineage/unresolved').list({ reason: 'conflict' }).unresolved.every((u) => u.reason === 'conflict'));
-    assert.strictEqual(require('../server/lineage/unresolved').record({}, { status: 'unresolved', reason: 'no_input' }, 'x'), false, 'no_input is not a reference');
+    assert.ok((await require('../server/lineage/unresolved').list({ reason: 'conflict' })).unresolved.every((u) => u.reason === 'conflict'));
+    assert.strictEqual(await require('../server/lineage/unresolved').record({}, { status: 'unresolved', reason: 'no_input' }, 'x'), false, 'no_input is not a reference');
     for (const [q, body] of [['username=alice', null], ['slug=Alice%20Wonder', null], ['', { owner_subject: '17' }], ['', { vod_id: '42', extra: 1 }], ['slug=a&slug=b', null]]) {
         res = await call(body ? 'POST' : 'GET', q, body);
         assert.deepStrictEqual([res.status, res.json.code], [400, 'lineage.invalid_request'], `${q || JSON.stringify(body)} is refused`);

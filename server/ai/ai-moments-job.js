@@ -136,7 +136,7 @@ async function _momentContext(streamId, vodId) {
     // Where viewers clipped: the clips live in OpenVibe.Media.
     const clipTimes = await require('../media-proxy/lookups').clipStartTimes(streamId, vodId);
     // Chat's own buckets since the stream began (offsets are relative to started_at, as before).
-    const started = (async () => { try { const r = await db.get('SELECT started_at FROM streams WHERE id = ?', [streamId]); return r && r.started_at ? Date.parse(String(r.started_at).replace(' ', 'T') + 'Z') : 0; } catch { return 0; } })();
+    const started = await (async () => { try { const r = await db.get('SELECT started_at FROM streams WHERE id = ?', [streamId]); return r && r.started_at ? Date.parse(String(r.started_at).replace(' ', 'T') + 'Z') : 0; } catch { return 0; } })();
     const spikes = started > 0 ? (await chatReads.spikeOffsets(streamId, 30, 8, started) || []) : [];
     // Non-speech sounds are strong moment candidates — an explosion or a burst of
     // laughter marks a highlight as reliably as anything said out loud.
@@ -245,7 +245,11 @@ async function _momentPool(limit) {
     try {
         const r = await media.listVods({ limit, order: 'views' });
         // A channel that turned AI Moments off (channels.ai_derivation_enabled) is never picked from.
-        const rows = (r?.vods || (Array.isArray(r) ? r : [])).filter((v) => { try { return db.isAiDerivationEnabled(v.user_id); } catch { return true; } });
+        const rows = [];
+        for (const v of r?.vods || (Array.isArray(r) ? r : [])) {
+            try { if (await db.isAiDerivationEnabled(v.user_id)) rows.push(v); }
+            catch { rows.push(v); }
+        }
         if (rows.length) {
             return (await Promise.all(rows.map(async (v) => {
                 const state = (db.getVodAiState && await db.getVodAiState(v.id)) || {};

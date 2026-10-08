@@ -8,7 +8,7 @@
  *   - AI on: llm.complete only ever talks to OpenVibe.AI, for the site's AI and for a streamer's key
  *     stored there; a raw key / base URL override answers null with one warning and its address is
  *     never contacted; a streamer's key typed but not saved is tested through the egress guard;
- *   - the shared-key settings are not seeded, and a leftover ai_api_key row is deleted at boot;
+ *   - the shared-key settings are not seeded, and no server code writes one (none was left in production);
  *   - no file in server/ builds a provider request except llm.testProvider.
  *
  *   node test/ai-remote-only.test.js
@@ -24,7 +24,6 @@ const { spawnSync } = require('child_process');
 const { serviceAuth } = require('openvibe-contracts');
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ov-live-ai-remote-'));
-process.env.DB_PATH = path.join(tmp, 'live.db');
 process.env.NODE_ENV = 'test';
 process.env.OV_OAUTH_CLIENT_ID = 'live';
 process.env.OV_OAUTH_CLIENT_SECRET = 'live-secret';
@@ -89,7 +88,7 @@ async function check(name, fn) {
     const providerUrl = `http://127.0.0.1:${provider.address().port}/v1`;
 
     const db = require('../server/db/database');
-    db.initDb();
+    await db.initDb();
     const d = db.getDb();
     const aiService = require('../server/ai/ai-service');
     const llm = require('../server/ai/llm');
@@ -102,37 +101,45 @@ async function check(name, fn) {
     media.listVods = async () => ({ vods: [] });
     media.listClips = async () => ({ clips: [] });
 
-    d.prepare("INSERT INTO users (id, username, display_name, password_hash) OVERRIDING SYSTEM VALUE VALUES (40, 'kai', 'Kai', '$sso$')").run();
-    d.prepare("INSERT INTO linked_accounts (user_id, service, service_user_id, service_username, subject_id) VALUES (40, 'network', '400', 'kai', ?)").run(SUBJECT);
-    db.ensureChannel(40);
-    const ch = db.getChannelByUserId(40);
-    const sid = Number(db.createStream({ user_id: 40, channel_id: ch.id, title: 'Soldering at night', protocol: 'webrtc' }).lastInsertRowid);
-    db.addStreamMemory({ stream_id: sid, user_id: 40, offset_seconds: 60, description: 'Kai solders a board' });
-    db.endStream(sid);
-    d.prepare('UPDATE streams SET duration_seconds = 3600 WHERE id = ?').run(sid);
+    await d.prepare("INSERT INTO users (id, username, display_name, password_hash) OVERRIDING SYSTEM VALUE VALUES (40, 'kai', 'Kai', '$sso$')").run();
+    await d.prepare("INSERT INTO linked_accounts (user_id, service, service_user_id, service_username, subject_id) VALUES (40, 'network', '400', 'kai', ?)").run(SUBJECT);
+    await db.ensureChannel(40);
+    const ch = await db.getChannelByUserId(40);
+    const sid = Number((await db.createStream({ user_id: 40, channel_id: ch.id, title: 'Soldering at night', protocol: 'webrtc' })).lastInsertRowid);
+    await db.addStreamMemory({ stream_id: sid, user_id: 40, offset_seconds: 60, description: 'Kai solders a board' });
+    await db.endStream(sid);
+    await d.prepare('UPDATE streams SET duration_seconds = 3600 WHERE id = ?').run(sid);
     const frame = `data:image/png;base64,${'iVBORw0KGgo'.padEnd(400, 'A')}`;
 
     quiet('AI is remote only');
 
-    await check('the shared-key settings are not seeded, and a leftover ai_api_key row is deleted at boot', () => {
-        const keysNow = d.prepare("SELECT key FROM site_settings WHERE key ILIKE 'ai\\_%' ESCAPE '\\'").all().map((r) => r.key);
-        for (const k of ['ai_api_key', 'ai_provider', 'ai_base_url', 'ai_model', 'ai_model_chat', 'ai_pricing_json', 'ai_input_cost_per_mtok']) assert.ok(!keysNow.includes(k), `${k} is seeded`);
+    // The shared-key rows were deleted at boot on SQLite (WS-O task 2); production's database had none left when it
+    // moved to PostgreSQL (plan T4), so the guard now is that nothing seeds or writes one.
+    await check('the shared-key settings are not seeded, and no server code writes one', async () => {
+        const keysNow = (await d.prepare("SELECT key FROM site_settings WHERE key ILIKE 'ai\\_%' ESCAPE '\\'").all()).map((r) => r.key);
+        const SHARED = ['ai_api_key', 'ai_provider', 'ai_base_url', 'ai_model', 'ai_model_chat', 'ai_pricing_json', 'ai_input_cost_per_mtok'];
+        for (const k of SHARED) assert.ok(!keysNow.includes(k), `${k} is seeded`);
         assert.ok(keysNow.includes('ai_enabled') && keysNow.includes('ai_max_cost_usd_per_day'));
-        db.setSetting('ai_api_key', 'sentinel-not-a-secret-leftover');
-        db.initDb();
-        assert.strictEqual(db.getSettingRow('ai_api_key'), undefined);
+        const fs = require('fs'); const path = require('path');
+        const files = []; (function walk(dir) { for (const e of fs.readdirSync(dir, { withFileTypes: true })) { const p = path.join(dir, e.name); if (e.isDirectory()) walk(p); else if (p.endsWith('.js')) files.push(p); } })(path.join(__dirname, '..', 'server'));
+        const migrations = fs.readdirSync(path.join(__dirname, '..', 'migrations')).map((f) => fs.readFileSync(path.join(__dirname, '..', 'migrations', f), 'utf8')).join('\n');
+        for (const k of SHARED) {
+            assert.ok(!new RegExp(`'${k}'`).test(migrations), `a migration seeds ${k}`);
+            const writers = files.filter((f) => new RegExp(`setSetting\\(\\s*['"\`]${k}['"\`]`).test(fs.readFileSync(f, 'utf8')));
+            assert.deepStrictEqual(writers, [], `${k} is written by server code`);
+        }
     });
 
     // Both switches: AI_SERVICE=off with the admin switch on, then the admin switch off with AI_SERVICE on.
     for (const [label, setup] of [
-        ['AI_SERVICE=off', () => { process.env.AI_SERVICE = 'OFF'; db.setSetting('ai_enabled', 'true'); }],
-        ['ai_enabled off', () => { delete process.env.AI_SERVICE; db.setSetting('ai_enabled', 'false'); }],
+        ['AI_SERVICE=off', async () => { process.env.AI_SERVICE = 'OFF'; await db.setSetting('ai_enabled', 'true'); }],
+        ['ai_enabled off', async () => { delete process.env.AI_SERVICE; await db.setSetting('ai_enabled', 'false'); }],
     ]) {
         await check(`${label}: every AI entry point answers null (or no AI) and nothing goes out`, async () => {
-            setup();
-            db.upsertChannelAiConfig(40, { enabled: 1, use_shared_key: 1 });
+            await setup();
+            await db.upsertChannelAiConfig(40, { enabled: 1, use_shared_key: 1 });
             outbound.length = 0;
-            assert.strictEqual(llm.isEnabled(), false);
+            assert.strictEqual(await llm.isEnabled(), false);
             assert.strictEqual(await llm.complete({ role: 'chat', kind: 'chat_global', user: 'hi' }), null);
             assert.strictEqual(await analysis.analyzeImagePaste(frame, 'a screenshot'), null);
             assert.strictEqual(await analysis.analyzeTextPaste('eggs, milk, bread', 'list'), null);
@@ -168,7 +175,7 @@ async function check(name, fn) {
         transcribe.available = () => true;
         transcribe.transcribeMediaDetailed = async () => ({ text: 'welcome back everyone', segments: [{ start: 0, end: 1, text: 'welcome back everyone' }], ok: true });
         process.env.AI_SERVICE = 'off';
-        db.setSetting('ai_enabled', 'true');
+        await db.setSetting('ai_enabled', 'true');
         outbound.length = 0;
         const r = await require('../server/ai/media-analysis').analyzeMedia(wav, { userId: 40 });
         assert.strictEqual(r.transcript, 'welcome back everyone', 'the local transcript is kept');
@@ -178,7 +185,7 @@ async function check(name, fn) {
 
     await check('AI on: llm.complete is a run on OpenVibe.AI, metered as openvibe-ai; structured analyses and translation too', async () => {
         delete process.env.AI_SERVICE;
-        db.setSetting('ai_enabled', 'true');
+        await db.setSetting('ai_enabled', 'true');
         assert.strictEqual(aiService.enabled(), true, 'on unless AI_SERVICE=off');
         process.env.AI_SERVICE = 'remote';
         assert.strictEqual(aiService.enabled(), true, 'the old value still means on');
@@ -187,7 +194,7 @@ async function check(name, fn) {
         assert.strictEqual(r.text, 'ok from AI');
         assert.strictEqual(r.provider, 'openvibe-ai');
         assert.strictEqual(aiRuns[0].workflow, 'live.chat.insight');
-        const row = d.prepare("SELECT provider, owner_user_id, kind FROM ai_usage ORDER BY id DESC LIMIT 1").get();
+        const row = await d.prepare("SELECT provider, owner_user_id, kind FROM ai_usage ORDER BY id DESC LIMIT 1").get();
         assert.deepStrictEqual([row.provider, row.owner_user_id, row.kind], ['openvibe-ai', 40, 'chat_global']);
         assert.deepStrictEqual(await analysis.analyzeTextPaste('eggs, milk, bread', 'list'), { description: 'A shopping list.', tags: [] });
         assert.strictEqual(await translate.translate('みなさんこんばんは', { from: 'ja', to: 'en' }), 'hello everyone');
@@ -203,7 +210,7 @@ async function check(name, fn) {
         const r = await llm.complete({ role: 'chat', kind: 'ai_viewers', source: 'ai_viewers', user: 'hi', ownerUserId: 40, provider: { credentialSubject: SUBJECT } });
         assert.strictEqual(r.provider, 'byo');
         assert.deepStrictEqual(aiRuns[0].credential, { subject: SUBJECT });
-        assert.strictEqual(d.prepare('SELECT provider FROM ai_usage ORDER BY id DESC LIMIT 1').get().provider, 'byo');
+        assert.strictEqual((await d.prepare('SELECT provider FROM ai_usage ORDER BY id DESC LIMIT 1').get()).provider, 'byo');
     });
 
     await check('AI on: a raw key / base URL override is never called and never falls back to the site\'s AI (one warning)', async () => {
@@ -216,9 +223,9 @@ async function check(name, fn) {
         assert.strictEqual(aiRuns.length, 0);
         assert.strictEqual(warnings.filter((w) => /raw provider key/.test(w)).length, 1, 'warned once');
         // Viewers of a channel whose key never moved to OpenVibe.AI stay quiet.
-        db.upsertChannelAiConfig(40, { enabled: 1, use_shared_key: 0, byo_key: 'sk-EXAMPLE-0000', byo_base_url: providerUrl, byo_in_ai: 0 });
-        assert.strictEqual(budget.budgetStatus(40).reason, 'no_byo_key');
-        assert.strictEqual(await require('../server/ai/viewers/director').quickReply({ stableText: 's', situationText: '', bot: { username: 'b' }, streamerLine: 'hi', provider: budget.byoProvider(db.getChannelAiConfig(40)), ownerUserId: 40 }), null);
+        await db.upsertChannelAiConfig(40, { enabled: 1, use_shared_key: 0, byo_key: 'sk-EXAMPLE-0000', byo_base_url: providerUrl, byo_in_ai: 0 });
+        assert.strictEqual((await budget.budgetStatus(40)).reason, 'no_byo_key');
+        assert.strictEqual(await require('../server/ai/viewers/director').quickReply({ stableText: 's', situationText: '', bot: { username: 'b' }, streamerLine: 'hi', provider: await budget.byoProvider(await db.getChannelAiConfig(40)), ownerUserId: 40 }), null);
         assert.strictEqual(providerHits, 0);
     });
 

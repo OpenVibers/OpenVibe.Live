@@ -19,7 +19,6 @@ if (spawnSync('ffprobe', ['-version']).status !== 0 || spawnSync('ffmpeg', ['-ve
     process.exit(0);
 }
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ov-live-tx-ai-'));
-process.env.DB_PATH = path.join(tmp, 'live.db');
 process.env.NODE_ENV = 'test';
 process.env.OV_OAUTH_CLIENT_ID = 'live';
 process.env.OV_OAUTH_CLIENT_SECRET = 'live-secret';

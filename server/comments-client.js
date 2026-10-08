@@ -41,19 +41,6 @@ class CommentsError extends Error {
 }
 const unavailable = (why) => new CommentsError(503, 'Comments are unavailable right now', `comments_unavailable${why ? `:${why}` : ''}`);
 
-let _tables = false;
-function ensureTables() {
-    if (_tables) return;
-    db.getDb().exec(`CREATE TABLE IF NOT EXISTS comment_thread_refs (
-        content_type TEXT NOT NULL,
-        content_id INTEGER NOT NULL,
-        thread_id INTEGER NOT NULL,
-        access_id TEXT NOT NULL,
-        created_at DATETIME DEFAULT ov_now(),
-        PRIMARY KEY (content_type, content_id)
-    )`);
-    _tables = true;
-}
 
 /**
  * One call to Community's comment API. act: { subject } acts for a person, { staff: true } adds
@@ -94,7 +81,6 @@ async function call(method, path, { body, act = {}, ip = null, timeoutMs = 5000,
 /** The Community thread of a VOD/clip (resolved once, then remembered). → { id, access_id } */
 async function threadFor(type, id, label, { timeoutMs, ip } = {}) {
     if (!TYPES.includes(type)) throw new CommentsError(400, 'Invalid content type');
-    ensureTables();
     const known = await db.getDb().prepare('SELECT thread_id, access_id FROM comment_thread_refs WHERE content_type = ? AND content_id = ?').get(type, Number(id));
     if (known) return { id: known.thread_id, access_id: known.access_id };
     const ref = { service: 'live', type, id: String(id) };
@@ -165,5 +151,5 @@ const threadUrl = (accessId) => `${COMMUNITY_PUBLIC_URL()}/c/${encodeURIComponen
 
 module.exports = {
     CommentsError, TYPES, threadFor, readThread, addComment, getComment, editComment, deleteComment,
-    hideThreadOf, liveUserForSubject, subjectForLiveUser, threadUrl, ensureTables,
+    hideThreadOf, liveUserForSubject, subjectForLiveUser, threadUrl,
 };

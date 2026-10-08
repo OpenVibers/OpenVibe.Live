@@ -107,7 +107,7 @@ async function _analyzeOne(stream, { allowFfmpeg = true, reason = 'periodic' } =
         // second PlainRTP consumer on the same producer, which is what made this path start
         // capturing digital silence (-91dB) once continuous capture was switched on.
         // Read the timeline instead: strictly more speech, and free.
-        const _timeline = (async () => { try { return await require('./timeline-job').timelineEnabled(); } catch { return false; } })();
+        const _timeline = await (async () => { try { return await require('./timeline-job').timelineEnabled(); } catch { return false; } })();
         if (_timeline) {
             try {
                 const from = Math.max(0, offset - await ai.captureIntervalSec());

@@ -15,31 +15,28 @@
  */
 'use strict';
 const assert = require('assert');
-const fs = require('fs');
-const os = require('os');
-const path = require('path');
 
-const tmp = path.join(os.tmpdir(), `ov-seo-moments-${process.pid}.db`);
-process.env.DB_PATH = tmp;
 process.env.NODE_ENV = 'test';
 const quiet = console.log;
 console.log = (...a) => { if (!/^\[/.test(String(a[0]))) quiet(...a); };
 console.warn = () => {};
 
 const db = require('../server/db/database');
-db.initDb();
+
+(async () => {
+await db.initDb();
 const raw = db.getDb();
-const addUser = (id, username, display) => raw.prepare(
+const addUser = async (id, username, display) => await raw.prepare(
     `INSERT INTO users (id, username, display_name, email, password_hash, role, created_at) OVERRIDING SYSTEM VALUE
      VALUES (?, ?, ?, ?, 'x', 'streamer', '2025-01-01 00:00:00')`).run(id, username, display, `${username}@x`);
-addUser(3, 'alice', 'Alice');
-addUser(4, 'bob', 'Bob');
-db.ensureChannel(3);
-const chan = db.getChannelByUserId(3);
-const streamId = Number(db.createStream({ user_id: 3, channel_id: chan.id, title: 'Night stream', protocol: 'rtmp' }).lastInsertRowid);
-db.endStream(streamId);
-const quietStream = Number(db.createStream({ user_id: 3, channel_id: chan.id, title: 'Quiet stream', protocol: 'rtmp' }).lastInsertRowid);
-db.endStream(quietStream);
+await addUser(3, 'alice', 'Alice');
+await addUser(4, 'bob', 'Bob');
+await db.ensureChannel(3);
+const chan = await db.getChannelByUserId(3);
+const streamId = Number((await db.createStream({ user_id: 3, channel_id: chan.id, title: 'Night stream', protocol: 'rtmp' })).lastInsertRowid);
+await db.endStream(streamId);
+const quietStream = Number((await db.createStream({ user_id: 3, channel_id: chan.id, title: 'Quiet stream', protocol: 'rtmp' })).lastInsertRowid);
+await db.endStream(quietStream);
 
 // ── OpenVibe.Media and OpenVibe.Community stand-ins ──
 const media = require('../server/media-client');
@@ -70,16 +67,14 @@ pastesClient.getPaste = async (slug) => { const p = PASTES[slug]; if (!p) throw 
 pastesClient.listPastes = async (q = {}) => ({ pastes: (Number(q.offset) || 0) ? [] : Object.values(PASTES) });
 
 // ── After-show reports: one AI-written, one template ──
-const recap = require('../server/recap/recap');
-recap.ensureTable();
 const recapJson = (sid, ai, vod) => JSON.stringify({
     stream: { id: sid, title: sid === streamId ? 'Night stream' : 'Quiet stream', duration_seconds: 3600, ended_at: '2026-09-20 22:00:00', peak_viewers: 9 },
     streamer: { id: 3, username: 'alice', display_name: 'Alice' },
     write: { headline: 'Alice owns the night', summary: 'A long, loud night in chat.', grade: 'A', tags: [] },
     vod, clips: [], ai,
 });
-raw.prepare('INSERT INTO stream_recaps (stream_id, user_id, json, ai) VALUES (?, 3, ?, 1)').run(streamId, recapJson(streamId, true, { id: 10, thumbnail_url: null }));
-raw.prepare('INSERT INTO stream_recaps (stream_id, user_id, json, ai) VALUES (?, 3, ?, 0)').run(quietStream, recapJson(quietStream, false, null));
+await raw.prepare('INSERT INTO stream_recaps (stream_id, user_id, json, ai) VALUES (?, 3, ?, 1)').run(streamId, recapJson(streamId, true, { id: 10, thumbnail_url: null }));
+await raw.prepare('INSERT INTO stream_recaps (stream_id, user_id, json, ai) VALUES (?, 3, ?, 0)').run(quietStream, recapJson(quietStream, false, null));
 
 const seo = require('../server/seo');
 
@@ -105,8 +100,7 @@ async function check(name, fn) {
     catch (e) { failures++; console.log('  ✗', name, '\n     ', e.message); }
 }
 
-(async () => {
-    console.log('AI Moments pages');
+console.log('AI Moments pages');
 
     await check('an auto-clip is noindex,follow, canonical to its VOD at the moment, labelled AI', async () => {
         const m = await seo._pageMeta('/clip/20');
@@ -201,8 +195,6 @@ async function check(name, fn) {
         assert.ok(clipQueries.some((q) => q.auto_generated === 0), 'asked Media for people\'s clips');
     });
 
-    try { fs.unlinkSync(tmp); } catch { /* */ }
-    for (const ext of ['-wal', '-shm']) { try { fs.unlinkSync(tmp + ext); } catch { /* */ } }
     console.log(failures ? `\n${failures} check(s) failed` : '\nseo moments: all checks passed');
     process.exit(failures ? 1 : 0);
-})();
+})().catch((e) => { console.error(e); process.exit(1); });

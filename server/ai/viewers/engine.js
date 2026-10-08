@@ -103,7 +103,7 @@ class AiViewersEngineV3 {
     async applyConfigForUser(userId) {
         const cfg = await db.getChannelAiConfig(userId);
         const settings = await settingsMod.getSettings(userId, cfg);
-        const live = (async () => { try { return await db.getLiveStreamsByUserId(userId) || []; } catch { return []; } })();
+        const live = await (async () => { try { return await db.getLiveStreamsByUserId(userId) || []; } catch { return []; } })();
         for (const [sid, w] of this.workers) {
             if (w.userId !== userId) continue;
             if (!cfg.enabled || this._killSwitch() || (w.stream.managed_stream_id && settings.slots && settings.slots[String(w.stream.managed_stream_id)] === false)) { this.stopForStream(sid); continue; }
@@ -398,7 +398,7 @@ class AiViewersEngineV3 {
     async status(userId) {
         const w = this.workerForUser(userId);
         const st = await budget.status(userId);
-        const timelineOn = (async () => { try { return await require('../timeline-job').timelineEnabled(); } catch { return false; } })();
+        const timelineOn = await (async () => { try { return await require('../timeline-job').timelineEnabled(); } catch { return false; } })();
         const base = { engine: 'v3', running: !!w, mode: st.mode, budget_active: st.active, budget_reason: st.reason, spent_today_usd: st.spentToday, cap_usd: st.capUsd, timeline_enabled: timelineOn, kill_switch: this._killSwitch() };
         if (!w) return base;
         const seen = await context.seenBlock(w.stream);
@@ -413,7 +413,7 @@ class AiViewersEngineV3 {
         let w = this.workerForUser(userId);
         let temp = false;
         if (!w) {
-            const live = (async () => { try { return await db.getLiveStreamsByUserId(userId) || []; } catch { return []; } })();
+            const live = await (async () => { try { return await db.getLiveStreamsByUserId(userId) || []; } catch { return []; } })();
             if (!live.length) return { error: 'Go live first — the preview runs on your real stream context.' };
             const cfg = await db.getChannelAiConfig(userId); const settings = await settingsMod.getSettings(userId, cfg);
             const bots = await roster.ensureRoster(userId, settings.roster_size || 3);

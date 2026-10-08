@@ -21,18 +21,6 @@ const PUBLIC_BASE = (process.env.LIVE_PUBLIC_ORIGIN || 'https://openvibe.live').
 const DAY_MS = 86400000;
 const stats = { sent: 0, tombstones: 0, unchanged: 0, lastError: null };
 
-let ready = false;
-function ensureSchema() {
-    if (ready) return;
-    db.getDb().exec(`CREATE TABLE IF NOT EXISTS search_doc_pushes (
-        user_id INTEGER PRIMARY KEY,
-        hash TEXT NOT NULL,
-        revision INTEGER NOT NULL,
-        deleted INTEGER NOT NULL DEFAULT 0,
-        pushed_at DATETIME DEFAULT ov_now()
-    )`);
-    ready = true;
-}
 
 const iso = (v) => {
     if (!v) return null;
@@ -50,7 +38,7 @@ async function documentFor(userId) {
     if (u.is_banned) return { deleted: true };
     const ch = await d.prepare('SELECT description, category, chat_language FROM channels WHERE user_id = ?').get(userId) || {};
     const last = await d.prepare('SELECT title, category, is_live, is_nsfw FROM streams WHERE user_id = ? ORDER BY id DESC LIMIT 1').get(userId) || {};
-    const titles = (await d.prepare("SELECT DISTINCT title FROM streams WHERE user_id = ? AND title IS NOT NULL AND title != '' ORDER BY id DESC LIMIT 10").all(userId)).map((r) => r.title);
+    const titles = (await d.prepare("SELECT title FROM streams WHERE user_id = ? AND title IS NOT NULL AND title != '' GROUP BY title ORDER BY MAX(id) DESC LIMIT 10").all(userId)).map((r) => r.title);
     const followers = (await d.prepare('SELECT COUNT(*) AS n FROM follows WHERE streamer_id = ?').get(userId)).n;
     const name = u.display_name || u.username;
     const about = String(ch.description || u.bio || '').trim();
@@ -73,7 +61,6 @@ const hashOf = (doc) => crypto.createHash('sha256').update(JSON.stringify(doc)).
 
 /** Send one channel's document or tombstone when it changed. → 'sent' | 'tombstone' | 'unchanged' | 'skipped' */
 async function publish(userId, { now = Date.now() } = {}) {
-    ensureSchema();
     if (!streamEvents.status().enabled) return 'skipped';
     const doc = await documentFor(userId);
     const d = db.getDb();
@@ -123,7 +110,6 @@ async function refresh({ now = Date.now() } = {}) {
 
 function init() {
     if (!streamEvents.status().enabled || process.env.LIVE_SEARCH_DOCUMENTS === 'off') return false;
-    ensureSchema();
     const jobs = require('../utils/jobs');
     jobs.every('search-documents-scan', 5 * 60 * 1000, () => scan(), { initialDelayMs: 2 * 60 * 1000, jitterMs: 15 * 1000 });
     jobs.every('search-documents-refresh', DAY_MS, () => refresh(), { initialDelayMs: 4 * 60 * 1000, jitterMs: 60 * 1000 });
@@ -132,4 +118,4 @@ function init() {
 
 function status() { return { ...stats }; }
 
-module.exports = { init, ensureSchema, documentFor, publish, scan, refresh, status };
+module.exports = { init, documentFor, publish, scan, refresh, status };

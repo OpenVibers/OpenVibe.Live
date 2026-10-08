@@ -122,21 +122,8 @@ async function siteEnabled() {
         return !(String(v) === 'false' || String(v) === '0');
     } catch { return true; }
 }
-async function available() { return !!(llm && aiService && llm.isEnabled && llm.isEnabled() && await siteEnabled()); }
+async function available() { return !!(llm && aiService && llm.isEnabled && await llm.isEnabled() && await siteEnabled()); }
 
-let _tableReady = false;
-function _ensureTable() {
-    if (_tableReady) return;
-    try {
-        db.getDb().exec(`CREATE TABLE IF NOT EXISTS translations (
-            key TEXT PRIMARY KEY,
-            src TEXT, dst TEXT,
-            text TEXT NOT NULL,
-            created_at DATETIME DEFAULT ov_now()
-        )`);
-        _tableReady = true;
-    } catch { /* read-only db or race — memory cache still works */ }
-}
 const _mem = new Map();   // key → text (LRU-ish, capped)
 const MEM_MAX = 1500;
 function _memGet(k) { const v = _mem.get(k); if (v !== undefined) { _mem.delete(k); _mem.set(k, v); } return v; }
@@ -147,7 +134,6 @@ async function cached(text, from, to) {
     const key = cacheKey(text, from, to);
     const hit = _memGet(key);
     if (hit !== undefined) return hit;
-    _ensureTable();
     try {
         const row = await db.get('SELECT text FROM translations WHERE key = ?', [key]);
         if (row && row.text) { _memSet(key, row.text); return row.text; }
@@ -157,7 +143,7 @@ async function cached(text, from, to) {
 async function remember(text, from, to, out) {
     const key = cacheKey(text, from, to);
     _memSet(key, out || '');
-    if (out) { try { await db.run('INSERT OR REPLACE INTO translations (key, src, dst, text) VALUES (?, ?, ?, ?)', [key, from, to, out]); } catch { /* */ } }
+    if (out) { try { await db.run('INSERT INTO translations (key, src, dst, text) VALUES (?, ?, ?, ?) ON CONFLICT (key) DO UPDATE SET src = excluded.src, dst = excluded.dst, text = excluded.text', [key, from, to, out]); } catch { /* */ } }
 }
 
 let _inflight = 0;
@@ -248,16 +234,16 @@ async function translateLines(lines, { from, to = 'en', context = 'speech' } = {
 async function translateMany(texts, { to = 'en', context = 'chat' } = {}) {
     const out = texts.map(() => null);
     const need = [];
-    texts.forEach((t, i) => {
-        if (!translatable(t)) return;
+    for (const [i, t] of texts.entries()) {
+        if (!translatable(t)) continue;
         const d = OVLang.detect(t);
-        if (!d.lang) return;   // slang, emote names, one short word: no language to translate from, no call
+        if (!d.lang) continue;   // slang, emote names, one short word: no language to translate from, no call
         const from = d.confidence >= 0.6 ? d.lang : 'auto';
-        if (from === to) { out[i] = { same: true, from }; return; }
-        const hit = cached(t, from, to);
-        if (hit !== undefined) { out[i] = hit ? { from, text: hit } : { same: true, from }; return; }
+        if (from === to) { out[i] = { same: true, from }; continue; }
+        const hit = await cached(t, from, to);
+        if (hit !== undefined) { out[i] = hit ? { from, text: hit } : { same: true, from }; continue; }
         need.push({ i, t, from });
-    });
+    }
     if (!need.length || !await available()) return out;
     // One model call per group whose joined text stays under the translate() input cap (1200 chars): a busy chat's
     // batch of 20 lines used to exceed it, and the whole batch came back untranslated.
@@ -271,11 +257,11 @@ async function translateMany(texts, { to = 'en', context = 'chat' } = {}) {
     if (cur.length) groups.push(cur);
     for (const g of groups) {
         const lines = await translateLines(g.map((n) => n.t), { from: 'auto', to, context });
-        g.forEach((n, k) => {
-            if (!lines[k]) return;
+        for (const [k, n] of g.entries()) {
+            if (!lines[k]) continue;
             out[n.i] = { from: n.from, text: lines[k] };
-            remember(n.t, n.from, to, lines[k]);
-        });
+            await remember(n.t, n.from, to, lines[k]);
+        }
     }
     return out;
 }

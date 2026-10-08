@@ -53,14 +53,16 @@ function cleanLine(t) {
 // ── Aliases: who can be called out, by which names ───────────
 const names = require('./names');
 let _aliasCache = { at: 0, list: [] };
-function aliases(roster) {
+async function aliases(roster) {
     if (Date.now() - _aliasCache.at < 60 * 1000) return _aliasCache.list;
-    const list = names.rosterEntries(roster, async (id) => { const persona = parseJson((await db.get('SELECT persona_json FROM arena_profiles WHERE user_id = ?', [id]))?.persona_json); return [persona?.fighter_name, ...(Array.isArray(persona?.spoken_as) ? persona.spoken_as : [])]; });
+    const rows = roster.order.length ? await db.all('SELECT user_id, persona_json FROM arena_profiles WHERE user_id = ANY(?)', [roster.order]) : [];
+    const personas = new Map(rows.map((r) => [r.user_id, parseJson(r.persona_json)]));
+    const list = names.rosterEntries(roster, (id) => { const persona = personas.get(id); return [persona?.fighter_name, ...(Array.isArray(persona?.spoken_as) ? persona.spoken_as : [])]; });
     _aliasCache = { at: Date.now(), list };
     return list;
 }
-function mentionsIn(text, speakerId, roster) { return names.findMentions(text, aliases(roster), { excludeUserId: speakerId }).map(m => m.userId); }
-function mentionsDetailed(text, speakerId, roster) { return names.findMentions(text, aliases(roster), { excludeUserId: speakerId }); }
+async function mentionsIn(text, speakerId, roster) { return names.findMentions(text, await aliases(roster), { excludeUserId: speakerId }).map(m => m.userId); }
+async function mentionsDetailed(text, speakerId, roster) { return names.findMentions(text, await aliases(roster), { excludeUserId: speakerId }); }
 
 // ── Judges ───────────────────────────────────────────────────
 
@@ -205,7 +207,7 @@ async function judgeFreeTalk(stream, roster, st, events) {
     const ref = lineRefFor(lines, j.best_line);
     if (await mic().isDuplicate(stream.user_id, j.best_line)) { events.push({ kind: 'mic_dupe', streamId: stream.id, speakerId: stream.user_id }); return; }
     // "aimed_at" that resolves to a roster fighter = a callout → it feeds a beef exactly like a name-drop.
-    const target = j.aimed_at ? mentionsDetailed(j.aimed_at, stream.user_id, roster)[0] : null;
+    const target = j.aimed_at ? (await mentionsDetailed(j.aimed_at, stream.user_id, roster))[0] : null;
     if (target && j.quality >= CALLOUT_MIN_QUALITY) {
         const res = await beef().recordHit(stream.user_id, target.userId, { quality: j.quality, best_line: j.best_line, about: j.about, announcer: j.announcer, vod_id: ref.vod_id, sec: ref.sec, stream_id: stream.id });
         st.lastMicJudgement.target_id = target.userId; st.lastMicJudgement.opened = res?.opened;
@@ -228,7 +230,7 @@ async function tickStream(stream, roster, events) {
     }
     for (const r of rows) {
         const line = { t: String(r.text || ''), s: Math.floor(r.start_sec), v: r.vod_id || null, named: false };
-        const mentions = mentionsDetailed(line.t, stream.user_id, roster);
+        const mentions = await mentionsDetailed(line.t, stream.user_id, roster);
         if (mentions.length) {
             const m = mentions[0];
             line.named = true;
@@ -274,12 +276,12 @@ async function tick() {
     return events;
 }
 
-function consoleState(userId) {
+async function consoleState(userId) {
     for (const [streamId, st] of state) if (st.userId === userId) {
         const f = st.focus;
         return {
             stream_id: streamId, listening: true,
-            focus: f ? { target_id: f.targetId, target: (async () => { try { return await mic().nameOf(f.targetId); } catch { return null; } })(), how: f.how, since: new Date(f.since).toISOString(), lock_seconds_left: Math.max(0, Math.round((f.lockUntil - Date.now()) / 1000)), hits: f.hits, misses: f.misses, pending_words: f.lines.reduce((n, l) => n + words(l.t), 0), context: f.context } : null,
+            focus: f ? { target_id: f.targetId, target: await mic().nameOf(f.targetId).catch(() => null), how: f.how, since: new Date(f.since).toISOString(), lock_seconds_left: Math.max(0, Math.round((f.lockUntil - Date.now()) / 1000)), hits: f.hits, misses: f.misses, pending_words: f.lines.reduce((n, l) => n + words(l.t), 0), context: f.context } : null,
             pending_mic_words: st.mic.lines.reduce((n, l) => n + words(l.t), 0),
             last_mic_judgement: st.lastMicJudgement || null, last_beef_judgement: st.lastBeefJudgement || null, last_judge_at: st.lastJudgeAt ? new Date(st.lastJudgeAt).toISOString() : null,
         };

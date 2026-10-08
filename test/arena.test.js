@@ -12,11 +12,11 @@ const os = require('os');
 const path = require('path');
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ov-arena-'));
-process.env.DB_PATH = path.join(tmp, 'live.db');
 process.env.ARENA_IMAGE_PATH = path.join(tmp, 'arena');
 
 const db = require('../server/db/database');
-db.initDb();
+(async () => {
+await db.initDb();
 const arena = require('../server/arena/arena-service');
 
 // ── Pure helpers ──
@@ -45,20 +45,23 @@ for (const ok of ['that beaner coon nonsense', 'stop being a faggot', 'what up m
 console.log('✅ filter blocks threats / minors / doxxing only — slurs and profanity are speech');
 
 // ── End-to-end on a temp DB (no AI configured → fallback personas/quotes, no LLM calls) ──
-const mk = (username, key) => Number(db.createUser({ username, email: `${username}@x`, password_hash: 'x', display_name: username.toUpperCase(), stream_key: key }).lastInsertRowid);
-const u1 = mk('alpha', 'a'.repeat(32)), u2 = mk('bravo', 'b'.repeat(32)), u3 = mk('charlie', 'c'.repeat(32)), idle = mk('idle', 'd'.repeat(32)), mute = mk('mute', 'e'.repeat(32));
-for (const uid of [u1, u2, u3, idle, mute]) db.ensureChannel(uid);
-const stream = (uid, hours, daysAgo) => {
-    const id = Number(db.createStream({ user_id: uid, title: `${uid} stream`, category: 'irl', protocol: 'rtmp' }).lastInsertRowid);
-    db.run(`UPDATE streams SET is_live = 0, started_at = datetime('now', ?), ended_at = datetime('now', ?), duration_seconds = ?, peak_viewers = 999 WHERE id = ?`,
+const mk = async (username, key) => {
+    await db.createUser({ username, email: `${username}@x`, password_hash: 'x', display_name: username.toUpperCase(), stream_key: key });
+    return (await db.get('SELECT id FROM users WHERE username = ?', [username])).id;
+};
+const u1 = await mk('alpha', 'a'.repeat(32)), u2 = await mk('bravo', 'b'.repeat(32)), u3 = await mk('charlie', 'c'.repeat(32)), idle = await mk('idle', 'd'.repeat(32)), mute = await mk('mute', 'e'.repeat(32));
+for (const uid of [u1, u2, u3, idle, mute]) await db.ensureChannel(uid);
+const stream = async (uid, hours, daysAgo) => {
+    const id = Number((await db.createStream({ user_id: uid, title: `${uid} stream`, category: 'irl', protocol: 'rtmp' })).lastInsertRowid);
+    await db.run(`UPDATE streams SET is_live = 0, started_at = datetime('now', ?), ended_at = datetime('now', ?), duration_seconds = ?, peak_viewers = 999 WHERE id = ?`,
         [`-${daysAgo} days`, `-${daysAgo} days`, Math.round(hours * 3600), id]);
     return id;
 };
-const s1 = stream(u1, 6, 2); stream(u1, 4, 5);
-const s2 = stream(u2, 10, 1);
-const s3 = stream(u3, 1, 9);
-const sIdle = stream(idle, 50, 120); // too old → not on the roster even with speech
-stream(mute, 50, 1);                 // streams a lot, never transcribed → not on the roster
+const s1 = await stream(u1, 6, 2); await stream(u1, 4, 5);
+const s2 = await stream(u2, 10, 1);
+const s3 = await stream(u3, 1, 9);
+const sIdle = await stream(idle, 50, 120); // too old → not on the roster even with speech
+await stream(mute, 50, 1);                 // streams a lot, never transcribed → not on the roster
 
 // Transcript for alpha: 40 lines over the 6 h stream, some hype, all linked to a VOD.
 const lines = [];
@@ -66,37 +69,37 @@ for (let i = 0; i < 40; i++) {
     const t = i % 4 === 0 ? `Let's go chat, that was insane, no way we just did that number ${i}!` : `Okay so here is the current situation with the setup number ${i}, we are rebuilding it live.`;
     lines.push({ stream_id: s1, user_id: u1, vod_id: 901, kind: 'speech', start_sec: i * 60, end_sec: i * 60 + 20, text: t, label: null, confidence: 0.9 });
 }
-db.addTimelineEvents(lines);
-db.addTimelineEvents([{ stream_id: s1, user_id: u1, vod_id: 901, kind: 'sound', start_sec: 30, end_sec: 33, text: null, label: 'Laughter', confidence: 0.8 }, { stream_id: s1, user_id: u1, vod_id: 901, kind: 'sound', start_sec: 90, end_sec: 93, text: null, label: 'Rock music', confidence: 0.8 }]);
+await db.addTimelineEvents(lines);
+await db.addTimelineEvents([{ stream_id: s1, user_id: u1, vod_id: 901, kind: 'sound', start_sec: 30, end_sec: 33, text: null, label: 'Laughter', confidence: 0.8 }, { stream_id: s1, user_id: u1, vod_id: 901, kind: 'sound', start_sec: 90, end_sec: 93, text: null, label: 'Rock music', confidence: 0.8 }]);
 // bravo + charlie: a few lines each so they are on the roster; idle: lines, but 120 days old.
-db.addTimelineEvents(Array.from({ length: 8 }, (_, i) => ({ stream_id: s2, user_id: u2, vod_id: null, kind: 'speech', start_sec: i * 100, end_sec: i * 100 + 5, text: `bravo line ${i} hello chat`, label: null, confidence: 0.9 })));
-db.addTimelineEvents(Array.from({ length: 5 }, (_, i) => ({ stream_id: s3, user_id: u3, vod_id: null, kind: 'speech', start_sec: i * 100, end_sec: i * 100 + 5, text: `charlie line ${i}`, label: null, confidence: 0.9 })));
-db.addTimelineEvents(Array.from({ length: 3 }, (_, i) => ({ stream_id: sIdle, user_id: idle, vod_id: null, kind: 'speech', start_sec: i * 100, end_sec: i * 100 + 5, text: `idle line ${i}`, label: null, confidence: 0.9 })));
-db.run(`UPDATE stream_timeline_events SET created_at = datetime('now', '-120 days') WHERE user_id = ?`, [idle]);
+await db.addTimelineEvents(Array.from({ length: 8 }, (_, i) => ({ stream_id: s2, user_id: u2, vod_id: null, kind: 'speech', start_sec: i * 100, end_sec: i * 100 + 5, text: `bravo line ${i} hello chat`, label: null, confidence: 0.9 })));
+await db.addTimelineEvents(Array.from({ length: 5 }, (_, i) => ({ stream_id: s3, user_id: u3, vod_id: null, kind: 'speech', start_sec: i * 100, end_sec: i * 100 + 5, text: `charlie line ${i}`, label: null, confidence: 0.9 })));
+await db.addTimelineEvents(Array.from({ length: 3 }, (_, i) => ({ stream_id: sIdle, user_id: idle, vod_id: null, kind: 'speech', start_sec: i * 100, end_sec: i * 100 + 5, text: `idle line ${i}`, label: null, confidence: 0.9 })));
+await db.run(`UPDATE stream_timeline_events SET created_at = datetime('now', '-120 days') WHERE user_id = ?`, [idle]);
 
 // Offensive lines are fair game for quotes; threats / doxxing never are.
-db.addTimelineEvents([
+await db.addTimelineEvents([
     { stream_id: s1, user_id: u1, vod_id: 901, kind: 'speech', start_sec: 5000, end_sec: 5010, text: "Let's go chat, you absolute clowns, that was insane you retards!", label: null, confidence: 0.9 },
     { stream_id: s1, user_id: u1, vod_id: 901, kind: 'speech', start_sec: 5100, end_sec: 5110, text: 'No way, chat, that guy should kill himself, kys buddy, insane!', label: null, confidence: 0.9 },
     { stream_id: s1, user_id: u1, vod_id: 901, kind: 'speech', start_sec: 5200, end_sec: 5210, text: 'Holy, that was insane, his home address is 12 elm street lol!', label: null, confidence: 0.9 },
 ]);
-const cands = arena._quoteCandidates(u1);
+const cands = await arena._quoteCandidates(u1);
 assert.ok(cands.length >= 20, 'has candidates');
 assert.ok(cands.some(c => c.text.includes('retards')), 'offensive vocabulary is not filtered out of quotes');
 assert.ok(cands.every(c => !/kys|home address/.test(c.text)), 'threats / doxxing never become quotes');
 console.log('✅ quote candidates: speech stays, behaviour goes');
 
-const voice = arena._voiceStatsFor(u1, '-90 days');
+const voice = await arena._voiceStatsFor(u1, '-90 days');
 assert.strictEqual(voice.has_data, true);
 assert.strictEqual(voice.lines, 43);
 assert.ok(voice.talk_ratio_pct > 0 && voice.talk_ratio_pct <= 100, `talk ratio: ${voice.talk_ratio_pct}`);
 assert.ok(voice.hype_hits >= 10, `hype hits counted: ${voice.hype_hits}`);
 assert.strictEqual(voice.laughs, 1);
 assert.deepStrictEqual(voice.top_sounds.map(s => s.label).sort(), ['Laughter', 'Rock music']);
-assert.strictEqual(arena._voiceStatsFor(mute, '-90 days').has_data, false, 'no transcript → no data');
+assert.strictEqual((await arena._voiceStatsFor(mute, '-90 days')).has_data, false, 'no transcript → no data');
 console.log('✅ voice stats from the transcription timeline');
 
-const fighters = arena.listFighters();
+const fighters = await arena.listFighters();
 assert.deepStrictEqual(fighters.map(f => f.user.username).sort(), ['alpha', 'bravo', 'charlie'], `roster = the heard, not the loud-in-numbers: ${fighters.map(f => f.user.username)}`);
 assert.strictEqual(fighters[0].user.username, 'alpha', 'the biggest mouth tops the ladder');
 assert.strictEqual(fighters[0].rank, 1);
@@ -111,7 +114,7 @@ assert.ok(fighters[0].mic && fighters[0].mic.moments === 0, 'mic stats ride alon
 assert.ok(!('tier' in fighters[0]), 'tiers are gone');
 console.log('✅ roster from transcripts only; idle and never-transcribed streamers excluded');
 
-(async () => {
+{
     const card = await arena.getFighter('alpha');
     assert.strictEqual(card.user.username, 'alpha');
     assert.strictEqual(card.rank, 1);
@@ -128,18 +131,18 @@ console.log('✅ roster from transcripts only; idle and never-transcribed stream
     assert.ok(/mic/.test(off.reason));
     console.log('✅ fighter card (mic-only, nothing generated on view)');
 
-    const detail = arena.getStatDetail(u1, 'mouth');
+    const detail = await arena.getStatDetail(u1, 'mouth');
     assert.strictEqual(detail.position, 1);
     assert.strictEqual(detail.series.length, 2, 'one point per stream in the window');
     assert.ok(detail.series.some(p => p.value > 0), 'mouth series = % of stream talking');
     assert.strictEqual(detail.top[0].user.username, 'alpha');
     assert.ok(detail.voice, 'voice detail rides along for voice stats');
-    assert.strictEqual(arena.getStatDetail(u1, 'hype'), null, 'audience stats do not exist');
-    assert.strictEqual(arena.getStatDetail(u1, 'nope'), null);
+    assert.strictEqual(await arena.getStatDetail(u1, 'hype'), null, 'audience stats do not exist');
+    assert.strictEqual(await arena.getStatDetail(u1, 'nope'), null);
     console.log('✅ stat drill-down');
 
-    assert.deepStrictEqual(arena.liveFighters(), [], 'nobody live');
-    const st = arena.status();
+    assert.deepStrictEqual(await arena.liveFighters(), [], 'nobody live');
+    const st = await arena.status();
     assert.strictEqual(st.mode, 'battle-cam');
     assert.strictEqual(st.roster, 3);
     assert.strictEqual(st.with_voice_data, 3);
@@ -149,4 +152,5 @@ console.log('✅ roster from transcripts only; idle and never-transcribed stream
 
     console.log('\n✅ All Arena roster tests passed');
     process.exit(0);
+}
 })().catch(err => { console.error(err); process.exit(1); });

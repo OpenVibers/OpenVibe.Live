@@ -21,23 +21,6 @@ const LOOKBACK_HOURS = 12;                // job only looks at streams that ende
 const SETTLE_SEC = 150;                   // wait for VOD/clips/moments to land after the end
 const JOB_INTERVAL_MS = 2 * 60 * 1000;
 
-let _tableReady = false;
-function ensureTable() {
-    if (_tableReady) return;
-    try {
-        db.getDb().exec(`CREATE TABLE IF NOT EXISTS stream_recaps (
-            stream_id INTEGER PRIMARY KEY,
-            user_id INTEGER,
-            json TEXT NOT NULL,
-            ai INTEGER DEFAULT 0,
-            announced_at DATETIME,
-            created_at DATETIME DEFAULT ov_now()
-        )`);
-        db.getDb().exec('CREATE INDEX IF NOT EXISTS idx_stream_recaps_user ON stream_recaps(user_id, created_at)');
-        _tableReady = true;
-    } catch (e) { console.warn('[Recap] table:', e.message); }
-}
-
 const sqlTs = (ms) => new Date(ms).toISOString().replace('T', ' ').slice(0, 19);
 const parseTs = (s) => { if (!s) return NaN; const t = Date.parse(String(s).replace(' ', 'T') + (String(s).endsWith('Z') ? '' : 'Z')); return t; };
 const safe = async (fn, dflt) => { try { const v = await fn(); return v == null ? dflt : v; } catch { return dflt; } };
@@ -70,9 +53,9 @@ async function gather(streamId) {
     const micLines = await safe(async () => await db.all(`SELECT text, quality, kind, aimed_at, sec, vod_id FROM arena_mic_moments WHERE stream_id = ? ORDER BY quality DESC, said_at ASC LIMIT 4`, [streamId]), []);
 
     // Money + love.
-    const tips = await safe(async () => await db.get(`SELECT COUNT(*) AS n, COALESCE(SUM(amount), 0) AS total FROM transactions WHERE type = 'donation' AND COALESCE(status, 'completed') NOT IN ('failed', 'refunded', 'pending') AND ((stream_id = ?) OR (to_user_id = ? AND created_at BETWEEN ? AND ?))`, [streamId, stream.user_id, start, end]), { n: 0, total: 0 });
-    const topTipper = await safe(async () => await db.get(`SELECT u.username, u.display_name, SUM(t.amount) AS total FROM transactions t JOIN users u ON u.id = t.from_user_id
-        WHERE t.type = 'donation' AND ((t.stream_id = ?) OR (t.to_user_id = ? AND t.created_at BETWEEN ? AND ?)) GROUP BY t.from_user_id ORDER BY total DESC LIMIT 1`, [streamId, stream.user_id, start, end]), null);
+    const tips = await safe(async () => await db.get(`SELECT COUNT(*) AS n, COALESCE(SUM(amount), 0)::bigint AS total FROM transactions WHERE type = 'donation' AND COALESCE(status, 'completed') NOT IN ('failed', 'refunded', 'pending') AND ((stream_id = ?) OR (to_user_id = ? AND created_at BETWEEN ? AND ?))`, [streamId, stream.user_id, start, end]), { n: 0, total: 0 });
+    const topTipper = await safe(async () => await db.get(`SELECT u.username, u.display_name, SUM(t.amount)::bigint AS total FROM transactions t JOIN users u ON u.id = t.from_user_id
+        WHERE t.type = 'donation' AND ((t.stream_id = ?) OR (t.to_user_id = ? AND t.created_at BETWEEN ? AND ?)) GROUP BY t.from_user_id, u.id ORDER BY total DESC LIMIT 1`, [streamId, stream.user_id, start, end]), null);
     const follows = await safe(async () => (await db.get(`SELECT COUNT(*) AS n FROM follows WHERE streamer_id = ? AND created_at BETWEEN ? AND ?`, [stream.user_id, start, end])).n, 0);
     const followersNow = await safe(async () => await db.getFollowerCount(stream.user_id), null);
 
@@ -130,7 +113,7 @@ function templateWriteup(g) {
 
 async function aiWriteup(g) {
     let llm = null; try { llm = require('../ai/llm'); } catch { return null; }
-    if (!llm || !llm.isEnabled() || !llm.withinBudget()) return null;
+    if (!llm || !await llm.isEnabled() || !await llm.withinBudget()) return null;
     const facts = {
         streamer: g.streamer.display_name, title: g.stream.title, category: g.stream.category, duration: fmtDur(g.stream.duration_seconds),
         viewers: { peak: g.stream.peak_viewers, avg: g.viewers.avg }, chat: { messages: g.chat.messages, chatters: g.chat.chatters, top: g.chat.top.map(t => `${t.display_name} (${t.n})`), sound_commands: g.chat.sounds },
@@ -144,7 +127,6 @@ async function aiWriteup(g) {
 }
 
 async function buildRecap(streamId, { ai = true } = {}) {
-    ensureTable();
     const g = await gather(streamId);
     if (!g) return null;
     // A channel that turned AI Moments off gets the stats report only (no model, not an AI Moment).
@@ -160,7 +142,6 @@ async function buildRecap(streamId, { ai = true } = {}) {
 }
 
 async function getRecap(streamId) {
-    ensureTable();
     const row = await db.get('SELECT json FROM stream_recaps WHERE stream_id = ?', [streamId]);
     if (!row) return null;
     try { return JSON.parse(row.json); } catch { return null; }
@@ -170,7 +151,6 @@ async function ensureRecap(streamId) { return await getRecap(streamId) || await 
 
 /** Latest recaps for a channel (for the channel page / "more nights like this"). */
 async function listRecaps(userId, limit = 6) {
-    ensureTable();
     return (await db.all('SELECT stream_id, json, ai, created_at FROM stream_recaps WHERE user_id = ? ORDER BY created_at DESC LIMIT ?', [userId, limit]) || []).map(r => {
         try { const j = JSON.parse(r.json); return { stream_id: r.stream_id, title: j.stream.title, headline: j.write.headline, grade: j.write.grade, duration_seconds: j.stream.duration_seconds, peak_viewers: j.stream.peak_viewers, ended_at: j.stream.ended_at, thumbnail_url: j.vod ? j.vod.thumbnail_url : null }; } catch { return null; }
     }).filter(Boolean);
@@ -178,16 +158,14 @@ async function listRecaps(userId, limit = 6) {
 
 /** Latest recaps site-wide (for discovery surfaces). */
 async function listRecentRecaps(limit = 6, excludeUserId = null) {
-    ensureTable();
     const rows = await db.all(`SELECT r.stream_id, r.json, r.created_at, u.username, u.display_name, u.avatar_url, u.profile_color
-        FROM stream_recaps r JOIN users u ON u.id = r.user_id WHERE (? IS NULL OR r.user_id != ?) AND COALESCE(u.is_banned, 0) = 0
+        FROM stream_recaps r JOIN users u ON u.id = r.user_id WHERE (?::bigint IS NULL OR r.user_id != ?) AND COALESCE(u.is_banned, 0) = 0
         ORDER BY r.created_at DESC LIMIT ?`, [excludeUserId, excludeUserId, limit]) || [];
     return rows.map(r => { try { const j = JSON.parse(r.json); return { stream_id: r.stream_id, username: r.username, display_name: r.display_name || r.username, avatar_url: r.avatar_url, profile_color: r.profile_color, title: j.stream.title, headline: j.write.headline, grade: j.write.grade, duration_seconds: j.stream.duration_seconds, peak_viewers: j.stream.peak_viewers, chat_messages: j.chat.messages, ended_at: j.stream.ended_at, thumbnail_url: j.vod ? j.vod.thumbnail_url : null }; } catch { return null; } }).filter(Boolean);
 }
 
 /** Streams that ended recently, ran long enough, and have no recap yet. */
 async function pending() {
-    ensureTable();
     return await db.all(`SELECT s.id FROM streams s
         WHERE s.is_live = 0 AND s.ended_at IS NOT NULL
           AND s.ended_at >= datetime('now', ?) AND s.ended_at <= datetime('now', ?)
@@ -223,11 +201,10 @@ async function tick() {
 }
 function start() {
     if (_timer) return;
-    ensureTable();
     setTimeout(() => tick().catch(() => {}), 45 * 1000);
     _timer = setInterval(() => tick().catch(e => console.warn('[Recap] job:', e.message)), JOB_INTERVAL_MS);
     if (_timer.unref) _timer.unref();
     console.log('[Recap] after-show reports started (every 2 min, streams ≥ 8 min)');
 }
 
-module.exports = { buildRecap, getRecap, ensureRecap, listRecaps, listRecentRecaps, pending, announce, start, tick, gather, templateWriteup, MIN_DURATION_SEC, ensureTable };
+module.exports = { buildRecap, getRecap, ensureRecap, listRecaps, listRecentRecaps, pending, announce, start, tick, gather, templateWriteup, MIN_DURATION_SEC };

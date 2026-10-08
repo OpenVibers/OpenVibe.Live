@@ -39,26 +39,6 @@ class NewsService {
         this.registerSource(new RedditSource());
         this.registerSource(new RssSource());
 
-        // Ensure DB table exists
-        this._ensureSchema();
-    }
-
-    async _ensureSchema() {
-        try {
-            await db.run(`CREATE TABLE IF NOT EXISTS news_settings (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                scope TEXT NOT NULL DEFAULT 'global',
-                scope_id INTEGER,
-                source_id TEXT NOT NULL,
-                enabled INTEGER NOT NULL DEFAULT 0,
-                config TEXT DEFAULT '{}',
-                created_at DATETIME DEFAULT ov_now(),
-                updated_at DATETIME DEFAULT ov_now(),
-                UNIQUE(scope, scope_id, source_id)
-            )`);
-        } catch (err) {
-            console.error('[News] Schema error:', err.message);
-        }
     }
 
     registerSource(source) {
@@ -74,9 +54,13 @@ class NewsService {
     start() {
         if (this._running) return;
         this._running = true;
+        this._startAfterSettings().catch((err) => console.error('[News] Start error:', err.message));
+    }
 
+    async _startAfterSettings() {
         // Load settings from DB
-        this._loadSettings();
+        await this._loadSettings();
+        if (!this._running) return;
 
         // Start enabled sources
         for (const [id, source] of this._sources) {
@@ -92,7 +76,7 @@ class NewsService {
         }
 
         // Process queue every 30s — drip-feed headlines into chat
-        this._injectTimer = setInterval(() => this._processQueue(), 30_000);
+        this._injectTimer = setInterval(() => this._processQueue().catch((err) => console.error('[News] Queue error:', err.message)), 30_000);
     }
 
     stop() {
@@ -125,7 +109,7 @@ class NewsService {
         try {
             await db.run(
                 `INSERT INTO news_settings (scope, scope_id, source_id, enabled, config)
-                 VALUES ('global', NULL, ?, ?, ?)
+                 VALUES ('global', 0, ?, ?, ?)
                  ON CONFLICT(scope, scope_id, source_id)
                  DO UPDATE SET enabled = excluded.enabled, config = excluded.config, updated_at = ov_now()`,
                 [sourceId, source.enabled ? 1 : 0, configJson]
@@ -239,11 +223,11 @@ class NewsService {
         if (!item) return;
 
         // Inject into all active stream chats that have news enabled
-        const activeStreams = this._getActiveStreamIds();
+        const activeStreams = await this._getActiveStreamIds();
         for (const streamId of activeStreams) {
             const lastInject = this._lastInjectPerStream.get(streamId) || 0;
             if (now - lastInject < MIN_INJECT_INTERVAL_MS) continue;
-            if (!this.isEnabledForStream(streamId)) continue;
+            if (!await this.isEnabledForStream(streamId)) continue;
 
             await delivery.event({ kind: 'stream', id: streamId }, {
                 type: 'chat',

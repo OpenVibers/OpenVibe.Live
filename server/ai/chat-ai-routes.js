@@ -129,7 +129,7 @@ async function _ensureSessionTitles(userId) {
 router.get('/timeline/:username', async (req, res) => {
     try {
         const uname = String(req.params.username || '').trim();
-        const user = db.getUserByUsername ? await db.getUserByUsername(uname) : null;
+        const user = await db.get('SELECT * FROM users WHERE lower(username) = lower(?)', [uname]);
         if (!user) return res.status(404).json({ error: 'Channel not found' });
 
         // Full timeline, cached 15 min. On a miss, each session's public VOD comes from OpenVibe.Media;
@@ -190,7 +190,7 @@ router.get('/timeline/:username', async (req, res) => {
  */
 router.get('/live-captions/:username', async (req, res) => {
     try {
-        const user = await db.getUserByUsername(String(req.params.username || '').trim());
+        const user = await db.get('SELECT * FROM users WHERE lower(username) = lower(?)', [String(req.params.username || '').trim()]);
         if (!user) return res.status(404).json({ error: 'Channel not found' });
         const i18n = require('../i18n/translate');
         const transcribe = require('./transcribe');

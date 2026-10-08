@@ -13,7 +13,7 @@ const recap = require('./recap');
 const { requireAuth, optionalAuth } = require('../auth/auth');
 
 router.get('/channel/:username', async (req, res) => {
-    const user = await db.getUserByUsername(String(req.params.username || ''));
+    const user = await db.get('SELECT * FROM users WHERE lower(username) = lower(?)', [String(req.params.username || '')]);
     if (!user) return res.status(404).json({ error: 'Channel not found' });
     res.set('Cache-Control', 'public, max-age=60');
     res.json({ recaps: await recap.listRecaps(user.id, Math.min(12, parseInt(req.query.limit || '6', 10) || 6)) });

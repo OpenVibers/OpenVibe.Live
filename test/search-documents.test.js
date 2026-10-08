@@ -4,13 +4,8 @@
 // changed with the revision up by one; an NSFW channel is noindex; a banned channel gets a tombstone once;
 // someone who never streamed is not a channel; the scan finds a stream that just ended.
 const assert = require('assert');
-const fs = require('fs');
-const os = require('os');
-const path = require('path');
 const http = require('http');
 
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ov-live-searchdocs-'));
-process.env.DB_PATH = path.join(tmp, 'live.db');
 const quiet = console.log;
 console.log = (...a) => { if (!/^\[/.test(String(a[0]))) quiet(...a); };
 console.warn = () => {};
@@ -41,18 +36,18 @@ const stub = http.createServer((req, res) => {
     process.env.OV_NETWORK_INTERNAL_URL = base;
     const { validate } = require('openvibe-contracts');
     const db = require('../server/db/database');
-    db.initDb();
+    await db.initDb();
     const d = db.getDb();
-    d.prepare("INSERT INTO users (id, username, display_name, password_hash, bio) OVERRIDING SYSTEM VALUE VALUES (1, 'alex', 'Alex', 'x', 'Builds things live.'), (2, 'viewer', 'Viewer', 'x', '')").run();
+    await d.prepare("INSERT INTO users (id, username, display_name, password_hash, bio) OVERRIDING SYSTEM VALUE VALUES (1, 'alex', 'Alex', 'x', 'Builds things live.'), (2, 'viewer', 'Viewer', 'x', '')").run();
     const streamEvents = require('../server/events/stream-events');
     const outbox = streamEvents.init({ eventsUrl: base, clientSecret: 's3cret', intervalMs: 50 });
     const docs = require('../server/events/search-documents');
     const index = () => published.filter((e) => /^live\.index_document\./.test(e.event_type));
 
-    const s = db.createStream({ user_id: 1, title: 'Building a forum', category: 'tech', protocol: 'webrtc', is_nsfw: 0 });
-    db.endStream(s.lastInsertRowid);
-    assert.strictEqual(docs.publish(2), 'skipped', 'someone who never streamed is not a channel');
-    assert.strictEqual(docs.publish(1), 'sent');
+    const s = await db.createStream({ user_id: 1, title: 'Building a forum', category: 'tech', protocol: 'webrtc', is_nsfw: 0 });
+    await db.endStream(s.lastInsertRowid);
+    assert.strictEqual(await docs.publish(2), 'skipped', 'someone who never streamed is not a channel');
+    assert.strictEqual(await docs.publish(1), 'sent');
     await outbox.flush();
     let ev = index()[0];
     assert.strictEqual(ev.event_type, 'live.index_document.upserted'); assert.strictEqual(ev.source, 'live');
@@ -62,31 +57,30 @@ const stub = http.createServer((req, res) => {
     assert.strictEqual(ev.payload.canonical_url, 'https://openvibe.live/@alex');
     assert.strictEqual(ev.payload.summary, 'Builds things live.');
     assert.ok(ev.payload.body.includes('Building a forum'));
-    assert.strictEqual(docs.publish(1), 'unchanged', 'nothing changed: nothing sent');
+    assert.strictEqual(await docs.publish(1), 'unchanged', 'nothing changed: nothing sent');
 
-    d.prepare("INSERT INTO follows (follower_id, streamer_id) VALUES (2, 1)").run();
-    assert.strictEqual(docs.publish(1), 'sent');
+    await d.prepare("INSERT INTO follows (follower_id, streamer_id) VALUES (2, 1)").run();
+    assert.strictEqual(await docs.publish(1), 'sent');
     await outbox.flush();
     assert.strictEqual(index()[1].payload.revision, 2); assert.strictEqual(index()[1].payload.facets.followers, 1);
 
-    const nsfw = db.createStream({ user_id: 1, title: 'Late night', protocol: 'webrtc', is_nsfw: 1 });
-    db.endStream(nsfw.lastInsertRowid);
-    assert.ok(docs.scan({ now: Date.now() + 1000 }) >= 1, 'the scan finds the stream that ended');
+    const nsfw = await db.createStream({ user_id: 1, title: 'Late night', protocol: 'webrtc', is_nsfw: 1 });
+    await db.endStream(nsfw.lastInsertRowid);
+    assert.ok(await docs.scan({ now: Date.now() + 1000 }) >= 1, 'the scan finds the stream that ended');
     await outbox.flush();
     assert.strictEqual(index()[2].payload.indexability.decision, 'noindex');
 
-    d.prepare('UPDATE users SET is_banned = 1 WHERE id = 1').run();
-    assert.strictEqual(docs.publish(1), 'tombstone');
+    await d.prepare('UPDATE users SET is_banned = 1 WHERE id = 1').run();
+    assert.strictEqual(await docs.publish(1), 'tombstone');
     await outbox.flush();
     ev = index()[3];
     assert.strictEqual(ev.event_type, 'live.index_document.deleted');
     assert.ok(validate('live.index_document.deleted@1', ev.payload).valid);
     assert.deepStrictEqual(ev.payload, { type: 'channel', id: '1', revision: 4 });
-    assert.strictEqual(docs.publish(1), 'unchanged', 'a tombstone is sent once');
+    assert.strictEqual(await docs.publish(1), 'unchanged', 'a tombstone is sent once');
 
     outbox.stop && outbox.stop();
     stub.close();
-    fs.rmSync(tmp, { recursive: true, force: true });
     quiet('search documents: all checks passed');
     process.exit(0);
 })().catch((err) => { console.error(err); process.exit(1); });

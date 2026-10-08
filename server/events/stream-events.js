@@ -104,7 +104,7 @@ function init({ eventsUrl = EVENTS_URL, clientSecret = CLIENT_SECRET, fetchImpl,
         if (!env) return;
         await outbox.enqueue(db.getDb(), env);
         stats.queued++;
-        setImmediate(() => outbox && outbox.kick());
+        db.getDb().afterCommit(() => { if (outbox) Promise.resolve(outbox.kick()).catch((err) => { stats.lastError = err.message; }); });
     });
     outbox.start();
     const prune = setInterval(() => { if (outbox) outbox.prune().catch(() => { /* next time */ }); }, PRUNE_EVERY_MS);
@@ -128,7 +128,7 @@ async function enqueue(envelope) {
 }
 
 /** Wake the relay once the transaction that queued an event has committed. */
-function kick() { if (outbox) setImmediate(() => outbox && outbox.kick()); }
+function kick() { if (outbox) db.getDb().afterCommit(() => { if (outbox) Promise.resolve(outbox.kick()).catch((err) => { stats.lastError = err.message; }); }); }
 
 /** Whether publishing is on, and this process's counters (synchronous: callers branch on `enabled`). */
 function status() {

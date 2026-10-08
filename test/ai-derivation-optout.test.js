@@ -14,13 +14,10 @@
 'use strict';
 const assert = require('assert');
 const fs = require('fs');
-const os = require('os');
 const path = require('path');
 const http = require('http');
 const vm = require('vm');
 
-const tmp = path.join(os.tmpdir(), `ov-ai-optout-${process.pid}.db`);
-process.env.DB_PATH = tmp;
 process.env.NODE_ENV = 'test';
 delete process.env.AI_SERVICE;   // on (every AI call is a run on OpenVibe.AI, stubbed below)
 const quiet = console.log;
@@ -29,29 +26,30 @@ console.warn = () => {};
 console.error = () => {};
 
 const db = require('../server/db/database');
-db.initDb();
+(async () => {
+await db.initDb();
 const raw = db.getDb();
 
 const auth = require('../server/auth/auth');
-const signIn = (req) => { const id = Number(req.headers['x-test-user'] || 0); const u = id ? db.getUserById(id) : null; if (u) req.user = u; return u; };
-auth.requireAuth = (req, res, next) => (signIn(req) ? next() : res.status(401).json({ error: 'Authentication required' }));
-auth.optionalAuth = (req, res, next) => { signIn(req); next(); };
+const signIn = async (req) => { const id = Number(req.headers['x-test-user'] || 0); const u = id ? await db.getUserById(id) : null; if (u) req.user = u; return u; };
+auth.requireAuth = (req, res, next) => { signIn(req).then((u) => u ? next() : res.status(401).json({ error: 'Authentication required' }), next); };
+auth.optionalAuth = (req, res, next) => { signIn(req).then(() => next(), next); };
 
-const addUser = (id, username) => raw.prepare(
+const addUser = async (id, username) => await raw.prepare(
     `INSERT INTO users (id, username, display_name, email, password_hash, role, created_at) OVERRIDING SYSTEM VALUE
      VALUES (?, ?, ?, ?, 'x', 'streamer', '2025-01-01 00:00:00')`).run(id, username, username, `${username}@x`);
-addUser(3, 'alice');     // keeps AI Moments on (the default)
-addUser(4, 'olive');     // opts out
-addUser(5, 'nochan');    // no channel row at all
-db.ensureChannel(3);
-db.ensureChannel(4);
-const mkStream = (userId, title) => {
-    const ch = db.getChannelByUserId(userId);
-    const id = Number(db.createStream({ user_id: userId, channel_id: ch.id, title, protocol: 'rtmp' }).lastInsertRowid);
+await addUser(3, 'alice');     // keeps AI Moments on (the default)
+await addUser(4, 'olive');     // opts out
+await addUser(5, 'nochan');    // no channel row at all
+await db.ensureChannel(3);
+await db.ensureChannel(4);
+const mkStream = async (userId, title) => {
+    const ch = await db.getChannelByUserId(userId);
+    const id = Number((await db.createStream({ user_id: userId, channel_id: ch.id, title, protocol: 'rtmp' })).lastInsertRowid);
     return id;
 };
-const sAlice = mkStream(3, 'Alice live'), sOlive = mkStream(4, 'Olive live');
-for (const [sid, uid] of [[sAlice, 3], [sOlive, 4]]) db.addStreamMemory({ stream_id: sid, user_id: uid, offset_seconds: 60, description: 'a scene' });
+const sAlice = await mkStream(3, 'Alice live'), sOlive = await mkStream(4, 'Olive live');
+for (const [sid, uid] of [[sAlice, 3], [sOlive, 4]]) await db.addStreamMemory({ stream_id: sid, user_id: uid, offset_seconds: 60, description: 'a scene' });
 
 // ── Stand-ins: Media, Community, the recorder, the model ──
 const media = require('../server/media-client');
@@ -110,38 +108,38 @@ async function check(name, fn) {
     catch (e) { failures++; quiet('  ✗', name, '\n     ', e.stack.split('\n').slice(0, 3).join('\n      ')); }
 }
 
-(async () => {
+{
     await new Promise((r) => server.once('listening', r));
     quiet('AI derivation opt-out');
 
-    await check('on by default, for every channel and for an account with no channel row', () => {
-        const cols = raw.prepare("PRAGMA table_info('channels')").all();
+    await check('on by default, for every channel and for an account with no channel row', async () => {
+        const cols = await raw.prepare("SELECT column_name AS name, column_default AS dflt_value FROM information_schema.columns WHERE table_name = 'channels'").all();
         const col = cols.find((c) => c.name === 'ai_derivation_enabled');
         assert.ok(col, 'channels.ai_derivation_enabled exists');
         assert.strictEqual(String(col.dflt_value), '1');
-        assert.strictEqual(db.isAiDerivationEnabled(3), true);
-        assert.strictEqual(db.isAiDerivationEnabled(5), true);
+        assert.strictEqual(await db.isAiDerivationEnabled(3), true);
+        assert.strictEqual(await db.isAiDerivationEnabled(5), true);
     });
 
     await check('the streamer turns it off (and on) from the dashboard: PUT /api/streams/channel', async () => {
         const off = await call('PUT', '/api/streams/channel', 4, { ai_derivation_enabled: 0 });
         assert.strictEqual(off.status, 200);
         assert.strictEqual(Number(off.json.channel.ai_derivation_enabled), 0);
-        assert.strictEqual(db.isAiDerivationEnabled(4), false);
+        assert.strictEqual(await db.isAiDerivationEnabled(4), false);
         const mine = await call('GET', '/api/streams/channel', 4);
         assert.strictEqual(Number(mine.json.ai_derivation_enabled), 0, 'the dashboard reads it back');
         await call('PUT', '/api/streams/channel', 3, { ai_derivation_enabled: 'true' });
-        assert.strictEqual(db.isAiDerivationEnabled(3), true);
+        assert.strictEqual(await db.isAiDerivationEnabled(3), true);
         const other = await call('PUT', '/api/streams/channel', 3, { title: 'x' });
         assert.strictEqual(other.status, 200);
-        assert.strictEqual(db.isAiDerivationEnabled(4), false, "one streamer's save never touches another's");
+        assert.strictEqual(await db.isAiDerivationEnabled(4), false, "one streamer's save never touches another's");
     });
 
     await check('the auto-clip job skips an opted-out live stream before touching its recording', async () => {
         recorderAsked.length = 0;
-        await autoClip._internals.checkLiveStream(db.getStreamById(sOlive));
+        await autoClip._internals.checkLiveStream(await db.getStreamById(sOlive));
         assert.deepStrictEqual(recorderAsked, [], 'opted out: never looked');
-        await autoClip._internals.checkLiveStream(db.getStreamById(sAlice));
+        await autoClip._internals.checkLiveStream(await db.getStreamById(sAlice));
         assert.deepStrictEqual(recorderAsked, [sAlice], 'opted in: checked as before');
     });
 
@@ -168,21 +166,21 @@ async function check(name, fn) {
         posted.length = 0;
         const frame = Buffer.alloc(4000, 7);
         const r = { worthy: true, title: 'Lights out', description: 'The lights go out mid-sentence.', tags: ['dark'] };
-        await memory._internals.maybeLivePaste({ ...db.getStreamById(sOlive), username: 'olive' }, frame, r, 120);
+        await memory._internals.maybeLivePaste({ ...await db.getStreamById(sOlive), username: 'olive' }, frame, r, 120);
         assert.strictEqual(posted.length, 0);
-        await memory._internals.maybeLivePaste({ ...db.getStreamById(sAlice), username: 'alice' }, frame, r, 120);
+        await memory._internals.maybeLivePaste({ ...await db.getStreamById(sAlice), username: 'alice' }, frame, r, 120);
         assert.strictEqual(posted.length, 1, 'opted in: posted as before');
         assert.strictEqual(posted[0].opts.origin, 'ai');
     });
 
     await check('an opted-out channel gets the stats-only after-show report: no model call, not AI', async () => {
-        db.endStream(sOlive); db.endStream(sAlice);
+        await db.endStream(sOlive); await db.endStream(sAlice);
         modelCalls.length = 0;
         const out = await recap.buildRecap(sOlive);
         assert.ok(out, 'a report is still made');
         assert.strictEqual(out.ai, false);
         assert.strictEqual(modelCalls.length, 0);
-        assert.strictEqual(raw.prepare('SELECT ai FROM stream_recaps WHERE stream_id = ?').get(sOlive).ai, 0);
+        assert.strictEqual((await raw.prepare('SELECT ai FROM stream_recaps WHERE stream_id = ?').get(sOlive)).ai, 0);
         const theirs = await recap.buildRecap(sAlice);
         assert.strictEqual(theirs.ai, true, 'opted in: the AI writes it');
         assert.strictEqual(modelCalls.length, 1);
@@ -214,8 +212,7 @@ async function check(name, fn) {
     });
 
     server.close();
-    try { fs.unlinkSync(tmp); } catch { /* */ }
-    for (const ext of ['-wal', '-shm']) { try { fs.unlinkSync(tmp + ext); } catch { /* */ } }
     quiet(failures ? `\n${failures} check(s) failed` : '\nAI derivation opt-out: all checks passed');
     process.exit(failures ? 1 : 0);
-})();
+}
+})().catch((e) => { console.error(e); process.exit(1); });

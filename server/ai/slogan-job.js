@@ -82,12 +82,11 @@ async function tick() {
         let activeRows = [];
         try {
             const top = await chatReads.topChatters({ since: Date.now() - 14 * 86400e3, limit: 12 });
-            activeRows = (top || [])
-                .map((r) => ({ id: Number(r.user_id) || 0, username: r.username }))
-                .filter((r) => {
-                    if (!r.id) return false;
-                    try { const u = db.getUserById(r.id); return !!(u && !u.is_banned); } catch { return false; }
-                });
+            for (const r of top || []) {
+                const id = Number(r.user_id) || 0;
+                if (!id) continue;
+                try { const u = await db.getUserById(id); if (u && !u.is_banned) activeRows.push({ id, username: r.username }); } catch { /* */ }
+            }
         } catch { /* */ }
         const usernames = activeRows.map(r => r.username).filter(Boolean);
         // The prompt is OpenVibe.AI's versioned template live.hero.slogans (WS-O task 2); Live sends the
@@ -158,9 +157,9 @@ function start() {
     // Poll every 5 min and regenerate whenever a fresh batch is due — self-correcting across
     // restarts and keeps the hero countdown honest (regenerates within ~5 min of hitting 12h).
     const CHECK_MS = 5 * 60 * 1000;
-    _timer = setInterval(async () => { if (await _dueForRegen()) tick().catch(() => {}); }, CHECK_MS);
+    _timer = setInterval(() => _dueForRegen().then((due) => { if (due) return tick(); }).catch((e) => console.warn('[Slogans] check:', e.message)), CHECK_MS);
     if (_timer.unref) _timer.unref();
-    setTimeout(async () => { if (await _dueForRegen()) tick().catch(() => {}); }, 60 * 1000);
+    setTimeout(() => _dueForRegen().then((due) => { if (due) return tick(); }).catch((e) => console.warn('[Slogans] check:', e.message)), 60 * 1000);
     console.log('[Slogans] hero-slogan job started (12h batch from full AI context)');
 }
 

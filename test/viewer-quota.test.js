@@ -5,15 +5,10 @@
 // reported, never thrown.
 //   node test/viewer-quota.test.js
 const assert = require('assert');
-const fs = require('fs');
-const os = require('os');
-const path = require('path');
 const http = require('http');
 const crypto = require('crypto');
 const { serviceAuth } = require('openvibe-contracts');
 
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ov-live-vquota-'));
-process.env.DB_PATH = path.join(tmp, 'live.db');
 process.env.NODE_ENV = 'test';
 process.env.OV_OAUTH_CLIENT_ID = 'live';
 process.env.OV_OAUTH_CLIENT_SECRET = 'live-secret';
@@ -51,26 +46,25 @@ const ai = http.createServer((req, res) => {
     process.env.OV_NETWORK_INTERNAL_URL = `http://127.0.0.1:${network.address().port}`;
     process.env.OV_AI_INTERNAL_URL = `http://127.0.0.1:${ai.address().port}`;
     const db = require('../server/db/database');
-    db.initDb();
+    await db.initDb();
     const quota = require('../server/ai/viewer-quota');
-    db.getDb().prepare("INSERT INTO users (id, username, password_hash) OVERRIDING SYSTEM VALUE VALUES (50, 'dana', '$sso$')").run();
+    await db.getDb().prepare("INSERT INTO users (id, username, password_hash) OVERRIDING SYSTEM VALUE VALUES (50, 'dana', '$sso$')").run();
     try {
-        db.upsertChannelAiConfig(50, { use_shared_key: 1, daily_budget_cents: 35 });
+        await db.upsertChannelAiConfig(50, { use_shared_key: 1, daily_budget_cents: 35 });
         assert.strictEqual(await quota.sync(50), 'set');
         assert.deepStrictEqual(calls[0], { method: 'PUT', attr: 'live:user:50', body: { window: 'day', max_cost_usd: 0.35, workflow_prefix: 'live.viewers.' } });
-        db.upsertChannelAiConfig(50, { use_shared_key: 0 });
+        await db.upsertChannelAiConfig(50, { use_shared_key: 0 });
         assert.strictEqual(await quota.sync(50), 'removed', 'their own key: the site cap goes');
         assert.strictEqual(await quota.sync(50), 'none', 'nothing left to remove');
-        db.upsertChannelAiConfig(50, { use_shared_key: 1, daily_budget_cents: 0 });
+        await db.upsertChannelAiConfig(50, { use_shared_key: 1, daily_budget_cents: 0 });
         assert.strictEqual(await quota.sync(50), 'none', 'no budget: no cap');
         assert.strictEqual(await quota.sync('x'), 'none');
         ai.close();
         await new Promise((r) => setTimeout(r, 50));
-        db.upsertChannelAiConfig(50, { daily_budget_cents: 20 });
+        await db.upsertChannelAiConfig(50, { daily_budget_cents: 20 });
         assert.strictEqual(await quota.sync(50), 'quota.unavailable', 'AI down is reported, never thrown');
     } finally {
         network.close(); ai.close();
-        fs.rmSync(tmp, { recursive: true, force: true });
     }
     console.log('viewer quota: all checks passed');
 })().catch((e) => { console.error(e); process.exit(1); });

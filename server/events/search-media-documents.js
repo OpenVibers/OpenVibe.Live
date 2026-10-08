@@ -29,20 +29,6 @@ const TOUCH_DELAY_MS = Number(process.env.LIVE_SEARCH_TOUCH_DELAY_MS) || 1500;
 const KINDS = ['vod', 'clip'];
 const stats = { sent: 0, tombstones: 0, unchanged: 0, lastError: null };
 
-let ready = false;
-function ensureSchema() {
-    if (ready) return;
-    db.getDb().exec(`CREATE TABLE IF NOT EXISTS search_media_pushes (
-        kind TEXT NOT NULL,
-        media_id INTEGER NOT NULL,
-        hash TEXT NOT NULL,
-        revision INTEGER NOT NULL,
-        deleted INTEGER NOT NULL DEFAULT 0,
-        pushed_at DATETIME DEFAULT ov_now(),
-        PRIMARY KEY (kind, media_id)
-    )`);
-    ready = true;
-}
 
 const iso = (v) => {
     if (!v) return null;
@@ -109,7 +95,6 @@ const hashOf = (doc) => crypto.createHash('sha256').update(JSON.stringify(doc)).
 
 /** Send one item's document or tombstone when it changed. `row` null: gone. → 'sent' | 'tombstone' | 'unchanged' | 'skipped' */
 async function publish(kind, id, row, { now = Date.now() } = {}) {
-    ensureSchema();
     if (!streamEvents.status().enabled || !KINDS.includes(kind)) return 'skipped';
     const mediaId = Number(id);
     if (!Number.isSafeInteger(mediaId) || mediaId < 1) return 'skipped';
@@ -184,7 +169,6 @@ async function scan({ media = mediaClient(), now = Date.now(), limit = 50 } = {}
 /** Every public item, then a check of each one Search holds that the listing no longer shows. */
 async function refresh({ media = mediaClient(), now = Date.now(), maxPages = 100 } = {}) {
     if (!streamEvents.status().enabled) return 0;
-    ensureSchema();
     let n = 0;
     for (const kind of KINDS) {
         const seen = new Set();
@@ -205,7 +189,6 @@ async function refresh({ media = mediaClient(), now = Date.now(), maxPages = 100
 
 function init() {
     if (!streamEvents.status().enabled || process.env.LIVE_SEARCH_DOCUMENTS === 'off') return false;
-    ensureSchema();
     const jobs = require('../utils/jobs');
     jobs.every('search-media-scan', 5 * 60 * 1000, () => scan(), { initialDelayMs: 3 * 60 * 1000, jitterMs: 15 * 1000 });
     jobs.every('search-media-refresh', DAY_MS, () => refresh(), { initialDelayMs: 6 * 60 * 1000, jitterMs: 60 * 1000 });
@@ -234,4 +217,4 @@ function status() { return { ...stats }; }
 
 function _setMedia(m) { mediaImpl = m; }
 
-module.exports = { init, ensureSchema, isListable, documentFor, publish, touch, touchLater, scan, refresh, afterChange, status, _setMedia };
+module.exports = { init, isListable, documentFor, publish, touch, touchLater, scan, refresh, afterChange, status, _setMedia };

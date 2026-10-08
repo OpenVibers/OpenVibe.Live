@@ -133,7 +133,7 @@ async function tick() {
 
         // Timeline coverage: guarantee start/end (+mid) memories on stream-backed VODs.
         try {
-            for (const row of db.getVodsNeedingTimeline(1)) {
+            for (const row of await db.getVodsNeedingTimeline(1)) {
                 const vod = await _vodMeta(row);
                 if (vod && vod.stream_id) await ai.ensureVodTimeline(vod);
             }
@@ -157,7 +157,7 @@ async function start() {
     if (_timer) return;
     // One-time repair of any raw-JSON descriptions stored by earlier builds.
     try { if (db.cleanupMalformedAiText) await db.cleanupMalformedAiText(); } catch (e) { console.warn('[AI] cleanup:', e.message); }
-    _timer = setInterval(tick, 60_000);
+    _timer = setInterval(() => tick().catch((e) => console.warn('[AI backfill] tick:', e.message)), 60_000);
     console.log('[AI] Backfill job started (VOD/clip overviews + transcripts via vod_ai_state/clip_ai_state)');
 }
 

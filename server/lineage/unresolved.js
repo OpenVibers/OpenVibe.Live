@@ -17,25 +17,7 @@ const db = require('../db/database');
 
 const KEEP_DAYS = 30;
 const PRUNE_EVERY_MS = 3600 * 1000;
-let ensured = false;
 let lastPrune = 0;
-
-function ensureTable() {
-    if (ensured) return;
-    const d = db.getDb();
-    d.exec(`CREATE TABLE IF NOT EXISTS lineage_unresolved (
-        ref         TEXT NOT NULL,
-        reason      TEXT NOT NULL,
-        detail      TEXT,
-        last_caller TEXT,
-        count       INTEGER NOT NULL DEFAULT 1,
-        first_at    TEXT NOT NULL,
-        last_at     TEXT NOT NULL,
-        PRIMARY KEY (ref, reason)
-    )`);
-    d.exec('CREATE INDEX IF NOT EXISTS idx_lineage_unresolved_last ON lineage_unresolved(last_at DESC)');
-    ensured = true;
-}
 
 /** A normalized request (resolver.normalizeRequest) → "k=v k=v", sorted; legacy_ids flattened. */
 function refOf(input) {
@@ -54,7 +36,6 @@ async function record(input, result, caller, { now = Date.now() } = {}) {
         if (!result || result.status === 'resolved' || !result.reason || result.reason === 'no_input') return false;
         const ref = refOf(input);
         if (!ref) return false;
-        ensureTable();
         const at = new Date(now).toISOString();
         await db.run(`INSERT INTO lineage_unresolved (ref, reason, detail, last_caller, count, first_at, last_at) VALUES (?, ?, ?, ?, 1, ?, ?)
                 ON CONFLICT (ref, reason) DO UPDATE SET detail = excluded.detail, last_caller = excluded.last_caller, count = lineage_unresolved.count + 1, last_at = excluded.last_at`,
@@ -72,13 +53,12 @@ async function record(input, result, caller, { now = Date.now() } = {}) {
 
 /** For staff: the newest first, optionally one reason; plus counts per reason. */
 async function list({ reason = null, limit = 100 } = {}) {
-    ensureTable();
     const n = Math.min(Math.max(parseInt(limit, 10) || 100, 1), 500);
     const rows = reason
         ? await db.all('SELECT * FROM lineage_unresolved WHERE reason = ? ORDER BY last_at DESC LIMIT ?', [reason, n])
         : await db.all('SELECT * FROM lineage_unresolved ORDER BY last_at DESC LIMIT ?', [n]);
     const byReason = {};
-    for (const r of await db.all('SELECT reason, COUNT(*) AS refs, SUM(count) AS answers FROM lineage_unresolved GROUP BY reason')) byReason[r.reason] = { refs: r.refs, answers: r.answers };
+    for (const r of await db.all('SELECT reason, COUNT(*) AS refs, SUM(count)::bigint AS answers FROM lineage_unresolved GROUP BY reason')) byReason[r.reason] = { refs: r.refs, answers: r.answers };
     return { unresolved: rows, by_reason: byReason, keep_days: KEEP_DAYS };
 }
 

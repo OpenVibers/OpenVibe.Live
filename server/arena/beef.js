@@ -28,54 +28,6 @@ const XP_BEEF_HIT = 1.0;      // × quality
 const XP_BEEF_WIN = 40;
 const XP_BEEF_OPEN = 5;
 
-let _ready = false;
-async function ensureTables() {
-    if (_ready) return;
-    await db.run(`CREATE TABLE IF NOT EXISTS arena_beefs (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        a_user_id INTEGER NOT NULL,
-        b_user_id INTEGER NOT NULL,
-        status TEXT NOT NULL DEFAULT 'open',
-        score_a REAL DEFAULT 0,
-        score_b REAL DEFAULT 0,
-        hits_a INTEGER DEFAULT 0,
-        hits_b INTEGER DEFAULT 0,
-        crowd_a INTEGER DEFAULT 0,
-        crowd_b INTEGER DEFAULT 0,
-        on_clock TEXT,
-        clock_until DATETIME,
-        responded INTEGER DEFAULT 0,
-        last_a_at DATETIME,
-        last_b_at DATETIME,
-        feed_json TEXT,
-        opener_line TEXT,
-        winner_user_id INTEGER,
-        resolution TEXT,
-        opened_at DATETIME DEFAULT ov_now(),
-        ends_at DATETIME,
-        resolved_at DATETIME
-    )`);
-    await db.run(`CREATE TABLE IF NOT EXISTS arena_beef_hype (
-        beef_id INTEGER NOT NULL,
-        side TEXT NOT NULL,
-        voter_key TEXT NOT NULL,
-        created_at DATETIME DEFAULT ov_now(),
-        PRIMARY KEY (beef_id, voter_key)
-    )`);
-    for (const col of ['headline TEXT', 'result_headline TEXT', 'upset INTEGER DEFAULT 0', 'rematch INTEGER DEFAULT 0', 'bounty_topic_id INTEGER']) {
-        try { await db.run(`ALTER TABLE arena_beefs ADD COLUMN ${col}`); } catch { /* exists */ }
-    }
-    await db.run(`CREATE TABLE IF NOT EXISTS arena_beef_sides (
-        beef_id INTEGER NOT NULL,
-        voter_key TEXT NOT NULL,
-        side TEXT NOT NULL,
-        user_id INTEGER,
-        created_at DATETIME DEFAULT ov_now(),
-        PRIMARY KEY (beef_id, voter_key)
-    )`);
-    await db.run('CREATE INDEX IF NOT EXISTS idx_arena_beefs_status ON arena_beefs (status, a_user_id, b_user_id)');
-    _ready = true;
-}
 
 function parseJson(t, f = null) { try { return t ? JSON.parse(t) : f; } catch { return f; } }
 function arena() { return require('./arena-service'); }
@@ -102,11 +54,9 @@ function templateHeadline(kind, ctx) {
 function sqlDate(ms) { return new Date(ms).toISOString().replace('T', ' ').slice(0, 19); }
 
 async function openBeefBetween(u1, u2) {
-    await ensureTables();
     return await db.get(`SELECT * FROM arena_beefs WHERE status = 'open' AND ((a_user_id = ? AND b_user_id = ?) OR (a_user_id = ? AND b_user_id = ?))`, [u1, u2, u2, u1]) || null;
 }
 async function openBeefsFor(userId) {
-    await ensureTables();
     return await db.all(`SELECT * FROM arena_beefs WHERE status = 'open' AND (a_user_id = ? OR b_user_id = ?) ORDER BY opened_at DESC`, [userId, userId]);
 }
 
@@ -125,7 +75,6 @@ function pushFeed(beef, event) {
  * Opens the beef if needed, scores it, and puts the other side on the clock.
  */
 async function recordHit(speakerId, targetId, hit) {
-    await ensureTables();
     if (speakerId === targetId) return null;
     let beef = await openBeefBetween(speakerId, targetId);
     let opened = false;
@@ -159,7 +108,6 @@ async function recordHit(speakerId, targetId, hit) {
 }
 
 async function hype(beefId, side, voterKey) {
-    await ensureTables();
     const beef = await db.get('SELECT * FROM arena_beefs WHERE id = ? AND status = ?', [beefId, 'open']);
     if (!beef) throw new Error('No open beef with that id');
     if (!['a', 'b'].includes(side)) throw new Error('side must be a or b');
@@ -194,7 +142,6 @@ async function resolve(beef, resolution, winnerId) {
 
 /** Current win streak (consecutive resolved beefs won). */
 async function streakFor(userId) {
-    await ensureTables();
     let n = 0;
     for (const b of await db.all(`SELECT winner_user_id FROM arena_beefs WHERE status = 'resolved' AND (a_user_id = ? OR b_user_id = ?) ORDER BY resolved_at DESC LIMIT 20`, [userId, userId])) { if (b.winner_user_id === userId) n++; else break; }
     return n;
@@ -202,7 +149,6 @@ async function streakFor(userId) {
 
 /** Rivalry between two fighters: fights, record, receipts (best lines from earlier beefs). */
 async function rivalry(u1, u2) {
-    await ensureTables();
     const rows = await db.all(`SELECT * FROM arena_beefs WHERE status = 'resolved' AND ((a_user_id = ? AND b_user_id = ?) OR (a_user_id = ? AND b_user_id = ?)) ORDER BY resolved_at DESC LIMIT 10`, [u1, u2, u2, u1]);
     const wins1 = rows.filter(r => r.winner_user_id === u1).length, wins2 = rows.filter(r => r.winner_user_id === u2).length;
     const receipts = [];
@@ -212,8 +158,7 @@ async function rivalry(u1, u2) {
 }
 
 async function rivalriesFor(userId, limit = 5) {
-    await ensureTables();
-    const opps = await db.all(`SELECT CASE WHEN a_user_id = ? THEN b_user_id ELSE a_user_id END AS opp, COUNT(*) AS n FROM arena_beefs WHERE (a_user_id = ? OR b_user_id = ?) GROUP BY opp HAVING n >= 2 ORDER BY n DESC LIMIT ?`, [userId, userId, userId, limit]);
+    const opps = await db.all(`SELECT CASE WHEN a_user_id = ? THEN b_user_id ELSE a_user_id END AS opp, COUNT(*) AS n FROM arena_beefs WHERE (a_user_id = ? OR b_user_id = ?) GROUP BY 1 HAVING COUNT(*) >= 2 ORDER BY n DESC LIMIT ?`, [userId, userId, userId, limit]);
     const b = mic();
     const roster = await arena().loadRoster();
     return (await Promise.all(opps.map(async o => { const r = await rivalry(userId, o.opp); return { opponent: await b.fighterBrief(o.opp, roster), fights: r.fights + (await openBeefBetween(userId, o.opp) ? 1 : 0), wins: r.wins_1, losses: r.wins_2, open: !!await openBeefBetween(userId, o.opp), receipts: r.receipts.slice(0, 2) }; })));
@@ -221,7 +166,6 @@ async function rivalriesFor(userId, limit = 5) {
 
 /** Ticker: enforce clocks and hard ends; tighten an offline clock when the target goes live. */
 async function tick() {
-    await ensureTables();
     const now = Date.now();
     for (const beef of await db.all(`SELECT * FROM arena_beefs WHERE status = 'open'`)) {
         const t = totals(beef);
@@ -246,16 +190,14 @@ async function tick() {
 // ── Records + views ──────────────────────────────────────────
 
 async function recordFor(userId) {
-    await ensureTables();
-    const r = await db.get(`SELECT SUM(CASE WHEN winner_user_id = ? THEN 1 ELSE 0 END) AS wins,
-                             SUM(CASE WHEN status = 'resolved' AND winner_user_id IS NOT NULL AND winner_user_id != ? THEN 1 ELSE 0 END) AS losses,
-                             SUM(CASE WHEN status = 'resolved' AND winner_user_id IS NULL THEN 1 ELSE 0 END) AS draws
+    const r = await db.get(`SELECT COUNT(*) FILTER (WHERE winner_user_id = ?) AS wins,
+                             COUNT(*) FILTER (WHERE status = 'resolved' AND winner_user_id IS NOT NULL AND winner_user_id != ?) AS losses,
+                             COUNT(*) FILTER (WHERE status = 'resolved' AND winner_user_id IS NULL) AS draws
                       FROM arena_beefs WHERE a_user_id = ? OR b_user_id = ?`, [userId, userId, userId, userId]) || {};
     return { wins: r.wins || 0, losses: r.losses || 0, draws: r.draws || 0 };
 }
 
 async function recentWins(userId, days = 7) {
-    await ensureTables();
     return (await db.get(`SELECT COUNT(*) AS n FROM arena_beefs WHERE winner_user_id = ? AND resolved_at >= datetime('now', ?)`, [userId, `-${days} days`]))?.n || 0;
 }
 
@@ -283,7 +225,6 @@ async function beefView(beef, roster) {
 }
 
 async function list({ limitResolved = 12 } = {}) {
-    await ensureTables();
     const roster = await arena().loadRoster();
     const open = (await Promise.all((await db.all(`SELECT * FROM arena_beefs WHERE status = 'open' ORDER BY COALESCE(last_b_at, last_a_at, opened_at) DESC`)).map(async b => await beefView(b, roster))));
     const resolved = (await Promise.all((await db.all(`SELECT * FROM arena_beefs WHERE status = 'resolved' ORDER BY resolved_at DESC LIMIT ?`, [limitResolved])).map(async b => await beefView(b, roster))));
@@ -291,19 +232,17 @@ async function list({ limitResolved = 12 } = {}) {
 }
 
 async function get(id) {
-    await ensureTables();
     const b = await db.get('SELECT * FROM arena_beefs WHERE id = ?', [id]);
     return b ? await beefView(b, await arena().loadRoster()) : null;
 }
 
 async function forUser(userId, limit = 8) {
-    await ensureTables();
     const roster = await arena().loadRoster();
     return (await Promise.all((await db.all(`SELECT * FROM arena_beefs WHERE a_user_id = ? OR b_user_id = ? ORDER BY CASE WHEN status = 'open' THEN 0 ELSE 1 END, COALESCE(resolved_at, opened_at) DESC LIMIT ?`, [userId, userId, limit])).map(async b => await beefView(b, roster))));
 }
 
 module.exports = {
-    ensureTables, recordHit, hype, tick, recordFor, recentWins, list, get, forUser, openBeefBetween, openBeefsFor, beefView, totals,
+    recordHit, hype, tick, recordFor, recentWins, list, get, forUser, openBeefBetween, openBeefsFor, beefView, totals,
     streakFor, rivalry, rivalriesFor, nameOf,
     RESPONSE_LIVE_MIN, RESPONSE_OFFLINE_HOURS, MAX_BEEF_HOURS, CROWD_MAX, XP_BEEF_WIN, XP_BEEF_OPEN, XP_BEEF_HIT,
 };

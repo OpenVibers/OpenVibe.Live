@@ -77,7 +77,7 @@ async function backfillFighter(uid, roster, budget) {
     for (const c of chunks) {
         if (budget.calls >= MAX_CALLS_PER_RUN) break;
         const text = c.lines.map(l => l.t).join(' ').replace(/\s+/g, ' ').slice(-1400);
-        const mentions = L._mentionsDetailed(text, uid, roster);
+        const mentions = await L._mentionsDetailed(text, uid, roster);
         const spicy = L.SPICY.test(text.toLowerCase());
         lastId = Math.max(lastId, c.lastId);
         if (!mentions.length && !spicy) { skipped++; continue; }
@@ -97,7 +97,7 @@ async function backfillFighter(uid, roster, budget) {
             const j = await L._judgeMic(uid, text);
             if (j.is_trash_talk && j.quality >= L.MIC_MIN_QUALITY && !await mic().isDuplicate(uid, j.best_line)) {
                 const r = ref(j.best_line);
-                const target = j.aimed_at ? L._mentionsDetailed(j.aimed_at, uid, roster)[0] : null;
+                const target = j.aimed_at ? (await L._mentionsDetailed(j.aimed_at, uid, roster))[0] : null;
                 if (await mic().addMoment({ userId: uid, streamId: c.stream_id, vodId: r.vod_id, sec: r.sec, kind: target ? 'callout' : 'trash', targetUserId: target ? target.userId : null, aimedAt: target ? await mic().nameOf(target.userId) : (j.aimed_at || null), text: j.best_line || text.slice(0, 220), about: j.about, quality: j.quality, announcer: j.announcer, saidAt: saidAtFor(c, r.sec) })) moments++;
             }
         } catch (e) { console.warn(`[Arena] backfill judge (user ${uid}):`, e.message); }
