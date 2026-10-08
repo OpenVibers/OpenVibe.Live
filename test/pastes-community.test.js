@@ -14,7 +14,6 @@ const express = require('express');
 const { serviceAuth } = require('openvibe-contracts');
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ov-pastes-community-'));
-process.env.DB_PATH = path.join(tmp, 'live.db');
 process.env.INTERNAL_API_KEY = 'legacy-key';
 process.env.OV_OAUTH_CLIENT_ID = 'live';
 process.env.OV_OAUTH_CLIENT_SECRET = 'live-secret';
@@ -63,10 +62,10 @@ const community = http.createServer((req, res) => {
     process.env.OV_COMMUNITY_INTERNAL_URL = `http://127.0.0.1:${community.address().port}`;
 
     const db = require('../server/db/database');
-    db.initDb();
+    await db.initDb();
     const d = db.getDb();
-    const u1 = d.prepare("INSERT INTO users (username, password_hash, stream_key) VALUES ('ann', 'x', 'k1')").run().lastInsertRowid;
-    d.prepare("INSERT INTO linked_accounts (user_id, service, service_user_id, subject_id) VALUES (?, 'network', '11', ?)").run(u1, SID);
+    const u1 = Number((await d.prepare("INSERT INTO users (username, password_hash, stream_key) VALUES ('ann', 'x', 'k1') RETURNING id").run()).lastInsertRowid);
+    await d.prepare("INSERT INTO linked_accounts (user_id, service, service_user_id, subject_id) VALUES (?, 'network', '11', ?)").run(u1, SID);
     const client = require('../server/pastes-client');
 
     // AI paste: no person, origin ai, stream as source.
@@ -84,11 +83,11 @@ const community = http.createServer((req, res) => {
     s = seen.pop();
     assert.strictEqual(s.subject, SID);
     // Not in the link table: resolved through Network's identity map (live user 2 -> SID2).
-    d.prepare("INSERT INTO users (id, username, password_hash, stream_key) OVERRIDING SYSTEM VALUE VALUES (2, 'bob', 'x', 'k2')").run();
+    await d.prepare("INSERT INTO users (id, username, password_hash, stream_key) OVERRIDING SYSTEM VALUE VALUES (2, 'bob', 'x', 'k2')").run();
     await client.createPaste({ user_id: 2, content: 'hi' });
     assert.strictEqual(seen.pop().subject, SID2);
     // Nobody we can name: refused rather than filed under the wrong person or as anonymous.
-    d.prepare("INSERT INTO users (id, username, password_hash, stream_key) OVERRIDING SYSTEM VALUE VALUES (3, 'cat', 'x', 'k3')").run();
+    await d.prepare("INSERT INTO users (id, username, password_hash, stream_key) OVERRIDING SYSTEM VALUE VALUES (3, 'cat', 'x', 'k3')").run();
     await assert.rejects(client.createPaste({ user_id: 3, content: 'hi' }), (e) => e.status === 409);
 
     // Screenshot: multipart with the file.
@@ -143,7 +142,6 @@ const community = http.createServer((req, res) => {
     assert.ok(!/media-client/.test(clientSrc) && !clientSrc.includes('PASTES_' + 'AUTHORITY'), 'the pastes client never falls back to Media');
 
     srv.close(); net.close(); community.close();
-    fs.rmSync(tmp, { recursive: true, force: true });
     console.log('pastes on community: all checks passed');
     process.exit(0);
 })().catch((err) => { console.error(err); process.exit(1); });

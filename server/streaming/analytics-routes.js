@@ -187,12 +187,12 @@ router.get('/channel/:username/dashboard', optionalAuth, async (req, res) => {
 
         // Top watchers by watch time
         const topWatchers = await db.all(`
-            SELECT wt.user_id, u.username, u.display_name, SUM(wt.minutes_watched) as total_minutes
+            SELECT wt.user_id, u.username, u.display_name, COALESCE(SUM(wt.minutes_watched), 0)::bigint AS total_minutes
             FROM watch_time wt
             JOIN users u ON u.id = wt.user_id
             JOIN streams s ON wt.stream_id = s.id
             WHERE s.user_id = ? AND s.started_at >= ?
-            GROUP BY wt.user_id
+            GROUP BY wt.user_id, u.username, u.display_name
             ORDER BY total_minutes DESC
             LIMIT 20
         `, [channel.user_id, cutoff]);

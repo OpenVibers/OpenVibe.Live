@@ -69,7 +69,7 @@ class CallServer {
                 try { ws.ping(); } catch {}
             });
         }, WS_HEARTBEAT_MS);
-        this.wss.on('connection', (ws, req) => this._handleConnection(ws, req));
+        this.wss.on('connection', (ws, req) => this._handleConnection(ws, req).catch((e) => console.warn('[Call] connection failed:', e && e.message)));
 
         // Cleanup user-created channels that have been empty for over an hour
         if (this._inactivityTimer) clearInterval(this._inactivityTimer);
@@ -103,13 +103,13 @@ class CallServer {
     /* ── Channel management ──────────────────────────────────── */
 
     /** Channels a viewer may see: a private call only for its creator, its invitees and staff. */
-    listChannels(viewer = null) {
+    async listChannels(viewer = null) {
         const result = [];
         for (const [id, ch] of this.channels) {
             if (ch.private && !this._canSeePrivate(ch, viewer)) continue;
             const room = this.rooms.get(id);
             const participants = [];
-            if (room) { for (const [pid, info] of room) participants.push(this._buildParticipantInfo(pid, info)); }
+            if (room) { for (const [pid, info] of room) participants.push(await this._buildParticipantInfo(pid, info)); }
             result.push({ ...this._publicChannel(ch), participantCount: room ? room.size : 0, participants });
         }
         return result;
@@ -142,12 +142,12 @@ class CallServer {
         }, 400);
     }
 
-    getChannel(channelId, viewer = null) {
+    async getChannel(channelId, viewer = null) {
         const ch = this.channels.get(channelId);
         if (!ch || !this._canSeePrivate(ch, viewer)) return null;
         const room = this.rooms.get(channelId);
         const participants = [];
-        if (room) { for (const [pid, info] of room) participants.push(this._buildParticipantInfo(pid, info)); }
+        if (room) { for (const [pid, info] of room) participants.push(await this._buildParticipantInfo(pid, info)); }
         return { ...this._publicChannel(ch), participantCount: room ? room.size : 0, participants };
     }
 
@@ -269,7 +269,7 @@ class CallServer {
         if (cooled && cooled > Date.now()) { ws.send(JSON.stringify({ type: 'error', message: 'You were removed from this channel; try again in a minute' })); ws.close(); return; }
         const isChannelCreator = user && channel.createdBy === user.id;
         const isStreamer = channel.streamId ? (user && (await db.getStreamById(channel.streamId))?.user_id === user.id) : false;
-        const canModerate = this._canModerate(user, resolvedId);
+        const canModerate = await this._canModerate(user, resolvedId);
 
         const bans = this.callBans.get(resolvedId);
         if (bans) {
@@ -289,7 +289,7 @@ class CallServer {
             for (const [pid, info] of room) {
                 if (info.user && info.user.id === user.id) {
                     try { info.ws.send(JSON.stringify({ type: 'replaced' })); } catch { /* */ }
-                    this._handleDisconnect(info.ws, resolvedId, pid);
+                    await this._handleDisconnect(info.ws, resolvedId, pid);
                     try { info.ws.close(); } catch { /* */ }
                 }
             }
@@ -310,7 +310,7 @@ class CallServer {
         }
 
         const participants = [];
-        for (const [pid, info] of room) participants.push(this._buildParticipantInfo(pid, info));
+        for (const [pid, info] of room) participants.push(await this._buildParticipantInfo(pid, info));
 
         ws.send(JSON.stringify({
             type: 'welcome',
@@ -323,21 +323,21 @@ class CallServer {
             canModerate,
         }));
 
-        const joinMsg = JSON.stringify({ type: 'peer-joined', ...this._buildParticipantInfo(peerId, clientInfo) });
+        const joinMsg = JSON.stringify({ type: 'peer-joined', ...(await this._buildParticipantInfo(peerId, clientInfo)) });
         for (const [pid, info] of room) { if (pid !== peerId && info.ws.readyState === WebSocket.OPEN) info.ws.send(joinMsg); }
         this._broadcastParticipantCount(resolvedId);
         this._notifyChannelsChanged();
 
-        ws.on('message', (data) => {
+        ws.on('message', async (data) => {
             // Rate limit: 200/s. A newcomer to a full room sends seven offers and their candidates in
             // a burst; the old 50/s silently dropped some of them and the join stalled.
             const now = Date.now();
             if (now - clientInfo._msgResetTime > 1000) { clientInfo._msgCount = 0; clientInfo._msgResetTime = now; }
             if (++clientInfo._msgCount > 200) return;
-            try { this._handleMessage(ws, JSON.parse(data), resolvedId, peerId); } catch (err) { console.warn('[Call] Message error for peer', peerId, ':', err.message); }
+            try { await this._handleMessage(ws, JSON.parse(data), resolvedId, peerId); } catch (err) { console.warn('[Call] Message error for peer', peerId, ':', err.message); }
         });
-        ws.on('close', () => this._handleDisconnect(ws, resolvedId, peerId));
-        ws.on('error', () => this._handleDisconnect(ws, resolvedId, peerId));
+        ws.on('close', () => this._handleDisconnect(ws, resolvedId, peerId).catch(() => {}));
+        ws.on('error', () => this._handleDisconnect(ws, resolvedId, peerId).catch(() => {}));
     }
 
     async _canModerate(user, channelId) {
@@ -404,11 +404,11 @@ class CallServer {
                 c.user = user; c.anonId = user ? null : await chatDelivery.getAnonIdForConnection(c.ip, channelId);
                 c.isChannelCreator = !!(user && ch?.createdBy === user.id);
                 c.isStreamer = ch?.streamId ? !!(user && (await db.getStreamById(ch.streamId))?.user_id === user.id) : false;
-                const pInfo = this._buildParticipantInfo(peerId, c);
+                const pInfo = await this._buildParticipantInfo(peerId, c);
                 if (c.ws.readyState === WebSocket.OPEN) c.ws.send(JSON.stringify({
                     type: 'self-updated',
                     isStreamer: c.isStreamer || c.isChannelCreator,
-                    canModerate: this._canModerate(user, channelId),
+                    canModerate: await this._canModerate(user, channelId),
                     participant: pInfo,
                 }));
                 const u = JSON.stringify({ type: 'peer-updated', ...pInfo });
@@ -416,7 +416,7 @@ class CallServer {
                 break;
             }
             case 'force-mute': {
-                const sender = room.get(peerId); if (!sender || !this._canModerate(sender.user, channelId)) break;
+                const sender = room.get(peerId); if (!sender || !(await this._canModerate(sender.user, channelId))) break;
                 const target = room.get(msg.targetPeerId); if (!target || target.isChannelCreator || target.isStreamer) break;
                 target.forceMuted = !!msg.forceMuted;
                 if (target.ws.readyState === WebSocket.OPEN) target.ws.send(JSON.stringify({ type: 'force-muted', forceMuted: target.forceMuted }));
@@ -425,7 +425,7 @@ class CallServer {
                 break;
             }
             case 'force-camera-off': {
-                const sender = room.get(peerId); if (!sender || !this._canModerate(sender.user, channelId)) break;
+                const sender = room.get(peerId); if (!sender || !(await this._canModerate(sender.user, channelId))) break;
                 const target = room.get(msg.targetPeerId); if (!target || target.isChannelCreator || target.isStreamer) break;
                 target.forceCameraOff = !!msg.forceCameraOff;
                 if (target.ws.readyState === WebSocket.OPEN) target.ws.send(JSON.stringify({ type: 'force-camera-off', forceCameraOff: target.forceCameraOff }));
@@ -434,7 +434,7 @@ class CallServer {
                 break;
             }
             case 'kick': {
-                const sender = room.get(peerId); if (!sender || !this._canModerate(sender.user, channelId)) break;
+                const sender = room.get(peerId); if (!sender || !(await this._canModerate(sender.user, channelId))) break;
                 const target = room.get(msg.targetPeerId); if (!target || target.isChannelCreator || target.isStreamer) break;
                 if (target.identity) this.kickCooldown.set(`${channelId}:${target.identity}`, Date.now() + KICK_COOLDOWN_MS);
                 if (target.ws.readyState === WebSocket.OPEN) { target.ws.send(JSON.stringify({ type: 'kicked' })); target.ws.close(); }
@@ -445,7 +445,7 @@ class CallServer {
                 break;
             }
             case 'ban': {
-                const sender = room.get(peerId); if (!sender || !this._canModerate(sender.user, channelId)) break;
+                const sender = room.get(peerId); if (!sender || !(await this._canModerate(sender.user, channelId))) break;
                 const target = room.get(msg.targetPeerId); if (!target || target.isChannelCreator || target.isStreamer) break;
                 if (!this.callBans.has(channelId)) this.callBans.set(channelId, new Set());
                 const banSet = this.callBans.get(channelId);
@@ -464,7 +464,7 @@ class CallServer {
                 break;
             }
             case 'unban': {
-                const sender = room.get(peerId); if (!sender || !this._canModerate(sender.user, channelId)) break;
+                const sender = room.get(peerId); if (!sender || !(await this._canModerate(sender.user, channelId))) break;
                 const uid = parseInt(msg.userId);
                 if (uid && this.callBans.has(channelId)) {
                     this.callBans.get(channelId).delete(uid);
@@ -482,13 +482,13 @@ class CallServer {
         }
     }
 
-    _handleDisconnect(ws, channelId, peerId) {
+    async _handleDisconnect(ws, channelId, peerId) {
         if (!this.clients.has(ws)) return; // already handled (error+close fire back-to-back)
         this.clients.delete(ws);
         const room = this.rooms.get(channelId);
         if (!room) return;
         const leaving = room.get(peerId);
-        const leftInfo = leaving ? this._buildParticipantInfo(peerId, leaving) : { peerId };
+        const leftInfo = leaving ? await this._buildParticipantInfo(peerId, leaving) : { peerId };
         room.delete(peerId);
         const m = JSON.stringify({ type: 'peer-left', ...leftInfo, reason: 'disconnect' });
         for (const [pid, info] of room) { if (info.ws.readyState === WebSocket.OPEN) info.ws.send(m); }
@@ -516,9 +516,9 @@ class CallServer {
 
     getParticipantCount(channelId) { const r = this.rooms.get(channelId); return r ? r.size : 0; }
 
-    getParticipants(channelId) {
+    async getParticipants(channelId) {
         const r = this.rooms.get(channelId); if (!r) return [];
-        const l = []; for (const [pid, info] of r) l.push(this._buildParticipantInfo(pid, info)); return l;
+        const l = []; for (const [pid, info] of r) l.push(await this._buildParticipantInfo(pid, info)); return l;
     }
 
     getCallBans(channelId) { const b = this.callBans.get(channelId); return b ? [...b] : []; }

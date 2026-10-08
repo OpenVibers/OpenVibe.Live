@@ -114,14 +114,12 @@ const NAMES = [['bc', '_broadcastSignInGate'], ['bc', 'loadBroadcastPage'], ['ws
     assert.ok(/#bc-stream-manager\.bc-guest > :not\(h2\):not\(\.bc-signin-gate\)\s*\{\s*display:\s*none/.test(css), 'the guest class hides the workspace');
 
     // ── The server creates nothing for a guest ──────────────────────────────────────
-    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ov-bc-gate-'));
-    process.env.DB_PATH = path.join(tmp, 'live.db');
     process.env.NODE_ENV = 'test';
     const quiet = console.log;
     console.log = () => {};
     console.warn = () => {};
     const db = require('../server/db/database');
-    db.initDb();
+    await db.initDb();
     const express = require('express');
     const app = express();
     app.use(express.json());
@@ -136,13 +134,12 @@ const NAMES = [['bc', '_broadcastSignInGate'], ['bc', 'loadBroadcastPage'], ['ws
         req.on('error', reject);
         req.end(data);
     });
-    const before = db.getDb().prepare('SELECT COUNT(*) AS n FROM managed_streams').get().n;
+    const before = (await db.getDb().prepare('SELECT COUNT(*) AS n FROM managed_streams').get()).n;
     assert.strictEqual(await post('/api/streams/managed', { title: 'guest slot' }), 401, 'creating a slot without a session is refused');
     assert.strictEqual(await post('/api/streams', { title: 'guest stream' }), 401, 'starting a stream without a session is refused');
-    assert.strictEqual(db.getDb().prepare('SELECT COUNT(*) AS n FROM managed_streams').get().n, before, 'and nothing was created');
-    assert.strictEqual(db.getDb().prepare('SELECT COUNT(*) AS n FROM users').get().n, 0, 'no identity was created either');
+    assert.strictEqual((await db.getDb().prepare('SELECT COUNT(*) AS n FROM managed_streams').get()).n, before, 'and nothing was created');
+    assert.strictEqual((await db.getDb().prepare('SELECT COUNT(*) AS n FROM users').get()).n, 0, 'no identity was created either');
     server.close();
-    fs.rmSync(tmp, { recursive: true, force: true });
     quiet('broadcast-signin-gate: ok');
     process.exit(0);
 })().catch((err) => {

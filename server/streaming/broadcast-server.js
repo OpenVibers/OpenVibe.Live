@@ -142,7 +142,7 @@ class BroadcastServer extends EventEmitter {
         }, WS_HEARTBEAT_MS);
 
         this.wss.on('connection', (ws, req) => {
-            this.handleConnection(ws, req);
+            this.handleConnection(ws, req).catch((e) => console.warn('[Broadcast] connection failed:', e && e.message));
         });
 
         console.log('[Broadcast] WebSocket broadcast server initialized');

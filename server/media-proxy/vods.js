@@ -438,14 +438,14 @@ router.get('/:id/context', optionalAuth, async (req, res) => {
                 .filter(r => r.username && (r.user_id == null || Number(r.user_id) !== Number(stream.user_id)))
                 .slice(0, 3)
                 .map(r => ({ username: r.username, display_name: r.display_name || r.username, avatar_url: r.avatar_url || null, profile_color: r.profile_color || null, n: Number(r.count) }));
-            const avg = await safe(async () => await db.get('SELECT ROUND(AVG(viewer_count), 1) AS a, COUNT(*) AS k FROM viewer_snapshots WHERE stream_id = ?', [stream.id]), { a: null, k: 0 });
+            const avg = await safe(async () => await db.get('SELECT ROUND(AVG(viewer_count), 1)::float8 AS a, COUNT(*) AS k FROM viewer_snapshots WHERE stream_id = ?', [stream.id]), { a: null, k: 0 });
             stats = {
                 chat_messages: Number(chatStats.messages) || 0, chatters: Number(chatStats.chatters) || 0,
                 peak_viewers: Number(stream.peak_viewers) || 0, avg_viewers: avg.k ? Number(avg.a) : null,
                 sound_commands: Number(chatStats.sounds) || 0,
                 mic_moments: await safe(async () => (await db.get('SELECT COUNT(*) AS n FROM arena_mic_moments WHERE stream_id = ?', [stream.id])).n, 0),
                 follows_gained: await safe(async () => (await db.get('SELECT COUNT(*) AS n FROM follows WHERE streamer_id = ? AND created_at BETWEEN ? AND ?', [stream.user_id, start, end])).n, 0),
-                tips: await safe(async () => await db.get("SELECT COUNT(*) AS n, COALESCE(SUM(amount), 0) AS t FROM transactions WHERE type = 'donation' AND (stream_id = ? OR (to_user_id = ? AND created_at BETWEEN ? AND ?))", [stream.id, stream.user_id, start, end]), { n: 0, t: 0 }),
+                tips: await safe(async () => await db.get("SELECT COUNT(*) AS n, COALESCE(SUM(amount), 0)::bigint AS t FROM transactions WHERE type = 'donation' AND (stream_id = ? OR (to_user_id = ? AND created_at BETWEEN ? AND ?))", [stream.id, stream.user_id, start, end]), { n: 0, t: 0 }),
                 top_chatters: topChatters,
             };
         }

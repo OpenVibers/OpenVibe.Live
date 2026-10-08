@@ -62,9 +62,9 @@ class ControlServer {
         const mode = urlParams.get('mode'); // 'hardware' or 'viewer'
 
         if (mode === 'hardware') {
-            this.handleHardwareConnection(ws, streamKey);
+            this.handleHardwareConnection(ws, streamKey).catch((e) => console.warn('[Control] hardware connection failed:', e && e.message));
         } else {
-            this.handleViewerConnection(ws, token, urlParams);
+            this.handleViewerConnection(ws, token, urlParams).catch((e) => console.warn('[Control] viewer connection failed:', e && e.message));
         }
     }
 
@@ -89,7 +89,7 @@ class ControlServer {
         ws.send(JSON.stringify({ type: 'connected', message: 'Hardware client registered' }));
 
         // Notify all viewers watching this stream that hardware is now online
-        this.broadcastToViewers(streamKey, {
+        await this.broadcastToViewers(streamKey, {
             type: 'hardware_status',
             connected: true,
         });
@@ -102,7 +102,7 @@ class ControlServer {
                     this.broadcastToViewers(streamKey, {
                         type: 'hardware_status',
                         ...msg,
-                    });
+                    }).catch(() => {});
                 }
             } catch { /* ignore */ }
         });
@@ -115,7 +115,7 @@ class ControlServer {
             this.broadcastToViewers(streamKey, {
                 type: 'hardware_status',
                 connected: false,
-            });
+            }).catch(() => {});
         });
     }
 
@@ -166,9 +166,9 @@ class ControlServer {
                     // a closed socket) escaped the try as an unhandled rejection nobody could see.
                     await this.handleCommand(ws, msg);
                 } else if (msg.type === 'key_down' || msg.type === 'key_up') {
-                    this.handleKeyEvent(ws, msg);
+                    await this.handleKeyEvent(ws, msg);
                 } else if (msg.type === 'video_click') {
-                    this.handleVideoClick(ws, msg);
+                    await this.handleVideoClick(ws, msg);
                 }
             } catch (err) {
                 console.warn('[Control] Message handling failed:', err && err.message);
@@ -209,7 +209,7 @@ class ControlServer {
                                     type: 'key_released',
                                     command,
                                     by: closingClient.user?.username || 'anonymous',
-                                });
+                                }).catch(() => {});
                             }
                         }
                     }
@@ -230,7 +230,7 @@ class ControlServer {
         const { command, control_id, isOnvif, cameraId, movement } = msg;
         if (!command && !isOnvif) return;
 
-        const ctx = this.validateControlPermission(ws, client);
+        const ctx = await this.validateControlPermission(ws, client);
         if (!ctx) return;
         const { stream, user, channel } = ctx;
 
@@ -326,7 +326,7 @@ class ControlServer {
                 onvifClient.disconnect();
 
                 // Broadcast activity to other viewers
-                this.broadcastToViewers(user.stream_key, {
+                await this.broadcastToViewers(user.stream_key, {
                     type: 'onvif_activity',
                     camera_name: camera.name,
                     movement,
@@ -365,7 +365,7 @@ class ControlServer {
         }));
 
         // Broadcast command activity to other viewers
-        this.broadcastToViewers(user.stream_key, {
+        await this.broadcastToViewers(user.stream_key, {
             type: 'command_executed',
             command: control.command,
             by: client.user?.username || 'anonymous',
@@ -422,7 +422,7 @@ class ControlServer {
         const { command, control_id } = msg;
         if (!command) return;
 
-        const ctx = this.validateControlPermission(ws, client);
+        const ctx = await this.validateControlPermission(ws, client);
         if (!ctx) return;
 
         // Validate control exists, is keyboard type, and is enabled
@@ -481,7 +481,7 @@ class ControlServer {
         }
 
         // Broadcast to viewers
-        this.broadcastToViewers(ctx.user.stream_key, {
+        await this.broadcastToViewers(ctx.user.stream_key, {
             type: msg.type === 'key_down' ? 'key_held' : 'key_released',
             command,
             by: client.user?.username || 'anonymous',
@@ -491,7 +491,7 @@ class ControlServer {
     /**
      * Handle video click (x, y normalized 0-1)
      */
-    handleVideoClick(ws, msg) {
+    async handleVideoClick(ws, msg) {
         const client = this.viewerClients.get(ws);
         if (!client || !client.streamId) return;
 
@@ -499,7 +499,7 @@ class ControlServer {
         const y = parseFloat(msg.y);
         if (isNaN(x) || isNaN(y) || x < 0 || x > 1 || y < 0 || y > 1) return;
 
-        const ctx = this.validateControlPermission(ws, client);
+        const ctx = await this.validateControlPermission(ws, client);
         if (!ctx) return;
 
         // Check that video click is enabled
@@ -533,7 +533,7 @@ class ControlServer {
         }
 
         // Broadcast click activity
-        this.broadcastToViewers(ctx.user.stream_key, {
+        await this.broadcastToViewers(ctx.user.stream_key, {
             type: 'video_click_activity',
             x: Math.round(x * 100) / 100,
             y: Math.round(y * 100) / 100,

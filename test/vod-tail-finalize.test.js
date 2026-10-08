@@ -21,7 +21,6 @@ const path = require('path');
 const http = require('http');
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ov-vod-tail-'));
-process.env.DB_PATH = path.join(tmp, 'live.db');
 process.env.DATA_DIR = tmp;
 process.env.NODE_ENV = 'test';
 process.env.MEDIA_PUBLIC_URL = 'https://media.test';
@@ -30,24 +29,16 @@ console.log = (...a) => { if (!/^\[/.test(String(a[0]))) quiet(...a); };
 console.warn = () => {};
 
 const db = require('../server/db/database');
-db.initDb();
-const raw = db.getDb();
 
 const auth = require('../server/auth/auth');
-const signIn = (req) => {
+const signIn = async (req) => {
     const id = Number(req.headers['x-test-user'] || 0);
-    const u = id ? db.getUserById(id) : null;
+    const u = id ? await db.getUserById(id) : null;
     if (u) { req.user = u; req.authSource = 'network'; }
     return u;
 };
-auth.requireAuth = (req, res, next) => (signIn(req) ? next() : res.status(401).json({ error: 'Authentication required' }));
-auth.optionalAuth = (req, res, next) => { signIn(req); next(); };
-
-raw.prepare(`INSERT INTO users (id, username, display_name, email, password_hash, role, created_at) OVERRIDING SYSTEM VALUE
-    VALUES (3, 'alice', 'alice', 'alice@x', 'x', 'streamer', '2025-01-01 00:00:00')`).run();
-db.ensureChannel(3);
-const chan = db.getChannelByUserId(3);
-const newStream = (protocol) => Number(db.createStream({ user_id: 3, channel_id: chan.id, title: `A ${protocol}`, protocol }).lastInsertRowid);
+auth.requireAuth = async (req, res, next) => ((await signIn(req)) ? next() : res.status(401).json({ error: 'Authentication required' }));
+auth.optionalAuth = async (req, res, next) => { await signIn(req); next(); };
 
 // ── Media stub: records every call; VOD rows are whatever the test says Media holds ──
 const media = require('../server/media-client');
@@ -123,10 +114,18 @@ async function check(name, fn) {
 }
 
 (async () => {
+    await db.initDb();
+    const raw = db.getDb();
+    await raw.prepare(`INSERT INTO users (id, username, display_name, email, password_hash, role, created_at) OVERRIDING SYSTEM VALUE
+        VALUES (3, 'alice', 'alice', 'alice@x', 'x', 'streamer', '2025-01-01 00:00:00')`).run();
+    await db.ensureChannel(3);
+    const chan = await db.getChannelByUserId(3);
+    const newStream = async (protocol) => Number((await db.createStream({ user_id: 3, channel_id: chan.id, title: `A ${protocol}`, protocol })).lastInsertRowid);
+
     await new Promise((r) => server.once('listening', r));
     const config = require('../server/config');
 
-    const rtmpSid = newStream('rtmp');
+    const rtmpSid = await newStream('rtmp');
     let rtmpVod;
 
     await check('RTMP: a live stream gets a Media VOD, and Media pulls the local RTMP endpoint', async () => {
@@ -190,7 +189,7 @@ async function check(name, fn) {
     });
 
     await check('WebRTC/WHIP: PlainRTP consumers feed Media\'s ports; stream end stops the RTP ingest and closes them', async () => {
-        const sid = newStream('webrtc');
+        const sid = await newStream('webrtc');
         sfu.rooms.set(`stream-${sid}`, room(`stream-${sid}`));
         recorder.startRecording(sid, 'whip', {}, { mode: 'vod' });
         await until(() => recorder.getActiveRecording(sid)?.webrtcState, 'the RTP wiring');
@@ -206,7 +205,7 @@ async function check(name, fn) {
     });
 
     await check('browser chunks: stream end completes the chunk session and finalises it', async () => {
-        const sid = newStream('webrtc');
+        const sid = await newStream('webrtc');
         recorder.registerChunkSession(sid, 900);
         recorder.stopRecording(sid);
         await until(() => !recorder.isFinalizingStream(sid), 'the chunk finalise');
@@ -214,7 +213,7 @@ async function check(name, fn) {
     });
 
     await check('clips-only recording (VOD-disabled slot) is finalised and then discarded', async () => {
-        const sid = newStream('rtmp');
+        const sid = await newStream('rtmp');
         recorder.startRecording(sid, 'rtmp', { streamKey: 'clipsonly1' }, { mode: 'clips' });
         await until(() => calls.some((c) => c[0] === 'ingestRtmp' && c[2].endsWith('/clipsonly1')), 'the clips-only ingest');
         const vodId = recorder.getActiveRecording(sid).vodId;
@@ -225,7 +224,7 @@ async function check(name, fn) {
     });
 
     await check('Media reporting the VOD ready (or failed) clears a recording Live still thought active', async () => {
-        const sid = newStream('rtmp');
+        const sid = await newStream('rtmp');
         recorder.startRecording(sid, 'rtmp', { streamKey: 'settled01' }, { mode: 'vod' });
         await until(() => calls.some((c) => c[0] === 'ingestRtmp' && c[2].endsWith('/settled01')), 'the ingest');
         recorder.onVodSettled(recorder.getActiveRecording(sid).vodId);

@@ -18,86 +18,25 @@
 'use strict';
 const assert = require('assert');
 const fs = require('fs');
-const os = require('os');
 const path = require('path');
 const http = require('http');
 const vm = require('vm');
 
-const tmp = path.join(os.tmpdir(), `ov-clip-attribution-${process.pid}.db`);
-process.env.DB_PATH = tmp;
 process.env.NODE_ENV = 'test';
 const quiet = console.log;
 console.log = (...a) => { if (!/^\[/.test(String(a[0]))) quiet(...a); };
 console.warn = () => {};
 console.error = () => {};
 
-const db = require('../server/db/database');
-db.initDb();
-const raw = db.getDb();
-
-// ── Sign-in stub (before any router captures the middleware) ──
-const auth = require('../server/auth/auth');
-const signIn = (req) => {
-    const id = Number(req.headers['x-test-user'] || 0);
-    const u = id ? db.getUserById(id) : null;
-    if (u) { req.user = u; req.authSource = 'network'; }
-    return u;
-};
-auth.requireAuth = (req, res, next) => (signIn(req) ? next() : res.status(401).json({ error: 'Authentication required' }));
-auth.optionalAuth = (req, res, next) => { signIn(req); next(); };
-
-const addUser = (id, username, display) => raw.prepare(
-    `INSERT INTO users (id, username, display_name, email, password_hash, role, created_at) OVERRIDING SYSTEM VALUE
-     VALUES (?, ?, ?, ?, 'x', 'streamer', '2025-01-01 00:00:00')`).run(id, username, display, `${username}@x`);
-addUser(3, 'alice', 'Alice');
-addUser(4, 'bob', 'Bob');
-db.ensureChannel(3);
-
 // ── OpenVibe.Media stand-in. `honour` = whether it applies auto_generated (an old Media did not). ──
-const media = require('../server/media-client');
-const asked = [];
-let honour = true;
 const CLIPS = [
     { id: 1, user_id: 3, channel_user_id: 3, title: 'AI: chat lost it', visibility: 'public', is_public: true, status: 'ready', auto_generated: true },
     { id: 2, user_id: 3, channel_user_id: 3, title: 'AI: the lights went out', visibility: 'public', is_public: true, status: 'ready', auto_generated: true },
     { id: 3, user_id: 4, channel_user_id: 3, title: 'Bob clipped Alice', visibility: 'public', is_public: true, status: 'ready', auto_generated: false },
     { id: 4, user_id: 3, channel_user_id: 4, title: 'Alice clipped Bob', visibility: 'public', is_public: true, status: 'ready', auto_generated: false },
 ];
-media.listClips = async (q = {}) => {
-    asked.push({ ...q });
-    const rows = CLIPS.filter((c) => (q.user_id == null || String(c.user_id) === String(q.user_id))
-        && (q.channel_user_id == null || String(c.channel_user_id) === String(q.channel_user_id))
-        && (!q.hide_self || c.user_id !== c.channel_user_id)
-        && (!honour || q.auto_generated == null || Number(c.auto_generated) === Number(q.auto_generated)));
-    return { clips: rows.map((c) => ({ ...c })), total: rows.length };
-};
-media.listVods = async () => ({ vods: [], total: 0 });
-media.request = async () => { throw new media.MediaApiError('stubbed', 0, null); };
-media.getClip = async () => { throw new media.MediaApiError('not found', 404, null); };
-const pastesClient = require('../server/pastes-client');
-pastesClient.request = async () => ({ pastes: [], total: 0 });
-pastesClient.listPastes = async () => ({ pastes: [], total: 0 });
-
-const express = require('express');
-const app = express();
-app.use(express.json());
-app.use('/api/clips', require('../server/media-proxy/clips'));
-app.use('/api/streams', require('../server/streaming/routes'));
-const server = http.createServer(app).listen(0);
-function call(p, user) {
-    return new Promise((resolve, reject) => {
-        const headers = {};
-        if (user) headers['x-test-user'] = String(user);
-        const req = http.request({ port: server.address().port, path: p, method: 'GET', headers }, (res) => {
-            let text = '';
-            res.on('data', (c) => { text += c; });
-            res.on('end', () => { let json = null; try { json = JSON.parse(text); } catch { /* */ } resolve({ status: res.statusCode, json }); });
-        });
-        req.on('error', reject);
-        req.end();
-    });
-}
-const ids = (rows) => (rows || []).map((c) => c.id).sort();
+const asked = [];
+let honour = true;
 
 // ── A small stand-in DOM, enough for _renderClipAttribution ──
 class El {
@@ -120,6 +59,8 @@ function loadAttribution() {
     return ctx._renderClipAttribution;
 }
 
+const ids = (rows) => (rows || []).map((c) => c.id).sort();
+
 let failures = 0;
 async function check(name, fn) {
     try { asked.length = 0; honour = true; await fn(); quiet('  ✓', name); }
@@ -127,6 +68,64 @@ async function check(name, fn) {
 }
 
 (async () => {
+    const db = require('../server/db/database');
+    await db.initDb();
+    const raw = db.getDb();
+
+    // ── Sign-in stub (before any router captures the middleware) ──
+    const auth = require('../server/auth/auth');
+    const signIn = async (req) => {
+        const id = Number(req.headers['x-test-user'] || 0);
+        const u = id ? await db.getUserById(id) : null;
+        if (u) { req.user = u; req.authSource = 'network'; }
+        return u;
+    };
+    auth.requireAuth = async (req, res, next) => ((await signIn(req)) ? next() : res.status(401).json({ error: 'Authentication required' }));
+    auth.optionalAuth = async (req, res, next) => { await signIn(req); next(); };
+
+    const addUser = (id, username, display) => raw.prepare(
+        `INSERT INTO users (id, username, display_name, email, password_hash, role, created_at) OVERRIDING SYSTEM VALUE
+         VALUES (?, ?, ?, ?, 'x', 'streamer', '2025-01-01 00:00:00')`).run(id, username, display, `${username}@x`);
+    await addUser(3, 'alice', 'Alice');
+    await addUser(4, 'bob', 'Bob');
+    await db.ensureChannel(3);
+
+    const media = require('../server/media-client');
+    media.listClips = async (q = {}) => {
+        asked.push({ ...q });
+        const rows = CLIPS.filter((c) => (q.user_id == null || String(c.user_id) === String(q.user_id))
+            && (q.channel_user_id == null || String(c.channel_user_id) === String(q.channel_user_id))
+            && (!q.hide_self || c.user_id !== c.channel_user_id)
+            && (!honour || q.auto_generated == null || Number(c.auto_generated) === Number(q.auto_generated)));
+        return { clips: rows.map((c) => ({ ...c })), total: rows.length };
+    };
+    media.listVods = async () => ({ vods: [], total: 0 });
+    media.request = async () => { throw new media.MediaApiError('stubbed', 0, null); };
+    media.getClip = async () => { throw new media.MediaApiError('not found', 404, null); };
+    const pastesClient = require('../server/pastes-client');
+    pastesClient.request = async () => ({ pastes: [], total: 0 });
+    pastesClient.listPastes = async () => ({ pastes: [], total: 0 });
+
+    const express = require('express');
+    const app = express();
+    app.use(express.json());
+    app.use('/api/clips', require('../server/media-proxy/clips'));
+    app.use('/api/streams', require('../server/streaming/routes'));
+    const server = http.createServer(app).listen(0);
+    function call(p, user) {
+        return new Promise((resolve, reject) => {
+            const headers = {};
+            if (user) headers['x-test-user'] = String(user);
+            const req = http.request({ port: server.address().port, path: p, method: 'GET', headers }, (res) => {
+                let text = '';
+                res.on('data', (c) => { text += c; });
+                res.on('end', () => { let json = null; try { json = JSON.parse(text); } catch { /* */ } resolve({ status: res.statusCode, json }); });
+            });
+            req.on('error', reject);
+            req.end();
+        });
+    }
+
     await new Promise((r) => server.once('listening', r));
     quiet('Clip attribution');
 
@@ -200,8 +199,6 @@ async function check(name, fn) {
     });
 
     server.close();
-    try { fs.unlinkSync(tmp); } catch { /* */ }
-    for (const ext of ['-wal', '-shm']) { try { fs.unlinkSync(tmp + ext); } catch { /* */ } }
     quiet(failures ? `\n${failures} check(s) failed` : '\nclip attribution: all checks passed');
     process.exit(failures ? 1 : 0);
-})();
+})().catch((e) => { console.error(e); process.exit(1); });

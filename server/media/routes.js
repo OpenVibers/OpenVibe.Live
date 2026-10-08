@@ -56,7 +56,8 @@ router.get('/channel/:username', optionalAuth, async (req, res) => {
 
         const channel = await db.getChannelByUserId(user.id) || await db.ensureChannel(user.id);
         const streams = await db.getLiveStreamsByUserId(user.id) || [];
-        const state = mediaQueue.getState(user.id);
+        const state = await mediaQueue.getState(user.id);
+        const settings = await mediaQueue.getSettings(user.id);
 
         res.json({
             channel: {
@@ -77,15 +78,14 @@ router.get('/channel/:username', optionalAuth, async (req, res) => {
             // same controls as the streamer; the server re-checks on every action.
             can_manage: await canManageChannel(req.user, user.id),
             pricing: (() => {
-                const st = mediaQueue.getSettings(user.id);
-                const currency = mediaQueue.currencyOf(st);
+                const currency = mediaQueue.currencyOf(settings);
                 return {
                     currency,
                     currency_label: mediaQueue.currencyLabel(currency),
-                    cost_mode: st.cost_mode || 'flat',
-                    request_cost: st.request_cost,
-                    cost_per_minute: st.cost_per_minute,
-                    max_duration_seconds: st.max_duration_seconds,
+                    cost_mode: settings.cost_mode || 'flat',
+                    request_cost: settings.request_cost,
+                    cost_per_minute: settings.cost_per_minute,
+                    max_duration_seconds: settings.max_duration_seconds,
                 };
             })(),
             media_player_url: `/media/${user.username}`,
@@ -95,11 +95,11 @@ router.get('/channel/:username', optionalAuth, async (req, res) => {
     }
 });
 
-router.get('/settings', requireAuth, (req, res) => {
-    res.json({ settings: mediaQueue.getSettings(req.user.id), media_player_url: `/media/${req.user.username}` });
+router.get('/settings', requireAuth, async (req, res) => {
+    res.json({ settings: await mediaQueue.getSettings(req.user.id), media_player_url: `/media/${req.user.username}` });
 });
 
-router.put('/settings', requireAuth, (req, res) => {
+router.put('/settings', requireAuth, async (req, res) => {
     try {
         const fields = {};
         const mapping = {
@@ -147,7 +147,7 @@ router.put('/settings', requireAuth, (req, res) => {
             }
         }
 
-        const settings = mediaQueue.updateSettings(req.user.id, fields);
+        const settings = await mediaQueue.updateSettings(req.user.id, fields);
         res.json({ settings, media_player_url: `/media/${req.user.username}` });
     } catch (err) {
         res.status(400).json({ error: err.message || 'Failed to update settings' });
@@ -173,7 +173,7 @@ router.post('/quote', optionalAuth, async (req, res) => {
         const input = String(req.body.input || '').trim();
         if (!input) return res.status(400).json({ error: 'input required' });
 
-        const settings = mediaQueue.getSettings(streamerId);
+        const settings = await mediaQueue.getSettings(streamerId);
         if (!settings.enabled) return res.status(403).json({ error: 'Media requests are closed for this channel' });
 
         const normalized = await mediaQueue.normalizeInput(input, settings);
@@ -257,7 +257,7 @@ router.post('/request', requireAuth, async (req, res) => {
 
 router.post('/start', requireAuth, async (req, res) => {
     try {
-        const request = mediaQueue.startNext(await resolveQueueTarget(req));
+        const request = await mediaQueue.startNext(await resolveQueueTarget(req));
         res.json({ request });
     } catch (err) {
         res.status(err.status || 400).json({ error: err.message || 'Failed to start next request' });
@@ -267,8 +267,8 @@ router.post('/start', requireAuth, async (req, res) => {
 router.post('/advance', requireAuth, async (req, res) => {
     try {
         const target = await resolveQueueTarget(req);
-        const ended = mediaQueue.finishCurrent(target, req.body.status === 'skipped' ? 'skipped' : 'played');
-        const next = mediaQueue.startNext(target);
+        const ended = await mediaQueue.finishCurrent(target, req.body.status === 'skipped' ? 'skipped' : 'played');
+        const next = await mediaQueue.startNext(target);
         res.json({ ended, next });
     } catch (err) {
         res.status(err.status || 400).json({ error: err.message || 'Failed to advance queue' });
@@ -285,7 +285,7 @@ router.post('/queue/:id/play', requireAuth, async (req, res) => {
         if (!request || request.status !== 'pending') return res.status(404).json({ error: 'Pending request not found' });
         await db.updateMediaRequest(request.id, { queue_position: 0 });
         await db.renormalizePendingMediaRequestPositions(target);
-        const started = mediaQueue.startNext(target);
+        const started = await mediaQueue.startNext(target);
         res.json({ request: started });
     } catch (err) {
         res.status(err.status || 400).json({ error: err.message || 'Failed to start request' });
@@ -294,7 +294,7 @@ router.post('/queue/:id/play', requireAuth, async (req, res) => {
 
 router.post('/queue/:id/skip', requireAuth, async (req, res) => {
     try {
-        const request = mediaQueue.skip(await resolveQueueTarget(req), cleanInt(req.params.id, 0));
+        const request = await mediaQueue.skip(await resolveQueueTarget(req), cleanInt(req.params.id, 0));
         res.json({ request });
     } catch (err) {
         res.status(err.status || 400).json({ error: err.message || 'Failed to skip request' });
@@ -304,7 +304,7 @@ router.post('/queue/:id/skip', requireAuth, async (req, res) => {
 router.post('/queue/:id/move', requireAuth, async (req, res) => {
     try {
         const direction = req.body.direction === 'down' ? 'down' : 'up';
-        const request = mediaQueue.move(await resolveQueueTarget(req), cleanInt(req.params.id, 0), direction);
+        const request = await mediaQueue.move(await resolveQueueTarget(req), cleanInt(req.params.id, 0), direction);
         res.json({ request });
     } catch (err) {
         res.status(err.status || 400).json({ error: err.message || 'Failed to reorder request' });
@@ -313,7 +313,7 @@ router.post('/queue/:id/move', requireAuth, async (req, res) => {
 
 router.delete('/queue/:id', requireAuth, async (req, res) => {
     try {
-        const request = mediaQueue.skip(await resolveQueueTarget(req), cleanInt(req.params.id, 0));
+        const request = await mediaQueue.skip(await resolveQueueTarget(req), cleanInt(req.params.id, 0));
         res.json({ request });
     } catch (err) {
         res.status(err.status || 400).json({ error: err.message || 'Failed to remove request' });
@@ -377,7 +377,7 @@ router.post('/queue/:id/position', requireAuth, async (req, res) => {
         if (!Number.isFinite(position) || position < 0) {
             return res.status(400).json({ error: 'Invalid position' });
         }
-        mediaQueue.savePlaybackPosition(requestId, position);
+        await mediaQueue.savePlaybackPosition(requestId, position);
         res.json({ ok: true });
     } catch (err) {
         res.status(400).json({ error: err.message || 'Failed to save position' });
@@ -407,7 +407,7 @@ router.post('/queue/:id/fail', requireAuth, async (req, res) => {
         if (!(await canManageChannel(req.user, request.streamer_id))) {
             return res.status(403).json({ error: 'Only the channel owner or its mods can report failures' });
         }
-        const failed = mediaQueue.failRequest(request.id, req.body.error || 'Playback failed');
+        const failed = await mediaQueue.failRequest(request.id, req.body.error || 'Playback failed');
         res.json({ request: failed });
     } catch (err) {
         res.status(400).json({ error: err.message || 'Failed to report failure' });

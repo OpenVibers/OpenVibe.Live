@@ -201,7 +201,7 @@ class RestreamManager extends EventEmitter {
             session.lastError = 'Audio source added';
             session.restartAttempts = 0;
             session.restartDelay = RESTART_BASE_DELAY;
-            this._scheduleRestart(session);
+            this._scheduleRestart(session).catch((e) => console.warn('[Restream] restart scheduling failed:', e && e.message));
             restarted++;
         }
         if (restarted > 0) {
@@ -234,7 +234,7 @@ class RestreamManager extends EventEmitter {
             // Reset backoff so restart is quick
             session.restartAttempts = 0;
             session.restartDelay = RESTART_BASE_DELAY;
-            this._scheduleRestart(session);
+            this._scheduleRestart(session).catch((e) => console.warn('[Restream] restart scheduling failed:', e && e.message));
             restarted++;
         }
         if (restarted > 0) {
@@ -525,7 +525,7 @@ class RestreamManager extends EventEmitter {
                     streamId: session.streamId, destId: session.destId,
                     status: 'error', error: session.lastError,
                 });
-                this._scheduleRestart(session);
+                this._scheduleRestart(session).catch((e) => console.warn('[Restream] restart scheduling failed:', e && e.message));
                 return;
             }
             console.log(`[Restream] WebRTC: Signaled broadcaster to produce into SFU for stream ${session.streamId}`);
@@ -543,7 +543,7 @@ class RestreamManager extends EventEmitter {
                 streamId: session.streamId, destId: session.destId,
                 status: 'error', error: session.lastError,
             });
-            this._scheduleRestart(session);
+            this._scheduleRestart(session).catch((e) => console.warn('[Restream] restart scheduling failed:', e && e.message));
             return;
         }
 
@@ -581,7 +581,7 @@ class RestreamManager extends EventEmitter {
                 streamId: session.streamId, destId: session.destId,
                 status: 'error', error: session.lastError,
             });
-            this._scheduleRestart(session);
+            this._scheduleRestart(session).catch((e) => console.warn('[Restream] restart scheduling failed:', e && e.message));
             return;
         }
 
@@ -937,7 +937,7 @@ class RestreamManager extends EventEmitter {
                 streamId: session.streamId, destId: session.destId,
                 status: 'error', error: err.message,
             });
-            this._scheduleRestart(session);
+            this._scheduleRestart(session).catch((e) => console.warn('[Restream] restart scheduling failed:', e && e.message));
         });
 
         proc.on('close', (code) => {
@@ -962,7 +962,7 @@ class RestreamManager extends EventEmitter {
                     streamId: session.streamId, destId: session.destId,
                     status: 'error', error: session.lastError,
                 });
-                this._scheduleRestart(session);
+                this._scheduleRestart(session).catch((e) => console.warn('[Restream] restart scheduling failed:', e && e.message));
             }
         });
 
@@ -1072,7 +1072,7 @@ class RestreamManager extends EventEmitter {
                     console.warn(`[Restream] WebRTC restart failed for ${session.key}:`, err.message);
                     session.lastError = err.message;
                     session.status = 'error';
-                    this._scheduleRestart(session);
+                    this._scheduleRestart(session).catch((e) => console.warn('[Restream] restart scheduling failed:', e && e.message));
                 });
             }
         }, delay);
@@ -1253,7 +1253,7 @@ class RestreamManager extends EventEmitter {
         if (this._viewerPollTimer) return;
         // Sequential external calls with 8s timeouts each: with several destinations a run can outlast
         // the minute, so it is single-flight and measured from the end of the previous run.
-        this._viewerPollTimer = require('../utils/jobs').every('restream-viewer-counts', 60000, () => this._pollViewerCounts(), { initialDelayMs: 5000, jitterMs: 5000 });
+        this._viewerPollTimer = require('../utils/jobs').every('restream-viewer-counts', 60000, () => this._pollViewerCounts().catch((e) => console.warn('[Restream] viewer-count poll failed:', e && e.message)), { initialDelayMs: 5000, jitterMs: 5000 });
     }
 
     stopViewerCountPolling() {
@@ -1284,6 +1284,8 @@ class RestreamManager extends EventEmitter {
 
         if (activeDests.size === 0) return;
 
+        const pollCfg = await this.getViewerPollingConfig();
+
         // Get destination details from DB
         for (const destId of activeDests) {
             try {
@@ -1294,7 +1296,7 @@ class RestreamManager extends EventEmitter {
                 let platformLive = null;
                 if (dest.platform === 'kick') {
                     // Primary: Kick official API (requires client_id + client_secret)
-                    if (this.getViewerPollingConfig().kick.serverFetchEnabled) {
+                    if (pollCfg.kick.serverFetchEnabled) {
                         const result = await this._fetchKickViewerCount(dest.channel_url);
                         if (result != null) {
                             count = result.count;
@@ -1317,7 +1319,7 @@ class RestreamManager extends EventEmitter {
                 } else if (dest.platform === 'youtube') {
                     // YouTube API quota is precious (10k units/day). Poll at most every
                     // 5 min per destination; between polls the cached count persists.
-                    if (this.getViewerPollingConfig().youtube.serverFetchEnabled) {
+                    if (pollCfg.youtube.serverFetchEnabled) {
                         this._ytLastPoll = this._ytLastPoll || new Map();
                         const YT_POLL_MS = 5 * 60 * 1000;
                         if (Date.now() - (this._ytLastPoll.get(destId) || 0) >= YT_POLL_MS) {
@@ -1822,7 +1824,7 @@ class RestreamManager extends EventEmitter {
     }
 
     async autoStartForStream(streamId, userId, streamInfo) {
-        const destinations = this._getDestinationsForStream(streamId, userId);
+        const destinations = await this._getDestinationsForStream(streamId, userId);
         if (!destinations?.length) return;
 
         for (const dest of destinations) {
@@ -1839,7 +1841,7 @@ class RestreamManager extends EventEmitter {
     }
 
     async resumeForStream(streamId, userId, streamInfo) {
-        const destinations = this._getDestinationsForStream(streamId, userId);
+        const destinations = await this._getDestinationsForStream(streamId, userId);
         if (!destinations?.length) return;
 
         let resumed = 0;

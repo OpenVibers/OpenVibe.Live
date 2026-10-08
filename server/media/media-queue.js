@@ -234,7 +234,7 @@ class MediaQueue {
      * Enforces duration limits and per-minute pricing.
      */
     async addRequest({ streamerId, streamId, userId, username, input }) {
-        const settings = this.getSettings(streamerId);
+        const settings = await this.getSettings(streamerId);
         if (!settings.enabled) throw new Error('Media requests are disabled for this channel');
 
         const trimmed = String(input || '').trim();
@@ -378,7 +378,7 @@ class MediaQueue {
         // Only refund something still queued — a played item keeps its charge.
         if (!request || (request.status !== 'pending' && request.status !== 'playing')) return false;
         console.warn(`[MediaQueue] Request ${requestId} cannot play, refunding: ${message}`);
-        this.failRequest(requestId, this._viewerFacingError(message));
+        await this.failRequest(requestId, this._viewerFacingError(message));
         return true;
     }
 
@@ -402,7 +402,7 @@ class MediaQueue {
         const request = await db.getMediaRequestById(requestId);
         if (!request) return null;
         if (request.stream_url && request.download_status === 'ready') return request;
-        const settings = this.getSettings(request.streamer_id);
+        const settings = await this.getSettings(request.streamer_id);
         if (request.provider === 'audio' || request.provider === 'video') {
             // Direct media — the canonical_url IS the stream URL
             await db.updateMediaRequest(requestId, {
@@ -418,7 +418,7 @@ class MediaQueue {
                 download_status: 'failed',
                 last_error: 'yt-dlp is not available on the server',
             });
-            this._failIfTerminal(requestId, 'yt-dlp is not available on the server');
+            await this._failIfTerminal(requestId, 'yt-dlp is not available on the server');
             return await db.getMediaRequestById(requestId);
         }
 
@@ -456,7 +456,7 @@ class MediaQueue {
                 });
                 // Refunds immediately when the video can never play, rather than leaving a
                 // paid-for item stuck at the top of the queue.
-                if (!this._failIfTerminal(requestId, combined)) this.broadcastQueueUpdate(request.streamer_id);
+                if (!(await this._failIfTerminal(requestId, combined))) this.broadcastQueueUpdate(request.streamer_id);
                 return await db.getMediaRequestById(requestId);
             }
         }
@@ -542,9 +542,9 @@ class MediaQueue {
         return ended;
     }
 
-    advance(streamerId) {
-        this.finishCurrent(streamerId, 'played');
-        return this.startNext(streamerId);
+    async advance(streamerId) {
+        await this.finishCurrent(streamerId, 'played');
+        return await this.startNext(streamerId);
     }
 
     async skip(streamerId, requestId) {
@@ -683,7 +683,7 @@ class MediaQueue {
         // chat. Server file paths and raw yt-dlp errors are not viewer information; nothing renders them.
         const publicRow = (r) => { if (!r) return r; const { file_path, last_error, ...rest } = r; void file_path; return { ...rest, failed: !!last_error }; };
         return {
-            settings: this.getSettings(streamerId),
+            settings: await this.getSettings(streamerId),
             now_playing: publicRow(await db.getActiveMediaRequestByStreamer(streamerId)),
             queue: (await db.getPendingMediaRequestsByStreamer(streamerId, 50) || []).map(publicRow),
             history: (await db.getRecentMediaRequestsByStreamer(streamerId, 20) || []).map(publicRow),
@@ -875,20 +875,24 @@ class MediaQueue {
         return last.replace(/\.[a-z0-9]+$/i, '').replace(/[-_]+/g, ' ').trim() || 'Media request';
     }
 
-    broadcastNowPlaying(streamerId, request) {
-        this.broadcast(streamerId, {
-            type: 'media_now_playing',
-            request,
-            timestamp: new Date().toISOString(),
-        });
+    async broadcastNowPlaying(streamerId, request) {
+        try {
+            await this.broadcast(streamerId, {
+                type: 'media_now_playing',
+                request,
+                timestamp: new Date().toISOString(),
+            });
+        } catch { /* optional */ }
     }
 
-    broadcastQueueUpdate(streamerId) {
-        this.broadcast(streamerId, {
-            type: 'media_queue_update',
-            state: this.getState(streamerId),
-            timestamp: new Date().toISOString(),
-        });
+    async broadcastQueueUpdate(streamerId) {
+        try {
+            await this.broadcast(streamerId, {
+                type: 'media_queue_update',
+                state: await this.getState(streamerId),
+                timestamp: new Date().toISOString(),
+            });
+        } catch { /* optional */ }
     }
 
     async broadcast(streamerId, payload) {

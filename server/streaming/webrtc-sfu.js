@@ -51,7 +51,7 @@ class WebRTCSFU extends EventEmitter {
                     }
                 }
                 this.rooms.clear();
-                setTimeout(() => this.init(), 2000);
+                setTimeout(() => this.init().catch((e) => console.warn('[WebRTC] reinit failed:', e && e.message)), 2000);
             });
 
             this.ready = true;

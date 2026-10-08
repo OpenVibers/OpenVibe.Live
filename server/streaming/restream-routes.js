@@ -522,7 +522,7 @@ router.get('/viewer-counts', requireAuth, async (req, res) => {
         }
         const ext = { total: 0, breakdown: [] };
         for (const slotId of slots) {
-            const part = restreamManager.getExternalViewerCountsForUser(req.user.id, slotId);
+            const part = await restreamManager.getExternalViewerCountsForUser(req.user.id, slotId);
             ext.total += part.total;
             ext.breakdown.push(...part.breakdown);
         }

@@ -323,8 +323,8 @@ router.get('/channel/:username', optionalAuth, async (req, res) => {
                 }
                 return c;
             };
-            clips.forEach(nameClip);
-            clipsOfStreams.forEach(nameClip);
+            for (const c of clips) await nameClip(c);
+            for (const c of clipsOfStreams) await nameClip(c);
             // An AI clip has no clipper: it is "from <streamer>'s stream".
             for (const c of aiClips) { c.ai_label = 'AI clip'; c.source_streamer_username = channel.username; c.source_streamer_display_name = channel.display_name || channel.username; }
             // AI overviews are Live-owned (vod_ai_state / clip_ai_state). Attach the
@@ -1323,19 +1323,19 @@ router.get('/recent-vods', async (req, res) => {
 
 /* ── Voice Channels (global, non-stream) ───────────────────── */
 
-router.get('/voice-channels', optionalAuth, (req, res) => {
+router.get('/voice-channels', optionalAuth, async (req, res) => {
     try {
         res.set('Cache-Control', 'no-store'); // private calls differ per viewer; the list is pushed anyway
-        res.json({ channels: callServer.listChannels(req.user || null) });
+        res.json({ channels: await callServer.listChannels(req.user || null) });
     } catch (err) {
         console.error('[Streaming]', err.message);
         res.status(500).json({ error: 'Failed to list voice channels' });
     }
 });
 
-router.get('/voice-channels/:channelId', optionalAuth, (req, res) => {
+router.get('/voice-channels/:channelId', optionalAuth, async (req, res) => {
     try {
-        const ch = callServer.getChannel(req.params.channelId, req.user || null);
+        const ch = await callServer.getChannel(req.params.channelId, req.user || null);
         if (!ch) return res.status(404).json({ error: 'Channel not found' });
         res.json({ channel: ch });
     } catch (err) {
@@ -1395,7 +1395,7 @@ router.post('/voice-channels/call-user', requireAuth, async (req, res) => {
 
         // Reuse caller's existing temp channel if present; otherwise create a private one — a
         // 1:1 call is not something the whole site should see listed and be able to walk into.
-        const existing = (callServer.listChannels(req.user) || []).find(ch => !ch.permanent && !ch.streamId && ch.createdBy === req.user.id) || null;
+        const existing = (await callServer.listChannels(req.user) || []).find(ch => !ch.permanent && !ch.streamId && ch.createdBy === req.user.id) || null;
         const channel = existing || callServer.createChannel({
             name: `${req.user.display_name || req.user.username}'s call`,
             mode: 'mic+cam',
@@ -1458,7 +1458,7 @@ router.post('/voice-channels/call-user/respond', requireAuth, async (req, res) =
         if (!allowed.has(status)) return res.status(400).json({ error: 'Invalid response status' });
         if (callerUserId === req.user.id) return res.status(400).json({ error: 'Invalid caller target' });
         // Only an invited user can answer, and only to the caller who owns that channel.
-        const ch = callServer.getChannel(channelId, req.user);
+        const ch = await callServer.getChannel(channelId, req.user);
         if (!ch || ch.createdBy !== callerUserId || !callServer.hasInvite(channelId, req.user.id)) return res.status(403).json({ error: 'No such invite' });
 
         const fromDisplayName = req.user.display_name || req.user.username || 'Someone';
@@ -1635,7 +1635,10 @@ router.get('/setup-progress', requireAuth, async (req, res) => {
     const slots = await safe(async () => await db.getManagedStreamsByUserId(uid), []);
     const sessions = await safe(async () => (await db.get('SELECT COUNT(*) AS n FROM streams WHERE user_id = ?', [uid])).n, 0);
     const restreams = await safe(async () => (await db.getRestreamDestinationsByUserId(uid)).length, 0);
-    const rs = slots.some(sl => safe(async () => { const r = await db.getRobotStreamerIntegrationBySlot(uid, sl.id); return !!(r && (r.robot_id || r.stream_name)); }, false));
+    let rs = false;
+    for (const sl of slots) {
+        if (await safe(async () => { const r = await db.getRobotStreamerIntegrationBySlot(uid, sl.id); return !!(r && (r.robot_id || r.stream_name)); }, false)) { rs = true; break; }
+    }
     const user = await safe(async () => await db.getUserById(uid), {}) || {};
     const channel = await safe(async () => await db.getChannelByUserId(uid), {}) || {};
     const emotes = await moderation.getEmoteCount(uid).catch(() => 0);
@@ -2487,7 +2490,7 @@ router.put('/:id/call', requireAuth, async (req, res) => {
         // Create or remove stream voice channel
         const channelId = `stream-${stream.id}`;
         if (call_mode) {
-            callServer.createStreamChannel(stream.id, call_mode, stream.user_id);
+            await callServer.createStreamChannel(stream.id, call_mode, stream.user_id);
         } else {
             callServer.removeStreamChannel(stream.id);
         }
@@ -2495,7 +2498,7 @@ router.put('/:id/call', requireAuth, async (req, res) => {
         res.json({
             call_mode,
             channelId: call_mode ? channelId : null,
-            participants: callServer.getParticipants(channelId),
+            participants: await callServer.getParticipants(channelId),
             participant_count: callServer.getParticipantCount(channelId),
         });
     } catch (err) {
@@ -2513,7 +2516,7 @@ router.get('/:id/call', optionalAuth, async (req, res) => {
         res.json({
             call_mode: stream.call_mode || null,
             channelId: stream.call_mode ? channelId : null,
-            participants: callServer.getParticipants(channelId),
+            participants: await callServer.getParticipants(channelId),
             participant_count: callServer.getParticipantCount(channelId),
         });
     } catch (err) {

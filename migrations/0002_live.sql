@@ -56,7 +56,7 @@ CREATE TABLE users (
     display_name text COLLATE "C",
     avatar_url text COLLATE "C",
     bio text COLLATE "C" DEFAULT '',
-    role text COLLATE "C" DEFAULT 'user' CHECK(role IN ('user', 'streamer', 'mod', 'admin')),
+    role text COLLATE "C" DEFAULT 'user' CHECK(role IN ('user', 'streamer', 'mod', 'global_mod', 'admin')),
     stream_key text COLLATE "C" UNIQUE,
     openvibe_bucks_balance double precision DEFAULT 0.00,
     is_banned bigint DEFAULT 0,

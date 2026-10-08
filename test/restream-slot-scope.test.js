@@ -12,80 +12,78 @@
 'use strict';
 const assert = require('assert');
 const fs = require('fs');
-const os = require('os');
 const path = require('path');
 const http = require('http');
 
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ov-restream-slot-'));
-process.env.DB_PATH = path.join(tmp, 'live.db');
 process.env.NODE_ENV = 'test';
 const quiet = console.log;
 console.log = () => {};
 console.warn = () => {};
 
 const db = require('../server/db/database');
-db.initDb();
-const raw = db.getDb();
 
 const auth = require('../server/auth/auth');
-const signIn = (req) => {
+const signIn = async (req) => {
     const id = Number(req.headers['x-test-user'] || 0);
-    const u = id ? db.getUserById(id) : null;
+    const u = id ? await db.getUserById(id) : null;
     if (u) { req.user = u; req.authSource = 'network'; }
     return u;
 };
-auth.requireAuth = (req, res, next) => (signIn(req) ? next() : res.status(401).json({ error: 'Authentication required' }));
-auth.optionalAuth = (req, res, next) => { signIn(req); next(); };
-
-raw.prepare(`INSERT INTO users (id, username, display_name, email, password_hash, role) OVERRIDING SYSTEM VALUE VALUES (1, 'alex', 'alex', 'a@x', 'x', 'streamer')`).run();
-raw.prepare(`INSERT INTO users (id, username, display_name, email, password_hash, role) OVERRIDING SYSTEM VALUE VALUES (2, 'other', 'other', 'o@x', 'x', 'streamer')`).run();
-db.ensureChannel(1);
-db.ensureChannel(2);
-const chan = db.getChannelByUserId(1);
-
-const slot = (slug, userId = 1) => Number(db.createManagedStream({ user_id: userId, channel_id: chan.id, slug, title: slug, stream_key: `key-${slug}` }).lastInsertRowid);
-const slotA = slot('main');       // "slot 1": the auto-start destinations live here
-const slotB = slot('second');     // "slot 60"
-const slotC = slot('third');      // "slot 85": no destinations at all
-const otherSlot = slot('theirs', 2);
-
-const dest = (fields) => db.createRestreamDestination(fields.user_id || 1, {
-    server_url: 'rtmp://ingest.example/live', stream_key: `sk-${fields.name}`, enabled: 1, ...fields,
-}).id;
-const aTwitch = dest({ name: 'a-twitch', platform: 'twitch', managed_stream_id: slotA, auto_start: 1 });
-const aYoutube = dest({ name: 'a-youtube', platform: 'youtube', managed_stream_id: slotA, auto_start: 1 });
-const bKick = dest({ name: 'b-kick', platform: 'kick', managed_stream_id: slotB, auto_start: 1 });
-const bManual = dest({ name: 'b-manual', platform: 'custom', managed_stream_id: slotB, auto_start: 0 });
-const unbound = dest({ name: 'legacy', platform: 'custom', auto_start: 1 });
-const unboundManual = dest({ name: 'legacy-manual', platform: 'custom', auto_start: 0 });
-dest({ name: 'theirs', platform: 'twitch', managed_stream_id: otherSlot, auto_start: 1, user_id: 2 });
+auth.requireAuth = async (req, res, next) => ((await signIn(req)) ? next() : res.status(401).json({ error: 'Authentication required' }));
+auth.optionalAuth = async (req, res, next) => { await signIn(req); next(); };
 
 const manager = require('../server/streaming/restream-manager');
 let started = [];
 manager.startRestream = async (streamId, d) => { started.push([streamId, d.id]); return { status: 'starting' }; };
 
-const live = (managedStreamId, userId = 1) => Number(db.createStream({ user_id: userId, channel_id: chan.id, managed_stream_id: managedStreamId, title: 't', protocol: 'rtmp' }).lastInsertRowid);
-const ids = (list) => list.map(([, destId]) => destId).sort((a, b) => a - b);
-
 let server;
 (async () => {
+    await db.initDb();
+    const raw = db.getDb();
+
+    await raw.prepare(`INSERT INTO users (id, username, display_name, email, password_hash, role) OVERRIDING SYSTEM VALUE VALUES (1, 'alex', 'alex', 'a@x', 'x', 'streamer')`).run();
+    await raw.prepare(`INSERT INTO users (id, username, display_name, email, password_hash, role) OVERRIDING SYSTEM VALUE VALUES (2, 'other', 'other', 'o@x', 'x', 'streamer')`).run();
+    await db.ensureChannel(1);
+    await db.ensureChannel(2);
+    const chan = await db.getChannelByUserId(1);
+
+    const slot = async (slug, userId = 1) => Number((await db.createManagedStream({ user_id: userId, channel_id: chan.id, slug, title: slug, stream_key: `key-${slug}` })).lastInsertRowid);
+    const slotA = await slot('main');       // "slot 1": the auto-start destinations live here
+    const slotB = await slot('second');     // "slot 60"
+    const slotC = await slot('third');      // "slot 85": no destinations at all
+    const otherSlot = await slot('theirs', 2);
+
+    const dest = async (fields) => (await db.createRestreamDestination(fields.user_id || 1, {
+        server_url: 'rtmp://ingest.example/live', stream_key: `sk-${fields.name}`, enabled: 1, ...fields,
+    })).id;
+    const aTwitch = await dest({ name: 'a-twitch', platform: 'twitch', managed_stream_id: slotA, auto_start: 1 });
+    const aYoutube = await dest({ name: 'a-youtube', platform: 'youtube', managed_stream_id: slotA, auto_start: 1 });
+    const bKick = await dest({ name: 'b-kick', platform: 'kick', managed_stream_id: slotB, auto_start: 1 });
+    const bManual = await dest({ name: 'b-manual', platform: 'custom', managed_stream_id: slotB, auto_start: 0 });
+    const unbound = await dest({ name: 'legacy', platform: 'custom', auto_start: 1 });
+    const unboundManual = await dest({ name: 'legacy-manual', platform: 'custom', auto_start: 0 });
+    await dest({ name: 'theirs', platform: 'twitch', managed_stream_id: otherSlot, auto_start: 1, user_id: 2 });
+
+    const live = async (managedStreamId, userId = 1) => Number((await db.createStream({ user_id: userId, channel_id: chan.id, managed_stream_id: managedStreamId, title: 't', protocol: 'rtmp' })).lastInsertRowid);
+    const ids = (list) => list.map(([, destId]) => destId).sort((a, b) => a - b);
+
     // ── Control: auto-start ──────────────────────────────────────────────────────────
-    const onB = live(slotB);
+    const onB = await live(slotB);
     started = [];
     await manager.autoStartForStream(onB, 1, { protocol: 'rtmp' });
     assert.deepStrictEqual(ids(started), [bKick], 'going live on slot B auto-starts only slot B auto-start destinations (not slot A, not unbound)');
 
-    const onC = live(slotC);
+    const onC = await live(slotC);
     started = [];
     await manager.autoStartForStream(onC, 1, { protocol: 'rtmp' });
     assert.deepStrictEqual(started, [], 'a slot with no destinations starts nothing, even though slot A has auto-start ones');
 
-    const onA = live(slotA);
+    const onA = await live(slotA);
     started = [];
     await manager.autoStartForStream(onA, 1, { protocol: 'rtmp' });
     assert.deepStrictEqual(ids(started), [aTwitch, aYoutube].sort((a, b) => a - b), 'slot A starts its own two');
 
-    const legacy = live(null);
+    const legacy = await live(null);
     started = [];
     await manager.autoStartForStream(legacy, 1, { protocol: 'rtmp' });
     assert.deepStrictEqual(ids(started), [unbound], 'a legacy stream with no slot starts only unbound auto-start destinations');
@@ -110,9 +108,9 @@ let server;
     manager.setViewerCount(aTwitch, 40, true);
     manager.setViewerCount(bKick, 7, true);
     manager.setViewerCount(unbound, 3, true);
-    assert.strictEqual(manager.getExternalViewerCountsForUser(1, slotB).total, 7, 'slot B counts only its own platform viewers');
-    assert.strictEqual(manager.getExternalViewerCountsForUser(1, slotA).total, 40);
-    assert.strictEqual(manager.getExternalViewerCountsForUser(1, null).total, 3, 'no slot counts only unbound destinations');
+    assert.strictEqual((await manager.getExternalViewerCountsForUser(1, slotB)).total, 7, 'slot B counts only its own platform viewers');
+    assert.strictEqual((await manager.getExternalViewerCountsForUser(1, slotA)).total, 40);
+    assert.strictEqual((await manager.getExternalViewerCountsForUser(1, null)).total, 3, 'no slot counts only unbound destinations');
 
     // ── Display: routes ─────────────────────────────────────────────────────────────
     const express = require('express');
@@ -149,7 +147,7 @@ let server;
     assert.strictEqual(r.json.total, 7);
     r = await call('GET', '/api/restream/viewer-counts', 1);
     assert.strictEqual(r.json.total, 50, 'the default counts each live stream\'s own slot once');
-    db.endStream(onA);
+    await db.endStream(onA);
     r = await call('GET', '/api/restream/viewer-counts', 1);
     assert.strictEqual(r.json.total, 10, 'slot A is not live any more, so its Twitch viewers are not counted');
     r = await call('GET', `/api/restream/viewer-counts?managed_stream_id=${otherSlot}`, 1);
@@ -160,7 +158,6 @@ let server;
     assert.strictEqual(r.status, 400, 'an unbound destination cannot be started on a stream that has a slot');
 
     server.close();
-    fs.rmSync(tmp, { recursive: true, force: true });
     quiet('restream-slot-scope: ok');
     process.exit(0);
 })().catch((err) => {

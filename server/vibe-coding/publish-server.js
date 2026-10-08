@@ -25,7 +25,7 @@ class VibeCodingPublishServer {
     init(server) {
         this.wss = new WebSocket.Server({ noServer: true, maxPayload: 256 * 1024, perMessageDeflate: false });
         this.wss.on('connection', (ws, req) => {
-            this.handleConnection(ws, req);
+            this.handleConnection(ws, req).catch((e) => console.warn('[VibeCoding] connection failed:', e && e.message));
         });
         return this.wss;
     }
@@ -54,7 +54,7 @@ class VibeCodingPublishServer {
 
         const params = new URL(req.url, 'http://localhost').searchParams;
         const managedStreamId = parseInt(params.get('managedStreamId') || '', 10);
-        const managedStream = this.db.getManagedStreamById(managedStreamId);
+        const managedStream = await this.db.getManagedStreamById(managedStreamId);
         if (!Number.isFinite(managedStreamId) || !managedStream || managedStream.user_id !== user.id) {
             ws.close(4404, 'Managed stream not found');
             return;
@@ -81,7 +81,7 @@ class VibeCodingPublishServer {
         });
 
         ws.on('message', (data) => {
-            this.handleMessage(ws, data);
+            this.handleMessage(ws, data).catch((e) => console.warn('[VibeCoding] message failed:', e && e.message));
         });
 
         ws.on('close', async () => {
@@ -141,7 +141,7 @@ class VibeCodingPublishServer {
                     this.sendTo(ws, { type: 'vibe-coding.error', error: 'sessionKey must be established before events are accepted' });
                     return;
                 }
-                this.processEvent(ws, client, message.event);
+                await this.processEvent(ws, client, message.event);
                 return;
 
             case 'vibe-coding.ping':

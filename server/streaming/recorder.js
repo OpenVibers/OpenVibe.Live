@@ -88,7 +88,7 @@ class StreamRecorder {
                 try {
                     const live = await db.getStreamById(streamId);
                     if (!live || !live.is_live || this.isActivelyRecording(streamId)) return;
-                    this.startRecording(streamId, rec.protocol, {}, next);
+                    await this.startRecording(streamId, rec.protocol, {}, next);
                 } catch (e) { console.warn(`[VOD] roll restart failed for stream ${streamId}:`, e.message); }
             }, 1500);
             if (timer.unref) timer.unref();
@@ -165,7 +165,7 @@ class StreamRecorder {
             const live = await db.getStreamById(streamId);
             if (!live || !live.is_live) return;
             console.log(`[VOD] Retrying recording start for stream ${streamId} (disk-space retry ${attempt}/${StreamRecorder.DISK_RETRY_MAX})`);
-            this.startRecording(streamId, protocol, endpoint, { ...opts, _diskRetries: attempt });
+            this.startRecording(streamId, protocol, endpoint, { ...opts, _diskRetries: attempt }).catch((e) => console.warn(`[VOD] disk-retry start failed for stream ${streamId}:`, e.message));
         }, StreamRecorder.DISK_RETRY_DELAY_MS);
         if (timer.unref) timer.unref();
         this._diskRetryTimers.set(streamId, timer);
@@ -393,7 +393,7 @@ class StreamRecorder {
             if (WEBRTC_PROTOCOLS.has(proto)) {
                 this._healAttempts.set(sid, now);
                 console.log(`[VOD] Auto-healing recording for live ${proto} stream ${sid} (mode: ${mode})`);
-                try { this.startRecording(sid, proto, {}, { mode }); }
+                try { await this.startRecording(sid, proto, {}, { mode }); }
                 catch (e) { console.warn(`[VOD] heal failed for stream ${sid}:`, e.message); }
             } else if (proto === 'rtmp') {
                 let streamKey = null;
@@ -406,7 +406,7 @@ class StreamRecorder {
                 if (!streamKey) continue; // publisher gone → leave for stale cleanup
                 this._healAttempts.set(sid, now);
                 console.log(`[VOD] Auto-healing RTMP recording for live stream ${sid} (mode: ${mode})`);
-                try { this.startRecording(sid, 'rtmp', { streamKey }, { mode }); }
+                try { await this.startRecording(sid, 'rtmp', { streamKey }, { mode }); }
                 catch (e) { console.warn(`[VOD] heal failed for stream ${sid}:`, e.message); }
             }
         }

@@ -11,7 +11,6 @@ const path = require('path');
 // Stub that single lookup instead of building a schema. Answering "no such stream" ends
 // endActiveWhipStream on its first line, which is the path this test wants anyway — what
 // it asserts is that the producer, transport and session are released.
-process.env.DB_PATH = path.join(os.tmpdir(), `ov-whip-cleanup-${process.pid}.db`);
 require('../server/db/database').getStreamById = () => null;
 
 const webrtcSFU = require('../server/streaming/webrtc-sfu');
@@ -50,7 +49,5 @@ assert.strictEqual(room.producers.has('producer-1'), false, 'producer entry shou
 assert.strictEqual(room.transports.has('whip-test-transport-1'), false, 'transport entry should be removed');
 assert.strictEqual(producerClosed.value, true, 'producer should be closed');
 assert.strictEqual(transportClosed.value, true, 'transport should be closed');
-
-for (const ext of ['', '-wal', '-shm']) { try { fs.unlinkSync(process.env.DB_PATH + ext); } catch { /* */ } }
 
 console.log('✅ WHIP cleanup session regression test passed');
