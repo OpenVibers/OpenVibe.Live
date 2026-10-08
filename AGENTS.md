@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-Self-hosted live streaming platform — Node.js/Express monolith, vanilla JS SPA frontend, SQLite (better-sqlite3). Part of the **OpenVibe network** with SSO via openvibe.network. See [README.md](README.md) for features and [docs/architecture.md](docs/architecture.md) for system design.
+Self-hosted live streaming platform — Node.js/Express monolith, vanilla JS SPA frontend, PostgreSQL (`openvibe-sdk/db`; embedded PGlite in development and tests; on PostgreSQL since 2026-10-08). Part of the **OpenVibe network** with SSO via openvibe.network. See [README.md](README.md) for features and [docs/architecture.md](docs/architecture.md) for system design.
 
 **Network context:** SSO/OAuth2 + the OpenCoins wallet come from **OpenVibe.Network** (`server/monetization/wallet-client.js`). The media subsystem (VODs/clips/pastes/thumbnails/files) lives in **OpenVibe.Media** — Live talks to it via [server/media-client.js](server/media-client.js), the thin proxy routers in [server/media-proxy/](server/media-proxy/), and the Media-backed recorder [server/streaming/recorder.js](server/streaming/recorder.js). Media completion events arrive over OpenVibe.Events at `POST /internal/media-events` (`MEDIA_EVENTS_AUTHORITY`; the older `POST /internal/media-webhook` stays during the transition). The legacy local `vods`/`clips`/`pastes`/`paste_likes`/`paste_comments` tables are FROZEN: never read or write them (`test/frozen-tables.test.js` enforces it; ask Media or Community through `server/media-proxy/lookups.js`, `media-client.js`, `pastes-client.js`); VOD/clip comments are OpenVibe.Community threads ([server/comments-client.js](server/comments-client.js)) and the local `comments` table is READ-ONLY too; Chat owns every chat table — the staged set (`channel_moderators`, `channel_moderation_settings`, `emotes`, `user_tags`, `chat_ai_summaries`, `chat_timeline_events`; Live reads those only through `server/chat/moderation-client.js`, capability `chat.moderation.read`, cached 30 s, and the summaries through `server/chat/insight-client.js`, cached 60 s) and the twelve the chat cutover imports covered (`chat_messages`, the DM tables, `tts_voice_overrides`, `channel_sounds`, `relay_users`, `hidden_relay_users`, `pending_ip_messages`, `stream_first_chats`, `moderation_actions`); Live keeps no copy of any of them since 2026-10-05 — chat stats, queues, history, first-chat and DM-block state all come through `server/chat/chat-reads.js`, and the twelve tables are dropped at boot by migration `007_drop_chat_tables` (`test/chat-tables-dropped.test.js` guards that nothing under `server/` names them); Live-owned AI/transcript state for Media-hosted content lives in `vod_ai_state`/`clip_ai_state`. See ../CONTRACTS.md for the binding inter-service contracts. **Money:** `BILLING_AUTHORITY` (read only in [server/monetization/money-authority.js](server/monetization/money-authority.js)) is `live` by default; `billing` makes OpenVibe.Billing the ledger ([billing-client.js](server/monetization/billing-client.js), [billing-actions.js](server/monetization/billing-actions.js)) and Live's `openvibe_bucks_*`/`transactions`/`payment_orders`/`subscriptions` read-only (a database-level tripwire throws). The owner-only `money_writes_frozen` flag (`/api/admin/money`) refuses money actions in both modes.
 
@@ -11,10 +11,10 @@ Self-hosted live streaming platform — Node.js/Express monolith, vanilla JS SPA
 ```bash
 npm run dev               # Start dev server (NODE_ENV=development)
 npm start                 # Start production server (node server/index.js)
-npm run init-db           # Initialize database from schema.sql
-npm run seed              # Seed sample data
+# The schema is migrations/NNNN_*.sql, applied at boot (DATABASE_DIRECT_URL, owner); without DATABASE_URL, development uses PGlite under DATA_DIR
 node --check <file.js>    # Syntax check (no linter configured)
-npm test                  # All unit/security/migration/deploy tests + size budgets (test/run.js)
+npm test                  # All unit/security/migration/deploy tests + size budgets (test/run.js), on PGlite
+npm run test:pg           # The same on the PostgreSQL + PgBouncer containers (openvibe-sdk scripts/test-services.sh up)
 node test/<file>.test.js  # One test
 BASE=http://127.0.0.1:3000 npm run test:browser  # Browser smoke (running server + Chrome); add -- --a11y for axe (WCAG 2.1 AA)
 ```
@@ -27,7 +27,7 @@ BASE=http://127.0.0.1:3000 npm run test:browser  # Browser smoke (running server
 
 - **Entry:** [server/index.js](server/index.js) — Express app, middleware, route mounting, WS upgrade handler, sub-service init
 - **Config:** [server/config.js](server/config.js) reads `.env` ([.env.example](.env.example))
-- **Database:** [server/db/database.js](server/db/database.js) — all queries, schema in [server/db/schema.sql](server/db/schema.sql)
+- **Database:** [server/db/database.js](server/db/database.js) — all queries (async, `openvibe-sdk/db`), schema in [migrations/](migrations/) (`0001_analytics.sql`, `0002_live.sql`)
 - **Auth:** [server/auth/auth.js](server/auth/auth.js) — RS256 JWT from openvibe.tools SSO + `hbt_` API tokens
 - **Permissions:** [server/auth/permissions.js](server/auth/permissions.js) — role hierarchy: `user < streamer < global_mod < admin`
 - **Frontend shell:** [public/index.html](public/index.html) — navbar, home page and empty `<section id="page-*">` shells; routing via `history.pushState` in [public/js/app.js](public/js/app.js)
@@ -39,14 +39,14 @@ Each feature lives in its own `server/<feature>/` directory with `routes.js` + s
 
 - **CommonJS** (`require`/`module.exports`) everywhere. No ES modules except dynamic `import()` for mediasoup-client.
 - **Style:** 4-space indent, single quotes, semicolons. No linter/formatter configured.
-- **Naming:** `camelCase` for JS, `snake_case` for SQLite columns/tables.
-- **DB access:** Direct `better-sqlite3` calls in `database.js` (e.g., `db.getUserById()`, `db.run()`, `db.get()`, `db.all()`).
+- **Naming:** `camelCase` for JS, `snake_case` for PostgreSQL columns/tables.
+- **DB access:** `database.js` helpers, every one async (`await db.getUserById()`, `await db.run()`, `await db.get()`, `await db.all()`); an INSERT that needs its id says `RETURNING id`. Never leave a write un-awaited when anything after it depends on it: the pool runs un-awaited work out of order (PGlite does not, so only `npm run test:pg` shows it).
 - **Auth middleware:** `requireAuth` from `auth.js`. Permission checks via `permissions.js`.
-- **DB migrations:** Idempotent `CREATE … IF NOT EXISTS`/`ADD COLUMN` may stay inline; anything that transforms data goes in [server/db/migrations.js](server/db/migrations.js) (ledger, transaction, `adopt`, `DEFER`).
+- **DB migrations:** a new `migrations/NNNN_name.sql` with its `-- phase: expand|migrate|contract` header (a contract names its expand with `-- after: NNNN` and waits out the N-1 window); never edit one that has run. No table is created at runtime.
 - **Public responses:** serialize through [server/web/serializers.js](server/web/serializers.js) — never return raw `managed_streams`/`users` rows.
 - **TURN:** ICE lists come from [server/net/turn.js](server/net/turn.js); set `TURN_AUTH_SECRET` (coturn `use-auth-secret`) for short-lived credentials.
 - **Outbound fetches of user-chosen URLs:** [server/net/egress.js](server/net/egress.js) only. Background loops: `server/utils/jobs.js`.
-- **Files and restore drills:** every file location comes from [server/paths.js](server/paths.js) (`DATA_DIR`, `DB_PATH`), never a literal `./data`. Anything started at boot or at module load (timers, listeners, sockets, jobs, outbound calls) must stay off under `LIVE_DRILL` ([server/drill.js](server/drill.js)); `test/drill-mode.test.js` fails on any new one.
+- **Files and restore drills:** every file location comes from [server/paths.js](server/paths.js) (`DATA_DIR`), never a literal `./data`; the database is `DATABASE_URL` (drill mode refuses production's `ov_live`). Anything started at boot or at module load (timers, listeners, sockets, jobs, outbound calls) must stay off under `LIVE_DRILL` ([server/drill.js](server/drill.js)); `test/drill-mode.test.js` fails on any new one.
 - **WebSocket servers:** Each has `init(server)` and `handleUpgrade(req, socket, head)` methods.
 - **Frontend globals:** `currentUser`, `api()`, `navigate()`, `handleLinkClick()`. Cross-component sync via `CustomEvent` (e.g., `openvibe-auth-changed`).
 
@@ -59,7 +59,7 @@ Each feature lives in its own `server/<feature>/` directory with `routes.js` + s
 - **WebSocket auth lifecycle:** WS connections can start anonymous and upgrade via `join` message. On account switch, the socket must be rebuilt (not just re-joined) — see `openvibe-auth-changed` handling in `chat.js`.
 - **openvibe-shared:** Pinned release of OpenVibers/OpenVibe.Shared (`"openvibe-shared": "https://codeload.github.com/OpenVibers/OpenVibe.Shared/tar.gz/refs/tags/vX.Y.Z"`), served at `/shared/*` from `node_modules`. Change it there and bump the tag; never edit `node_modules`.
 - **DM delivery:** Server verifies `dm.isParticipant()` before delivering — always maintain this check.
-- **Schema:** `ensureTables()` functions create tables on first use. Some modules (DMs, arena, etc.) have their own `ensureTables()`.
+- **Schema:** every table is in `migrations/`; `ensureTables()` is gone. The frozen and Chat-owned tables are not in the PostgreSQL schema at all.
 
 ## WebSocket Endpoints
 
@@ -67,7 +67,7 @@ Each feature lives in its own `server/<feature>/` directory with `routes.js` + s
 
 ## Testing
 
-Standalone Node scripts in `test/` using `assert`, run together by `npm test`. They create temp SQLite databases. Browser smoke: `test/browser/smoke.js` (routes × widths, console errors, overflow, duplicate scripts, resource growth). Always `node --check` modified files before committing.
+Standalone Node scripts in `test/` using `assert`, run together by `npm test`. They run on one migrated PGlite database per run (`test/helpers/pg-preload.mjs`; `npm run test:pg` uses the containers). Browser smoke: `test/browser/smoke.js` (routes × widths, console errors, overflow, duplicate scripts, resource growth). Always `node --check` modified files before committing.
 
 ## Documentation
 

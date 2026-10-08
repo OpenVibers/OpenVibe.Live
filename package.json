@@ -1,12 +1,11 @@
 {
   "name": "live",
   "version": "1.0.0",
-  "description": "OpenVibe.Live — free & open live streaming. Part of the OpenVibe network (media by OpenVibe.Media, identity by OpenVibe.Network).",
+  "description": "OpenVibe.Live \u2014 free & open live streaming. Part of the OpenVibe network (media by OpenVibe.Media, identity by OpenVibe.Network).",
   "main": "server/index.js",
   "scripts": {
     "start": "node server/index.js",
     "dev": "NODE_ENV=development node server/index.js",
-    "seed": "node server/db/seed.js",
     "test": "node test/run.js",
     "test:unit": "node test/run.js",
     "test:pg": "LIVE_TEST_STORE=pg node test/run.js",
@@ -30,7 +29,6 @@
   "dependencies": {
     "@roamhq/wrtc": "^0.8.0",
     "bcryptjs": "^2.4.3",
-    "better-sqlite3": "^11.3.0",
     "cookie-parser": "^1.4.6",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
@@ -59,6 +57,7 @@
     "node": ">=18.0.0"
   },
   "devDependencies": {
-    "@electric-sql/pglite": "^0.5.8"
+    "@electric-sql/pglite": "^0.5.8",
+    "better-sqlite3": "^11.3.0"
   }
 }
