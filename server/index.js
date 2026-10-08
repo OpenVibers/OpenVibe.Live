@@ -371,7 +371,7 @@ app.use(helmet({
             // i.ytimg.com / i.vimeocdn.com carry media-request thumbnails. Without them
             // every queued item renders as a broken image, which is what the media
             // request tab was doing for every YouTube link.
-            imgSrc: ["'self'", "data:", "blob:", "image.tmdb.org", "https://openvibe.network", "https://openvibe.media", "cdn.frankerfacez.com", "cdn.betterttv.net", "cdn.7tv.app", "https://files.kick.com", "https://i.ytimg.com", "https://img.youtube.com", "https://i.vimeocdn.com"],
+            imgSrc: ["'self'", "data:", "blob:", "image.tmdb.org", "https://openvibe.network", "https://openvibe.media", "cdn.frankerfacez.com", "cdn.betterttv.net", "cdn.7tv.app", "https://files.kick.com", "https://i.ytimg.com", "https://img.youtube.com", "https://i.vimeocdn.com", "https://openvibe.community"],   // paste screenshots (OpenVibe.Community owns pastes)
             // https://cloudflareinsights.com is where Cloudflare Web Analytics' beacon (script-src static.cloudflareinsights.com) reports.
             connectSrc: ["'self'", "wss:", "https://openvibe.network", "https://openvibe.events", "https://openvibe.media", "https://openvibe.games", "https://cdn.jsdelivr.net", "https://esm.sh", "https://static.cloudflareinsights.com", "https://cloudflareinsights.com", whipConnectSrc],
             // VODs/clips play from openvibe.media (the /api proxies 302 there), which may
