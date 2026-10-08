@@ -32,7 +32,7 @@ const parseLog = (raw) => raw.trim().split('\n').filter(Boolean).map((line) => {
 async function newCommits(db) {
     const head = (await git(['rev-parse', 'HEAD'], 3000)).trim();
     if (!/^[0-9a-f]{40}$/.test(head)) return { head: '', previous: null, commits: [] };
-    const last = String(db.getSetting(SETTING) || '').trim();
+    const last = String(await db.getSetting(SETTING) || '').trim();
     const previous = /^[0-9a-f]{40}$/.test(last) ? last : null;
     if (last === head) return { head, previous, commits: [] };
     const fmt = '--pretty=format:%H%x1f%h%x1f%aI%x1f%s';
@@ -57,10 +57,10 @@ async function announce({ db, log = console }) {
     let eventId = null;
     // Recording the commits as announced and queueing live.release.deployed are one commit: the
     // event exists if and only if this deploy counts as announced.
-    const recordDeploy = () => {
-        db.setSetting(SETTING, head);
+    const recordDeploy = async () => {
+        await db.setSetting(SETTING, head);
         if (outbox) {
-            const env = require('../events/release-events').record({ head, previous, commits });
+            const env = await require('../events/release-events').record({ head, previous, commits });
             eventId = env ? env.event_id : null;
         }
     };

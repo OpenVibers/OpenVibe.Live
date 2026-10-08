@@ -122,7 +122,7 @@ async function publish(kind, id, row, { now = Date.now() } = {}) {
     const revision = (prev ? prev.revision : 0) + 1;
     const sid = String(mediaId);
     await d.tx(async () => {
-        streamEvents.enqueue(doc.deleted
+        await streamEvents.enqueue(doc.deleted
             ? { event_type: 'live.index_document.deleted', actor: { type: 'service', id: 'live' }, subject: { type: kind, id: sid, revision }, visibility: 'internal', priority: 'low', payload: { type: kind, id: sid, revision } }
             : { event_type: 'live.index_document.upserted', actor: { type: 'service', id: 'live' }, subject: { type: kind, id: sid, revision }, visibility: 'internal', priority: 'low',
                 payload: { ...doc, revision, updated_at: new Date(now).toISOString() } });

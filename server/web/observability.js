@@ -47,7 +47,7 @@ function mountMetrics(app, { release }) {
  * Domain gauges, read at scrape time. A source that throws is left out of that scrape.
  *   liveStreams()    -> number of live streams (the rows /api/streams lists)
  *   wsServers        -> { broadcast, control, call } objects with a `wss` (ws.Server) once initialised (chat is OpenVibe.Chat's)
- *   outboxStatus()   -> server/events/stream-events.js status()
+ *   outboxStatus()   -> server/events/stream-events.js counts() (a promise)
  */
 function registerDomainGauges(registry, { liveStreams, wsServers = {}, outboxStatus }) {
     registry.gauge({ name: 'live_streams_live', help: 'Streams currently marked live (the list /api/streams serves)', collect: () => liveStreams() });
@@ -59,8 +59,8 @@ function registerDomainGauges(registry, { liveStreams, wsServers = {}, outboxSta
     });
     registry.gauge({
         name: 'live_events_outbox', help: 'Stream lifecycle events in the transactional outbox, by status (absent while the outbox is disabled)', labelNames: ['status'],
-        collect: () => {
-            const s = outboxStatus();
+        collect: async () => {
+            const s = await outboxStatus();
             if (!s || !s.enabled) return null;
             return [{ labels: { status: 'pending' }, value: Number(s.pending) || 0 }, { labels: { status: 'rejected' }, value: Number(s.rejected) || 0 }];
         },

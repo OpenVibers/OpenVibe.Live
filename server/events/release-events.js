@@ -48,8 +48,8 @@ function envelopeFor({ head, previous = null, commits = [], deployedAt = new Dat
  * Queue the event INSIDE the caller's transaction. Returns the envelope, or null when Live's
  * outbox is off (no EVENTS_URL). Throws if the outbox insert fails (the caller's change rolls back).
  */
-function record(args) {
-    return require('./stream-events').enqueue(envelopeFor(args));
+async function record(args) {
+    return await require('./stream-events').enqueue(envelopeFor(args));
 }
 
 module.exports = { EVENT_TYPE, envelopeFor, record };

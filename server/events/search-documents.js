@@ -85,7 +85,7 @@ async function publish(userId, { now = Date.now() } = {}) {
     const revision = (prev ? prev.revision : 0) + 1;
     const id = String(userId);
     await d.tx(async () => {
-        streamEvents.enqueue(doc.deleted
+        await streamEvents.enqueue(doc.deleted
             ? { event_type: 'live.index_document.deleted', actor: { type: 'service', id: 'live' }, subject: { type: 'channel', id, revision }, visibility: 'internal', priority: 'low', payload: { type: 'channel', id, revision } }
             : { event_type: 'live.index_document.upserted', actor: { type: 'service', id: 'live' }, subject: { type: 'channel', id, revision }, visibility: 'internal', priority: 'low',
                 payload: { ...doc, revision, updated_at: new Date(now).toISOString() } });

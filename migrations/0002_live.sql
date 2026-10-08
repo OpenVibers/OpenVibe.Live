@@ -8,8 +8,8 @@
 --
 -- Not created here, so never imported:
 --   frozen since C-73 (OpenVibe.Media and OpenVibe.Community own the data): vods, clips, pastes, paste_likes, paste_comments, comments;
---   named by no server code (retired features; their rows stay in the archived SQLite file): 48 tables
---     (game_world_state, game_inventory, game_bank, game_structures, game_farm_plots, game_recipes, game_effects, game_battle_stats, game_dungeon_runs, game_leaderboard, game_fish_collection, game_daily_quest_progress, game_daily_quest_claims, game_achievements, tag_guardian_defeats, canvas_settings, canvas_tiles, canvas_actions, canvas_snapshots, canvas_region_locks, canvas_bans, canvas_user_overrides, arena_battles, arena_votes, arena_talk_topics, arena_talk, arena_talk_hype, arena_talk_sessions, arena_talk_session_topics, arena_talk_session_hype, arena_topic_progress, arena_topic_members, arena_topic_hype, arena_topic_sides, arena_viewer_clout, arena_topic_moments, chatter_profiles, chatter_xp_log, chatter_subjects, arena_topic_threads, arena_achievements, arena_events, arena_tier_paid, promo_claims, idempotency_receipts, moderation_events_backfill, arena_topics, arena_beef_sides);
+--   named by no server code (retired features; their rows stay in the archived SQLite file): 47 tables
+--     (game_world_state, game_inventory, game_bank, game_structures, game_farm_plots, game_recipes, game_effects, game_battle_stats, game_dungeon_runs, game_leaderboard, game_fish_collection, game_daily_quest_progress, game_daily_quest_claims, game_achievements, tag_guardian_defeats, canvas_settings, canvas_tiles, canvas_actions, canvas_snapshots, canvas_region_locks, canvas_bans, canvas_user_overrides, arena_battles, arena_votes, arena_talk_topics, arena_talk, arena_talk_hype, arena_talk_sessions, arena_talk_session_topics, arena_talk_session_hype, arena_topic_progress, arena_topic_members, arena_topic_hype, arena_topic_sides, arena_viewer_clout, arena_topic_moments, chatter_profiles, chatter_xp_log, chatter_subjects, arena_topic_threads, arena_achievements, arena_events, arena_tier_paid, promo_claims, moderation_events_backfill, arena_topics, arena_beef_sides);
 --   SQLite-only machinery: schema_migrations, event_outbox, chat_staged_outbox, chat_bridge_outbox (the ov_migrations ledger and the PostgreSQL outbox replace them);
 --   owned by OpenVibe.Chat since T3 (Live keeps no copy): channel_moderators, channel_moderation_settings, user_tags, chat_ai_summaries, chat_timeline_events, chat_dual_read_stats.
 
@@ -762,6 +762,13 @@ CREATE TABLE game_players (
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
+CREATE TABLE idempotency_receipts (
+    consumer text COLLATE "C" NOT NULL,
+    event_id text COLLATE "C" NOT NULL,
+    processed_at bigint NOT NULL,
+    PRIMARY KEY (consumer, event_id)
+);
+
 CREATE TABLE ip_log (
     id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     user_id bigint,
@@ -1495,7 +1502,8 @@ CREATE UNIQUE INDEX idx_vod_ai_state_vod_id_unique ON vod_ai_state(vod_id);
 CREATE INDEX idx_watch_time_stream ON watch_time(stream_id);
 CREATE INDEX idx_watch_time_user ON watch_time(user_id);
 
--- openvibe-sdk/events: the PostgreSQL outbox (stream events) and inbox (OpenRe mirror, Media outcomes).
+-- openvibe-sdk/events: the PostgreSQL outbox (stream events). The inbox (OpenRe mirror, Media outcomes) keeps its SQLite
+-- table, idempotency_receipts, above: createPgInbox's default, so the receipts carry over and redeliveries stay deduplicated.
 CREATE TABLE event_outbox (
     id              bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     event_id        text NOT NULL UNIQUE,
@@ -1511,12 +1519,6 @@ CREATE TABLE event_outbox (
 );
 CREATE INDEX event_outbox_due ON event_outbox (next_attempt_at, id) WHERE sent_at IS NULL AND rejected_at IS NULL;
 CREATE INDEX event_outbox_sent ON event_outbox (sent_at) WHERE sent_at IS NOT NULL;
-CREATE TABLE event_inbox (
-    consumer     text NOT NULL,
-    event_id     text NOT NULL,
-    processed_at bigint NOT NULL,
-    PRIMARY KEY (consumer, event_id)
-);
 
 -- The site settings a new database starts with (initDb's defaults on SQLite).
 INSERT INTO site_settings (key, value, description, type) VALUES

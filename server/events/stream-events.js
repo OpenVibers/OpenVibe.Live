@@ -19,7 +19,7 @@
  */
 const { createClient } = require('openvibe-sdk/core');
 const { createServiceTokenClient } = require('openvibe-sdk/auth');
-const { createEventsClient, createOutbox } = require('openvibe-sdk/events');
+const { createEventsClient, createPgOutbox } = require('openvibe-sdk/events');
 const db = require('../db/database');
 const identity = require('../auth/identity-sync');
 
@@ -88,7 +88,9 @@ function init({ eventsUrl = EVENTS_URL, clientSecret = CLIENT_SECRET, fetchImpl,
     const tokens = createServiceTokenClient({ tokenUrl: `${NETWORK_INTERNAL_URL}/oauth/token`, clientId: CLIENT_ID, clientSecret, fetch: fetchImpl });
     const client = createClient({ baseUrls: { events: eventsUrl }, tokenProvider: tokens, fetch: fetchImpl, retries: 0 });
     const events = createEventsClient(client, { source: 'live' });
-    outbox = createOutbox(db.getDb(), {
+    // The PostgreSQL outbox (migrations/0002_live.sql event_outbox): rows are claimed with a lease, so a second
+    // process never double-sends.
+    outbox = createPgOutbox(db.getDb(), {
         events,
         intervalMs: intervalMs || 2000,
         onError: (err) => {
@@ -97,18 +99,17 @@ function init({ eventsUrl = EVENTS_URL, clientSecret = CLIENT_SECRET, fetchImpl,
             stats.lastError = msg;
         },
     });
-    outbox.ensureSchema();
     db.onStreamLifecycle(async (kind, streamId) => {
         const env = await envelopeFor(kind, streamId);
         if (!env) return;
-        outbox.enqueue(env);
+        await outbox.enqueue(db.getDb(), env);
         stats.queued++;
         setImmediate(() => outbox && outbox.kick());
     });
     outbox.start();
-    const prune = setInterval(() => { try { outbox.prune(); } catch { /* next time */ } }, PRUNE_EVERY_MS);
+    const prune = setInterval(() => { if (outbox) outbox.prune().catch(() => { /* next time */ }); }, PRUNE_EVERY_MS);
     if (prune.unref) prune.unref();
-    console.log(`[Events] stream lifecycle → ${eventsUrl} (${outbox.pending()} pending)`);
+    outbox.pending().then((n) => console.log(`[Events] stream lifecycle → ${eventsUrl} (${n} pending)`), () => {});
     return outbox;
 }
 
@@ -118,9 +119,10 @@ function init({ eventsUrl = EVENTS_URL, clientSecret = CLIENT_SECRET, fetchImpl,
  * back with it. Returns the envelope, or null while publishing is off. Call init() before the
  * transaction (it is idempotent), and kick() after the commit.
  */
-function enqueue(envelope) {
+async function enqueue(envelope) {
     if (!outbox) return null;
-    const env = outbox.enqueue(envelope);
+    // The process-wide handle joins the caller's ambient db.tx(), so the event commits or rolls back with the change.
+    const env = await outbox.enqueue(db.getDb(), envelope);
     stats.queued++;
     return env;
 }
@@ -128,11 +130,18 @@ function enqueue(envelope) {
 /** Wake the relay once the transaction that queued an event has committed. */
 function kick() { if (outbox) setImmediate(() => outbox && outbox.kick()); }
 
+/** Whether publishing is on, and this process's counters (synchronous: callers branch on `enabled`). */
 function status() {
     if (!outbox) return { enabled: false };
-    return { enabled: true, pending: outbox.pending(), rejected: outbox.rejected(), queued_since_boot: stats.queued, last_error: stats.lastError };
+    return { enabled: true, queued_since_boot: stats.queued, last_error: stats.lastError };
+}
+
+/** status() plus the outbox's pending and rejected counts (queries). */
+async function counts() {
+    if (!outbox) return { enabled: false };
+    return { ...status(), pending: Number(await outbox.pending()), rejected: Number(await outbox.rejected()) };
 }
 
 function _reset() { if (outbox) outbox.stop(); outbox = null; db.onStreamLifecycle(null); stats.queued = 0; stats.lastError = null; }
 
-module.exports = { init, enqueue, kick, status, envelopeFor, _reset };
+module.exports = { init, enqueue, kick, status, counts, envelopeFor, _reset };

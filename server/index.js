@@ -860,7 +860,7 @@ app.get('/api/ready', readiness.handler);
 observability.registerDomainGauges(metricsRegistry, {
     liveStreams: async () => (await db.getLiveStreams()).length,
     wsServers: { broadcast: broadcastServer, control: controlServer, call: callServer },
-    outboxStatus: () => require('./events/stream-events').status(),
+    outboxStatus: async () => await require('./events/stream-events').counts(),
 });
 
 // ── Updates / Changelog ──────────────────────────────────────
@@ -1181,20 +1181,9 @@ async function start() {
     console.log('[Server] Effective OV_NETWORK_URL:', config.openvibeToolsUrl);
     console.log('[Server] Allowed CORS/WebSocket origins:', [...allowedOrigins].join(', '));
 
-    // 1. Initialize database
+    // 1. Initialize database: migrations as the owner, then the pool (server/db/database.js; the schema is migrations/).
     await db.initDb();
     await analyticsStore.ready();
-    // Initialize cosmetics tables
-    cosmeticsModule.ensureTables();
-    // Chat tag tables (read-only tags, server/chat/tags.js)
-    require('./chat/tags').ensureTagTables();
-    // (Live used to create DM tables here; OpenVibe.Chat owns them, and Live keeps no copy.)
-    // Migrate: add last_heartbeat column if missing
-    try { await db.run("ALTER TABLE streams ADD COLUMN last_heartbeat DATETIME"); console.log('[DB] Added last_heartbeat column'); } catch { /* already exists */ }
-    // Migrate: add theme_id to users table if missing
-    try { await db.run("ALTER TABLE users ADD COLUMN theme_id INTEGER"); console.log('[DB] Added theme_id column'); } catch { /* already exists */ }
-    // Migrate: add call_mode column to streams table for group calls
-    try { await db.run("ALTER TABLE streams ADD COLUMN call_mode TEXT DEFAULT NULL"); console.log('[DB] Added streams.call_mode column'); } catch { /* already exists */ }
     console.log('[Server] Database ready');
 
     // Seed/refresh built-in themes on every start (upserts by slug, so re-tuned
@@ -1651,9 +1640,7 @@ async function start() {
  */
 async function startDrill() {
     await db.initDb();
-    cosmeticsModule.ensureTables();
-    require('./chat/tags').ensureTagTables();
-    console.log(`[Drill] Database ready: ${paths.dbPath()}`);
+    console.log('[Drill] Database ready (DATABASE_URL: the restored copy)');
     // Its port taken: stop (the process-wide handler would log EADDRINUSE and keep running unready).
     server.once('error', (err) => { console.error(`[Drill] HTTP server: ${err.message}`); process.exit(1); });
     // Never fd 3: a drill does not serve on a socket systemd handed over (assertSafe refuses that too).

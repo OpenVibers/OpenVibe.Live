@@ -11,6 +11,7 @@
     "seed": "node server/db/seed.js",
     "test": "node test/run.js",
     "test:unit": "node test/run.js",
+    "test:pg": "LIVE_TEST_STORE=pg node test/run.js",
     "test:powerchat": "for f in test/powerchat-*.test.js; do node \"$f\" || exit 1; done",
     "test:browser": "node test/browser/smoke.js",
     "test:analytics-pg": "node test/analytics-pg.test.js",

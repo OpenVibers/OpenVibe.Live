@@ -54,9 +54,9 @@ function accepts(via) {
 
 function ensureInbox() {
     if (inbox) return inbox;
-    const { createInbox } = require('openvibe-sdk/events');
-    inbox = createInbox(db.getDb());
-    inbox.ensureSchema();
+    // The PostgreSQL inbox: the receipt and the apply commit together (its table, idempotency_receipts, is migrated).
+    const { createPgInbox } = require('openvibe-sdk/events');
+    inbox = createPgInbox(db.getDb());
     return inbox;
 }
 
@@ -192,7 +192,7 @@ async function handle({ via, event, data, eventId = null, subject = null }) {
     const run = async () => { const r = await apply(event, data); after = r.after || null; return r.outcome; };
     let out;
     if (eventId) {
-        out = ensureInbox().once(CONSUMER, dedupeKey(eventId, subject || subjectOf(event, data)), run);
+        out = await ensureInbox().once(CONSUMER, dedupeKey(eventId, subject || subjectOf(event, data)), run);
     } else {
         if (via === 'webhook' && !warnedNoEventId) {
             warnedNoEventId = true;
