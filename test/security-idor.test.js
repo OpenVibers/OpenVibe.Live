@@ -139,7 +139,7 @@ async function check(name, fn) {
     const chanB = await db.getChannelByUserId(BOB);
     const slotB = Number((await db.createManagedStream({ user_id: BOB, channel_id: chanB.id, slug: 'main', title: 'Bob main', protocol: 'rtmp', stream_key: 'ef'.repeat(20) })).lastInsertRowid);
 
-    await new Promise((r) => server.once('listening', r));
+    if (!server.listening) await new Promise((r) => server.once('listening', r));
     quiet('idor: Bob uses Alice\'s ids');
 
     await check('VODs: edit, delete, publish, bulk and old-VOD cleanup never reach Media for Alice\'s VOD', async () => {

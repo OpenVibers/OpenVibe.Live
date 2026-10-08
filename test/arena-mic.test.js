@@ -151,8 +151,10 @@ console.log('✅ roster + ratings are pure mic');
 
     // ── Chat: hype only ──
     const sent = [], room = [];
-    const fakeChat = { sendTo: (ws, m) => sent.push(m.message), broadcastToStream: (sid, m) => room.push(m.message) };
-    const run = async (client, line) => { const parts = line.split(' '); const handled = await chat.handle(fakeChat, {}, client, parts[0], parts); await new Promise(r => setTimeout(r, 30)); return handled; };
+    // track() is how a caller that answers once waits for the command's replies (Chat's arena-command call).
+    let pending = [];
+    const fakeChat = { sendTo: (ws, m) => sent.push(m.message), broadcastToStream: (sid, m) => room.push(m.message), track: (p) => pending.push(p) };
+    const run = async (client, line) => { const parts = line.split(' '); const handled = await chat.handle(fakeChat, {}, client, parts[0], parts); await Promise.all(pending); pending = []; return handled; };
     assert.strictEqual(await run({ user: { id: viewer, username: 'viewer' }, streamId: liveId, ip: '1.1.1.1' }, '!topic anything'), false, '!topic no longer exists');
     assert.strictEqual(await run({ anonId: 'b1', streamId: liveId }, '!bounty nova'), false, '!bounty no longer exists');
     assert.strictEqual(await run({ anonId: 'b2', streamId: liveId }, '!board'), false, '!board no longer exists');

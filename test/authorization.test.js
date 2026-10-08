@@ -91,7 +91,7 @@ async function check(name, fn) {
 }
 
 (async () => {
-    await new Promise((r) => server.once('listening', r));
+    if (!server.listening) await new Promise((r) => server.once('listening', r));
 
     await check('chat: owning stream A does not let you delete a message in stream B', async () => {
         const r = await call('POST', '/api/mod/delete-message', 3, { message_id: MSG_B, stream_id: streamA });

@@ -223,7 +223,7 @@ async function check(name, fn) {
     app.use('/api/kiosk', require('../server/kiosk/routes'));
     app.use('/api/ai-viewers', require('../server/ai/viewers/routes'));
     const server = http.createServer(app).listen(0, '127.0.0.1');
-    await new Promise((r) => server.once('listening', r));
+    if (!server.listening) await new Promise((r) => server.once('listening', r));
     const call = (method, pth, body) => new Promise((resolve, reject) => {
         const data = body ? JSON.stringify(body) : null;
         const req = realHttpRequest({ host: '127.0.0.1', port: server.address().port, path: pth, method, headers: { 'content-type': 'application/json', 'x-test-user': '7' } }, (res) => {

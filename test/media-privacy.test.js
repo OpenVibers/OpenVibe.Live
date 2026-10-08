@@ -133,7 +133,7 @@ async function check(name, fn) {
         return a;
     }
 
-    await new Promise((r) => server.once('listening', r));
+    if (!server.listening) await new Promise((r) => server.once('listening', r));
     const community = await startCommunityStub();
     process.env.OV_COMMUNITY_INTERNAL_URL = community.url;
 

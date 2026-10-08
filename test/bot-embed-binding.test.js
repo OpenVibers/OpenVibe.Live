@@ -61,7 +61,7 @@ console.warn = (...a) => { warnings.push(a.join(' ')); };
     }
 
     const server = http.createServer(app).listen(0, '127.0.0.1');
-    await new Promise((r) => server.once('listening', r));
+    if (!server.listening) await new Promise((r) => server.once('listening', r));
     const call = (method, p, { user, body } = {}) => new Promise((resolve, reject) => {
         const data = body === undefined ? null : JSON.stringify(body);
         const headers = {};

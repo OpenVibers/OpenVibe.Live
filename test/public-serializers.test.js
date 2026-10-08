@@ -62,7 +62,7 @@ async function check(name, fn) {
     const app = express();
     app.use('/api/streams', require('../server/streaming/routes'));
     const server = http.createServer(app).listen(0);
-    await new Promise((r) => server.once('listening', r));
+    if (!server.listening) await new Promise((r) => server.once('listening', r));
     const getJson = (p) => new Promise((resolve, reject) => {
         http.get({ port: server.address().port, path: p }, (res) => {
             let body = '';

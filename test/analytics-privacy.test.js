@@ -100,7 +100,7 @@ const ANALYTICS_TABLES = ['analytics_events', 'analytics_hourly', 'analytics_dai
         app.use('/api', router);
         app.get('*', (req, res) => res.send('<html></html>'));
         const server = app.listen(0, '127.0.0.1');
-        await new Promise((r) => server.once('listening', r));
+        if (!server.listening) await new Promise((r) => server.once('listening', r));
         const base = `http://127.0.0.1:${server.address().port}`;
         const hdr = (extra) => ({ 'user-agent': CHROME, 'x-forwarded-for': '203.0.113.77', referer: 'https://www.google.com/search?q=secret-query', 'cf-ipcountry': 'NL', 'cf-ipcity': 'Amsterdam', ...extra });
         try {

@@ -127,7 +127,7 @@ async function check(name, fn) {
     await raw.prepare('UPDATE streams SET started_at = ?, ended_at = ? WHERE id = ?').run(day(4), day(3), s1);
     await raw.prepare('UPDATE streams SET started_at = ?, ended_at = ? WHERE id = ?').run(day(2), day(1), s2);
 
-    await new Promise((r) => server.once('listening', r));
+    if (!server.listening) await new Promise((r) => server.once('listening', r));
 
     VODS = [
         { id: 10, user_id: 3, stream_id: s1, managed_stream_id: msA, visibility: 'public', is_public: true, view_count: 5, created_at: day(2), thumbnail_url: 'https://media.test/t/10.jpg', duration_seconds: 60, file_path: 'a.webm' },
@@ -183,7 +183,8 @@ async function check(name, fn) {
     await check('stream analytics: the clip count arrives from Media after the stream ends', async () => {
         await db.computeAndCacheStreamAnalytics(s1);
         assert.strictEqual((await db.getStreamAnalytics(s1)).clips_created, 0, 'the synchronous pass keeps the last value');
-        await new Promise((r) => setTimeout(r, 30));
+        // The write-back runs after the stream-end write, on its own: wait for it (up to 3 s), not a fixed time.
+        for (let i = 0; i < 100 && !(await db.getStreamAnalytics(s1)).clips_created; i++) await new Promise((r) => setTimeout(r, 30));
         assert.strictEqual((await db.getStreamAnalytics(s1)).clips_created, 1, 'Media counted one clip of the stream');
     });
 

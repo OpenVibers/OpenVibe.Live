@@ -109,7 +109,7 @@ async function check(name, fn) {
 }
 
 {
-    await new Promise((r) => server.once('listening', r));
+    if (!server.listening) await new Promise((r) => server.once('listening', r));
     quiet('AI derivation opt-out');
 
     await check('on by default, for every channel and for an account with no channel row', async () => {

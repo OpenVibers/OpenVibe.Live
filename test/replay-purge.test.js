@@ -116,7 +116,7 @@ async function check(name, fn) {
     const aiRow = async (id) => await raw.prepare('SELECT 1 FROM vod_ai_state WHERE vod_id = ?').get(id);
     const views = async (type, id) => (await raw.prepare('SELECT COUNT(*) AS n FROM content_views WHERE content_type = ? AND content_id = ?').get(type, id)).n;
 
-    await new Promise((r) => server.once('listening', r));
+    if (!server.listening) await new Promise((r) => server.once('listening', r));
 
     // Deleting replays: Live's rows about each item, its comment thread and its Search document.
     const before = (await db.getVodsNeedingOverview(6)).map((r) => r.id);

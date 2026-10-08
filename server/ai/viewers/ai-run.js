@@ -19,7 +19,7 @@ async function viewerRun(workflow, input, { provider = null, ownerUserId = null,
     if (!own && !(await llm.isEnabled() && await llm.withinBudget())) return null;
     const started = Date.now();
     const r = await aiService.run(workflow, input, { attribution: aiService.ownerRef(ownerUserId), credentialSubject: own || null, waitMs: 60000 });
-    aiService.meter(r, { kind, role, ownerUserId, source: 'ai_viewers', provider: own ? 'byo' : 'openvibe-ai' });
+    await aiService.meter(r, { kind, role, ownerUserId, source: 'ai_viewers', provider: own ? 'byo' : 'openvibe-ai' });
     const output = aiService.usable(r);
     if (!output) return null;
     return {

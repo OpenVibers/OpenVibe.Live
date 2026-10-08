@@ -59,7 +59,7 @@ const call = async (method, p, body, user = 1) => {
     return { status: r.status, body: await r.json().catch(() => null) };
 };
 
-    await new Promise((r) => server.once('listening', r));
+    if (!server.listening) await new Promise((r) => server.once('listening', r));
     const siteConfig = require('../server/admin/site-config');
     const store = await siteConfig.getStore();
 

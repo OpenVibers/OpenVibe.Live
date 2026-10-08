@@ -103,10 +103,16 @@ const SEED = `(async () => {
     out.sse = writes.join('');
     const posted = [];
     const realFetch = global.fetch;
-    global.fetch = async (url, opts = {}) => { posted.push(String(opts.body || '')); return { ok: true, status: 200, json: async () => ({}) }; };
+    // Network mints Live's service token, then takes the go-live call; only calls to Network's internal API are kept
+    // (anything else this process sends meanwhile, a Media read from a background job, is not the go-live call).
+    global.fetch = async (url, opts = {}) => {
+        if (String(url).endsWith('/oauth/token')) return { ok: true, status: 200, json: async () => ({ access_token: 'golive-service-token', expires_in: 300, token_type: 'Bearer' }) };
+        if (String(url).startsWith('http://127.0.0.1:9/internal/')) posted.push(String(opts.body || ''));
+        return { ok: true, status: 200, json: async () => ({}) };
+    };
     try {
         await require('./server/streaming/golive-notify').notifyFollowersGoLive(streamer, raw, { force: true });
-        await new Promise((r) => setTimeout(r, 300));
+        for (let i = 0; i < 50 && !posted.length; i++) await new Promise((r) => setTimeout(r, 100));
     } finally { global.fetch = realFetch; }
     out.goLive = posted;
     out.rawHadKey = raw.managed_stream_key === K.slotMain && streamer.stream_key === K.account;
@@ -119,7 +125,7 @@ function hits(text, needles) {
 
 (async () => {
     const tmp = crawl.tempEnv('stream-keys');
-    const seeded = await crawl.seed(tmp, SEED, { SENTINELS: JSON.stringify(K), INTERNAL_API_KEY: 'internal-sentinel-for-golive', OV_NETWORK_INTERNAL_URL: 'http://127.0.0.1:9' });
+    const seeded = await crawl.seed(tmp, SEED, { SENTINELS: JSON.stringify(K), OV_OAUTH_CLIENT_SECRET: 'golive-client-secret', OV_NETWORK_INTERNAL_URL: 'http://127.0.0.1:9' });
     assert.ok(seeded && seeded.ids, 'seed printed its ids');
     const { ids, out } = seeded;
 

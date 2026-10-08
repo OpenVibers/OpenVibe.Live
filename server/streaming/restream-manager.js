@@ -862,7 +862,7 @@ class RestreamManager extends EventEmitter {
         let stderrBuf = '';
         let liveConfirmed = false;
 
-        const confirmLive = async () => {
+        const confirmLive = () => {
             if (liveConfirmed) return;
             if (session.process !== proc || session.status !== 'starting') return;
             liveConfirmed = true;
@@ -871,8 +871,9 @@ class RestreamManager extends EventEmitter {
             session.rapidCrashCount = 0;
             // A confirmed-live restream is definitively healthy — lift any stale failure cooldown
             // immediately (don't wait for the stable timer), so a brief earlier blip can't leave a
-            // working destination showing "paused / failed".
-            try { await require('../db/database').clearRestreamDestinationCooldown(session.destId); } catch { /* */ }
+            // working destination showing "paused / failed". Not awaited: the state flips now, so an
+            // exit that lands while the write is in flight still ends the run (idle/error), not live.
+            require('../db/database').clearRestreamDestinationCooldown(session.destId).catch(() => {});
 
             session.status = 'live';
             session.liveAt = Date.now();
@@ -903,7 +904,7 @@ class RestreamManager extends EventEmitter {
         // Progress blocks: one key=value per line, terminated by `progress=continue|end`.
         let progressBuf = '';
         let progressSeenAt = 0;
-        proc.stdout.on('data', async (data) => {
+        proc.stdout.on('data', (data) => {
             progressBuf += data.toString();
             if (progressBuf.length > 8192) progressBuf = progressBuf.slice(-8192);
             let nl;
@@ -923,7 +924,7 @@ class RestreamManager extends EventEmitter {
                     cur.at = progressSeenAt;
                     session.progress = cur;
                     // Frames (or, for a codec copy, output time) advancing means the ingest is taking data.
-                    if (!liveConfirmed && ((cur.frame || 0) > 0 || (cur.out_ms || 0) > 0)) await confirmLive();
+                    if (!liveConfirmed && ((cur.frame || 0) > 0 || (cur.out_ms || 0) > 0)) confirmLive();
                 }
             }
         });
@@ -972,7 +973,7 @@ class RestreamManager extends EventEmitter {
         // real error instead of a "Starting…" that never ends.
         setTimeout(async () => {
             if (liveConfirmed || session.process !== proc || session.status !== 'starting') return;
-            if (progressSeenAt) { await confirmLive(); return; }      // progress arrived but no frames yet: treat as connected
+            if (progressSeenAt) { confirmLive(); return; }      // progress arrived but no frames yet: treat as connected
             session.lastErrorRaw = stderrBuf.split('\n').filter(Boolean).slice(-3).join(' | ') || 'no output progress';
             session.lastError = `No response from the ingest within ${LIVE_ACK_TIMEOUT_MS / 1000}s — ${RestreamManager.friendlyFfmpegError(session.lastErrorRaw, session.destination?.platform)}`;
             console.warn(`[Restream] ${session.key}: ${session.lastError}`);

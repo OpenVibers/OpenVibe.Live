@@ -140,7 +140,11 @@ const safe = { DATA_DIR, HOST: '127.0.0.1', PORT: '13000' };
     // ── 4. Boot the real server in drill mode, in this process, with spies ──
     const port = await freePort();
     Object.assign(process.env, PROD_LIKE, { LIVE_DRILL: '1', DATA_DIR, HOST: '127.0.0.1', PORT: String(port) });
+    // The PostgreSQL driver's own per-connect timer (pg-pool's connection timeout, cleared once connected) is not one of
+    // Live's: a timer whose direct caller is the driver is left out; anything else set on Live's behalf still counts.
+    const DRIVER = /[\\/]node_modules[\\/](pg|pg-pool)[\\/]/;
     const inRepoServer = (stack) => {
+        if (DRIVER.test(stack.split('\n')[2] || '')) return null;
         const frame = stack.split('\n').slice(2).find((l) => l.includes(REPO) && !l.includes(`${path.sep}node_modules${path.sep}`) && !l.includes(__filename));
         return frame && frame.includes(`${SERVER}${path.sep}`) ? frame.trim() : null;
     };

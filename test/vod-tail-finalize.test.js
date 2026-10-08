@@ -122,7 +122,7 @@ async function check(name, fn) {
     const chan = await db.getChannelByUserId(3);
     const newStream = async (protocol) => Number((await db.createStream({ user_id: 3, channel_id: chan.id, title: `A ${protocol}`, protocol })).lastInsertRowid);
 
-    await new Promise((r) => server.once('listening', r));
+    if (!server.listening) await new Promise((r) => server.once('listening', r));
     const config = require('../server/config');
 
     const rtmpSid = await newStream('rtmp');

@@ -36,7 +36,7 @@ function rawRequest(port, text) {
 (async () => {
     let internalHits = 0;
     const internal = http.createServer((req, res) => { internalHits++; res.end('<title>internal admin</title>'); }).listen(0, '127.0.0.1');
-    await new Promise((r) => internal.once('listening', r));
+    if (!internal.listening) await new Promise((r) => internal.once('listening', r));
     const ip = internal.address().port;
 
     await check('address policy: internal spellings refused, public allowed', () => {
@@ -84,7 +84,7 @@ function rawRequest(port, text) {
         // A "public" first hop cannot exist in a sandbox, so exercise the redirect path directly: the
         // hop-by-hop check is the same assertPublicUrl call the first hop uses.
         const redirector = http.createServer((req, res) => { res.writeHead(302, { Location: `http://127.0.0.1:${ip}/` }); res.end(); }).listen(0, '127.0.0.1');
-        await new Promise((r) => redirector.once('listening', r));
+        if (!redirector.listening) await new Promise((r) => redirector.once('listening', r));
         await assert.rejects(egress.fetchText(`http://127.0.0.1:${redirector.address().port}/`), /reachable|non-public|Only/);
         redirector.close();
         assert.strictEqual(internalHits, 0);

@@ -55,7 +55,7 @@ const get = (p) => new Promise((resolve, reject) => {
 });
 
 (async () => {
-    await new Promise((r) => server.once('listening', r));
+    if (!server.listening) await new Promise((r) => server.once('listening', r));
 
     await db.initDb();
     await db.getDb().prepare(`INSERT INTO users (id, username, display_name, email, password_hash, role, created_at) OVERRIDING SYSTEM VALUE

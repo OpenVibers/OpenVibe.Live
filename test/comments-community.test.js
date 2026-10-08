@@ -53,10 +53,10 @@ async function check(name, fn) {
     const principal = require('../server/net/network-principal');
     principal.serviceHeaders = async () => ({ Authorization: 'Bearer test-service-token' });
 
-    const addUser = (id, username, role, subject) => {
-        raw.prepare(`INSERT INTO users (id, username, display_name, email, password_hash, role, profile_color, created_at) OVERRIDING SYSTEM VALUE
+    const addUser = async (id, username, role, subject) => {
+        await raw.prepare(`INSERT INTO users (id, username, display_name, email, password_hash, role, profile_color, created_at) OVERRIDING SYSTEM VALUE
                      VALUES (?, ?, ?, ?, 'x', ?, '#123456', '2025-01-01 00:00:00')`).run(id, username, username.toUpperCase(), `${username}@x`, role);
-        if (subject) raw.prepare("INSERT INTO linked_accounts (user_id, service, service_user_id, subject_id) VALUES (?, 'network', ?, ?)").run(id, String(100 + id), subject);
+        if (subject) await raw.prepare("INSERT INTO linked_accounts (user_id, service, service_user_id, subject_id) VALUES (?, 'network', ?, ?)").run(id, String(100 + id), subject);
     };
     await addUser(1, 'admin', 'admin', SUB('A'));
     await addUser(3, 'alice', 'streamer', SUB('B'));     // owns VOD 100 and the stream clip 200 came from
@@ -108,7 +108,7 @@ async function check(name, fn) {
         });
     }
 
-    await new Promise((r) => server.once('listening', r));
+    if (!server.listening) await new Promise((r) => server.once('listening', r));
     const stub = await (require('./community-stub').startCommunityStub({ people: { [SUB('Z')]: { username: 'zed', display_name: 'Zed from Community' } } }));
     process.env.OV_COMMUNITY_INTERNAL_URL = stub.url;
     const last = (method, re) => [...stub.calls].reverse().find((c) => c.method === method && re.test(c.path));

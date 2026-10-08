@@ -57,17 +57,18 @@ const columnRows = (d, table) => d.prepare(
       WHERE table_schema = current_schema() AND table_name = ? ORDER BY ordinal_position`).all(table);
 const columnNames = async (d, table) => (await columnRows(d, table)).map((c) => c.name);
 
-/** Foreign keys of one table → [{ from, table, on_delete }] (PRAGMA foreign_key_list's columns). */
-const foreignKeys = (d, table) => d.prepare(
-    `SELECT kcu.column_name AS "from", ccu.table_name AS "table", rc.delete_rule AS on_delete
-       FROM information_schema.table_constraints tc
-       JOIN information_schema.key_column_usage kcu
-         ON kcu.constraint_name = tc.constraint_name AND kcu.constraint_schema = tc.constraint_schema
-       JOIN information_schema.referential_constraints rc
-         ON rc.constraint_name = tc.constraint_name AND rc.constraint_schema = tc.constraint_schema
-       JOIN information_schema.constraint_column_usage ccu
-         ON ccu.constraint_name = tc.constraint_name AND ccu.constraint_schema = tc.constraint_schema
-      WHERE tc.constraint_type = 'FOREIGN KEY' AND tc.table_schema = current_schema() AND tc.table_name = ?`).all(table);
+/** Every foreign key in Live's schema → [{ table, from, ref, on_delete }], in one catalog read (information_schema's
+ *  constraint views are slow on a cluster with many schemas: a statement timeout on the test containers). */
+const schemaForeignKeys = (d) => d.prepare(
+    `SELECT src.relname AS "table", a.attname AS "from", dst.relname AS ref,
+            CASE c.confdeltype WHEN 'n' THEN 'SET NULL' WHEN 'c' THEN 'CASCADE' WHEN 'd' THEN 'SET DEFAULT'
+                               WHEN 'r' THEN 'RESTRICT' ELSE 'NO ACTION' END AS on_delete
+       FROM pg_constraint c
+       JOIN pg_class src ON src.oid = c.conrelid
+       JOIN pg_namespace n ON n.oid = src.relnamespace
+       JOIN pg_class dst ON dst.oid = c.confrelid
+       JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = ANY (c.conkey)
+      WHERE c.contype = 'f' AND n.nspname = current_schema()`).all();
 
 /** table → [{ col, action: 'delete'|'null' }], every person column Live has, frozen tables left out. */
 async function personColumns(d) {
@@ -77,15 +78,21 @@ async function personColumns(d) {
         if (!out.get(t).some((c) => c.col === col)) out.get(t).push({ col, action });
     };
     const tables = (await d.prepare("SELECT table_name AS name FROM information_schema.tables WHERE table_schema = current_schema() ORDER BY name").all()).map((r) => r.name);
+    const cols = new Map();
+    for (const r of await d.prepare('SELECT table_name AS t, column_name AS name FROM information_schema.columns WHERE table_schema = current_schema()').all()) {
+        if (!cols.has(r.t)) cols.set(r.t, []);
+        cols.get(r.t).push(r.name);
+    }
+    const fks = await schemaForeignKeys(d);
     for (const t of tables) {
         if (t === 'users' || FROZEN.has(t)) continue;
-        for (const fk of await foreignKeys(d, t)) {
-            if (fk.table === 'users') add(t, fk.from, fk.on_delete === 'SET NULL' && !OVERRIDE_DELETE.has(`${t}.${fk.from}`) ? 'null' : 'delete');
+        for (const fk of fks) {
+            if (fk.table === t && fk.ref === 'users') add(t, fk.from, fk.on_delete === 'SET NULL' && !OVERRIDE_DELETE.has(`${t}.${fk.from}`) ? 'null' : 'delete');
         }
-        if ((await columnNames(d, t)).includes('user_id')) add(t, 'user_id', 'delete');
+        if ((cols.get(t) || []).includes('user_id')) add(t, 'user_id', 'delete');
     }
     for (const [t, col] of EXTRA) {
-        if (tables.includes(t) && (await columnNames(d, t)).includes(col)) add(t, col, 'delete');
+        if (tables.includes(t) && (cols.get(t) || []).includes(col)) add(t, col, 'delete');
     }
     return out;
 }

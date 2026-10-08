@@ -126,7 +126,7 @@ async function check(name, fn) {
         });
     }
 
-    await new Promise((r) => server.once('listening', r));
+    if (!server.listening) await new Promise((r) => server.once('listening', r));
     quiet('Clip attribution');
 
     await check('"My Clips" asks Media for people\'s clips only, even when the query asks for AI ones', async () => {

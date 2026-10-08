@@ -124,7 +124,7 @@ const buttons = async (streamId) => (await db.getStreamControls(streamId)).map((
     CAM = await slot('cam', 'rtmp', CAMERA);
     PLAIN = await slot('plain', 'rtmp', null);
 
-    await new Promise((r) => server.once('listening', r));
+    if (!server.listening) await new Promise((r) => server.once('listening', r));
     let armStream, camStream;
 
     await check('Go Live on a slot, then its encoder: the waiting stream is used and keeps the slot\'s profile', async () => {

@@ -3591,14 +3591,6 @@ async function computeAndCacheStreamAnalytics(streamId) {
     const prior = await get('SELECT unique_chatters, total_messages FROM stream_analytics WHERE stream_id = ?', [streamId]) || {};
     const uniqueChatters = Number(prior.unique_chatters) || 0;
     const totalMessages = Number(prior.total_messages) || 0;
-    // After the caller's transaction commits (at once outside one): the write-back must not join a finished transaction.
-    getDb().afterCommit(() => {
-        try {
-            require('../chat/chat-reads').streamStats(streamId)
-                .then(async (t) => { if (t) await setStreamAnalyticsChatTotals(streamId, t.chatters, t.messages); })
-                .catch(() => {});
-        } catch { /* */ }
-    });
 
     // Total watch minutes
     const watchRow = await get(
@@ -3610,7 +3602,6 @@ async function computeAndCacheStreamAnalytics(streamId) {
     // stream ends, so it keeps the last count it has and asks Media right after (lookups.js
     // refreshStreamClipCount writes the answer back with setStreamAnalyticsClipCount).
     const clipsCreated = (await get('SELECT clips_created FROM stream_analytics WHERE stream_id = ?', [streamId]))?.clips_created || 0;
-    getDb().afterCommit(() => { try { require('../media-proxy/lookups').refreshStreamClipCount(streamId).catch(() => {}); } catch { /* */ } });
 
     // Coins earned during this stream
     const coinsRow = await get(
@@ -3648,6 +3639,17 @@ async function computeAndCacheStreamAnalytics(streamId) {
         [streamId, avgViewers, stream.peak_viewers || 0, uniqueChatters, totalMessages,
          totalWatchMinutes, newFollowers, clipsCreated, coinsEarned]
     );
+
+    // The write-backs (Chat's totals, Media's clip count) UPDATE the row just written, so they are registered after it:
+    // after the caller's transaction commits (at once outside one), never joining a finished transaction.
+    getDb().afterCommit(() => {
+        try {
+            require('../chat/chat-reads').streamStats(streamId)
+                .then(async (t) => { if (t) await setStreamAnalyticsChatTotals(streamId, t.chatters, t.messages); })
+                .catch(() => {});
+        } catch { /* */ }
+        try { require('../media-proxy/lookups').refreshStreamClipCount(streamId).catch(() => {}); } catch { /* */ }
+    });
 
     return {
         stream_id: streamId,

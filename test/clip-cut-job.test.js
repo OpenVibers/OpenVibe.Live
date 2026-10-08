@@ -58,7 +58,7 @@ console.error = () => {};
     const base = () => `http://127.0.0.1:${server.address().port}`;
     const get = async (p, user) => { const r = await fetch(base() + p, { headers: user ? { 'x-test-user': String(user) } : {} }); return { status: r.status, body: await r.json().catch(() => null) }; };
 
-    await new Promise((r) => server.once('listening', r));
+    if (!server.listening) await new Promise((r) => server.once('listening', r));
     const A = 'mjob_01M3AAAAAAAAAAAAAAAAAAAAAA', B = 'mjob_01M3BBBBBBBBBBBBBBBBBBBBBB';
 
     // ── The route ──

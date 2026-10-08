@@ -153,7 +153,7 @@ async function check(name, fn) {
     app.use('/api/streams', require('../server/bot/routes'));
     app.use('/api/streams', require('../server/streaming/routes'));
     const server = http.createServer(app).listen(0, '127.0.0.1');
-    await new Promise((r) => server.once('listening', r));
+    if (!server.listening) await new Promise((r) => server.once('listening', r));
     const call = (method, p, body) => new Promise((resolve, reject) => {
         const data = body === undefined ? null : JSON.stringify(body);
         const headers = { 'x-test-user': '1' };

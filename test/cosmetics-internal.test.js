@@ -39,7 +39,7 @@ const token = (cap, { aud = 'openvibe.live', sub = 'svc:network', env } = {}) =>
     app.use('/api/cosmetics', require('../server/monetization/cosmetics-routes'));
     app.use('/internal', require('../server/internal/routes'));
     const server = app.listen(0, '127.0.0.1');
-    await new Promise((r) => server.once('listening', r));
+    if (!server.listening) await new Promise((r) => server.once('listening', r));
     const origin = `http://127.0.0.1:${server.address().port}`;
     const post = (p, headers, body = {}) => fetch(origin + p, { method: 'POST', headers: { 'content-type': 'application/json', ...headers }, body: JSON.stringify(body) });
     const bearer = (t) => ({ authorization: `Bearer ${t}` });
