@@ -30,8 +30,26 @@ const MIGRATIONS = path.join(__dirname, '..', 'migrations');
 
 // importSqlite's per-table options. A SQLite column the schema dropped would be listed here (dropColumns); none is.
 const TABLES = {};
-// Source tables with a same-named target that must not be copied. None: what the schema left out is not a target.
-const SKIP_SOURCE = [];
+// SQLite tables migrations/0002_live.sql leaves out (its header says why); importSqlite reads none of them.
+const SKIP_SOURCE = [
+    // frozen since C-73: OpenVibe.Media and OpenVibe.Community own the data
+    'vods', 'clips', 'pastes', 'paste_likes', 'paste_comments', 'comments',
+    // owned by OpenVibe.Chat since T3 (Live keeps no copy)
+    'channel_moderators', 'channel_moderation_settings', 'user_tags', 'chat_ai_summaries', 'chat_timeline_events', 'chat_dual_read_stats',
+    // SQLite-only machinery: the SQLite migration ledger and the T3 chat staging/bridge queues
+    'schema_migrations', 'chat_staged_outbox', 'chat_bridge_outbox',
+    // retired features no server code names (the legacy game, canvas, arena v1/v2, chatter profiles): their rows stay
+    // in the archived SQLite file
+    'game_world_state', 'game_inventory', 'game_bank', 'game_structures', 'game_farm_plots', 'game_recipes', 'game_effects',
+    'game_battle_stats', 'game_dungeon_runs', 'game_leaderboard', 'game_fish_collection', 'game_daily_quest_progress',
+    'game_daily_quest_claims', 'game_achievements', 'tag_guardian_defeats', 'canvas_settings', 'canvas_tiles', 'canvas_actions',
+    'canvas_snapshots', 'canvas_region_locks', 'canvas_bans', 'canvas_user_overrides', 'arena_battles', 'arena_votes',
+    'arena_talk_topics', 'arena_talk', 'arena_talk_hype', 'arena_talk_sessions', 'arena_talk_session_topics',
+    'arena_talk_session_hype', 'arena_topics', 'arena_topic_progress', 'arena_topic_members', 'arena_topic_hype',
+    'arena_topic_sides', 'arena_viewer_clout', 'arena_beef_sides', 'arena_topic_moments', 'chatter_profiles', 'chatter_xp_log',
+    'chatter_subjects', 'arena_topic_threads', 'arena_achievements', 'arena_events', 'arena_tier_paid', 'promo_claims',
+    'moderation_events_backfill',
+];
 // The analytics database has only openvibe-shared's analytics tables (and its old per-IP rate counters, which
 // PostgreSQL has no table for: the rate check keeps them in memory, and IPs are never carried over).
 const ANALYTICS_SKIP_SOURCE = ['analytics_rate_tracking'];
