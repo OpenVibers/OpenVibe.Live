@@ -68,7 +68,7 @@ try {
         try { require('./server/events/search-media-documents').ensureSchema(); d.prepare("INSERT INTO search_media_pushes (kind, media_id, hash, revision) VALUES ('vod', 1, 'h', 1)").run(); } catch (e) {}
         db.recordEasterEggSolve('2026-01-01', 'rollback-probe', u.id);
         const tables = d.prepare("SELECT COUNT(*) AS n FROM sqlite_master WHERE type = 'table'").get().n;
-        process.stdout.write(JSON.stringify({ ok: true, "user": u.id, tables }) + '\\n');
+        process.stdout.write(JSON.stringify({ ok: true, user: u.id, tables }) + '\\n');
     `);
     assert.strictEqual(now.code, 0, `the current release could not prepare the database:\n${now.stderr}`);
 

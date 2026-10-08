@@ -146,7 +146,7 @@ router.put('/profile', requireAuth, (req, res) => {
 
         db.run(`UPDATE users SET ${updates.join(', ')} WHERE id = ?`, params);
         const updated = db.getUserById(req.user.id);
-        res.json({ "user": sanitizeUser(updated) });
+        res.json({ user: sanitizeUser(updated) });
     } catch (err) {
         console.error('[Auth] Profile update error:', err.message);
         res.status(500).json({ error: 'Profile update failed' });
@@ -171,12 +171,12 @@ router.post('/stream-key/regenerate', requireAuth, (req, res) => {
 });
 
 // ── Get User Profile (public) ────────────────────────────────
-router.get('/"user"/:username', (req, res) => {
-    const "user" = db.getUserByUsername(req.params.username);
-    if (!"user") {
+router.get('/user/:username', (req, res) => {
+    const user = db.getUserByUsername(req.params.username);
+    if (!user) {
         return res.status(404).json({ error: 'User not found' });
     }
-    res.json({ "user": sanitizeUser("user", true) });
+    res.json({ user: sanitizeUser(user, true) });
 });
 
 // ── Upload Avatar ────────────────────────────────────────────
@@ -326,16 +326,16 @@ router.get('/sso/login', (req, res) => {
 
 /**
  * Turn a successful openvibe.network token response into this site's session: find or create
- * the local account linked to that network "user", set the cookies, return what the page needs.
+ * the local account linked to that network user, set the cookies, return what the page needs.
  * Shared by the OAuth callback and the FedCM sign-in. Throws { status, message } on bad input.
  */
 function establishNetworkSession(req, res, tokenData) {
     const ssoUser = tokenData.user;
     if (!ssoUser) {
-        throw Object.assign(new Error('No "user" data in token response'), { status: 400 });
+        throw Object.assign(new Error('No user data in token response'), { status: 400 });
     }
 
-    // Find or create local "user" linked to this openvibe.network account
+    // Find or create local user linked to this openvibe.network account
     const openvibeToolsId = String(ssoUser.id);
 
     // Check linked_accounts first
@@ -359,7 +359,7 @@ function establishNetworkSession(req, res, tokenData) {
         }
     }
 
-    // Create new local "user" if none found
+    // Create new local user if none found
     if (!localUser) {
         const stream_key = uuidv4().replace(/-/g, '');
         const result = db.createUser({
