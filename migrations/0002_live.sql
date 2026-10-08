@@ -8,9 +8,10 @@
 --
 -- Not created here, so never imported:
 --   frozen since C-73 (OpenVibe.Media and OpenVibe.Community own the data): vods, clips, pastes, paste_likes, paste_comments, comments;
---   named by no server code (retired features; their rows stay in the archived SQLite file): 46 tables
---     (game_world_state, game_inventory, game_bank, game_structures, game_farm_plots, game_recipes, game_effects, game_battle_stats, game_dungeon_runs, game_leaderboard, game_fish_collection, game_daily_quest_progress, game_daily_quest_claims, game_achievements, tag_guardian_defeats, canvas_settings, canvas_tiles, canvas_actions, canvas_snapshots, canvas_region_locks, canvas_bans, canvas_user_overrides, arena_battles, arena_votes, arena_talk_topics, arena_talk, arena_talk_hype, arena_talk_sessions, arena_talk_session_topics, arena_talk_session_hype, arena_topic_progress, arena_topic_members, arena_topic_hype, arena_topic_sides, arena_viewer_clout, arena_topic_moments, chatter_profiles, chatter_xp_log, chatter_subjects, arena_topic_threads, arena_achievements, arena_events, arena_tier_paid, promo_claims, idempotency_receipts, moderation_events_backfill);
---   SQLite-only machinery: schema_migrations, event_outbox, chat_staged_outbox, chat_bridge_outbox (the ov_migrations ledger and the PostgreSQL outbox replace them).
+--   named by no server code (retired features; their rows stay in the archived SQLite file): 48 tables
+--     (game_world_state, game_inventory, game_bank, game_structures, game_farm_plots, game_recipes, game_effects, game_battle_stats, game_dungeon_runs, game_leaderboard, game_fish_collection, game_daily_quest_progress, game_daily_quest_claims, game_achievements, tag_guardian_defeats, canvas_settings, canvas_tiles, canvas_actions, canvas_snapshots, canvas_region_locks, canvas_bans, canvas_user_overrides, arena_battles, arena_votes, arena_talk_topics, arena_talk, arena_talk_hype, arena_talk_sessions, arena_talk_session_topics, arena_talk_session_hype, arena_topic_progress, arena_topic_members, arena_topic_hype, arena_topic_sides, arena_viewer_clout, arena_topic_moments, chatter_profiles, chatter_xp_log, chatter_subjects, arena_topic_threads, arena_achievements, arena_events, arena_tier_paid, promo_claims, idempotency_receipts, moderation_events_backfill, arena_topics, arena_beef_sides);
+--   SQLite-only machinery: schema_migrations, event_outbox, chat_staged_outbox, chat_bridge_outbox (the ov_migrations ledger and the PostgreSQL outbox replace them);
+--   owned by OpenVibe.Chat since T3 (Live keeps no copy): channel_moderators, channel_moderation_settings, user_tags, chat_ai_summaries, chat_timeline_events, chat_dual_read_stats.
 
 -- SQLite's text timestamps and date functions (openvibe-sdk tools/asyncify SQLITE_DATE_FUNCTIONS).
 CREATE FUNCTION ov_ts(t text) RETURNS timestamp LANGUAGE plpgsql STABLE AS $$
@@ -253,15 +254,6 @@ CREATE TABLE arena_beef_hype (
     PRIMARY KEY (beef_id, voter_key)
 );
 
-CREATE TABLE arena_beef_sides (
-    beef_id bigint NOT NULL,
-    voter_key text COLLATE "C" NOT NULL,
-    side text COLLATE "C" NOT NULL,
-    user_id bigint,
-    created_at text COLLATE "C" DEFAULT ov_now(),
-    PRIMARY KEY (beef_id, voter_key)
-);
-
 CREATE TABLE arena_beefs (
     id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     a_user_id bigint NOT NULL,
@@ -324,45 +316,6 @@ CREATE TABLE arena_profiles (
     updated_at text COLLATE "C" DEFAULT ov_now(),
     quotes_json text COLLATE "C",
     quotes_generated_at text COLLATE "C"
-);
-
-CREATE TABLE arena_topics (
-    id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    text text COLLATE "C" NOT NULL,
-    hint text COLLATE "C",
-    created_by text COLLATE "C" NOT NULL,
-    creator_user_id bigint,
-    creator_name text COLLATE "C",
-    status text COLLATE "C" NOT NULL DEFAULT 'open',
-    angles_json text COLLATE "C",
-    joins bigint DEFAULT 0,
-    hits bigint DEFAULT 0,
-    conquered bigint DEFAULT 0,
-    last_activity_at text COLLATE "C" DEFAULT ov_now(),
-    created_at text COLLATE "C" DEFAULT ov_now(),
-    kind text COLLATE "C" NOT NULL DEFAULT 'topic',
-    side_a text COLLATE "C",
-    side_b text COLLATE "C",
-    phrase text COLLATE "C",
-    target_user_id bigint,
-    headline text COLLATE "C",
-    heat double precision DEFAULT 0,
-    source_note text COLLATE "C",
-    expires_at text COLLATE "C",
-    winner_side text COLLATE "C",
-    resolved_json text COLLATE "C",
-    keywords_json text COLLATE "C",
-    lore text COLLATE "C",
-    tagline text COLLATE "C",
-    lore_updated_at text COLLATE "C",
-    lore_moment_count bigint DEFAULT 0,
-    chat_mentions bigint DEFAULT 0,
-    mic_mentions bigint DEFAULT 0,
-    last_mention_at text COLLATE "C",
-    origin_json text COLLATE "C",
-    creator_ip_hash text COLLATE "C",
-    submitted_text text COLLATE "C",
-    peak_heat double precision DEFAULT 0
 );
 
 CREATE TABLE arena_trash_levels (
@@ -591,66 +544,6 @@ CREATE TABLE channel_ai_config (
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
-CREATE TABLE channel_moderation_settings (
-    channel_id bigint GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
-    slow_mode_seconds bigint DEFAULT 0,
-    followers_only bigint DEFAULT 0,
-    emote_only bigint DEFAULT 0,
-    allow_anonymous bigint DEFAULT 1,
-    links_allowed bigint DEFAULT 1,
-    gifs_enabled bigint DEFAULT 1,
-    account_age_gate_hours bigint DEFAULT 0,
-    caps_percentage_limit bigint DEFAULT 0,
-    aggressive_filter bigint DEFAULT 0,
-    max_message_length bigint DEFAULT 500,
-    slur_filter_enabled bigint DEFAULT 0,
-    slur_filter_use_builtin bigint DEFAULT 1,
-    slur_filter_terms text COLLATE "C" DEFAULT '',
-    slur_filter_regexes text COLLATE "C" DEFAULT '',
-    slur_filter_nudge_message text COLLATE "C" DEFAULT '',
-    slur_filter_disabled_categories text COLLATE "C" DEFAULT '[]',
-    ip_approval_mode bigint DEFAULT 0,
-    soundboard_enabled bigint DEFAULT 1,
-    soundboard_allow_pitch bigint DEFAULT 1,
-    soundboard_allow_speed bigint DEFAULT 1,
-    soundboard_banned_ids text COLLATE "C" DEFAULT '',
-    viewer_auto_delete_enabled bigint DEFAULT 1,
-    viewer_delete_all_enabled bigint DEFAULT 1,
-    custom_emotes_enabled bigint DEFAULT 1,
-    custom_sounds_enabled bigint DEFAULT 1,
-    max_sound_seconds bigint DEFAULT 10,
-    uploads_mods_only bigint DEFAULT 0,
-    mods_can_edit_about bigint DEFAULT 0,
-    donation_sound_url text COLLATE "C",
-    donation_sound_mime text COLLATE "C",
-    goal_sound_url text COLLATE "C",
-    goal_sound_mime text COLLATE "C",
-    emote_scale bigint DEFAULT 100,
-    sub_only bigint DEFAULT 0,
-    updated_at text COLLATE "C" DEFAULT ov_now(),
-    tts_max_length bigint DEFAULT 200,
-    sound_min_speed double precision DEFAULT 0.5,
-    sound_max_speed double precision DEFAULT 3.0,
-    sound_min_pitch_cents bigint DEFAULT -1200,
-    sound_max_pitch_cents bigint DEFAULT 1200,
-    emote_size_min bigint DEFAULT 50,
-    emote_size_max bigint DEFAULT 200,
-    sounds_mods_only bigint DEFAULT 0,
-    FOREIGN KEY (channel_id) REFERENCES channels(id) ON DELETE CASCADE
-);
-
-CREATE TABLE channel_moderators (
-    id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    channel_id bigint NOT NULL,
-    user_id bigint NOT NULL,
-    added_by bigint NOT NULL,
-    created_at text COLLATE "C" DEFAULT ov_now(),
-    UNIQUE(channel_id, user_id),
-    FOREIGN KEY (channel_id) REFERENCES channels(id) ON DELETE CASCADE,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-    FOREIGN KEY (added_by) REFERENCES users(id) ON DELETE SET NULL
-);
-
 CREATE TABLE channel_points (
     user_id bigint NOT NULL,
     streamer_id bigint NOT NULL,
@@ -666,46 +559,6 @@ CREATE TABLE channel_points_log (
     streamer_id bigint NOT NULL,
     delta bigint NOT NULL,
     reason text COLLATE "C",
-    created_at text COLLATE "C" DEFAULT ov_now()
-);
-
-CREATE TABLE chat_ai_summaries (
-    id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    scope text COLLATE "C" NOT NULL,
-    subject_id bigint NOT NULL DEFAULT 0,
-    "window" text COLLATE "C" NOT NULL,
-    overview text COLLATE "C" DEFAULT '',
-    memory_json text COLLATE "C" DEFAULT '',
-    timeline_json text COLLATE "C" DEFAULT '[]',
-    message_count bigint DEFAULT 0,
-    window_message_count bigint DEFAULT 0,
-    last_message_id bigint DEFAULT 0,
-    window_label text COLLATE "C" DEFAULT '',
-    window_start text COLLATE "C",
-    window_end text COLLATE "C",
-    updated_at text COLLATE "C" DEFAULT ov_now(),
-    UNIQUE(scope, subject_id, "window")
-);
-
-CREATE TABLE chat_dual_read_stats (
-    tbl text COLLATE "C" PRIMARY KEY,
-    compared bigint NOT NULL DEFAULT 0,
-    matched bigint NOT NULL DEFAULT 0,
-    mismatched bigint NOT NULL DEFAULT 0,
-    inconclusive bigint NOT NULL DEFAULT 0,
-    errors bigint NOT NULL DEFAULT 0,
-    last_mismatch_at text COLLATE "C",
-    last_mismatch text COLLATE "C",
-    since text COLLATE "C" DEFAULT ov_now()
-);
-
-CREATE TABLE chat_timeline_events (
-    id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    scope text COLLATE "C" NOT NULL DEFAULT 'global',
-    subject_id bigint NOT NULL DEFAULT 0,
-    ts text COLLATE "C" NOT NULL,
-    label text COLLATE "C" NOT NULL,
-    detail text COLLATE "C" DEFAULT '',
     created_at text COLLATE "C" DEFAULT ov_now()
 );
 
@@ -1404,16 +1257,6 @@ CREATE TABLE user_preferences (
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
-CREATE TABLE user_tags (
-    id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    user_id bigint NOT NULL,
-    tag_id text COLLATE "C" NOT NULL,
-    source text COLLATE "C" DEFAULT 'shop',
-    granted_at text COLLATE "C" DEFAULT ov_now(),
-    UNIQUE(user_id, tag_id),
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-);
-
 CREATE TABLE user_themes (
     id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     user_id bigint NOT NULL,
@@ -1567,13 +1410,8 @@ CREATE INDEX idx_billing_actions_status ON billing_actions(status, created_at);
 CREATE INDEX idx_cameras_stream_id ON cameras(stream_id);
 CREATE INDEX idx_channel_ai_bots_channel ON channel_ai_bots(channel_user_id, is_active);
 CREATE UNIQUE INDEX idx_channel_ai_bots_uname ON channel_ai_bots(channel_user_id, username);
-CREATE INDEX idx_channel_mods_channel ON channel_moderators(channel_id);
-CREATE INDEX idx_channel_mods_user ON channel_moderators(user_id);
 CREATE INDEX idx_cp_log_user ON channel_points_log(user_id, streamer_id, id);
 CREATE INDEX idx_channels_user_id ON channels(user_id);
-CREATE INDEX idx_chat_ai_scope ON chat_ai_summaries(scope, subject_id, "window");
-CREATE UNIQUE INDEX idx_chat_tl_dedup ON chat_timeline_events(scope, subject_id, ts, label);
-CREATE INDEX idx_chat_tl_scope_ts ON chat_timeline_events(scope, subject_id, ts DESC);
 CREATE UNIQUE INDEX idx_clip_ai_state_clip_id_unique ON clip_ai_state(clip_id);
 CREATE INDEX idx_coin_redemptions_stream ON coin_redemptions(stream_id);
 CREATE INDEX idx_coin_redemptions_user ON coin_redemptions(user_id);
@@ -1639,7 +1477,6 @@ CREATE INDEX idx_tips_deliveries_created ON tips_deliveries(created_at);
 CREATE INDEX idx_transactions_to_user ON transactions(to_user_id);
 CREATE INDEX idx_tx_type_created ON transactions(type, created_at);
 CREATE INDEX idx_user_cosmetics_user ON user_cosmetics(user_id);
-CREATE INDEX idx_user_tags_user ON user_tags(user_id);
 CREATE INDEX idx_user_themes_user ON user_themes(user_id);
 CREATE INDEX idx_username_history_old ON username_history(lower(old_username));
 CREATE INDEX idx_users_created ON users(created_at);
