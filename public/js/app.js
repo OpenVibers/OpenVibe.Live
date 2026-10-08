@@ -1306,21 +1306,14 @@ function showPage(page) {
     updateNavHeroTransparency();
 }
 
-// Transparent nav over the home hero: it blends into the hero at the very top and its glass
-// background fades in as soon as you scroll down. Only on the home page — every other page
-// keeps its solid nav from the top.
+// The home hero runs under the bar: body.ov-nav-overlay tells the shared navbar (openvibe-shared 2.15.0) to sit over it.
+// The navbar keeps its own at-the-top state (.ovnav-top) on every render and scroll, so the bar is transparent over the
+// hero at the very top and fades into its frosted look as you scroll — also right after a fresh load or a sign-in, when
+// the bar renders after the route.
 function updateNavHeroTransparency() {
-    const nav = document.querySelector('.navbar');
-    if (!nav) return;
     const homeActive = document.getElementById('page-home')?.classList.contains('active');
-    const atTop = (window.scrollY || window.pageYOffset || 0) < 28;
-    nav.classList.toggle('nav-hero-top', !!homeActive && atTop);
+    document.body.classList.toggle('ov-nav-overlay', !!homeActive);
 }
-// One class toggle per animation frame at most — the handler fired on every scroll event,
-// which on phones (with a blurred nav over an animated hero) showed up as scroll jank.
-let _navScrollRaf = 0;
-window.addEventListener('scroll', () => { if (_navScrollRaf) return; _navScrollRaf = requestAnimationFrame(() => { _navScrollRaf = 0; updateNavHeroTransparency(); }); }, { passive: true });
-window.addEventListener('resize', updateNavHeroTransparency, { passive: true });
 
 /* ── Channel Page (/:username) ────────────────────────────────── */
 let currentChannelUsername = null; // is the current channel's user owner-rank?
