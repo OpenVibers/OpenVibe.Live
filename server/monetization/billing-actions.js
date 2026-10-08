@@ -48,8 +48,8 @@ function ensureTables() {
         response_json TEXT,
         error TEXT,
         attempts INTEGER NOT NULL DEFAULT 0,
-        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        created_at TEXT NOT NULL DEFAULT ov_now(),
+        updated_at TEXT NOT NULL DEFAULT ov_now()
     );
     CREATE INDEX IF NOT EXISTS idx_billing_actions_ref ON billing_actions(action, live_ref);
     CREATE INDEX IF NOT EXISTS idx_billing_actions_status ON billing_actions(status, created_at);`);
@@ -84,19 +84,19 @@ async function perform({ action, method = 'POST', path, body, key, liveUserId = 
         if (row.request_json !== requestJson) throw new BillingCallError('refused', { status: 422, code: 'idempotency.key_reused', detail: 'that request id was already used for a different request' });
         if (row.status === 'done') return { out: JSON.parse(row.response_json || '{}'), replayed: true, actionId: row.id };
     } else {
-        d.prepare(`INSERT OR IGNORE INTO billing_actions (action, idempotency_key, live_user_id, live_ref, method, path, request_json)
-            VALUES (?, ?, ?, ?, ?, ?, ?)`).run(action, key, liveUserId, liveRef, method, path, requestJson);
+        d.prepare(`INSERT INTO billing_actions (action, idempotency_key, live_user_id, live_ref, method, path, request_json)
+            VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING`).run(action, key, liveUserId, liveRef, method, path, requestJson);
     }
     const id = d.prepare('SELECT id FROM billing_actions WHERE idempotency_key = ?').get(key).id;
-    d.prepare('UPDATE billing_actions SET attempts = attempts + 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(id);
+    d.prepare('UPDATE billing_actions SET attempts = attempts + 1, updated_at = ov_now() WHERE id = ?').run(id);
     try {
         const out = await billing.request(method, path, { body, idempotencyKey: key, trace });
-        d.prepare(`UPDATE billing_actions SET status = 'done', http_status = 200, billing_ref = ?, response_json = ?, error = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?`)
+        d.prepare(`UPDATE billing_actions SET status = 'done', http_status = 200, billing_ref = ?, response_json = ?, error = NULL, updated_at = ov_now() WHERE id = ?`)
             .run(refOf(out), JSON.stringify(out), id);
         return { out, replayed: !!out._replayed, actionId: id };
     } catch (err) {
         const status = err instanceof BillingCallError ? ({ unknown: 'unknown', refused: 'refused' }[err.kind] || 'failed') : 'failed';
-        d.prepare('UPDATE billing_actions SET status = ?, http_status = ?, error = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
+        d.prepare('UPDATE billing_actions SET status = ?, http_status = ?, error = ?, updated_at = ov_now() WHERE id = ?')
             .run(status, err.status || null, `${err.code || err.kind || 'error'}: ${String(err.detail || err.message).slice(0, 300)}`, id);
         if (status === 'unknown') console.warn(`[Billing] ${action} ${key}: outcome unknown (${err.detail || err.message}); resolve from /api/admin/money`);
         throw err;
@@ -194,7 +194,7 @@ async function chargeMedia({ userId, streamerId, streamId, cost, label, requestI
 /** Tie a media charge to the request it paid for, so a refund can find the Billing transfer. */
 function linkMediaCharge(actionId, requestId) {
     ensureTables();
-    db.getDb().prepare("UPDATE billing_actions SET live_ref = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND action = 'media_charge'").run(`media_request:${requestId}`, actionId);
+    db.getDb().prepare("UPDATE billing_actions SET live_ref = ?, updated_at = ov_now() WHERE id = ? AND action = 'media_charge'").run(`media_request:${requestId}`, actionId);
 }
 
 /** Refund a Vibes-paid media request through Billing. Resolves the refunded amount, or 0. */

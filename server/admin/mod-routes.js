@@ -298,7 +298,7 @@ router.delete('/ban/:id', async (req, res) => {
                 db.run('UPDATE users SET is_banned = 0, ban_reason = NULL WHERE id = ?', [ban.user_id]);
                 // Remove ALL global bans for this user (user + IP entries)
                 db.run('DELETE FROM bans WHERE user_id = ? AND stream_id IS NULL', [ban.user_id]);
-                db.run('DELETE FROM bans WHERE ip_address IS NOT NULL AND banned_by = ? AND stream_id IS NULL AND reason LIKE ?',
+                db.run('DELETE FROM bans WHERE ip_address IS NOT NULL AND banned_by = ? AND stream_id IS NULL AND reason ILIKE ?',
                     [ban.banned_by, '%' + (ban.reason || '') + '%']);
             }
         } else {

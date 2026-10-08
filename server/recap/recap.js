@@ -31,7 +31,7 @@ function ensureTable() {
             json TEXT NOT NULL,
             ai INTEGER DEFAULT 0,
             announced_at DATETIME,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            created_at DATETIME DEFAULT ov_now()
         )`);
         db.getDb().exec('CREATE INDEX IF NOT EXISTS idx_stream_recaps_user ON stream_recaps(user_id, created_at)');
         _tableReady = true;
@@ -154,8 +154,8 @@ async function buildRecap(streamId, { ai = true } = {}) {
     const usedAi = !!write;
     if (!write) write = templateWriteup(g);
     const recap = { ...g, write, ai: usedAi, generated_at: new Date().toISOString() };
-    db.run(`INSERT INTO stream_recaps (stream_id, user_id, json, ai, created_at) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
-            ON CONFLICT(stream_id) DO UPDATE SET json = excluded.json, ai = excluded.ai, created_at = CURRENT_TIMESTAMP`, [streamId, g.streamer.id, JSON.stringify(recap), usedAi ? 1 : 0]);
+    db.run(`INSERT INTO stream_recaps (stream_id, user_id, json, ai, created_at) VALUES (?, ?, ?, ?, ov_now())
+            ON CONFLICT(stream_id) DO UPDATE SET json = excluded.json, ai = excluded.ai, created_at = ov_now()`, [streamId, g.streamer.id, JSON.stringify(recap), usedAi ? 1 : 0]);
     return recap;
 }
 
@@ -203,7 +203,7 @@ function announce(recap) {
         const frame = { type: 'system', message: `📋 After-show report for "${recap.stream.title}" is in — grade ${g}: ${recap.write.headline}. Read it: /recap/${recap.stream.id}` };
         if (delivery.ingress()) delivery.event({ kind: 'channel', id: recap.streamer.id }, frame, { key: `recap:${recap.stream.id}` });
         else delivery.broadcastToChannelRoom(recap.streamer.id, recap.stream.id, frame);
-        db.run('UPDATE stream_recaps SET announced_at = CURRENT_TIMESTAMP WHERE stream_id = ?', [recap.stream.id]);
+        db.run('UPDATE stream_recaps SET announced_at = ov_now() WHERE stream_id = ?', [recap.stream.id]);
         return true;
     } catch (e) { console.warn('[Recap] announce:', e.message); return false; }
 }

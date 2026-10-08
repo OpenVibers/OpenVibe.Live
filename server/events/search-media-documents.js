@@ -38,7 +38,7 @@ function ensureSchema() {
         hash TEXT NOT NULL,
         revision INTEGER NOT NULL,
         deleted INTEGER NOT NULL DEFAULT 0,
-        pushed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        pushed_at DATETIME DEFAULT ov_now(),
         PRIMARY KEY (kind, media_id)
     )`);
     ready = true;
@@ -121,15 +121,15 @@ function publish(kind, id, row, { now = Date.now() } = {}) {
     if (prev && prev.hash === hash) { stats.unchanged++; return 'unchanged'; }
     const revision = (prev ? prev.revision : 0) + 1;
     const sid = String(mediaId);
-    d.transaction(() => {
+    d.tx(() => {
         streamEvents.enqueue(doc.deleted
             ? { event_type: 'live.index_document.deleted', actor: { type: 'service', id: 'live' }, subject: { type: kind, id: sid, revision }, visibility: 'internal', priority: 'low', payload: { type: kind, id: sid, revision } }
             : { event_type: 'live.index_document.upserted', actor: { type: 'service', id: 'live' }, subject: { type: kind, id: sid, revision }, visibility: 'internal', priority: 'low',
                 payload: { ...doc, revision, updated_at: new Date(now).toISOString() } });
-        d.prepare(`INSERT INTO search_media_pushes (kind, media_id, hash, revision, deleted, pushed_at) VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+        d.prepare(`INSERT INTO search_media_pushes (kind, media_id, hash, revision, deleted, pushed_at) VALUES (?, ?, ?, ?, ?, ov_now())
                    ON CONFLICT(kind, media_id) DO UPDATE SET hash = excluded.hash, revision = excluded.revision, deleted = excluded.deleted, pushed_at = excluded.pushed_at`)
             .run(kind, mediaId, hash, revision, doc.deleted ? 1 : 0);
-    })();
+    });
     streamEvents.kick();
     if (doc.deleted) { stats.tombstones++; return 'tombstone'; }
     stats.sent++;

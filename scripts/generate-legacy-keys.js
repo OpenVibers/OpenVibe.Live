@@ -62,7 +62,7 @@ console.log(`[LegacyKeys] Admin user      : ${admin.username} (id=${admin.id})`)
 const rsUsers = rsDb.prepare(`
     SELECT user_id, username, total_messages, coins, xp, level
     FROM users
-    WHERE username NOT LIKE 'anon%'
+    WHERE username NOT ILIKE 'anon%'
       AND username NOT IN ('[Private]mods', 'ChatBot')
       AND total_messages >= ?
     ORDER BY total_messages DESC
@@ -93,7 +93,7 @@ const checkUserExists = openvibeDb.prepare(`
 const results = [];
 let created = 0, skippedExisting = 0, skippedRegistered = 0;
 
-const generateAll = openvibeDb.transaction(() => {
+const generateAll = () => openvibeDb.tx(async () => {
     for (const rsu of rsUsers) {
         const username = rsu.username;
 

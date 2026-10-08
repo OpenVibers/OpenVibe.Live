@@ -46,7 +46,7 @@ const stub = http.createServer((req, res) => {
     const db = require('../server/db/database');
     db.initDb();
     const d = db.getDb();
-    d.prepare("INSERT INTO users (id, username, display_name, password_hash) VALUES (501, 'streamer', 'Streamer', 'x')").run();
+    d.prepare("INSERT INTO users (id, username, display_name, password_hash) OVERRIDING SYSTEM VALUE VALUES (501, 'streamer', 'Streamer', 'x')").run();
     d.prepare("INSERT INTO linked_accounts (user_id, service, service_user_id, subject_id) VALUES (501, 'network', '77', 'usr_01J0000000000000000000000Z')").run();
 
     const streamEvents = require('../server/events/stream-events');
@@ -93,7 +93,7 @@ const stub = http.createServer((req, res) => {
     assert.deepStrictEqual(Object.keys(st).sort(), ['avg_viewers', 'messages', 'peak_viewers', 'unique_chatters', 'watch_minutes'], 'no people in it');
 
     // A rolled-back go-live leaves no event.
-    assert.throws(() => d.transaction(() => { db.createStream({ user_id: 501, title: 'rolled back' }); throw new Error('abort'); })());
+    assert.throws(() => d.tx(() => { db.createStream({ user_id: 501, title: 'rolled back' }); throw new Error('abort'); }));
     assert.strictEqual(outbox.pending(), 0);
 
     // Events down: the stream still goes live; the event waits and is published once Events is back.

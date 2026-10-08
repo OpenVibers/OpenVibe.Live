@@ -81,7 +81,7 @@ async function check(name, fn) {
         console.log(`n-1: this release on a database N-1 created`);
         await check('N-1\'s schema, ledger and first-use tables load, and this release migrates and seeds it', () => {
             const d = new Database(dbPath);
-            d.transaction(() => {
+            d.tx(() => {
                 for (const ddl of worker.schema) d.exec(ddl);
                 for (const [table, rows] of Object.entries(worker.ledger || {})) {
                     for (const row of rows) {
@@ -90,7 +90,7 @@ async function check(name, fn) {
                     }
                 }
                 for (const ddl of worker.lazy || []) d.exec(ddl);
-            })();
+            });
             d.pragma(`user_version = ${Number(worker.user_version) || 0}`);
             d.close();
             svc.seed({ dir: ROOT, dbPath, dataDir });

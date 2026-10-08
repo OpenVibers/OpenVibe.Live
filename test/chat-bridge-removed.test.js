@@ -41,7 +41,7 @@ assert.ok(migrations.OPERATOR_MIGRATIONS.some((m) => m.id === drop.ID), 'an oper
     const db = new Database(':memory:');
     db.exec(`CREATE TABLE chat_bridge_outbox (
         id INTEGER PRIMARY KEY AUTOINCREMENT, boot TEXT NOT NULL, ref INTEGER, op TEXT NOT NULL, args TEXT NOT NULL,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP)`);
+        created_at DATETIME DEFAULT ov_now())`);
     const put = db.prepare('INSERT INTO chat_bridge_outbox (boot, ref, op, args) VALUES (?, ?, ?, ?)');
     put.run('boot-a', -(2 ** 40) - 1, 'db', JSON.stringify(['saveChatMessage', { stream_id: 1, message: 'queued' }]));
     put.run('boot-a', null, 'db', JSON.stringify(['deleteChatMessage', 5, 2]));
@@ -81,7 +81,7 @@ assert.ok(migrations.OPERATOR_MIGRATIONS.some((m) => m.id === drop.ID), 'an oper
     const db2 = new Database(':memory:');
     db2.exec(`CREATE TABLE chat_bridge_outbox (
         id INTEGER PRIMARY KEY AUTOINCREMENT, boot TEXT NOT NULL, ref INTEGER, op TEXT NOT NULL, args TEXT NOT NULL,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP)`);
+        created_at DATETIME DEFAULT ov_now())`);
     const put2 = db2.prepare('INSERT INTO chat_bridge_outbox (boot, ref, op, args) VALUES (?, ?, ?, ?)');
     put2.run('boot-c', null, 'db', '{not json');
     put2.run('boot-c', null, 'db', JSON.stringify(['recordFirstChat', 'user:1', 1]));

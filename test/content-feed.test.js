@@ -30,7 +30,7 @@ const db = require('../server/db/database');
 db.initDb();
 const raw = db.getDb();
 const addUser = (id, username, banned = 0) => raw.prepare(
-    `INSERT INTO users (id, username, display_name, email, password_hash, role, is_banned, avatar_url, created_at)
+    `INSERT INTO users (id, username, display_name, email, password_hash, role, is_banned, avatar_url, created_at) OVERRIDING SYSTEM VALUE
      VALUES (?, ?, ?, ?, 'x', 'streamer', ?, ?, '2025-01-01 00:00:00')`).run(id, username, username.toUpperCase(), `${username}@x`, banned, `https://media.test/a/${username}.png`);
 addUser(3, 'alice');
 addUser(4, 'bob');

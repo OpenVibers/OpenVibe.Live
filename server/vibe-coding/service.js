@@ -237,7 +237,7 @@ function upsertVibeCodingSession({ managedStreamId, userId, slotSlug, helloMessa
             publisher_vendor, publisher_client_type, publisher_client_name,
             publisher_client_version, publisher_capabilities_json,
             publisher_depth, status, last_event_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', CURRENT_TIMESTAMP)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ov_now())
         ON CONFLICT(managed_stream_id, session_key) DO UPDATE SET
             workspace_name = excluded.workspace_name,
             machine_name = excluded.machine_name,
@@ -253,7 +253,7 @@ function upsertVibeCodingSession({ managedStreamId, userId, slotSlug, helloMessa
             slot_slug = excluded.slot_slug,
             status = 'active',
             ended_at = NULL,
-            last_event_at = CURRENT_TIMESTAMP`,
+            last_event_at = ov_now()`,
         [
             managedStreamId,
             userId,
@@ -304,7 +304,7 @@ function getLatestPublisherForManagedStream(managedStreamId) {
 function markSessionEnded(managedStreamId, sessionKey) {
     db.run(
         `UPDATE vibe_coding_sessions
-         SET status = 'ended', ended_at = CURRENT_TIMESTAMP, last_event_at = CURRENT_TIMESTAMP
+         SET status = 'ended', ended_at = ov_now(), last_event_at = ov_now()
          WHERE managed_stream_id = ? AND session_key = ?`,
         [managedStreamId, sessionKey]
     );
@@ -324,7 +324,7 @@ function storeVibeCodingEvent({ managedStreamId, userId, streamId, event }) {
             depth = excluded.depth,
             summary = excluded.summary,
             payload_json = excluded.payload_json,
-            created_at = CURRENT_TIMESTAMP`,
+            created_at = ov_now()`,
         [
             managedStreamId,
             userId,
@@ -341,7 +341,7 @@ function storeVibeCodingEvent({ managedStreamId, userId, streamId, event }) {
     );
     db.run(
         `UPDATE vibe_coding_sessions
-         SET last_event_at = CURRENT_TIMESTAMP
+         SET last_event_at = ov_now()
          WHERE managed_stream_id = ? AND session_key = ?`,
         [managedStreamId, event.sessionKey || null]
     );

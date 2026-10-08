@@ -50,7 +50,7 @@ function userOf(subject) {
 }
 
 function project(followerId, streamerId, following) {
-    if (following) db.getDb().prepare('INSERT OR IGNORE INTO follows (follower_id, streamer_id) VALUES (?, ?)').run(followerId, streamerId);
+    if (following) db.getDb().prepare('INSERT INTO follows (follower_id, streamer_id) VALUES (?, ?) ON CONFLICT DO NOTHING').run(followerId, streamerId);
     else db.getDb().prepare('DELETE FROM follows WHERE follower_id = ? AND streamer_id = ?').run(followerId, streamerId);
 }
 
@@ -156,7 +156,7 @@ function apply(ev) {
     if (p.target_type !== 'channel' || !SUBJECT_RE.test(String(p.follower || '')) || !SUBJECT_RE.test(String(p.target_id || '')) || !Number.isInteger(p.revision)) { stats.ignored++; return 'ignored:payload'; }
     ensureTable();
     const d = db.getDb();
-    return d.transaction(() => {
+    return d.tx(() => {
         const prev = d.prepare('SELECT revision FROM follow_projection_revisions WHERE follower_subject = ? AND target_subject = ?').get(p.follower, p.target_id);
         if (prev && prev.revision >= p.revision) { stats.stale++; return 'stale'; }
         const followerId = userOf(p.follower);
@@ -171,7 +171,7 @@ function apply(ev) {
         if (answers.has(key) && answers.get(key).following === following) answers.delete(key);
         counts.delete(p.target_id);
         return following ? 'followed' : 'unfollowed';
-    })();
+    });
 }
 
 module.exports = { set, apply, isFollowing, followerCount, stats, _reset: () => { answers.clear(); counts.clear(); } };

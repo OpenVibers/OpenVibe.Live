@@ -18,9 +18,9 @@ require('../server/net/network-principal').serviceHeaders = async () => ({ Autho
 const na = require('../server/analytics/network-analytics');
 const SUBJ = `usr_${'01JAA'.padEnd(26, '0')}`;
 const d = db.getDb();
-d.prepare("INSERT INTO users (id, username, password_hash) VALUES (7, 'carol', 'x'), (8, 'nolink', 'x')").run();
+d.prepare("INSERT INTO users (id, username, password_hash) OVERRIDING SYSTEM VALUE VALUES (7, 'carol', 'x'), (8, 'nolink', 'x')").run();
 d.prepare("INSERT INTO linked_accounts (user_id, service, service_user_id, subject_id) VALUES (7, 'network', '70', ?)").run(SUBJ);
-d.prepare('INSERT INTO streams (id, user_id, title) VALUES (501, 7, \'A\')').run();
+d.prepare('INSERT INTO streams (id, user_id, title) OVERRIDING SYSTEM VALUE VALUES (501, 7, \'A\')').run();
 d.prepare('INSERT INTO stream_analytics (stream_id, new_followers, clips_created, coins_earned) VALUES (501, 3, 2, 40)').run();
 
 (async () => {

@@ -43,7 +43,7 @@ function ensureTables() {
         state TEXT NOT NULL DEFAULT 'pending',   -- pending (running) | done (response stored)
         response_json TEXT,
         claimed_at INTEGER NOT NULL,             -- ms epoch
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        created_at DATETIME DEFAULT ov_now()
     )`);
     db.getDb().exec('CREATE INDEX IF NOT EXISTS idx_tips_deliveries_created ON tips_deliveries(created_at)');
     tablesReady = true;
@@ -65,7 +65,7 @@ function claim(key, effect) {
     ensureTables();
     const d = db.getDb();
     const now = Date.now();
-    if (d.prepare("INSERT OR IGNORE INTO tips_deliveries (idempotency_key, effect, state, claimed_at) VALUES (?, ?, 'pending', ?)").run(key, effect || null, now).changes) {
+    if (d.prepare("INSERT INTO tips_deliveries (idempotency_key, effect, state, claimed_at) VALUES (?, ?, 'pending', ?) ON CONFLICT DO NOTHING").run(key, effect || null, now).changes) {
         return { claimed: true };
     }
     const row = d.prepare('SELECT * FROM tips_deliveries WHERE idempotency_key = ?').get(key);

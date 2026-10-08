@@ -71,7 +71,7 @@ db.initDb();
 {
     const w = new Database(tmp);
     w.pragma('foreign_keys = OFF');   // fixture only: streams.user_id -> users(id) is not under test
-    const ins = w.prepare('INSERT OR IGNORE INTO streams (id, user_id) VALUES (?, 1)');
+    const ins = w.prepare('INSERT INTO streams (id, user_id) OVERRIDING SYSTEM VALUE VALUES (?, 1) ON CONFLICT DO NOTHING');
     for (const id of [900, 901, 902]) ins.run(id);
     w.close();
 }

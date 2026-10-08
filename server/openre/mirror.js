@@ -70,7 +70,7 @@ function apply(event) {
         let created = false;
         if (waiting) {
             streamId = waiting.id;
-            db.run('UPDATE streams SET started_at = CURRENT_TIMESTAMP, last_heartbeat = CURRENT_TIMESTAMP WHERE id = ?', [streamId]);
+            db.run('UPDATE streams SET started_at = ov_now(), last_heartbeat = ov_now() WHERE id = ?', [streamId]);
         } else {
             const channel = db.ensureChannel(user.id);
             streamId = Number(db.createStream({
@@ -84,12 +84,12 @@ function apply(event) {
                 protocol: 'rtmp',
                 is_nsfw: slot.is_nsfw ? 1 : 0,
             }).lastInsertRowid);
-            db.run('UPDATE streams SET last_heartbeat = CURRENT_TIMESTAMP WHERE id = ?', [streamId]);
+            db.run('UPDATE streams SET last_heartbeat = ov_now() WHERE id = ?', [streamId]);
             created = true;
         }
         db.run(`INSERT INTO openre_sessions (session_id, managed_stream_id, stream_id, state, revision, started_at, confirmed_at, updated_at)
-            VALUES (?, ?, ?, 'live', ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-            ON CONFLICT(session_id) DO UPDATE SET stream_id = excluded.stream_id, state = 'live', revision = excluded.revision, confirmed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP`,
+            VALUES (?, ?, ?, 'live', ?, ?, ov_now(), ov_now())
+            ON CONFLICT(session_id) DO UPDATE SET stream_id = excluded.stream_id, state = 'live', revision = excluded.revision, confirmed_at = ov_now(), updated_at = ov_now()`,
         [sessionId, slot.id, streamId, revision, toSqlTime(p.started_at)]);
         const ended = db.endOtherLiveStreamsForSlot(slot.id, streamId);
         return {
@@ -113,8 +113,8 @@ function apply(event) {
     const state = type === 'openre.session.ended' ? 'ended' : 'failed';
     const streamId = known ? known.stream_id : null;
     db.run(`INSERT INTO openre_sessions (session_id, managed_stream_id, stream_id, state, revision, ended_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-        ON CONFLICT(session_id) DO UPDATE SET state = excluded.state, revision = excluded.revision, ended_at = excluded.ended_at, updated_at = CURRENT_TIMESTAMP`,
+        VALUES (?, ?, ?, ?, ?, ?, ov_now())
+        ON CONFLICT(session_id) DO UPDATE SET state = excluded.state, revision = excluded.revision, ended_at = excluded.ended_at, updated_at = ov_now()`,
     [sessionId, known ? known.managed_stream_id : slotRef(p), streamId, state, revision, toSqlTime(p.ended_at)]);
     if (!streamId) return { outcome: 'recorded' };
     const row = db.getStreamById(streamId);
@@ -186,7 +186,7 @@ async function reconcileOnce() {
         // Live ended the row itself (End Stream, or stale cleanup while OpenRe was unreachable):
         // stop tracking it rather than keeping a live mirror of an offline stream.
         const row = r.stream_id ? db.getStreamById(r.stream_id) : null;
-        if (row && !row.is_live) { db.run("UPDATE openre_sessions SET state = 'detached', updated_at = CURRENT_TIMESTAMP WHERE session_id = ?", [r.session_id]); continue; }
+        if (row && !row.is_live) { db.run("UPDATE openre_sessions SET state = 'detached', updated_at = ov_now() WHERE session_id = ?", [r.session_id]); continue; }
         let s;
         try { s = await client.getSession(r.session_id); } catch (err) {
             if (err.status === 404) s = null;
@@ -196,11 +196,11 @@ async function reconcileOnce() {
         // the row stayed 'live', ownsStream() stayed true and Live never took its own restream/recording back.
         if (!s) s = { state: 'failed', revision: r.revision + 1, ended_at: null };
         if (s.state === 'live' || s.state === 'starting') {
-            db.run("UPDATE openre_sessions SET confirmed_at = CURRENT_TIMESTAMP WHERE session_id = ?", [r.session_id]);
-            if (r.stream_id) db.run('UPDATE streams SET last_heartbeat = CURRENT_TIMESTAMP WHERE id = ? AND is_live = 1', [r.stream_id]);
+            db.run("UPDATE openre_sessions SET confirmed_at = ov_now() WHERE session_id = ?", [r.session_id]);
+            if (r.stream_id) db.run('UPDATE streams SET last_heartbeat = ov_now() WHERE id = ? AND is_live = 1', [r.stream_id]);
         } else if (['ending', 'ended', 'failed'].includes(s.state)) {
             const event = { source: 'openre', event_type: `openre.session.${s.state === 'failed' ? 'failed' : 'ended'}`, subject: { type: 'ingest_session', id: r.session_id, revision: Math.max(Number(s.revision) || 0, r.revision + 1) }, payload: { session_id: r.session_id, ended_at: s.ended_at } };
-            const out = db.getDb().transaction(() => apply(event))();
+            const out = db.getDb().tx(() => apply(event));
             if (out.after) out.after();
             n++;
         }

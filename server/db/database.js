@@ -246,7 +246,7 @@ function getOrCreateAnonGameUser(anonId) {
     let user = getUserByUsername(username);
     if (user) {
         if (user.display_name !== normalizedAnonId) {
-            run('UPDATE users SET display_name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?', [normalizedAnonId, user.id]);
+            run('UPDATE users SET display_name = ?, updated_at = ov_now() WHERE id = ?', [normalizedAnonId, user.id]);
             user = getUserById(user.id);
         }
         return user;
@@ -254,8 +254,8 @@ function getOrCreateAnonGameUser(anonId) {
 
     const passwordHash = `!anon-game:${safeAnonKey}:${crypto.randomBytes(12).toString('hex')}`;
     run(
-        `INSERT OR IGNORE INTO users (username, password_hash, display_name, role)
-         VALUES (?, ?, ?, 'user')`,
+        `INSERT INTO users (username, password_hash, display_name, role)
+         VALUES (?, ?, ?, 'user') ON CONFLICT DO NOTHING`,
         [username, passwordHash, normalizedAnonId]
     );
 
@@ -398,30 +398,30 @@ function fireStreamLifecycle(kind, streamId) {
 }
 
 function createStream({ user_id, channel_id, managed_stream_id, control_config_id, title, description, category, protocol, is_nsfw, thumbnail_url }) {
-    return getDb().transaction(() => {
+    return getDb().tx(() => {
         const result = run(
             `INSERT INTO streams (user_id, channel_id, managed_stream_id, control_config_id, title, description, category, protocol, is_nsfw, thumbnail_url, is_live, started_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, CURRENT_TIMESTAMP)`,
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ov_now())`,
             [user_id, channel_id || null, managed_stream_id || null, control_config_id || null, title || 'Untitled Stream', description || '', category || null, protocol || 'webrtc', is_nsfw ? 1 : 0, thumbnail_url || null]
         );
         fireStreamLifecycle('started', result.lastInsertRowid);
         return result;
-    })();
+    });
 }
 
 function endStream(streamId) {
-    return getDb().transaction(() => {
+    return getDb().tx(() => {
         const stream = get('SELECT started_at, is_live FROM streams WHERE id = ?', [streamId]);
         if (!stream) return null;
         const result = run(
-            `UPDATE streams SET is_live = 0, ended_at = CURRENT_TIMESTAMP,
-             duration_seconds = CAST((julianday(CURRENT_TIMESTAMP) - julianday(started_at)) * 86400 AS INTEGER)
+            `UPDATE streams SET is_live = 0, ended_at = ov_now(),
+             duration_seconds = CAST((julianday(ov_now()) - julianday(started_at)) * 86400 AS INTEGER)
              WHERE id = ?`,
             [streamId]
         );
         if (stream.is_live) fireStreamLifecycle('ended', streamId);
         return result;
-    })();
+    });
 }
 
 /**
@@ -441,8 +441,8 @@ function endOtherLiveStreamsForSlot(managedStreamId, keepStreamId) {
 function addStreamMemory({ stream_id, user_id = null, offset_seconds = 0, description, tags = null, thumbnail_url = null, transcript_json = null }) {
     // OR IGNORE against idx_stream_memories_moment_unique: re-analysing a stream must not
     // store a second description of a moment already captured.
-    return run(`INSERT OR IGNORE INTO stream_memories (stream_id, user_id, offset_seconds, description, tags, thumbnail_url, transcript_json)
-                VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    return run(`INSERT INTO stream_memories (stream_id, user_id, offset_seconds, description, tags, thumbnail_url, transcript_json)
+                VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING`,
         [stream_id, user_id, Math.max(0, Math.round(offset_seconds || 0)), description || '',
          tags ? (typeof tags === 'string' ? tags : JSON.stringify(tags)) : null, thumbnail_url,
          (transcript_json && typeof transcript_json !== 'string') ? JSON.stringify(transcript_json) : (transcript_json || null)]);
@@ -492,10 +492,10 @@ function effectiveCategory(row) { if (!row) return null; return row.ai_category 
 // AI overview/transcript state lives in vod_ai_state / clip_ai_state (Live-owned,
 // keyed by the Media vod/clip id) — the moved vods/clips tables are never written.
 function _ensureVodAiState(vodId) {
-    run('INSERT OR IGNORE INTO vod_ai_state (vod_id) VALUES (?)', [vodId]);
+    run('INSERT INTO vod_ai_state (vod_id) VALUES (?) ON CONFLICT DO NOTHING', [vodId]);
 }
 function _ensureClipAiState(clipId) {
-    run('INSERT OR IGNORE INTO clip_ai_state (clip_id) VALUES (?)', [clipId]);
+    run('INSERT INTO clip_ai_state (clip_id) VALUES (?) ON CONFLICT DO NOTHING', [clipId]);
 }
 
 // ── Clip chat-announce scheduling (clip_ai_state) ────────────
@@ -506,7 +506,7 @@ function scheduleClipNotifyState(clipId, graceSeconds = 60) {
 }
 function bumpClipNotifyNowState(clipId) {
     _ensureClipAiState(clipId);
-    return run('UPDATE clip_ai_state SET clip_notify_at = CURRENT_TIMESTAMP WHERE clip_id = ? AND COALESCE(clip_notified,0) = 0', [clipId]);
+    return run('UPDATE clip_ai_state SET clip_notify_at = ov_now() WHERE clip_id = ? AND COALESCE(clip_notified,0) = 0', [clipId]);
 }
 function markClipNotifiedState(clipId) {
     _ensureClipAiState(clipId);
@@ -514,7 +514,7 @@ function markClipNotifiedState(clipId) {
 }
 function getDueClipNotifies(limit = 20) {
     return all(`SELECT clip_id FROM clip_ai_state
-        WHERE COALESCE(clip_notified,0) = 0 AND clip_notify_at IS NOT NULL AND clip_notify_at <= CURRENT_TIMESTAMP
+        WHERE COALESCE(clip_notified,0) = 0 AND clip_notify_at IS NOT NULL AND clip_notify_at <= ov_now()
         LIMIT ?`, [limit]);
 }
 
@@ -526,13 +526,13 @@ function getClipAiState(clipId) {
 }
 /** A VOD or clip OpenVibe.Media deleted: Live's own rows about it go (server/media-proxy/purge.js). */
 function forgetMediaItem(kind, id) {
-    return getDb().transaction(() => {
+    return getDb().tx(() => {
         const ai = kind === 'clip'
             ? run('DELETE FROM clip_ai_state WHERE clip_id = ?', [id])
             : run('DELETE FROM vod_ai_state WHERE vod_id = ?', [id]);
         const views = run('DELETE FROM content_views WHERE content_type = ? AND content_id = ?', [kind === 'clip' ? 'clip' : 'vod', id]);
         return { ai: ai.changes, views: views.changes };
-    })();
+    });
 }
 function setVodAiOverview(vodId, text) {
     _ensureVodAiState(vodId);
@@ -582,7 +582,7 @@ function getVodsNeedingOverview(limit = 4) {
     // row drops out of the queue.
     return all(`SELECT vod_id AS id, s.* FROM vod_ai_state s
         WHERE (ai_overview IS NULL OR ai_overview = '')
-          AND (ai_overview_short IS NULL OR ai_overview_short = '' OR ai_overview_short LIKE '%…')
+          AND (ai_overview_short IS NULL OR ai_overview_short = '' OR ai_overview_short ILIKE '%…')
         ORDER BY vod_id DESC LIMIT ?`, [limit]);
 }
 // Finished VODs whose AI timeline has fewer than 2 points — used to backfill the
@@ -598,7 +598,7 @@ function getVodsNeedingTimeline(limit = 1) {
 function getClipsNeedingOverview(limit = 4) {
     return all(`SELECT clip_id AS id, s.* FROM clip_ai_state s
         WHERE (ai_overview IS NULL OR ai_overview = '')
-          AND (ai_overview_short IS NULL OR ai_overview_short = '' OR ai_overview_short LIKE '%…')
+          AND (ai_overview_short IS NULL OR ai_overview_short = '' OR ai_overview_short ILIKE '%…')
         ORDER BY clip_id DESC LIMIT ?`, [limit]);
 }
 // Transcript backfill queues — driven by transcript_status (see the migration above).
@@ -611,14 +611,14 @@ function getVodsNeedingTranscript(limit = 2) {
     return all(`SELECT vod_id AS id, s.* FROM vod_ai_state s
         WHERE ai_transcript_json IS NULL
           AND (transcript_status IS NULL OR transcript_status IN ('pending','retry'))
-          AND (transcript_next_at IS NULL OR transcript_next_at <= CURRENT_TIMESTAMP)
+          AND (transcript_next_at IS NULL OR transcript_next_at <= ov_now())
         ORDER BY (transcript_status='retry'), vod_id DESC LIMIT ?`, [limit]);
 }
 function getClipsNeedingTranscript(limit = 2) {
     return all(`SELECT clip_id AS id, s.* FROM clip_ai_state s
         WHERE ai_transcript_json IS NULL
           AND (transcript_status IS NULL OR transcript_status IN ('pending','retry'))
-          AND (transcript_next_at IS NULL OR transcript_next_at <= CURRENT_TIMESTAMP)
+          AND (transcript_next_at IS NULL OR transcript_next_at <= ov_now())
         ORDER BY (transcript_status='retry'), clip_id DESC LIMIT ?`, [limit]);
 }
 // status setter. On a 'retry', pass retryDelayMin to schedule the next eligible attempt
@@ -673,7 +673,7 @@ function cleanupMalformedAiText() {
     let fixed = 0;
     for (const [table, col, key] of jobs) {
         try {
-            const rows = all(`SELECT ${key} AS k, ${col} AS v FROM ${table} WHERE ${col} LIKE '{%"description"%'`);
+            const rows = all(`SELECT ${key} AS k, ${col} AS v FROM ${table} WHERE ${col} ILIKE '{%"description"%'`);
             for (const r of rows) {
                 const clean = _extractDescFromMaybeJson(r.v);
                 if (clean && clean !== r.v) { run(`UPDATE ${table} SET ${col} = ? WHERE ${key} = ?`, [clean, r.k]); fixed++; }
@@ -682,7 +682,7 @@ function cleanupMalformedAiText() {
     }
     // streamer_overviews uses different column names.
     try {
-        const rows = all(`SELECT user_id AS k, overview AS v FROM streamer_overviews WHERE overview LIKE '{%"description"%'`);
+        const rows = all(`SELECT user_id AS k, overview AS v FROM streamer_overviews WHERE overview ILIKE '{%"description"%'`);
         for (const r of rows) {
             const clean = _extractDescFromMaybeJson(r.v);
             if (clean && clean !== r.v) { run('UPDATE streamer_overviews SET overview = ? WHERE user_id = ?', [clean, r.k]); fixed++; }
@@ -709,29 +709,29 @@ function getAiCostTodayForUser(userId, source = null) {
     return r ? r.c : 0;
 }
 function getAiUsageSummary(days = 30) {
-    const byDay = all(`SELECT date(created_at) AS day, COUNT(*) AS calls, SUM(input_tokens) AS input_tokens,
+    const byDay = all(`SELECT substr(datetime(created_at), 1, 10) AS day, COUNT(*) AS calls, SUM(input_tokens) AS input_tokens,
                        SUM(output_tokens) AS output_tokens, SUM(cost_usd) AS cost_usd
-                       FROM ai_usage WHERE created_at >= date('now', ?) GROUP BY day ORDER BY day DESC`, [`-${days} days`]);
+                       FROM ai_usage WHERE created_at >= substr(datetime('now', ?), 1, 10) GROUP BY day ORDER BY day DESC`, [`-${days} days`]);
     const byKind = all(`SELECT kind, COUNT(*) AS calls, SUM(cost_usd) AS cost_usd
-                        FROM ai_usage WHERE created_at >= date('now', ?) GROUP BY kind ORDER BY cost_usd DESC`, [`-${days} days`]);
+                        FROM ai_usage WHERE created_at >= substr(datetime('now', ?), 1, 10) GROUP BY kind ORDER BY cost_usd DESC`, [`-${days} days`]);
     const totals = get(`SELECT COUNT(*) AS calls, COALESCE(SUM(input_tokens),0) AS input_tokens,
                         COALESCE(SUM(output_tokens),0) AS output_tokens, COALESCE(SUM(cached_tokens),0) AS cached_tokens,
                         COALESCE(SUM(cost_usd),0) AS cost_usd
-                        FROM ai_usage WHERE created_at >= date('now', ?)`, [`-${days} days`]);
+                        FROM ai_usage WHERE created_at >= substr(datetime('now', ?), 1, 10)`, [`-${days} days`]);
     const byRole = all(`SELECT COALESCE(role,'legacy') AS role, COUNT(*) AS calls, SUM(input_tokens) AS input_tokens, SUM(cached_tokens) AS cached_tokens,
                         SUM(output_tokens) AS output_tokens, SUM(cost_usd) AS cost_usd, AVG(latency_ms) AS avg_latency_ms
-                        FROM ai_usage WHERE created_at >= date('now', ?) GROUP BY role ORDER BY cost_usd DESC`, [`-${days} days`]);
+                        FROM ai_usage WHERE created_at >= substr(datetime('now', ?), 1, 10) GROUP BY role ORDER BY cost_usd DESC`, [`-${days} days`]);
     const bySource = all(`SELECT COALESCE(source,'platform') AS source, COALESCE(provider,'shared') AS provider, COUNT(*) AS calls, SUM(cost_usd) AS cost_usd, SUM(input_tokens) AS input_tokens, SUM(cached_tokens) AS cached_tokens
-                          FROM ai_usage WHERE created_at >= date('now', ?) GROUP BY source, provider ORDER BY cost_usd DESC`, [`-${days} days`]);
+                          FROM ai_usage WHERE created_at >= substr(datetime('now', ?), 1, 10) GROUP BY source, provider ORDER BY cost_usd DESC`, [`-${days} days`]);
     const byOwner = all(`SELECT a.owner_user_id AS user_id, u.username, COUNT(*) AS calls, SUM(a.cost_usd) AS cost_usd,
                          SUM(a.input_tokens) AS input_tokens, SUM(a.cached_tokens) AS cached_tokens, SUM(a.output_tokens) AS output_tokens,
                          SUM(CASE WHEN a.created_at >= date('now') THEN a.cost_usd ELSE 0 END) AS cost_today,
                          SUM(CASE WHEN a.provider = 'byo' THEN a.cost_usd ELSE 0 END) AS cost_byo
                          FROM ai_usage a LEFT JOIN users u ON u.id = a.owner_user_id
-                         WHERE a.created_at >= date('now', ?) AND a.owner_user_id IS NOT NULL
+                         WHERE a.created_at >= substr(datetime('now', ?), 1, 10) AND a.owner_user_id IS NOT NULL
                          GROUP BY a.owner_user_id ORDER BY cost_usd DESC LIMIT 100`, [`-${days} days`]);
     const byModel = all(`SELECT model, COUNT(*) AS calls, SUM(cost_usd) AS cost_usd, SUM(input_tokens) AS input_tokens, SUM(cached_tokens) AS cached_tokens, SUM(output_tokens) AS output_tokens
-                         FROM ai_usage WHERE created_at >= date('now', ?) GROUP BY model ORDER BY cost_usd DESC`, [`-${days} days`]);
+                         FROM ai_usage WHERE created_at >= substr(datetime('now', ?), 1, 10) GROUP BY model ORDER BY cost_usd DESC`, [`-${days} days`]);
     const cachedShare = totals.input_tokens ? totals.cached_tokens / totals.input_tokens : 0;
     return { byDay, byKind, byRole, bySource, byOwner, byModel, totals, cachedShare, today: getAiCostToday() };
 }
@@ -758,7 +758,7 @@ function addTimelineEvents(rows) {
     const stmt = db.prepare(`INSERT INTO stream_timeline_events
         (stream_id, user_id, vod_id, kind, start_sec, end_sec, text, label, confidence, lang, text_en)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
-    const tx = db.transaction((list) => {
+    const tx = (list) => db.tx(async () => {
         for (const r of list) {
             if (!r || !r.stream_id || !r.kind || r.start_sec == null) continue;
             stmt.run(r.stream_id, r.user_id || null, r.vod_id || null, r.kind,
@@ -881,10 +881,10 @@ function getStreamTranscriptSegments(streamId) {
 
 function upsertStreamerOverview(userId, { overview, model = null, sources = null }) {
     return run(`INSERT INTO streamer_overviews (user_id, overview, overview_short, model, sources, generated_at)
-                VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                VALUES (?, ?, ?, ?, ?, ov_now())
                 ON CONFLICT(user_id) DO UPDATE SET
                     overview = excluded.overview, overview_short = excluded.overview_short, model = excluded.model,
-                    sources = excluded.sources, generated_at = CURRENT_TIMESTAMP`,
+                    sources = excluded.sources, generated_at = ov_now()`,
         [userId, overview || '', _shortOverview(overview), model, sources]);
 }
 function getStreamerOverview(userId) {
@@ -982,8 +982,8 @@ function buildStreamerAiTimeline(userId, vodIdByStream = null, { store = true } 
     const fresh = assembleStreamerAiTimeline(userId, vodIdByStream);
     if (store) {
         try {
-            run(`INSERT INTO ai_timeline_cache (user_id, payload, generated_at) VALUES (?, ?, CURRENT_TIMESTAMP)
-                 ON CONFLICT(user_id) DO UPDATE SET payload = excluded.payload, generated_at = CURRENT_TIMESTAMP`,
+            run(`INSERT INTO ai_timeline_cache (user_id, payload, generated_at) VALUES (?, ?, ov_now())
+                 ON CONFLICT(user_id) DO UPDATE SET payload = excluded.payload, generated_at = ov_now()`,
                 [userId, JSON.stringify(fresh)]);
         } catch { /* cache is best-effort */ }
     }
@@ -1106,7 +1106,7 @@ function updateManagedStream(managedStreamId, userId, fields) {
         }
     }
     if (updates.length === 0) return;
-    updates.push('updated_at = CURRENT_TIMESTAMP');
+    updates.push('updated_at = ov_now()');
     params.push(managedStreamId, userId);
     return run(`UPDATE managed_streams SET ${updates.join(', ')} WHERE id = ? AND user_id = ?`, params);
 }
@@ -1169,7 +1169,7 @@ function getManagedStreamBroadcastSettings(managedStreamId, userId) {
 function updateManagedStreamBroadcastSettings(managedStreamId, userId, settings) {
     const json = typeof settings === 'string' ? settings : JSON.stringify(settings || {});
     return run(
-        'UPDATE managed_streams SET broadcast_settings = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?',
+        'UPDATE managed_streams SET broadcast_settings = ?, updated_at = ov_now() WHERE id = ? AND user_id = ?',
         [json, managedStreamId, userId]
     );
 }
@@ -1271,7 +1271,7 @@ const _HOME_STATS_TTL = 30 * 1000; // 30s memo so the windowed COUNTs don't hamm
 function _ensureViewerSamples() {
     try {
         getDb().exec(`CREATE TABLE IF NOT EXISTS viewer_samples (
-            sampled_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            sampled_at DATETIME DEFAULT ov_now(),
             viewers INTEGER NOT NULL DEFAULT 0,
             live_streams INTEGER NOT NULL DEFAULT 0
         )`);
@@ -1300,12 +1300,12 @@ function getConcurrencyBaseline() {
     _ensureViewerSamples();
     const row = get(`
         SELECT
-            AVG(CASE WHEN sampled_at >= datetime('now','-1 day') AND viewers > 0 THEN viewers END)      AS vAvg24,
-            MAX(CASE WHEN sampled_at >= datetime('now','-1 day') THEN viewers END)                      AS vPeak24,
-            AVG(CASE WHEN viewers > 0 THEN viewers END)                                                 AS vAvg7,
-            AVG(CASE WHEN sampled_at >= datetime('now','-1 day') AND live_streams > 0 THEN live_streams END) AS lAvg24,
-            MAX(CASE WHEN sampled_at >= datetime('now','-1 day') THEN live_streams END)                 AS lPeak24,
-            AVG(CASE WHEN live_streams > 0 THEN live_streams END)                                       AS lAvg7,
+            AVG(CASE WHEN sampled_at >= datetime('now','-1 day') AND viewers > 0 THEN viewers END)      AS "vAvg24",
+            MAX(CASE WHEN sampled_at >= datetime('now','-1 day') THEN viewers END)                      AS "vPeak24",
+            AVG(CASE WHEN viewers > 0 THEN viewers END)                                                 AS "vAvg7",
+            AVG(CASE WHEN sampled_at >= datetime('now','-1 day') AND live_streams > 0 THEN live_streams END) AS "lAvg24",
+            MAX(CASE WHEN sampled_at >= datetime('now','-1 day') THEN live_streams END)                 AS "lPeak24",
+            AVG(CASE WHEN live_streams > 0 THEN live_streams END)                                       AS "lAvg7",
             COUNT(*)                                                                                    AS samples
         FROM viewer_samples WHERE sampled_at >= datetime('now','-7 days')`) || {};
     const num = (v) => (Number.isFinite(Number(v)) ? Math.round(Number(v) * 10) / 10 : null);
@@ -1546,7 +1546,7 @@ function _computeHomeStats() {
         // Vibes tipped between people (donation ledger; bit-style, 100 = $1).
         vibesTipped: c(`SELECT COALESCE(SUM(amount), 0) AS count FROM transactions WHERE type = 'donation' AND created_at >= ?`, [vibesSince]),
         // Live channel subscriptions.
-        activeSubs: c(`SELECT COUNT(*) AS count FROM subscriptions WHERE status = 'active' AND (current_period_end IS NULL OR datetime(current_period_end) > CURRENT_TIMESTAMP)`),
+        activeSubs: c(`SELECT COUNT(*) AS count FROM subscriptions WHERE status = 'active' AND (current_period_end IS NULL OR datetime(current_period_end) > ov_now())`),
         // Channel points earned by viewers across every channel (watch/chat/follow bonuses).
         pointsEarned: c(`SELECT COALESCE(SUM(amount), 0) AS count FROM coin_transactions WHERE amount > 0`),
         // …and spent back on channel rewards.
@@ -1698,8 +1698,8 @@ function getChannelByUsername(username) {
 
 function createChannel({ user_id, title, description, category, protocol }) {
     return run(
-        `INSERT OR IGNORE INTO channels (user_id, title, description, category, protocol)
-         VALUES (?, ?, ?, ?, ?)`,
+        `INSERT INTO channels (user_id, title, description, category, protocol)
+         VALUES (?, ?, ?, ?, ?) ON CONFLICT DO NOTHING`,
         [user_id, title || 'Untitled Channel', description || '', category || null, protocol || 'webrtc']
     );
 }
@@ -1714,7 +1714,7 @@ function updateChannel(userId, fields) {
         }
     }
     if (updates.length === 0) return;
-    updates.push('updated_at = CURRENT_TIMESTAMP');
+    updates.push('updated_at = ov_now()');
     params.push(userId);
     return run(`UPDATE channels SET ${updates.join(', ')} WHERE user_id = ?`, params);
 }
@@ -1874,9 +1874,9 @@ function upsertRobotStreamerIntegration(userId, fields, managedStreamId = null) 
             updates.push(`${key} = ?`);
             params.push(val);
         }
-        updates.push('updated_at = CURRENT_TIMESTAMP');
+        updates.push('updated_at = ov_now()');
         params.push(userId, slotId);
-        run(`UPDATE robotstreamer_integrations SET ${updates.join(', ')} WHERE user_id = ? AND managed_stream_id IS ?`, params);
+        run(`UPDATE robotstreamer_integrations SET ${updates.join(', ')} WHERE user_id = ? AND managed_stream_id IS NOT DISTINCT FROM ?`, params);
     } else {
         const keys = ['user_id', 'managed_stream_id', ...filtered.map(([key]) => key), 'updated_at'];
         const placeholders = keys.map(() => '?').join(', ');
@@ -1903,7 +1903,7 @@ function markRestreamDestinationFailure(id, error) {
         const row = get('SELECT consecutive_failures FROM restream_destinations WHERE id = ?', [id]);
         const n = ((row && row.consecutive_failures) || 0) + 1;
         const mins = n <= 1 ? 15 : n === 2 ? 60 : n === 3 ? 360 : 1440;
-        run(`UPDATE restream_destinations SET consecutive_failures = ?, last_error = ?, last_failed_at = CURRENT_TIMESTAMP,
+        run(`UPDATE restream_destinations SET consecutive_failures = ?, last_error = ?, last_failed_at = ov_now(),
              cooldown_until = datetime('now', ?) WHERE id = ?`,
             [n, String(error || 'restream failed to go live').slice(0, 300), `+${mins} minutes`, id]);
         return { failures: n, cooldownMinutes: mins };
@@ -1949,7 +1949,7 @@ function updateRestreamDestination(id, fields) {
     if (!filtered.length) return getRestreamDestinationById(id);
 
     const updates = filtered.map(([key]) => `${key} = ?`);
-    updates.push('updated_at = CURRENT_TIMESTAMP');
+    updates.push('updated_at = ov_now()');
     const params = [...filtered.map(([, val]) => val), id];
 
     run(`UPDATE restream_destinations SET ${updates.join(', ')} WHERE id = ?`, params);
@@ -1996,7 +1996,7 @@ function applyChannelPoints({ userId, streamerId, delta, key, reason = null }) {
     if (!userId || !streamerId || !Number.isInteger(delta) || delta === 0) {
         return { applied: false, replayed: false, balance: getChannelPoints(userId, streamerId) };
     }
-    return getDb().transaction(() => {
+    return getDb().tx(() => {
         const seen = get('SELECT user_id, streamer_id, delta FROM channel_points_log WHERE idempotency_key = ?', [key]);
         if (seen) {
             if (seen.user_id !== userId || seen.streamer_id !== streamerId || seen.delta !== delta) {
@@ -2005,19 +2005,19 @@ function applyChannelPoints({ userId, streamerId, delta, key, reason = null }) {
             return { applied: false, replayed: true, balance: getChannelPoints(userId, streamerId) };
         }
         if (delta < 0) {
-            const res = run(`UPDATE channel_points SET balance = balance + ?, updated_at = CURRENT_TIMESTAMP
+            const res = run(`UPDATE channel_points SET balance = balance + ?, updated_at = ov_now()
                              WHERE user_id = ? AND streamer_id = ? AND balance >= ?`, [delta, userId, streamerId, -delta]);
             if (!res.changes) return { applied: false, replayed: false, balance: getChannelPoints(userId, streamerId) };
         } else {
             run(`INSERT INTO channel_points (user_id, streamer_id, balance, updated_at)
-                 VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+                 VALUES (?, ?, ?, ov_now())
                  ON CONFLICT(user_id, streamer_id) DO UPDATE SET
-                    balance = balance + excluded.balance, updated_at = CURRENT_TIMESTAMP`, [userId, streamerId, delta]);
+                    balance = channel_points.balance + excluded.balance, updated_at = ov_now()`, [userId, streamerId, delta]);
         }
         run('INSERT INTO channel_points_log (idempotency_key, user_id, streamer_id, delta, reason) VALUES (?, ?, ?, ?, ?)',
             [key, userId, streamerId, delta, reason ? String(reason).slice(0, 200) : null]);
         return { applied: true, replayed: false, balance: getChannelPoints(userId, streamerId) };
-    })();
+    });
 }
 /** Credit channel points for one event (key required). Returns the new balance. */
 function addChannelPoints(userId, streamerId, amount, key, reason) {
@@ -2038,11 +2038,11 @@ function getKickChannelCache(slug) {
 function setKickChannelCache(slug, chatroomId, kickChannelId) {
     if (!slug || !chatroomId) return;
     run(`INSERT INTO kick_channel_cache (slug, chatroom_id, kick_channel_id, updated_at)
-         VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+         VALUES (?, ?, ?, ov_now())
          ON CONFLICT(slug) DO UPDATE SET
             chatroom_id = excluded.chatroom_id,
             kick_channel_id = COALESCE(excluded.kick_channel_id, kick_channel_cache.kick_channel_id),
-            updated_at = CURRENT_TIMESTAMP`,
+            updated_at = ov_now()`,
         [String(slug).toLowerCase(), chatroomId, kickChannelId || null]);
 }
 
@@ -2065,7 +2065,7 @@ function upsertPlatformConnection(userId, platform, fields) {
         run(`UPDATE platform_connections SET
                 platform_user_id = ?, platform_username = ?, channel_url = ?,
                 access_token = ?, refresh_token = COALESCE(?, refresh_token),
-                token_expires_at = ?, scope = ?, updated_at = CURRENT_TIMESTAMP
+                token_expires_at = ?, scope = ?, updated_at = ov_now()
              WHERE id = ?`,
             [fields.platform_user_id || null, fields.platform_username || null, fields.channel_url || null,
              fields.access_token || null, fields.refresh_token || null,
@@ -2084,7 +2084,7 @@ function upsertPlatformConnection(userId, platform, fields) {
 function updatePlatformConnectionTokens(id, { access_token, refresh_token, token_expires_at, scope }) {
     run(`UPDATE platform_connections SET
             access_token = ?, refresh_token = COALESCE(?, refresh_token),
-            token_expires_at = ?, scope = COALESCE(?, scope), updated_at = CURRENT_TIMESTAMP
+            token_expires_at = ?, scope = COALESCE(?, scope), updated_at = ov_now()
          WHERE id = ?`,
         [access_token || null, refresh_token || null, token_expires_at || null, scope || null, id]);
     return getPlatformConnectionById(id);
@@ -2114,7 +2114,7 @@ function upsertPowerchatConnection(userId, fields = {}) {
     if (existing) {
         const keys = Object.keys(set);
         if (!keys.length) return existing;
-        run(`UPDATE powerchat_connections SET ${keys.map(k => `${k} = ?`).join(', ')}, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?`,
+        run(`UPDATE powerchat_connections SET ${keys.map(k => `${k} = ?`).join(', ')}, updated_at = ov_now() WHERE user_id = ?`,
             [...keys.map(k => set[k]), userId]);
     } else {
         const keys = Object.keys(set);
@@ -2130,13 +2130,13 @@ function updatePowerchatTokens(userId, { access_token, refresh_token, token_expi
         `UPDATE powerchat_connections
          SET access_token = ?, refresh_token = COALESCE(?, refresh_token),
              token_expires_at = ?, scope = COALESCE(?, scope), last_error = NULL,
-             updated_at = CURRENT_TIMESTAMP
+             updated_at = ov_now()
          WHERE user_id = ?`,
         [access_token, refresh_token || null, token_expires_at || null, scope || null, userId]
     );
 }
 function setPowerchatConnectionError(userId, err) {
-    return run('UPDATE powerchat_connections SET last_error = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?',
+    return run('UPDATE powerchat_connections SET last_error = ?, updated_at = ov_now() WHERE user_id = ?',
         [err ? String(err).slice(0, 300) : null, userId]);
 }
 function deletePowerchatConnection(userId) {
@@ -2145,7 +2145,7 @@ function deletePowerchatConnection(userId) {
 // Webhook dedupe: returns true the FIRST time a delivery id is seen, false on repeats.
 function powerchatDeliveryIsNew(deliveryId, eventType) {
     if (!deliveryId) return true; // no id → can't dedupe; process (rare)
-    const r = run('INSERT OR IGNORE INTO powerchat_webhook_deliveries (delivery_id, event_type) VALUES (?, ?)', [String(deliveryId), eventType || null]);
+    const r = run('INSERT INTO powerchat_webhook_deliveries (delivery_id, event_type) VALUES (?, ?) ON CONFLICT DO NOTHING', [String(deliveryId), eventType || null]);
     return r.changes > 0;
 }
 function cleanupPowerchatDeliveries(days = 3) {
@@ -2156,7 +2156,7 @@ function cleanupPowerchatDeliveries(days = 3) {
 // ── Daily easter egg solves ──────────────────────────────────
 function recordEasterEggSolve(eggDate, solverKey, userId) {
     try {
-        const res = run('INSERT OR IGNORE INTO easter_egg_solves (egg_date, solver_key, user_id) VALUES (?, ?, ?)',
+        const res = run('INSERT INTO easter_egg_solves (egg_date, solver_key, user_id) VALUES (?, ?, ?) ON CONFLICT DO NOTHING',
             [eggDate, String(solverKey).slice(0, 80), userId || null]);
         return !!(res && res.changes); // true = newly solved (first time today)
     } catch { return false; }
@@ -2182,7 +2182,7 @@ function getUserProfile(userId) {
 }
 
 function updateUserAvatar(userId, avatarUrl, pasteId = null) {
-    return run('UPDATE users SET avatar_url = ?, avatar_paste_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?', [avatarUrl, pasteId, userId]);
+    return run('UPDATE users SET avatar_url = ?, avatar_paste_id = ?, updated_at = ov_now() WHERE id = ?', [avatarUrl, pasteId, userId]);
 }
 
 // resetAvatarsForPaste() removed — the media subsystem (vods/clips/pastes writes) moved to OpenVibe.Media.
@@ -2284,7 +2284,7 @@ function updatePaymentOrder(id, fields) {
     const entries = Object.entries(fields || {}).filter(([k]) => allowed.has(k));
     if (!entries.length) return getPaymentOrderById(id);
     const sets = entries.map(([k]) => `${k} = ?`);
-    sets.push('updated_at = CURRENT_TIMESTAMP');
+    sets.push('updated_at = ov_now()');
     run(`UPDATE payment_orders SET ${sets.join(', ')} WHERE id = ?`, [...entries.map(([, v]) => v), id]);
     return getPaymentOrderById(id);
 }
@@ -2299,7 +2299,7 @@ function upsertSubscription({ subscriber_id, streamer_id, tier = 1, provider = n
     if (existing) {
         run(`UPDATE subscriptions SET tier=?, provider=?, provider_ref=COALESCE(?, provider_ref), price_cents=?, currency=?,
                 status=?, is_active=?, current_period_end=?, auto_renew=COALESCE(?, auto_renew),
-                cancel_at_period_end=0, updated_at=CURRENT_TIMESTAMP WHERE id=?`,
+                cancel_at_period_end=0, updated_at=ov_now() WHERE id=?`,
             [tier, provider, provider_ref, price_cents, currency, status, status === 'active' ? 1 : 0, current_period_end,
                 auto_renew === null ? null : (auto_renew ? 1 : 0), existing.id]);
         return get('SELECT * FROM subscriptions WHERE id = ?', [existing.id]);
@@ -2314,7 +2314,7 @@ function upsertSubscription({ subscriber_id, streamer_id, tier = 1, provider = n
 function getSubscriptionsDueRenewal(limit = 50) {
     return all(`SELECT * FROM subscriptions
         WHERE status = 'active' AND current_period_end IS NOT NULL
-          AND datetime(current_period_end) <= CURRENT_TIMESTAMP
+          AND datetime(current_period_end) <= ov_now()
         ORDER BY datetime(current_period_end) ASC LIMIT ?`, [limit]);
 }
 
@@ -2325,7 +2325,7 @@ function getSubscriptionByProviderRef(provider, ref) {
 
 function getActiveSubscription(subscriberId, streamerId) {
     return get(`SELECT * FROM subscriptions WHERE subscriber_id = ? AND streamer_id = ? AND status = 'active'
-                AND (current_period_end IS NULL OR datetime(current_period_end) > CURRENT_TIMESTAMP) LIMIT 1`,
+                AND (current_period_end IS NULL OR datetime(current_period_end) > ov_now()) LIMIT 1`,
         [subscriberId, streamerId]);
 }
 
@@ -2353,7 +2353,7 @@ function getSubscriptionsBySubscriber(subscriberId) {
 
 function getActiveSubscriberCount(streamerId) {
     const r = get(`SELECT COUNT(*) AS n FROM subscriptions WHERE streamer_id = ? AND status = 'active'
-                   AND (current_period_end IS NULL OR datetime(current_period_end) > CURRENT_TIMESTAMP)`, [streamerId]);
+                   AND (current_period_end IS NULL OR datetime(current_period_end) > ov_now())`, [streamerId]);
     return r ? r.n : 0;
 }
 
@@ -2362,7 +2362,7 @@ function setSubscriptionStatus(id, status, fields = {}) {
     const cpe = fields.current_period_end !== undefined ? fields.current_period_end : null;
     const cape = fields.cancel_at_period_end !== undefined ? (fields.cancel_at_period_end ? 1 : 0) : 0;
     run(`UPDATE subscriptions SET status=?, is_active=?, cancel_at_period_end=?,
-            current_period_end=COALESCE(?, current_period_end), updated_at=CURRENT_TIMESTAMP WHERE id=?`,
+            current_period_end=COALESCE(?, current_period_end), updated_at=ov_now() WHERE id=?`,
         [status, status === 'active' ? 1 : 0, cape, cpe, id]);
     return get('SELECT * FROM subscriptions WHERE id = ?', [id]);
 }
@@ -2413,7 +2413,7 @@ function updateControlConfig(configId, fields) {
         }
     }
     if (updates.length === 0) return;
-    updates.push('updated_at = CURRENT_TIMESTAMP');
+    updates.push('updated_at = ov_now()');
     params.push(configId);
     return run(`UPDATE control_configs SET ${updates.join(', ')} WHERE id = ?`, params);
 }
@@ -2529,7 +2529,7 @@ function updateCameraProfile(cameraId, data) {
     const { name, onvif_url, username, password_hash, pan_speed, tilt_speed, zoom_speed, is_active, last_connected } = data;
     return run(
         `UPDATE camera_profiles SET name = ?, onvif_url = ?, username = ?, password_hash = ?, 
-         pan_speed = ?, tilt_speed = ?, zoom_speed = ?, is_active = ?, last_connected = ?, updated_at = CURRENT_TIMESTAMP
+         pan_speed = ?, tilt_speed = ?, zoom_speed = ?, is_active = ?, last_connected = ?, updated_at = ov_now()
          WHERE id = ?`,
         [name, onvif_url, username, password_hash, pan_speed, tilt_speed, zoom_speed, is_active, last_connected, cameraId]
     );
@@ -2569,7 +2569,7 @@ function isUserBanned(userId, streamId) {
         SELECT * FROM bans
         WHERE user_id = ?
         AND (stream_id = ? OR stream_id IS NULL)
-        AND (expires_at IS NULL OR datetime(expires_at) > CURRENT_TIMESTAMP)
+        AND (expires_at IS NULL OR datetime(expires_at) > ov_now())
         LIMIT 1
     `, [userId, streamId]);
     return !!ban;
@@ -2589,7 +2589,7 @@ function _normalizeBanIp(ip) {
 }
 function _cidrBanList() {
     if (_cidrBans.list && Date.now() - _cidrBans.at < 15000) return _cidrBans.list;
-    const rows = all(`SELECT * FROM bans WHERE ip_address LIKE '%/%' AND (expires_at IS NULL OR datetime(expires_at) > CURRENT_TIMESTAMP)`);
+    const rows = all(`SELECT * FROM bans WHERE ip_address ILIKE '%/%' AND (expires_at IS NULL OR datetime(expires_at) > ov_now())`);
     const list = [];
     for (const r of rows) {
         const [addr, bitsStr] = String(r.ip_address).split('/');
@@ -2612,7 +2612,7 @@ function getIpBan(ip, streamId) {
         SELECT * FROM bans
         WHERE ip_address IN (?, ?)
         AND (stream_id = ? OR stream_id IS NULL)
-        AND (expires_at IS NULL OR datetime(expires_at) > CURRENT_TIMESTAMP)
+        AND (expires_at IS NULL OR datetime(expires_at) > ov_now())
         LIMIT 1
     `, [String(ip), norm, streamId]);
     if (ban) return ban;
@@ -2681,7 +2681,7 @@ function setSetting(key, value) {
     const strVal = typeof value === 'object' ? JSON.stringify(value) : String(value);
     const existing = get('SELECT key FROM site_settings WHERE key = ?', [key]);
     if (existing) {
-        return run('UPDATE site_settings SET value = ?, updated_at = CURRENT_TIMESTAMP WHERE key = ?', [strVal, key]);
+        return run('UPDATE site_settings SET value = ?, updated_at = ov_now() WHERE key = ?', [strVal, key]);
     }
     return run('INSERT INTO site_settings (key, value) VALUES (?, ?)', [key, strVal]);
 }
@@ -2701,7 +2701,7 @@ function getState(key) {
 function setState(key, value) {
     const strVal = typeof value === 'object' ? JSON.stringify(value) : String(value);
     return run(`INSERT INTO app_state (key, value) VALUES (?, ?)
-        ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP`, [key, strVal]);
+        ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = ov_now()`, [key, strVal]);
 }
 function deleteState(key) {
     return run('DELETE FROM app_state WHERE key = ?', [key]);
@@ -2736,7 +2736,7 @@ function getAllVerificationKeys() {
 
 function redeemVerificationKey(key, userId) {
     return run(
-        "UPDATE verification_keys SET status = 'used', used_by = ?, used_at = CURRENT_TIMESTAMP WHERE key = ? AND status = 'active'",
+        "UPDATE verification_keys SET status = 'used', used_by = ?, used_at = ov_now() WHERE key = ? AND status = 'active'",
         [userId, key]
     );
 }
@@ -2791,7 +2791,7 @@ function upsertAiChatbotConfig(userId, fields) {
             if (fields[col] !== undefined) { sets.push(`${col} = ?`); params.push(coerce(fields[col])); }
         }
         if (sets.length) {
-            sets.push('updated_at = CURRENT_TIMESTAMP');
+            sets.push('updated_at = ov_now()');
             params.push(userId);
             run(`UPDATE ai_chatbot_configs SET ${sets.join(', ')} WHERE user_id = ?`, params);
         }
@@ -2850,7 +2850,7 @@ function upsertChannelAiConfig(userId, fields) {
             if (fields[col] !== undefined) { sets.push(`${col} = ?`); params.push(coerce(fields[col])); }
         }
         if (sets.length) {
-            sets.push('updated_at = CURRENT_TIMESTAMP');
+            sets.push('updated_at = ov_now()');
             params.push(userId);
             run(`UPDATE channel_ai_config SET ${sets.join(', ')} WHERE user_id = ?`, params);
         }
@@ -2904,18 +2904,18 @@ function getRecentClosedAiViewerThreads(channelUserId, limit = 3) {
     return all("SELECT * FROM ai_viewer_threads WHERE channel_user_id = ? AND state = 'closed' AND topic IS NOT NULL ORDER BY updated_at DESC LIMIT ?", [channelUserId, limit]);
 }
 function touchAiViewerThread(id, { line, by, awaiting = null, topic = undefined }) {
-    const sets = ['turns = turns + 1', 'last_line = ?', 'last_line_by = ?', 'last_line_at = CURRENT_TIMESTAMP', 'awaiting = ?', 'updated_at = CURRENT_TIMESTAMP'];
+    const sets = ['turns = turns + 1', 'last_line = ?', 'last_line_by = ?', 'last_line_at = ov_now()', 'awaiting = ?', 'updated_at = ov_now()'];
     const params = [String(line || '').slice(0, 300), by || null, awaiting];
     if (topic !== undefined) { sets.push('topic = ?'); params.push(topic); }
     params.push(id);
     return run(`UPDATE ai_viewer_threads SET ${sets.join(', ')} WHERE id = ?`, params);
 }
-function closeAiViewerThread(id) { return run("UPDATE ai_viewer_threads SET state = 'closed', awaiting = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?", [id]); }
+function closeAiViewerThread(id) { return run("UPDATE ai_viewer_threads SET state = 'closed', awaiting = NULL, updated_at = ov_now() WHERE id = ?", [id]); }
 function closeStaleAiViewerThreads(channelUserId, idleSec, maxTurns) {
-    return run(`UPDATE ai_viewer_threads SET state = 'closed', awaiting = NULL, updated_at = CURRENT_TIMESTAMP
+    return run(`UPDATE ai_viewer_threads SET state = 'closed', awaiting = NULL, updated_at = ov_now()
         WHERE channel_user_id = ? AND state = 'open' AND (updated_at < datetime('now', ?) OR turns >= ?)`, [channelUserId, `-${Math.max(30, idleSec)} seconds`, maxTurns]).changes;
 }
-function closeAllAiViewerThreads(channelUserId) { return run("UPDATE ai_viewer_threads SET state = 'closed', awaiting = NULL, updated_at = CURRENT_TIMESTAMP WHERE channel_user_id = ? AND state = 'open'", [channelUserId]).changes; }
+function closeAllAiViewerThreads(channelUserId) { return run("UPDATE ai_viewer_threads SET state = 'closed', awaiting = NULL, updated_at = ov_now() WHERE channel_user_id = ? AND state = 'open'", [channelUserId]).changes; }
 function addAiViewerLog(row) {
     return run(`INSERT INTO ai_viewer_log (channel_user_id, stream_id, event, bot_username, target, thread_id, chat_message_id, text, reason, tokens_in, tokens_cached, tokens_out, cost_usd, model)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -2963,7 +2963,7 @@ function updateChannelAiBot(id, fields) {
         if (fields[col] !== undefined) { sets.push(`${col} = ?`); params.push(coerce(fields[col])); }
     }
     if (sets.length) {
-        sets.push('updated_at = CURRENT_TIMESTAMP');
+        sets.push('updated_at = ov_now()');
         params.push(id);
         run(`UPDATE channel_ai_bots SET ${sets.join(', ')} WHERE id = ?`, params);
     }
@@ -2971,7 +2971,7 @@ function updateChannelAiBot(id, fields) {
 }
 
 function touchChannelAiBot(id) {
-    return run('UPDATE channel_ai_bots SET msg_count = msg_count + 1, last_active_at = CURRENT_TIMESTAMP WHERE id = ?', [id]);
+    return run('UPDATE channel_ai_bots SET msg_count = msg_count + 1, last_active_at = ov_now() WHERE id = ?', [id]);
 }
 
 function deleteChannelAiBot(id) {
@@ -3064,7 +3064,7 @@ function getPendingRedemptions(streamerId) {
 }
 
 function resolveRedemption(id, status) {
-    return run(`UPDATE coin_redemptions SET status = ?, resolved_at = CURRENT_TIMESTAMP WHERE id = ?`,
+    return run(`UPDATE coin_redemptions SET status = ?, resolved_at = ov_now() WHERE id = ?`,
         [status, id]);
 }
 
@@ -3076,7 +3076,7 @@ function upsertWatchTime(userId, streamId) {
         [userId, streamId]);
     if (existing) {
         return run(
-            `UPDATE watch_time SET minutes_watched = minutes_watched + 1, last_heartbeat = CURRENT_TIMESTAMP WHERE id = ?`,
+            `UPDATE watch_time SET minutes_watched = minutes_watched + 1, last_heartbeat = ov_now() WHERE id = ?`,
             [existing.id]
         );
     }
@@ -3132,7 +3132,7 @@ function upsertMediaRequestSettings(userId, fields = {}) {
             sets.push(`${k} = ?`);
             vals.push(v);
         }
-        sets.push('updated_at = CURRENT_TIMESTAMP');
+        sets.push('updated_at = ov_now()');
         vals.push(userId);
         run(`UPDATE media_request_settings SET ${sets.join(', ')} WHERE user_id = ?`, vals);
     }
@@ -3310,7 +3310,7 @@ function getOrCreateAnonNum(ip) {
     const max = get('SELECT MAX(anon_num) as m FROM anon_ip_mappings');
     const nextNum = (max?.m || 0) + 1;
     try {
-        run('INSERT INTO anon_ip_mappings (ip, anon_num, created_at) VALUES (?, ?, CURRENT_TIMESTAMP)', [ip, nextNum]);
+        run('INSERT INTO anon_ip_mappings (ip, anon_num, created_at) VALUES (?, ?, ov_now())', [ip, nextNum]);
     } catch (e) {
         // Race condition: another connection inserted first — re-read
         const retry = get('SELECT anon_num FROM anon_ip_mappings WHERE ip = ?', [ip]);
@@ -3349,7 +3349,7 @@ function isIpApproved(channelId, ip) {
  */
 function approveIp(channelId, ip, approvedBy = null, source = 'auto') {
     return run(
-        'INSERT OR IGNORE INTO approved_ips (channel_id, ip_address, approved_by, source) VALUES (?, ?, ?, ?)',
+        'INSERT INTO approved_ips (channel_id, ip_address, approved_by, source) VALUES (?, ?, ?, ?) ON CONFLICT DO NOTHING',
         [channelId, ip, approvedBy, source]
     );
 }
@@ -3638,7 +3638,7 @@ function computeAndCacheStreamAnalytics(streamId) {
         `INSERT INTO stream_analytics
             (stream_id, avg_viewers, peak_viewers, unique_chatters, total_messages,
              total_watch_minutes, new_followers, clips_created, coins_earned, computed_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ov_now())
          ON CONFLICT(stream_id) DO UPDATE SET
             avg_viewers = excluded.avg_viewers,
             peak_viewers = excluded.peak_viewers,
@@ -3648,7 +3648,7 @@ function computeAndCacheStreamAnalytics(streamId) {
             new_followers = excluded.new_followers,
             clips_created = excluded.clips_created,
             coins_earned = excluded.coins_earned,
-            computed_at = CURRENT_TIMESTAMP`,
+            computed_at = ov_now()`,
         [streamId, avgViewers, stream.peak_viewers || 0, uniqueChatters, totalMessages,
          totalWatchMinutes, newFollowers, clipsCreated, coinsEarned]
     );
@@ -3760,8 +3760,8 @@ function saveUserPreferences(userId, chatSettings) {
     const json = JSON.stringify(chatSettings);
     run(
         `INSERT INTO user_preferences (user_id, chat_settings, updated_at)
-         VALUES (?, ?, CURRENT_TIMESTAMP)
-         ON CONFLICT(user_id) DO UPDATE SET chat_settings = excluded.chat_settings, updated_at = CURRENT_TIMESTAMP`,
+         VALUES (?, ?, ov_now())
+         ON CONFLICT(user_id) DO UPDATE SET chat_settings = excluded.chat_settings, updated_at = ov_now()`,
         [userId, json]
     );
 }
@@ -3808,7 +3808,7 @@ function validateApiToken(rawToken) {
     // Check expiry
     if (row.expires_at && new Date(row.expires_at) < new Date()) return null;
     // Update last used
-    run('UPDATE api_tokens SET last_used_at = CURRENT_TIMESTAMP WHERE id = ?', [row.id]);
+    run('UPDATE api_tokens SET last_used_at = ov_now() WHERE id = ?', [row.id]);
     const scopes = (() => { try { return JSON.parse(row.scopes); } catch { return []; } })();
     return {
         id: row.uid, username: row.username, display_name: row.display_name,
@@ -3856,7 +3856,7 @@ function addToDonationGoal(id, amount) {
     if (!g || !g.is_active) return { goal: g || null, reached: false };
     const newAmount = Math.min(Math.round((g.current_amount || 0) + amount), g.target_amount);
     const reached = newAmount >= g.target_amount;
-    if (reached) run("UPDATE donation_goals SET current_amount = ?, is_active = 0, reached_at = CURRENT_TIMESTAMP WHERE id = ?", [newAmount, id]);
+    if (reached) run("UPDATE donation_goals SET current_amount = ?, is_active = 0, reached_at = ov_now() WHERE id = ?", [newAmount, id]);
     else run('UPDATE donation_goals SET current_amount = ? WHERE id = ?', [newAmount, id]);
     return { goal: getDonationGoalById(id), reached };
 }

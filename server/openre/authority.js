@@ -128,7 +128,7 @@ async function setAuthority(slotId, authority, { force = false } = {}) {
     if (!slot) return { status: 404, error: 'Managed stream not found' };
     if (!['live', 'openre'].includes(authority)) return { status: 400, error: "authority must be 'live' or 'openre'" };
     if (authority === 'live') {
-        db.run("UPDATE managed_streams SET ingest_authority = 'live', updated_at = CURRENT_TIMESTAMP WHERE id = ?", [slot.id]);
+        db.run("UPDATE managed_streams SET ingest_authority = 'live', updated_at = ov_now() WHERE id = ?", [slot.id]);
         return { status: 200, body: { managed_stream_id: slot.id, ingest_authority: 'live', next: 'The broadcaster regenerates the stream key on the Go Live page (the Live key was rotated when the slot moved to OpenRe).' } };
     }
     if (!client.enabled()) return { status: 409, error: 'OpenRe is not configured on this Live (OPENRE_URL, OV_OAUTH_CLIENT_SECRET)' };
@@ -154,12 +154,12 @@ async function setAuthority(slotId, authority, { force = false } = {}) {
         stream = await client.updateStream(stream.id, { protocols: [...(stream.protocols || ['rtmp']), protocol] }, { subject });
     }
     const newLiveKey = crypto.randomBytes(20).toString('hex');
-    const flipped = db.getDb().transaction(() => {
+    const flipped = db.getDb().tx(() => {
         // Checked again here: a Live publish may have started while OpenRe was being asked.
         if (db.get('SELECT id FROM streams WHERE managed_stream_id = ? AND is_live = 1 LIMIT 1', [slot.id])) return false;
-        db.run("UPDATE managed_streams SET ingest_authority = 'openre', openre_stream_id = ?, stream_key = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", [stream.id, newLiveKey, slot.id]);
+        db.run("UPDATE managed_streams SET ingest_authority = 'openre', openre_stream_id = ?, stream_key = ?, updated_at = ov_now() WHERE id = ?", [stream.id, newLiveKey, slot.id]);
         return true;
-    })();
+    });
     if (!flipped) return { status: 409, error: `Slot ${slot.id} went live on Live meanwhile; switch it while it is offline` };
     return {
         status: 200,

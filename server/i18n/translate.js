@@ -132,7 +132,7 @@ function _ensureTable() {
             key TEXT PRIMARY KEY,
             src TEXT, dst TEXT,
             text TEXT NOT NULL,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            created_at DATETIME DEFAULT ov_now()
         )`);
         _tableReady = true;
     } catch { /* read-only db or race — memory cache still works */ }

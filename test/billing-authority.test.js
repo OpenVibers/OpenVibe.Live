@@ -53,7 +53,7 @@ async function check(name, fn) {
     db.initDb();
     const raw = db.getDb();
     const addUser = (id, username, role, extra = {}) => raw.prepare(
-        `INSERT INTO users (id, username, display_name, email, password_hash, role, is_owner, openvibe_bucks_balance, openvibe_bucks_cashout_balance)
+        `INSERT INTO users (id, username, display_name, email, password_hash, role, is_owner, openvibe_bucks_balance, openvibe_bucks_cashout_balance) OVERRIDING SYSTEM VALUE
          VALUES (?, ?, ?, ?, 'x', ?, ?, ?, ?)`).run(id, username, username, `${username}@x`, role, extra.is_owner ? 1 : 0, extra.bucks || 0, extra.cashout || 0);
     addUser(1, 'owner', 'admin', { is_owner: 1 });
     addUser(2, 'ann', 'user', { bucks: 1000 });            // legacy columns carry values: they must never move

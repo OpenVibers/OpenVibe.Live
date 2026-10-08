@@ -91,7 +91,7 @@ const log = console.log;
 console.log = (...a) => { if (!/^\[/.test(String(a[0]))) log(...a); };
 const db = require('../server/db/database');
 db.initDb();
-db.getDb().prepare(`INSERT INTO users (id, username, display_name, email, password_hash, role, created_at)
+db.getDb().prepare(`INSERT INTO users (id, username, display_name, email, password_hash, role, created_at) OVERRIDING SYSTEM VALUE
     VALUES (3, 'alice', 'alice', 'alice@x', 'x', 'streamer', '2025-01-01 00:00:00')`).run();
 const ch = db.ensureChannel(3);
 db.createManagedStream({ user_id: 3, channel_id: ch.id, slug: 'desk', title: 'Desk', protocol: 'webrtc', stream_key: 'k'.repeat(40) });

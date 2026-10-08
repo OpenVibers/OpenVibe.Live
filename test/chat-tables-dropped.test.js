@@ -77,7 +77,7 @@ assert.deepStrictEqual(offenders, [], `server/ still names OpenVibe.Chat's chat 
 const fresh = new Database(':memory:');
 fresh.exec(fs.readFileSync(path.join(ROOT, 'server', 'db', 'schema.sql'), 'utf8'));
 for (const t of TABLES) {
-    assert.ok(!fresh.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(t), `fresh schema must not create ${t}`);
+    assert.ok(!fresh.prepare("SELECT 1 FROM information_schema.tables WHERE table_schema = current_schema() AND table_name = ?").get(t), `fresh schema must not create ${t}`);
 }
 fresh.close();
 
@@ -95,7 +95,7 @@ legacy.close();
 const db = require('../server/db/database');
 db.initDb();
 const d = db.getDb();
-const exists = (t) => !!d.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(t);
+const exists = (t) => !!d.prepare("SELECT 1 FROM information_schema.tables WHERE table_schema = current_schema() AND table_name = ?").get(t);
 for (const t of TABLES) assert.ok(!exists(t), `${t} must be gone after a boot with the drop migration`);
 assert.strictEqual(d.prepare('SELECT mode FROM schema_migrations WHERE id = ?').get(DROP_ID).mode, 'applied', 'the drop is applied, not adopted, when the tables are present');
 assert.strictEqual(migrations.run(d, migrations.MIGRATIONS.filter((m) => m.id === DROP_ID)).length, 0, 'the drop runs at most once');
@@ -115,7 +115,7 @@ big.pragma('foreign_keys = ON');
 big.exec(`CREATE TABLE chat_messages (id INTEGER PRIMARY KEY AUTOINCREMENT, message TEXT NOT NULL,
     reply_to_id INTEGER REFERENCES chat_messages(id) ON DELETE SET NULL)`);
 const ins = big.prepare('INSERT INTO chat_messages (message, reply_to_id) VALUES (?, ?)');
-big.transaction(() => { for (let i = 1; i <= 30000; i++) ins.run('line', i > 1 ? i - 1 : null); })();
+big.tx(() => { for (let i = 1; i <= 30000; i++) ins.run('line', i > 1 ? i - 1 : null); });
 const t0 = Date.now();
 const out = migrations.run(big, migrations.MIGRATIONS.filter((m) => m.id === DROP_ID));
 const took = Date.now() - t0;

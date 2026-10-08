@@ -29,7 +29,7 @@ console.log = (...a) => { logs.push(a.join(' ')); };
     try {
         const db = require('../server/db/database');
         db.initDb();
-        db.getDb().prepare("INSERT INTO users (id, username, display_name, password_hash) VALUES (601, 'caster', 'Caster', 'x')").run();
+        db.getDb().prepare("INSERT INTO users (id, username, display_name, password_hash) OVERRIDING SYSTEM VALUE VALUES (601, 'caster', 'Caster', 'x')").run();
         const streamEvents = require('../server/events/stream-events');
         const { notifyFollowersGoLive, leftToEvents } = require('../server/streaming/golive-notify');
         const settle = () => new Promise((r) => setTimeout(r, 50));
@@ -57,7 +57,7 @@ console.log = (...a) => { logs.push(a.join(' ')); };
         assert.ok(logs.some((l) => l.includes("caster: left to Network's live.stream.started consumer (GOLIVE_NOTIFY=events)")));
         // The event path is intact: a new stream row still queues live.stream.started.
         db.createStream({ user_id: 601, title: 'three', protocol: 'rtmp' });
-        assert.strictEqual(db.getDb().prepare("SELECT COUNT(*) AS c FROM event_outbox WHERE envelope LIKE '%live.stream.started%'").get().c, 1);
+        assert.strictEqual(db.getDb().prepare("SELECT COUNT(*) AS c FROM event_outbox WHERE envelope ILIKE '%live.stream.started%'").get().c, 1);
 
         // Any other value keeps both paths.
         process.env.GOLIVE_NOTIFY = 'both';

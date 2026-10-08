@@ -36,7 +36,7 @@ const SUBJECT = 'usr_01J8ZQ4K7M2N3P4Q5R6S7T8V9W';
 
 /** Every text/number value in every table, for "is this anywhere in the file" checks. */
 function dumpAll(db) {
-    const tables = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'").pluck().all();
+    const tables = db.prepare("SELECT table_name AS name FROM information_schema.tables WHERE table_schema = current_schema()").pluck().all();
     return tables.map((t) => JSON.stringify(db.prepare(`SELECT * FROM ${t}`).all())).join('\n');
 }
 
@@ -344,7 +344,7 @@ function dumpAll(db) {
         const db = new Database(file, { readonly: true });
         assert.strictEqual(db.prepare('SELECT COUNT(*) FROM analytics_events').pluck().get(), 4);
         assert.strictEqual(db.prepare('SELECT COUNT(*) FROM analytics_events WHERE ip IS NOT NULL OR user_id IS NOT NULL OR city IS NOT NULL').pluck().get(), 0);
-        assert.strictEqual(db.prepare("SELECT COUNT(*) FROM analytics_events WHERE path LIKE '%?%'").pluck().get(), 0);
+        assert.strictEqual(db.prepare("SELECT COUNT(*) FROM analytics_events WHERE path ILIKE '%?%'").pluck().get(), 0);
         assert.deepStrictEqual(retention.rollupTotals(db), totals);
         db.close();
         // Prune-only with an explicit --no-backup works too (nothing left to prune).

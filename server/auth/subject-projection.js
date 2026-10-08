@@ -59,7 +59,7 @@ function ensureSchema() {
         profile_color TEXT,
         role TEXT NOT NULL,
         banned INTEGER NOT NULL DEFAULT 0,
-        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        updated_at DATETIME DEFAULT ov_now()
     );
     CREATE INDEX IF NOT EXISTS idx_subject_projection_network ON subject_projection(network_user_id);`);
     ready = true;
@@ -83,12 +83,12 @@ function apply(p, { notify = () => {} } = {}) {
     if (!SUBJECT_RE.test(String(subject || '')) || !Number.isInteger(p.revision) || p.revision < 1 || typeof p.username !== 'string' || !p.username
         || !ROLES.includes(p.role) || typeof p.banned !== 'boolean') return 'ignored:payload';
     const d = db.getDb();
-    return d.transaction(() => {
+    return d.tx(() => {
         const cur = d.prepare('SELECT revision FROM subject_projection WHERE subject_id = ?').get(subject);
         if (cur && cur.revision >= p.revision) return 'stale';
         const str = (v, max) => (typeof v === 'string' && v ? v.slice(0, max) : null);
         d.prepare(`INSERT INTO subject_projection (subject_id, network_user_id, revision, username, display_name, avatar_url, profile_color, role, banned, updated_at)
-                   VALUES (@subject, @nid, @rev, @username, @display_name, @avatar_url, @profile_color, @role, @banned, CURRENT_TIMESTAMP)
+                   VALUES (@subject, @nid, @rev, @username, @display_name, @avatar_url, @profile_color, @role, @banned, ov_now())
                    ON CONFLICT(subject_id) DO UPDATE SET network_user_id = excluded.network_user_id, revision = excluded.revision, username = excluded.username,
                      display_name = excluded.display_name, avatar_url = excluded.avatar_url, profile_color = excluded.profile_color, role = excluded.role,
                      banned = excluded.banned, updated_at = excluded.updated_at`)
@@ -109,7 +109,7 @@ function apply(p, { notify = () => {} } = {}) {
         }
         if (changed.length || renamed) notify(user.id);
         return 'updated';
-    })();
+    });
 }
 
 /** The projected person for a subject, or null. */

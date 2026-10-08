@@ -72,7 +72,7 @@ const ai = http.createServer((req, res) => {
     const budget = require('../server/ai/viewers/budget');
     const d = db.getDb();
     const SUBJECT = 'usr_01JAB2C3D4E5F6G7H8J9K0MNP1';
-    d.prepare("INSERT INTO users (id, username, password_hash) VALUES (30, 'dana', '$sso$'), (31, 'nolink', '$sso$')").run();
+    d.prepare("INSERT INTO users (id, username, password_hash) OVERRIDING SYSTEM VALUE VALUES (30, 'dana', '$sso$'), (31, 'nolink', '$sso$')").run();
     d.prepare("INSERT INTO linked_accounts (user_id, service, service_user_id, service_username, subject_id) VALUES (30, 'network', '300', 'dana', ?)").run(SUBJECT);
     db.setSetting('ai_enabled', 'true');
     db.upsertChannelAiConfig(30, { enabled: 1, use_shared_key: 0, byo_key: LOCAL_KEY, byo_base_url: 'https://openrouter.ai/api/v1', byo_model: 'gpt-4o-mini' });

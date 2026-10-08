@@ -49,7 +49,7 @@ principal.serviceHeaders = async () => ({ Authorization: 'Bearer test-service-to
 
 const SUB = (c) => `usr_01JAB2C3D4E5F6G7H8J9K0MNP${c}`;
 const addUser = (id, username, role, subject) => {
-    raw.prepare(`INSERT INTO users (id, username, display_name, email, password_hash, role, profile_color, created_at)
+    raw.prepare(`INSERT INTO users (id, username, display_name, email, password_hash, role, profile_color, created_at) OVERRIDING SYSTEM VALUE
                  VALUES (?, ?, ?, ?, 'x', ?, '#123456', '2025-01-01 00:00:00')`).run(id, username, username.toUpperCase(), `${username}@x`, role);
     if (subject) raw.prepare("INSERT INTO linked_accounts (user_id, service, service_user_id, subject_id) VALUES (?, 'network', ?, ?)").run(id, String(100 + id), subject);
 };

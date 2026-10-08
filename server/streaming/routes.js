@@ -1964,7 +1964,7 @@ router.post('/managed/:id/regenerate-key', requireAuth, async (req, res) => {
 
         const crypto = require('crypto');
         const newKey = crypto.randomBytes(20).toString('hex');
-        db.run('UPDATE managed_streams SET stream_key = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?', [newKey, msId]);
+        db.run('UPDATE managed_streams SET stream_key = ?, updated_at = ov_now() WHERE id = ?', [newKey, msId]);
         res.json({ stream_key: newKey });
     } catch (err) {
         console.error('[ManagedStreams] Regenerate key error:', err.message);
@@ -2102,7 +2102,7 @@ router.post('/', requireAuth, (req, res) => {
         const streamId = result.lastInsertRowid;
 
         // Initialize heartbeat
-        db.run('UPDATE streams SET last_heartbeat = CURRENT_TIMESTAMP WHERE id = ?', [streamId]);
+        db.run('UPDATE streams SET last_heartbeat = ov_now() WHERE id = ?', [streamId]);
 
         if (tags && tags.length > 0) {
             db.run('UPDATE streams SET tags = ? WHERE id = ?', [JSON.stringify(tags), streamId]);
@@ -2377,7 +2377,7 @@ router.post('/:id/heartbeat', requireAuth, (req, res) => {
         }
         if (!stream.is_live) return res.status(400).json({ error: 'Stream is not live' });
 
-        db.run('UPDATE streams SET last_heartbeat = CURRENT_TIMESTAMP WHERE id = ?', [stream.id]);
+        db.run('UPDATE streams SET last_heartbeat = ov_now() WHERE id = ?', [stream.id]);
         res.json({ ok: true });
     } catch (err) {
         console.error('[Streaming]', err.message);

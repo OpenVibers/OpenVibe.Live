@@ -55,7 +55,7 @@ function ensureSchema(d) {
         subject    TEXT NOT NULL,
         outcome    TEXT,
         sent_at    DATETIME,
-        applied_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        applied_at DATETIME DEFAULT ov_now()
     )`);
     const cols = d.prepare('PRAGMA table_info(users)').all().map((c) => c.name);
     if (!cols.includes('deleted_at')) d.exec('ALTER TABLE users ADD COLUMN deleted_at DATETIME');
@@ -70,7 +70,7 @@ function personColumns(d) {
         if (!out.has(t)) out.set(t, []);
         if (!out.get(t).some((c) => c.col === col)) out.get(t).push({ col, action });
     };
-    const tables = d.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all().map((r) => r.name);
+    const tables = d.prepare("SELECT table_name AS name FROM information_schema.tables WHERE table_schema = current_schema() ORDER BY name").all().map((r) => r.name);
     for (const t of tables) {
         if (t === 'users' || FROZEN.has(t)) continue;
         for (const fk of d.prepare(`PRAGMA foreign_key_list(${q(t)})`).all()) {
@@ -133,7 +133,7 @@ function eraseUsers(d, userIds, { now = new Date().toISOString() } = {}) {
     const cols = personColumns(d);
     const usersCols = d.prepare('PRAGMA table_info(users)').all().map((c) => c.name);
     const onBilling = (() => { try { return require('../monetization/money-authority').onBilling(); } catch { return false; } })();
-    d.transaction(() => {
+    d.tx(() => {
         for (const uid of userIds) {
             for (const [t, list] of cols) {
                 const where = list.map((c) => `${q(c.col)} = ?`).join(' OR ');
@@ -162,7 +162,7 @@ function eraseUsers(d, userIds, { now = new Date().toISOString() } = {}) {
             d.prepare(`UPDATE users SET ${keys.map((k) => `${q(k)} = ?`).join(', ')} WHERE id = ?`).run(...keys.map((k) => set[k]), uid);
             bump(erased, 'accounts', 1);
         }
-    })();
+    });
     return { erased, retained };
 }
 
@@ -197,7 +197,7 @@ async function apply(ev, { send = networkCall } = {}) {
         if (!res) throw new Error('Network unreachable');
         const outcome = res.ok ? 'exported' : (res.status === 409 || res.status === 404 ? 'closed' : null);
         if (!outcome) throw new Error(`export part refused: ${res.status}`);
-        d.prepare('INSERT OR REPLACE INTO account_data_events (id, kind, subject, outcome, sent_at) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)')
+        d.prepare('INSERT OR REPLACE INTO account_data_events (id, kind, subject, outcome, sent_at) VALUES (?, ?, ?, ?, ov_now())')
             .run(p.export_id, 'export', p.subject, JSON.stringify({ result: outcome, files: part.files.length }));
         console.log(`[AccountData] export ${p.export_id}: ${outcome} (${part.files.length} file(s))`);
         return outcome;
@@ -211,7 +211,7 @@ async function apply(ev, { send = networkCall } = {}) {
             const ids = [...new Set(subjects.map((s) => liveUserOf(d, s)).filter(Boolean))];
             for (const id of [...ids]) for (const m of (hasColumn(d, 'users', 'merged_into') ? d.prepare('SELECT id FROM users WHERE merged_into = ?').all(id) : [])) if (!ids.includes(m.id)) ids.push(m.id);
             const counts = eraseUsers(d, ids);
-            if (d.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'subject_projection'").get()) {
+            if (d.prepare("SELECT 1 FROM information_schema.tables WHERE table_schema = current_schema() AND table_name = 'subject_projection'").get()) {
                 d.prepare(`DELETE FROM subject_projection WHERE subject_id IN (${subjects.map(() => '?').join(',')})`).run(...subjects);
             }
             d.prepare('INSERT INTO account_data_events (id, kind, subject, outcome) VALUES (?, ?, ?, ?)').run(p.deletion_id, 'deletion', p.subject, JSON.stringify({ users: ids, ...counts }));
@@ -224,7 +224,7 @@ async function apply(ev, { send = networkCall } = {}) {
         const res = await send(`/internal/account-deletions/${p.deletion_id}/confirmations`, { subject: p.subject, completed_at: new Date(`${String(rec.applied_at).replace(' ', 'T')}Z`).toISOString(), erased: o.erased || {}, retained: o.retained || {} });
         if (!res) throw new Error('Network unreachable');
         if (!res.ok && res.status !== 404) throw new Error(`confirmation refused: ${res.status}`);
-        d.prepare('UPDATE account_data_events SET sent_at = CURRENT_TIMESTAMP WHERE id = ?').run(p.deletion_id);
+        d.prepare('UPDATE account_data_events SET sent_at = ov_now() WHERE id = ?').run(p.deletion_id);
         return result;
     }
     return 'ignored:type';

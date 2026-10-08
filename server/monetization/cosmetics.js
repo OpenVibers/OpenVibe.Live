@@ -107,7 +107,7 @@ function ensureTables() {
             user_id INTEGER NOT NULL,
             item_id TEXT NOT NULL,
             category TEXT NOT NULL,
-            unlocked_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            unlocked_at DATETIME DEFAULT ov_now(),
             UNIQUE(user_id, item_id),
             FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
         );
@@ -171,7 +171,7 @@ function unlockCosmetic(userId, itemId) {
     if (!cosmetic) return { error: 'Unknown cosmetic' };
     if (ownsCosmetic(userId, itemId)) return { error: 'Already unlocked' };
     const d = db.getDb();
-    d.prepare('INSERT OR IGNORE INTO user_cosmetics (user_id, item_id, category) VALUES (?, ?, ?)').run(userId, itemId, cosmetic.category);
+    d.prepare('INSERT INTO user_cosmetics (user_id, item_id, category) VALUES (?, ?, ?) ON CONFLICT DO NOTHING').run(userId, itemId, cosmetic.category);
     return { success: true, item: cosmetic };
 }
 

@@ -49,7 +49,7 @@ function parseArgs(argv) {
     return opts;
 }
 
-const hasTable = (db) => !!db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(TABLE);
+const hasTable = (db) => !!db.prepare("SELECT 1 FROM information_schema.tables WHERE table_schema = current_schema() AND table_name = ?").get(TABLE);
 
 /** What is still queued: { exists, total, writes, byOp: { op: n }, boots }. Reads only. */
 function counts(db) {
@@ -96,13 +96,13 @@ async function deliver(db, post, log = () => {}) {
         try {
             const res = ops.length ? await post('/internal/live/calls', { boot, ops }) : { results: [] };
             const refusedSeq = new Set(((res && res.results) || []).filter((x) => !x.ok).map((x) => x.seq));
-            db.transaction(() => {
+            db.tx(() => {
                 for (const o of ops) {
                     if (refusedSeq.has(o.seq)) { refused.add(o.seq); continue; }
                     del.run(o.seq);
                     out.delivered++;
                 }
-            })();
+            });
             i += batch.length;
             limit = BATCH;
         } catch (err) {

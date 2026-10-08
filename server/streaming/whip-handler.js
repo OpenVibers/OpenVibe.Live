@@ -160,7 +160,7 @@ function touchWhipHeartbeat(streamId, reason = 'whip_session') {
     if (!streamId) return;
     // Called from a keepalive timer: a throw there would exit the process (see server/index.js).
     try {
-        db.run('UPDATE streams SET last_heartbeat = CURRENT_TIMESTAMP WHERE id = ?', [streamId]);
+        db.run('UPDATE streams SET last_heartbeat = ov_now() WHERE id = ?', [streamId]);
     } catch (e) { console.warn(`[WHIP] heartbeat for stream ${streamId} (${reason}) failed: ${e.message}`); }
 }
 
@@ -597,7 +597,7 @@ function autoCreateWhipSession(managedStream, user) {
             is_nsfw: managedStream.is_nsfw || 0,
         });
         const streamId = result.lastInsertRowid;
-        db.run('UPDATE streams SET last_heartbeat = CURRENT_TIMESTAMP WHERE id = ?', [streamId]);
+        db.run('UPDATE streams SET last_heartbeat = ov_now() WHERE id = ?', [streamId]);
         db.run(`INSERT INTO cameras (stream_id, camera_index, label, protocol) VALUES (?, 0, 'Main', 'webrtc')`, [streamId]);
 
         // Apply control config

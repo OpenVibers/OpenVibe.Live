@@ -229,7 +229,7 @@ router.get('/:id', optionalAuth, async (req, res) => {
         // Unique-view tracking (content_views stays in live.db).
         try {
             const ip = req.headers['cf-connecting-ip'] || req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.ip || 'unknown';
-            const inserted = db.run('INSERT OR IGNORE INTO content_views (content_type, content_id, ip) VALUES (?, ?, ?)', ['clip', clip.id, ip]);
+            const inserted = db.run('INSERT INTO content_views (content_type, content_id, ip) VALUES (?, ?, ?) ON CONFLICT DO NOTHING', ['clip', clip.id, ip]);
             if (inserted.changes > 0) {
                 const count = db.get('SELECT COUNT(*) as c FROM content_views WHERE content_type = ? AND content_id = ?', ['clip', clip.id]);
                 clip.view_count = Math.max(Number(clip.view_count) || 0, count.c);

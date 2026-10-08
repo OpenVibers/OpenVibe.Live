@@ -24,9 +24,9 @@ const Database = require('better-sqlite3');
 {
     const w = new Database(tmp);
     w.pragma('foreign_keys = OFF');
-    w.prepare('INSERT OR IGNORE INTO users (id, username) VALUES (1, ?)').run('owner');
-    w.prepare('INSERT OR IGNORE INTO users (id, username) VALUES (2, ?)').run('someone-else');
-    const ms = w.prepare('INSERT INTO managed_streams (id, user_id, title, stream_key) VALUES (?,?,?,?)');
+    w.prepare('INSERT INTO users (id, username) OVERRIDING SYSTEM VALUE VALUES (1, ?) ON CONFLICT DO NOTHING').run('owner');
+    w.prepare('INSERT INTO users (id, username) OVERRIDING SYSTEM VALUE VALUES (2, ?) ON CONFLICT DO NOTHING').run('someone-else');
+    const ms = w.prepare('INSERT INTO managed_streams (id, user_id, title, stream_key) OVERRIDING SYSTEM VALUE VALUES (?,?,?,?)');
     ms.run(10, 1, 'Screen', 'key-screen');
     ms.run(11, 1, 'Webcam', 'key-cam');
     ms.run(12, 2, 'Other user slot', 'key-other');
@@ -57,7 +57,7 @@ console.log('OK C: configured-but-offline resolves with live=false so the player
 {
     const w = new Database(tmp);
     w.pragma('foreign_keys = OFF');
-    w.prepare('INSERT INTO streams (id, user_id, managed_stream_id, is_live) VALUES (?,?,?,1)').run(500, 1, 11);
+    w.prepare('INSERT INTO streams (id, user_id, managed_stream_id, is_live) OVERRIDING SYSTEM VALUE VALUES (?,?,?,1)').run(500, 1, 11);
     w.close();
 }
 ov = db.getPipOverlayForManagedStream(10);

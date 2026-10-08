@@ -35,12 +35,12 @@ function ensureSchema() {
         user_id INTEGER NOT NULL,
         namespace TEXT NOT NULL,
         hash TEXT NOT NULL,
-        pushed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        pushed_at DATETIME DEFAULT ov_now(),
         PRIMARY KEY (user_id, namespace)
     )`);
 }
 
-// SQLite CURRENT_TIMESTAMP is UTC without a zone ('2026-09-23 01:30:00').
+// SQLite ov_now() is UTC without a zone ('2026-09-23 01:30:00').
 function toIso(v) {
     if (!v) return null;
     const d = new Date(String(v).includes('T') ? v : `${String(v).replace(' ', 'T')}Z`);
@@ -148,7 +148,7 @@ async function push(userId, { modules = client(), now = Date.now(), force = fals
     return written;
 }
 
-const tableExists = (name) => Boolean(db.getDb().prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(name));
+const tableExists = (name) => Boolean(db.getDb().prepare("SELECT 1 FROM information_schema.tables WHERE table_schema = current_schema() AND table_name = ?").get(name));
 const arenaLog = () => tableExists('arena_xp_log');
 const arenaLevels = () => tableExists('arena_trash_levels');
 

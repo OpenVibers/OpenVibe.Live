@@ -26,8 +26,8 @@ function ensure(db) {
         revision          INTEGER NOT NULL DEFAULT 0,
         started_at        DATETIME,
         ended_at          DATETIME,
-        confirmed_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
-        updated_at        DATETIME DEFAULT CURRENT_TIMESTAMP
+        confirmed_at      DATETIME DEFAULT ov_now(),
+        updated_at        DATETIME DEFAULT ov_now()
     )`);
     db.exec('CREATE INDEX IF NOT EXISTS idx_openre_sessions_stream ON openre_sessions(stream_id)');
     db.exec('CREATE INDEX IF NOT EXISTS idx_openre_sessions_state ON openre_sessions(state)');

@@ -30,7 +30,7 @@ const { NETWORK_TOPICS } = require('../scripts/subscribe-media-events');
 
 const KEEP = ids.newId('user'), FOLD = ids.newId('user'), X = ids.newId('user'), LONE = ids.newId('user'), LONE_INTO = ids.newId('user');
 const d = db.getDb();
-d.prepare(`INSERT INTO users (id, username, password_hash) VALUES (10, 'keep', '$sso$'), (11, 'fold', '$sso$'), (12, 'xena', '$sso$'), (13, 'yuri', '$sso$'), (14, 'lone', '$sso$')`).run();
+d.prepare(`INSERT INTO users (id, username, password_hash) OVERRIDING SYSTEM VALUE VALUES (10, 'keep', '$sso$'), (11, 'fold', '$sso$'), (12, 'xena', '$sso$'), (13, 'yuri', '$sso$'), (14, 'lone', '$sso$')`).run();
 d.prepare(`INSERT INTO linked_accounts (user_id, service, service_user_id, service_username, subject_id) VALUES
     (10, 'network', '100', 'keep', ?), (11, 'network', '101', 'fold', ?), (12, 'network', '102', 'xena', ?), (14, 'network', '104', 'lone', ?)`).run(KEEP, FOLD, X, LONE);
 // Follows: fold follows xena (keep does too: a clash), fold follows yuri, yuri follows fold's channel, fold follows keep (self after merge).

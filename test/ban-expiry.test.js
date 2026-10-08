@@ -15,7 +15,7 @@ const db = require('../server/db/database');
 db.initDb();
 console.log = log;
 const d = db.getDb();
-d.prepare("INSERT INTO users (id, username, email, password_hash) VALUES (1, 'ann', 'a@x', 'x'), (2, 'bob', 'b@x', 'x'), (3, 'cat', 'c@x', 'x')").run();
+d.prepare("INSERT INTO users (id, username, email, password_hash) OVERRIDING SYSTEM VALUE VALUES (1, 'ann', 'a@x', 'x'), (2, 'bob', 'b@x', 'x'), (3, 'cat', 'c@x', 'x')").run();
 const iso = (ms) => new Date(Date.now() + ms).toISOString();
 const sqlite = (ms) => new Date(Date.now() + ms).toISOString().replace('T', ' ').slice(0, 19);
 // ann: an ISO timeout that ended a minute ago (the bug kept it until midnight UTC)

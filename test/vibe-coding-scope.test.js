@@ -25,7 +25,7 @@ console.warn = () => {};
 
 const db = require('../server/db/database');
 db.initDb();
-db.getDb().prepare(`INSERT INTO users (id, username, display_name, email, password_hash, role) VALUES (7, 'coder', 'coder', 'c@x', 'x', 'streamer')`).run();
+db.getDb().prepare(`INSERT INTO users (id, username, display_name, email, password_hash, role) OVERRIDING SYSTEM VALUE VALUES (7, 'coder', 'coder', 'c@x', 'x', 'streamer')`).run();
 const slot = Number(db.createManagedStream({ user_id: 7, slug: 'camp-code', title: 'code', stream_key: 'key-code' }).lastInsertRowid);
 const narrow = db.createApiToken(7, 'Copilot Companion', ['read', 'vibe_coding_publish']).token;
 const broad = db.createApiToken(7, 'Stream Controller', ['read', 'stream', 'control']).token;

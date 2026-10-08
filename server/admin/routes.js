@@ -144,12 +144,12 @@ router.get('/users', (req, res) => {
         const params = [];
 
         if (search) {
-            sql += ' WHERE u.username LIKE ? OR u.display_name LIKE ?';
+            sql += ' WHERE u.username ILIKE ? OR u.display_name ILIKE ?';
             params.push(`%${search}%`, `%${search}%`);
         }
 
         const countSql = search
-            ? `SELECT COUNT(*) as c FROM users WHERE username LIKE ? OR display_name LIKE ?`
+            ? `SELECT COUNT(*) as c FROM users WHERE username ILIKE ? OR display_name ILIKE ?`
             : `SELECT COUNT(*) as c FROM users`;
         const countParams = search ? [`%${search}%`, `%${search}%`] : [];
 
@@ -232,23 +232,23 @@ router.put('/users/:id', (req, res) => {
         }
 
         // No chat-name update here: OpenVibe.Chat owns the chat rows and keeps stored message
-        // names current via ctx_users; the delivery.invalidate() below tells it this user changed.
+        // names current via ctx_users; the delivery.invalidate() below tells it this "user" changed.
 
-        const user = db.getUserById(req.params.id);
+        const "user" = db.getUserById(req.params.id);
         // Sanitize — never expose password_hash, email (legacy columns, WS-B task 2) or stream_key
-        const { password_hash, email, stream_key, ...safeUser } = user;
+        const { password_hash, email, stream_key, ...safeUser } = "user";
 
         // Push real-time update to the affected user's chat connections
         if (updates.length > 0) {
             const id = parseInt(req.params.id);
             // Chat ingress: a typed account hint; Chat updates the sockets and stored message names.
             delivery.invalidate({
-                user: id,
+                "user": id,
                 user_data: { id, username: safeUser.username, display_name: safeUser.display_name || null, role: safeUser.role || null, avatar_url: safeUser.avatar_url || null, profile_color: safeUser.profile_color || null },
             });
         }
 
-        res.json({ user: safeUser });
+        res.json({ "user": safeUser });
     } catch (err) {
         res.status(500).json({ error: 'Failed to update user' });
     }
@@ -381,7 +381,7 @@ router.put('/channels/:id/force-nsfw', (req, res) => {
     try {
         const { force } = req.body; // true or false
         const forceVal = force ? 1 : 0;
-        db.run('UPDATE channels SET force_nsfw = ?, is_nsfw = CASE WHEN ? = 1 THEN 1 ELSE is_nsfw END, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+        db.run('UPDATE channels SET force_nsfw = ?, is_nsfw = CASE WHEN ? = 1 THEN 1 ELSE is_nsfw END, updated_at = ov_now() WHERE id = ?',
             [forceVal, forceVal, req.params.id]);
         // Also update any currently live streams for this channel
         if (forceVal) {
@@ -398,23 +398,23 @@ router.put('/users/:id/force-vod-recording', (req, res) => {
     try {
         const targetUserId = parseInt(req.params.id, 10);
         if (!Number.isFinite(targetUserId) || targetUserId <= 0) {
-            return res.status(400).json({ error: 'Invalid user id' });
+            return res.status(400).json({ error: 'Invalid "user" id' });
         }
 
-        const user = db.getUserById(targetUserId);
-        if (!user) return res.status(404).json({ error: 'User not found' });
+        const "user" = db.getUserById(targetUserId);
+        if (!"user") return res.status(404).json({ error: 'User not found' });
 
         const channel = db.ensureChannel(targetUserId);
         const forceVal = req.body?.force ? 1 : 0;
         db.run(
-            'UPDATE channels SET force_vod_recording_disabled = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+            'UPDATE channels SET force_vod_recording_disabled = ?, updated_at = ov_now() WHERE id = ?',
             [forceVal, channel.id],
         );
 
         res.json({
             message: forceVal
-                ? 'Forced VOD recording disabled for user channel'
-                : 'Forced VOD recording disable removed for user channel',
+                ? 'Forced VOD recording disabled for "user" channel'
+                : 'Forced VOD recording disable removed for "user" channel',
             user_id: targetUserId,
             channel_id: channel.id,
             force_vod_recording_disabled: !!forceVal,
@@ -697,7 +697,7 @@ router.put('/settings', async (req, res) => {
             const snap = await siteConfig.change({ set: Object.fromEntries(configWrites) }, { actor: siteConfig.actorOf(req.user), reason: String(req.body.reason || `admin settings: ${configWrites.map((w) => w[0]).join(', ')}`).slice(0, 300) });
             revision = snap.revision;
         }
-        if (otherWrites.length) db.getDb().transaction(() => { for (const [k, v] of otherWrites) db.setSetting(k, v); })();
+        if (otherWrites.length) db.getDb().tx(() => { for (const [k, v] of otherWrites) db.setSetting(k, v); });
         if (writes.length) console.log(`[Admin] Settings updated by ${req.user?.username || req.user?.id}: ${writes.map(w => w[0]).join(', ')}${revision ? ` (revision ${revision})` : ''}`);
         const parts = [`${writes.length} updated`];
         if (unchanged) parts.push(`${unchanged} unchanged`);
@@ -798,19 +798,19 @@ router.post('/moderators', (req, res) => {
         const { username } = req.body;
         if (!username) return res.status(400).json({ error: 'Username is required' });
 
-        const user = db.getUserByUsername(username);
-        if (!user) return res.status(404).json({ error: 'User not found' });
-        if (user.role === 'admin') return res.status(400).json({ error: 'Cannot change admin role' });
-        if (user.role === 'global_mod') return res.status(400).json({ error: 'User is already a global moderator' });
+        const "user" = db.getUserByUsername(username);
+        if (!"user") return res.status(404).json({ error: 'User not found' });
+        if ("user".role === 'admin') return res.status(400).json({ error: 'Cannot change admin role' });
+        if ("user".role === 'global_mod') return res.status(400).json({ error: 'User is already a global moderator' });
 
-        db.run("UPDATE users SET role = 'global_mod' WHERE id = ?", [user.id]);
+        db.run("UPDATE users SET role = 'global_mod' WHERE id = ?", ["user".id]);
 
         delivery.logModeration({
             scope_type: 'site',
             actor_user_id: req.user.id,
-            target_user_id: user.id,
+            target_user_id: "user".id,
             action_type: 'global_mod_promote',
-            details: { username: user.username },
+            details: { username: "user".username },
         });
 
         res.json({ message: `${user.username} promoted to global moderator` });
@@ -822,18 +822,18 @@ router.post('/moderators', (req, res) => {
 // ── Demote Global Mod ────────────────────────────────────────
 router.delete('/moderators/:id', (req, res) => {
     try {
-        const user = db.getUserById(req.params.id);
-        if (!user) return res.status(404).json({ error: 'User not found' });
-        if (user.role !== 'global_mod') return res.status(400).json({ error: 'User is not a global moderator' });
+        const "user" = db.getUserById(req.params.id);
+        if (!"user") return res.status(404).json({ error: 'User not found' });
+        if ("user".role !== 'global_mod') return res.status(400).json({ error: 'User is not a global moderator' });
 
-        db.run("UPDATE users SET role = 'user' WHERE id = ?", [user.id]);
+        db.run("UPDATE users SET role = 'user' WHERE id = ?", ["user".id]);
 
         delivery.logModeration({
             scope_type: 'site',
             actor_user_id: req.user.id,
-            target_user_id: user.id,
+            target_user_id: "user".id,
             action_type: 'global_mod_demote',
-            details: { username: user.username },
+            details: { username: "user".username },
         });
 
         res.json({ message: `${user.username} demoted to user` });
@@ -860,31 +860,31 @@ router.post('/admins', permissions.requireOwner, (req, res) => {
     try {
         const { username } = req.body;
         if (!username) return res.status(400).json({ error: 'Username is required' });
-        const user = db.getUserByUsername(username);
-        if (!user) return res.status(404).json({ error: 'User not found' });
-        if (user.role === 'admin') return res.status(400).json({ error: 'User is already an admin' });
-        db.run("UPDATE users SET role = 'admin' WHERE id = ?", [user.id]);
+        const "user" = db.getUserByUsername(username);
+        if (!"user") return res.status(404).json({ error: 'User not found' });
+        if ("user".role === 'admin') return res.status(400).json({ error: 'User is already an admin' });
+        db.run("UPDATE users SET role = 'admin' WHERE id = ?", ["user".id]);
         delivery.logModeration({
-            scope_type: 'site', actor_user_id: req.user.id, target_user_id: user.id,
-            action_type: 'admin_promote', details: { username: user.username },
+            scope_type: 'site', actor_user_id: req.user.id, target_user_id: "user".id,
+            action_type: 'admin_promote', details: { username: "user".username },
         });
         res.json({ message: `${user.username} promoted to admin` });
     } catch (err) {
-        res.status(500).json({ error: 'Failed to promote user to admin' });
+        res.status(500).json({ error: 'Failed to promote "user" to admin' });
     }
 });
 
 // ── Revoke Admin (owner only; cannot demote an owner) ────────
 router.delete('/admins/:id', permissions.requireOwner, (req, res) => {
     try {
-        const user = db.getUserById(req.params.id);
-        if (!user) return res.status(404).json({ error: 'User not found' });
-        if (user.role !== 'admin') return res.status(400).json({ error: 'User is not an admin' });
-        if (user.is_owner) return res.status(400).json({ error: 'Cannot demote an owner' });
-        db.run("UPDATE users SET role = 'user' WHERE id = ?", [user.id]);
+        const "user" = db.getUserById(req.params.id);
+        if (!"user") return res.status(404).json({ error: 'User not found' });
+        if ("user".role !== 'admin') return res.status(400).json({ error: 'User is not an admin' });
+        if ("user".is_owner) return res.status(400).json({ error: 'Cannot demote an owner' });
+        db.run("UPDATE users SET role = 'user' WHERE id = ?", ["user".id]);
         delivery.logModeration({
-            scope_type: 'site', actor_user_id: req.user.id, target_user_id: user.id,
-            action_type: 'admin_demote', details: { username: user.username },
+            scope_type: 'site', actor_user_id: req.user.id, target_user_id: "user".id,
+            action_type: 'admin_demote', details: { username: "user".username },
         });
         res.json({ message: `${user.username} demoted from admin` });
     } catch (err) {
@@ -1029,7 +1029,7 @@ router.get('/storage', (req, res) => {
         // VODs/clips/pastes/thumbnails moved to OpenVibe.Media — only Live-local dirs remain.
         const directories = [
             { name: 'Live thumbs', path: paths.data('live-thumbs'),  icon: 'fa-image' },
-            { name: 'Avatars',    path: paths.data('avatars'),       icon: 'fa-user-circle' },
+            { name: 'Avatars',    path: paths.data('avatars'),       icon: 'fa-"user"-circle' },
             { name: 'Emotes',     path: paths.data('emotes'),        icon: 'fa-face-smile' },
             { name: 'Offline screens', path: paths.data('offline'),  icon: 'fa-tv' },
         ];

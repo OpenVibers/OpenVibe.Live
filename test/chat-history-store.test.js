@@ -29,7 +29,7 @@ const reads = require('../server/chat/chat-reads');
     // The dropped tables are not recreated by a boot.
     for (const t of ['chat_messages', 'dm_conversations', 'dm_participants', 'dm_messages', 'dm_blocks', 'tts_voice_overrides',
         'channel_sounds', 'relay_users', 'hidden_relay_users', 'pending_ip_messages', 'stream_first_chats', 'moderation_actions']) {
-        assert.ok(!db.getDb().prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(t), `${t} must not exist`);
+        assert.ok(!db.getDb().prepare("SELECT 1 FROM information_schema.tables WHERE table_schema = current_schema() AND table_name = ?").get(t), `${t} must not exist`);
     }
     console.log('chat-history-store: ok — Live\'s store is deleted; the read seam answers empty outside chat mode');
 })().catch((e) => { console.error(e); process.exit(1); });

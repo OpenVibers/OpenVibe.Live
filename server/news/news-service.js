@@ -52,8 +52,8 @@ class NewsService {
                 source_id TEXT NOT NULL,
                 enabled INTEGER NOT NULL DEFAULT 0,
                 config TEXT DEFAULT '{}',
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                created_at DATETIME DEFAULT ov_now(),
+                updated_at DATETIME DEFAULT ov_now(),
                 UNIQUE(scope, scope_id, source_id)
             )`);
         } catch (err) {
@@ -127,7 +127,7 @@ class NewsService {
                 `INSERT INTO news_settings (scope, scope_id, source_id, enabled, config)
                  VALUES ('global', NULL, ?, ?, ?)
                  ON CONFLICT(scope, scope_id, source_id)
-                 DO UPDATE SET enabled = excluded.enabled, config = excluded.config, updated_at = CURRENT_TIMESTAMP`,
+                 DO UPDATE SET enabled = excluded.enabled, config = excluded.config, updated_at = ov_now()`,
                 [sourceId, source.enabled ? 1 : 0, configJson]
             );
         } catch (err) {
@@ -169,7 +169,7 @@ class NewsService {
                 `INSERT INTO news_settings (scope, scope_id, source_id, enabled, config)
                  VALUES ('user', ?, '_master', ?, '{}')
                  ON CONFLICT(scope, scope_id, source_id)
-                 DO UPDATE SET enabled = excluded.enabled, updated_at = CURRENT_TIMESTAMP`,
+                 DO UPDATE SET enabled = excluded.enabled, updated_at = ov_now()`,
                 [userId, enabled ? 1 : 0]
             );
         } catch (err) {

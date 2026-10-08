@@ -32,7 +32,7 @@ auth.optionalAuth = (req, res, next) => next();
 auth.requireAuth = (req, res) => res.status(401).json({ error: 'Authentication required' });
 
 for (const [id, name] of [[1, 'veteran'], [2, 'newcomer']]) {
-    raw.prepare(`INSERT INTO users (id, username, display_name, email, password_hash, role) VALUES (?, ?, ?, ?, 'x', 'user')`).run(id, name, name, `${name}@x`);
+    raw.prepare(`INSERT INTO users (id, username, display_name, email, password_hash, role) OVERRIDING SYSTEM VALUE VALUES (?, ?, ?, ?, 'x', 'user')`).run(id, name, name, `${name}@x`);
 }
 
 (async () => {

@@ -102,7 +102,7 @@ async function check(name, fn) {
     media.listVods = async () => ({ vods: [] });
     media.listClips = async () => ({ clips: [] });
 
-    d.prepare("INSERT INTO users (id, username, display_name, password_hash) VALUES (40, 'kai', 'Kai', '$sso$')").run();
+    d.prepare("INSERT INTO users (id, username, display_name, password_hash) OVERRIDING SYSTEM VALUE VALUES (40, 'kai', 'Kai', '$sso$')").run();
     d.prepare("INSERT INTO linked_accounts (user_id, service, service_user_id, service_username, subject_id) VALUES (40, 'network', '400', 'kai', ?)").run(SUBJECT);
     db.ensureChannel(40);
     const ch = db.getChannelByUserId(40);
@@ -115,7 +115,7 @@ async function check(name, fn) {
     quiet('AI is remote only');
 
     await check('the shared-key settings are not seeded, and a leftover ai_api_key row is deleted at boot', () => {
-        const keysNow = d.prepare("SELECT key FROM site_settings WHERE key LIKE 'ai\\_%' ESCAPE '\\'").all().map((r) => r.key);
+        const keysNow = d.prepare("SELECT key FROM site_settings WHERE key ILIKE 'ai\\_%' ESCAPE '\\'").all().map((r) => r.key);
         for (const k of ['ai_api_key', 'ai_provider', 'ai_base_url', 'ai_model', 'ai_model_chat', 'ai_pricing_json', 'ai_input_cost_per_mtok']) assert.ok(!keysNow.includes(k), `${k} is seeded`);
         assert.ok(keysNow.includes('ai_enabled') && keysNow.includes('ai_max_cost_usd_per_day'));
         db.setSetting('ai_api_key', 'sentinel-not-a-secret-leftover');

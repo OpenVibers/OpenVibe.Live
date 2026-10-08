@@ -40,7 +40,7 @@ const auth = require('../server/auth/auth');
 auth.optionalAuth = (req, res, next) => next();
 
 const addUser = (id, username, display, extra = '') => raw.prepare(
-    `INSERT INTO users (id, username, display_name, email, password_hash, role, bio, created_at)
+    `INSERT INTO users (id, username, display_name, email, password_hash, role, bio, created_at) OVERRIDING SYSTEM VALUE
      VALUES (?, ?, ?, ?, 'x', 'streamer', ?, '2025-01-01 00:00:00')`).run(id, username, display, `${username}@x`, extra);
 addUser(3, 'alice', 'Alice', 'I stream woodworking.');
 addUser(4, 'bob', 'Bob');

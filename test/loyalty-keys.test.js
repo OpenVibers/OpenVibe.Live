@@ -41,7 +41,7 @@ const signIn = (req) => {
 };
 auth.requireAuth = (req, res, next) => (signIn(req) ? next() : res.status(401).json({ error: 'Authentication required' }));
 
-const addUser = (id, name, role = 'streamer', owner = 0) => raw.prepare(`INSERT INTO users (id, username, display_name, email, password_hash, role, is_owner) VALUES (?, ?, ?, ?, 'x', ?, ?)`).run(id, name, name, `${name}@x`, role, owner);
+const addUser = (id, name, role = 'streamer', owner = 0) => raw.prepare(`INSERT INTO users (id, username, display_name, email, password_hash, role, is_owner) OVERRIDING SYSTEM VALUE VALUES (?, ?, ?, ?, 'x', ?, ?)`).run(id, name, name, `${name}@x`, role, owner);
 addUser(1, 'owner', 'admin', 1);
 addUser(2, 'viewer');
 addUser(3, 'streamer');
@@ -91,7 +91,7 @@ wallet.credit = walletOp('credit');
     // ── 2. Earning: follow, chat (across a "restart"), watch ───────────────────────
     let coins = require('../server/monetization/opencoins');
     assert.ok(coins.awardFollow(2, 3));
-    raw.prepare("DELETE FROM coin_transactions WHERE type = 'follow_bonus'").run();   // even without the old LIKE check…
+    raw.prepare("DELETE FROM coin_transactions WHERE type = 'follow_bonus'").run();   // even without the old ILIKE check…
     assert.strictEqual(coins.awardFollow(2, 3), null, '…a second follow bonus is refused by its key');
     assert.strictEqual(logRows('live:cp:follow:2:3').length, 1);
     const afterFollow = cp();

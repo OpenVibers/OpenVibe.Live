@@ -38,7 +38,7 @@ notify.pushNotification = (n) => side.push(['notify', n.type]);
 const sub = (tag) => `usr_${`01J${tag}`.padEnd(26, '0')}`;
 const ANN = sub('AA'), BOB = sub('BB'), CAT = sub('CC'), GHOST = sub('DD');
 const d = db.getDb();
-for (const [id, name] of [[1, 'ann'], [2, 'bob'], [3, 'cat'], [4, 'nolink']]) d.prepare("INSERT INTO users (id, username, password_hash) VALUES (?, ?, 'x')").run(id, name);
+for (const [id, name] of [[1, 'ann'], [2, 'bob'], [3, 'cat'], [4, 'nolink']]) d.prepare("INSERT INTO users (id, username, password_hash) OVERRIDING SYSTEM VALUE VALUES (?, ?, 'x')").run(id, name);
 const link = d.prepare("INSERT INTO linked_accounts (user_id, service, service_user_id, subject_id) VALUES (?, 'network', ?, ?)");
 link.run(1, '101', ANN); link.run(2, '102', BOB); link.run(3, '103', CAT);
 const streamId = Number(db.createStream({ user_id: 2, title: 't', protocol: 'webrtc' }).lastInsertRowid);

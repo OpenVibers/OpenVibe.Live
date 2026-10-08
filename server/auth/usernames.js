@@ -26,9 +26,9 @@ function ensureSchema() {
         user_id      INTEGER NOT NULL,
         old_username TEXT NOT NULL,
         new_username TEXT NOT NULL,
-        changed_at   DATETIME DEFAULT CURRENT_TIMESTAMP
+        changed_at   DATETIME DEFAULT ov_now()
     )`);
-    db.run('CREATE INDEX IF NOT EXISTS idx_username_history_old ON username_history(old_username COLLATE NOCASE)');
+    db.run('CREATE INDEX IF NOT EXISTS idx_username_history_old ON username_history(lower(old_username))');
     ready = true;
 }
 
@@ -43,10 +43,10 @@ function syncUsername(userId, newName) {
     const clash = db.get('SELECT id FROM users WHERE username = ? COLLATE NOCASE AND id != ?', [newName, userId]);
     if (clash) { console.warn(`[Usernames] ${user.username} → ${newName}: another Live user holds that name; not renamed`); return false; }
     ensureSchema();
-    db.getDb().transaction(() => {
+    db.getDb().tx(() => {
         db.run('INSERT INTO username_history (user_id, old_username, new_username) VALUES (?, ?, ?)', [user.id, user.username, newName]);
         db.run('UPDATE users SET username = ? WHERE id = ?', [newName, user.id]);
-    })();
+    });
     console.log(`[Usernames] renamed ${user.username} → ${newName} (Network)`);
     return true;
 }

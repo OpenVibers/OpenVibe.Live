@@ -212,7 +212,7 @@ async function check(name, fn) {
     const db = require('../server/db/database');
     db.initDb();
     const rawDb = db.getDb();
-    rawDb.prepare("INSERT INTO users (id, username, display_name, email, password_hash, role) VALUES (7, 'ssrfer', 'ssrfer', 'ssrfer@example.test', 'x', 'streamer')").run();
+    rawDb.prepare("INSERT INTO users (id, username, display_name, email, password_hash, role) OVERRIDING SYSTEM VALUE VALUES (7, 'ssrfer', 'ssrfer', 'ssrfer@example.test', 'x', 'streamer')").run();
     db.ensureChannel(7);
     const auth = require('../server/auth/auth');
     const signIn = (req) => { const u = req.headers['x-test-user'] ? db.getUserById(Number(req.headers['x-test-user'])) : null; if (u) { req.user = u; req.authSource = 'network'; } return u; };

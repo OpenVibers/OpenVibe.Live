@@ -59,7 +59,7 @@ const vod = (id, extra = {}) => ({ id, app_id: 'live', user_id: 1, stream_id: 1,
     const db = require('../server/db/database');
     db.initDb();
     const d = db.getDb();
-    d.prepare("INSERT INTO users (id, username, display_name, password_hash) VALUES (1, 'alex', 'Alex', 'x'), (2, 'viewer', 'Viewer', 'x')").run();
+    d.prepare("INSERT INTO users (id, username, display_name, password_hash) OVERRIDING SYSTEM VALUE VALUES (1, 'alex', 'Alex', 'x'), (2, 'viewer', 'Viewer', 'x')").run();
     const s1 = db.createStream({ user_id: 1, title: 'Building a forum', category: 'tech', protocol: 'webrtc', is_nsfw: 0 }).lastInsertRowid;
     const s2 = db.createStream({ user_id: 1, title: 'Late night', category: 'irl', protocol: 'webrtc', is_nsfw: 1 }).lastInsertRowid;
     const streamEvents = require('../server/events/stream-events');

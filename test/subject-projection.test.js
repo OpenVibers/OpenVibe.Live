@@ -29,7 +29,7 @@ const { NETWORK_TOPICS } = require('../scripts/subscribe-media-events');
 
 const ALEX = ids.newId('user'), OWNER = ids.newId('user'), GHOST = ids.newId('user');
 const d = db.getDb();
-d.prepare("INSERT INTO users (id, username, email, password_hash, role, display_name) VALUES (1, 'alex', NULL, '$sso$x', 'admin', 'Alex'), (2, 'boss', NULL, '$sso$y', 'admin', 'Boss')").run();
+d.prepare("INSERT INTO users (id, username, email, password_hash, role, display_name) OVERRIDING SYSTEM VALUE VALUES (1, 'alex', NULL, '$sso$x', 'admin', 'Alex'), (2, 'boss', NULL, '$sso$y', 'admin', 'Boss')").run();
 d.prepare('UPDATE users SET is_owner = 1 WHERE id = 2').run();
 d.prepare("INSERT INTO linked_accounts (user_id, service, service_user_id, service_username, subject_id) VALUES (1, 'network', '7', 'alex', ?), (2, 'network', '1', 'boss', ?)").run(ALEX, OWNER);
 const payload = (subject, nid, revision, over = {}) => ({ subject: { type: 'user', id: subject }, network_user_id: nid, revision, username: 'alex', display_name: 'Alex', avatar_url: null, profile_color: null, role: 'user', banned: false, changed: ['role'], ...over });
@@ -65,7 +65,7 @@ const envelope = (p) => ({ event_id: ids.newId('event'), event_type: 'network.us
         assert.strictEqual(user(1).username, 'alex_new', 'the rename follows');
 
         // 'streamer' is Live's own: a Live streamer stays one whatever Network's role says.
-        d.prepare("INSERT INTO users (id, username, password_hash, role) VALUES (3, 'cam', '$sso$z', 'streamer')").run();
+        d.prepare("INSERT INTO users (id, username, password_hash, role) OVERRIDING SYSTEM VALUE VALUES (3, 'cam', '$sso$z', 'streamer')").run();
         const CAM = ids.newId('user');
         d.prepare("INSERT INTO linked_accounts (user_id, service, service_user_id, service_username, subject_id) VALUES (3, 'network', '30', 'cam', ?)").run(CAM);
         d.prepare("INSERT INTO streams (user_id, title, is_live) VALUES (3, 'first stream', 0)").run();

@@ -35,7 +35,7 @@ const token = (cap, aud = 'openvibe.live') => serviceAuth.signServiceToken({ iss
     const db = require('../server/db/database');
     db.initDb();
     const d = db.getDb();
-    d.prepare("INSERT INTO users (id, username, display_name, password_hash, openvibe_bucks_balance, openvibe_bucks_cashout_balance) VALUES (501, 'alex', 'Alex', 'x', 0, 0)").run();
+    d.prepare("INSERT INTO users (id, username, display_name, password_hash, openvibe_bucks_balance, openvibe_bucks_cashout_balance) OVERRIDING SYSTEM VALUE VALUES (501, 'alex', 'Alex', 'x', 0, 0)").run();
     d.prepare("INSERT INTO linked_accounts (user_id, service, service_user_id, subject_id) VALUES (501, 'network', '77', ?)").run(SUBJECT);
 
     // Chat persists and shows the line (Live keeps no chat table): stub the ingress call and record

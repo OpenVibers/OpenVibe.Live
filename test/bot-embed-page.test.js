@@ -143,7 +143,7 @@ async function check(name, fn) {
     };
     auth.requireAuth = (req, res, next) => (signIn(req) ? next() : res.status(401).json({ error: 'Authentication required' }));
     auth.optionalAuth = (req, res, next) => { signIn(req); next(); };
-    raw.prepare(`INSERT INTO users (id, username, display_name, email, password_hash, role) VALUES (1, 'rover', 'rover', 'rover@x', 'x', 'streamer')`).run();
+    raw.prepare(`INSERT INTO users (id, username, display_name, email, password_hash, role) OVERRIDING SYSTEM VALUE VALUES (1, 'rover', 'rover', 'rover@x', 'x', 'streamer')`).run();
     db.ensureChannel(1);
     const chan = db.getChannelByUserId(1);
     const moderation = require('../server/chat/moderation-client');

@@ -44,7 +44,7 @@ const stub = http.createServer((req, res) => {
     const releaseEvents = require('../server/events/release-events');
     const streamEvents = require('../server/events/stream-events');
     const quiet = { log() {}, warn() {} };
-    const outboxRows = () => raw.prepare('SELECT event_id, envelope FROM event_outbox ORDER BY id').all().map(r => JSON.parse(r.envelope)).filter(e => e.event_type === releaseEvents.EVENT_TYPE);
+    const outboxRows = () => raw.prepare('SELECT event_id, envelope FROM event_outbox ORDER BY id').all().map(r => (typeof r.envelope === 'string' ? JSON.parse(r.envelope) : r.envelope)).filter(e => e.event_type === releaseEvents.EVENT_TYPE);
 
     // The envelope is a valid event-envelope@1.
     const head = (await new Promise(r => require('child_process').execFile('git', ['rev-parse', 'HEAD'], { cwd: path.join(__dirname, '..') }, (e, o) => r(String(o).trim()))));

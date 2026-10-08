@@ -27,7 +27,7 @@ const d = db.getDb();
 const now = Date.parse('2026-09-25T12:00:00Z');
 const at = (msAgo) => new Date(now - msAgo).toISOString().replace('T', ' ').slice(0, 19);
 const H = 3600000, DAY = 24 * H;
-d.prepare("INSERT INTO users (id, username, email, password_hash) VALUES (1, 'ann', 'a@x', 'x'), (2, 'bob', 'b@x', 'x'), (3, 'cat', 'c@x', 'x')").run();
+d.prepare("INSERT INTO users (id, username, email, password_hash) OVERRIDING SYSTEM VALUE VALUES (1, 'ann', 'a@x', 'x'), (2, 'bob', 'b@x', 'x'), (3, 'cat', 'c@x', 'x')").run();
 d.prepare("INSERT INTO linked_accounts (user_id, service, service_user_id, subject_id) VALUES (1, 'network', '11', ?), (3, 'network', '33', 'usr_01JAB2C3D4E5F6G7H8J9K0MNPC')").run(ANN);
 const stream = (user, startedAgo, secs, peak, avg) => {
     const id = d.prepare('INSERT INTO streams (user_id, is_live, peak_viewers, started_at, ended_at, duration_seconds) VALUES (?, 0, ?, ?, ?, ?)')

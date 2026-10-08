@@ -169,7 +169,7 @@ function assertSigned(c, what) {
         assertSigned(await waitFor(() => find('moderation', (b) => b.action === 'relay-record' && b.username === 'alice'), 'relay record'), 'relay record');
         assertSigned(await waitFor(() => find('events', (b) => b.frame.type === 'system' && /Welcome alice/.test(b.frame.message)), 'welcome'), 'welcome');
         assert.ok(firstChatReads >= 1, "the welcome decision asked Chat's first-chat read");
-        assert.ok(!d.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'stream_first_chats'").get(), 'Live has no first-chat copy of its own');
+        assert.ok(!d.prepare("SELECT 1 FROM information_schema.tables WHERE table_schema = current_schema() AND table_name = 'stream_first_chats'").get(), 'Live has no first-chat copy of its own');
         const welcomeCount = () => calls.filter((c) => c.family === 'events' && c.body.frame && /Welcome alice/.test(String(c.body.frame.message || ''))).length;
         relay._broadcastMessage({ platform: 'twitch', streamId }, 'alice', 'second line', {});
         await waitFor(() => find('messages', (b) => b.source_platform === 'twitch' && b.message === 'second line'), 'the second relay line');
@@ -221,7 +221,7 @@ function assertSigned(c, what) {
         const del = find('moderation', (b) => b.action === 'delete-message');
         assertSigned(del, 'message delete');
         assert.deepStrictEqual([del.body.id, del.body.deleted_by, del.body.key], [900010, admin, 'live:moderation:delete:900010']);
-        assert.ok(!d.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'chat_messages'").get(), 'Live has no chat table to update: Chat owns the delete');
+        assert.ok(!d.prepare("SELECT 1 FROM information_schema.tables WHERE table_schema = current_schema() AND table_name = 'chat_messages'").get(), 'Live has no chat table to update: Chat owns the delete');
         assertSigned(await waitFor(() => find('moderation', (b) => b.action === 'log' && b.action_type === 'message_delete'), 'delete log'), 'delete log');
         const ban = await mod(`/users/${viewer}/ban`, { reason: 'spam' });
         assert.ok(ban.status < 300, `ban answered ${ban.status}`);
@@ -279,7 +279,7 @@ function assertSigned(c, what) {
 
         // 10. Nothing went over the bridge, and Live keeps no outbox.
         assert.deepStrictEqual(bridgeCalls, [], 'no bridge calls');
-        assert.ok(!d.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'chat_bridge_outbox'").get(), 'no outbox table');
+        assert.ok(!d.prepare("SELECT 1 FROM information_schema.tables WHERE table_schema = current_schema() AND table_name = 'chat_bridge_outbox'").get(), 'no outbox table');
 
         // 11. A push a module still makes on the chat server goes to the ingress too (review 2026-10-02, PR #12);
         // one with no ingress target is dropped, and TTS is never synthesised here (Chat speaks `tts` lines).

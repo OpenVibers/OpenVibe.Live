@@ -49,7 +49,7 @@ function ensureTables() {
         content_id INTEGER NOT NULL,
         thread_id INTEGER NOT NULL,
         access_id TEXT NOT NULL,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        created_at DATETIME DEFAULT ov_now(),
         PRIMARY KEY (content_type, content_id)
     )`);
     _tables = true;
@@ -102,7 +102,7 @@ async function threadFor(type, id, label, { timeoutMs, ip } = {}) {
     const out = await call('POST', '/threads/resolve', { body: { ref }, timeoutMs, ip });
     const t = out && out.thread;
     if (!t || !Number.isInteger(t.id) || !t.access_id) throw unavailable('resolve');
-    db.getDb().prepare('INSERT OR IGNORE INTO comment_thread_refs (content_type, content_id, thread_id, access_id) VALUES (?, ?, ?, ?)').run(type, Number(id), t.id, t.access_id);
+    db.getDb().prepare('INSERT INTO comment_thread_refs (content_type, content_id, thread_id, access_id) VALUES (?, ?, ?, ?) ON CONFLICT DO NOTHING').run(type, Number(id), t.id, t.access_id);
     return { id: t.id, access_id: t.access_id };
 }
 

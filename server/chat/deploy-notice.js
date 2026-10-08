@@ -64,7 +64,7 @@ async function announce({ db, log = console }) {
             eventId = env ? env.event_id : null;
         }
     };
-    const inTransaction = (fn) => db.getDb().transaction(fn)();
+    const inTransaction = (fn) => db.getDb().tx(fn);
 
     // Live still decides what shipped; OpenVibe.Chat stores the rolling message and shows it (its
     // own copy of this module). It learns the commits from the live.release.deployed event only.

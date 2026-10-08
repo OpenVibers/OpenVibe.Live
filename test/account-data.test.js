@@ -33,11 +33,11 @@ const { NETWORK_TOPICS } = require('../scripts/subscribe-media-events');
 
 const DANA = ids.newId('user'), XENA = ids.newId('user'), NOBODY = ids.newId('user');
 const d = db.getDb();
-d.prepare(`INSERT INTO users (id, username, email, password_hash, bio) VALUES (20, 'dana', 'dana@example.com', '$sso$', 'hi'), (21, 'xena', NULL, '$sso$', ''), (22, 'yuri', NULL, '$sso$', '')`).run();
+d.prepare(`INSERT INTO users (id, username, email, password_hash, bio) OVERRIDING SYSTEM VALUE VALUES (20, 'dana', 'dana@example.com', '$sso$', 'hi'), (21, 'xena', NULL, '$sso$', ''), (22, 'yuri', NULL, '$sso$', '')`).run();
 d.prepare("INSERT INTO linked_accounts (user_id, service, service_user_id, service_username, subject_id) VALUES (20, 'network', '200', 'dana', ?), (21, 'network', '201', 'xena', ?)").run(DANA, XENA);
 d.prepare('INSERT INTO follows (follower_id, streamer_id) VALUES (20, 21), (22, 20), (22, 21)').run();
 d.prepare('INSERT INTO channel_points (user_id, streamer_id, balance) VALUES (20, 21, 30), (22, 20, 7), (22, 21, 5)').run();
-d.prepare("INSERT INTO streams (id, user_id, title) VALUES (1, 20, 'dana live'), (2, 21, 'xena live')").run();
+d.prepare("INSERT INTO streams (id, user_id, title) OVERRIDING SYSTEM VALUE VALUES (1, 20, 'dana live'), (2, 21, 'xena live')").run();
 d.prepare("INSERT INTO managed_streams (user_id, stream_key) VALUES (20, 'sk_live_secret_dana')").run();
 d.prepare("INSERT INTO api_tokens (user_id, token_hash) VALUES (20, 'hash-secret-dana')").run();
 d.prepare("INSERT INTO transactions (from_user_id, to_user_id, amount, type, message) VALUES (20, 21, 5, 'donation', 'love you xena'), (22, 20, 3, 'donation', 'for dana')").run();
@@ -65,7 +65,7 @@ const ulid = () => ids.ulid();
         assert.ok(NETWORK_TOPICS.includes('network.account.export_requested') && NETWORK_TOPICS.includes('network.account.deleted'), 'the subscription asks for both');
         const cols = accountData.personColumns(d);
         for (const t of accountData.FROZEN) assert.ok(!cols.has(t), `${t} is never touched`);
-        const existing = new Set(d.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all().map((r) => r.name));
+        const existing = new Set(d.prepare("SELECT table_name AS name FROM information_schema.tables WHERE table_schema = current_schema()").all().map((r) => r.name));
         for (const t of cols.keys()) assert.ok(existing.has(t), `account export/deletion references missing table ${t}`);
         assert.ok(!existing.has('emotes'), 'Live has dropped its emotes table');
         assert.ok(!fs.readFileSync(path.join(__dirname, '..', 'server', 'auth', 'account-data.js'), 'utf8').match(/CHAT_TABLES\s*=\s*new Set\([^)]*['"]emotes['"]/s),
@@ -79,7 +79,7 @@ const ulid = () => ids.ulid();
         const part = sent[0].body;
         assert.ok(validate('network.account-export-part@1', part).valid, JSON.stringify(validate('network.account-export-part@1', part).errors));
         const byName = Object.fromEntries(part.files.map((f) => [f.name, f.content]));
-        const exportTables = new Set(d.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all().map((r) => r.name));
+        const exportTables = new Set(d.prepare("SELECT table_name AS name FROM information_schema.tables WHERE table_schema = current_schema()").all().map((r) => r.name));
         for (const name of Object.keys(byName)) if (name !== 'profile.json' && name !== 'other.json') {
             assert.ok(exportTables.has(name.replace(/\.json$/, '')), `account export references missing table ${name}`);
         }

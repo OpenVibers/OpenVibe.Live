@@ -25,7 +25,7 @@ const db = require('../server/db/database');
 db.initDb();
 const raw = db.getDb();
 
-const addUser = (id, name) => raw.prepare(`INSERT INTO users (id, username, display_name, email, password_hash, role) VALUES (?, ?, ?, ?, 'x', 'streamer')`).run(id, name, name, `${name}@x`);
+const addUser = (id, name) => raw.prepare(`INSERT INTO users (id, username, display_name, email, password_hash, role) OVERRIDING SYSTEM VALUE VALUES (?, ?, ?, ?, 'x', 'streamer')`).run(id, name, name, `${name}@x`);
 const slot = (userId, slug) => Number(db.createManagedStream({ user_id: userId, slug, title: slug, stream_key: `key-${userId}-${slug}` }).lastInsertRowid);
 const rsRow = (userId, slotId, fields = {}) => Number(raw.prepare(
     `INSERT INTO robotstreamer_integrations (user_id, managed_stream_id, enabled, token, robot_id, stream_name, chat_url)
@@ -58,7 +58,7 @@ const r5 = rsRow(5, null, { robot_id: '11' });
 // (OpenVibe.Chat owns chat_messages and Live no longer creates it), so the fixture recreates it.
 raw.exec(`CREATE TABLE IF NOT EXISTS chat_messages (
     id INTEGER PRIMARY KEY AUTOINCREMENT, stream_id INTEGER, user_id INTEGER, username TEXT,
-    message TEXT, source_platform TEXT, is_deleted INTEGER DEFAULT 0, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)`);
+    message TEXT, source_platform TEXT, is_deleted INTEGER DEFAULT 0, timestamp DATETIME DEFAULT ov_now())`);
 const chat = (streamId, username, message, platform = null) => raw.prepare('INSERT INTO chat_messages (stream_id, username, message, source_platform) VALUES (?, ?, ?, ?)').run(streamId, username, message, platform);
 const e2stream = Number(db.createStream({ user_id: 5, managed_stream_id: e2, title: 'y', protocol: 'webrtc' }).lastInsertRowid);
 db.endStream(e2stream);

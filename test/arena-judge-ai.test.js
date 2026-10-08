@@ -66,7 +66,7 @@ const ai = http.createServer((req, res) => {
         const fallback = await listener._judgeMic(7, 'you are all clowns and nobody in chat can beat me');
         assert.strictEqual(fallback.fallback, true, 'no answer: the heuristic');
 
-        db.getDb().prepare("INSERT INTO users (id, username, display_name, password_hash) VALUES (8, 'ann', 'Ann', '$sso$')").run();
+        db.getDb().prepare("INSERT INTO users (id, username, display_name, password_hash) OVERRIDING SYSTEM VALUE VALUES (8, 'ann', 'Ann', '$sso$')").run();
         const roster = { byId: { 8: { user: { username: 'ann', display_name: 'Ann' } } } };
         answer = { about_target: true, aimed_at_target: true, quality: 7, best_line: 'ann your stream is so boring even your bots left', about: 'her stream', announcer: 'Ouch', flagged: false };
         const beef = await listener._judgeBeef(7, 8, 'ann your stream is so boring even your bots left', roster, { context: 'called her washed', named: true, how: 'exact' });

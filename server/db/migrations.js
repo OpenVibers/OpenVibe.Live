@@ -26,12 +26,12 @@
 
 const LEDGER_SQL = `CREATE TABLE IF NOT EXISTS schema_migrations (
     id TEXT PRIMARY KEY,
-    applied_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    applied_at DATETIME DEFAULT ov_now(),
     mode TEXT NOT NULL CHECK (mode IN ('applied', 'adopted')),
     duration_ms INTEGER DEFAULT 0
 )`;
 
-const tableExists = (db, name) => !!db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(name);
+const tableExists = (db, name) => !!db.prepare("SELECT 1 FROM information_schema.tables WHERE table_schema = current_schema() AND table_name = ?").get(name);
 const columns = (db, table) => db.prepare(`PRAGMA table_info(${table})`).all().map((c) => c.name);
 const indexExists = (db, name) => !!db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'index' AND name = ?").get(name);
 
@@ -91,11 +91,11 @@ const MIGRATIONS = [
         id: '004_hot_path_indexes',
         // From EXPLAIN QUERY PLAN on production-shaped data (docs/performance-audit.md):
         //   users by username (every channel load and the 15s channel poll) was a full scan — the
-        //   lookup uses COLLATE NOCASE, which the plain unique index cannot serve;
+        //   lookup lower(uses), which the plain unique index cannot serve;
         //   bans by user_id is checked on every chat message;
         //   arena per-fighter stats filter timeline events by user and kind.
         up: (db) => {
-            db.exec('CREATE INDEX IF NOT EXISTS idx_users_username_nocase ON users(username COLLATE NOCASE)');
+            db.exec('CREATE INDEX IF NOT EXISTS idx_users_username_nocase ON users(lower(username))');
             db.exec('CREATE INDEX IF NOT EXISTS idx_bans_user ON bans(user_id)');
             if (tableExists(db, 'stream_timeline_events') && ['user_id', 'kind', 'created_at'].every((c) => columns(db, 'stream_timeline_events').includes(c))) {
                 db.exec('CREATE INDEX IF NOT EXISTS idx_timeline_user_kind_created ON stream_timeline_events(user_id, kind, created_at)');
@@ -266,11 +266,11 @@ function run(db, list = MIGRATIONS) {
             const fkOff = m.foreignKeys === false;
             if (fkOff) db.pragma('foreign_keys = OFF');
             try {
-                db.transaction(() => {
+                db.tx(() => {
                     if (m.adopt && m.adopt(db)) { adopted = true; }
                     else if (m.up(db) === DEFER) { deferred = true; return; }
                     record.run(m.id, adopted ? 'adopted' : 'applied', Date.now() - started);
-                })();
+                });
             } finally {
                 if (fkOff) db.pragma('foreign_keys = ON');
             }

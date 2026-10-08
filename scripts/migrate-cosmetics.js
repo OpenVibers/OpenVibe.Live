@@ -54,7 +54,7 @@ console.log('[Migration] Matched ' + matched + ' users\n');
 
 // ── Prepared statements ──────────────────────────────────────
 const upsertCosmetic = openvibeDb.prepare(
-    'INSERT OR IGNORE INTO user_cosmetics (user_id, item_id, category) VALUES (?, ?, ?)'
+    'INSERT INTO user_cosmetics (user_id, item_id, category) VALUES (?, ?, ?) ON CONFLICT DO NOTHING'
 );
 const upsertEquipped = openvibeDb.prepare(
     'INSERT OR REPLACE INTO user_equipped (user_id, slot, item_id) VALUES (?, ?, ?)'
@@ -68,7 +68,7 @@ const updatePlayerEffect = openvibeDb.prepare(
 const VOICE_CATEGORY = 'voice';
 
 // ── Run migration ────────────────────────────────────────────
-const migrate = openvibeDb.transaction(() => {
+const migrate = () => openvibeDb.tx(async () => {
     let cosmeticCount = 0;
     let voiceCount = 0;
     let equipCount = 0;
@@ -76,7 +76,7 @@ const migrate = openvibeDb.transaction(() => {
     for (const [rsId, openvibeId] of userMap) {
         // ── 1. Activate fx_* and px_* items from inventory as cosmetics ──
         const fxItems = openvibeDb.prepare(
-            "SELECT item_id FROM game_inventory WHERE user_id = ? AND (item_id LIKE 'fx_%' OR item_id LIKE 'px_%') AND quantity > 0"
+            "SELECT item_id FROM game_inventory WHERE user_id = ? AND (item_id ILIKE 'fx_%' OR item_id ILIKE 'px_%') AND quantity > 0"
         ).all(openvibeId);
 
         for (const item of fxItems) {

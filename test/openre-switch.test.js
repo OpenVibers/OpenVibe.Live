@@ -107,14 +107,14 @@ function sessionEvent(type, sessionId, revision, payload = {}) {
     // broadcast-server takes authenticateWs at load (the mirror may load it first): 'tok-<user id>' signs in.
     require('../server/auth/auth').authenticateWs = (token) => (/^tok-\d+$/.test(token || '') ? db.getUserById(Number(token.slice(4))) || null : null);
     const d = db.getDb();
-    d.prepare("INSERT INTO users (id, username, display_name, password_hash, stream_key) VALUES (601, 'caster', 'Caster', 'x', 'personalkey601')").run();
-    d.prepare("INSERT INTO users (id, username, display_name, password_hash) VALUES (602, 'nosub', 'NoSub', 'x')").run();
+    d.prepare("INSERT INTO users (id, username, display_name, password_hash, stream_key) OVERRIDING SYSTEM VALUE VALUES (601, 'caster', 'Caster', 'x', 'personalkey601')").run();
+    d.prepare("INSERT INTO users (id, username, display_name, password_hash) OVERRIDING SYSTEM VALUE VALUES (602, 'nosub', 'NoSub', 'x')").run();
     d.prepare(`INSERT INTO linked_accounts (user_id, service, service_user_id, subject_id) VALUES (601, 'network', '91', '${SUBJECT}')`).run();
-    d.prepare("INSERT INTO managed_streams (id, user_id, title, protocol, stream_key, streaming_method) VALUES (701, 601, 'OBS slot', 'rtmp', 'livekey701aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'obs')").run();
-    d.prepare("INSERT INTO managed_streams (id, user_id, title, protocol, stream_key) VALUES (702, 601, 'Browser slot', 'webrtc', 'livekey702aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa')").run();
-    d.prepare("INSERT INTO managed_streams (id, user_id, title, protocol, stream_key) VALUES (703, 602, 'No subject', 'rtmp', 'livekey703aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa')").run();
-    d.prepare("INSERT INTO managed_streams (id, user_id, title, protocol, stream_key, streaming_method) VALUES (708, 601, 'WHIP encoder slot', 'webrtc', 'livekey708aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'whip')").run();
-    d.prepare("INSERT INTO managed_streams (id, user_id, title, protocol, stream_key, streaming_method) VALUES (709, 601, 'JSMPEG slot', 'jsmpeg', 'livekey709aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'cli')").run();
+    d.prepare("INSERT INTO managed_streams (id, user_id, title, protocol, stream_key, streaming_method) OVERRIDING SYSTEM VALUE VALUES (701, 601, 'OBS slot', 'rtmp', 'livekey701aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'obs')").run();
+    d.prepare("INSERT INTO managed_streams (id, user_id, title, protocol, stream_key) OVERRIDING SYSTEM VALUE VALUES (702, 601, 'Browser slot', 'webrtc', 'livekey702aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa')").run();
+    d.prepare("INSERT INTO managed_streams (id, user_id, title, protocol, stream_key) OVERRIDING SYSTEM VALUE VALUES (703, 602, 'No subject', 'rtmp', 'livekey703aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa')").run();
+    d.prepare("INSERT INTO managed_streams (id, user_id, title, protocol, stream_key, streaming_method) OVERRIDING SYSTEM VALUE VALUES (708, 601, 'WHIP encoder slot', 'webrtc', 'livekey708aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'whip')").run();
+    d.prepare("INSERT INTO managed_streams (id, user_id, title, protocol, stream_key, streaming_method) OVERRIDING SYSTEM VALUE VALUES (709, 601, 'JSMPEG slot', 'jsmpeg', 'livekey709aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'cli')").run();
 
     const authority = require('../server/openre/authority');
     const mirror = require('../server/openre/mirror');
@@ -277,7 +277,7 @@ function sessionEvent(type, sessionId, revision, payload = {}) {
     assert.strictEqual(await deliver(base, noId), 204);
 
     // ── WHIP and JSMPEG publishers ───────────────────────────
-    d.prepare("INSERT INTO users (id, username, display_name, password_hash, stream_key) VALUES (603, 'browsercaster', 'BrowserCaster', 'x', 'personalkey603')").run();
+    d.prepare("INSERT INTO users (id, username, display_name, password_hash, stream_key) OVERRIDING SYSTEM VALUE VALUES (603, 'browsercaster', 'BrowserCaster', 'x', 'personalkey603')").run();
     const whipKey = () => {
         let key;
         do { key = crypto.randomBytes(16).toString('hex'); } while (!/[a-f]/.test(key));
@@ -285,10 +285,10 @@ function sessionEvent(type, sessionId, revision, payload = {}) {
     };
     const openReWhipKey = whipKey();
     const liveWhipKey = whipKey();
-    d.prepare("INSERT INTO managed_streams (id, user_id, title, protocol, stream_key, ingest_authority) VALUES (704, 603, 'WHIP on OpenRe', 'webrtc', ?, 'openre')").run(openReWhipKey);
-    d.prepare("INSERT INTO managed_streams (id, user_id, title, protocol, stream_key) VALUES (705, 602, 'WHIP on Live', 'webrtc', ?)").run(liveWhipKey);
-    d.prepare("INSERT INTO managed_streams (id, user_id, title, protocol, stream_key, ingest_authority) VALUES (706, 603, 'JSMPEG on OpenRe', 'jsmpeg', 'jsmpegopenre706', 'openre')").run();
-    d.prepare("INSERT INTO managed_streams (id, user_id, title, protocol, stream_key) VALUES (707, 602, 'JSMPEG on Live', 'jsmpeg', 'jsmpeglive707')").run();
+    d.prepare("INSERT INTO managed_streams (id, user_id, title, protocol, stream_key, ingest_authority) OVERRIDING SYSTEM VALUE VALUES (704, 603, 'WHIP on OpenRe', 'webrtc', ?, 'openre')").run(openReWhipKey);
+    d.prepare("INSERT INTO managed_streams (id, user_id, title, protocol, stream_key) OVERRIDING SYSTEM VALUE VALUES (705, 602, 'WHIP on Live', 'webrtc', ?)").run(liveWhipKey);
+    d.prepare("INSERT INTO managed_streams (id, user_id, title, protocol, stream_key, ingest_authority) OVERRIDING SYSTEM VALUE VALUES (706, 603, 'JSMPEG on OpenRe', 'jsmpeg', 'jsmpegopenre706', 'openre')").run();
+    d.prepare("INSERT INTO managed_streams (id, user_id, title, protocol, stream_key) OVERRIDING SYSTEM VALUE VALUES (707, 602, 'JSMPEG on Live', 'jsmpeg', 'jsmpeglive707')").run();
     process.env.OPENRE_URL = stubUrl;
     require('../server/openre/openre-client')._reset();
     const whip = require('../server/streaming/whip-handler');

@@ -39,7 +39,7 @@ function ensureTables() {
         best_line_vod_id INTEGER,
         best_line_sec INTEGER,
         best_line_score REAL DEFAULT 0,
-        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        updated_at DATETIME DEFAULT ov_now()
     )`);
     for (const col of ['topic_moments INTEGER DEFAULT 0', 'topics_joined INTEGER DEFAULT 0', 'mic_moments INTEGER DEFAULT 0']) { try { db.run(`ALTER TABLE arena_trash_levels ADD COLUMN ${col}`); } catch { /* exists */ } }
     db.run(`CREATE TABLE IF NOT EXISTS arena_xp_log (
@@ -48,7 +48,7 @@ function ensureTables() {
         amount INTEGER NOT NULL,
         reason TEXT NOT NULL,
         ref_id INTEGER,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        created_at DATETIME DEFAULT ov_now()
     )`);
     db.run('CREATE INDEX IF NOT EXISTS idx_arena_xp_log_user ON arena_xp_log (user_id, created_at)');
     db.run(`CREATE TABLE IF NOT EXISTS arena_mic_moments (
@@ -66,7 +66,7 @@ function ensureTables() {
         quality REAL DEFAULT 0,
         announcer TEXT,
         said_at DATETIME,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        created_at DATETIME DEFAULT ov_now()
     )`);
     db.run('CREATE INDEX IF NOT EXISTS idx_arena_mic_user ON arena_mic_moments (user_id, id)');
     db.run('CREATE INDEX IF NOT EXISTS idx_arena_mic_created ON arena_mic_moments (created_at)');
@@ -89,7 +89,7 @@ function addXp(userId, amount, reason, refId = null, extra = {}) {
     if (amount <= 0) return levelRow(userId);
     const before = levelRow(userId);
     db.run(`INSERT INTO arena_trash_levels (user_id, xp, level) VALUES (?, ?, ?)
-            ON CONFLICT(user_id) DO UPDATE SET xp = xp + excluded.xp, level = ?, updated_at = CURRENT_TIMESTAMP`,
+            ON CONFLICT(user_id) DO UPDATE SET xp = arena_trash_levels.xp + excluded.xp, level = ?, updated_at = ov_now()`,
         [userId, amount, levelFor(amount), levelFor((before.xp || 0) + amount)]);
     db.run('INSERT INTO arena_xp_log (user_id, amount, reason, ref_id) VALUES (?, ?, ?, ?)', [userId, amount, reason, refId]);
     const sets = [];
@@ -165,7 +165,7 @@ function addMoment({ userId, streamId = null, vodId = null, sec = null, kind = '
     try { if (arena()._isBannedText(t)) return null; } catch { /* */ }
     const q = Math.max(0, Math.min(10, Number(quality) || 0));
     const r = db.run(`INSERT INTO arena_mic_moments (user_id, stream_id, vod_id, sec, kind, target_user_id, beef_id, aimed_at, text, about, quality, announcer, said_at)
-                      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP))`,
+                      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, ov_now()))`,
         [userId, streamId, vodId, sec == null ? null : Math.max(0, Math.floor(sec)), kind, targetUserId, beefId, aimedAt ? String(aimedAt).slice(0, 80) : null, t, about ? String(about).slice(0, 80) : null, q, announcer ? String(announcer).slice(0, 140) : null, saidAt]);
     const id = Number(r.lastInsertRowid);
     if (kind === 'trash' || kind === 'callout') addXp(userId, q * XP_MOMENT, kind === 'callout' ? 'mic_callout' : 'mic_trash', id, { moment: true, line: t, lineScore: q, lineVodId: vodId, lineSec: sec });

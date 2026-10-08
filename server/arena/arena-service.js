@@ -90,7 +90,7 @@ function ensureTables() {
         image_model TEXT,
         image_generated_at DATETIME,
         image_error TEXT,
-        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        updated_at DATETIME DEFAULT ov_now()
     )`);
     for (const col of ['quotes_json TEXT', 'quotes_generated_at DATETIME']) {
         try { db.run(`ALTER TABLE arena_profiles ADD COLUMN ${col}`); } catch { /* exists */ }
@@ -125,7 +125,7 @@ function activeStreamerIds() {
 }
 
 function voiceStatsFor(userId, win) {
-    const hypeSql = HYPE_PATTERNS.map(() => "(LOWER(text) LIKE ?)").join(' + ');
+    const hypeSql = HYPE_PATTERNS.map(() => "(LOWER(text) ILIKE ?)").join(' + ');
     const hypeParams = HYPE_PATTERNS.map(p => `%${p}%`);
     let speech = {};
     try {
@@ -133,8 +133,8 @@ function voiceStatsFor(userId, win) {
             SELECT COUNT(*) AS lines,
                    COALESCE(SUM(COALESCE(end_sec, start_sec + 3) - start_sec), 0) AS speech_sec,
                    COALESCE(SUM(LENGTH(text) - LENGTH(REPLACE(text, ' ', '')) + 1), 0) AS words,
-                   COALESCE(SUM(text LIKE '%!%'), 0) AS exclaims,
-                   COALESCE(SUM(text LIKE '%?%'), 0) AS questions,
+                   COALESCE(SUM(text ILIKE '%!%'), 0) AS exclaims,
+                   COALESCE(SUM(text ILIKE '%?%'), 0) AS questions,
                    COALESCE(SUM(${hypeSql}), 0) AS hype_hits,
                    COUNT(DISTINCT stream_id) AS streams_heard
             FROM stream_timeline_events
@@ -144,7 +144,7 @@ function voiceStatsFor(userId, win) {
     let covered = 0, laughs = 0, topSounds = [];
     try {
         covered = db.get(`SELECT COALESCE(SUM(duration_seconds), 0) AS sec FROM streams WHERE user_id = ? AND duration_seconds > 0 AND id IN (SELECT DISTINCT stream_id FROM stream_timeline_events WHERE user_id = ? AND created_at >= datetime('now', ?))`, [userId, userId, win])?.sec || 0;
-        laughs = db.get(`SELECT COUNT(*) AS n FROM stream_timeline_events WHERE user_id = ? AND kind = 'sound' AND (LOWER(label) LIKE '%laugh%' OR LOWER(label) LIKE '%giggle%' OR LOWER(label) LIKE '%chuckle%') AND created_at >= datetime('now', ?)`, [userId, win])?.n || 0;
+        laughs = db.get(`SELECT COUNT(*) AS n FROM stream_timeline_events WHERE user_id = ? AND kind = 'sound' AND (LOWER(label) ILIKE '%laugh%' OR LOWER(label) ILIKE '%giggle%' OR LOWER(label) ILIKE '%chuckle%') AND created_at >= datetime('now', ?)`, [userId, win])?.n || 0;
         topSounds = db.all(`SELECT label, COUNT(*) AS n FROM stream_timeline_events WHERE user_id = ? AND kind = 'sound' AND label IS NOT NULL AND created_at >= datetime('now', ?) GROUP BY label ORDER BY n DESC LIMIT 5`, [userId, win]);
     } catch { /* */ }
     const speechSec = Number(speech.speech_sec) || 0;
@@ -237,7 +237,7 @@ function loadRoster(force = false) {
         ratings[id].talk_bonus = bonus;
         ratings[id].power = Math.min(99 + TALK_BONUS_MAX, ratings[id].power + bonus);
         byId[id] = { user: publicUser(user), raw: rawById[id], ratings: ratings[id] };
-        try { db.run('INSERT INTO arena_profiles (user_id, stats_json, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP) ON CONFLICT(user_id) DO UPDATE SET stats_json = excluded.stats_json, updated_at = CURRENT_TIMESTAMP', [id, JSON.stringify({ raw: rawById[id], ratings: ratings[id] })]); } catch { /* */ }
+        try { db.run('INSERT INTO arena_profiles (user_id, stats_json, updated_at) VALUES (?, ?, ov_now()) ON CONFLICT(user_id) DO UPDATE SET stats_json = excluded.stats_json, updated_at = ov_now()', [id, JSON.stringify({ raw: rawById[id], ratings: ratings[id] })]); } catch { /* */ }
     }
     const order = Object.keys(byId).map(Number).sort((a, b) => byId[b].ratings.power - byId[a].ratings.power || a - b);
     _roster = { at: Date.now(), byId, order };
@@ -298,8 +298,8 @@ async function generatePersona(userId, { force = false } = {}) {
     // The bio's rules and shape are OpenVibe.AI's versioned template live.arena.persona (WS-O task 2); Live sends the facts.
     const persona = await require('../ai/ai-service').structured('live.arena.persona', { facts }, { meter: { kind: 'arena_persona', role: 'summary', ownerUserId: userId, source: 'arena' } });
     if (!persona) { console.warn(`[Arena] persona generation failed for user ${userId}`); return row ? parseJson(row.persona_json) : null; }
-    db.run(`INSERT INTO arena_profiles (user_id, persona_json, persona_model, persona_generated_at, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-            ON CONFLICT(user_id) DO UPDATE SET persona_json = excluded.persona_json, persona_model = excluded.persona_model, persona_generated_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP`, [userId, JSON.stringify(persona), 'openvibe-ai:live.arena.persona']);
+    db.run(`INSERT INTO arena_profiles (user_id, persona_json, persona_model, persona_generated_at, updated_at) VALUES (?, ?, ?, ov_now(), ov_now())
+            ON CONFLICT(user_id) DO UPDATE SET persona_json = excluded.persona_json, persona_model = excluded.persona_model, persona_generated_at = ov_now(), updated_at = ov_now()`, [userId, JSON.stringify(persona), 'openvibe-ai:live.arena.persona']);
     console.log(`[Arena] persona for ${entry.user.username}: "${persona.fighter_name}" (${persona.class})`);
     return persona;
 }
@@ -353,7 +353,7 @@ async function generateQuotes(userId, { force = false } = {}) {
     }
     if (!result || !result.picks.length) result = materializeQuotes(candidates, { picks: candidates.slice(0, 5).map((c, i) => ({ index: i, why: 'straight from the transcript' })), walkout: 0 });
     if (!aiOn()) result._fallback = true;
-    db.run(`INSERT INTO arena_profiles (user_id, quotes_json, quotes_generated_at, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) ON CONFLICT(user_id) DO UPDATE SET quotes_json = excluded.quotes_json, quotes_generated_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP`, [userId, JSON.stringify(result)]);
+    db.run(`INSERT INTO arena_profiles (user_id, quotes_json, quotes_generated_at, updated_at) VALUES (?, ?, ov_now(), ov_now()) ON CONFLICT(user_id) DO UPDATE SET quotes_json = excluded.quotes_json, quotes_generated_at = ov_now(), updated_at = ov_now()`, [userId, JSON.stringify(result)]);
     return result;
 }
 

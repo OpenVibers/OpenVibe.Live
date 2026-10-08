@@ -53,7 +53,7 @@ const ai = http.createServer((req, res) => {
     const db = require('../server/db/database');
     db.initDb();
     const quota = require('../server/ai/viewer-quota');
-    db.getDb().prepare("INSERT INTO users (id, username, password_hash) VALUES (50, 'dana', '$sso$')").run();
+    db.getDb().prepare("INSERT INTO users (id, username, password_hash) OVERRIDING SYSTEM VALUE VALUES (50, 'dana', '$sso$')").run();
     try {
         db.upsertChannelAiConfig(50, { use_shared_key: 1, daily_budget_cents: 35 });
         assert.strictEqual(await quota.sync(50), 'set');

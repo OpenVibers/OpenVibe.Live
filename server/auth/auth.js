@@ -148,7 +148,7 @@ function resolveNetworkUser(decoded) {
         // Auto-link this user to the openvibe.network account
         try {
             db.getDb().prepare(
-                "INSERT OR IGNORE INTO linked_accounts (service, service_user_id, service_username, user_id) VALUES ('network', ?, ?, ?)"
+                "INSERT INTO linked_accounts (service, service_user_id, service_username, user_id) VALUES ('network', ?, ?, ?) ON CONFLICT DO NOTHING"
             ).run(openvibeToolsId, decoded.username, user.id);
             console.log(`[Auth] Auto-linked ${decoded.username} to openvibe.network id ${openvibeToolsId}`);
         } catch { /* already linked */ }
@@ -183,7 +183,7 @@ function resolveNetworkUser(decoded) {
 
         // Create linked_accounts entry
         db.getDb().prepare(
-            "INSERT OR IGNORE INTO linked_accounts (user_id, service, service_user_id, service_username) VALUES (?, 'network', ?, ?)"
+            "INSERT INTO linked_accounts (user_id, service, service_user_id, service_username) VALUES (?, 'network', ?, ?) ON CONFLICT DO NOTHING"
         ).run(user.id, openvibeToolsId, decoded.username);
 
         console.log(`[Auth] Auto-created local account for openvibe.network user ${decoded.username} (local id: ${user.id})`);

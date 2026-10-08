@@ -84,11 +84,11 @@ const community = http.createServer((req, res) => {
     s = seen.pop();
     assert.strictEqual(s.subject, SID);
     // Not in the link table: resolved through Network's identity map (live user 2 -> SID2).
-    d.prepare("INSERT INTO users (id, username, password_hash, stream_key) VALUES (2, 'bob', 'x', 'k2')").run();
+    d.prepare("INSERT INTO users (id, username, password_hash, stream_key) OVERRIDING SYSTEM VALUE VALUES (2, 'bob', 'x', 'k2')").run();
     await client.createPaste({ user_id: 2, content: 'hi' });
     assert.strictEqual(seen.pop().subject, SID2);
     // Nobody we can name: refused rather than filed under the wrong person or as anonymous.
-    d.prepare("INSERT INTO users (id, username, password_hash, stream_key) VALUES (3, 'cat', 'x', 'k3')").run();
+    d.prepare("INSERT INTO users (id, username, password_hash, stream_key) OVERRIDING SYSTEM VALUE VALUES (3, 'cat', 'x', 'k3')").run();
     await assert.rejects(client.createPaste({ user_id: 3, content: 'hi' }), (e) => e.status === 409);
 
     // Screenshot: multipart with the file.

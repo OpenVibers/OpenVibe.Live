@@ -38,7 +38,7 @@ auth.optionalAuth = (req, res, next) => { signIn(req); next(); };
 
 // Accounts: an owner-admin, a second admin, two streamers, a bystander.
 const addUser = (id, username, role, extra = {}) => raw.prepare(
-    `INSERT INTO users (id, username, display_name, email, password_hash, role, is_owner, openvibe_bucks_balance, openvibe_bucks_cashout_balance)
+    `INSERT INTO users (id, username, display_name, email, password_hash, role, is_owner, openvibe_bucks_balance, openvibe_bucks_cashout_balance) OVERRIDING SYSTEM VALUE
      VALUES (?, ?, ?, ?, 'x', ?, ?, ?, ?)`).run(id, username, username, `${username}@x`, role, extra.is_owner ? 1 : 0, extra.bucks || 0, extra.cashout || 0);
 addUser(1, 'owner', 'admin', { is_owner: 1 });
 addUser(2, 'admin2', 'admin');
@@ -150,9 +150,9 @@ async function check(name, fn) {
     await check('IP approval: owning stream #N does not open channel #N\'s queue', async () => {
         // A victim channel whose id equals the id of a stream alice owns.
         const x = raw.prepare('SELECT MAX(id) m FROM streams').get().m + 50;
-        raw.prepare("INSERT INTO users (id, username, display_name, email, password_hash, role) VALUES (6, 'dave', 'dave', 'd@x', 'x', 'streamer')").run();
-        raw.prepare('INSERT INTO channels (id, user_id, title) VALUES (?, 6, ?)').run(x, 'dave');
-        raw.prepare('INSERT INTO streams (id, user_id, channel_id, title, protocol) VALUES (?, 3, ?, ?, ?)').run(x, chanA.id, 'x', 'webrtc');
+        raw.prepare("INSERT INTO users (id, username, display_name, email, password_hash, role) OVERRIDING SYSTEM VALUE VALUES (6, 'dave', 'dave', 'd@x', 'x', 'streamer')").run();
+        raw.prepare('INSERT INTO channels (id, user_id, title) OVERRIDING SYSTEM VALUE VALUES (?, 6, ?)').run(x, 'dave');
+        raw.prepare('INSERT INTO streams (id, user_id, channel_id, title, protocol) OVERRIDING SYSTEM VALUE VALUES (?, 3, ?, ?, ?)').run(x, chanA.id, 'x', 'webrtc');
         const r = await call('GET', `/api/mod/ip-approval/${x}/pending`, 3);
         assert.strictEqual(r.status, 403, r.text);
     });

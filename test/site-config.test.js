@@ -36,7 +36,7 @@ const signIn = (req) => {
 };
 auth.requireAuth = (req, res, next) => (signIn(req) ? next() : res.status(401).json({ error: 'Authentication required' }));
 permissions.requireAdmin = (req, res, next) => (req.user && ['admin'].includes(req.user.role) ? next() : res.status(403).json({ error: 'admin only' }));
-const add = (id, username, role) => raw.prepare(`INSERT INTO users (id, username, display_name, email, password_hash, role, created_at) VALUES (?, ?, ?, ?, 'x', ?, '2025-01-01 00:00:00')`).run(id, username, username, `${username}@x`, role);
+const add = (id, username, role) => raw.prepare(`INSERT INTO users (id, username, display_name, email, password_hash, role, created_at) OVERRIDING SYSTEM VALUE VALUES (?, ?, ?, ?, 'x', ?, '2025-01-01 00:00:00')`).run(id, username, username, `${username}@x`, role);
 add(1, 'owner', 'admin');
 add(2, 'helper', 'admin');
 const realIsOwner = permissions.isOwner;

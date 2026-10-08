@@ -73,7 +73,7 @@ function envelopeFor(kind, streamId) {
     };
 }
 
-// SQLite CURRENT_TIMESTAMP is UTC without a zone ('2026-09-23 01:30:00').
+// SQLite ov_now() is UTC without a zone ('2026-09-23 01:30:00').
 function toIso(v) {
     if (!v) return null;
     const d = new Date(String(v).includes('T') ? v : `${String(v).replace(' ', 'T')}Z`);

@@ -209,7 +209,7 @@ contextRouter.get('/bans', (req, res) => {
     if (req.query.version && String(req.query.version) === version) return res.json({ version, unchanged: true });
     res.json({
         version,
-        bans: db.all('SELECT id, stream_id, user_id, ip_address, anon_id, expires_at FROM bans WHERE expires_at IS NULL OR datetime(expires_at) > CURRENT_TIMESTAMP'),
+        bans: db.all('SELECT id, stream_id, user_id, ip_address, anon_id, expires_at FROM bans WHERE expires_at IS NULL OR datetime(expires_at) > ov_now()'),
     });
 });
 
@@ -233,7 +233,7 @@ const CHAT_SETTING_KEYS = new Set(['gif_tenor_api_key', 'gif_giphy_api_key', 'so
 const isChatSetting = (k) => CHAT_SETTING_KEYS.has(k) || /^tts_[a-z0-9_]+$/.test(k);
 contextRouter.get('/settings', (req, res) => {
     const settings = {};
-    for (const r of db.all("SELECT key FROM site_settings WHERE key LIKE 'tts\\_%' ESCAPE '\\' OR key IN ('gif_tenor_api_key', 'gif_giphy_api_key', 'soundboard_101_api_key')")) {
+    for (const r of db.all("SELECT key FROM site_settings WHERE key ILIKE 'tts\\_%' ESCAPE '\\' OR key IN ('gif_tenor_api_key', 'gif_giphy_api_key', 'soundboard_101_api_key')")) {
         if (isChatSetting(r.key)) settings[r.key] = db.getSetting(r.key);
     }
     res.json({ settings });

@@ -43,7 +43,7 @@ const stub = http.createServer((req, res) => {
     const db = require('../server/db/database');
     db.initDb();
     const d = db.getDb();
-    d.prepare("INSERT INTO users (id, username, display_name, password_hash, bio) VALUES (1, 'alex', 'Alex', 'x', 'Builds things live.'), (2, 'viewer', 'Viewer', 'x', '')").run();
+    d.prepare("INSERT INTO users (id, username, display_name, password_hash, bio) OVERRIDING SYSTEM VALUE VALUES (1, 'alex', 'Alex', 'x', 'Builds things live.'), (2, 'viewer', 'Viewer', 'x', '')").run();
     const streamEvents = require('../server/events/stream-events');
     const outbox = streamEvents.init({ eventsUrl: base, clientSecret: 's3cret', intervalMs: 50 });
     const docs = require('../server/events/search-documents');

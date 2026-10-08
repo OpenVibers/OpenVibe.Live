@@ -728,7 +728,7 @@ function normalizeSql(sql) {
  * as it is found to apply; → the applied statements, tables first, in order.
  */
 function lazyDDL(files, db) {
-    const tables = () => new Set(db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all().map((r) => r.name));
+    const tables = () => new Set(db.prepare("SELECT table_name AS name FROM information_schema.tables WHERE table_schema = current_schema()").all().map((r) => r.name));
     const columns = (t) => { try { return new Set(db.prepare(`PRAGMA table_xinfo("${t}")`).all().map((c) => c.name.toLowerCase())); } catch { return new Set(); } };
     const lits = stringLiterals(files).map(stripSqlComments);
     const applied = [];
@@ -771,7 +771,7 @@ function readTree(root, dirs, exts = ['.js']) {
 /** The schema as DDL, tables first (no internal or FTS shadow tables), then indexes, triggers and views. */
 function schemaDDL(db) {
     const shadow = new Set(db.prepare('PRAGMA table_list').all().filter((t) => t.type === 'shadow').map((t) => t.name));
-    const rows = db.prepare("SELECT type, name, sql FROM sqlite_master WHERE sql IS NOT NULL AND name NOT LIKE 'sqlite_%'").all()
+    const rows = db.prepare("SELECT type, name, sql FROM sqlite_master WHERE sql IS NOT NULL AND name NOT ILIKE 'sqlite_%'").all()
         .filter((r) => !shadow.has(r.name));
     const order = { table: 0, index: 1, view: 2, trigger: 3 };
     return rows.sort((a, b) => order[a.type] - order[b.type] || (a.name < b.name ? -1 : 1)).map((r) => r.sql);

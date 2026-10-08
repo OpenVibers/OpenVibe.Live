@@ -48,7 +48,7 @@ auth.optionalAuth = (req, res, next) => { signIn(req); next(); };
 
 // ── a channel with four slots and three profiles ──
 for (const [id, name] of [[3, 'alice'], [7, 'mallory']]) {
-    raw.prepare(`INSERT INTO users (id, username, display_name, email, password_hash, role, stream_key, created_at)
+    raw.prepare(`INSERT INTO users (id, username, display_name, email, password_hash, role, stream_key, created_at) OVERRIDING SYSTEM VALUE
         VALUES (?, ?, ?, ?, 'x', 'streamer', ?, '2025-01-01 00:00:00')`).run(id, name, name, `${name}@x`, `personal${name}key01`);
 }
 const ch = db.ensureChannel(3);

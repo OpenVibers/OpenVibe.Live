@@ -76,7 +76,7 @@ const db = require('../server/db/database');
 db.initDb();
 const d = db.getDb();
 for (const t of DROPPED) {
-    assert.ok(!d.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(t),
+    assert.ok(!d.prepare("SELECT 1 FROM information_schema.tables WHERE table_schema = current_schema() AND table_name = ?").get(t),
         `${t} still exists after boot`);
 }
 const rec = d.prepare('SELECT mode FROM schema_migrations WHERE id = ?').get('005_drop_chat_staged_tables');
@@ -84,7 +84,7 @@ assert.ok(rec, 'the 005_drop_chat_staged_tables migration is not recorded');
 assert.strictEqual(d.prepare('SELECT mode FROM schema_migrations WHERE id = ?').get('006_drop_emotes').mode, 'applied');
 const fresh = new Database(':memory:');
 fresh.exec(fs.readFileSync(path.join(ROOT, 'server', 'db', 'schema.sql'), 'utf8'));
-assert.ok(!fresh.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'emotes'").get(),
+assert.ok(!fresh.prepare("SELECT 1 FROM information_schema.tables WHERE table_schema = current_schema() AND table_name = 'emotes'").get(),
     'fresh schema must not create emotes');
 fresh.close();
 

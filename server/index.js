@@ -1262,7 +1262,7 @@ async function start() {
     // This gives broadcasters a fresh 5-minute window to reconnect.
     const survivingStreams = db.all('SELECT id FROM streams WHERE is_live = 1');
     if (survivingStreams.length > 0) {
-        db.run('UPDATE streams SET last_heartbeat = CURRENT_TIMESTAMP WHERE is_live = 1');
+        db.run('UPDATE streams SET last_heartbeat = ov_now() WHERE is_live = 1');
         console.log(`[Server] Refreshed heartbeats for ${survivingStreams.length} surviving stream(s) — broadcasters have 5 min to reconnect`);
     }
 

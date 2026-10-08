@@ -143,7 +143,7 @@ class RTMPServer extends EventEmitter {
             let streamId;
             if (rtmpStream) {
                 streamId = rtmpStream.id;
-                db.run('UPDATE streams SET is_live = 1, started_at = CURRENT_TIMESTAMP WHERE id = ?',
+                db.run('UPDATE streams SET is_live = 1, started_at = ov_now() WHERE id = ?',
                     [streamId]);
             } else {
                 // No pre-created RTMP stream — auto-create one (direct OBS connect without Go Live page)
@@ -189,13 +189,13 @@ class RTMPServer extends EventEmitter {
             } catch { /* non-critical */ }
 
             // Ensure heartbeat is always set (for stale-stream cleanup)
-            db.run('UPDATE streams SET last_heartbeat = CURRENT_TIMESTAMP WHERE id = ?', [streamId]);
+            db.run('UPDATE streams SET last_heartbeat = ov_now() WHERE id = ?', [streamId]);
 
             // A throw inside a timer is an uncaught exception, and the process exits on those — one
             // "database is locked" here would drop every live stream, not just this one.
             const heartbeatTimer = setInterval(() => {
                 try {
-                    db.run('UPDATE streams SET last_heartbeat = CURRENT_TIMESTAMP WHERE id = ?', [streamId]);
+                    db.run('UPDATE streams SET last_heartbeat = ov_now() WHERE id = ?', [streamId]);
                 } catch (e) { console.warn(`[RTMP] heartbeat for stream ${streamId} failed: ${e.message}`); }
             }, RTMP_HEARTBEAT_INTERVAL_MS);
 

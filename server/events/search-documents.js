@@ -29,7 +29,7 @@ function ensureSchema() {
         hash TEXT NOT NULL,
         revision INTEGER NOT NULL,
         deleted INTEGER NOT NULL DEFAULT 0,
-        pushed_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        pushed_at DATETIME DEFAULT ov_now()
     )`);
     ready = true;
 }
@@ -84,15 +84,15 @@ function publish(userId, { now = Date.now() } = {}) {
     if (prev && prev.hash === hash) { stats.unchanged++; return 'unchanged'; }
     const revision = (prev ? prev.revision : 0) + 1;
     const id = String(userId);
-    d.transaction(() => {
+    d.tx(() => {
         streamEvents.enqueue(doc.deleted
             ? { event_type: 'live.index_document.deleted', actor: { type: 'service', id: 'live' }, subject: { type: 'channel', id, revision }, visibility: 'internal', priority: 'low', payload: { type: 'channel', id, revision } }
             : { event_type: 'live.index_document.upserted', actor: { type: 'service', id: 'live' }, subject: { type: 'channel', id, revision }, visibility: 'internal', priority: 'low',
                 payload: { ...doc, revision, updated_at: new Date(now).toISOString() } });
-        d.prepare(`INSERT INTO search_doc_pushes (user_id, hash, revision, deleted, pushed_at) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+        d.prepare(`INSERT INTO search_doc_pushes (user_id, hash, revision, deleted, pushed_at) VALUES (?, ?, ?, ?, ov_now())
                    ON CONFLICT(user_id) DO UPDATE SET hash = excluded.hash, revision = excluded.revision, deleted = excluded.deleted, pushed_at = excluded.pushed_at`)
             .run(userId, hash, revision, doc.deleted ? 1 : 0);
-    })();
+    });
     streamEvents.kick();
     if (doc.deleted) { stats.tombstones++; return 'tombstone'; }
     stats.sent++;

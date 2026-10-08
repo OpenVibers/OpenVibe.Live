@@ -198,7 +198,7 @@ function handle({ via, event, data, eventId = null, subject = null }) {
             warnedNoEventId = true;
             console.warn('[MediaOutcome] a Media webhook carried no event_id (Media without its Events outbox?): applied without dedupe');
         }
-        out = { duplicate: false, result: db.getDb().transaction(run)() };
+        out = { duplicate: false, result: db.getDb().tx(run) };
     }
     if (out.duplicate) {
         stats.duplicate[via]++;

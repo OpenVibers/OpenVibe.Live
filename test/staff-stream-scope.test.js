@@ -22,7 +22,7 @@ const signIn = (req) => { const id = Number(req.headers['x-test-user'] || 0); co
 auth.requireAuth = (req, res, next) => (signIn(req) ? next() : res.status(401).json({ error: 'Authentication required' }));
 auth.optionalAuth = (req, res, next) => { signIn(req); next(); };
 
-const addUser = (id, name, role, isOwner = 0) => raw.prepare(`INSERT INTO users (id, username, display_name, email, password_hash, role, is_owner, stream_key)
+const addUser = (id, name, role, isOwner = 0) => raw.prepare(`INSERT INTO users (id, username, display_name, email, password_hash, role, is_owner, stream_key) OVERRIDING SYSTEM VALUE
     VALUES (?, ?, ?, ?, 'x', ?, ?, ?)`).run(id, name, name, `${name}@x`, role, isOwner, `key-${name}`);
 addUser(1, 'siteowner', 'admin', 1);
 addUser(2, 'anadmin', 'admin');

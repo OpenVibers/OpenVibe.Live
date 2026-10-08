@@ -29,7 +29,7 @@ function ensureSchema(d) {
         from_user_id INTEGER,
         into_user_id INTEGER,
         outcome      TEXT NOT NULL,
-        applied_at   DATETIME DEFAULT CURRENT_TIMESTAMP
+        applied_at   DATETIME DEFAULT ov_now()
     )`);
     const cols = d.prepare('PRAGMA table_info(users)').all().map((c) => c.name);
     if (!cols.includes('merged_into')) d.exec('ALTER TABLE users ADD COLUMN merged_into INTEGER');
@@ -52,10 +52,10 @@ function moveUser(d, a, b, mergeId) {
         }
     }
     // Channel points (loyalty, ADR-012): first as the viewer, then as the channel; the same pair twice is summed.
-    const logMove = d.prepare('INSERT OR IGNORE INTO channel_points_log (idempotency_key, user_id, streamer_id, delta, reason) VALUES (?, ?, ?, ?, ?)');
+    const logMove = d.prepare('INSERT INTO channel_points_log (idempotency_key, user_id, streamer_id, delta, reason) VALUES (?, ?, ?, ?, ?) ON CONFLICT DO NOTHING');
     const add = (u, s, bal) => {
         const have = d.prepare('SELECT 1 FROM channel_points WHERE user_id = ? AND streamer_id = ?').get(u, s);
-        if (have) { d.prepare('UPDATE channel_points SET balance = balance + ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ? AND streamer_id = ?').run(bal, u, s); out.points_summed++; }
+        if (have) { d.prepare('UPDATE channel_points SET balance = balance + ?, updated_at = ov_now() WHERE user_id = ? AND streamer_id = ?').run(bal, u, s); out.points_summed++; }
         else d.prepare('INSERT INTO channel_points (user_id, streamer_id, balance) VALUES (?, ?, ?)').run(u, s, bal);
     };
     const move = (fromU, fromS, toU, toS, bal, key) => {
@@ -100,10 +100,10 @@ async function apply(ev, { resolveNetworkId = defaultResolve } = {}) {
         }
     } else if (a === b) { result = 'nothing'; outcome = { reason: 'one Live user for both' }; }
     else {
-        outcome = d.transaction(() => moveUser(d, a, b, p.merge_id))();
+        outcome = d.tx(() => moveUser(d, a, b, p.merge_id));
         result = 'merged';
     }
-    d.prepare('INSERT OR IGNORE INTO subject_merges (merge_id, from_subject, into_subject, from_user_id, into_user_id, outcome) VALUES (?, ?, ?, ?, ?, ?)')
+    d.prepare('INSERT INTO subject_merges (merge_id, from_subject, into_subject, from_user_id, into_user_id, outcome) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING')
         .run(p.merge_id, p.from, p.into, a, b, JSON.stringify({ result, ...outcome }));
     console.log(`[Merge] ${p.merge_id}: ${result} ${JSON.stringify(outcome)}`);
     return result;

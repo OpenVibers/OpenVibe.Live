@@ -41,7 +41,7 @@ const signIn = (req) => {
 };
 auth.requireAuth = (req, res, next) => (signIn(req) ? next() : res.status(401).json({ error: 'Authentication required' }));
 
-const addUser = (id, name) => raw.prepare(`INSERT INTO users (id, username, display_name, email, password_hash, role) VALUES (?, ?, ?, ?, 'x', 'streamer')`).run(id, name, name, `${name}@x`);
+const addUser = (id, name) => raw.prepare(`INSERT INTO users (id, username, display_name, email, password_hash, role) OVERRIDING SYSTEM VALUE VALUES (?, ?, ?, ?, 'x', 'streamer')`).run(id, name, name, `${name}@x`);
 const slot = (userId, slug) => Number(db.createManagedStream({ user_id: userId, slug, title: slug, stream_key: `key-${userId}-${slug}` }).lastInsertRowid);
 const rsRow = (userId, slotId, fields = {}) => Number(raw.prepare(
     `INSERT INTO robotstreamer_integrations (user_id, managed_stream_id, enabled, token, robot_id, stream_name, chat_url)

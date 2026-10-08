@@ -598,11 +598,11 @@ class MediaQueue {
                 // The charge was booked as a donation to the streamer, so unwind both sides — atomically,
                 // and only if the streamer still holds the money. Crediting the requester after a failed
                 // deduction minted Vibes: pay, move the balance out (recycle or cash out), then refund.
-                const unwound = db.getDb().transaction(() => {
+                const unwound = db.getDb().tx(() => {
                     if (!db.deductVibesCashout(request.streamer_id, amount)) return false;
                     db.addVibes(request.user_id, amount);
                     return true;
-                })();
+                });
                 if (!unwound) {
                     console.warn(`[MediaQueue] refund of request ${request.id} refused: streamer ${request.streamer_id} no longer holds ${amount} Vibes`);
                     return 0;

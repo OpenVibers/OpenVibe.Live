@@ -48,7 +48,7 @@ function parseArgs(argv) {
     return opts;
 }
 
-const hasTable = (db, name) => !!db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(name);
+const hasTable = (db, name) => !!db.prepare("SELECT 1 FROM information_schema.tables WHERE table_schema = current_schema() AND table_name = ?").get(name);
 
 /** What is stored now, as counts. Reads only. */
 function counts(db) {
@@ -65,8 +65,8 @@ function counts(db) {
         passwords_linked: n(`${SSO} AND id IN (${linked})`),
         passwords_link_without_subject: n(`${SSO} AND id IN (${anyLink}) AND id NOT IN (${linked})`),
         passwords_no_identity: n(noIdentity),
-        no_identity_hashes: n(`${noIdentity} AND (password_hash LIKE '$2%' OR password_hash LIKE '$argon2%' OR password_hash LIKE '$scrypt%' OR password_hash LIKE '$pbkdf2%')`),
-        no_identity_anon_game: n(`${noIdentity} AND password_hash LIKE '!anon-game:%'`),
+        no_identity_hashes: n(`${noIdentity} AND (password_hash ILIKE '$2%' OR password_hash ILIKE '$argon2%' OR password_hash ILIKE '$scrypt%' OR password_hash ILIKE '$pbkdf2%')`),
+        no_identity_anon_game: n(`${noIdentity} AND password_hash ILIKE '!anon-game:%'`),
     };
 }
 

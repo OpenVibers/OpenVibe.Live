@@ -35,7 +35,7 @@ const root = path.join(__dirname, '..');
 const read = (p) => fs.readFileSync(path.join(root, p), 'utf8');
 const db = require('../server/db/database');
 db.initDb();
-db.getDb().prepare(`INSERT INTO users (id, username, display_name, email, password_hash, role, created_at)
+db.getDb().prepare(`INSERT INTO users (id, username, display_name, email, password_hash, role, created_at) OVERRIDING SYSTEM VALUE
     VALUES (3, 'alice', 'alice', 'alice@x', 'x', 'streamer', '2025-01-01 00:00:00')`).run();
 const ch = db.ensureChannel(3);
 const sid = Number(db.createStream({ user_id: 3, channel_id: ch.id, title: 'A', protocol: 'rtmp' }).lastInsertRowid);

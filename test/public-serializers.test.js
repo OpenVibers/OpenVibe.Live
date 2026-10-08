@@ -52,7 +52,7 @@ async function check(name, fn) {
     const db = require('../server/db/database');
     db.initDb();
     const raw = db.getDb();
-    raw.prepare(`INSERT INTO users (id, username, display_name, email, password_hash, role, stream_key)
+    raw.prepare(`INSERT INTO users (id, username, display_name, email, password_hash, role, stream_key) OVERRIDING SYSTEM VALUE
                  VALUES (901, 'keyowner', 'Key Owner', 'owner@example.com', 'x', 'streamer', ?)`).run('u'.repeat(32));
     db.ensureChannel(901);
     const channel = db.getChannelByUserId(901);
@@ -61,7 +61,7 @@ async function check(name, fn) {
                  VALUES (901, ?, 'main', 'Main slot', 'rtmp', ?, '90210')`).run(channel.id, 'S'.repeat(40));
     const ms = raw.prepare('SELECT id FROM managed_streams WHERE user_id = 901').get();
     raw.prepare(`INSERT INTO streams (user_id, channel_id, title, protocol, is_live, managed_stream_id, started_at)
-                 VALUES (901, ?, 'Live now', 'rtmp', 1, ?, CURRENT_TIMESTAMP)`).run(channel.id, ms.id);
+                 VALUES (901, ?, 'Live now', 'rtmp', 1, ?, ov_now())`).run(channel.id, ms.id);
 
     const express = require('express');
     const app = express();

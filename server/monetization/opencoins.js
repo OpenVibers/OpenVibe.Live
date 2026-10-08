@@ -144,7 +144,7 @@ class OpenCoins {
 
         // Check if user already got follow bonus for this streamer
         const existing = db.get(
-            `SELECT id FROM coin_transactions WHERE user_id = ? AND type = 'follow_bonus' AND message LIKE '%streamer:' || ? || '%'`,
+            `SELECT id FROM coin_transactions WHERE user_id = ? AND type = 'follow_bonus' AND message ILIKE '%streamer:' || ? || '%'`,
             [userId, streamerId]
         );
         if (existing) return null;
@@ -191,7 +191,7 @@ class OpenCoins {
         // The limits are checked, the redemption row created and the points taken in one
         // transaction, keyed by the redemption id: nothing is taken for a refused redemption
         // (there is no take-then-refund any more), and a replayed spend moves nothing twice.
-        const result = db.getDb().transaction(() => {
+        const result = db.getDb().tx(() => {
             // Check per-user cooldown
             if (reward.cooldown_seconds > 0) {
                 const lastRedemption = db.get(
@@ -229,7 +229,7 @@ class OpenCoins {
                 throw new Error(`Not enough ${cpName}`);
             }
             return created;
-        })();
+        });
 
         // Log transaction
         db.createCoinTransaction({
@@ -335,7 +335,7 @@ class OpenCoins {
             amount INTEGER NOT NULL,
             reason TEXT,
             balance INTEGER,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            created_at DATETIME DEFAULT ov_now()
         )`);
         const ck = clientKey ? `a${adminId || 0}:${clientKey}` : null;
         let grant = ck ? d.prepare('SELECT * FROM opencoin_admin_grants WHERE client_key = ?').get(ck) : null;

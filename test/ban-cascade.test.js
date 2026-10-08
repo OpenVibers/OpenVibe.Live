@@ -24,10 +24,10 @@ function freshDb() {
     const d = new Database(':memory:');
     d.exec(`
         CREATE TABLE users (id INTEGER PRIMARY KEY, username TEXT, role TEXT DEFAULT 'user', is_banned INTEGER DEFAULT 0, ban_reason TEXT);
-        CREATE TABLE ip_log (id INTEGER PRIMARY KEY, user_id INTEGER, anon_id TEXT, ip_address TEXT, created_at TEXT DEFAULT CURRENT_TIMESTAMP);
+        CREATE TABLE ip_log (id INTEGER PRIMARY KEY, user_id INTEGER, anon_id TEXT, ip_address TEXT, created_at TEXT DEFAULT ov_now());
         CREATE TABLE bans (id INTEGER PRIMARY KEY, user_id INTEGER, ip_address TEXT, reason TEXT, banned_by INTEGER, expires_at TEXT);
     `);
-    const u = d.prepare('INSERT INTO users (id, username, role) VALUES (?, ?, ?)');
+    const u = d.prepare('INSERT INTO users (id, username, role) OVERRIDING SYSTEM VALUE VALUES (?, ?, ?)');
     u.run(1, 'owner', 'admin'); u.run(2, 'mod', 'global_mod'); u.run(3, 'troll', 'user'); u.run(4, 'trollalt', 'user'); u.run(5, 'bystander', 'streamer');
     const ip = d.prepare('INSERT INTO ip_log (user_id, ip_address) VALUES (?, ?)');
     // One shared household IP: the admin, the troll, the troll's alt and a streamer all used it.

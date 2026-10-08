@@ -114,13 +114,13 @@ function checkContract(out, label) {
     db.initDb();
     const d = db.getDb();
     const users = [[17, 'alice', 'Alice Wonder'], [18, 'bob', 'alice'], [19, 'carol', 'Carol'], [20, 'dave', 'streamqueen'], [21, 'mallory', 'Alice Wonder'], [22, 'erin', 'Erin']];
-    for (const [id, name, display] of users) d.prepare("INSERT INTO users (id, username, display_name, password_hash) VALUES (?, ?, ?, 'x')").run(id, name, display);
+    for (const [id, name, display] of users) d.prepare("INSERT INTO users (id, username, display_name, password_hash) OVERRIDING SYSTEM VALUE VALUES (?, ?, ?, 'x')").run(id, name, display);
     const channelOf = {};
     for (const id of [17, 18, 19, 21, 22]) channelOf[id] = Number(d.prepare('INSERT INTO channels (user_id) VALUES (?)').run(id).lastInsertRowid);
     const link = d.prepare("INSERT INTO linked_accounts (user_id, service, service_user_id, subject_id) VALUES (?, 'network', ?, ?)");
     link.run(17, '57', ALICE); link.run(18, '58', BOB); link.run(19, '59', SHARED); link.run(20, '60', null); link.run(21, '61', SHARED);
-    d.prepare("INSERT INTO managed_streams (id, user_id, slug, stream_key) VALUES (3, 17, 'garage-cam', 'k3'), (4, 18, 'desk', 'k4')").run();
-    d.prepare("INSERT INTO streams (id, user_id, managed_stream_id, channel_id, title) VALUES (9, 17, 3, ?, 'a'), (10, 18, 4, ?, 'b'), (11, 17, 3, ?, 'c')").run(channelOf[17], channelOf[18], channelOf[17]);
+    d.prepare("INSERT INTO managed_streams (id, user_id, slug, stream_key) OVERRIDING SYSTEM VALUE VALUES (3, 17, 'garage-cam', 'k3'), (4, 18, 'desk', 'k4')").run();
+    d.prepare("INSERT INTO streams (id, user_id, managed_stream_id, channel_id, title) OVERRIDING SYSTEM VALUE VALUES (9, 17, 3, ?, 'a'), (10, 18, 4, ?, 'b'), (11, 17, 3, ?, 'c')").run(channelOf[17], channelOf[18], channelOf[17]);
 
     const lineage = require('../server/lineage/resolver');
     const resolve = async (input, label = JSON.stringify(input)) => checkContract(await lineage.resolve(input), label);

@@ -43,7 +43,7 @@ const signIn = (req) => {
 auth.requireAuth = (req, res, next) => (signIn(req) ? next() : res.status(401).json({ error: 'Authentication required' }));
 auth.optionalAuth = (req, res, next) => { signIn(req); next(); };
 
-raw.prepare(`INSERT INTO users (id, username, display_name, email, password_hash, role, created_at)
+raw.prepare(`INSERT INTO users (id, username, display_name, email, password_hash, role, created_at) OVERRIDING SYSTEM VALUE
     VALUES (3, 'alice', 'alice', 'alice@x', 'x', 'streamer', '2025-01-01 00:00:00')`).run();
 db.ensureChannel(3);
 const chan = db.getChannelByUserId(3);

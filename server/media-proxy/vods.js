@@ -519,7 +519,7 @@ router.get('/:id', optionalAuth, async (req, res) => {
         // Unique-view tracking stays local (content_views is a Live table).
         try {
             const ip = requesterIp(req);
-            const inserted = db.run('INSERT OR IGNORE INTO content_views (content_type, content_id, ip) VALUES (?, ?, ?)', ['vod', vod.id, ip]);
+            const inserted = db.run('INSERT INTO content_views (content_type, content_id, ip) VALUES (?, ?, ?) ON CONFLICT DO NOTHING', ['vod', vod.id, ip]);
             if (inserted.changes > 0) {
                 const count = db.get('SELECT COUNT(*) as c FROM content_views WHERE content_type = ? AND content_id = ?', ['vod', vod.id]);
                 vod.view_count = Math.max(Number(vod.view_count) || 0, count.c);

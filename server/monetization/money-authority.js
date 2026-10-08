@@ -68,10 +68,10 @@ function freezeState() {
 
 function setFrozen(on, { reason = null, by = null } = {}) {
     const d = db();
-    d.getDb().transaction(() => {
+    d.getDb().tx(() => {
         d.setSetting('money_writes_frozen', on ? 'true' : 'false');
         d.setSetting('money_writes_frozen_meta', JSON.stringify(on ? { reason: reason ? String(reason).slice(0, 300) : null, by, at: new Date().toISOString() } : {}));
-    })();
+    });
     console.warn(`[Money] Live money writes ${on ? 'FROZEN' : 'unfrozen'} by ${by || 'unknown'}${reason ? ` (${reason})` : ''}`);
     return freezeState();
 }

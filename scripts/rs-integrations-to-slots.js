@@ -66,7 +66,7 @@ function parseArgs(argv) {
 }
 
 function hasTable(db, name) {
-    return !!db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(name);
+    return !!db.prepare("SELECT 1 FROM information_schema.tables WHERE table_schema = current_schema() AND table_name = ?").get(name);
 }
 
 /** What would happen to each account-level row. Pure: reads only. */
@@ -191,14 +191,14 @@ function apply(db, items, { journalPath, backupPath, dropSuperseded = false, dbP
     const journal = { script: 'rs-integrations-to-slots', created_at: new Date().toISOString(), db: dbPath, backup: backupPath, changes };
     // The journal goes to disk first: if anything below fails, the record of the intent exists.
     fs.writeFileSync(journalPath, JSON.stringify(journal, null, 2), { mode: 0o600 });
-    const bind = db.prepare('UPDATE robotstreamer_integrations SET managed_stream_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND managed_stream_id IS NULL');
+    const bind = db.prepare('UPDATE robotstreamer_integrations SET managed_stream_id = ?, updated_at = ov_now() WHERE id = ? AND managed_stream_id IS NULL');
     const drop = db.prepare('DELETE FROM robotstreamer_integrations WHERE id = ? AND managed_stream_id IS NULL');
-    db.transaction(() => {
+    db.tx(() => {
         for (const c of changes) {
             const r = c.action === 'bind' ? bind.run(c.to, c.id) : drop.run(c.id);
             if (r.changes !== 1) throw new Error(`row ${c.id} changed since the plan was made (no longer account-level); nothing was applied`);
         }
-    })();
+    });
     return journal;
 }
 
@@ -222,14 +222,14 @@ function rollbackPlan(db, journal) {
 }
 
 function rollbackApply(db, steps) {
-    const unbind = db.prepare('UPDATE robotstreamer_integrations SET managed_stream_id = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND managed_stream_id = ?');
+    const unbind = db.prepare('UPDATE robotstreamer_integrations SET managed_stream_id = NULL, updated_at = ov_now() WHERE id = ? AND managed_stream_id = ?');
     const insert = db.prepare(`INSERT INTO robotstreamer_integrations (${COLUMNS.join(', ')}) VALUES (${COLUMNS.map((c) => `@${c}`).join(', ')})`);
-    db.transaction(() => {
+    db.tx(() => {
         for (const s of steps) {
             if (s.undo === 'unbind' && unbind.run(s.id, s.to).changes !== 1) throw new Error(`row ${s.id} changed during the rollback; nothing was undone`);
             if (s.undo === 'reinsert') insert.run(s.row);
         }
-    })();
+    });
 }
 
 async function main(argv, log = console.log) {

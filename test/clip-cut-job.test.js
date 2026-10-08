@@ -36,7 +36,7 @@ const signIn = (req) => {
 };
 auth.requireAuth = (req, res, next) => (signIn(req) ? next() : res.status(401).json({ error: 'Authentication required' }));
 auth.optionalAuth = (req, res, next) => { signIn(req); next(); };
-const addUser = (id, username) => raw.prepare(`INSERT INTO users (id, username, display_name, email, password_hash, role, created_at)
+const addUser = (id, username) => raw.prepare(`INSERT INTO users (id, username, display_name, email, password_hash, role, created_at) OVERRIDING SYSTEM VALUE
      VALUES (?, ?, ?, ?, 'x', 'user', '2025-01-01 00:00:00')`).run(id, username, username, `${username}@x`);
 addUser(3, 'maker');
 addUser(4, 'stranger');

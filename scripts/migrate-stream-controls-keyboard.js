@@ -27,7 +27,7 @@ if (tableInfo && tableInfo.sql && !tableInfo.sql.includes("'keyboard'")) {
             btn_color TEXT DEFAULT '',
             btn_bg TEXT DEFAULT '',
             btn_border_color TEXT DEFAULT '',
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            created_at DATETIME DEFAULT ov_now(),
             FOREIGN KEY (stream_id) REFERENCES streams(id) ON DELETE CASCADE
         );
         INSERT INTO stream_controls_new

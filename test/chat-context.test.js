@@ -237,13 +237,13 @@ const waitFor = async (pred, what, ms = 3000) => {
             channel_id INTEGER NOT NULL,
             user_id INTEGER NOT NULL,
             added_by INTEGER NOT NULL,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            created_at DATETIME DEFAULT ov_now(),
             UNIQUE(channel_id, user_id)
         );
         CREATE TABLE IF NOT EXISTS channel_moderation_settings (
             channel_id INTEGER PRIMARY KEY,
             slow_mode_seconds INTEGER DEFAULT 0,
-            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            updated_at DATETIME DEFAULT ov_now()
         );
         CREATE TABLE IF NOT EXISTS emotes (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -255,32 +255,32 @@ const waitFor = async (pred, what, ms = 3000) => {
             stream_id INTEGER, channel_user_id INTEGER, user_id INTEGER, anon_id TEXT, username TEXT,
             message TEXT, message_type TEXT DEFAULT 'chat', is_global INTEGER DEFAULT 0,
             is_deleted INTEGER DEFAULT 0, source_platform TEXT, metadata TEXT,
-            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP, auto_delete_at DATETIME
+            timestamp DATETIME DEFAULT ov_now(), auto_delete_at DATETIME
         );
         CREATE TABLE IF NOT EXISTS stream_first_chats (
             chatter_key TEXT NOT NULL, channel_user_id INTEGER NOT NULL,
-            first_chat_at DATETIME DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (chatter_key, channel_user_id)
+            first_chat_at DATETIME DEFAULT ov_now(), PRIMARY KEY (chatter_key, channel_user_id)
         );
         CREATE TABLE IF NOT EXISTS hidden_relay_users (
             id INTEGER PRIMARY KEY AUTOINCREMENT, channel_id INTEGER, platform TEXT NOT NULL,
             external_username TEXT NOT NULL, action TEXT DEFAULT 'hide', reason TEXT, created_by INTEGER,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            created_at DATETIME DEFAULT ov_now()
         );
         CREATE TABLE IF NOT EXISTS tts_voice_overrides (
             identity_key TEXT PRIMARY KEY, voice TEXT, pitch INTEGER, speed INTEGER, gap INTEGER DEFAULT 0,
-            set_by INTEGER, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            set_by INTEGER, updated_at DATETIME DEFAULT ov_now()
         );
         CREATE TABLE IF NOT EXISTS channel_sounds (
             id INTEGER PRIMARY KEY AUTOINCREMENT, channel_owner_id INTEGER NOT NULL, command TEXT NOT NULL,
             url TEXT NOT NULL, mime TEXT DEFAULT 'audio/mpeg', duration_seconds REAL DEFAULT 0,
             created_by INTEGER, created_by_name TEXT DEFAULT '', is_approved INTEGER DEFAULT 1,
             emote_code TEXT DEFAULT '', media_url TEXT, media_asset_id INTEGER,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            created_at DATETIME DEFAULT ov_now()
         );
         CREATE TABLE IF NOT EXISTS pending_ip_messages (
             id INTEGER PRIMARY KEY AUTOINCREMENT, channel_id INTEGER NOT NULL, stream_id INTEGER,
             ip_address TEXT NOT NULL, user_id INTEGER, anon_id TEXT, username TEXT, message TEXT NOT NULL,
-            status TEXT DEFAULT 'pending', reviewed_by INTEGER, created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            status TEXT DEFAULT 'pending', reviewed_by INTEGER, created_at DATETIME DEFAULT ov_now()
         );
     `);
     const mkUser = (username, role = 'user', extra = {}) => {
@@ -446,7 +446,7 @@ const waitFor = async (pred, what, ms = 3000) => {
         // outbox and the local ChatServer are gone; chat-delivery carries the push/presence surface).
         const chatDelivery = require('../server/chat/chat-delivery');
         chatDelivery.init();
-        assert.ok(!d.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'chat_bridge_outbox'").get(), 'no outbox');
+        assert.ok(!d.prepare("SELECT 1 FROM information_schema.tables WHERE table_schema = current_schema() AND table_name = 'chat_bridge_outbox'").get(), 'no outbox');
         // Live's own writes to data Chat caches (IP approvals, bans) send Chat a cache hint.
         db.approveIp(channel.id, '203.0.113.7', streamer, 'manual');
         db.forgiveBan(viewer);

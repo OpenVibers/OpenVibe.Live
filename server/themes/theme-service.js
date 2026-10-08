@@ -128,7 +128,7 @@ function seedBuiltinThemes() {
         INSERT INTO themes (name, slug, mode, description, variables, preview_colors, is_builtin, is_public, tags)
         VALUES (?, ?, ?, ?, ?, ?, 1, 1, ?)
     `);
-    const seed = dbh.transaction(() => {
+    const seed = () => dbh.tx(async () => {
         for (const t of BUILTIN_THEMES) {
             const vars = JSON.stringify(t.variables);
             const pv = previewFromVars(t.variables);
@@ -152,7 +152,7 @@ function getAllThemes({ mode, search, sort = 'name', limit = 100, offset = 0 } =
         params.push(mode);
     }
     if (search) {
-        sql += ' AND (t.name LIKE ? OR t.description LIKE ? OR t.tags LIKE ?)';
+        sql += ' AND (t.name ILIKE ? OR t.description ILIKE ? OR t.tags ILIKE ?)';
         const s = `%${search}%`;
         params.push(s, s, s);
     }

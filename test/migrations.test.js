@@ -59,7 +59,7 @@ check('B. second boot: no new ledger rows, no migration errors', () => {
 });
 
 check('C/D. Vibes ×100 never runs twice, even with the old guard row deleted', () => {
-    raw().prepare("INSERT INTO users (id, username, display_name, email, password_hash, openvibe_bucks_balance, openvibe_bucks_cashout_balance) VALUES (7001, 'rich', 'Rich', 'r@x', 'x', 500, 250)").run();
+    raw().prepare("INSERT INTO users (id, username, display_name, email, password_hash, openvibe_bucks_balance, openvibe_bucks_cashout_balance) OVERRIDING SYSTEM VALUE VALUES (7001, 'rich', 'Rich', 'r@x', 'x', 500, 250)").run();
     raw().prepare("DELETE FROM site_settings WHERE key = 'bucks_bits_migration_done'").run();
     db.initDb();
     db.initDb();

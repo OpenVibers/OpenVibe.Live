@@ -52,7 +52,7 @@ auth.requireAuth = (req, res, next) => (signIn(req) ? next() : res.status(401).j
 auth.optionalAuth = (req, res, next) => { signIn(req); next(); };
 
 const addUser = (id, username, role) => raw.prepare(
-    `INSERT INTO users (id, username, display_name, email, password_hash, role, stream_key, created_at)
+    `INSERT INTO users (id, username, display_name, email, password_hash, role, stream_key, created_at) OVERRIDING SYSTEM VALUE
      VALUES (?, ?, ?, ?, 'x', ?, ?, '2025-01-01 00:00:00')`).run(id, username, username, `${username}@example.test`, role, `${String(id).repeat(32)}`);
 const ALICE = 3, BOB = 4;
 addUser(ALICE, 'alice', 'streamer');

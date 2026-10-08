@@ -1348,7 +1348,7 @@ router.post('/whitelist', requireAuth, (req, res) => {
         const targetUser = db.getUserByUsername(username);
         if (!targetUser) return res.status(404).json({ error: 'User not found' });
         db.run(
-            'INSERT OR IGNORE INTO control_whitelist (channel_id, user_id, added_by) VALUES (?, ?, ?)',
+            'INSERT INTO control_whitelist (channel_id, user_id, added_by) VALUES (?, ?, ?) ON CONFLICT DO NOTHING',
             [channel.id, targetUser.id, req.user.id]
         );
         res.json({ message: `${username} added to control whitelist` });

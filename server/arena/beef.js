@@ -51,7 +51,7 @@ function ensureTables() {
         opener_line TEXT,
         winner_user_id INTEGER,
         resolution TEXT,
-        opened_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        opened_at DATETIME DEFAULT ov_now(),
         ends_at DATETIME,
         resolved_at DATETIME
     )`);
@@ -59,7 +59,7 @@ function ensureTables() {
         beef_id INTEGER NOT NULL,
         side TEXT NOT NULL,
         voter_key TEXT NOT NULL,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        created_at DATETIME DEFAULT ov_now(),
         PRIMARY KEY (beef_id, voter_key)
     )`);
     for (const col of ['headline TEXT', 'result_headline TEXT', 'upset INTEGER DEFAULT 0', 'rematch INTEGER DEFAULT 0', 'bounty_topic_id INTEGER']) {
@@ -70,7 +70,7 @@ function ensureTables() {
         voter_key TEXT NOT NULL,
         side TEXT NOT NULL,
         user_id INTEGER,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        created_at DATETIME DEFAULT ov_now(),
         PRIMARY KEY (beef_id, voter_key)
     )`);
     db.run('CREATE INDEX IF NOT EXISTS idx_arena_beefs_status ON arena_beefs (status, a_user_id, b_user_id)');
@@ -148,7 +148,7 @@ function recordHit(speakerId, targetId, hit) {
     const quality = Math.max(0, Math.min(10, Number(hit.quality) || 0));
     const firstResponse = side === 'b' && !beef.responded;
     const feed = pushFeed(beef, { kind: opened ? 'open' : (firstResponse ? 'respond' : 'hit'), side, text: String(hit.best_line || '').slice(0, 220), quality, about: hit.about || null, announcer: hit.announcer || null, vod_id: hit.vod_id || null, sec: hit.sec ?? null });
-    db.run(`UPDATE arena_beefs SET score_${side} = score_${side} + ?, hits_${side} = hits_${side} + 1, last_${side}_at = CURRENT_TIMESTAMP, responded = CASE WHEN ? THEN 1 ELSE responded END,
+    db.run(`UPDATE arena_beefs SET score_${side} = score_${side} + ?, hits_${side} = hits_${side} + 1, last_${side}_at = ov_now(), responded = CASE WHEN ? THEN 1 ELSE responded END,
             on_clock = ?, clock_until = ?, feed_json = ? WHERE id = ?`,
         [quality, side === 'b' ? 1 : 0, other, clockFor(otherId), feed, beef.id]);
     mic().addXp(speakerId, quality * XP_BEEF_HIT, 'beef_hit', beef.id, { beefHit: true, line: hit.best_line, lineScore: quality, lineVodId: hit.vod_id, lineSec: hit.sec });
@@ -165,7 +165,7 @@ function hype(beefId, side, voterKey) {
     if (!['a', 'b'].includes(side)) throw new Error('side must be a or b');
     const sideUser = side === 'a' ? beef.a_user_id : beef.b_user_id;
     if (voterKey === `user:${sideUser}`) throw new Error("You can't hype yourself");
-    const ins = db.run('INSERT OR IGNORE INTO arena_beef_hype (beef_id, side, voter_key) VALUES (?, ?, ?)', [beefId, side, voterKey]);
+    const ins = db.run('INSERT INTO arena_beef_hype (beef_id, side, voter_key) VALUES (?, ?, ?) ON CONFLICT DO NOTHING', [beefId, side, voterKey]);
     const n = db.get('SELECT COUNT(*) AS n FROM arena_beef_hype WHERE beef_id = ? AND side = ?', [beefId, side])?.n || 0;
     db.run(`UPDATE arena_beefs SET crowd_${side} = ? WHERE id = ?`, [Math.min(CROWD_MAX, n), beefId]);
     if (ins.changes) mic().addXp(sideUser, mic().XP_HYPE, 'hype', beefId);
@@ -183,7 +183,7 @@ function resolve(beef, resolution, winnerId) {
     const t = totals(beef);
     const ctx = { a: nameOf(beef.a_user_id), b: nameOf(beef.b_user_id), winner: winnerId ? nameOf(winnerId) : null, loser: loserId ? nameOf(loserId) : null, score_a: t.a, score_b: t.b, upset: !!upset, streak: winnerId ? streakFor(winnerId) + 1 : 0 };
     const feed = pushFeed(beef, { kind: resolution === 'forfeit' ? 'forfeit' : 'end', side: winnerId == null ? null : (winnerId === beef.a_user_id ? 'a' : 'b'), text: null, upset: !!upset });
-    db.run(`UPDATE arena_beefs SET status = 'resolved', resolution = ?, winner_user_id = ?, resolved_at = CURRENT_TIMESTAMP, on_clock = NULL, clock_until = NULL, feed_json = ?, upset = ?, result_headline = ? WHERE id = ? AND status = 'open'`, [resolution, winnerId, feed, upset, templateHeadline(resolution === 'forfeit' ? 'forfeit' : 'score', ctx), beef.id]);
+    db.run(`UPDATE arena_beefs SET status = 'resolved', resolution = ?, winner_user_id = ?, resolved_at = ov_now(), on_clock = NULL, clock_until = NULL, feed_json = ?, upset = ?, result_headline = ? WHERE id = ? AND status = 'open'`, [resolution, winnerId, feed, upset, templateHeadline(resolution === 'forfeit' ? 'forfeit' : 'score', ctx), beef.id]);
     if (winnerId) mic().addXp(winnerId, XP_BEEF_WIN + (upset ? 20 : 0), upset ? 'beef_upset_win' : 'beef_win', beef.id);
     console.log(`[Arena] beef #${beef.id} resolved: ${resolution}${winnerId ? ` winner user ${winnerId}` : ' draw'}${upset ? ' UPSET' : ''}`);
     try { const n = require('./notify'); for (const uid of [beef.a_user_id, beef.b_user_id]) { const won = winnerId === uid, draw = winnerId == null; n.arenaNotify(uid, { type: 'beef_over', title: draw ? `Draw with ${nameOf(uid === beef.a_user_id ? beef.b_user_id : beef.a_user_id)}` : won ? `You won the beef with ${nameOf(loserId)}${upset ? ' — UPSET' : ''}` : `${nameOf(winnerId)} won the beef${resolution === 'forfeit' ? ' — you ran out the clock' : ' on points'}`, message: won ? `+${XP_BEEF_WIN + (upset ? 20 : 0)} XP. ${t.a}–${t.b}.` : `${t.a}–${t.b}. Say their name on mic for a rematch.`, icon: won ? '🏆' : draw ? '🤝' : '💀', url: `/arena/beef/${beef.id}`, key: `over:${beef.id}` }); } } catch { /* */ }

@@ -39,10 +39,10 @@ function rowsNow() {
 /** Write the revision's values to the rows: set what differs, delete what the revision no longer has. */
 function writeRows(target) {
     const now = rowsNow();
-    db.getDb().transaction(() => {
+    db.getDb().tx(() => {
         for (const [k, v] of Object.entries(target)) if (isConfigKey(k) && now[k] !== String(v)) db.setSetting(k, String(v));
         for (const k of Object.keys(now)) if (!(k in target)) db.deleteSetting(k);
-    })();
+    });
 }
 
 let store = null;

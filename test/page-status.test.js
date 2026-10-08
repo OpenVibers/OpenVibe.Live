@@ -41,7 +41,7 @@ auth.optionalAuth = (req, res, next) => {
 };
 
 const addUser = (id, username, role) => raw.prepare(
-    `INSERT INTO users (id, username, display_name, email, password_hash, role, created_at)
+    `INSERT INTO users (id, username, display_name, email, password_hash, role, created_at) OVERRIDING SYSTEM VALUE
      VALUES (?, ?, ?, ?, 'x', ?, '2025-01-01 00:00:00')`).run(id, username, username, `${username}@x`, role);
 addUser(1, 'admin', 'admin');
 addUser(3, 'alice', 'streamer');       // owns the private VOD

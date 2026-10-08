@@ -37,8 +37,8 @@ const signIn = (req) => {
 auth.requireAuth = (req, res, next) => (signIn(req) ? next() : res.status(401).json({ error: 'Authentication required' }));
 auth.optionalAuth = (req, res, next) => { signIn(req); next(); };
 
-raw.prepare(`INSERT INTO users (id, username, display_name, email, password_hash, role) VALUES (1, 'alex', 'alex', 'a@x', 'x', 'streamer')`).run();
-raw.prepare(`INSERT INTO users (id, username, display_name, email, password_hash, role) VALUES (2, 'other', 'other', 'o@x', 'x', 'streamer')`).run();
+raw.prepare(`INSERT INTO users (id, username, display_name, email, password_hash, role) OVERRIDING SYSTEM VALUE VALUES (1, 'alex', 'alex', 'a@x', 'x', 'streamer')`).run();
+raw.prepare(`INSERT INTO users (id, username, display_name, email, password_hash, role) OVERRIDING SYSTEM VALUE VALUES (2, 'other', 'other', 'o@x', 'x', 'streamer')`).run();
 db.ensureChannel(1);
 db.ensureChannel(2);
 const chan = db.getChannelByUserId(1);

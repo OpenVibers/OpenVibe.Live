@@ -57,7 +57,7 @@ function record(input, result, caller, { now = Date.now() } = {}) {
         ensureTable();
         const at = new Date(now).toISOString();
         db.run(`INSERT INTO lineage_unresolved (ref, reason, detail, last_caller, count, first_at, last_at) VALUES (?, ?, ?, ?, 1, ?, ?)
-                ON CONFLICT (ref, reason) DO UPDATE SET detail = excluded.detail, last_caller = excluded.last_caller, count = count + 1, last_at = excluded.last_at`,
+                ON CONFLICT (ref, reason) DO UPDATE SET detail = excluded.detail, last_caller = excluded.last_caller, count = lineage_unresolved.count + 1, last_at = excluded.last_at`,
         [ref, String(result.reason).slice(0, 60), result.detail ? String(result.detail).slice(0, 500) : null, caller ? String(caller).slice(0, 60) : null, at, at]);
         if (now - lastPrune > PRUNE_EVERY_MS) {
             lastPrune = now;
