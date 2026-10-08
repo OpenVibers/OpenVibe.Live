@@ -16,7 +16,7 @@ Live is where people go live and watch. It takes a streamer's video in, plays it
 - `server/streaming/recorder.js` — Media-backed recorder (RTMP pull + RTP ingest wiring).
 - `server/monetization/wallet-client.js` — OpenCoins wallet client (Network internal API).
 - `public/` — static browser UI assets (no build step).
-- `data/` — Live-local runtime storage (SQLite, live thumbnails, emotes, song-request cache, analytics).
+- `data/` — Live-local runtime files (live thumbnails, emotes, avatars, song-request cache). The database is PostgreSQL (`DATABASE_URL`, schema in `migrations/`).
 - `node_modules/openvibe-shared/` — pinned OpenVibe.Shared release (`"openvibe-shared": "https://codeload.github.com/OpenVibers/OpenVibe.Shared/tar.gz/refs/tags/vX.Y.Z"`), served at `/shared/*`. Change it in OpenVibe.Shared and bump the tag; never edit `node_modules`.
 - `deploy/` — nginx / systemd / fail2ban reference configs.
 - `.env.example` — runtime configuration template.
@@ -44,7 +44,7 @@ The media subsystem lives in **OpenVibe.Media**:
 - On stream start, Live creates a VOD in Media and starts ingest — RTMP streams are pulled by Media from `rtmp://127.0.0.1:1935/live/<key>`; WebRTC/WHIP streams are forwarded over RTP to ports Media allocates (UDP 12000-12199); browser MediaRecorder chunks are proxied to Media's chunks endpoints.
 - The SPA's existing `/api/vods…`, `/api/clips…`, `/api/pastes…`, `/api/thumbnails/:filename` calls are preserved by thin proxies; big media files 302-redirect to `https://openvibe.media`.
 - Media reports `vod.ready` / `clip.ready` (and failures, storage alerts) as `media.*` OpenVibe.Events events (`POST /internal/media-events`) and, during the transition, the direct webhook `POST /internal/media-webhook` (`X-OVMedia-Signature` HMAC) — driving recording state, AI jobs, and clip chat announcements. Each outcome is applied once; `MEDIA_EVENTS_AUTHORITY` picks the path (see [docs/architecture.md](docs/architecture.md#media-outcomes-over-events)).
-- Live-owned AI/transcript state for Media-hosted content lives in `vod_ai_state` / `clip_ai_state` in live.db.
+- Live-owned AI/transcript state for Media-hosted content lives in `vod_ai_state` / `clip_ai_state` in Live's PostgreSQL database.
 
 ### Authentication & currencies
 
@@ -54,11 +54,11 @@ The media subsystem lives in **OpenVibe.Media**:
 
 ### Data storage
 
-- `data/live.db` — primary SQLite database (users, streams, channel state, AI state). Chat storage is OpenVibe.Chat's.
+- PostgreSQL `ov_live` (since 2026-10-08; `migrations/0001_analytics.sql`, `0002_live.sql`) — users, streams, channel state, AI state, request analytics. Chat storage is OpenVibe.Chat's. The SQLite files it replaced stay read-only next to the release for the rollback window.
 - `data/live-thumbs` — ephemeral live-stream thumbnails.
 - `data/emotes`, `data/avatars`, `data/offline` — Live-local assets.
 - `data/media/cache` — song-request (watch-party) downloads.
-- `data/analytics.db` — request analytics (ADR-021, `openvibe-shared/analytics` since v1.4.0: no IPs or user ids, route templates, raw rows ≤ 30 days; a request with `Sec-GPC: 1` or `DNT: 1` is not recorded at all; `scripts/analytics-prune.js`; see [docs/architecture.md](docs/architecture.md#analytics-adr-021)).
+- request analytics (the `analytics_*` tables; ADR-021, `openvibe-shared/analytics` since v1.4.0: no IPs or user ids, route templates, raw rows ≤ 30 days; a request with `Sec-GPC: 1` or `DNT: 1` is not recorded at all; `scripts/analytics-prune.js`; see [docs/architecture.md](docs/architecture.md#analytics-adr-021)).
 - VOD/clip/paste **files** live in OpenVibe.Media's storage.
 
 ---
@@ -70,7 +70,7 @@ The media subsystem lives in **OpenVibe.Media**:
 - The watch experience: the SPA in `public/`, the chat surface and its effects (TTS, sounds, emotes, overlays), anonymous chat identities.
 - Streamer tools: the dashboard, restreaming (via OpenRe for managed ingest), song requests (watch party), AI viewers (the context Live builds; the runs are OpenVibe.AI's).
 - Channel points, Vibes tipping flows (the ledger moves to OpenVibe.Billing when `BILLING_AUTHORITY=billing`), moderation of Live's own surfaces, the Arena (Battle Cam) and after-show recaps.
-- Live-local state: `data/live.db` (users' Live profiles, streams, channel state, AI state for Media-hosted recordings in `vod_ai_state` / `clip_ai_state`) and `data/analytics.db`.
+- Live-local state: PostgreSQL `ov_live` (users' Live profiles, streams, channel state, AI state for Media-hosted recordings in `vod_ai_state` / `clip_ai_state`, request analytics).
 
 ## Does not own
 
@@ -135,7 +135,7 @@ See [SECURITY.md](SECURITY.md) and [SECURITY_AUDIT.md](SECURITY_AUDIT.md). The m
 - `npm install` — install dependencies.
 - `npm start` — start the server.
 - `npm run dev` — start in development mode (`NODE_ENV=development`).
-- `npm run init-db` — initialize the SQLite database schema.
+- `npm run test:pg` — the tests on the PostgreSQL + PgBouncer containers.
 - `npm test` — every test in `test/` (see Acceptance).
 
 ---
@@ -146,8 +146,7 @@ Requirements: Node.js 22, npm, FFmpeg, a running OpenVibe.Network, and (for medi
 
 ```bash
 npm install
-cp .env.example .env   # then edit — see SETUP.md
-npm run init-db
+cp .env.example .env   # then edit — see SETUP.md (no DATABASE_URL: an embedded PGlite database under DATA_DIR)
 npm run dev
 ```
 

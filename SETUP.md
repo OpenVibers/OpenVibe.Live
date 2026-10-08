@@ -9,7 +9,7 @@ OpenVibe.Live (port **3000**) is the streaming front — ingest (RTMP / WHIP / W
 - **OpenVibe.Network** (`openvibe.network`, port **4000**) — SSO/OAuth2 identity provider (client id `live`), RS256 JWTs, URL registry, notifications, and the network-wide **OpenCoins wallet**. Live calls the wallet server-to-server via `OV_NETWORK_INTERNAL_URL` with its service token (client credentials).
 - **OpenVibe.Media** (`openvibe.media`, port **4100**) — owns **VODs, clips, pastes, thumbnails, and file storage** (Media API v1). Live records streams by pointing Media at its ingest (RTMP pull / RTP ports 12000-12199), proxies the SPA's `/api/vods`, `/api/clips`, `/api/pastes`, `/api/thumbnails` calls to it (`server/media-client.js`), 302-redirects file payloads to `MEDIA_PUBLIC_URL`, and receives `vod.ready` / `clip.ready` webhooks at `POST /internal/media-webhook`.
 
-Live keeps locally: live.db (users/streams/chat/channel state), Vibes (PayPal tipping/cashout), channel points, comments, stream memories + AI state for Media-hosted vods/clips (`vod_ai_state` / `clip_ai_state`), ephemeral live thumbnails, and the song-request queue.
+Live keeps locally, in its PostgreSQL database: users/streams/channel state, Vibes (PayPal tipping/cashout), channel points, comments, stream memories + AI state for Media-hosted vods/clips (`vod_ai_state` / `clip_ai_state`), ephemeral live thumbnails, and the song-request queue.
 
 The shared package is a pinned OpenVibe.Shared release (`"openvibe-shared": "https://codeload.github.com/OpenVibers/OpenVibe.Shared/tar.gz/refs/tags/vX.Y.Z"` in package.json), installed into `node_modules` by `npm ci` (the host needs outbound HTTPS to codeload.github.com) and served at `/shared/*`. Change it in OpenVibe.Shared and bump the tag; never edit `node_modules`.
 
@@ -60,15 +60,14 @@ OpenVibe.Live verifies RS256 tokens from OpenVibe.Network using one of these pat
 
 If the public key cannot be loaded, authentication will fail.
 
-## Database initialization
+## Database
 
-```bash
-npm run init-db
-```
+Live runs on PostgreSQL (since 2026-10-08). In production, OpenVibe.Host's data role creates the database and roles
+(`sudo ovhost data provision live`) and writes `DATABASE_URL` (the pooled runtime role, through PgBouncer) and
+`DATABASE_DIRECT_URL` (the owner, for migrations) into the env file; the release applies `migrations/` at boot.
 
-This creates the SQLite database at `data/live.db` from `server/db/schema.sql`. On normal startup, `server/index.js` also runs lightweight migrations (including the `vod_ai_state` / `clip_ai_state` tables), so existing databases recover automatically.
-
-Note: the legacy `vods` / `clips` / `pastes` tables may still exist for the Media data migration to read — Live never writes them anymore.
+In development, leave `DATABASE_URL` unset: Live opens an embedded PGlite database under `DATA_DIR` and migrates it.
+Nothing to initialize by hand.
 
 ## Storage directories
 
@@ -77,7 +76,7 @@ The server writes Live-local state under `data/`:
 - `data/live-thumbs` — ephemeral live-stream thumbnails
 - `data/emotes`, `data/avatars`, `data/offline`
 - `data/media/cache` — song-request (watch-party) downloads
-- `data/analytics.db`, `data/keys`
+- `data/keys`
 
 VOD/clip/paste **files** live in OpenVibe.Media's storage, not here.
 
@@ -100,7 +99,7 @@ MEDIA_APP_ID=live
 MEDIA_WEBHOOK_SECRET=dev-webhook-secret
 ```
 
-3. Run `npm run init-db`, then `npm run dev`.
+3. Run `npm run dev` (without `DATABASE_URL`, Live migrates an embedded PGlite database under `DATA_DIR`).
 
 Network's `local-dev` bootstrap seeds the `live` OAuth client with `http://localhost:3000/api/auth/callback`.
 
@@ -167,7 +166,7 @@ Completion arrives via the `vod.ready` / `clip.ready` webhooks.
 1. Run `npm run dev`.
 2. Confirm the server logs show `HTTP server` and WebSocket endpoints.
 3. Confirm `Effective BASE_URL` and `Effective OV_NETWORK_URL` are correct.
-4. Confirm the server created or migrated `data/live.db`.
+4. Confirm `/api/ready` reports the database check `ok` (the release migrated it at boot).
 5. `curl http://localhost:3000/api/health` returns `{"status":"ok", ...}`.
 
 ## What this setup does not cover

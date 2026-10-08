@@ -5,7 +5,7 @@
 OpenVibe.Live is a self-hosted live streaming platform, one of the OpenVibe services:
 
 - **Express.js** (CommonJS) — HTTP API, HTML documents, static assets
-- **SQLite** (better-sqlite3) — users, channels, streams, chat, tokens, AI state (`data/live.db`)
+- **PostgreSQL** (`openvibe-sdk/db`, through PgBouncer; PGlite in development and tests) — users, channels, streams, tokens, AI state, request analytics (`ov_live`, since 2026-10-08)
 - **WebSocket** (`ws`) — chat, broadcast signaling, calls, hardware controls
 - **mediasoup** — WebRTC SFU; **werift** — WHIP ingest; **Node-Media-Server** — RTMP ingest
 - **FFmpeg** — recording hand-off, restreams, thumbnails, audio capture for transcription
@@ -30,10 +30,9 @@ OpenVibe.Live is a self-hosted live streaming platform, one of the OpenVibe serv
   `users.role` is that projection's output (Network's staff roles, plus Live's own `streamer`) and is
   read locally. The key-only `POST /internal/user-role` push is gone.
 - Live keeps no emails or passwords: nothing writes or reads `users.email` or `users.password_hash`
-  (`test/identity-columns.test.js`). The contract step `scripts/identity-columns-contract.js`
-  (a dry run by default; `--apply` backs up `live.db` first, never runs on deploy) clears the legacy
-  values: every email, and the old hash of every account linked to a Network subject. Accounts with
-  no Network identity keep theirs for a future claim flow. The columns themselves stay.
+  (`test/identity-columns.test.js`). The contract step cleared the legacy values before the switch to
+  PostgreSQL: no row holds an email, and `password_hash` holds only the SSO and anonymous markers (checked
+  on `ov_live` on 2026-10-08); its SQLite script went with the SQLite code. The columns themselves stay.
 
 ## Frontend loading
 
@@ -154,26 +153,27 @@ updating" and refills history on reconnect. See [chat-system.md](chat-system.md)
 | Limits | `server/utils/limit.js` | semaphores for CPU-heavy work (offline encodes, stream-memory captures) |
 | Diagnostics | `server/diagnostics.js` | event-loop delay, memory, sockets, jobs, queues, migrations → `GET /api/admin/diagnostics` |
 | Log redaction | `server/utils/redact.js` | stream keys and credentials in log lines |
-| Database | `server/db/database.js` | queries and inline table setup |
-| Migrations | `server/db/migrations.js` | versioned, transactional migrations with a ledger (`schema_migrations`) |
+| Database | `server/db/database.js` | every query, async (`openvibe-sdk/db`) |
+| Migrations | `migrations/NNNN_*.sql` | the schema, applied at boot by the owner role (`openvibe-sdk/db` migrate: ledger, advisory lock, expand/migrate/contract phases) |
 | Chat delivery | `server/chat/chat-delivery.js` | Live's one seam to OpenVibe.Chat (pushes, moderation, cache hints, presence) |
 | Streams | `server/streaming/routes.js` | stream and slot CRUD, channel pages |
 | Media proxy | `server/media-proxy/*.js` | VODs, clips, pastes, thumbnails via OpenVibe.Media |
 | Auth | `server/auth/auth.js`, `server/auth/permissions.js` | JWT/API tokens, scopes, role ranks |
-| Analytics | `openvibe-shared/analytics` | request analytics in `data/analytics.db` within ADR-021 (see [Analytics](#analytics-adr-021)) |
+| Analytics | `server/analytics/store.js` | request analytics in the `analytics_*` tables within ADR-021 (see [Analytics](#analytics-adr-021)) |
 
 ### Migrations
 
-Schema changes that are not idempotent `CREATE … IF NOT EXISTS` go into `server/db/migrations.js`.
-Each migration runs once, inside a transaction that records it; `adopt()` marks databases that already
-have the change; a migration waiting for a table another module creates returns `DEFER` and is retried.
-A failing `critical` migration stops the boot. `test/migrations.test.js` covers fresh, repeated,
-adopted, failing and deferred cases.
+The schema is `migrations/NNNN_*.sql`, applied at boot on the owner's direct connection (`DATABASE_DIRECT_URL`) before
+the service serves on the pooled runtime role (`DATABASE_URL`, PgBouncer in transaction mode). Each file names its
+phase (`expand`, `migrate`, `contract`); a contract migration names the expand it completes and waits out the N-1
+window. A file that has run is never edited: the next change is a new file. `0002_live.sql` was generated from
+production's SQLite schema at the switch to PostgreSQL (2026-10-08) and carries the compatibility functions the queries
+use (`datetime()`, `julianday()`, `ov_now()`).
 
 ### Analytics (ADR-021)
 
 `openvibe-shared/analytics` (the one ADR-021 module for Live, Tools and Network, wired in `server/index.js`)
-records one row per finished request in `data/analytics.db` (separate from `live.db`)
+records one row per finished request in the `analytics_*` tables of Live's PostgreSQL database
 and rolls rows up hourly and daily for the Network admin dashboards. What a raw row may carry is bound by
 ADR-021 (OpenVibe.Contracts `docs/adr/ADR-021-analytics.md`):
 
@@ -195,17 +195,10 @@ ADR-021 (OpenVibe.Contracts `docs/adr/ADR-021-analytics.md`):
   hour. Rollups keep counts only, and a recompute never lowers a stored unique count. Raw-event
   dashboards (sub-48 h summaries, realtime, top pages) count distinct sessions instead of IPs; "new vs
   returning visitors" and daily `new_users` are no longer measured (NULL).
-- **Retention:** raw events older than 30 days are deleted nightly in batches of 5000 (job
-  `analytics-prune`, `retention.pruneRawEvents` from `openvibe-shared/analytics`); rollups are kept.
+- **Retention:** raw events older than 30 days are deleted nightly in batches (job `analytics-prune`,
+  `pruneRawEventsPg` in `server/analytics/store.js`); rollups are kept.
 - **Opt-out:** a request with `Sec-GPC: 1` or `DNT: 1` is not recorded at all: no raw row, visitor hash,
   session id or rate counter, so it is also missing from the rollups.
-- **Operator CLI:** `scripts/analytics-prune.js`, a wrapper over `openvibe-shared/analytics/prune-cli` — dry
-  run by default (counts only). `--apply` needs `--backup <new file>` (verified sqlite online backup,
-  owner-only) or an explicit `--no-backup`; `--scrub` also
-  rewrites rows written before ADR-021 (personal columns → NULL, path → template, referer → origin, user
-  agent → class, legacy session ids → NULL) and the rollups' top-path/referer lists (counts unchanged).
-  Rollup totals are compared before and after; the run ends with a VACUUM unless `--no-vacuum`.
-  Space: the backup needs about the size of `analytics.db` + its WAL; VACUUM about twice the size.
 
 ## OpenVibe Integration
 
@@ -217,7 +210,7 @@ inter-service contracts are in `../CONTRACTS.md` (OpenVibers workspace). Deploym
 ### Durable events (OpenVibe.Events)
 
 Live publishes through one transactional outbox (`event_outbox`, [server/events/stream-events.js](../server/events/stream-events.js);
-off unless `EVENTS_URL` and `OV_OAUTH_CLIENT_SECRET` are set). Every event is queued in the same SQLite
+off unless `EVENTS_URL` and `OV_OAUTH_CLIENT_SECRET` are set). Every event is queued in the same PostgreSQL
 transaction as the change it describes.
 
 | event | when | subject |

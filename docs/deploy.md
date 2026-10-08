@@ -31,7 +31,7 @@ refuses a frozen service (`ovhost freeze`, exit 6). What ovhost checks is in Ope
 | README, tests, scripts | files switched | none |
 | `server/`, `vendor/`, `package.json` dependencies | restart, gated on `GET /api/ready` | new HTTP connections queue on the systemd socket; **established WebSocket, WHIP, WebRTC and RTMP sessions drop and reconnect** |
 | `package-lock.json` | `npm ci` **before** anything is interrupted (release layout: into the new release) | as server |
-| `server/db/migrations.js`, `schema.sql` | online SQLite backup to `data/backups/`, then restart | as server |
+| `migrations/` | a database backup (`ovhost backup live`), then restart; the release applies them at boot | as server |
 | `deploy/systemd/` | units installed, `daemon-reload`, restart | as server |
 | `deploy/nginx/` | **not installed** — the live nginx config is managed separately (see below); the script prints a notice | none |
 
@@ -56,8 +56,9 @@ but could not restore previous `node_modules`.
 /opt/openvibe.live/repo                 git clone used to create releases
 /opt/openvibe.live/releases/<time>-<sha> worktree + its own node_modules + data -> ../../shared/data
 /opt/openvibe.live/current              -> releases/<id>   (atomic rename)
-/opt/openvibe.live/shared/data          live.db, analytics.db, uploads (never copied or reset)
-/opt/openvibe.live/data                 -> shared/data     (old absolute DB_PATH values keep working)
+/opt/openvibe.live/shared/data          uploads and runtime files (never copied or reset); live.db and analytics.db stay
+                                        read-only there since the switch to PostgreSQL (2026-10-08), the rollback copy
+/opt/openvibe.live/data                 -> shared/data     (old absolute data paths keep working)
 ```
 
 - A deploy builds the new release while the old one serves; unchanged lockfiles hard-link
@@ -114,12 +115,14 @@ Apply nginx changes by hand: copy the file, `nginx -t`, `systemctl reload nginx`
 
 ## Restore drills
 
-`ovhost drill live` (OpenVibe.Host, `docs/restore-drills.md`) restores `live.db` from the latest
-backup into a directory of its own and starts a second Live from this checkout on 127.0.0.1:13000
-with `LIVE_DRILL=1`, `DB_PATH` on the copy and `DATA_DIR` in that directory. In that mode
+`ovhost drill live` (OpenVibe.Host, `docs/restore-drills.md`) restores the latest backup of `ov_live` into a database of
+its own and starts a second Live from this checkout on 127.0.0.1:13000 with `LIVE_DRILL=1`, `DATABASE_URL` and
+`DATABASE_DIRECT_URL` on the copy and `DATA_DIR` in a directory of its own (without a database URL it uses an embedded
+PGlite database under `DATA_DIR`). In that mode
 (`server/drill.js`) Live:
 
-- refuses to start unless `DB_PATH` and `DATA_DIR` are set and outside the checkout and
+- refuses to start when a database URL names production's `ov_live` (or names no database, or only one of the two
+  URLs is set), and unless `DATA_DIR` is set and outside the checkout and
   `/opt/openvibe.live`, `HOST` is loopback, `PORT` is not 3000 and no socket was handed over by systemd;
 - writes nothing outside `DATA_DIR` and the copy's directory (`server/paths.js`: the per-location
   `*_PATH` variables from the env file are ignored);
