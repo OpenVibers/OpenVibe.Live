@@ -1,8 +1,8 @@
 /**
  * OpenVibe.Live — Cosmetics Inventory UI
  * Opens from the OpenCoins badge in the navbar.
- * Allows equipping/unequipping name effects, particles, hats, and voices.
- * Supports activate (game item → global cosmetic) and deactivate (back to game item).
+ * Allows equipping/unequipping name effects, particles, hats, and voices. Items live in OpenVibe.Inventory; a locked
+ * item says where it is earned (a quest on OpenVibe.Quest) or that it cannot be earned yet.
  */
 
 /* ── State ────────────────────────────────────────────────────── */
@@ -128,7 +128,9 @@ function renderCosmeticsUI() {
                     `;
                 }
             } else {
-                actionsHtml = `<span class="cosmetic-desc" style="font-style:italic;opacity:0.7">🎮 Unlock in OpenVibeGame, then activate from your game inventory</span>`;
+                actionsHtml = item.earn === 'quest'
+                    ? `<span class="cosmetic-desc" style="opacity:0.85">🏅 Earn it with a quest on <a href="https://openvibe.quest/" target="_blank" rel="noopener">OpenVibe.Quest</a></span>`
+                    : `<span class="cosmetic-desc" style="font-style:italic;opacity:0.7">Not available to earn yet</span>`;
             }
 
             const badgeHtml = isEquipped
@@ -151,6 +153,17 @@ function renderCosmeticsUI() {
 
         container.innerHTML = '';
         container.appendChild(grid);
+    }
+
+    // Where the rest lives: the whole inventory on OpenVibe.Inventory, and the quests that give items.
+    const body = document.getElementById('cosmetics-body');
+    if (body && !document.getElementById('cosmetics-more')) {
+        const more = document.createElement('p');
+        more.id = 'cosmetics-more';
+        more.className = 'cosmetic-desc';
+        more.style.cssText = 'text-align:center;margin:12px 0 4px';
+        more.innerHTML = '<a href="https://inventory.openvibe.network/me" target="_blank" rel="noopener">Your whole inventory on OpenVibe.Inventory</a> · <a href="https://openvibe.quest/" target="_blank" rel="noopener">Earn items on OpenVibe.Quest</a>';
+        body.after(more);
     }
 }
 

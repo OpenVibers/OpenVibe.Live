@@ -15,11 +15,13 @@ const cosmetics = require('./cosmetics');
 const router = express.Router();
 
 // ── Get Full Catalog ─────────────────────────────────────────
-router.get('/catalog', (req, res) => {
+router.get('/catalog', async (req, res) => {
+    // `earn: 'quest'` marks the items a quest on OpenVibe.Quest gives (Inventory's grantors for them).
+    const earn = await cosmetics.earnable();
     const catalog = {};
     for (const [id, c] of Object.entries(cosmetics.COSMETICS)) {
         if (!catalog[c.category]) catalog[c.category] = [];
-        catalog[c.category].push({ itemId: id, ...c });
+        catalog[c.category].push({ itemId: id, ...c, ...(earn[id] ? { earn: earn[id] } : {}) });
     }
     // Sort each category by tier
     for (const arr of Object.values(catalog)) arr.sort((a, b) => a.tier - b.tier);
