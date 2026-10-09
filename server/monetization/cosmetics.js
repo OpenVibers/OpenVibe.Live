@@ -1,10 +1,31 @@
 /**
  * OpenVibe.Live — Cosmetics System
  * Global cosmetic items (name effects, particles, hats, voices), equipped globally for chat/overlay.
+ *
+ * Who owns them (ADR-054 §8): INVENTORY_AUTHORITY, read only here. `live` (the default until the switch) keeps them in
+ * Live's user_cosmetics / user_equipped; `inventory` reads and writes them through OpenVibe.Inventory
+ * (./inventory-client.js), where they are live.* items issued by service:live with Live's item ids as aliases. Live
+ * keeps the catalog below (its renderers: CSS classes, particle glyphs, hats, speech presets) either way.
  * (The openvibe-quest game-item bridge, activate/return-to-game and its internal unlock route, was deleted with
  * X-Internal-Key in plan T2: the quest game no longer runs anywhere.)
  */
 const db = require('../db/database');
+const inventory = require('./inventory-client');
+
+/** 'live' or 'inventory' (ADR-054 §8). Anything else is 'live', with one warning. */
+let warned = false;
+function authority() {
+    const v = String(process.env.INVENTORY_AUTHORITY || 'live').trim();
+    if (v === 'live' || v === 'inventory') return v;
+    if (!warned) { warned = true; console.warn(`[Cosmetics] INVENTORY_AUTHORITY=${JSON.stringify(v)} is not live or inventory; using live`); }
+    return 'live';
+}
+const fromInventory = () => authority() === 'inventory';
+const KIND = { name_effect: 'live.name_effect', particle: 'live.particle', hat: 'live.hat', voice: 'live.voice' };
+/** An Inventory outage in a read: nothing, never an error in chat. */
+const quietly = async (fn, fallback) => { try { return await fn(); } catch (err) { if (!(err instanceof inventory.InventoryUnavailable)) console.warn(`[Cosmetics] ${err.message}`); return fallback; } };
+/** An Inventory refusal or outage in a write: the error the routes already show. */
+const writeError = (err) => ({ error: err instanceof inventory.InventoryUnavailable ? 'Cosmetics are briefly unavailable; try again in a moment' : (err.message || 'Refused') });
 
 // ── Cosmetic Catalog (defines all cosmetics and their CSS/rendering data) ───
 const COSMETICS = {
@@ -100,12 +121,26 @@ const CATEGORY_SLOT = {
 
 // ── Get all unlocked cosmetics for a user ────────────────────
 async function getUnlocked(userId) {
+    if (fromInventory()) {
+        return await quietly(async () => {
+            const subject = await inventory.subjectOf(userId);
+            if (!subject) return [];
+            const owned = await inventory.owned(subject);
+            return [...owned].filter(([alias]) => COSMETICS[alias]).map(([alias, i]) => ({ item_id: alias, category: COSMETICS[alias].category, unlocked_at: i.acquired_at }));
+        }, []);
+    }
     const d = db.getDb();
     return await d.prepare('SELECT item_id, category, unlocked_at FROM user_cosmetics WHERE user_id = ?').all(userId);
 }
 
 // ── Get equipped cosmetics for a user ────────────────────────
 async function getEquipped(userId) {
+    if (fromInventory()) {
+        return await quietly(async () => {
+            const subject = await inventory.subjectOf(userId);
+            return subject ? await inventory.equipped(subject) : {};
+        }, {});
+    }
     const d = db.getDb();
     const rows = await d.prepare('SELECT slot, item_id FROM user_equipped WHERE user_id = ?').all(userId);
     const equipped = {};
@@ -138,6 +173,7 @@ async function getCosmeticProfile(userId) {
 
 // ── Check if user owns a cosmetic ────────────────────────────
 async function ownsCosmetic(userId, itemId) {
+    if (fromInventory()) return (await getUnlocked(userId)).some((u) => u.item_id === itemId);
     const d = db.getDb();
     return !!await d.prepare('SELECT 1 FROM user_cosmetics WHERE user_id = ? AND item_id = ?').get(userId, itemId);
 }
@@ -147,6 +183,14 @@ async function unlockCosmetic(userId, itemId) {
     const cosmetic = COSMETICS[itemId];
     if (!cosmetic) return { error: 'Unknown cosmetic' };
     if (await ownsCosmetic(userId, itemId)) return { error: 'Already unlocked' };
+    if (fromInventory()) {
+        try {
+            const subject = await inventory.subjectOf(userId);
+            if (!subject) return { error: 'This account has no OpenVibe subject yet; sign in again' };
+            await inventory.grant(subject, itemId, `live:${userId}:${itemId}`);
+            return { success: true, item: cosmetic };
+        } catch (err) { return writeError(err); }
+    }
     const d = db.getDb();
     await d.prepare('INSERT INTO user_cosmetics (user_id, item_id, category) VALUES (?, ?, ?) ON CONFLICT DO NOTHING').run(userId, itemId, cosmetic.category);
     return { success: true, item: cosmetic };
@@ -154,6 +198,15 @@ async function unlockCosmetic(userId, itemId) {
 
 // ── Remove a cosmetic from collection ────────────────────────
 async function revokeCosmetic(userId, itemId) {
+    if (fromInventory()) {
+        try {
+            const subject = await inventory.subjectOf(userId);
+            const held = subject ? (await inventory.owned(subject)).get(itemId) : null;
+            if (held) await inventory.revoke(held.instance_id, 'revoked on OpenVibe.Live');
+            if (subject) inventory.forget(subject);
+            return { success: true };
+        } catch (err) { return writeError(err); }
+    }
     const d = db.getDb();
     // Unequip first if equipped
     const cosmetic = COSMETICS[itemId];
@@ -178,6 +231,15 @@ async function equipCosmetic(userId, itemId, { isAdmin = false } = {}) {
         }
     }
     const slot = CATEGORY_SLOT[cosmetic.category];
+    if (fromInventory()) {
+        try {
+            const subject = await inventory.subjectOf(userId);
+            const held = subject ? (await inventory.owned(subject)).get(itemId) : null;
+            if (!held) return { error: 'You don\'t own this cosmetic' };
+            await inventory.equip(subject, KIND[cosmetic.category], slot, held.instance_id);
+            return { success: true, slot, item: cosmetic };
+        } catch (err) { return writeError(err); }
+    }
     const d = db.getDb();
     await d.prepare('INSERT INTO user_equipped (user_id, slot, item_id) VALUES (?, ?, ?) ON CONFLICT (user_id, slot) DO UPDATE SET item_id = excluded.item_id').run(userId, slot, itemId);
     return { success: true, slot, item: cosmetic };
@@ -186,6 +248,13 @@ async function equipCosmetic(userId, itemId, { isAdmin = false } = {}) {
 // ── Unequip a slot ───────────────────────────────────────────
 async function unequipSlot(userId, slot) {
     if (!['name_effect', 'particle', 'hat', 'voice'].includes(slot)) return { error: 'Invalid slot' };
+    if (fromInventory()) {
+        try {
+            const subject = await inventory.subjectOf(userId);
+            if (subject) await inventory.equip(subject, KIND[slot], slot, null);
+            return { success: true, slot };
+        } catch (err) { return writeError(err); }
+    }
     const d = db.getDb();
     await d.prepare('DELETE FROM user_equipped WHERE user_id = ? AND slot = ?').run(userId, slot);
     return { success: true, slot };
@@ -214,6 +283,7 @@ async function getFullInventory(userId) {
 
 module.exports = {
     COSMETICS,
+    authority,
     getUnlocked,
     getEquipped,
     getCosmeticProfile,
