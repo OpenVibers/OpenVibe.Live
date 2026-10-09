@@ -23,7 +23,7 @@ const BUDGETS = {
     htmlBrotliKB: 30,
     jsFiles: 26,             // measured 23 (incl. route scripts for "/")
     jsRawKB: 1150,           // measured ~1000
-    jsBrotliKB: 260,
+    jsBrotliKB: 262,         // measured 260.1 (2026-10-09: the shared navbar grew with My Profile and the OpenRestream brand)
     cssRawKB: 760,           // measured ~717 (style.css + home + icons + i18n)
     cssBrotliKB: 130,
 };
