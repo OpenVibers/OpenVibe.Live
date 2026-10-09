@@ -6,6 +6,8 @@ const config = require('../config');
 const db = require('../db/database');
 
 const { guard } = require('../net/service-guard');
+const { http } = require('openvibe-contracts');
+const { bindSlot, BindError } = require('../openre/bind');
 
 // Service-to-service only, loopback only (nothing that came through nginx): each route checks the one capability it
 // performs on a Network service token (server/net/service-guard.js); nothing else gets in (X-Internal-Key: plan T2).
@@ -61,6 +63,21 @@ router.post('/user-avatar', guard('live.avatar.write'), async (req, res) => {
     } catch (err) {
         console.error('[Internal] user-avatar error:', err.message);
         return res.status(500).json({ ok: false, error: err.message });
+    }
+});
+
+// ── OpenVibe Live on by default for OpenRestream (live.openre.slot.bind) ─────────
+// OpenRestream asks for a slot on the person's channel bound to their OpenRestream stream (server/openre/bind.js).
+router.post('/openre/slots', guard('live.openre.slot.bind'), async (req, res) => {
+    try {
+        const out = await bindSlot(req.body || {});
+        return res.status(out.created ? 201 : 200).json(out);
+    } catch (err) {
+        if (err instanceof BindError) {
+            return http.sendProblem(res, err.status, err.code, { detail: err.message, ctx: http.requestContext(req.headers) });
+        }
+        console.error('[Internal] openre/slots error:', err.message);
+        return res.status(500).json({ ok: false, error: 'slot bind failed' });
     }
 });
 

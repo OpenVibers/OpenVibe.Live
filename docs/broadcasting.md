@@ -22,6 +22,19 @@ OpenVibe.Live supports four live broadcast methods, each suited to different use
 - **Setup**: Choose *Streaming method: WHIP*, copy the WHIP URL into OBS (Service: WHIP) or `ffmpeg -f whip`
 - **Features**: VP8/H.264 + Opus, auto-creates the live session on first POST, open CORS so a static page can publish with `RTCPeerConnection` + `fetch()` — see the [WHIP Ingest API](whip.md) / [Publishing from a browser](whip.md#publishing-from-a-browser) and the hosted [browser publisher](https://openvibe.live/whip-publisher.html)
 
+### OpenRestream (OBS, restreaming everywhere)
+- **Best for**: Streaming to Twitch, YouTube, Kick and other servers at the same time as your OpenVibe Live channel
+- **Setup**: Create a stream on [openre.stream](https://openre.stream), copy its RTMP server and key into OBS, and add
+  your other destinations there
+- **On Live by default**: each stream made on OpenRestream gets its own slot on your channel, marked *managed on
+  OpenRestream*. Its sessions go live on `openvibe.live/@you` with chat, clips and VODs, through the OpenRestream mirror
+  (`server/openre/mirror.js`). Switch "Show it on my OpenVibe Live channel" off on OpenRestream and Live ignores that
+  stream; your other destinations keep going.
+- **How**: OpenRestream calls `POST /internal/openre/slots` (capability `live.openre.slot.bind`,
+  [server/openre/bind.js](../server/openre/bind.js)) with a Network service token. Live creates a new slot with
+  `ingest_authority = 'openre'`, or returns the one already bound to that stream. It never changes an existing slot.
+  A person needs a Live account first, which they get by signing in to openvibe.live once.
+
 ### JSMPEG (FFmpeg)
 - **Best for**: Headless/embedded streaming (Raspberry Pi, IP cameras, 3D printers)
 - **Latency**: ~1 second
