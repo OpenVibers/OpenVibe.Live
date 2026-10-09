@@ -1,7 +1,7 @@
 'use strict';
 /**
  * GET|POST /internal/lineage/resolve: the canonical channel/owner resolver (./resolver.js) for other
- * services (Pulse, OpenRe, Media, creator UI). Service token only (aud openvibe.live, capability
+ * services (Pulse, OpenRestream, Media, creator UI). Service token only (aud openvibe.live, capability
  * live.lineage.resolve), loopback only.
  *
  *   GET  ?slug=&parent_slug=&channel_id=&stream_id=&slot_id=&vod_id=&clip_id=&media_object_id=

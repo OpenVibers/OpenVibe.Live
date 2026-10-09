@@ -24,7 +24,7 @@ function matchesStreamPath(url, streamKey) {
 
 /**
  * Consult the per-protocol ingest authority for each publish: a slot (or personal key)
- * ingested by OpenRe publishes JSMPEG to OpenRe, never to Live's relay.
+ * ingested by OpenRestream publishes JSMPEG to OpenRestream, never to Live's relay.
  */
 async function refusedByOpenre(streamKey) {
     try {
@@ -33,7 +33,7 @@ async function refusedByOpenre(streamKey) {
         const managedStream = user ? null : await db.getManagedStreamByStreamKey(streamKey);
         if (!user && !managedStream) return false;
         if (!await require('../openre/authority').refusesLiveIngest({ managedStream, user, protocol: 'jsmpeg' })) return false;
-        console.log(`[JSMPEG] Rejected: ${managedStream ? `slot ${managedStream.id}` : `personal key of ${user.username}`} is ingested by OpenRe`);
+        console.log(`[JSMPEG] Rejected: ${managedStream ? `slot ${managedStream.id}` : `personal key of ${user.username}`} is ingested by OpenRestream`);
         return true;
     } catch {
         return false;

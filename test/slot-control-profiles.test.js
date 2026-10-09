@@ -195,7 +195,7 @@ const buttons = async (streamId) => (await db.getStreamControls(streamId)).map((
         assert.match(routes, /control_config_id: await ownControlConfigId\(req, req\.body\.control_config_id\) \|\| null,/, 'a new slot takes only the owner\'s profile');
         assert.match(routes, /const cfgId = await ownControlConfigId\(req, req\.body\.control_config_id\);\s*if \(cfgId === undefined\) return res\.status\(403\)/, 'and so does a slot edit');
         const mirror = read('server/openre/mirror.js');
-        assert.match(mirror, /const configId = slot\.control_config_id \|\| \(channel && channel\.active_control_config_id\);/, 'OpenRe mirror');
+        assert.match(mirror, /const configId = slot\.control_config_id \|\| \(channel && channel\.active_control_config_id\);/, 'OpenRestream mirror');
     });
 
     server.close();

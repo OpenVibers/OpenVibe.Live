@@ -1,9 +1,9 @@
 'use strict';
 
-// OpenRe ingest switch (roadmap Wave 7, ADR-009). With OPENRE_URL unset, or a slot on 'live' (the
+// OpenRestream ingest switch (roadmap Wave 7, ADR-009). With OPENRE_URL unset, or a slot on 'live' (the
 // default), nothing changes. With a slot switched to 'openre': Live's RTMP, WHIP, browser
-// broadcaster and JSMPEG ingest refuse its key, the Go Live helpers show OpenRe's URLs and rotate
-// OpenRe's key, and OpenRe session events (signed Events deliveries, applied once, in revision
+// broadcaster and JSMPEG ingest refuse its key, the Go Live helpers show OpenRestream's URLs and rotate
+// OpenRestream's key, and OpenRestream session events (signed Events deliveries, applied once, in revision
 // order) become ordinary `streams` rows.
 
 const assert = require('assert');
@@ -17,7 +17,7 @@ const SUBJECT = 'usr_01J0000000000000000000000Q';
 const SES = (n) => `ses_01J00000000000000000000${String(n).padStart(3, '0')}`.slice(0, 30);
 const openreCalls = [];
 let openreSessions = {};
-/** OpenRe definitions by id: { id, ref, protocols }. */
+/** OpenRestream definitions by id: { id, ref, protocols }. */
 const openreDefs = {};
 const ingestOf = (protocols) => ({
     ...(protocols.includes('rtmp') ? { rtmp: { url: 'rtmp://ingest.openre.stream:1936/live', key_hint: 'WXYZ' } } : {}),
@@ -122,7 +122,7 @@ function sessionEvent(type, sessionId, revision, payload = {}) {
     assert.strictEqual(authority.serializeSlot(slot701), slot701, 'the same object: responses unchanged');
     assert.strictEqual(await authority.refusesLiveIngest({ managedStream: slot701 }), false);
     assert.strictEqual(await authority.refusesLiveIngest({ managedStream: null, user: { id: 601 } }), false);
-    // Even a slot marked 'openre' behaves as before while OpenRe is not configured.
+    // Even a slot marked 'openre' behaves as before while OpenRestream is not configured.
     await d.prepare("UPDATE managed_streams SET ingest_authority = 'openre' WHERE id = 701").run();
     const marked = await db.getManagedStreamById(701);
     assert.strictEqual(authority.authorityOf(marked), 'live');
@@ -155,7 +155,7 @@ function sessionEvent(type, sessionId, revision, payload = {}) {
     assert.strictEqual((await d.prepare('SELECT COUNT(*) AS n FROM streams').get()).n, 0, 'a slot on live is never mirrored');
 
     // ── The switch ───────────────────────────────────────────
-    assert.match((await authority.setAuthority(702, 'openre')).error || '', /Go Live page cannot publish to OpenRe/, 'a browser slot needs force');
+    assert.match((await authority.setAuthority(702, 'openre')).error || '', /Go Live page cannot publish to OpenRestream/, 'a browser slot needs force');
     assert.strictEqual((await authority.setAuthority(703, 'openre')).status, 409, 'no canonical subject');
     const liveRow = await db.createStream({ user_id: 601, managed_stream_id: 701, title: 'on Live', protocol: 'rtmp' });
     assert.strictEqual((await authority.setAuthority(701, 'openre')).status, 409, 'refused while live on Live');
@@ -173,15 +173,15 @@ function sessionEvent(type, sessionId, revision, payload = {}) {
     assert.strictEqual(switched.ingest_authority, 'openre');
     assert.strictEqual(await db.getManagedStreamByStreamKey('livekey701aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'), undefined, "Live's old key is rotated away");
     assert.strictEqual(await authority.refusesLiveIngest({ managedStream: switched }), true, "Live's RTMP refuses the slot");
-    assert.strictEqual(await authority.refusesLiveIngest({ managedStream: switched, protocol: 'srt' }), false, 'only the protocols OpenRe carries are refused');
+    assert.strictEqual(await authority.refusesLiveIngest({ managedStream: switched, protocol: 'srt' }), false, 'only the protocols OpenRestream carries are refused');
     assert.deepStrictEqual([...authority.OPENRE_PROTOCOLS], ['rtmp', 'webrtc', 'jsmpeg']);
     for (const protocol of ['rtmp', 'webrtc', 'jsmpeg']) {
         assert.strictEqual(await authority.refusesLiveIngest({ managedStream: switched, protocol }), true, `${protocol}: the slot key is refused`);
         assert.strictEqual(await authority.refusesLiveIngest({ managedStream: null, user: { id: 601 }, protocol }), true, `${protocol}: the owner's personal key is refused`);
         assert.strictEqual(await authority.refusesLiveIngest({ managedStream: await db.getManagedStreamById(703), protocol }), false, `${protocol}: a live slot is admitted`);
-        assert.strictEqual(await authority.refusesLiveIngest({ managedStream: null, user: { id: 602 }, protocol }), false, `${protocol}: a personal key without an OpenRe slot is admitted`);
+        assert.strictEqual(await authority.refusesLiveIngest({ managedStream: null, user: { id: 602 }, protocol }), false, `${protocol}: a personal key without an OpenRestream slot is admitted`);
     }
-    assert.strictEqual(await authority.refusesLiveIngest({ managedStream: null, user: { id: 602 } }), false, 'personal keys of users without an OpenRe slot stay on Live');
+    assert.strictEqual(await authority.refusesLiveIngest({ managedStream: null, user: { id: 602 } }), false, 'personal keys of users without an OpenRestream slot stay on Live');
     assert.strictEqual(await authority.refusesLiveIngest({ managedStream: null, user: { id: 601 } }), true, 'a personal key cannot double-ingest a switched channel');
     const shown = authority.serializeSlot(switched);
     assert.strictEqual(shown.stream_key, null);
@@ -196,7 +196,7 @@ function sessionEvent(type, sessionId, revision, payload = {}) {
     assert.strictEqual(rotated.rtmp_url, 'rtmp://ingest.openre.stream:1936/live');
     assert.strictEqual(openreCalls.filter(c => c.url.endsWith('/keys/rotate')).pop().subject, SUBJECT);
 
-    // A WHIP encoder slot: its definition is created for WebRTC, the Go Live helpers give OpenRe's WHIP URL.
+    // A WHIP encoder slot: its definition is created for WebRTC, the Go Live helpers give OpenRestream's WHIP URL.
     const whipFlip = await authority.setAuthority(708, 'openre');
     assert.strictEqual(whipFlip.status, 200, JSON.stringify(whipFlip));
     assert.deepStrictEqual(openreCalls.filter(c => c.method === 'POST' && c.url === '/api/v1/streams').pop().body.protocols, ['webrtc']);
@@ -205,7 +205,7 @@ function sessionEvent(type, sessionId, revision, payload = {}) {
     assert.deepStrictEqual([whipIngest.rtmp_url, whipIngest.whip_url, whipIngest.jsmpeg_url], [null, 'https://ingest.openre.stream/whip', null]);
     assert.match(whipIngest.stream_key_hint, /…WXYZ/);
     assert.strictEqual((await authority.rotateFor(await db.getManagedStreamById(708), SUBJECT)).whip_url, 'https://ingest.openre.stream/whip');
-    // A JSMPEG slot whose OpenRe definition already exists (RTMP only, OpenRe's default): JSMPEG is added to it.
+    // A JSMPEG slot whose OpenRestream definition already exists (RTMP only, OpenRestream's default): JSMPEG is added to it.
     openreDefs.std_slot709 = { id: 'std_slot709', ref: 'live:managed_stream:709', protocols: ['rtmp'] };
     const jsmpegFlip = await authority.setAuthority(709, 'openre');
     assert.strictEqual(jsmpegFlip.status, 200, JSON.stringify(jsmpegFlip));
@@ -236,7 +236,7 @@ function sessionEvent(type, sessionId, revision, payload = {}) {
     assert.strictEqual(await mirror.hasLiveSession(streamId), true, 'stale cleanup leaves it alone');
     assert.strictEqual(await mirror.ownsStream(streamId), true, 'Live does not resume its own restreams for it');
 
-    // Reconcile: OpenRe says live → heartbeat refreshed; says ended → row ended.
+    // Reconcile: OpenRestream says live → heartbeat refreshed; says ended → row ended.
     openreSessions[SES(4)] = { id: SES(4), state: 'live', revision: 2 };
     await d.prepare("UPDATE streams SET last_heartbeat = datetime('now', '-10 minutes') WHERE id = ?").run(streamId);
     await mirror.reconcileOnce();
@@ -280,9 +280,9 @@ function sessionEvent(type, sessionId, revision, payload = {}) {
     };
     const openReWhipKey = whipKey();
     const liveWhipKey = whipKey();
-    await d.prepare("INSERT INTO managed_streams (id, user_id, title, protocol, stream_key, ingest_authority) OVERRIDING SYSTEM VALUE VALUES (704, 603, 'WHIP on OpenRe', 'webrtc', ?, 'openre')").run(openReWhipKey);
+    await d.prepare("INSERT INTO managed_streams (id, user_id, title, protocol, stream_key, ingest_authority) OVERRIDING SYSTEM VALUE VALUES (704, 603, 'WHIP on OpenRestream', 'webrtc', ?, 'openre')").run(openReWhipKey);
     await d.prepare("INSERT INTO managed_streams (id, user_id, title, protocol, stream_key) OVERRIDING SYSTEM VALUE VALUES (705, 602, 'WHIP on Live', 'webrtc', ?)").run(liveWhipKey);
-    await d.prepare("INSERT INTO managed_streams (id, user_id, title, protocol, stream_key, ingest_authority) OVERRIDING SYSTEM VALUE VALUES (706, 603, 'JSMPEG on OpenRe', 'jsmpeg', 'jsmpegopenre706', 'openre')").run();
+    await d.prepare("INSERT INTO managed_streams (id, user_id, title, protocol, stream_key, ingest_authority) OVERRIDING SYSTEM VALUE VALUES (706, 603, 'JSMPEG on OpenRestream', 'jsmpeg', 'jsmpegopenre706', 'openre')").run();
     await d.prepare("INSERT INTO managed_streams (id, user_id, title, protocol, stream_key) OVERRIDING SYSTEM VALUE VALUES (707, 602, 'JSMPEG on Live', 'jsmpeg', 'jsmpeglive707')").run();
     process.env.OPENRE_URL = stubUrl;
     require('../server/openre/openre-client')._reset();
@@ -301,8 +301,8 @@ function sessionEvent(type, sessionId, revision, payload = {}) {
         ['slot id + key', () => publish(704, { key: openReWhipKey })],
     ]) {
         const r = await call();
-        assert.strictEqual(r.status, 401, `WHIP ${label} on an OpenRe slot is refused`);
-        assert.ok(!/openre/i.test(JSON.stringify(r.body)), 'the refusal does not say OpenRe exists');
+        assert.strictEqual(r.status, 401, `WHIP ${label} on an OpenRestream slot is refused`);
+        assert.ok(!/openre/i.test(JSON.stringify(r.body)), 'the refusal does not say OpenRestream exists');
     }
     assert.strictEqual(await streamCount(), before, 'a refused WHIP publish creates no stream row');
     const admitted = await publish(liveWhipKey);
@@ -310,7 +310,7 @@ function sessionEvent(type, sessionId, revision, payload = {}) {
     for (const r of [admitted, await publish(705, { key: liveWhipKey })]) assert.ok([200, 201, 503].includes(r.status), `live slot: ${r.status}`);
     // The switch landing between publishes: the next check refuses.
     await d.prepare("UPDATE managed_streams SET ingest_authority = 'openre' WHERE id = 705").run();
-    assert.strictEqual((await publish(liveWhipKey)).status, 401, 'refused as soon as the slot is on OpenRe');
+    assert.strictEqual((await publish(liveWhipKey)).status, 401, 'refused as soon as the slot is on OpenRestream');
     await d.prepare("UPDATE managed_streams SET ingest_authority = 'live' WHERE id = 705").run();
 
     // The Go Live page's in-browser broadcaster (/ws/broadcast, role=broadcaster) is WebRTC ingest too.
@@ -328,8 +328,8 @@ function sessionEvent(type, sessionId, revision, payload = {}) {
     const browserOnOpenre = Number((await db.createStream({ user_id: 603, managed_stream_id: 704, title: 'browser', protocol: 'webrtc' })).lastInsertRowid);
     const browserOnLive = Number((await db.createStream({ user_id: 602, managed_stream_id: 705, title: 'browser', protocol: 'webrtc' })).lastInsertRowid);
     const browserPersonal = Number((await db.createStream({ user_id: 603, title: 'browser', protocol: 'webrtc' })).lastInsertRowid);
-    assert.deepStrictEqual(await connectBroadcaster(browserOnOpenre, 'tok-603'), [[4003, 'Stream key not recognized']], 'browser broadcaster on an OpenRe slot is refused');
-    assert.deepStrictEqual(await connectBroadcaster(browserPersonal, 'tok-603'), [[4003, 'Stream key not recognized']], 'a slot-less stream of an owner with an OpenRe slot is refused');
+    assert.deepStrictEqual(await connectBroadcaster(browserOnOpenre, 'tok-603'), [[4003, 'Stream key not recognized']], 'browser broadcaster on an OpenRestream slot is refused');
+    assert.deepStrictEqual(await connectBroadcaster(browserPersonal, 'tok-603'), [[4003, 'Stream key not recognized']], 'a slot-less stream of an owner with an OpenRestream slot is refused');
     assert.deepStrictEqual(await connectBroadcaster(browserOnLive, 'tok-602'), [], 'browser broadcaster on a Live slot is admitted');
 
     const relay = require('../server/streaming/jsmpeg-relay');
@@ -344,9 +344,9 @@ function sessionEvent(type, sessionId, revision, payload = {}) {
     const liveCh = relay.createChannel('jsmpeglive707');
     const personalCh = relay.createChannel('personalkey601');
     await new Promise(r => setTimeout(r, 200));
-    assert.strictEqual(await post(openreCh.videoPort, 'jsmpegopenre706'), 404, 'JSMPEG video: an OpenRe slot key is refused');
-    assert.strictEqual(await post(openreCh.audioPort, 'jsmpegopenre706'), 404, 'JSMPEG audio: an OpenRe slot key is refused');
-    assert.strictEqual(await post(personalCh.videoPort, 'personalkey601'), 404, "JSMPEG: the owner's personal key is refused while a slot is on OpenRe");
+    assert.strictEqual(await post(openreCh.videoPort, 'jsmpegopenre706'), 404, 'JSMPEG video: an OpenRestream slot key is refused');
+    assert.strictEqual(await post(openreCh.audioPort, 'jsmpegopenre706'), 404, 'JSMPEG audio: an OpenRestream slot key is refused');
+    assert.strictEqual(await post(personalCh.videoPort, 'personalkey601'), 404, "JSMPEG: the owner's personal key is refused while a slot is on OpenRestream");
     assert.strictEqual(await post(liveCh.videoPort, 'jsmpeglive707'), 200, 'JSMPEG: a Live slot is admitted');
     assert.strictEqual(await post(liveCh.audioPort, 'jsmpeglive707'), 200);
 
@@ -364,7 +364,7 @@ function sessionEvent(type, sessionId, revision, payload = {}) {
     process.env.OPENRE_URL = stubUrl;
     require('../server/openre/openre-client')._reset();
 
-    // The admin status lists the protocols OpenRe carries.
+    // The admin status lists the protocols OpenRestream carries.
     const statusApp = express();
     // routes.js takes requireAdmin at load: admit the test caller before the router is first required.
     require('../server/auth/auth').requireAdmin = (req, res, next) => { req.user = { id: 1, username: 'admin', role: 'admin' }; next(); };
@@ -375,7 +375,7 @@ function sessionEvent(type, sessionId, revision, payload = {}) {
     else assert.fail(`status route answered ${statusRes.status}`);
     statusServer.close();
 
-    // The Go Live profile and endpoint of an OpenRe WHIP/JSMPEG slot point at OpenRe, never at Live's
+    // The Go Live profile and endpoint of an OpenRestream WHIP/JSMPEG slot point at OpenRestream, never at Live's
     // WHIP base or relay (Live refuses those publishes).
     require('../server/auth/auth').requireAuth = async (req, res, next) => { req.user = await db.getUserById(601); next(); };
     const streamsApp = express();
@@ -407,5 +407,5 @@ function sessionEvent(type, sessionId, revision, payload = {}) {
     mirror._reset();
     server.close();
     stub.close();
-    console.log('✅ openre switch: off = unchanged, switch/rotation, RTMP/WHIP/browser/JSMPEG refusal, OpenRe ingest URLs, signed mirror (once, ordered), reconcile, rollback');
+    console.log('✅ openre switch: off = unchanged, switch/rotation, RTMP/WHIP/browser/JSMPEG refusal, OpenRestream ingest URLs, signed mirror (once, ordered), reconcile, rollback');
 })().catch((err) => { console.error(err); process.exit(1); });

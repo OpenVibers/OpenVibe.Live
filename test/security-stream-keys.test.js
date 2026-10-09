@@ -6,7 +6,7 @@
  * managed_streams[].stream_key, then the stream detail's managed_stream_key; see
  * public-serializers.test.js and security-redaction.test.js), enough to publish to someone's slot
  * over RTMP or WHIP. Those tests pin the endpoints that leaked. This one covers the class: it seeds
- * a streamer whose every credential is a sentinel (account key, a Live slot key, an OpenRe slot's
+ * a streamer whose every credential is a sentinel (account key, a Live slot key, an OpenRestream slot's
  * rotated Live key, a restream key and SRT passphrase, RobotStreamer / platform / PowerChat tokens,
  * AI keys, control key and API token hashes, a camera password hash), boots the real server as a
  * restore-drill instance (test/security-crawl.js), and requests EVERY GET route Express knows,
@@ -70,7 +70,7 @@ const SEED = `(async () => {
     const admin = await mk('keyadmin', 'admin', K.admin);
     const ch = await db.getChannelByUserId(owner);
     const slot = Number((await db.createManagedStream({ user_id: owner, channel_id: ch.id, slug: 'main', title: 'Main slot', protocol: 'rtmp', stream_key: K.slotMain })).lastInsertRowid);
-    const slot2 = Number((await db.createManagedStream({ user_id: owner, channel_id: ch.id, slug: 'relay', title: 'OpenRe slot', protocol: 'rtmp', stream_key: K.slotOpenre })).lastInsertRowid);
+    const slot2 = Number((await db.createManagedStream({ user_id: owner, channel_id: ch.id, slug: 'relay', title: 'OpenRestream slot', protocol: 'rtmp', stream_key: K.slotOpenre })).lastInsertRowid);
     await db.run("UPDATE managed_streams SET ingest_authority = 'openre', openre_stream_id = 'std_sentinel' WHERE id = ?", [slot2]);
     const live = Number((await db.createStream({ user_id: owner, channel_id: ch.id, managed_stream_id: slot, title: 'Live now', protocol: 'rtmp' })).lastInsertRowid);
     const ended = Number((await db.createStream({ user_id: owner, channel_id: ch.id, managed_stream_id: slot2, title: 'Earlier', protocol: 'rtmp' })).lastInsertRowid);

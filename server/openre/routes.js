@@ -1,7 +1,7 @@
 'use strict';
 /**
- * Admin routes for the OpenRe ingest switch (mounted at /api/admin/openre, admin only). The lead
- * flips a slot during a maintenance window agreed with the broadcaster (OpenRe.Stream README,
+ * Admin routes for the OpenRestream ingest switch (mounted at /api/admin/openre, admin only). The lead
+ * flips a slot during a maintenance window agreed with the broadcaster (OpenRestream README,
  * "RTMP cutover runbook").
  *
  *   GET /api/admin/openre/status                                   configuration + switched slots
@@ -38,11 +38,11 @@ router.put('/managed/:id/ingest-authority', requireAdmin, async (req, res) => {
     try {
         const r = await authority.setAuthority(id, String((req.body && req.body.authority) || ''), { force: Boolean(req.body && req.body.force) });
         if (r.error) return res.status(r.status).json({ error: r.error });
-        console.log(`[OpenRe] admin ${req.user.username} set slot ${id} ingest authority to ${r.body.ingest_authority}`);
+        console.log(`[OpenRestream] admin ${req.user.username} set slot ${id} ingest authority to ${r.body.ingest_authority}`);
         return res.status(r.status).json(r.body);
     } catch (err) {
-        console.error('[OpenRe] switch failed:', err.message);
-        return res.status(err.status && err.status < 500 ? 409 : 502).json({ error: `OpenRe: ${err.message}` });
+        console.error('[OpenRestream] switch failed:', err.message);
+        return res.status(err.status && err.status < 500 ? 409 : 502).json({ error: `OpenRestream: ${err.message}` });
     }
 });
 

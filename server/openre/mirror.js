@@ -1,18 +1,18 @@
 'use strict';
 /**
- * OpenRe sessions → Live's `streams` table (roadmap Wave 7, ADR-009: Live observes sessions through
- * OpenRe events and APIs). Watch pages, discovery, go-live notifications and analytics keep working
- * because an OpenRe-ingested session becomes an ordinary live `streams` row.
+ * OpenRestream sessions → Live's `streams` table (roadmap Wave 7, ADR-009: Live observes sessions through
+ * OpenRestream events and APIs). Watch pages, discovery, go-live notifications and analytics keep working
+ * because an OpenRestream-ingested session becomes an ordinary live `streams` row.
  *
  *   POST /internal/openre-events   the endpoint of Live's OpenVibe.Events subscription (topic
  *                                  openre.session.*), signed with OPENRE_EVENTS_SECRET. Each event
  *                                  is applied exactly once (openvibe-sdk inbox, consumer
  *                                  'live-openre-mirror'), in revision order per session.
- *   reconcile (every 30 s)         for mirrored live sessions only: asks OpenRe for the session,
- *                                  keeps the row's heartbeat fresh, ends it if OpenRe says it ended
+ *   reconcile (every 30 s)         for mirrored live sessions only: asks OpenRestream for the session,
+ *                                  keeps the row's heartbeat fresh, ends it if OpenRestream says it ended
  *                                  (covers a missed event). Does nothing when no row is mirrored.
  *
- * Consent: a session is mirrored only when its slot is switched to OpenRe on Live AND the OpenRe
+ * Consent: a session is mirrored only when its slot is switched to OpenRestream on Live AND the OpenRestream
  * definition says mirror_to_live (plan §15.10 "explicit visibility and consent").
  */
 const db = require('../db/database');
@@ -21,7 +21,7 @@ const { authorityOf } = require('./authority');
 
 const CONSUMER = 'live-openre-mirror';
 const RECONCILE_MS = 30000;
-// A mirrored session OpenRe has not confirmed for this long is left to Live's stale cleanup.
+// A mirrored session OpenRestream has not confirmed for this long is left to Live's stale cleanup.
 const CONFIRM_WINDOW_MIN = 30;
 let inbox = null;
 let timer = null;
@@ -100,11 +100,11 @@ async function apply(event) {
                     const channel = await db.getChannelByUserId(user.id);
                     const configId = slot.control_config_id || (channel && channel.active_control_config_id);
                     if (configId) await db.applyConfigToStream(configId, streamId);
-                } catch (e) { console.warn('[OpenRe] control config for mirrored stream failed:', e.message); }
+                } catch (e) { console.warn('[OpenRestream] control config for mirrored stream failed:', e.message); }
                 const stream = await db.getStreamById(streamId) || { id: streamId };
-                try { await require('../streaming/golive-notify').notifyFollowersGoLive(user, stream); } catch (e) { console.warn('[OpenRe] go-live notify failed:', e.message); }
+                try { await require('../streaming/golive-notify').notifyFollowersGoLive(user, stream); } catch (e) { console.warn('[OpenRestream] go-live notify failed:', e.message); }
                 try { require('../streaming/live-events').announceGoLive(stream, user); } catch { /* */ }
-                console.log(`[OpenRe] session ${sessionId} mirrored into stream ${streamId} (${user.username}, slot ${slot.id})`);
+                console.log(`[OpenRestream] session ${sessionId} mirrored into stream ${streamId} (${user.username}, slot ${slot.id})`);
             },
         };
     }
@@ -128,7 +128,7 @@ async function apply(event) {
             try { require('../integrations/robotstreamer-service').stopForStream(streamId); } catch { /* */ }
             try { require('../integrations/chat-relay-service').stopForStream(streamId); } catch { /* */ }
             try { require('../integrations/ai-chatbot-service').stopForStream(streamId); } catch { /* */ }
-            console.log(`[OpenRe] session ${sessionId} ${state}: stream ${streamId} ended`);
+            console.log(`[OpenRestream] session ${sessionId} ${state}: stream ${streamId} ended`);
         },
     };
 }
@@ -151,20 +151,20 @@ async function webhookHandler(req, res) {
             after = r.after || null;
             return r.outcome;
         });
-        if (!result.duplicate && after) { try { await after(); } catch (e) { console.warn('[OpenRe] post-commit step failed:', e.message); } }
+        if (!result.duplicate && after) { try { await after(); } catch (e) { console.warn('[OpenRestream] post-commit step failed:', e.message); } }
     } catch (err) {
-        console.error('[OpenRe] event apply failed:', err.message);
+        console.error('[OpenRestream] event apply failed:', err.message);
         return res.status(500).json({ error: 'apply failed' }); // Events retries
     }
     return res.status(204).end();
 }
 
-/** Stream id → the mirrored OpenRe session (or null). */
+/** Stream id → the mirrored OpenRestream session (or null). */
 async function sessionForStream(streamId) {
     try { return await db.get('SELECT * FROM openre_sessions WHERE stream_id = ? ORDER BY updated_at DESC LIMIT 1', [streamId]) || null; } catch { return null; }
 }
 
-/** Does OpenRe hold a live ingest for this stream (confirmed recently)? Used by Live's stale cleanup. */
+/** Does OpenRestream hold a live ingest for this stream (confirmed recently)? Used by Live's stale cleanup. */
 async function hasLiveSession(streamId) {
     try {
         return Boolean(await db.get(`SELECT 1 FROM openre_sessions WHERE stream_id = ? AND state = 'live'
@@ -172,7 +172,7 @@ async function hasLiveSession(streamId) {
     } catch { return false; }
 }
 
-/** Does OpenRe own this stream at all (so Live must not start its own restream/recording for it)? */
+/** Does OpenRestream own this stream at all (so Live must not start its own restream/recording for it)? */
 async function ownsStream(streamId) {
     return Boolean(await sessionForStream(streamId));
 }
@@ -183,16 +183,16 @@ async function reconcileOnce() {
     if (!rows.length || !client.enabled()) return 0;
     let n = 0;
     for (const r of rows) {
-        // Live ended the row itself (End Stream, or stale cleanup while OpenRe was unreachable):
+        // Live ended the row itself (End Stream, or stale cleanup while OpenRestream was unreachable):
         // stop tracking it rather than keeping a live mirror of an offline stream.
         const row = r.stream_id ? await db.getStreamById(r.stream_id) : null;
         if (row && !row.is_live) { await db.run("UPDATE openre_sessions SET state = 'detached', updated_at = ov_now() WHERE session_id = ?", [r.session_id]); continue; }
         let s;
         try { s = await client.getSession(r.session_id); } catch (err) {
             if (err.status === 404) s = null;
-            else continue; // OpenRe unreachable: keep the last known state (bounded by CONFIRM_WINDOW_MIN)
+            else continue; // OpenRestream unreachable: keep the last known state (bounded by CONFIRM_WINDOW_MIN)
         }
-        // A session OpenRe no longer knows (the SDK answers null for a 404; older clients threw) has failed: without this
+        // A session OpenRestream no longer knows (the SDK answers null for a 404; older clients threw) has failed: without this
         // the row stayed 'live', ownsStream() stayed true and Live never took its own restream/recording back.
         if (!s) s = { state: 'failed', revision: r.revision + 1, ended_at: null };
         if (s.state === 'live' || s.state === 'starting') {
@@ -210,7 +210,7 @@ async function reconcileOnce() {
 
 function start() {
     if (timer || !client.enabled()) return;
-    timer = setInterval(() => { reconcileOnce().catch(err => console.warn('[OpenRe] reconcile failed:', err.message)); }, RECONCILE_MS);
+    timer = setInterval(() => { reconcileOnce().catch(err => console.warn('[OpenRestream] reconcile failed:', err.message)); }, RECONCILE_MS);
     if (timer.unref) timer.unref();
 }
 
