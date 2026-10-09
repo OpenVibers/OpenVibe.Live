@@ -9,7 +9,8 @@
  *
  * Sources, all public and keyless: Bluesky (public.api.bsky.app), Mastodon (the instance's public API), GitHub
  * (api.github.com), YouTube (the channel's RSS feed), Twitch (the preview image redirects to a placeholder when the
- * channel is offline), Kick (its public channel API, best effort), and OpenGraph for everything else. X has no
+ * channel is offline), Kick (its public channel API, best effort), the streamer's OpenVibe profile (the Network's
+ * /api/v1/profiles, on loopback), and OpenGraph for everything else. X has no
  * usable free API: its card links out, and the channel page offers X's own timeline embed on click (isolated
  * frame, /embed/x-timeline).
  */
@@ -34,6 +35,7 @@ async function getText(url, { timeoutMs = 6000, accept = 'text/html,application/
 
 const decode = (s) => String(s || '').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;|&#x27;/g, "'").replace(/&#(\d+);/g, (_, n) => String.fromCodePoint(Number(n)));
 const clip = (s, n = 280) => { const t = decode(String(s || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()); return t.length > n ? `${t.slice(0, n - 1)}…` : t; };
+const RARITY = { common: 'Common', uncommon: 'Uncommon', rare: 'Rare', epic: 'Epic', legendary: 'Legendary' };
 const httpsOnly = (u) => (typeof u === 'string' && /^https:\/\//i.test(u) ? u : null);
 
 /** OpenGraph / meta tags of a page. */
@@ -124,6 +126,27 @@ const ADAPTERS = {
             items: [],
         };
     },
+    async openvibe(l) {
+        // The streamer's OpenVibe profile, from the Network's public profile API (ours, on loopback; the handle is a
+        // checked username): their picture, how many items they own and what they wear.
+        const base = String(process.env.OV_NETWORK_INTERNAL_URL || 'http://127.0.0.1:4000').replace(/\/+$/, '');
+        const r = await fetch(`${base}/api/v1/profiles/${encodeURIComponent(l.handle)}`, { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(4000) });
+        if (!r.ok) throw Object.assign(new Error(`HTTP ${r.status}`), { status: r.status });
+        const p = (await r.json()).profile || {};
+        const title = clip(p.display_name || `@${l.handle}`, 80);
+        if (p.private) return { title, subtitle: 'Profile on OpenVibe', image: httpsOnly(p.avatar_url), items: [] };
+        const n = p.items && !p.items.unavailable ? Number(p.items.count) || 0 : null;
+        const since = /^\d{4}/.test(String(p.member_since || '')) ? `on OpenVibe since ${String(p.member_since).slice(0, 4)}` : null;
+        return {
+            title,
+            subtitle: [n === null ? null : `${n.toLocaleString('en-US')}${p.items.more ? '+' : ''} item${n === 1 ? '' : 's'}`, since].filter(Boolean).join(' · ') || 'Profile on OpenVibe',
+            image: httpsOnly(p.avatar_url),
+            items: (Array.isArray(p.showcase) ? p.showcase : []).slice(0, 3).map((s) => ({
+                text: clip(`${s.art && s.art.emoji ? `${String(s.art.emoji).slice(0, 8)} ` : ''}Wearing ${s.name} (${RARITY[s.rarity] || 'Common'} ${String(s.kind_name || '').toLowerCase()})`, 120),
+                url: httpsOnly(s.url),
+            })),
+        };
+    },
     async x(l) {
         // No free API: the card links out; the page offers X's own embed on click.
         return { title: `@${l.handle}`, subtitle: 'Posts on X', image: null, items: [], embed: l.handle ? `/embed/x-timeline?h=${encodeURIComponent(l.handle)}` : null };
@@ -138,7 +161,7 @@ async function preview(l) {
     let value;
     try {
         const fn = ADAPTERS[l.kind] || (async (x) => await openGraph(x.url));
-        const needsHandle = ['bluesky', 'github', 'twitch', 'kick', 'mastodon', 'x'].includes(l.kind);
+        const needsHandle = ['bluesky', 'github', 'twitch', 'kick', 'mastodon', 'x', 'openvibe'].includes(l.kind);
         value = needsHandle && !l.handle ? await openGraph(l.url) : await fn(l);
         value = { kind: l.kind, url: l.url, items: [], ...value };
         remember(key, value, TTL);

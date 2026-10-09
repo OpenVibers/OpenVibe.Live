@@ -6,7 +6,8 @@
  *
  *   cleanSocialLinks(input)          → the list to store, or null when it is not a valid list
  *   channelSocialLinks(channel, db)  → what viewers see: saved links first, then connected platforms not already
- *                                      listed and not hidden (channels.social_links.hidden_auto)
+ *                                      listed and not hidden (channels.social_links.hidden_auto), then the
+ *                                      streamer's OpenVibe profile (openvibe.network/@username), also hideable
  */
 
 const MAX_LINKS = 16;
@@ -32,10 +33,12 @@ const PLATFORMS = {
     soundcloud:{ name: 'SoundCloud',icon: 'fa-brands fa-soundcloud',color: '#ff5500', hosts: ['soundcloud.com'],                  url: (h) => `https://soundcloud.com/${h}`,     handle: /^\/([A-Za-z0-9_-]{2,64})\/?$/ },
     linkedin:  { name: 'LinkedIn',  icon: 'fa-brands fa-linkedin',  color: '#0a66c2', hosts: ['linkedin.com'],                    url: (h) => `https://www.linkedin.com/in/${h}`, handle: /^\/in\/([A-Za-z0-9-]{3,100})\/?$/ },
     mastodon:  { name: 'Mastodon',  icon: 'fa-brands fa-mastodon',  color: '#6364ff', hosts: null,                                url: null,                                      handle: /^\/@([A-Za-z0-9_]{1,30})\/?$/ },
+    openvibe:  { name: 'OpenVibe',  icon: 'fa-solid fa-id-card',   color: '#3b82f6', hosts: ['openvibe.network'],                url: (h) => `https://openvibe.network/@${h}`,  handle: /^\/@([A-Za-z0-9_]{3,24})\/?$/ },
     website:   { name: 'Website',   icon: 'fa-solid fa-globe',      color: '#60a5fa', hosts: null,                                url: null,                                      handle: null },
     custom:    { name: 'Link',      icon: 'fa-solid fa-link',       color: '#94a3b8', hosts: null,                                url: null,                                      handle: null },
 };
-const AUTO_KINDS = ['twitch', 'youtube', 'kick'];
+// Shown without being added: the restream platforms a channel is connected to, and its OpenVibe profile.
+const AUTO_KINDS = ['twitch', 'youtube', 'kick', 'openvibe'];
 
 const hostMatches = (host, hosts) => hosts.some((h) => host === h || host.endsWith(`.${h}`));
 
@@ -126,6 +129,15 @@ async function channelSocialLinks(channel, db, { owner = false } = {}) {
         const d = decorate(l, { auto: true, hidden: stored.hidden_auto.includes(c.platform) });
         auto.push(d);
         if (!d.hidden) { out.push(d); kinds.add(c.platform); }
+    }
+    // The streamer's OpenVibe profile (plan T21): their picture, bio and the items they wear, one card on every channel.
+    if (channel && channel.username && !kinds.has('openvibe')) {
+        const l = cleanLink({ kind: 'openvibe', handle: channel.username });
+        if (l) {
+            const d = decorate(l, { auto: true, hidden: stored.hidden_auto.includes('openvibe') });
+            auto.push(d);
+            if (!d.hidden) { out.push(d); kinds.add('openvibe'); }
+        }
     }
     const result = { links: out };
     if (owner) {

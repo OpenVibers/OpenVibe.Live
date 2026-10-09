@@ -46,6 +46,39 @@ async function check(name, fn) { await fn(); passed++; console.log(`  ✓ ${name
         assert.deepStrictEqual(owner.connected.map((c) => [c.kind, c.hidden]), [['twitch', false], ['kick', true]]);
     });
 
+    await check('the OpenVibe profile: every channel shows openvibe.network/@username after its other links, unless listed or hidden', async () => {
+        const db = { all: () => [] };
+        const shown = await channelSocialLinks({ user_id: 1, username: 'Goosely', social_links: cleanSocialLinks({ links: [{ kind: 'x', handle: 'goosely' }] }) }, db, { owner: true });
+        assert.deepStrictEqual(shown.links.map((l) => [l.kind, l.url, !!l.auto]), [['x', 'https://x.com/goosely', false], ['openvibe', 'https://openvibe.network/@Goosely', true]]);
+        assert.deepStrictEqual(shown.connected.map((c) => [c.kind, c.hidden]), [['openvibe', false]], 'the editor can hide it');
+        const hidden = await channelSocialLinks({ user_id: 1, username: 'Goosely', social_links: cleanSocialLinks({ links: [], hidden_auto: ['openvibe'] }) }, db);
+        assert.deepStrictEqual(hidden.links, []);
+        const listed = await channelSocialLinks({ user_id: 1, username: 'Goosely', social_links: cleanSocialLinks({ links: [{ kind: 'custom', url: 'https://openvibe.network/@Goosely' }] }) }, db);
+        assert.deepStrictEqual(listed.links.map((l) => [l.kind, !!l.auto]), [['openvibe', false]], 'listed by hand: once');
+        assert.strictEqual(cleanLink({ kind: 'openvibe', url: 'https://evil.example/@x' }), null);
+    });
+
+    await check('the OpenVibe profile preview: the Network\'s profile API, the picture, item count and what they wear; a private one says so', async () => {
+        const { preview: pv } = require('../server/social/preview');
+        const realFetch = global.fetch;
+        const seen = [];
+        global.fetch = async (url) => {
+            seen.push(String(url));
+            const name = decodeURIComponent(String(url).split('/').pop());
+            if (name === 'Goosely') return { ok: true, json: async () => ({ profile: { username: 'Goosely', display_name: 'Goosely', avatar_url: 'https://openvibe.network/avatar/Goosely?s=160', private: false, member_since: '2025-03-14', items: { count: 12, more: false }, showcase: [{ name: 'Void Crown', rarity: 'legendary', kind_name: 'Hat', art: { emoji: '🕳️' }, url: 'https://inventory.openvibe.network/items/itd_1' }] } }) };
+            if (name === 'quiet') return { ok: true, json: async () => ({ profile: { username: 'quiet', display_name: 'Quiet', avatar_url: 'https://openvibe.network/avatar/quiet?s=160', private: true } }) };
+            return { ok: false, status: 404, json: async () => ({}) };
+        };
+        try {
+            const p = await pv(cleanLink({ kind: 'openvibe', handle: 'Goosely' }));
+            assert.ok(seen[0].endsWith('/api/v1/profiles/Goosely') && seen[0].startsWith('http://127.0.0.1:4000'), 'loopback Network, fixed path');
+            assert.deepStrictEqual([p.title, p.subtitle, p.image], ['Goosely', '12 items · on OpenVibe since 2025', 'https://openvibe.network/avatar/Goosely?s=160']);
+            assert.deepStrictEqual(p.items, [{ text: '🕳️ Wearing Void Crown (Legendary hat)', url: 'https://inventory.openvibe.network/items/itd_1' }]);
+            const q = await pv(cleanLink({ kind: 'openvibe', handle: 'quiet' }));
+            assert.deepStrictEqual([q.title, q.subtitle, q.items], ['Quiet', 'Profile on OpenVibe', []]);
+        } finally { global.fetch = realFetch; }
+    });
+
     const { preview, _cache } = require('../server/social/preview');
     const real = { fetchText: egress.fetchText, fetchBuffer: egress.fetchBuffer };
     const calls = [];
