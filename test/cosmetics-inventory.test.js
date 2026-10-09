@@ -103,6 +103,15 @@ function stub() {
         assert.strictEqual((await cosmetics.revokeCosmetic(70, 'hat_crown')).success, true);
         assert.ok(!(await cosmetics.getUnlocked(70)).some((u) => u.item_id === 'hat_crown'));
 
+        // A community badge from the Workshop rides along as badgeFX (its Media image), alone and in a batch.
+        state.slots['network.badge:badge'] = { instance_id: 'inv_01JZ000000000000000000BAD1', definition_id: 'itd_01JZ000000000000000000BAD1', media_id: 'med_01JZ00000000000000000000B1' };
+        inventory.forget(A);
+        assert.deepStrictEqual((await cosmetics.getCosmeticProfile(70)).badgeFX, { mediaId: 'med_01JZ00000000000000000000B1' });
+        inventory.forget(A);
+        assert.deepStrictEqual((await cosmetics.getCosmeticProfiles([70]))[70].badgeFX, { mediaId: 'med_01JZ00000000000000000000B1' });
+        delete state.slots['network.badge:badge'];
+        inventory.forget(A);
+
         // The shop says where an item is earned: Quest gives the Rainbow (Inventory's grantors).
         assert.deepStrictEqual(await cosmetics.earnable(), { fx_rainbow: 'quest' });
 

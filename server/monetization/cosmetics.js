@@ -127,7 +127,7 @@ async function getEquipped(userId) {
     }, {});
 }
 
-/** What a chat line carries for one { slot → item id } set: { nameFX, particleFX, hatFX, voiceFX } (each optional). */
+/** What a chat line carries for one { slot → item id } set: { nameFX, particleFX, hatFX, badgeFX, voiceFX } (each optional). */
 function profileOf(equipped) {
     const result = {};
     if (equipped.name_effect && COSMETICS[equipped.name_effect]) {
@@ -142,6 +142,8 @@ function profileOf(equipped) {
         const c = COSMETICS[equipped.hat];
         result.hatFX = { itemId: equipped.hat, hatChar: c.hatChar, cssClass: c.hatChar, animated: c.animated };
     }
+    // A community badge from the Workshop (network.badge): its reviewed image on OpenVibe.Media, before the name.
+    if (/^med_[0-9A-HJKMNP-TV-Z]{26}$/.test(String(equipped._badge || ''))) result.badgeFX = { mediaId: equipped._badge };
     if (equipped.voice && COSMETICS[equipped.voice]) {
         const c = COSMETICS[equipped.voice];
         result.voiceFX = { itemId: equipped.voice, pitch: c.pitch, rate: c.rate };

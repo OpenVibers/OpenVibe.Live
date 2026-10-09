@@ -3749,9 +3749,13 @@ function buildChatMessageEl(msg, opts = {}) {
     // ── Cosmetic rendering ───────────────────────────────
     // Hat emoji before name
     let hatHtml = '';
+    // A community badge (the Workshop): its reviewed image on OpenVibe.Media, before the hat and the name.
+    if (msg.badgeFX && /^med_[0-9A-HJKMNP-TV-Z]{26}$/.test(String(msg.badgeFX.mediaId || ''))) {
+        hatHtml += `<img class="chat-ws-badge" src="https://openvibe.media/o/${msg.badgeFX.mediaId}" alt="" width="16" height="16" loading="lazy" aria-hidden="true">`;
+    }
     if (msg.hatFX && msg.hatFX.hatChar) {
         const animClass = msg.hatFX.animated ? ` hat-${esc(msg.hatFX.animated)}` : '';
-        hatHtml = `<span class="chat-hat${animClass}">${esc(msg.hatFX.hatChar)}</span>`;
+        hatHtml += `<span class="chat-hat${animClass}">${esc(msg.hatFX.hatChar)}</span>`;
     }
 
     // Name effect CSS class on username
@@ -4707,6 +4711,7 @@ function _renderHistoryMainMsg(m) {
         nameFX: m.nameFX || undefined,
         particleFX: m.particleFX || undefined,
         hatFX: m.hatFX || undefined,
+        badgeFX: m.badgeFX || undefined,
         tag: m.tag || undefined,
         // Source-stream context (for the per-message origin/channel badge)
         stream_id: m.stream_id,
@@ -4817,6 +4822,7 @@ function _renderGlobalHistoryMessages(msgs) {
                 source_managed_id: m.source_managed_id || null,
                 source_is_live: m.source_is_live ? 1 : 0,
                 hatFX: m.hatFX || null,
+                badgeFX: m.badgeFX || null,
                 nameFX: m.nameFX || null,
                 particleFX: m.particleFX || null,
                 reply_to: m.reply_to || null,

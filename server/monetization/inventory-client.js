@@ -5,7 +5,8 @@
  *   catalog()                    Live's definitions (alias = Live's item id ↔ itd_ id), cached 10 minutes
  *   subjectOf(userId)            a Live user's Network subject (linked_accounts, server/auth/identity-sync.js), cached
  *   owned(subject)               { alias → instance_id } of the live.* items the person owns
- *   equipped(subject)            { slot → alias } of what they wear, cached 30 s (chat and calls read it per message)
+ *   equipped(subject)            { slot → alias } of what they wear (and `_badge`: a worn community badge's media id),
+ *                                cached 30 s (chat and calls read it per message)
  *   equippedMany(subjects)       Map(subject → { slot → alias }), 100 people per read (OpenVibe.Chat's decor lookups)
  *   grant / revoke / equip       the writes, acting for the person with Live's own token
  *
@@ -119,6 +120,8 @@ function remember(subject, slots, byId) {
     const value = {};
     for (const [key, v] of Object.entries(slots || {})) {
         const [kind, slot] = key.split(':');
+        // A community badge (OpenVibe.Inventory's Workshop, network.badge): its image, for the chat line.
+        if (kind === 'network.badge' && /^med_[0-9A-HJKMNP-TV-Z]{26}$/.test(String(v.media_id || ''))) { value._badge = v.media_id; continue; }
         if (!kind.startsWith('live.')) continue;
         const alias = byId.get(v.definition_id);
         if (alias) value[slot] = alias;
