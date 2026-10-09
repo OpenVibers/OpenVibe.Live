@@ -210,6 +210,17 @@
    HAT EFFECTS — shown before username in chat
    ══════════════════════════════════════════════════════════════ */
 
+/* A community badge (the Workshop, network.badge): its reviewed image before the name. */
+.chat-ws-badge {
+    display: inline-block;
+    width: 1.15em;
+    height: 1.15em;
+    margin-right: 3px;
+    vertical-align: -0.2em;
+    border-radius: 3px;
+    object-fit: contain;
+}
+
 .chat-hat {
     display: inline-block;
     margin-right: 2px;
