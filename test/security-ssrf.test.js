@@ -345,6 +345,7 @@ async function check(name, fn) {
             'server/pastes-client.js': 'OpenVibe.Community (configured)',
             'server/comments-client.js': 'OpenVibe.Community (configured)',
             'server/chat/moderation-client.js': 'OpenVibe.Chat internal read API (configured)',
+            'server/social/preview.js': 'OpenVibe.Network public profile API (configured OV_NETWORK_INTERNAL_URL, fixed path, username checked); every other preview goes through egress',
             'server/monetization/inventory-client.js': 'OpenVibe.Inventory API for Live cosmetics (configured INVENTORY_URL)',
             'server/chat/insight-client.js': 'OpenVibe.Chat public chat-AI reads (configured OV_CHAT_INTERNAL_URL, fixed paths, ids validated)',
             'server/chat/chat-client.js': 'OpenVibe.Chat typed ingress (configured OV_CHAT_INTERNAL_URL, fixed /internal/chat/* paths)',

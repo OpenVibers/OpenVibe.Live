@@ -13,7 +13,7 @@
         for (const [n, u] of [[31536000, 'y'], [2592000, 'mo'], [86400, 'd'], [3600, 'h'], [60, 'm']]) if (s >= n) return `${Math.floor(s / n)}${u} ago`;
         return 'just now';
     };
-    const label = (l) => l.label || (l.handle ? (['x', 'tiktok', 'threads', 'instagram', 'twitch', 'kick', 'github', 'bluesky', 'mastodon'].includes(l.kind) && !String(l.handle).startsWith('@') ? `@${l.handle}` : l.handle) : (l.kind === 'website' || l.kind === 'custom' ? l.url.replace(/^https:\/\/(www\.)?/, '') : l.name));
+    const label = (l) => l.label || (l.handle ? (['x', 'tiktok', 'threads', 'instagram', 'twitch', 'kick', 'github', 'bluesky', 'mastodon', 'openvibe'].includes(l.kind) && !String(l.handle).startsWith('@') ? `@${l.handle}` : l.handle) : (l.kind === 'website' || l.kind === 'custom' ? l.url.replace(/^https:\/\/(www\.)?/, '') : l.name));
 
     /** Pills: one line of links (the offline screen). */
     function pills(host, links) {
@@ -105,7 +105,7 @@
             <label class="ch-edit-label"><i class="fa-solid fa-link"></i> Social links</label>
             ${s.connected.length ? `<div class="ch-social-connected">${s.connected.map((c) => `
                 <label class="ch-social-conn" style="--sc:${escH(c.color)}"><input type="checkbox" data-auto="${escH(c.kind)}" ${s.hidden_auto.includes(c.kind) ? '' : 'checked'}>
-                <i class="${escH(c.icon)}"></i> Show your connected ${escH(c.name)} (${escH(label(c))})</label>`).join('')}</div>` : ''}
+                <i class="${escH(c.icon)}"></i> ${c.kind === 'openvibe' ? 'Show your OpenVibe profile' : `Show your connected ${escH(c.name)}`} (${escH(label(c))})</label>`).join('')}</div>` : ''}
             ${s.missing.length ? `<p class="muted ch-social-hint">You restream to ${s.missing.map((k) => escH((_catalog.find((p) => p.kind === k) || {}).name || k)).join(', ')}: add ${s.missing.length === 1 ? 'that channel' : 'those channels'} below so viewers can find you there.</p>` : ''}
             <div class="ch-social-rows">${s.links.map((l, i) => `
                 <div class="ch-social-row" data-i="${i}">
