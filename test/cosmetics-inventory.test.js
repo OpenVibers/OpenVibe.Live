@@ -1,10 +1,9 @@
 'use strict';
 
-// ADR-054 §8: with INVENTORY_AUTHORITY=inventory, Live's cosmetics live in OpenVibe.Inventory. A stand-in Inventory and
-// Network check that Live reads a person's items and slots there (by their Network subject, with Live's own token and
-// X-OV-Subject), grants, equips, unequips and revokes there, never touches its own user_cosmetics / user_equipped, shows
-// nothing (rather than an error) when Inventory is down, and refuses writes with a clear message. Unset, Live keeps
-// its own tables.
+// ADR-054 §8: Live's cosmetics live in OpenVibe.Inventory (since 2026-10-09). A stand-in Inventory and Network check
+// that Live reads a person's items and slots there (by their Network subject, with Live's own token and X-OV-Subject),
+// grants, equips, unequips and revokes there, reads many people's sets 100 per call for OpenVibe.Chat's decor lookups,
+// shows nothing (rather than an error) when Inventory is down, and refuses writes with a clear message.
 
 const assert = require('assert');
 const http = require('http');
@@ -35,6 +34,12 @@ function stub() {
             if (u.pathname === '/api/v1/definitions') return json(200, { definitions: DEFS });
             if (u.pathname === '/api/v1/me/items') return json(200, { subject: req.headers['x-ov-subject'], instances: state.instances.filter((i) => i.owner === req.headers['x-ov-subject']), definitions: {}, next_cursor: null });
             if (u.pathname === `/api/v1/people/${A}/equipped`) return json(200, { subject: A, slots: state.slots, updated_at: new Date().toISOString() });
+            if (u.pathname === '/api/v1/equipped') {
+                const subjects = String(u.searchParams.get('subjects') || '').split(',').filter(Boolean);
+                state.calls[state.calls.length - 1].subjects = subjects.length;
+                if (subjects.length > 100) return json(400, { code: 'inventory.too_many_subjects' });
+                return json(200, { equipped: subjects.map((s) => ({ subject: s, slots: s === A ? state.slots : {}, updated_at: null })) });
+            }
             if (u.pathname === '/api/v1/grants' && req.method === 'POST') {
                 const inst = { id: `inv_01JZ0000000000000000000${String(++seq).padStart(3, '0')}`.replace(/0(?=\d{3}$)/, '1'), definition_id: body.definition_id, owner: body.subject, origin: 'granted', state: 'owned', acquired_at: new Date().toISOString() };
                 state.instances.push(inst);
@@ -68,20 +73,8 @@ function stub() {
     await d.prepare(`INSERT INTO linked_accounts (user_id, service, service_user_id, subject_id) VALUES (70, 'network', '9001', '${A}'), (71, 'network', '9002', NULL)`).run();
     const cosmetics = require('../server/monetization/cosmetics');
     const inventory = require('../server/monetization/inventory-client');
-    const ownRows = async () => Number((await d.prepare('SELECT count(*) AS n FROM user_cosmetics').get()).n) + Number((await d.prepare('SELECT count(*) AS n FROM user_equipped').get()).n);
 
     try {
-        // Unset: Live's own tables.
-        delete process.env.INVENTORY_AUTHORITY;
-        assert.strictEqual(cosmetics.authority(), 'live');
-        assert.deepStrictEqual(await cosmetics.unlockCosmetic(70, 'fx_fire'), { success: true, item: cosmetics.COSMETICS.fx_fire });
-        assert.strictEqual(await ownRows(), 1, 'live keeps its own row');
-        await d.prepare('DELETE FROM user_cosmetics').run();
-        assert.strictEqual(state.calls.length, 0, 'nothing went to Inventory');
-
-        process.env.INVENTORY_AUTHORITY = 'inventory';
-        assert.strictEqual(cosmetics.authority(), 'inventory');
-
         // Unlock and equip: in Inventory, for the person's subject, with Live's token.
         assert.strictEqual((await cosmetics.unlockCosmetic(70, 'fx_rainbow')).success, true);
         assert.strictEqual((await cosmetics.unlockCosmetic(70, 'fx_rainbow')).error, 'Already unlocked');
@@ -110,8 +103,23 @@ function stub() {
         assert.strictEqual((await cosmetics.revokeCosmetic(70, 'hat_crown')).success, true);
         assert.ok(!(await cosmetics.getUnlocked(70)).some((u) => u.item_id === 'hat_crown'));
 
-        // Live's own tables are not written in this mode.
-        assert.strictEqual(await ownRows(), 0, 'no row in user_cosmetics or user_equipped');
+        // OpenVibe.Chat's decor lookup: Ana and 250 others in three batched reads, never one per person; an account
+        // without a subject or an unknown id answers an empty profile.
+        await cosmetics.equipCosmetic(70, 'fx_rainbow');
+        const many = Array.from({ length: 250 }, (_, i) => 1000 + i);
+        await d.prepare("INSERT INTO users (id, username, display_name, password_hash) OVERRIDING SYSTEM VALUE SELECT g, 'p' || g, 'P' || g, '$sso$' FROM generate_series(1000, 1249) g").run();
+        await d.prepare("INSERT INTO linked_accounts (user_id, service, service_user_id, subject_id) SELECT g, 'network', 'n' || g, 'usr_01JZ' || lpad(g::text, 22, '0') FROM generate_series(1000, 1249) g").run();
+        inventory.forget(A);
+        const before = state.calls.length;
+        const profiles = await cosmetics.getCosmeticProfiles([70, 71, 999999, ...many]);
+        const batched = state.calls.slice(before).filter((c) => c.path === '/api/v1/equipped');
+        assert.deepStrictEqual(batched.map((c) => c.subjects), [100, 100, 51], 'Ana and 250 others, 100 per read');
+        assert.strictEqual(state.calls.slice(before).filter((c) => /\/people\//.test(c.path)).length, 0, 'no per-person reads');
+        assert.deepStrictEqual(profiles[70].nameFX, { itemId: 'fx_rainbow', cssClass: 'name-fx-rainbow' });
+        assert.deepStrictEqual([profiles[71], profiles[999999], profiles[1000]], [{}, {}, {}]);
+        const again = state.calls.length;
+        await cosmetics.getCosmeticProfiles([70, ...many]);
+        assert.strictEqual(state.calls.length, again, 'a second lookup within 30 s is all cache');
 
         // A Live account without a Network subject holds nothing, and cannot be given anything.
         assert.deepStrictEqual(await cosmetics.getUnlocked(71), []);
@@ -122,11 +130,9 @@ function stub() {
         inventory.forget(A);
         assert.deepStrictEqual(await cosmetics.getCosmeticProfile(70), {});
         assert.match((await cosmetics.equipCosmetic(70, 'px_sparkle')).error, /unavailable|own/i);
+        inventory.reset();
+        assert.deepStrictEqual(await cosmetics.getCosmeticProfiles([70]), { 70: {} }, 'down: an empty profile, not an error');
         state.down = false;
-
-        // An unknown value falls back to live.
-        process.env.INVENTORY_AUTHORITY = 'nonsense';
-        assert.strictEqual(cosmetics.authority(), 'live');
         process.stdout.write('cosmetics through OpenVibe.Inventory: all checks passed\n');
     } finally {
         server.close();

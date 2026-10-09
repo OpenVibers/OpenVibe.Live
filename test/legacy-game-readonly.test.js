@@ -5,7 +5,7 @@
  * used the old game engine's getPlayer(), which INSERTed a placeholder game_players row for every
  * profile anyone opened (production had 70, the newest days old). The engine, its item tables and
  * the RS-Companion import script are gone; the profile card reads db.getLegacyGameProfile(), which
- * never writes, and chat tags come from the read-only server/chat/tags.js.
+ * never writes; the game's chat tags left with it (nothing equipped one since).
  *
  *   node test/legacy-game-readonly.test.js
  */
@@ -54,15 +54,8 @@ auth.requireAuth = (req, res) => res.status(401).json({ error: 'Authentication r
     assert.strictEqual(g.total_level, 20, 'a legacy player still shows their skills');
     assert.strictEqual(await count(), 1, 'reading a profile created no game_players row');
 
-    // Chat tags: read-only, and still shown.
-    const tags = require('../server/chat/tags');
-    // `user_tags` is OpenVibe.Chat's now (dropped in T3 N+2); only the equipped tag is Live's.
-    await raw.prepare("INSERT INTO user_equipped_tag (user_id, tag_id) VALUES (1, 'legacy')").run();
-    assert.strictEqual((await tags.getTagProfile(1)).name, 'Legacy');
-    assert.strictEqual(await tags.getTagProfile(2), null);
-    for (const writer of ['grantTag', 'revokeTag', 'buyTag', 'equipTag', 'unequipTag', 'fightGuardian']) {
-        assert.strictEqual(tags[writer], undefined, `tags.${writer} is gone (the game owns tag grants now)`);
-    }
+    // Chat tags left with the game: nothing equipped one since, and Live no longer reads them (ADR-054 §8).
+    assert.ok(!fs.existsSync(path.join(ROOT, 'server/chat/tags.js')), 'server/chat/tags.js is retired');
 
     // The engine is gone and nothing reaches for it.
     assert.ok(!fs.existsSync(path.join(ROOT, 'server/game')), 'server/game/ is retired');
