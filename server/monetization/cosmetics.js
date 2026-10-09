@@ -170,6 +170,19 @@ async function getCosmeticProfiles(userIds) {
     return out;
 }
 
+/**
+ * Where each item can be earned: { itemId → 'quest' } for the items Live lets OpenVibe.Quest give as quest rewards
+ * (Inventory's definition grantors, ADR-054 §3). Inventory down: {} (the shop just says nothing about earning).
+ */
+async function earnable() {
+    return await quietly(async () => {
+        const { byAlias } = await inventory.catalog();
+        const out = {};
+        for (const [alias, d] of byAlias) if (COSMETICS[alias] && (d.grantors || []).includes('service:quest')) out[alias] = 'quest';
+        return out;
+    }, {});
+}
+
 // ── Check if user owns a cosmetic ────────────────────────────
 async function ownsCosmetic(userId, itemId) {
     return (await getUnlocked(userId)).some((u) => u.item_id === itemId);
@@ -264,4 +277,5 @@ module.exports = {
     equipCosmetic,
     unequipSlot,
     getFullInventory,
+    earnable,
 };

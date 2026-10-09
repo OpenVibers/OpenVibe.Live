@@ -13,7 +13,7 @@ console.warn = () => {};
 
 const A = 'usr_01JZ0000000000000000000AAA';
 const DEFS = [
-    { id: 'itd_01JZ00000000000000000001R1', kind: 'live.name_effect', aliases: ['fx_rainbow'] },
+    { id: 'itd_01JZ00000000000000000001R1', kind: 'live.name_effect', aliases: ['fx_rainbow'], grantors: ['service:quest'] },
     { id: 'itd_01JZ00000000000000000001R2', kind: 'live.hat', aliases: ['hat_crown'] },
     { id: 'itd_01JZ00000000000000000001R3', kind: 'live.particle', aliases: ['px_sparkle'] },
 ];
@@ -103,6 +103,9 @@ function stub() {
         assert.strictEqual((await cosmetics.revokeCosmetic(70, 'hat_crown')).success, true);
         assert.ok(!(await cosmetics.getUnlocked(70)).some((u) => u.item_id === 'hat_crown'));
 
+        // The shop says where an item is earned: Quest gives the Rainbow (Inventory's grantors).
+        assert.deepStrictEqual(await cosmetics.earnable(), { fx_rainbow: 'quest' });
+
         // OpenVibe.Chat's decor lookup: Ana and 250 others in three batched reads, never one per person; an account
         // without a subject or an unknown id answers an empty profile.
         await cosmetics.equipCosmetic(70, 'fx_rainbow');
@@ -132,6 +135,7 @@ function stub() {
         assert.match((await cosmetics.equipCosmetic(70, 'px_sparkle')).error, /unavailable|own/i);
         inventory.reset();
         assert.deepStrictEqual(await cosmetics.getCosmeticProfiles([70]), { 70: {} }, 'down: an empty profile, not an error');
+        assert.deepStrictEqual(await cosmetics.earnable(), {}, 'down: nothing said about earning');
         state.down = false;
         process.stdout.write('cosmetics through OpenVibe.Inventory: all checks passed\n');
     } finally {
