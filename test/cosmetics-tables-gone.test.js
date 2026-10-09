@@ -29,4 +29,10 @@ for (const file of [...walk(path.join(ROOT, 'server')), ...walk(path.join(ROOT, 
 assert.deepStrictEqual(offenders, [], 'Live\'s cosmetics are OpenVibe.Inventory\'s (ADR-054 §8): read them through server/monetization/cosmetics.js');
 assert.ok(!fs.existsSync(path.join(ROOT, 'server/chat/tags.js')), 'the legacy chat tags left with the game');
 assert.ok(!/INVENTORY_AUTHORITY/.test(fs.readFileSync(path.join(ROOT, 'server/monetization/cosmetics.js'), 'utf8')), 'no switch back to Live\'s tables');
-console.log('cosmetics tables: nothing under server/ or scripts/ names them');
+// The contract migration drops them, after the N-1 window (it names 0002, so the migrator holds it for 7 days).
+const drop = fs.readFileSync(path.join(ROOT, 'migrations', '0003_drop_live_cosmetics.sql'), 'utf8');
+assert.match(drop, /^-- phase: contract$/m);
+assert.match(drop, /^-- after: 0002$/m);
+const dropped = [...drop.matchAll(/^DROP TABLE IF EXISTS (\w+);$/gm)].map((m) => m[1]).sort();
+assert.deepStrictEqual(dropped, ['user_cosmetics', 'user_equipped', 'user_equipped_tag'], '0003 drops exactly the three');
+console.log('cosmetics tables: nothing under server/ or scripts/ names them, and 0003 drops them');
