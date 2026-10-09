@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 'use strict';
 /**
- * The Go Live workspace's ingest URLs for a slot ingested by OpenRe: WHIP and JSMPEG point at
- * OpenRe's servers with the key in the path, never at Live's /whip/<slot> or JSMPEG relay (Live
+ * The Go Live workspace's ingest URLs for a slot ingested by OpenRestream: WHIP and JSMPEG point at
+ * OpenRestream's servers with the key in the path, never at Live's /whip/<slot> or JSMPEG relay (Live
  * refuses those publishes). Slots on Live's own ingest keep Live's URLs.
  */
 const assert = require('assert');
@@ -27,15 +27,15 @@ _wsState.whipUrlBase = 'https://whip.openvibe.live/';
 assert.strictEqual(_wsWhipUrl(708, 'livekey'), 'https://whip.openvibe.live/whip/708');
 assert.ok(_wsRenderMethodEndpoint('cli', 'livekey', 708).includes('http://openvibe.live:PORT/livekey/640/480/'));
 
-// OpenRe: its WHIP URL takes the key, its JSMPEG server takes key/width/height.
+// OpenRestream: its WHIP URL takes the key, its JSMPEG server takes key/width/height.
 Object.assign(_wsState, { whipUrlBase: null, openreWhipUrl: 'https://ingest.openre.stream/whip', openreJsmpegUrl: 'http://ingest.openre.stream:8081' });
 assert.strictEqual(_wsWhipUrl(708, 'ork_key'), 'https://ingest.openre.stream/whip/ork_key');
 const whipInfo = _wsRenderMethodEndpoint('whip', 'ork_key', 708);
 assert.ok(whipInfo.includes('https://ingest.openre.stream/whip/ork_key'), whipInfo);
 assert.ok(!whipInfo.includes('/whip/708'));
 const cli = _wsRenderMethodEndpoint('cli', 'ork_key', 709);
-assert.ok(cli.includes('http://ingest.openre.stream:8081/ork_key/640/480/'), 'JSMPEG commands use OpenRe');
+assert.ok(cli.includes('http://ingest.openre.stream:8081/ork_key/640/480/'), 'JSMPEG commands use OpenRestream');
 assert.ok(!cli.includes('openvibe.live:PORT'));
-assert.ok(cli.includes('https://ingest.openre.stream/whip/ork_key'), 'the CLI WHIP tab uses OpenRe');
+assert.ok(cli.includes('https://ingest.openre.stream/whip/ork_key'), 'the CLI WHIP tab uses OpenRestream');
 
-console.log('✅ workspace OpenRe ingest: WHIP and JSMPEG URLs point at OpenRe for switched slots, at Live otherwise');
+console.log('✅ workspace OpenRestream ingest: WHIP and JSMPEG URLs point at OpenRestream for switched slots, at Live otherwise');

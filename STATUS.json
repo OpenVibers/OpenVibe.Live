@@ -22,7 +22,7 @@
   "deployment": "Production release layout /opt/openvibe.live (current -> releases/<time>-<sha>), unit openvibe-live.service on the systemd socket 127.0.0.1:3000, deployed with `sudo ovhost deploy live --wait-idle`.",
   "features": [
     "RTMP, WHIP, WebRTC and JSMPEG ingest; viewer playback; the broadcast page",
-    "channels, go-live, stream keys, managed streams, restreaming (managed ingest on OpenRe.Stream)",
+    "channels, go-live, stream keys, managed streams, restreaming (managed ingest on OpenRestream)",
     "the watch page and its chat surface (messages stored by OpenVibe.Chat), TTS, sounds, emotes, overlays",
     "VODs and clips recorded and stored by OpenVibe.Media; pastes and comments on OpenVibe.Community",
     "AI viewers, stream memories, overviews, moments, recaps, translation: every prompt an OpenVibe.AI template; VOD and clip transcripts by window on OpenVibe.AI",

@@ -16,7 +16,7 @@ const chatRelayService = require('../integrations/chat-relay-service');
 const router = express.Router();
 
 /**
- * A slot ingested by OpenRe.Stream (ingest_authority = 'openre') restreams from OpenRe: its
+ * A slot ingested by OpenRestream (ingest_authority = 'openre') restreams from OpenRestream: its
  * destinations are managed there (openre.stream), so Live refuses to edit or run them here rather
  * than letting two systems push the same stream. Slots on Live's own ingest are unaffected.
  */
@@ -25,7 +25,7 @@ async function refuseIfOpenre(res, managedStreamId) {
     if (!await openre.slotIsOpenre(managedStreamId)) return false;
     const slot = await openre.slotById(managedStreamId);
     res.status(409).json({
-        error: 'Restreaming for this stream slot is managed on OpenRe.Stream',
+        error: 'Restreaming for this stream slot is managed on OpenRestream',
         managed_by: 'openre',
         manage_url: require('../openre/openre-client').manageUrl(slot && slot.openre_stream_id),
     });

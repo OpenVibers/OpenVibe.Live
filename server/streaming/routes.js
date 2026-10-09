@@ -1609,13 +1609,13 @@ router.get('/managed/:managedStreamId/profile', requireAuth, async (req, res) =>
             rtmp_url: rtmpUrl,
             restream_destinations: restreamDestinations,
         };
-        // OpenRe ingests this slot: its RTMP/WHIP/JSMPEG servers and key come from OpenRe (the key
+        // OpenRestream ingests this slot: its RTMP/WHIP/JSMPEG servers and key come from OpenRestream (the key
         // is only ever shown by Regenerate), and Live's WHIP base is withheld: Live refuses that
         // publish. Slots on Live's own ingest get exactly the response above.
         if (openreAuthority.authorityOf(ms) === 'openre') {
             const subject = await require('../auth/identity-sync').subjectOf(ms.user_id);
             Object.assign(body, { stream_key: null, whip_url_base: null, whip_url_source: null, whip_url_warning: null }, await openreAuthority.ingestFor(ms, subject).catch((err) => ({
-                ingest_authority: 'openre', stream_key_managed_by: 'openre', rtmp_url: null, whip_url: null, jsmpeg_url: null, stream_key_hint: `OpenRe is unreachable (${err.message})`,
+                ingest_authority: 'openre', stream_key_managed_by: 'openre', rtmp_url: null, whip_url: null, jsmpeg_url: null, stream_key_hint: `OpenRestream is unreachable (${err.message})`,
             })));
         }
         res.json(body);
@@ -1954,14 +1954,14 @@ router.post('/managed/:id/regenerate-key', requireAuth, async (req, res) => {
             return res.status(403).json({ error: 'Not your managed stream' });
         }
 
-        // OpenRe ingests this slot: OpenRe rotates its key (the old one stops working at once) and
+        // OpenRestream ingests this slot: OpenRestream rotates its key (the old one stops working at once) and
         // the new one is shown here, once.
         if (openreAuthority.authorityOf(ms) === 'openre') {
             try {
                 const subject = await require('../auth/identity-sync').subjectOf(ms.user_id);
                 return res.json(await openreAuthority.rotateFor(ms, subject));
             } catch (err) {
-                return res.status(502).json({ error: `Could not rotate the key on OpenRe: ${err.message}` });
+                return res.status(502).json({ error: `Could not rotate the key on OpenRestream: ${err.message}` });
             }
         }
 
@@ -2283,7 +2283,7 @@ router.get('/:id/endpoint', requireAuth, async (req, res) => {
         const hostname = config.host === '0.0.0.0' ? req.hostname : config.host;
 
         if (openreAuthority.OPENRE_PROTOCOLS.has(stream.protocol) && await openreAuthority.slotIsOpenre(stream.managed_stream_id)) {
-            // OpenRe ingests this slot: its server URL for the slot's protocol, the hint of its key
+            // OpenRestream ingests this slot: its server URL for the slot's protocol, the hint of its key
             // (never the key). No Live relay channel, room or recorder is set up for it.
             const slot = await openreAuthority.slotById(stream.managed_stream_id);
             const ingest = await openreAuthority.ingestFor(slot, await require('../auth/identity-sync').subjectOf(slot.user_id)).catch(() => ({}));
@@ -2293,7 +2293,7 @@ router.get('/:id/endpoint', requireAuth, async (req, res) => {
             endpoint = {
                 ...serverUrl,
                 streamKey: null,
-                streamKeyHint: ingest.stream_key_hint || 'Press Regenerate to get your OpenRe stream key',
+                streamKeyHint: ingest.stream_key_hint || 'Press Regenerate to get your OpenRestream stream key',
                 keyManagedBy: 'openre',
                 ...(stream.protocol === 'rtmp' ? { flvUrl: `/api/streams/rtmp-proxy/${stream.id}.flv` } : {}),
             };
@@ -2537,8 +2537,8 @@ router.get('/rtmp-proxy/:streamId.flv', async (req, res) => {
         let url;
         const mirrored = await openreMirror.sessionForStream(stream.id);
         if (mirrored) {
-            // An OpenRe session: pull HTTP-FLV from the OpenRe worker that holds it, as named by
-            // OpenRe's playback descriptor (a loopback URL on this host; no key in it).
+            // An OpenRestream session: pull HTTP-FLV from the OpenRestream worker that holds it, as named by
+            // OpenRestream's playback descriptor (a loopback URL on this host; no key in it).
             if (mirrored.state !== 'live') return res.status(404).end();
             const pb = await require('../openre/openre-client').playback(mirrored.session_id).catch(() => null);
             if (!pb || !pb.flv || !/^http:\/\/127\.0\.0\.1:\d+\/live\/ses_[0-9A-Z]+\.flv$/.test(pb.flv.internal_url)) return res.status(502).end();
@@ -2550,7 +2550,7 @@ router.get('/rtmp-proxy/:streamId.flv', async (req, res) => {
             url = `http://127.0.0.1:${nmsPort}/live/${flvKey}.flv`;
         }
 
-        if (req.destroyed) return undefined; // the viewer left while OpenRe was asked
+        if (req.destroyed) return undefined; // the viewer left while OpenRestream was asked
         const http = require('http');
         const upstream = http.get(url, (nmsRes) => {
             if (nmsRes.statusCode !== 200) {

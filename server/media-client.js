@@ -8,7 +8,7 @@
  * Auth: `Authorization: Bearer <service token>`. Live authenticates to Media with its own
  * Network service principal (client credentials for audience openvibe.media; grants
  * media.object.read/list/upload/delete on namespace live), the same construction
- * server/openre/openre-client.js uses for OpenRe. For a request made on behalf of a browser
+ * server/openre/openre-client.js uses for OpenRestream. For a request made on behalf of a browser
  * user, add `actingUser` (their LIVE-LOCAL user id) — Media then applies that user's ACLs and
  * stores their id. See _authHeader for why the id is sent explicitly rather than left for
  * Media to read out of the caller's Network JWT.

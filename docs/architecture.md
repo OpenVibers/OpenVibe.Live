@@ -226,7 +226,7 @@ through the SDK inbox (`idempotency_receipts`):
 
 | topics | endpoint | secret | subscribe with |
 |---|---|---|---|
-| `openre.session.*` | `/internal/openre-events` | `OPENRE_EVENTS_SECRET` | OpenRe's `scripts/subscribe-live-events.js` |
+| `openre.session.*` | `/internal/openre-events` | `OPENRE_EVENTS_SECRET` | OpenRestream's `scripts/subscribe-live-events.js` |
 | `media.vod.*`, `media.clip.*`, `media.storage.*` | `/internal/media-events` | `MEDIA_EVENTS_SECRET` | `scripts/subscribe-media-events.js` |
 
 #### Media outcomes over Events

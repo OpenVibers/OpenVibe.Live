@@ -1,7 +1,7 @@
 'use strict';
 /**
- * OpenRe.Stream client (roadmap Wave 7). Live asks OpenRe for stream definitions, ingest URLs,
- * key rotation, sessions and playback descriptors; it never touches an OpenRe worker.
+ * OpenRestream client (roadmap Wave 7). Live asks OpenRestream for stream definitions, ingest URLs,
+ * key rotation, sessions and playback descriptors; it never touches an OpenRestream worker.
  *
  * Auth: Live's Network service principal (OV_OAUTH_CLIENT_ID / OV_OAUTH_CLIENT_SECRET),
  * client-credentials tokens for audience openvibe.openre. Grants Live needs on openre:
@@ -9,7 +9,7 @@
  * Calls made for a streamer carry X-OV-Subject: <their usr_ subject>.
  *
  * Env:
- *   OPENRE_URL            OpenRe API, host-local (http://127.0.0.1:4500). Unset = integration off:
+ *   OPENRE_URL            OpenRestream API, host-local (http://127.0.0.1:4500). Unset = integration off:
  *                         every slot behaves exactly as before, whatever its ingest_authority.
  *   OPENRE_PUBLIC_URL     for links to the standalone UI (default https://openre.stream)
  *   OPENRE_EVENTS_SECRET  the signing secret of Live's OpenVibe.Events subscription to openre.*
@@ -18,7 +18,7 @@ const { createServiceTokenClient } = require('openvibe-sdk/auth');
 const { createClient, OpenVibeError } = require('openvibe-sdk/core');
 const { createOpenReClient } = require('openvibe-sdk/openre');
 
-// The calls themselves are openvibe-sdk/openre (SDK 0.16.0), shared with every product that uses OpenRe; this
+// The calls themselves are openvibe-sdk/openre (SDK 0.16.0), shared with every product that uses OpenRestream; this
 // module keeps Live's configuration (env), its on/off switch and the names the rest of Live calls.
 const TIMEOUT_MS = 5000;
 let sdk = null;
@@ -33,7 +33,7 @@ function settings() {
     };
 }
 
-/** True when Live is configured to talk to OpenRe at all. */
+/** True when Live is configured to talk to OpenRestream at all. */
 function enabled() {
     const s = settings();
     return Boolean(s.url && s.clientSecret);
@@ -45,7 +45,7 @@ class OpenReError extends Error {
 
 /** The SDK client for the current settings (rebuilt when they change: tests and rollbacks flip OPENRE_URL). */
 function openre() {
-    if (!enabled()) throw new OpenReError('OpenRe integration is not configured (OPENRE_URL, OV_OAUTH_CLIENT_SECRET)', 0);
+    if (!enabled()) throw new OpenReError('OpenRestream integration is not configured (OPENRE_URL, OV_OAUTH_CLIENT_SECRET)', 0);
     const s = settings();
     const key = `${s.url}|${s.publicUrl}|${s.clientId}@${s.networkInternalUrl}`;
     if (!sdk || sdk.key !== key) {
@@ -62,9 +62,9 @@ async function wrap(what, fn) {
         if (err instanceof OpenReError) throw err;
         if (err instanceof OpenVibeError || (err && err.name === 'OpenVibeError')) {
             const body = err.problem || (err.code ? { code: err.code, detail: err.detail || err.message } : null);
-            throw new OpenReError(err.status ? (err.detail || err.message) : `OpenRe unreachable (${what}): ${err.message}`, err.status || 0, body);
+            throw new OpenReError(err.status ? (err.detail || err.message) : `OpenRestream unreachable (${what}): ${err.message}`, err.status || 0, body);
         }
-        throw new OpenReError(`OpenRe unreachable (${what}): ${err.message}`, 0);
+        throw new OpenReError(`OpenRestream unreachable (${what}): ${err.message}`, 0);
     }
 }
 
@@ -75,7 +75,7 @@ async function request(method, path, { body, subject, timeoutMs = TIMEOUT_MS } =
         headers: subject ? { 'X-OV-Subject': subject } : {} }));
 }
 
-/** The OpenRe stream definition serving a Live slot, or null. */
+/** The OpenRestream stream definition serving a Live slot, or null. */
 const streamForSlot = async (managedStreamId) => await wrap('stream lookup', () => openre().streams.byExternalRef(`live:managed_stream:${managedStreamId}`));
 
 /** Create the definition for a slot, owned by the streamer's canonical subject. The key it

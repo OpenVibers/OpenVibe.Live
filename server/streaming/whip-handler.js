@@ -121,13 +121,13 @@ function sendWhipError(res, status, code, message) {
 
 /**
  * Consult the per-protocol ingest authority before accepting a publisher: a slot (or personal
- * key) ingested by OpenRe publishes WHIP to OpenRe, never to Live.
+ * key) ingested by OpenRestream publishes WHIP to OpenRestream, never to Live.
  */
 async function refusedByOpenre(slotId, userId) {
     const managedStream = slotId ? await db.getManagedStreamById(slotId) : null;
     const user = managedStream || !userId ? null : await db.getUserById(userId);
     if (!await require('../openre/authority').refusesLiveIngest({ managedStream, user, protocol: 'webrtc' })) return false;
-    console.log(`[WHIP] Rejected: ${managedStream ? `slot ${managedStream.id}` : `personal key of user ${userId}`} is ingested by OpenRe`);
+    console.log(`[WHIP] Rejected: ${managedStream ? `slot ${managedStream.id}` : `personal key of user ${userId}`} is ingested by OpenRestream`);
     return true;
 }
 

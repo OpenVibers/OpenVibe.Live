@@ -323,7 +323,7 @@ function webrtcStreamHasActiveProducer(streamId) {
 
 async function hasActiveLiveFeed(stream) {
     if (!stream) return false;
-    // OpenRe.Stream holds the ingest (a mirrored session it confirmed recently): not stale.
+    // OpenRestream holds the ingest (a mirrored session it confirmed recently): not stale.
     if (await require('./openre/mirror').hasLiveSession(stream.id)) return true;
     const streamKey = await getStreamKey(stream);
     if (stream.protocol === 'rtmp') {
@@ -668,7 +668,7 @@ app.post('/internal/media-webhook', require('./media-proxy/webhook'));
 app.post('/internal/media-events', require('./media-proxy/media-events').handler);
 // Network identity events (signed out everywhere, password changed, banned): Live refuses older tokens.
 app.post('/internal/network-events', require('./auth/network-events').handler);
-// OpenVibe.Events → Live: OpenRe session lifecycle mirrored into `streams` (signed delivery,
+// OpenVibe.Events → Live: OpenRestream session lifecycle mirrored into `streams` (signed delivery,
 // OPENRE_EVENTS_SECRET; server/openre/mirror.js). Also before /internal (no X-Internal-Key).
 app.post('/internal/openre-events', require('./openre/mirror').webhookHandler);
 
@@ -1257,7 +1257,7 @@ async function start() {
     // 5b. Resume enabled restreams for streams that survived the restart.
     // WHIP/RTMP broadcasters have no browser session to re-start them manually.
     for (const stream of await db.getLiveStreams()) {
-        // OpenRe restreams its own sessions; Live must not start a second push for them.
+        // OpenRestream restreams its own sessions; Live must not start a second push for them.
         if (await require('./openre/mirror').ownsStream(stream.id)) continue;
         restreamManager.resumeForStream(stream.id, stream.user_id, {
             protocol: stream.protocol,
@@ -1326,8 +1326,8 @@ async function start() {
     // 6e. Start periodic viewer count polling for restream destinations
     restreamManager.startViewerCountPolling();
 
-    // 6g. OpenRe mirror reconcile (only runs when OPENRE_URL is set; idle with nothing mirrored).
-    try { require('./openre/mirror').start(); } catch (e) { console.warn('[OpenRe] mirror reconcile not started:', e.message); }
+    // 6g. OpenRestream mirror reconcile (only runs when OPENRE_URL is set; idle with nothing mirrored).
+    try { require('./openre/mirror').start(); } catch (e) { console.warn('[OpenRestream] mirror reconcile not started:', e.message); }
 
     // 6f. VOD storage/offload is owned by OpenVibe.Media now — nothing to start here.
 

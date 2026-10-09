@@ -261,7 +261,7 @@ async function _wsLoadProfile(managedStreamId) {
             _wsState.selectedMs = { ..._wsState.selectedMs, ...data.managed_stream };
         }
         _wsState.streamKey = data.stream_key || null;
-        // OpenRe-ingested slot: no key in the profile, only a hint (Regenerate shows a new key once).
+        // OpenRestream-ingested slot: no key in the profile, only a hint (Regenerate shows a new key once).
         _wsState.streamKeyHint = data.stream_key_hint || null;
         _wsState.profile = data.broadcast_settings || {};
         _wsState.profile.vibeCoding = _wsNormalizeVibeSettings(_wsReadStoredVibeSettings(_wsState.profile));
@@ -269,7 +269,7 @@ async function _wsLoadProfile(managedStreamId) {
         _wsState.whipUrlSource = data.whip_url_source || null;
         _wsState.whipUrlWarning = data.whip_url_warning || null;
         _wsState.rtmpUrl = data.rtmp_url || null;
-        // OpenRe-ingested slot: OpenRe's WHIP and JSMPEG servers (the key goes after each).
+        // OpenRestream-ingested slot: OpenRestream's WHIP and JSMPEG servers (the key goes after each).
         _wsState.openreWhipUrl = data.whip_url || null;
         _wsState.openreJsmpegUrl = data.jsmpeg_url || null;
     } catch {
@@ -1384,7 +1384,7 @@ function _wsRenderBrowserModeCards(selected) {
 
 /* ── Method-specific endpoint info ───────────────────────────── */
 
-// Live's WHIP takes the slot id in the path (key as Bearer token); OpenRe's takes the key itself.
+// Live's WHIP takes the slot id in the path (key as Bearer token); OpenRestream's takes the key itself.
 function _wsWhipUrl(managedStreamId, streamKey) {
     if (_wsState.openreWhipUrl) return `${_wsState.openreWhipUrl.replace(/\/$/, '')}/${streamKey}`;
     const whipBaseUrl = (_wsState.whipUrlBase || window.location.origin).replace(/\/$/, '');
@@ -1876,7 +1876,7 @@ async function _wsRegenerateKey(managedStreamId) {
     try {
         const data = await api(`/streams/managed/${managedStreamId}/regenerate-key`, { method: 'POST' });
         _wsState.streamKey = data.stream_key;
-        // OpenRe's rotation answers with its ingest servers too.
+        // OpenRestream's rotation answers with its ingest servers too.
         if (data.stream_key_managed_by === 'openre') {
             _wsState.rtmpUrl = data.rtmp_url || _wsState.rtmpUrl;
             _wsState.openreWhipUrl = data.whip_url || _wsState.openreWhipUrl;

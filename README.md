@@ -68,7 +68,7 @@ The media subsystem lives in **OpenVibe.Media**:
 - Streaming ingest and viewer playback: RTMP (`node-media-server`), WHIP and WebRTC (`mediasoup`), JSMPEG, and the broadcast page.
 - Channels and streams: go-live, stream keys, managed streams, heartbeats, channel pages (`/@username`), offline screens, panels and goals.
 - The watch experience: the SPA in `public/`, the chat surface and its effects (TTS, sounds, emotes, overlays), anonymous chat identities.
-- Streamer tools: the dashboard, restreaming (via OpenRe for managed ingest), song requests (watch party), AI viewers (the context Live builds; the runs are OpenVibe.AI's).
+- Streamer tools: the dashboard, restreaming (via OpenRestream for managed ingest), song requests (watch party), AI viewers (the context Live builds; the runs are OpenVibe.AI's).
 - Channel points, Vibes tipping flows (the ledger moves to OpenVibe.Billing when `BILLING_AUTHORITY=billing`), moderation of Live's own surfaces, the Arena (Battle Cam) and after-show recaps.
 - Live-local state: PostgreSQL `ov_live` (users' Live profiles, streams, channel state, AI state for Media-hosted recordings in `vod_ai_state` / `clip_ai_state`, request analytics).
 
@@ -85,7 +85,7 @@ The media subsystem lives in **OpenVibe.Media**:
 
 - **OpenVibe.Network**: sign-in (OAuth2 client `live`), the signing key, service tokens (`server/net/network-principal.js`), follows, notifications, the wallet, the OpenVibe Frame (`openvibe-shared`, served at `/shared/*`).
 - **OpenVibe.Media**: VOD recording, storage (local, B2, R2), playback, clips, thumbnails, signed playback URLs. Outcomes arrive as `media.*` events at `POST /internal/media-events`.
-- **OpenVibe.Chat**, **OpenVibe.Community**, **OpenVibe.AI**, **OpenVibe.Events**, **OpenRe.Stream**, **OpenVibe.Billing**, **OpenVibe.Tips**, **OpenVibe.VIP**, **OpenVibe.Tools**, **OpenVibe.Search**: through their APIs with Live's service token.
+- **OpenVibe.Chat**, **OpenVibe.Community**, **OpenVibe.AI**, **OpenVibe.Events**, **OpenRestream**, **OpenVibe.Billing**, **OpenVibe.Tips**, **OpenVibe.VIP**, **OpenVibe.Tools**, **OpenVibe.Search**: through their APIs with Live's service token.
 - **Libraries**: `openvibe-contracts` (pinned tag), `openvibe-sdk`, `openvibe-shared`; FFmpeg and whisper.cpp on the host.
 
 ## Capabilities
@@ -99,7 +99,7 @@ Live's own principal (`live`) holds grants to call:
 - **Chat**: `chat.message.send`, `chat.event.publish`, `chat.moderation.write`, `chat.cache.invalidate`, `chat.presence.read`; `chat.live_bridge.write` for the call channels (`server/streaming/calls-authority.js`) and the one-off outbox delivery (`scripts/chat-bridge-outbox-drop.js`).
 - **Community**: `community.paste.*`, `community.comment.*`, `community.pulse.write`.
 - **Events**: `events.event.publish|read`, `events.subscription.manage`.
-- **OpenRe**: `openre.stream.*`, `openre.key.rotate`, `openre.session.read`.
+- **OpenRestream**: `openre.stream.*`, `openre.key.rotate`, `openre.session.read`.
 - **Billing**: `billing.*` (intents, transfers, subscriptions, cash-outs, balances, entitlements).
 - **Elsewhere**: `tips.interaction.record`, `vip.entitlement.check`, `tools.tool.run`, `tools.job.read`.
 

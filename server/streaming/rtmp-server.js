@@ -121,11 +121,11 @@ class RTMPServer extends EventEmitter {
                 return;
             }
 
-            // OpenRe.Stream ingests this slot (managed_streams.ingest_authority = 'openre'): refuse
+            // OpenRestream ingests this slot (managed_streams.ingest_authority = 'openre'): refuse
             // here so one stream can never be ingested twice. Slots on 'live' (the default) are
             // untouched. See server/openre/authority.js.
             if (await require('../openre/authority').refusesLiveIngest({ managedStream, user: managedStream ? null : resolvedUser, protocol: 'rtmp' })) {
-                console.log(`[RTMP] Rejected: ${managedStream ? `slot ${managedStream.id}` : `personal key of ${resolvedUser.username}`} is ingested by OpenRe`);
+                console.log(`[RTMP] Rejected: ${managedStream ? `slot ${managedStream.id}` : `personal key of ${resolvedUser.username}`} is ingested by OpenRestream`);
                 const session = this.nms.getSession(id);
                 if (session) session.reject();
                 return;

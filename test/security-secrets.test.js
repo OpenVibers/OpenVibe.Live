@@ -4,7 +4,7 @@
  *
  * Boots the real server as a restore-drill instance (test/security-crawl.js) with a sentinel value in
  * every secret environment variable Live reads (the Network OAuth client secret, the internal API
- * keys, Media's webhook/event secrets, the Events and OpenRe subscription secrets, TURN,
+ * keys, Media's webhook/event secrets, the Events and OpenRestream subscription secrets, TURN,
  * PayPal, the admin password, GitHub tokens, the ops webhook) and in every secret site setting an
  * owner can store (GIF, TTS, AI, Twitch/Kick/YouTube, soundboard keys, the Discord and ops
  * webhooks), then requests every GET route Express knows, the pages, the probes (/api/ready,

@@ -2,14 +2,14 @@
 /**
  * The per-slot ingest switch: managed_streams.ingest_authority = 'live' (default) | 'openre'.
  *
- * 'openre' means OpenRe.Stream ingests this slot: Live's RTMP server, WHIP handler, browser
+ * 'openre' means OpenRestream ingests this slot: Live's RTMP server, WHIP handler, browser
  * broadcaster socket and JSMPEG relay refuse the slot's key (so a stream can never be ingested
- * twice), the Go Live UI shows OpenRe's ingest URLs and rotates OpenRe's key, and the slot's
+ * twice), the Go Live UI shows OpenRestream's ingest URLs and rotates OpenRestream's key, and the slot's
  * sessions reach `streams` through the mirror (mirror.js). RTMP, WebRTC (WHIP) and JSMPEG move
- * (OPENRE_PROTOCOLS): OpenRe serves WHIP on ingest.openre.stream and runs the JSMPEG worker.
+ * (OPENRE_PROTOCOLS): OpenRestream serves WHIP on ingest.openre.stream and runs the JSMPEG worker.
  *
  * Switch off = zero behaviour change: every helper here returns what Live did before unless the
- * slot says 'openre' AND OpenRe is configured (openre-client enabled()).
+ * slot says 'openre' AND OpenRestream is configured (openre-client enabled()).
  */
 const crypto = require('crypto');
 const db = require('../db/database');
@@ -17,7 +17,7 @@ const client = require('./openre-client');
 
 const OPENRE_PROTOCOLS = new Set(['rtmp', 'webrtc', 'jsmpeg']);
 
-/** The OpenRe definition protocol a slot publishes with (OpenRe's own migrate-live mapping). */
+/** The OpenRestream definition protocol a slot publishes with (OpenRestream's own migrate-live mapping). */
 function openreProtocolOf(slot) {
     const p = String((slot && slot.protocol) || '').toLowerCase();
     if (p === 'webrtc' || p === 'whip') return 'webrtc';
@@ -34,7 +34,7 @@ async function slotById(id) {
     return id ? await db.getManagedStreamById(id) : null;
 }
 
-/** authorityOf(slotById(id)) === 'openre', without reading the slot when OpenRe is not configured. */
+/** authorityOf(slotById(id)) === 'openre', without reading the slot when OpenRestream is not configured. */
 async function slotIsOpenre(id) {
     if (!id || !client.enabled()) return false;
     return authorityOf(await slotById(id)) === 'openre';
@@ -42,7 +42,7 @@ async function slotIsOpenre(id) {
 
 /**
  * Live's publish handlers (RTMP, WHIP, browser broadcaster, JSMPEG) ask this before accepting a key.
- * A slot key is refused when its slot is on OpenRe; a personal key (users.stream_key, no slot) is
+ * A slot key is refused when its slot is on OpenRestream; a personal key (users.stream_key, no slot) is
  * refused when any of the user's slots is, because Live would attach it to the user's live rows and
  * push the user's destinations twice.
  */
@@ -68,7 +68,7 @@ function serializeSlot(slot) {
     return { ...slot, stream_key: null, ingest_authority: 'openre', stream_key_managed_by: 'openre', openre_manage_url: client.manageUrl(slot.openre_stream_id) };
 }
 
-/** OpenRe's ingest URLs from a stream or rotation answer (`ingest.rtmp.url`, `ingest.webrtc.whip_url`,
+/** OpenRestream's ingest URLs from a stream or rotation answer (`ingest.rtmp.url`, `ingest.webrtc.whip_url`,
  *  `ingest.jsmpeg.url`; each only for the protocols the definition allows). The key goes after each:
  *  rtmp://…/live + key, <whip_url>/<key>, <jsmpeg_url>/<key>/<width>/<height>/. */
 function ingestUrls(ingest) {
@@ -81,7 +81,7 @@ function ingestUrls(ingest) {
 }
 
 /**
- * What the Go Live UI shows for an OpenRe slot: OpenRe's ingest URLs and the hint of its current key
+ * What the Go Live UI shows for an OpenRestream slot: OpenRestream's ingest URLs and the hint of its current key
  * (one key for every protocol; the key itself is only ever shown once, by a rotation).
  */
 async function ingestFor(slot, subject) {
@@ -95,15 +95,15 @@ async function ingestFor(slot, subject) {
         ...ingestUrls(ingest),
         stream_key_hint: keyHint
             ? `Shown once: press Regenerate for a new key (current key ends in …${keyHint})`
-            : 'Press Regenerate to get your OpenRe stream key',
+            : 'Press Regenerate to get your OpenRestream stream key',
         openre_manage_url: client.manageUrl(stream ? stream.id : slot.openre_stream_id),
     };
 }
 
-/** Regenerate on an OpenRe slot: OpenRe rotates, the new key is returned once. */
+/** Regenerate on an OpenRestream slot: OpenRestream rotates, the new key is returned once. */
 async function rotateFor(slot, subject) {
     const streamId = slot.openre_stream_id || (await client.streamForSlot(slot.id) || {}).id;
-    if (!streamId) throw new client.OpenReError('this slot has no OpenRe stream yet', 409);
+    if (!streamId) throw new client.OpenReError('this slot has no OpenRestream stream yet', 409);
     const r = await client.rotateKey(streamId, { subject });
     return { stream_key: r.key.key, stream_key_managed_by: 'openre', ...ingestUrls(r.ingest) };
 }
@@ -116,8 +116,8 @@ async function recordingModeFor(slot) {
 
 /**
  * The admin switch (PUT /api/admin/openre/managed/:id/ingest-authority).
- *   'openre': needs OpenRe configured, the slot offline on Live, the owner's canonical subject;
- *             finds or creates the OpenRe definition (allowing the slot's protocol on it), then
+ *   'openre': needs OpenRestream configured, the slot offline on Live, the owner's canonical subject;
+ *             finds or creates the OpenRestream definition (allowing the slot's protocol on it), then
  *             (one transaction) flips the slot and
  *             rotates Live's own key for it, so no key that existed before works anywhere.
  *   'live':   flips back (rollback). Live's key was rotated at the switch: the broadcaster
@@ -129,18 +129,18 @@ async function setAuthority(slotId, authority, { force = false } = {}) {
     if (!['live', 'openre'].includes(authority)) return { status: 400, error: "authority must be 'live' or 'openre'" };
     if (authority === 'live') {
         await db.run("UPDATE managed_streams SET ingest_authority = 'live', updated_at = ov_now() WHERE id = ?", [slot.id]);
-        return { status: 200, body: { managed_stream_id: slot.id, ingest_authority: 'live', next: 'The broadcaster regenerates the stream key on the Go Live page (the Live key was rotated when the slot moved to OpenRe).' } };
+        return { status: 200, body: { managed_stream_id: slot.id, ingest_authority: 'live', next: 'The broadcaster regenerates the stream key on the Go Live page (the Live key was rotated when the slot moved to OpenRestream).' } };
     }
-    if (!client.enabled()) return { status: 409, error: 'OpenRe is not configured on this Live (OPENRE_URL, OV_OAUTH_CLIENT_SECRET)' };
+    if (!client.enabled()) return { status: 409, error: 'OpenRestream is not configured on this Live (OPENRE_URL, OV_OAUTH_CLIENT_SECRET)' };
     if (slot.ingest_authority === 'openre') return { status: 200, body: { managed_stream_id: slot.id, ingest_authority: 'openre', openre_stream_id: slot.openre_stream_id, unchanged: true } };
     const live = await db.get('SELECT id FROM streams WHERE managed_stream_id = ? AND is_live = 1 LIMIT 1', [slot.id]);
     if (live) return { status: 409, error: `Slot ${slot.id} is live on Live (stream ${live.id}); switch it in a maintenance window, while it is offline` };
     const protocol = openreProtocolOf(slot);
     const method = String(slot.streaming_method || '').toLowerCase();
-    // WHIP encoders take OpenRe's WHIP URL and key; the Go Live page's in-browser broadcaster only
+    // WHIP encoders take OpenRestream's WHIP URL and key; the Go Live page's in-browser broadcaster only
     // publishes to Live's own SFU, so a browser slot moved now could not go live from the page.
     if (!force && protocol === 'webrtc' && !['whip', 'obs'].includes(method)) {
-        return { status: 409, error: `Slot ${slot.id} is a ${slot.protocol}${method ? `/${method}` : ''} slot; the Go Live page cannot publish to OpenRe yet, only WHIP encoders can (pass force to switch anyway)` };
+        return { status: 409, error: `Slot ${slot.id} is a ${slot.protocol}${method ? `/${method}` : ''} slot; the Go Live page cannot publish to OpenRestream yet, only WHIP encoders can (pass force to switch anyway)` };
     }
     const subject = await require('../auth/identity-sync').subjectOf(slot.user_id);
     if (!subject) return { status: 409, error: 'The owner has no canonical subject yet (they need to sign in to Live once)' };
@@ -150,12 +150,12 @@ async function setAuthority(slotId, authority, { force = false } = {}) {
         try { visibility = await db.resolveStreamVodVisibility({ user_id: slot.user_id, managed_stream_id: slot.id }); } catch { /* public */ }
         stream = await client.createStreamForSlot(slot, { subject, protocols: [protocol], recordingMode: await recordingModeFor(slot), recordingVisibility: visibility });
     } else if (!(stream.protocols || ['rtmp']).includes(protocol)) {
-        // An existing definition (OpenRe's own default is RTMP only) would refuse the slot's encoder.
+        // An existing definition (OpenRestream's own default is RTMP only) would refuse the slot's encoder.
         stream = await client.updateStream(stream.id, { protocols: [...(stream.protocols || ['rtmp']), protocol] }, { subject });
     }
     const newLiveKey = crypto.randomBytes(20).toString('hex');
     const flipped = await db.getDb().tx(async () => {
-        // Checked again here: a Live publish may have started while OpenRe was being asked.
+        // Checked again here: a Live publish may have started while OpenRestream was being asked.
         if (await db.get('SELECT id FROM streams WHERE managed_stream_id = ? AND is_live = 1 LIMIT 1', [slot.id])) return false;
         await db.run("UPDATE managed_streams SET ingest_authority = 'openre', openre_stream_id = ?, stream_key = ?, updated_at = ov_now() WHERE id = ?", [stream.id, newLiveKey, slot.id]);
         return true;
@@ -169,7 +169,7 @@ async function setAuthority(slotId, authority, { force = false } = {}) {
             openre_stream_id: stream.id,
             ...ingestUrls(stream.ingest),
             live_key_rotated: true,
-            next: 'The broadcaster presses Regenerate on the Go Live page (OpenRe issues the key) and pastes the new server and key into OBS.',
+            next: 'The broadcaster presses Regenerate on the Go Live page (OpenRestream issues the key) and pastes the new server and key into OBS.',
         },
     };
 }

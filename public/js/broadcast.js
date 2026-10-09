@@ -1796,7 +1796,7 @@ async function showRTMPInstructions(stream) {
         const data = await api(`/streams/${stream.id}/endpoint`);
         const ep = data.endpoint || {};
         const rtmpUrl = ep.rtmpUrl || `rtmp://${location.hostname}:1935/live`;
-        // An OpenRe-ingested slot never returns its key here, only a hint (Regenerate shows a new key once).
+        // An OpenRestream-ingested slot never returns its key here, only a hint (Regenerate shows a new key once).
         const streamKey = ep.streamKey || data.stream_key || ep.streamKeyHint || 'N/A';
         document.getElementById('bc-rtmp-url').textContent = rtmpUrl;
         document.getElementById('bc-rtmp-key').textContent = streamKey;
@@ -1945,7 +1945,7 @@ async function showJSMPEGInstructions(stream) {
         const data = await api(`/streams/${stream.id}/endpoint`);
         const ep = data.endpoint || {};
         const host = location.hostname;
-        // An OpenRe-ingested slot: OpenRe's JSMPEG server (video and audio share it) and only a key hint.
+        // An OpenRestream-ingested slot: OpenRestream's JSMPEG server (video and audio share it) and only a key hint.
         const videoServer = ep.jsmpegUrl ? ep.jsmpegUrl.replace(/\/$/, '') : `http://${host}:${ep.videoPort || 9710}`;
         const audioServer = ep.jsmpegUrl ? videoServer : `http://${host}:${ep.audioPort || 9711}`;
         const key = data.stream_key || ep.streamKeyHint || 'N/A';
@@ -2003,7 +2003,7 @@ async function showWHIPInstructions(stream) {
     let openreWhip = null;
     try {
         const data = await api(`/streams/${stream.id}/endpoint`);
-        // An OpenRe-ingested slot: OpenRe's WHIP URL takes the key (only its hint is known here).
+        // An OpenRestream-ingested slot: OpenRestream's WHIP URL takes the key (only its hint is known here).
         if (data.endpoint?.whipUrl) openreWhip = `${data.endpoint.whipUrl.replace(/\/$/, '')}/${data.endpoint.streamKeyHint || 'N/A'}`;
         whipBaseUrl = data.endpoint?.whipUrlBase || null;
         if (data.endpoint?.whipUrlSource === 'request_host') {
@@ -2019,7 +2019,7 @@ async function showWHIPInstructions(stream) {
         }
     }
     document.getElementById('bc-whip-url').textContent = openreWhip || `${whipBaseUrl}/whip/${stream.id}`;
-    // Live's sign-in token is never offered as the Bearer for OpenRe's WHIP.
+    // Live's sign-in token is never offered as the Bearer for OpenRestream's WHIP.
     const token = (!openreWhip && getStoredAuthToken()) || 'N/A';
     const tokenEl = document.getElementById('bc-whip-token');
     if (tokenEl) {
