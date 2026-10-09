@@ -1,11 +1,12 @@
 /**
  * OpenVibe.Live → OpenVibe.Inventory (ADR-054 §8): Live's cosmetics are items issued by `service:live` in the
- * network-wide inventory. When INVENTORY_AUTHORITY=inventory, cosmetics.js reads and writes through this client.
+ * network-wide inventory; cosmetics.js reads and writes them only through this client.
  *
  *   catalog()                    Live's definitions (alias = Live's item id ↔ itd_ id), cached 10 minutes
  *   subjectOf(userId)            a Live user's Network subject (linked_accounts, server/auth/identity-sync.js), cached
  *   owned(subject)               { alias → instance_id } of the live.* items the person owns
  *   equipped(subject)            { slot → alias } of what they wear, cached 30 s (chat and calls read it per message)
+ *   equippedMany(subjects)       Map(subject → { slot → alias }), 100 people per read (OpenVibe.Chat's decor lookups)
  *   grant / revoke / equip       the writes, acting for the person with Live's own token
  *
  * The token is Live's client-credentials token for audience openvibe.inventory (Network's grants to `live`:
@@ -20,6 +21,7 @@ const LIVE = 'service:live';
 const TIMEOUT_MS = 5000;
 const CATALOG_TTL_MS = 10 * 60 * 1000;
 const EQUIPPED_TTL_MS = 30 * 1000;
+const BATCH = 100;   // Inventory's GET /equipped?subjects= takes at most 100
 const SUBJECT_RE = /^usr_[0-9A-HJKMNP-TV-Z]{26}$/;
 
 let tokens = null;
@@ -112,14 +114,10 @@ async function owned(subject) {
     return out;
 }
 
-/** { slot → alias } of the live.* items the person wears (cached 30 s). */
-async function equipped(subject) {
-    const hit = equippedCache.get(subject);
-    if (hit && Date.now() - hit.at < EQUIPPED_TTL_MS) return hit.value;
-    const { byId } = await catalog();
-    const r = await call('GET', `/people/${encodeURIComponent(subject)}/equipped`);
+/** One equipped set as Inventory answers it → { slot → alias } of its live.* items, kept for 30 s. */
+function remember(subject, slots, byId) {
     const value = {};
-    for (const [key, v] of Object.entries(r.slots || {})) {
+    for (const [key, v] of Object.entries(slots || {})) {
         const [kind, slot] = key.split(':');
         if (!kind.startsWith('live.')) continue;
         const alias = byId.get(v.definition_id);
@@ -128,6 +126,35 @@ async function equipped(subject) {
     equippedCache.set(subject, { at: Date.now(), value });
     if (equippedCache.size > 5000) equippedCache.delete(equippedCache.keys().next().value);
     return value;
+}
+const fresh = (subject) => { const hit = equippedCache.get(subject); return hit && Date.now() - hit.at < EQUIPPED_TTL_MS ? hit.value : null; };
+
+/** { slot → alias } of the live.* items the person wears (cached 30 s). */
+async function equipped(subject) {
+    const hit = fresh(subject);
+    if (hit) return hit;
+    const { byId } = await catalog();
+    const r = await call('GET', `/people/${encodeURIComponent(subject)}/equipped`);
+    return remember(subject, r.slots, byId);
+}
+
+/** Map(subject → { slot → alias }) for many people: the cached ones as they are, the rest 100 per read. */
+async function equippedMany(list) {
+    const out = new Map();
+    const missing = [];
+    for (const s of new Set(list)) {
+        if (!SUBJECT_RE.test(String(s))) continue;
+        const hit = fresh(s);
+        if (hit) out.set(s, hit); else missing.push(s);
+    }
+    if (!missing.length) return out;
+    const { byId } = await catalog();
+    for (let i = 0; i < missing.length; i += BATCH) {
+        const chunk = missing.slice(i, i + BATCH);
+        const r = await call('GET', `/equipped?subjects=${chunk.map(encodeURIComponent).join(',')}`);
+        for (const set of r.equipped || []) if (chunk.includes(set.subject)) out.set(set.subject, remember(set.subject, set.slots, byId));
+    }
+    return out;
 }
 
 const forget = (subject) => equippedCache.delete(subject);
@@ -153,4 +180,4 @@ async function equip(subject, kind, slot, instanceId) {
 /** Tests only. */
 function reset() { tokens = null; catalogHit = null; equippedCache.clear(); subjects.clear(); lastLog = null; }
 
-module.exports = { catalog, subjectOf, owned, equipped, grant, revoke, equip, forget, reset, InventoryUnavailable, AUDIENCE };
+module.exports = { catalog, subjectOf, owned, equipped, equippedMany, grant, revoke, equip, forget, reset, InventoryUnavailable, AUDIENCE };

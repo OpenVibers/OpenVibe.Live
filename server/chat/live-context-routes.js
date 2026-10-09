@@ -17,7 +17,7 @@
  *   GET  /channels/:id/policy                → { channel, settings, moderator_ids, language }
  *   GET  /channels/:id/approved-ip?ip        → { approved }
  *   GET  /bans?version                       → { version, bans } | { version, unchanged: true }
- *   POST /decor {user_ids}                   → { decor: { id: { cosmetic, tag } } }
+ *   POST /decor {user_ids}                   → { decor: { id: { cosmetic } } } (from OpenVibe.Inventory, 100 per read)
  *   GET  /settings                           → { settings } (tts_*, GIF and soundboard keys only)
  *   GET  /anon/:num, /anon-first-seen?ip     → { first_seen }
  *   GET  /tts-audio/:file                    → a clip from the arena voice cache
@@ -213,18 +213,13 @@ contextRouter.get('/bans', async (req, res) => {
     });
 });
 
+// The legacy game's chat tags left with it: nothing has equipped one since, so a decor entry is the cosmetics alone
+// (OpenVibe.Chat reads a missing tag as none).
 contextRouter.post('/decor', async (req, res) => {
-    const ids = (Array.isArray(req.body?.user_ids) ? req.body.user_ids : []).map(Number).filter(Number.isInteger).slice(0, 500);
-    let cosmetics = null, tags = null;
-    try { cosmetics = require('../monetization/cosmetics'); } catch { /* */ }
-    try { tags = require('./tags'); } catch { /* */ }
+    const ids = [...new Set((Array.isArray(req.body?.user_ids) ? req.body.user_ids : []).map(Number).filter(Number.isInteger))].slice(0, 500);
+    const profiles = await require('../monetization/cosmetics').getCosmeticProfiles(ids);
     const decor = {};
-    for (const id of ids) {
-        let cosmetic = {}, tag = null;
-        try { if (cosmetics) cosmetic = await cosmetics.getCosmeticProfile(id) || {}; } catch { cosmetic = {}; }
-        try { if (tags) tag = await tags.getTagProfile(id) || null; } catch { tag = null; }
-        decor[id] = { cosmetic, tag };
-    }
+    for (const id of ids) decor[id] = { cosmetic: profiles[id] || {} };
     res.json({ decor });
 });
 
