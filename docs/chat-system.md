@@ -118,6 +118,21 @@ path are deleted.
 - Server is the source of truth with local cache fallback
 - Settings persist across devices via `GET/PUT /api/auth/preferences`
 
+### What people wear
+A chat line shows what its sender wears from [OpenVibe.Inventory](https://inventory.openvibe.network). Live is the
+issuer of the `live.*` kinds; the Workshop's community badges are `network.badge`.
+- **Name effects** (`nameFX`): a CSS class on the name, such as Rainbow or Glitch (`public/css/cosmetics.css`).
+- **Particles** (`particleFX`): a burst around the name.
+- **Hats** (`hatFX`): an emoji before the name.
+- **Community badges** (`badgeFX`): the badge's reviewed image, from OpenVibe.Media, before the name.
+- **Voices** (`voiceFX`): the TTS voice preset.
+
+OpenVibe.Chat asks Live for these through `POST /internal/chat-context/decor`. Live reads Inventory 100 people at a
+time and keeps each answer 30 seconds (`server/monetization/inventory-client.js`), and an Inventory outage just leaves
+names plain. People earn items through OpenVibe.Quest's quest rewards, or are given community badges by their makers
+in the Workshop. Nothing is bought or sold. The same items show on openvibe.chat, Community and Network profiles, drawn
+by `openvibe-shared` `items.js`.
+
 ### Text-to-Speech (TTS)
 - Site-wide server-generated TTS audio
 - Self-hosted browser-voice TTS
