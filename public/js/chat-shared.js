@@ -461,7 +461,6 @@
                     </div>
                 </div>`;
         }
-        const coins = p.openvibe_coins_balance || 0;
         // Chat answers the message count; a cold cache leaves it null and the card omits the stat
         // rather than showing a stale mirror number as real.
         const msgs = p.messageCount == null ? null : Number(p.messageCount);
@@ -479,7 +478,6 @@
                 </div>
             </div>
             <div class="ctx-stats">
-                <div class="ctx-stat"><i class="fa-solid fa-coins"></i> ${numf(coins)}</div>
                 ${msgs == null ? '' : `<div class="ctx-stat"><i class="fa-solid fa-message"></i> ${numf(msgs)}</div>`}
                 <div class="ctx-stat"><i class="fa-solid fa-heart"></i> ${numf(p.followerCount || 0)}</div>
             </div>

@@ -656,7 +656,6 @@ async function sanitizeUser(user, publicOnly = false) {
         // Under BILLING_AUTHORITY=billing the column is a frozen legacy copy (ADR-012 rule 8: never
         // shown as live); the balance comes from /api/funds/balance.
         if (!require('../monetization/money-authority').onBilling()) safe.openvibe_bucks_balance = user.openvibe_bucks_balance;
-        safe.openvibe_coins_balance = user.openvibe_coins_balance;
         safe.stream_key = user.stream_key;
     }
     return safe;

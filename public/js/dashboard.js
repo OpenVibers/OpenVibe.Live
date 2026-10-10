@@ -1163,8 +1163,7 @@ async function loadDashCoins() {
     if (!currentUser) return;
     try {
         const data = await api('/coins/balance');
-        const bal = data.balance || 0;
-        document.getElementById('dash-coins-amount').textContent = bal.toLocaleString();
+        document.getElementById('dash-coins-amount').textContent = data.balance == null ? '—' : Number(data.balance).toLocaleString();
     } catch { /* silent */ }
 }
 

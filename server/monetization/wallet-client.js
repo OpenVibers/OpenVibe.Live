@@ -2,9 +2,9 @@
  * OpenVibe.Live — OpenCoins wallet client (OpenVibe.Network-owned)
  *
  * The network-wide OpenCoins wallet lives in OpenVibe.Network (see CONTRACTS.md,
- * "OpenCoins wallet"). Live's legacy local balance column
- * (users.openvibe_coins_balance) is frozen for the migration script; every earn/
- * spend goes through this client now.
+ * "OpenCoins wallet"). Live keeps no balance of its own: every read, earn and spend
+ * goes through this client (the legacy users.openvibe_coins_balance column is read by
+ * nothing; test/coins-column-unread.test.js keeps it that way until it is dropped).
  *
  *   POST /internal/coins/credit|debit|transfer   (Live's service token, server-to-server)
  *   GET  /api/coins/me, /api/coins/me/history    (Bearer user JWT, read-side)

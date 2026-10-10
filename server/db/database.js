@@ -2162,7 +2162,7 @@ async function countEasterEggSolves(eggDate) {
 
 async function getUserProfile(userId) {
     const user = await get(`SELECT id, username, display_name, avatar_url, profile_color, role,
-                      openvibe_bucks_balance, openvibe_coins_balance, created_at, last_seen
+                      openvibe_bucks_balance, created_at, last_seen
                       FROM users WHERE id = ?`, [userId]);
     if (!user) return null;
     // The user's chat total is OpenVibe.Chat's; a synchronous peek answers the last good count, else
@@ -2971,19 +2971,6 @@ async function deleteChannelAiBot(id) {
 }
 
 // ── OpenCoins helpers ───────────────────────────────────────
-
-async function addOpenCoins(userId, amount) {
-    return await run(`UPDATE users SET openvibe_coins_balance = openvibe_coins_balance + ? WHERE id = ?`,
-        [amount, userId]);
-}
-
-async function deductOpenCoins(userId, amount) {
-    const result = await run(
-        `UPDATE users SET openvibe_coins_balance = openvibe_coins_balance - ? WHERE id = ? AND openvibe_coins_balance >= ?`,
-        [amount, userId, amount]
-    );
-    return result.changes > 0;
-}
 
 async function createCoinTransaction({ user_id, stream_id, amount, type, reward_id, message }) {
     return await run(
@@ -3930,7 +3917,7 @@ module.exports = {
     // Transactions (Vibes)
     createTransaction, addVibes, deductVibes, addVibesCashout, deductVibesCashout,
     // OpenCoins
-    addOpenCoins, deductOpenCoins, createCoinTransaction, getCoinTransactions,
+    createCoinTransaction, getCoinTransactions,
     // Coin Rewards
     createCoinReward, getCoinRewardsByStreamer, getCoinRewardById, updateCoinReward, deleteCoinReward,
     // Coin Redemptions

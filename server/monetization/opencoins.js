@@ -9,8 +9,8 @@
  *
  *  2. OPENCOINS (network-wide wallet) — the OpenVibe.Network-owned balance shared by
  *     Live/Games/Tools. All reads and earn/spend go through the Network wallet API
- *     (see wallet-client.js); the legacy users.openvibe_coins_balance column is
- *     frozen for the migration script and is never written anymore.
+ *     (see wallet-client.js). Live keeps no copy: the legacy users.openvibe_coins_balance column is
+ *     read and written by nothing and goes in a contract migration.
  *
  * Every channel-points debit and credit carries a deterministic per-event key (ADR-012 rule 5,
  * db.applyChannelPoints): watch = the watch_time row + minute, chat = the user's minute, follow =
@@ -286,15 +286,12 @@ class OpenCoins {
     }
 
     /**
-     * The network-wide OpenCoins wallet balance (OpenVibe.Network-owned).
-     * Reads via the wallet API using the caller's Network JWT; falls back to the
-     * frozen legacy column only when the wallet is unreachable/unlinked.
+     * The network-wide OpenCoins wallet balance (OpenVibe.Network-owned), read with the caller's Network JWT.
+     * null when the wallet cannot answer (unreachable, or no Network account): the page says so instead of
+     * showing a number that is not the balance.
      */
-    async getGold(userId, userToken = null) {
-        const balance = await wallet.balanceForToken(userToken);
-        if (balance !== null) return balance;
-        const user = await db.getUserById(userId);
-        return user ? (user.openvibe_coins_balance || 0) : 0;
+    async getGold(_userId, userToken = null) {
+        return await wallet.balanceForToken(userToken);
     }
 
     /** Server-side earn/spend passthroughs (idempotency keys: `live:<event>:<id>`). */
