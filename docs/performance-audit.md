@@ -105,7 +105,7 @@ What did **not** improve: layout on the home page is dominated by the page's own
 
 ## Deploy
 
-| Change type | Before | After (verified in `test/deploy-sim.test.js`) |
+| Change type | Before | After (release layout) |
 |---|---|---|
 | docs / public only | restart (legacy script restarted on every commit) | no restart; release layout switches `current`, same PID |
 | server code | restart | restart, readiness-gated, automatic rollback |

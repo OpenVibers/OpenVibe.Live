@@ -2,7 +2,7 @@
   "repository": "OpenVibers/OpenVibe.Live",
   "stage": "stable",
   "code": true,
-  "runtime": "node 22, express, better-sqlite3, node-media-server, mediasoup; no build step",
+  "runtime": "node 22, express, PostgreSQL, node-media-server, mediasoup; no build step",
   "port": 3000,
   "domain": "openvibe.live (www, ingest, whip)",
   "contracts": "openvibe-contracts v0.126.0",

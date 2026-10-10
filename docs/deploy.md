@@ -13,15 +13,11 @@ sudo deploy/scripts/deploy.sh --rollback   # ovhost rollback live: the release t
 DRY_RUN=1 deploy/scripts/deploy.sh         # ovhost plan live: print the plan only
 ```
 
-The wrapper checks `ovhost capabilities live` first (deploy API 1, strategy `release-layout`, managed).
-When ovhost is missing or too old, or the host inventory does not deploy Live with that strategy, it says
-why and runs `deploy/scripts/deploy-legacy.sh`, the previous script, unchanged and with the same
-arguments. `OVHOST_LEGACY=1` forces the fallback; `OVHOST=<path>` picks another ovhost. `--force`
-meant "discard local tracked changes" in the legacy layout; ovhost's `--force` drops live streams, so the
-wrapper refuses it (run `sudo ovhost deploy live --force` yourself if that is what you mean). Everything
-below is what both do; ovhost also records every attempt in its release log (`ovhost releases live`) and
-refuses a frozen service (`ovhost freeze`, exit 6). What ovhost checks is in OpenVibe.Host
-`docs/deploy-strategies.md` and `test/strategy-release-layout.test.js`.
+The wrapper checks `ovhost capabilities live` (deploy API 1, strategy `release-layout`, managed).
+If ovhost is unavailable or incompatible, the wrapper exits 1. `OVHOST=<path>` picks another ovhost.
+`--force` has different semantics in ovhost, so the wrapper refuses it; run
+`sudo ovhost deploy live --force` explicitly if needed. ovhost records each attempt in its release log
+(`ovhost releases live`) and refuses a frozen service (`ovhost freeze`, exit 6).
 
 ## What each kind of change costs
 
@@ -42,23 +38,15 @@ Clients reconnect with jittered backoff and show "OpenVibe is updating" / "Recon
 
 ## Layouts
 
-**Release layout (production since 2026-09-24 05:51 UTC;** set up once with
-`deploy/scripts/migrate-to-releases.sh`, one restart). Deploy with
-`cd /opt/openvibe.live/current && sudo deploy/scripts/deploy.sh`: the files left in `/opt/openvibe.live`
-from the old checkout are stale, including their copy of this script. The release directories are
-root-owned, so the manifest takes the release id from the directory name (`<time>-<sha8>`), and the
-host inventory runs git for Live as root (`owner: root`, `runAs: ubuntu` for drills).
-
-**Legacy (before 2026-09-24):** `/opt/openvibe.live` was a git checkout. A rollback reset the checkout
-but could not restore previous `node_modules`.
+**Release layout (production):** deploy from `/opt/openvibe.live/current`.
+The release directories are root-owned, so the manifest takes the release id from the directory name
+(`<time>-<sha8>`), and the host inventory runs git for Live as root (`owner: root`, `runAs: ubuntu` for drills).
 
 ```
 /opt/openvibe.live/repo                 git clone used to create releases
 /opt/openvibe.live/releases/<time>-<sha> worktree + its own node_modules + data -> ../../shared/data
 /opt/openvibe.live/current              -> releases/<id>   (atomic rename)
-/opt/openvibe.live/shared/data          uploads and runtime files (never copied or reset); live.db and analytics.db stay
-                                        read-only there since the switch to PostgreSQL (2026-10-08), the rollback copy
-/opt/openvibe.live/data                 -> shared/data     (old absolute data paths keep working)
+/opt/openvibe.live/shared/data          uploads and runtime files (never copied or reset)
 ```
 
 - A deploy builds the new release while the old one serves; unchanged lockfiles hard-link
@@ -80,19 +68,14 @@ but could not restore previous `node_modules`.
 - The last 5 releases are kept.
 - Content-hashed assets from the previous release are still served under their old hashes, so a page
   rendered before the switch never loads JavaScript from after it.
-- **Release notification.** After a deploy or `--rollback` that went live, ovhost announces it (the
-  legacy script runs `ovhost announce live`; OpenVibe.Host, WS-P task 9). ovhost publishes `host.release.published` for the
+- **Release notification.** After a deploy or `--rollback` that went live, ovhost announces it through OpenVibe.Host. It publishes `host.release.published` for the
   release `/release.json` now reports, once per release, to OpenVibe.Events. Open tabs (openvibe-shared
   1.17.0 release-watch) then check `/release.json` within about 20 s instead of at their next poll. It is
-  best effort: skipped when `ovhost` is missing or has no `announce` (set `OVHOST` for another path), 20 s at
-  most, and it never changes the exit code. A static-only switch keeps the running release, so there is
+  best effort and does not change the exit code. A static-only switch keeps the running release, so there is
   nothing new to announce. The credentials and the setup are in OpenVibe.Host `docs/release-notifications.md`.
 
-`test/deploy-sim.test.js` runs `deploy-legacy.sh` against a simulated host (real git, fake systemctl)
-and checks each of these behaviours; `test/deploy-wrapper.test.js` checks the wrapper's flag mapping and
-its fallback. ovhost's own tests (OpenVibe.Host `test/strategy-release-layout.test.js`) cover the same
-behaviours for `ovhost deploy live`, plus the socket rule: pid 1 must hold :3000, and the socket unit is
-restarted only when its unit file changed or systemd does not hold the listener.
+`test/deploy-wrapper.test.js` checks the wrapper's flag mapping and errors. ovhost's own tests
+(OpenVibe.Host `test/strategy-release-layout.test.js`) cover release behavior and the socket rule.
 
 ## Assets and caching
 
@@ -139,7 +122,7 @@ PGlite database under `DATA_DIR`). In that mode
 ## Checks
 
 ```bash
-npm test                         # unit, security, migrations, deploy simulation, size budgets
+npm test                         # unit, security, migrations, size budgets
 BASE=http://127.0.0.1:3000 npm run test:browser   # needs a running server and Chrome
 deploy/scripts/post-deploy-check.sh                # on the host after a deploy
 ```
@@ -148,17 +131,16 @@ deploy/scripts/post-deploy-check.sh                # on the host after a deploy
 
 For 24 hours after a deploy (ADR-016) open tabs run the previous release's client against the new
 server, and a previous-release process may still be working on the database the new one migrated.
-`test/n-1.test.js` (in `npm test`, so in CI) checks both from fixtures recorded from the release in
-production:
+`test/n-1.test.js` (in `npm test`, so in CI) checks compatibility using fixtures recorded from
+the release in production:
 
 - `test/fixtures/n-1/client.json`: every call the previous release's client code makes, and every
   script, stylesheet and link of the shell and a channel page it served, with the status, JSON-ness
   and the response fields the client reads. This checkout boots in the drill sandbox (writes let
-  through) on a database created with the previous schema, answers each call compatibly, and keeps
-  every read field. The calls nginx sends to OpenVibe.Chat are Chat's N-1 test.
-- `test/fixtures/n-1/worker.json`: the previous schema, migration ledger and every SQL statement that
-  release ran or has as a literal. After this release's migrations each must still prepare, and no
-  old INSERT may miss a new NOT NULL column.
+  through) on a migrated PGlite database, answers each call compatibly, and keeps every read
+  field. The calls nginx sends to OpenVibe.Chat are Chat's N-1 test.
+- `test/fixtures/n-1/worker.json`: the previous release's migration filenames and hashes. The
+  test ensures each migration remains present and unchanged.
 
 After each deploy, record the release now in production as the next release's N-1 and commit it:
 

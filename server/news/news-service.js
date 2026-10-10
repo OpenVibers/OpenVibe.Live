@@ -8,7 +8,7 @@
  *   news-service (this) ←→ sources (reddit, newsapi, rss, ...)
  *                       → chat-delivery.js event() (Chat's ingress)
  * 
- * Settings stored in SQLite: news_settings table (per-user/global).
+ * Settings stored in PostgreSQL: news_settings table (per-user/global).
  * Headline dedup via in-memory Set (cleared on restart, bounded to 500).
  */
 'use strict';

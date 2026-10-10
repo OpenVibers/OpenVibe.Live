@@ -1,5 +1,3 @@
-# Release layout (deploy/scripts/migrate-to-releases.sh). The unit in deploy/systemd/ is the legacy,
-# in-place checkout variant and stays valid until a host is migrated.
 [Unit]
 Description=OpenVibe.Live — Open Live Streaming, Community Run
 # Media (openvibe-media) and Network (openvibe-network) should be up first, but

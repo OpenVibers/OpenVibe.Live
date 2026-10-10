@@ -76,9 +76,8 @@ async function seedControlPresetsForUser(userId) {
  * OpenVibe.Live — Database Connection & Helpers
  * PostgreSQL through openvibe-sdk/db (ADR-035, plan T4). The schema is migrations/NNNN_*.sql, run with the owner role
  * (DATABASE_DIRECT_URL) when the process boots; this module then opens the serving pool (DATABASE_URL, through
- * PgBouncer). Every helper is async: statements keep better-sqlite3's shape (db.prepare(sql).get/all/run with ?
- * parameters) and must be awaited. SQLite's 'YYYY-MM-DD HH:MM:SS' text timestamps stay as they were (datetime(),
- * julianday() and ov_now() exist in the database: migrations/0002_live.sql).
+ * PgBouncer). Every helper is async and must be awaited. Queries use ? parameters; compatibility functions
+ * datetime(), julianday() and ov_now() are defined in migrations/0002_live.sql.
  */
 const path = require('path');
 const fs = require('fs');
@@ -1271,7 +1270,7 @@ async function countRecentlyOnlineStreamers() {
 // Public-facing site totals for the home hero stats bar.
 let _homeStatsCache = null;
 let _homeStatsCacheAt = 0;
-const _HOME_STATS_TTL = 30 * 1000; // 30s memo so the windowed COUNTs don't hammer SQLite
+const _HOME_STATS_TTL = 30 * 1000; // 30s memo for the windowed COUNTs
 
 // ── Viewer trend sampling (home hero sparkline) ──────────────
 // One row every ~5 minutes: total native viewers + live stream count.

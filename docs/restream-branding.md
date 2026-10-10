@@ -153,7 +153,7 @@ The entire platform — streaming server, chat, media pipeline, game, everything
 
 ⭐ https://github.com/OpenVibers
 
-Built with Node.js, WebSockets, SQLite, FFmpeg, and mediasoup.
+Built with Node.js, WebSockets, PostgreSQL, FFmpeg, and mediasoup.
 ```
 
 ---

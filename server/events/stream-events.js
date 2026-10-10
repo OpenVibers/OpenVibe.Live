@@ -5,7 +5,7 @@
  *   live.stream.started   a stream row went live       (subject: stream <id>, revision 1)
  *   live.stream.ended     a live stream row ended       (subject: stream <id>, revision 2)
  *
- * Events are written to Live's own `event_outbox` table inside the same SQLite transaction as the
+ * Events are written to Live's own `event_outbox` table inside the same database transaction as the
  * streams row (database.js onStreamLifecycle), and a relay publishes them with Live's service
  * token (audience openvibe.events, capability events.event.publish). If Events or Network is down
  * the rows wait and are retried with backoff; going live never waits on either.

@@ -29,7 +29,7 @@
  * Everything else is 404. Server routes (API, docs, overlays, popouts, legal pages, static files)
  * answer before the fallback and are not affected.
  *
- * Cost: the home page and the fixed routes are a table lookup. Users and streams are one SQLite
+ * Cost: the home page and the fixed routes are a table lookup. Users and streams are one database
  * read. Media items and pastes are fetched once per id per minute (concurrent requests share the
  * fetch) and a visitor waits at most LOOKUP_DEADLINE_MS for one. When Media or Community cannot
  * answer in time, the page answers 200: an outage upstream must never turn real pages into 404s.
