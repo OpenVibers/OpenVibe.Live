@@ -96,7 +96,7 @@
 
 <h3>Base URL &amp; Auth</h3>
 <p>Base URL: <code>https://openvibe.live</code> (replace with your instance).</p>
-<p>Auth: <code>Authorization: Bearer &lt;JWT&gt;</code> header. On WebSockets, the header on the upgrade request or the <code>token</code> of the first <code>join</code> message; a <code>?token=</code> query param still works but is deprecated (URLs are logged).</p>
+<p>Auth: <code>Authorization: Bearer &lt;JWT&gt;</code> header. On WebSockets, the header on the upgrade request or the <code>token</code> of the first <code>join</code> message. A token in the URL or a cookie does not sign a socket in.</p>
 <p>API tokens: <code>hbt_</code> prefix, scoped permissions, created from Dashboard → API Tokens.</p>
 </div>
 
@@ -168,7 +168,7 @@ openvibe.network /api/admin/streamer-mod/*  →  OpenVibe.Live /api/mod/*</code>
 <p><strong>All identity is OpenVibe SSO.</strong> There is no local password login on OpenVibe.Live &mdash; <code>POST /api/auth/register</code> and <code>POST /api/auth/login</code> are permanently disabled (return <code>410</code>). Humans sign in through openvibe.network OAuth2; OpenVibe.Live receives an <strong>RS256 JWT</strong> signed by openvibe.network and verifies it locally. For bots and scripts, use a long-lived <strong><code>hbt_</code> API token</strong> (below) &mdash; no browser login needed.</p>
 
 <h3>How auth is sent</h3>
-<p>Every authenticated request carries a token as <code>Authorization: Bearer &lt;token&gt;</code> (also read from the <code>ov_token</code> cookie; on WebSockets also from the first <code>join</code> message, and from a deprecated <code>?token=</code> query param). <code>requireAuth</code> accepts either:</p>
+<p>Every authenticated request carries a token as <code>Authorization: Bearer &lt;token&gt;</code> (REST also reads the <code>ov_token</code> cookie; a WebSocket takes only the header or the token in its first <code>join</code> message). <code>requireAuth</code> accepts either:</p>
 <ul>
 <li><strong>API token</strong> &mdash; a string starting with <code>hbt_</code>. Best for bots/integrations. Cannot itself create/list/revoke tokens.</li>
 <li><strong>openvibe.network JWT (RS256)</strong> &mdash; from the SSO login flow; auto-links/creates a local account. Roles come from the token.</li>
@@ -361,15 +361,16 @@ GET /api/streams/rtmp-proxy/:streamId.flv
 <p>Connect to the chat WebSocket to read and send messages. Perfect for building chat bots, overlays, alert systems, and integrations.</p>
 
 <h3>Chat WebSocket — /ws/chat</h3>
-<p>Connect: <code>wss://openvibe.live/ws/chat?stream=STREAM_ID&amp;token=JWT</code></p>
-<p>Both params are optional: omit <code>stream</code> for global chat; omit <code>token</code> to connect anonymously (assigned anonXXXXX identity).</p>
+<p>Connect: <code>wss://openvibe.live/ws/chat?stream=STREAM_ID</code> with an <code>Authorization: Bearer &lt;token&gt;</code> header (a JWT or an <code>hbt_</code> API token), then send <code>{ "type": "join", "streamId": STREAM_ID }</code>. A client that cannot set headers (a browser) puts the token in that join instead: <code>{ "type": "join", "streamId": STREAM_ID, "token": "…" }</code>.</p>
+<p>Omit <code>stream</code> for global chat; omit the token to connect anonymously (assigned an anonXXXXX identity). A token in the URL does not sign the socket in: URLs end up in logs.</p>
 
 <h3>Client → Server Messages</h3>
 <table class="doc-table">
 <thead><tr><th>Type</th><th>Payload</th><th>Description</th></tr></thead>
 <tbody>
 <tr><td>chat</td><td>{ message, reply_to_id?, auto_delete_minutes? }</td><td>Send a message (max 500 chars)</td></tr>
-<tr><td>join_stream</td><td>{ streamId }</td><td>Join a specific stream's chat room</td></tr>
+<tr><td>join</td><td>{ streamId?, token? }</td><td>Join a stream's chat room (or global chat without streamId); the token signs an anonymous socket in</td></tr>
+<tr><td>join_stream</td><td>{ streamId, token? }</td><td>Same as join</td></tr>
 <tr><td>leave_stream</td><td>{}</td><td>Leave current stream chat</td></tr>
 <tr><td>get-users</td><td>{}</td><td>Request current user list</td></tr>
 </tbody>
@@ -379,7 +380,7 @@ GET /api/streams/rtmp-proxy/:streamId.flv
 <table class="doc-table">
 <thead><tr><th>Type</th><th>Key Fields</th><th>Description</th></tr></thead>
 <tbody>
-<tr><td>auth</td><td>authenticated, username, role, user_id, slowmode_seconds, slur_filter_enabled</td><td>Identity confirmation. First message after connect.</td></tr>
+<tr><td>auth</td><td>authenticated, username, role, user_id, slowmode_seconds, slur_filter_enabled</td><td>Identity confirmation, the answer to every join.</td></tr>
 <tr><td>chat</td><td>username, core_username, user_id, anon_id, role, message, stream_id, is_global, timestamp, id, reply_to?, avatar_url, profile_color, filtered</td><td>A chat message. is_global=true means not tied to a stream.</td></tr>
 <tr><td>system</td><td>message, timestamp</td><td>System notice (joins, events)</td></tr>
 <tr><td>user-count</td><td>count</td><td>Updated viewer/chatter count</td></tr>
@@ -393,10 +394,15 @@ GET /api/streams/rtmp-proxy/:streamId.flv
 <h3>Chat Bot — Complete Example (Node.js)</h3>
 <pre><code>const WebSocket = require('ws');
 
-const WS_URL = 'wss://openvibe.live/ws/chat?stream=123&token=YOUR_JWT';
-const ws = new WebSocket(WS_URL);
+const STREAM_ID = 123;
+const ws = new WebSocket(`wss://openvibe.live/ws/chat?stream=${STREAM_ID}`, {
+  headers: { Authorization: 'Bearer hbt_YOUR_TOKEN' },
+});
 
-ws.on('open', () => console.log('Bot connected'));
+ws.on('open', () => {
+  console.log('Bot connected');
+  ws.send(JSON.stringify({ type: 'join', streamId: STREAM_ID }));
+});
 
 ws.on('message', (raw) => {
   const msg = JSON.parse(raw);
@@ -431,9 +437,9 @@ ws.on('close', () => setTimeout(() => reconnect(), 5000));
 <h3>Chat Bot — Complete Example (Python)</h3>
 <pre><code>import json, websocket, time
 
-TOKEN = 'YOUR_JWT_TOKEN'
-STREAM_ID = '123'
-WS_URL = f'wss://openvibe.live/ws/chat?stream={STREAM_ID}&token={TOKEN}'
+TOKEN = 'hbt_YOUR_TOKEN'
+STREAM_ID = 123
+WS_URL = f'wss://openvibe.live/ws/chat?stream={STREAM_ID}'
 
 def send(ws, message):
     ws.send(json.dumps({ 'type': 'chat', 'message': message }))
@@ -451,14 +457,16 @@ def on_message(ws, raw):
         if text.startswith('!uptime'):
             send(ws, f'Bot uptime: {int(time.time() - start_time)}s')
 
-def on_open(ws): print('Connected')
+def on_open(ws):
+    print('Connected')
+    ws.send(json.dumps({ 'type': 'join', 'streamId': STREAM_ID }))
 def on_close(ws, *a): print('Disconnected — reconnecting...')
 def on_error(ws, e): print(f'Error: {e}')
 
 start_time = time.time()
 while True:
-    ws = websocket.WebSocketApp(WS_URL, on_message=on_message,
-        on_open=on_open, on_close=on_close, on_error=on_error)
+    ws = websocket.WebSocketApp(WS_URL, header=[f'Authorization: Bearer {TOKEN}'],
+        on_message=on_message, on_open=on_open, on_close=on_close, on_error=on_error)
     ws.run_forever()
     time.sleep(5)
 </code></pre>
