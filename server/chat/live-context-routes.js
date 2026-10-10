@@ -115,7 +115,7 @@ contextRouter.get('/users/profile', async (req, res) => {
         if (!user) return fail(res, 404, 'User not found');
         const profile = await db.getUserProfile(user.id);
         if (!profile) return fail(res, 404, 'Profile not found');
-        // OpenCoins are part of the game; Vibes (real money) and presence stay with the user.
+        // Vibes (real money) and presence stay with the user. No OpenCoins: they are each person's Network wallet.
         const viewerId = int(req.query.viewer_id, 0);
         if (!viewerId || viewerId !== user.id) {
             delete profile.openvibe_bucks_balance;

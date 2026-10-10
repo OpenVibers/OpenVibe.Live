@@ -768,12 +768,13 @@ async function loadBalance() {
     // Navbar OpenCoins = the GLOBAL currency (game / cosmetics / media wallet).
     try {
         const coinData = await api('/coins/balance');
-        const coins = coinData.balance || 0;
+        // null: the Network wallet did not answer. Say so ("—") rather than show 0 as the balance.
+        const coins = coinData.balance == null ? '—' : Number(coinData.balance).toLocaleString();
         const coinEl = document.getElementById('nav-coins-amount');
-        if (coinEl) coinEl.textContent = coins.toLocaleString();
-        if (window.LiveNav) window.LiveNav.setChip('coins', coins.toLocaleString());
+        if (coinEl) coinEl.textContent = coins;
+        if (window.LiveNav) window.LiveNav.setChip('coins', coins);
         const udC = document.getElementById('ud-coins');
-        if (udC) udC.textContent = coins.toLocaleString();
+        if (udC) udC.textContent = coins;
     } catch { /* silent */ }
 }
 
