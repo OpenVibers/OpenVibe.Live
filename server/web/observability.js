@@ -74,7 +74,7 @@ function registerDomainGauges(registry, { liveStreams, wsServers = {}, outboxSta
  *   sfuReady()     -> boolean       optional (WebRTC broadcasting/viewing through mediasoup)
  *   mediaUrl                        optional (OpenVibe.Media: VODs, clips, thumbnails), checked by
  *                                   GET <mediaUrl>/healthz, cached 30 s
- *   networkKey()   -> PEM or null   optional (sign-in: RS256 key from OpenVibe.Network)
+ *   networkKey()   -> true, or a PEM, when loaded   optional (sign-in: RS256 keys from OpenVibe.Network)
  */
 function createLiveReadiness({ release, bootComplete, dbQuery, sfuReady, mediaUrl, networkKey, drill = false, fetchImpl = globalThis.fetch }) {
     return createReadiness({
@@ -93,7 +93,7 @@ function createLiveReadiness({ release, bootComplete, dbQuery, sfuReady, mediaUr
                     return res.ok ? true : `Media answered ${res.status}`;
                 },
             },
-            { name: 'network_key', required: false, description: 'OpenVibe.Network RS256 key (sign-in)', check: () => (/BEGIN [A-Z ]*PUBLIC KEY/.test(String(networkKey() || '')) ? true : 'Network public key not loaded: sign-in cannot be verified') },
+            { name: 'network_key', required: false, description: 'OpenVibe.Network RS256 key (sign-in)', check: () => { const k = networkKey(); return k === true || /BEGIN [A-Z ]*PUBLIC KEY/.test(String(k || '')) ? true : 'Network public key not loaded: sign-in cannot be verified'; } },
         ],
         // Fields the previous /api/ready served, so nothing that read them breaks.
         details: (body) => ({
