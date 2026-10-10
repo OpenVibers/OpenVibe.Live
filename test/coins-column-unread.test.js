@@ -12,6 +12,8 @@ const path = require('path');
 const ROOT = path.join(__dirname, '..');
 const NAME = /\bopenvibe_coins_balance\b/;
 const ALLOWED = new Set(['server/web/serializers.js']);
+// The one write the previous release needs: /api/auth/me keeps the field, as null, for one release (test/n-1.test.js).
+const NULL_SHAPE = /\bopenvibe_coins_balance\s*=\s*null\s*;/;
 const isCommentLine = (line) => /^\s*(\/\/|\*|\/\*|--)/.test(line);
 
 function walk(dir, out = []) {
@@ -27,7 +29,7 @@ for (const file of [...walk(path.join(ROOT, 'server')), ...walk(path.join(ROOT, 
     const rel = path.relative(ROOT, file);
     if (ALLOWED.has(rel)) continue;
     fs.readFileSync(file, 'utf8').split('\n').forEach((line, i) => {
-        if (!isCommentLine(line) && NAME.test(line)) offenders.push(`${rel}:${i + 1}: ${line.trim().slice(0, 120)}`);
+        if (!isCommentLine(line) && NAME.test(line) && !NULL_SHAPE.test(line)) offenders.push(`${rel}:${i + 1}: ${line.trim().slice(0, 120)}`);
     });
 }
 assert.deepStrictEqual(offenders, [], 'OpenCoins come from the Network wallet (wallet-client.js / opencoins.getGold), never users.openvibe_coins_balance');
