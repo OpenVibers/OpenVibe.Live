@@ -230,15 +230,15 @@ async function getUserByStreamKey(key) {
     return await get('SELECT * FROM users WHERE stream_key = ?', [key]);
 }
 
-async function createUser({ username, email, password_hash, display_name, stream_key }) {
+async function createUser({ username, password_hash, display_name, stream_key }) {
     // Identity is the OpenVibe account's (WS-B task 2): Live stores no password and no email. A real password
-    // hash here is a bug, refused before it reaches the table; an email address is never stored.
+    // hash here is a bug, refused before anything is written; neither column is written at all (migration 0003
+    // made password_hash nullable, and a contract migration drops both).
     if (/^\$(2[abxy]?|argon2|scrypt|pbkdf2)/.test(String(password_hash || ''))) throw new Error('Live stores no passwords: accounts sign in through openvibe.network');
-    email = null;
     return await run(
-        `INSERT INTO users (username, email, password_hash, display_name, stream_key)
-         VALUES (?, ?, ?, ?, ?) RETURNING id`,
-        [username, email || null, password_hash, display_name || username, stream_key]
+        `INSERT INTO users (username, display_name, stream_key)
+         VALUES (?, ?, ?) RETURNING id`,
+        [username, display_name || username, stream_key]
     );
 }
 

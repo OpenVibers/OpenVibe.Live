@@ -160,8 +160,6 @@ async function resolveNetworkUser(decoded) {
         const stream_key = uuidv4().replace(/-/g, '');
         const result = await db.createUser({
             username: decoded.username,
-            email: null,
-            password_hash: '$sso$' + require('crypto').randomBytes(32).toString('hex'),
             display_name: decoded.display_name || decoded.username,
             stream_key,
         });

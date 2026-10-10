@@ -169,7 +169,7 @@ async function eraseUsers(d, userIds, { now = new Date().toISOString() } = {}) {
                 await d.prepare('UPDATE transactions SET message = NULL WHERE from_user_id = ? AND message IS NOT NULL').run(uid);
             }
             // The tombstone: the kept rows point at nobody; the username is free again.
-            const set = { username: `deleted-${uid}`, email: null, password_hash: '!deleted', display_name: null, avatar_url: null, bio: null, stream_key: null,
+            const set = { username: `deleted-${uid}`, email: null, password_hash: null, display_name: null, avatar_url: null, bio: null, stream_key: null,
                 profile_color: null, theme_id: null, avatar_paste_id: null, ban_reason: null, deleted_at: now };
             const keys = Object.keys(set).filter((k) => usersCols.includes(k));
             await d.prepare(`UPDATE users SET ${keys.map((k) => `${q(k)} = ?`).join(', ')} WHERE id = ?`).run(...keys.map((k) => set[k]), uid);

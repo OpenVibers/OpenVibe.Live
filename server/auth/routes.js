@@ -364,8 +364,6 @@ async function establishNetworkSession(req, res, tokenData) {
         const stream_key = uuidv4().replace(/-/g, '');
         const result = await db.createUser({
             username: ssoUser.username,
-            email: null,   // the OpenVibe account keeps it (WS-B task 2)
-            password_hash: '$sso$' + require('crypto').randomBytes(32).toString('hex'), // placeholder, can't login with password
             display_name: ssoUser.display_name || ssoUser.username,
             stream_key,
         });
