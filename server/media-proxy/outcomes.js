@@ -1,32 +1,24 @@
 'use strict';
 /**
- * OpenVibe.Live — what Live does when OpenVibe.Media reports an outcome, whichever way it arrives.
+ * OpenVibe.Live — what Live does when OpenVibe.Media reports an outcome.
  *
- * Media reports VOD/clip completions and storage alerts two ways during the Wave 3 transition:
- *   webhook  POST /internal/media-webhook (media-proxy/webhook.js), HMAC with MEDIA_WEBHOOK_SECRET
- *   events   POST /internal/media-events  (media-proxy/media-events.js), an OpenVibe.Events
- *            subscription to media.vod.* / media.clip.* / media.storage.* (scripts/subscribe-media-events.js)
+ * Media reports VOD/clip completions and storage alerts as OpenVibe.Events events: Live subscribes to media.vod.*,
+ * media.clip.* and media.storage.* (scripts/subscribe-media-events.js) and Events delivers them to
+ * POST /internal/media-events (media-proxy/media-events.js). The direct webhook (/internal/media-webhook) that carried
+ * the same outcomes during the Wave 3 transition is gone (2026-10-10): Events had delivered every one of them.
  *
- * MEDIA_EVENTS_AUTHORITY picks which one Live acts on:
- *   webhook (default)  the webhook acts; Events deliveries are acknowledged and dropped
- *   both               either acts; the second copy of an outcome is a no-op
- *   events             Events acts; a webhook carrying an event_id is acknowledged and dropped (a
- *                      webhook WITHOUT one has no durable twin, so it still acts)
- *
- * Each outcome is applied at most once: Media writes the event in the state change's transaction
- * and puts the same event_id in the webhook body, and every apply claims an inbox receipt (consumer
- * CONSUMER, key "media:<object type>:<object id>:<event id>") in the same SQLite transaction as
- * Live's own writes. Side effects outside the database (recorder bookkeeping, AI jobs, the ops
- * alert) run after that commit, only for the copy that won.
+ * Each outcome is applied at most once: every apply claims an inbox receipt (consumer CONSUMER, key
+ * "media:<object type>:<object id>:<event id>") in the same transaction as Live's own writes, so an Events redelivery
+ * is a no-op. Side effects outside the database (recorder bookkeeping, AI jobs, the ops alert) run after that commit,
+ * only for the delivery that applied.
  */
 const db = require('../db/database');
 
 const CONSUMER = 'live-media-outcomes';
-const MODES = new Set(['webhook', 'both', 'events']);
 const EVENT_ID_RE = /^evt_[0-9A-HJKMNP-TV-Z]{26}$/;
 const MEDIA_APP_ID = process.env.MEDIA_APP_ID || 'live';
 
-// Webhook event name → the Events event_type Media publishes for it (media/server/events.js TYPES).
+// The outcome name Live acts on → the Events event_type Media publishes for it (media/server/events.js TYPES).
 const EVENT_TYPES = {
     'vod.ready': 'media.vod.ready',
     'vod.failed': 'media.vod.failed',
@@ -35,22 +27,10 @@ const EVENT_TYPES = {
     'storage.alert': 'media.storage.alert',
     'storage.recovered': 'media.storage.recovered',
 };
-const WEBHOOK_NAMES = Object.fromEntries(Object.entries(EVENT_TYPES).map(([k, v]) => [v, k]));
+const OUTCOME_NAMES = Object.fromEntries(Object.entries(EVENT_TYPES).map(([k, v]) => [v, k]));
 
-const stats = { applied: { webhook: 0, events: 0 }, duplicate: { webhook: 0, events: 0 }, dropped: { webhook: 0, events: 0 } };
+const stats = { applied: 0, duplicate: 0 };
 let inbox = null;
-let warnedNoEventId = false;
-
-function authority() {
-    const v = String(process.env.MEDIA_EVENTS_AUTHORITY || 'webhook').trim().toLowerCase();
-    return MODES.has(v) ? v : 'webhook';
-}
-
-/** Does this path act on outcomes under the current authority? */
-function accepts(via) {
-    const mode = authority();
-    return mode === 'both' || mode === via;
-}
 
 function ensureInbox() {
     if (inbox) return inbox;
@@ -183,28 +163,18 @@ async function apply(event, data) {
 }
 
 /**
- * Apply one outcome at most once. `via` is 'webhook' or 'events'; `eventId` is Media's event id
- * (webhooks from a Media without an outbox have none: those apply without a receipt).
- * Returns { applied, duplicate, outcome }. Throws when Live's writes fail (nothing committed).
+ * Apply one Events delivery's outcome at most once (`eventId` is the Events event id, `subject` the object it is
+ * about). Returns { applied, duplicate, outcome }. Throws when Live's writes fail (nothing committed; Events retries).
  */
-async function handle({ via, event, data, eventId = null, subject = null }) {
+async function handle({ event, data, eventId, subject = null }) {
     let after = null;
     const run = async () => { const r = await apply(event, data); after = r.after || null; return r.outcome; };
-    let out;
-    if (eventId) {
-        out = await ensureInbox().once(CONSUMER, dedupeKey(eventId, subject || subjectOf(event, data)), run);
-    } else {
-        if (via === 'webhook' && !warnedNoEventId) {
-            warnedNoEventId = true;
-            console.warn('[MediaOutcome] a Media webhook carried no event_id (Media without its Events outbox?): applied without dedupe');
-        }
-        out = { duplicate: false, result: await db.getDb().tx(run) };
-    }
+    const out = await ensureInbox().once(CONSUMER, dedupeKey(eventId, subject || subjectOf(event, data)), run);
     if (out.duplicate) {
-        stats.duplicate[via]++;
+        stats.duplicate++;
         return { applied: false, duplicate: true };
     }
-    stats.applied[via]++;
+    stats.applied++;
     if (after) { try { await after(); } catch (e) { console.warn('[MediaOutcome] post-commit step failed:', e.message); } }
     // A VOD or clip that became ready (or failed) changes what OpenVibe.Search should hold for its page.
     const kind = /^(vod|clip)\.(ready|failed)$/.exec(String(event));
@@ -213,16 +183,16 @@ async function handle({ via, event, data, eventId = null, subject = null }) {
 }
 
 function status() {
-    return { authority: authority(), consumer: CONSUMER, ...JSON.parse(JSON.stringify(stats)) };
+    return { consumer: CONSUMER, ...stats };
 }
 
 function _reset() {
     inbox = null;
-    warnedNoEventId = false;
-    for (const k of Object.keys(stats)) stats[k] = { webhook: 0, events: 0 };
+    stats.applied = 0;
+    stats.duplicate = 0;
 }
 
 module.exports = {
-    CONSUMER, EVENT_TYPES, WEBHOOK_NAMES, EVENT_ID_RE, MEDIA_APP_ID,
-    authority, accepts, subjectOf, dedupeKey, apply, handle, relayStorageEvent, status, stats, _reset,
+    CONSUMER, EVENT_TYPES, OUTCOME_NAMES, EVENT_ID_RE, MEDIA_APP_ID,
+    subjectOf, dedupeKey, apply, handle, relayStorageEvent, status, stats, _reset,
 };

@@ -231,22 +231,15 @@ through the SDK inbox (`idempotency_receipts`):
 
 #### Media outcomes over Events
 
-Media reports `vod.ready|failed`, `clip.ready|failed` and `storage.alert|recovered` both as the signed
-webhook (`POST /internal/media-webhook`, `MEDIA_WEBHOOK_SECRET`) and as `media.*` events. Media writes the
-event in the state change's transaction and puts its `event_id` in the webhook body, so
-[server/media-proxy/outcomes.js](../server/media-proxy/outcomes.js) applies each outcome once, whichever
-copy arrives first (receipt `media:<object type>:<object id>:<event id>`, consumer
-`live-media-outcomes`). Only Live's tenant (`MEDIA_APP_ID`) counts; `media.object.uploaded` is ignored.
-`MEDIA_EVENTS_AUTHORITY` picks the path that acts:
+Media reports `vod.ready|failed`, `clip.ready|failed` and `storage.alert|recovered` as `media.*` events. It
+writes each event in the state change's transaction, and Events delivers it to `POST /internal/media-events`
+(signature v2, `MEDIA_EVENTS_SECRET`). [server/media-proxy/outcomes.js](../server/media-proxy/outcomes.js)
+applies each outcome once (receipt `media:<object type>:<object id>:<event id>`, consumer
+`live-media-outcomes`), so a redelivery is a no-op. Only Live's tenant (`MEDIA_APP_ID`) counts, and
+`media.object.uploaded` is ignored.
 
-- `webhook` (default): the webhook acts; Events deliveries are acknowledged and dropped.
-- `both`: the transition window; either acts, the other copy is a no-op.
-- `events`: Events acts; a webhook with an `event_id` is acknowledged and dropped (one without, from a
-  Media whose outbox is off, has no durable twin and still acts).
-
-Removing the webhook, once `events` has run clean (every recording and clip since the switch has its
-`vod_ai_state`/`clip_ai_state` row and `live-media-outcomes` receipts, and Events shows no DLQ entries for
-Live's subscriptions): clear Live's `webhook_url` in Media's `apps` row (then Media sends Live nothing
-directly), wait a release, and delete `/internal/media-webhook`, `server/media-proxy/webhook.js`,
-`MEDIA_WEBHOOK_SECRET` and the `webhook`/`both` modes. Rollback before that step: set
-`MEDIA_EVENTS_AUTHORITY=webhook` (or `scripts/subscribe-media-events.js --disable`).
+This is the only path. The direct webhook (`POST /internal/media-webhook`, `MEDIA_WEBHOOK_SECRET`) carried the
+same outcomes during the transition. It was retired on 2026-10-10, after Events had delivered every one of
+Live's 123 media outcomes with no dead letters: Live's `webhook_url` was cleared in Media's `apps` row and seed,
+and the route, `server/media-proxy/webhook.js`, `MEDIA_WEBHOOK_SECRET` and `MEDIA_EVENTS_AUTHORITY` were
+deleted.

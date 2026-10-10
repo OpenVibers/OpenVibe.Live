@@ -260,7 +260,7 @@ const safe = { DATA_DIR, HOST: '127.0.0.1', PORT: '13000' };
         const writes = [
             ['POST', '/api/streams', { title: 'x' }], ['PUT', '/api/streams/1', { title: 'y' }], ['PATCH', '/api/streams/1', { title: 'y' }],
             ['DELETE', '/api/streams/1', null], ['POST', '/api/chat/send', { message: 'hi' }], ['POST', '/api/auth/logout', null],
-            ['POST', '/internal/media-events', { type: 'media.vod.ready' }], ['POST', '/internal/media-webhook', {}], ['POST', '/whip/1', null],
+            ['POST', '/internal/media-events', { type: 'media.vod.ready' }], ['POST', '/whip/1', null],
             ['POST', '/banned/continue', null], ['POST', '/api/csp-report', {}], ['POST', '/release-metrics', { counts: { applied: { style: 1 } } }],
         ];
         for (const [m, p, body] of writes) {

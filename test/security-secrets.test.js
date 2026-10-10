@@ -38,7 +38,6 @@ const ENV = {
     OV_OAUTH_CLIENT_SECRET: 'sentinel-not-a-secret-oauth-client',
     INTERNAL_API_KEY: 'sentinel-not-a-secret-internal-api-key',
     OV_INTERNAL_KEY: 'sentinel-not-a-secret-ov-internal-key',
-    MEDIA_WEBHOOK_SECRET: 'sentinel-not-a-secret-media-webhook',
     MEDIA_EVENTS_SECRET: 'sentinel-not-a-secret-media-events',
     LIVE_EVENTS_SECRET: 'sentinel-not-a-secret-live-events',
     OPENRE_EVENTS_SECRET: 'sentinel-not-a-secret-openre-events',
