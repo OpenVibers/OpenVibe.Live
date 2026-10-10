@@ -57,12 +57,6 @@ async function snapshot(services = {}) {
         jobs: await safe(() => require('./utils/jobs').snapshot(), []),
         workQueues: await safe(() => require('./utils/limit').snapshot(), []),
         migrations: await safe(async () => await require('./db/migrations').getStatus(db.getDb()), []),
-        sqlite: await safe(() => {
-            const fs = require('fs');
-            const file = db.getDb().name;
-            const size = (p) => { try { return mb(fs.statSync(p).size); } catch { return 0; } };
-            return { dbMb: size(file), walMb: size(`${file}-wal`) };
-        }),
     };
 }
 

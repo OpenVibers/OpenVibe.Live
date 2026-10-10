@@ -17,13 +17,10 @@
 #   DRY_RUN=1 deploy/scripts/deploy.sh             ovhost plan live                 (changes nothing)
 #   READY_TIMEOUT=<s>                              --ready-timeout <s>
 #
-# --force meant "discard local tracked changes" in the legacy in-place layout. ovhost never discards changes,
-# and its --force drops live streams (and passes a freeze), so the wrapper refuses it: run
+# ovhost --force drops live streams (and passes a freeze), so the wrapper refuses it: run
 # `sudo ovhost deploy live --force` yourself when that is what you mean.
 #
-# Fallback: deploy-legacy.sh (the previous script, unchanged) runs instead, with the same arguments, when
-# ovhost is missing or too old (no `capabilities`, deploy-api < 1), or the host inventory does not deploy
-# live with strategy release-layout. OVHOST_LEGACY=1 forces it; OVHOST=<path> picks another ovhost.
+# OVHOST=<path> picks another ovhost. An unavailable or incompatible ovhost is an error.
 #
 # Exit codes are ovhost's, the same as before: 0 ok · 1 usage/precondition · 2 validation failed, nothing
 # restarted · 3 not ready, rolled back · 4 rollback failed (manual intervention) · 5 protected sessions ·
@@ -33,15 +30,12 @@ set -euo pipefail
 
 SERVICE=live
 STRATEGY=release-layout
-HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
-LEGACY="${DEPLOY_LEGACY:-$HERE/deploy-legacy.sh}"
 OVHOST="${OVHOST:-/usr/local/bin/ovhost}"
 # ovhost runs as root; tests set OVHOST_SUDO= to call it directly.
 if [ "${OVHOST_SUDO-auto}" = auto ]; then if [ "$(id -u)" -eq 0 ]; then SUDO=(); else SUDO=(sudo); fi; elif [ -n "${OVHOST_SUDO}" ]; then SUDO=("$OVHOST_SUDO"); else SUDO=(); fi
 
 say() { echo "[Deploy] $*"; }
 
-ORIG=("$@")
 CMD=deploy
 FLAGS=()
 FORCE=false
@@ -57,15 +51,9 @@ while [ "$#" -gt 0 ]; do
 done
 [ -n "${READY_TIMEOUT:-}" ] && FLAGS+=(--ready-timeout "$READY_TIMEOUT")
 
-legacy() {
-    say "$1 — running deploy-legacy.sh (the previous deploy script) instead"
-    exec bash "$LEGACY" "${ORIG[@]}"
-}
-
 # Does this ovhost deploy live with the strategy this wrapper hands over to? Sets REASON when not.
 REASON=""
 probe() {
-    if [ "${OVHOST_LEGACY:-0}" = 1 ]; then REASON="OVHOST_LEGACY=1"; return 1; fi
     if ! command -v "$OVHOST" >/dev/null 2>&1; then REASON="ovhost not found ($OVHOST)"; return 1; fi
     local caps api
     if ! caps=$("${SUDO[@]}" "$OVHOST" capabilities "$SERVICE" 2>/dev/null); then REASON="this ovhost has no 'capabilities' (too old) or no inventory entry for $SERVICE"; return 1; fi
@@ -77,11 +65,11 @@ probe() {
     return 0
 }
 
-probe || legacy "$REASON"
+if ! probe; then echo "[Deploy] ✗ $REASON" >&2; exit 1; fi
 
 if [ "$FORCE" = true ]; then
-    echo "[Deploy] ✗ --force meant 'discard local tracked changes' (legacy layout). ovhost never discards changes, and its" >&2
-    echo "[Deploy]   --force drops live streams and passes a freeze. Run: sudo $OVHOST ${CMD} ${SERVICE} --force   if that is what you mean." >&2
+    echo "[Deploy] ✗ --force drops live streams and passes a freeze." >&2
+    echo "[Deploy]   Run: sudo $OVHOST ${CMD} ${SERVICE} --force   if that is what you mean." >&2
     exit 1
 fi
 if [ "${DRY_RUN:-0}" = 1 ]; then

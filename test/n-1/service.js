@@ -37,25 +37,7 @@ function baseEnv(extra) {
     return { PATH: process.env.PATH, HOME: process.env.HOME, TMPDIR: process.env.TMPDIR || '/tmp', NODE_ENV: 'test', ...extra };
 }
 
-const SEED = `
-    console.log = () => {}; console.warn = () => {};
-    const db = require('./server/db/database');
-    db.initDb();
-    const d = db.getDb();
-    const star = Number(db.createUser({ username: 'n1star', display_name: 'N1 Star', password_hash: 'x', stream_key: 'n1starkey' }).lastInsertRowid);
-    const fan = Number(db.createUser({ username: 'n1fan', display_name: 'N1 Fan', password_hash: 'x', stream_key: 'n1fankey' }).lastInsertRowid);
-    d.prepare("UPDATE users SET role = 'streamer', bio = 'Seeded for the N-1 test' WHERE id = ?").run(star);
-    db.ensureChannel(star); db.ensureChannel(fan);
-    d.prepare("INSERT INTO streams (user_id, title, category, protocol, is_live, viewer_count, started_at, last_heartbeat) VALUES (?, 'N-1 live stream', 'tech', 'webrtc', 1, 2, datetime('now', '-10 minutes'), datetime('now'))").run(star);
-    d.prepare("INSERT INTO streams (user_id, title, category, protocol, is_live, started_at, ended_at) VALUES (?, 'N-1 past stream', 'irl', 'webrtc', 0, datetime('now', '-2 days'), datetime('now', '-2 days', '+1 hour'))").run(star);
-    d.prepare('INSERT INTO follows (follower_id, streamer_id) VALUES (?, ?)').run(fan, star);
-    db.close();
-`;
-
-// A release on PostgreSQL (plan T4: migrations/0002_live.sql): with no DATABASE_URL it opens an embedded PGlite database
-// under DATA_DIR, which the seed and then the drill-mode boot open one after the other (never both at once). On SQLite a
-// boot backfill gave each streamer a stream slot; this seed creates the slot itself.
-const isPg = (dir) => fs.existsSync(path.join(dir, 'migrations', '0002_live.sql'));
+// Development and test releases share the embedded PGlite database under DATA_DIR.
 const SEED_PG = `
     console.log = () => {}; console.warn = () => {};
     const db = require('./server/db/database');
@@ -108,24 +90,21 @@ module.exports = {
         [/^q$|query|search|term/i, 'n1'],
     ],
 
-    sqlDirs: ['server'],
-    ledgerTables: ['schema_migrations'],
-
     /** Seeds a database with the release in `dir` (its initDb migrates first). */
-    seed({ dir, dbPath, dataDir }) {
-        const r = spawnSync(process.execPath, ['-e', isPg(dir) ? SEED_PG : SEED], { cwd: dir, encoding: 'utf8', timeout: 120000, env: baseEnv({ DB_PATH: dbPath, DATA_DIR: dataDir }) });
+    seed({ dir, dataDir }) {
+        const r = spawnSync(process.execPath, ['-e', SEED_PG], { cwd: dir, encoding: 'utf8', timeout: 120000, env: baseEnv({ DATA_DIR: dataDir }) });
         if (r.status !== 0) throw new Error(`seeding failed:\n${String(r.stderr || '').slice(-2000)}`);
     },
 
     /** Boots the release in `dir` → { url, headers(auth), close() }. */
-    async boot({ dir, dbPath, dataDir, sqlOut = '' }) {
+    async boot({ dir, dataDir }) {
         const keys = crypto.generateKeyPairSync('rsa', { modulusLength: 2048, publicKeyEncoding: { type: 'spki', format: 'pem' }, privateKeyEncoding: { type: 'pkcs8', format: 'pem' } });
         fs.mkdirSync(path.join(dataDir, 'keys'), { recursive: true });
         fs.writeFileSync(path.join(dataDir, 'keys', 'openvibe-tools-public.pem'), keys.publicKey);
         const port = await freePort();
         const child = spawn(process.execPath, ['-r', PRELOAD, 'server/index.js'], {
             cwd: dir,
-            env: baseEnv({ LIVE_DRILL: '1', DB_PATH: dbPath, DATA_DIR: dataDir, HOST: '127.0.0.1', PORT: String(port), N1_SQL_OUT: sqlOut }),
+            env: baseEnv({ LIVE_DRILL: '1', DATA_DIR: dataDir, HOST: '127.0.0.1', PORT: String(port) }),
             stdio: ['ignore', 'pipe', 'pipe'],
         });
         let log = '';

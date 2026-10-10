@@ -8,7 +8,7 @@
  *     (200 "degraded", naming what is missing)
  *   - /release.json validates as registry.release-manifest@1 and names /release-metrics, whose beacons
  *     (text/plain or JSON, behind the global JSON parser) land in release_client_updates_total
- * A temp SQLite database stands in for Live's; no Media, Network or mediasoup is needed.
+ * A migrated PGlite database stands in for Live's; no Media, Network or mediasoup is needed.
  *
  * Run: node test/observability.test.js
  */

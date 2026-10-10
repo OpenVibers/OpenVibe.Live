@@ -1,14 +1,5 @@
 /**
- * deploy/scripts/deploy.sh is a thin wrapper around `ovhost deploy live` (OpenVibe.Host, strategy
- * release-layout; roadmap WS-N task 11), with deploy-legacy.sh (the previous script, unchanged) as its
- * fallback. A fake ovhost records what the wrapper asked for; a fake legacy script records the fallback.
- *   - the flags map: (none) → deploy live, --wait-idle, --restart, --rollback → rollback live,
- *     DRY_RUN=1 → plan live, READY_TIMEOUT → --ready-timeout;
- *   - --force (legacy: discard local changes) is refused on the ovhost path, never passed on;
- *   - the fallback runs, with the original arguments and a message, when ovhost is missing, has no
- *     `capabilities`, reports deploy-api 0, does not deploy live with release-layout, or OVHOST_LEGACY=1;
- *   - deploy-legacy.sh is the old script: it still holds the listener check and the socket restart.
- *
+ * The wrapper maps deploy flags to ovhost and fails when ovhost cannot manage Live.
  *   node test/deploy-wrapper.test.js
  */
 'use strict';
@@ -33,12 +24,9 @@ fi
 echo "ovhost $*" >> "${log}"
 exit "\${FAKE_EXIT:-0}"
 `, { mode: 0o755 });
-const legacy = path.join(tmp, 'legacy.sh');
-fs.writeFileSync(legacy, `#!/usr/bin/env bash\necho "legacy $* DRY_RUN=\${DRY_RUN:-}" >> "${log}"\nexit 0\n`, { mode: 0o755 });
-
 const run = (args = [], env = {}) => {
     fs.rmSync(log, { force: true });
-    const r = spawnSync('bash', [WRAPPER, ...args], { env: { PATH: process.env.PATH, OVHOST: ovhost, OVHOST_SUDO: '', DEPLOY_LEGACY: legacy, ...env }, encoding: 'utf8' });
+    const r = spawnSync('bash', [WRAPPER, ...args], { env: { PATH: process.env.PATH, OVHOST: ovhost, OVHOST_SUDO: '', ...env }, encoding: 'utf8' });
     let calls = [];
     try { calls = fs.readFileSync(log, 'utf8').trim().split('\n').filter(Boolean); } catch { /* none */ }
     return { code: r.status, out: r.stdout + r.stderr, calls };
@@ -69,7 +57,7 @@ check('--force is refused on the ovhost path (it would drop live streams), never
     const r = run(['--force']);
     assert.strictEqual(r.code, 1, r.out);
     assert.deepStrictEqual(r.calls, []);
-    assert.match(r.out, /--force meant 'discard local tracked changes'/);
+    assert.match(r.out, /--force drops live streams/);
 });
 
 check('an unknown flag is a usage error', () => {
@@ -78,37 +66,33 @@ check('an unknown flag is a usage error', () => {
     assert.deepStrictEqual(r.calls, []);
 });
 
-check('the fallback runs deploy-legacy.sh with the original arguments, and says why', () => {
+check('missing or incompatible ovhost fails without deploying', () => {
     let r = run(['--wait-idle'], { OVHOST: path.join(tmp, 'missing-ovhost') });
-    assert.strictEqual(r.code, 0, r.out);
-    assert.deepStrictEqual(r.calls, ['legacy --wait-idle DRY_RUN=']);
-    assert.match(r.out, /ovhost not found .* — running deploy-legacy\.sh/);
+    assert.strictEqual(r.code, 1, r.out);
+    assert.deepStrictEqual(r.calls, []);
+    assert.match(r.out, /ovhost not found/);
 
-    r = run(['--force'], { FAKE_OLD: '1' });
-    assert.deepStrictEqual(r.calls, ['legacy --force DRY_RUN='], 'the legacy script keeps its own --force');
-    assert.match(r.out, /no 'capabilities' \(too old\)/);
+    r = run([], { FAKE_OLD: '1' });
+    assert.strictEqual(r.code, 1, r.out);
+    assert.deepStrictEqual(r.calls, []);
+    assert.match(r.out, /no 'capabilities'/);
 
-    r = run([], { FAKE_CAPS: 'ovhost=0.2.9\\ndeploy-api=0\\nstrategy=release-layout\\nmanaged=yes' });
-    assert.deepStrictEqual(r.calls, ['legacy  DRY_RUN=']);
-    assert.match(r.out, /deploy-api is 0, 1 is needed/);
+    r = run([], { FAKE_CAPS: 'deploy-api=0\\nstrategy=release-layout\\nmanaged=yes' });
+    assert.strictEqual(r.code, 1, r.out);
+    assert.deepStrictEqual(r.calls, []);
+    assert.match(r.out, /deploy-api is 0/);
 
-    r = run([], { FAKE_CAPS: 'ovhost=0.3.0\\ndeploy-api=1\\nstrategy=none\\nmanaged=no' });
-    assert.deepStrictEqual(r.calls, ['legacy  DRY_RUN=']);
-    assert.match(r.out, /does not deploy live with strategy release-layout \(none\)/);
-
-    r = run(['--rollback'], { OVHOST_LEGACY: '1', DRY_RUN: '1' });
-    assert.deepStrictEqual(r.calls, ['legacy --rollback DRY_RUN=1']);
+    r = run([], { FAKE_CAPS: 'deploy-api=1\\nstrategy=none\\nmanaged=no' });
+    assert.strictEqual(r.code, 1, r.out);
+    assert.deepStrictEqual(r.calls, []);
+    assert.match(r.out, /strategy release-layout/);
 });
 
-check('deploy-legacy.sh is the previous script: listener check, changed-socket restart, release layout', () => {
-    const text = fs.readFileSync(path.join(__dirname, '..', 'deploy', 'scripts', 'deploy-legacy.sh'), 'utf8');
-    assert.match(text, /socket_held\(\)/);
-    assert.match(text, /SOCKET_CHANGED=true/);
-    assert.match(text, /\$SYSTEMCTL restart "\$\{SERVICE\}\.socket"/);
-    assert.match(text, /KEEP_RELEASES/);
+check('the wrapper has no fallback path', () => {
     const wrapper = fs.readFileSync(WRAPPER, 'utf8');
-    assert.ok(wrapper.split('\n').length < 120, 'the wrapper stays thin');
+    assert.ok(wrapper.split('\n').length < 120);
     assert.match(wrapper, /^set -euo pipefail$/m);
+    assert.doesNotMatch(wrapper, /LEGACY|exec bash/);
 });
 
 fs.rmSync(tmp, { recursive: true, force: true });

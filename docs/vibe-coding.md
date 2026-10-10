@@ -32,7 +32,7 @@ Persistent slot settings live in `managed_streams.broadcast_settings.vibe_coding
 }
 ```
 
-Durable runtime data is stored in two SQLite tables:
+Durable runtime data is stored in two PostgreSQL tables:
 
 - `vibe_coding_sessions` — one row per `managed_stream_id + session_key`
 - `vibe_coding_events` — canonical sanitized events keyed by `managed_stream_id + event_id`

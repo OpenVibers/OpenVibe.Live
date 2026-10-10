@@ -11,11 +11,8 @@
  *     for a 2xx, the same status otherwise (a 5xx only needs the route), JSON where there was JSON,
  *     every read field still there with a type it had. The run sits inside openvibe-shared's
  *     mixed-version matrix (release-compat assertMixedVersion) with both releases' manifests.
- *   - N-1 SQL against the N schema: test/fixtures/n-1/worker.json holds the previous release's schema
- *     (and migration ledger, and what it creates on first use) and every statement it ran or has as a
- *     literal. The database this test boots on is created from that schema, so this release's
- *     migrations run over it; afterwards every N-1 statement must still prepare (no table or column it
- *     names is gone), and no N-1 INSERT may miss a column this release made NOT NULL without a default.
+ *   - N-1 migration history: test/fixtures/n-1/worker.json records the previous release's
+ *     migration filenames and hashes. This release must preserve each file unchanged.
  *
  * The fixtures come from the release in production: `npm run n-1:record` after each deploy (see
  * scripts/n-1-record.js). This test needs no git history and no network.
@@ -26,7 +23,6 @@ const assert = require('assert');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const Database = require('better-sqlite3');
 const compat = require('openvibe-shared/release-compat');
 const h = require('./n-1/harness');
 const svc = require('./n-1/service');
@@ -43,7 +39,7 @@ async function check(name, fn) {
 
 (async () => {
     const age = Math.round((Date.now() - Date.parse(client.recorded_at)) / 86400000);
-    console.log(`n-1: ${svc.service} N-1 = ${client.release.slice(0, 12)}, recorded ${client.recorded_at.slice(0, 10)} (${age} d ago); ${client.calls.length} calls, ${worker.statements.length} statements`);
+    console.log(`n-1: ${svc.service} N-1 = ${client.release.slice(0, 12)}, recorded ${client.recorded_at.slice(0, 10)} (${age} d ago); ${client.calls.length} calls, ${worker.migrations.length} migrations`);
 
     console.log('n-1: the harness');
     await check('finds call sites, their method and template, and skips computed paths', () => {
@@ -63,53 +59,20 @@ async function check(name, fn) {
         assert.deepStrictEqual(h.readProblems(reads, { streams: [{ title: 'b', viewer_count: '2' }] }), ['streams[].viewer_count was number, now string', 'total is gone']);
         assert.ok(h.statusCompatible(200, 201) && h.statusCompatible(502, 503) && !h.statusCompatible(401, 403) && !h.statusCompatible(502, 404) && !h.statusCompatible(200, 404));
     });
-    await check('SQL: a dropped column fails the prepare; a new NOT NULL column without a default fails an old INSERT', () => {
-        const d = new Database(':memory:');
-        d.exec('CREATE TABLE t (id INTEGER PRIMARY KEY, a TEXT, b TEXT NOT NULL, c TEXT NOT NULL DEFAULT \'x\')');
-        assert.deepStrictEqual(h.prepareProblems(d, ['SELECT a, gone FROM t']).map((p) => p.error), ['no such column: gone']);
-        assert.deepStrictEqual(h.insertProblems(d, ['INSERT INTO t (a, b) VALUES (?, ?)', 'INSERT INTO t (a) VALUES (?)']).map((p) => p.error), ['t.b is NOT NULL without a default, and N-1 does not set it']);
-        d.close();
-    });
-
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ov-n-1-test-'));
-    const dbPath = path.join(tmp, 'db', `${svc.service}.db`);
     const dataDir = path.join(tmp, 'data');
-    fs.mkdirSync(path.dirname(dbPath), { recursive: true });
     fs.mkdirSync(dataDir, { recursive: true });
-    // This release on PostgreSQL (ADR-035, plan T4) and a recorded N-1 that still ran on SQLite: they never share a
-    // database, so N-1's SQL has no schema of this release to run on. The client half still runs, on a freshly migrated
-    // and seeded database. Once the N-1 fixture is recorded from a PostgreSQL release: N keeps every migration N-1 ran.
-    const pg = fs.existsSync(path.join(ROOT, 'migrations', '0002_live.sql'));
-    const sqlSkip = pg && worker.engine !== 'postgresql' ? 'N-1 SQL: skipped (the recorded N-1 release runs on SQLite and this release on PostgreSQL: no shared database, so no N-1 statement runs on this schema)' : null;
-    if (pg && worker.engine === 'postgresql') {
-        await check(`N-1's ${worker.migrations.length} migration file(s) are all here, unchanged`, () => {
-            const dir = path.join(ROOT, 'migrations');
-            const hash = (f) => require('crypto').createHash('sha256').update(fs.readFileSync(path.join(dir, f))).digest('hex');
-            const bad = worker.migrations.filter((m) => !fs.existsSync(path.join(dir, m.name)) || hash(m.name) !== m.sha256).map((m) => m.name);
-            assert.deepStrictEqual(bad, [], 'a migration N-1 ran was removed or edited: write a new one instead');
-        });
-    }
+    await check(`N-1's ${worker.migrations.length} migration file(s) are all here, unchanged`, () => {
+        const dir = path.join(ROOT, 'migrations');
+        const hash = (f) => require('crypto').createHash('sha256').update(fs.readFileSync(path.join(dir, f))).digest('hex');
+        const bad = worker.migrations.filter((m) => !fs.existsSync(path.join(dir, m.name)) || hash(m.name) !== m.sha256).map((m) => m.name);
+        assert.deepStrictEqual(bad, [], 'a migration N-1 ran was removed or edited: write a new one instead');
+    });
     let server = null;
     try {
-        console.log(`n-1: this release on a database N-1 created`);
-        await check('N-1\'s schema, ledger and first-use tables load, and this release migrates and seeds it', () => {
-            if (pg) { svc.seed({ dir: ROOT, dbPath, dataDir }); return; }
-            const d = new Database(dbPath);
-            d.transaction(() => {
-                for (const ddl of worker.schema) d.exec(ddl);
-                for (const [table, rows] of Object.entries(worker.ledger || {})) {
-                    for (const row of rows) {
-                        const cols = Object.keys(row);
-                        d.prepare(`INSERT INTO "${table}" (${cols.map((c) => `"${c}"`).join(', ')}) VALUES (${cols.map(() => '?').join(', ')})`).run(...cols.map((c) => row[c]));
-                    }
-                }
-                for (const ddl of worker.lazy || []) d.exec(ddl);
-            })();
-            d.pragma(`user_version = ${Number(worker.user_version) || 0}`);
-            d.close();
-            svc.seed({ dir: ROOT, dbPath, dataDir });
-        });
-        server = await svc.boot({ dir: ROOT, dbPath, dataDir });
+        console.log(`n-1: this release on a migrated PGlite database`);
+        await check('this release migrates and seeds its database', () => svc.seed({ dir: ROOT, dataDir }));
+        server = await svc.boot({ dir: ROOT, dataDir });
         const manifest = await (await fetch(`${server.url}/release.json`)).json();
 
         console.log('n-1: the N-1 client against this server');
@@ -140,17 +103,6 @@ async function check(name, fn) {
         });
         await server.close();
         server = null;
-
-        if (sqlSkip) console.log(sqlSkip);
-        else if (!pg) {
-            console.log('n-1: N-1\'s SQL on the schema this release migrated');
-            await check(`every statement N-1 runs still prepares (${worker.statements.length}), and none of its INSERTs misses a new required column`, () => {
-                const d = new Database(dbPath, { readonly: true });
-                const problems = [...h.prepareProblems(d, worker.statements), ...h.insertProblems(d, worker.statements)];
-                d.close();
-                assert.deepStrictEqual(problems.map((p) => `${p.error}: ${p.sql.slice(0, 160)}`), [], 'N-1 SQL that breaks on this schema (expand first, contract a release later: ADR-028)');
-            });
-        }
     } finally {
         if (server) { console.log(server.log().slice(-1500)); await server.close(); }
         fs.rmSync(tmp, { recursive: true, force: true });

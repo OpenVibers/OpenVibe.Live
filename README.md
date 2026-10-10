@@ -54,7 +54,7 @@ The media subsystem lives in **OpenVibe.Media**:
 
 ### Data storage
 
-- PostgreSQL `ov_live` (since 2026-10-08; `migrations/0001_analytics.sql`, `0002_live.sql`) — users, streams, channel state, AI state, request analytics. Chat storage is OpenVibe.Chat's. The SQLite files it replaced stay read-only next to the release for the rollback window.
+- PostgreSQL `ov_live` (since 2026-10-08; `migrations/0001_analytics.sql`, `0002_live.sql`) — users, streams, channel state, AI state, request analytics. Chat storage is OpenVibe.Chat's.
 - `data/live-thumbs` — ephemeral live-stream thumbnails.
 - `data/emotes`, `data/avatars`, `data/offline` — Live-local assets.
 - `data/media/cache` — song-request (watch-party) downloads.

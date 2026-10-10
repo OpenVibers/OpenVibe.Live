@@ -29,7 +29,7 @@ If you want **one OVH instance that makes the most sense for real OpenVibe.Live 
 
 Why:
 
-- 32 GB RAM is enough for Node, SQLite, WebSockets, chat, thumbnails, clips, and moderate media workload
+- 32 GB RAM is enough for Node, PostgreSQL, WebSockets, chat, thumbnails, clips, and moderate media workload
 - 8 vCores is a sane floor for a mixed single-box deployment
 - 200 GB NVMe is much more realistic than 50–100 GB once VODs and clips start accumulating
 - 2 Gbit/s leaves real headroom for 200 viewers at practical streaming bitrates
@@ -95,7 +95,7 @@ Relative server-side cost, roughly:
 
 The current codebase stores locally:
 
-- SQLite database
+- PostgreSQL database
 - VODs
 - clips
 - thumbnails
@@ -179,7 +179,7 @@ You should reserve space for:
 
 - Ubuntu + packages + logs
 - app code
-- SQLite DB
+- PostgreSQL data
 - thumbnails, avatars, emotes
 - temporary files during clip/VOD work
 

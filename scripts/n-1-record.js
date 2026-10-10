@@ -16,7 +16,6 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const Database = require('better-sqlite3');
 const h = require('../test/n-1/harness');
 const svc = require('../test/n-1/service');
 
@@ -27,10 +26,7 @@ const OUT = path.join(ROOT, 'test', 'fixtures', 'n-1');
     const ref = process.argv[2] || 'HEAD';
     const wt = h.worktree(ROOT, ref);
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ov-n-1-record-'));
-    const dbPath = path.join(tmp, 'db', `${svc.service}.db`);
     const dataDir = path.join(tmp, 'data');
-    const sqlOut = path.join(tmp, 'sql.json');
-    fs.mkdirSync(path.dirname(dbPath), { recursive: true });
     fs.mkdirSync(dataDir, { recursive: true });
     let server = null;
     try {
@@ -43,8 +39,8 @@ const OUT = path.join(ROOT, 'test', 'fixtures', 'n-1');
         console.log(`  client: ${files.length} files, ${calls.length} call sites with a path (${dynamic} with a computed one, not replayed)`);
 
         // 2. The release, seeded and booted; every call replayed.
-        await svc.seed({ dir: wt.dir, dbPath, dataDir });
-        server = await svc.boot({ dir: wt.dir, dbPath, dataDir, sqlOut });
+        await svc.seed({ dir: wt.dir, dataDir });
+        server = await svc.boot({ dir: wt.dir, dataDir });
         const manifest = await (await fetch(`${server.url}/release.json`)).json();
         const probe = await h.notFoundProbe(server.url);
         const requests = h.requestsFor(calls, svc.samples, { signedIn: svc.signedIn !== false });
@@ -98,41 +94,16 @@ const OUT = path.join(ROOT, 'test', 'fixtures', 'n-1');
         await server.close();
         server = null;
 
-        // 3. The schema N-1 left, and the SQL it runs on it. A release on PostgreSQL (ADR-035) records its migration files
-        // instead: N must keep every one of them unchanged and only add (the database's own ledger refuses an edit).
+        // 3. Preserve the previous release's migration files for the N-1 schema check.
         const head = { service: svc.service, release: wt.sha, recorded_at: new Date().toISOString(), note: 'N-1 fixture: written by `npm run n-1:record`, replayed by test/n-1.test.js' };
         const clients = svc.clientReleases ? svc.clientReleases() : null;
         const migDir = path.join(wt.dir, 'migrations');
-        if (fs.existsSync(migDir)) {
-            const migrations = fs.readdirSync(migDir).filter((f) => f.endsWith('.sql')).sort()
-                .map((name) => ({ name, sha256: require('crypto').createHash('sha256').update(fs.readFileSync(path.join(migDir, name))).digest('hex') }));
-            fs.mkdirSync(OUT, { recursive: true });
-            fs.writeFileSync(path.join(OUT, 'client.json'), `${JSON.stringify({ ...head, ...(clients ? { clients } : {}), manifest, dynamic_calls: dynamic, calls: recorded, ...(ws ? { ws } : {}) }, null, 1)}\n`);
-            fs.writeFileSync(path.join(OUT, 'worker.json'), `${JSON.stringify({ ...head, engine: 'postgresql', migrations, statements: [] }, null, 1)}\n`);
-            console.log(`  postgresql: ${migrations.length} migration file(s); wrote ${path.relative(ROOT, OUT)}/client.json and worker.json`);
-            return;
-        }
-        const db = new Database(dbPath);
-        const schema = h.schemaDDL(db);
-        const ledger = {};
-        for (const t of svc.ledgerTables || []) {
-            try { ledger[t] = db.prepare(`SELECT * FROM "${t}"`).all(); } catch { /* not there */ }
-        }
-        const userVersion = db.pragma('user_version', { simple: true });
-        const serverFiles = h.readTree(wt.dir, svc.sqlDirs);
-        // What N-1 creates itself on first use or at a full boot: in production it exists before N deploys.
-        const lazy = h.lazyDDL(serverFiles, db);
-        const ran = fs.existsSync(sqlOut) ? JSON.parse(fs.readFileSync(sqlOut, 'utf8')) : [];
-        const candidates = [...new Set([...ran.map(h.normalizeSql).filter((s) => /^\s*(SELECT|INSERT|UPDATE|DELETE|REPLACE|WITH)\b/i.test(s)), ...h.sqlLiterals(serverFiles)])].sort();
-        const failing = new Set(h.prepareProblems(db, candidates).map((p) => p.sql));
-        const statements = candidates.filter((s) => !failing.has(s));
-        db.close();
-        console.log(`  sql: ${statements.length} statements (${ran.length} ran, ${failing.size} candidates that do not prepare on N-1's own schema left out), ${schema.length} schema objects, ${lazy.length} created on first use`);
-
+        const migrations = fs.readdirSync(migDir).filter((f) => f.endsWith('.sql')).sort()
+            .map((name) => ({ name, sha256: require('crypto').createHash('sha256').update(fs.readFileSync(path.join(migDir, name))).digest('hex') }));
         fs.mkdirSync(OUT, { recursive: true });
         fs.writeFileSync(path.join(OUT, 'client.json'), `${JSON.stringify({ ...head, ...(clients ? { clients } : {}), manifest, dynamic_calls: dynamic, calls: recorded, ...(ws ? { ws } : {}) }, null, 1)}\n`);
-        fs.writeFileSync(path.join(OUT, 'worker.json'), `${JSON.stringify({ ...head, user_version: userVersion, schema, ledger, lazy, statements }, null, 1)}\n`);
-        console.log(`  wrote ${path.relative(ROOT, OUT)}/client.json and worker.json`);
+        fs.writeFileSync(path.join(OUT, 'worker.json'), `${JSON.stringify({ ...head, engine: 'postgresql', migrations, statements: [] }, null, 1)}\n`);
+        console.log(`  postgresql: ${migrations.length} migration file(s); wrote ${path.relative(ROOT, OUT)}/client.json and worker.json`);
     } finally {
         if (server) await server.close();
         wt.remove();
