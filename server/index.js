@@ -102,7 +102,6 @@ const rtmpServer = require('./streaming/rtmp-server');
 const chatDelivery = require('./chat/chat-delivery');
 const controlServer = require('./controls/control-server');
 const broadcastServer = require('./streaming/broadcast-server');
-const callServer = require('./streaming/call-server');
 const VibeCodingPublishServer = require('./vibe-coding/publish-server');
 
 // Routes
@@ -197,7 +196,6 @@ const stopper = gracefulStop({
         try { restreamManager.stopViewerCountPolling(); } catch { /* */ }
         try { restreamManager.stopAll(); } catch { /* */ }
         try { recorder.stopAll(); } catch { /* */ }
-        try { callServer.close(); } catch { /* */ }
         try { chatDelivery.close(); } catch { /* */ }
         try { controlServer.close(); } catch { /* */ }
         try { broadcastServer.close(); } catch { /* */ }
@@ -856,7 +854,7 @@ app.get('/api/ready', readiness.handler);
 
 observability.registerDomainGauges(metricsRegistry, {
     liveStreams: async () => (await db.getLiveStreams()).length,
-    wsServers: { broadcast: broadcastServer, control: controlServer, call: callServer },
+    wsServers: { broadcast: broadcastServer, control: controlServer },
     outboxStatus: async () => await require('./events/stream-events').counts(),
 });
 
@@ -1144,8 +1142,6 @@ server.on('upgrade', async (req, socket, head) => {
         broadcastServer.handleUpgrade(req, socket, head);
     } else if (url.startsWith('/ws/control')) {
         controlServer.handleUpgrade(req, socket, head);
-    } else if (url.startsWith('/ws/call')) {
-        callServer.handleUpgrade(req, socket, head);
     } else if (url.startsWith('/ws/robotstreamer-publish')) {
         robotStreamerService.handleUpgrade(req, socket, head);
     } else {
@@ -1217,11 +1213,7 @@ async function start() {
     // 4b. Initialize broadcast server
     broadcastServer.init(server);
 
-    // 4d. Initialize group call signaling server
-    callServer.init(server);
-    if (require('./streaming/calls-authority').isChat()) {
-        console.log('[Calls] CALLS_AUTHORITY=chat — stream voice channels are created and removed in OpenVibe.Chat; Live\'s /ws/call stays up, unreached once nginx routes it to Chat');
-    }
+    // Group calls and voice channels are OpenVibe.Chat's (/ws/call is routed there by nginx).
 
     for (const stream of await db.getLiveStreams()) {
         robotStreamerService.startForStream(stream).catch((err) => {
@@ -1344,7 +1336,6 @@ async function start() {
         console.log(`[Server] WebSocket:    ws://${config.host}:${config.port}/ws/chat`);
         console.log(`[Server] WebSocket:    ws://${config.host}:${config.port}/ws/broadcast`);
         console.log(`[Server] WebSocket:    ws://${config.host}:${config.port}/ws/control`);
-        console.log(`[Server] WebSocket:    ws://${config.host}:${config.port}/ws/call`);
         console.log(`[Server] Environment:  ${config.nodeEnv}`);
         console.log(`[Server] BASE_URL:     ${config.baseUrl}`);
         console.log(`[Server] WHIP_PUBLIC_URL: ${config.whip?.publicUrl}`);

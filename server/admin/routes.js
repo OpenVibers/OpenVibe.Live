@@ -66,7 +66,6 @@ router.get('/diagnostics', async (req, res) => {
         db,
         chatDelivery: require('../chat/chat-delivery'),
         broadcastServer: require('../streaming/broadcast-server'),
-        callServer: (() => { try { return require('../streaming/call-server'); } catch { return null; } })(),
         restreamManager: (() => { try { return require('../streaming/restream-manager'); } catch { return null; } })(),
     }));
 });

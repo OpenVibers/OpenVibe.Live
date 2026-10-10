@@ -26,8 +26,8 @@
  *
  * Synchronous reads came from Chat's presence snapshot (GET /internal/chat/presence), polled every few
  * seconds by init()/close() (called from server/index.js at boot and drain): connection and viewer counts,
- * slow modes, a connected user's address. Live's own address/anon helpers live here too (call-server,
- * Chat's /internal/chat-effects/anon), along with Live's writes to data Chat caches (IP approvals, bans)
+ * slow modes, a connected user's address. Live's own address/anon helpers live here too (Chat's
+ * /internal/chat-effects/anon), along with Live's writes to data Chat caches (IP approvals, bans)
  * which send Chat a cache hint instead of waiting for its cache to expire.
  */
 const db = require('../db/database');
@@ -189,7 +189,7 @@ function findClientByAnonId(anonId, streamId) {
     return hit ? { anonId: hit.anon_id, ip: hit.ip, streamId: hit.stream_id || null, user: null } : null;
 }
 
-// ── Live's own address / anon helpers (Chat's /internal/chat-effects/anon, call-server) ──
+// ── Live's own address / anon helpers (Chat's /internal/chat-effects/anon) ──
 const _openvibeToolsUrl = process.env.OV_NETWORK_INTERNAL_URL || 'http://127.0.0.1:3100';
 const anonMap = new Map();          // IP → number
 const pendingResolves = new Map();  // IP → pending resolve promise (dedup concurrent)

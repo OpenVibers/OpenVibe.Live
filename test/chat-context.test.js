@@ -1027,35 +1027,6 @@ const waitFor = async (pred, what, ms = 3000) => {
                 assert.deepStrictEqual(deleted, ['/assets/555111'], 'the Media asset id in the request is the one deleted');
             }
 
-            // (4) The call invite asks Chat for the block state: blocked refuses, an unknown state
-            // (Chat down past the cache) refuses too, never rings through.
-            {
-                const callerToken = jwt.sign({ sub: String(streamer), username: 'streamer', role: 'streamer' }, keys.privateKey, { algorithm: 'RS256', issuer: ISS, expiresIn: 300 });
-                const callUser = (body) => call('POST', '/api/streams/voice-channels/call-user', { token: callerToken, body });
-                chatReads._reset();
-                readState.dmBlocked = true;
-                try {
-                    const blocked = await callUser({ user_id: viewer });
-                    assert.strictEqual(blocked.status, 403, 'a blocked pair cannot ring');
-                    assert.match(blocked.body.error, /cannot call this user/i);
-
-                    readState.dmBlocked = false;
-                    chatReads._reset();
-                    const allowed = await callUser({ user_id: viewer });
-                    assert.strictEqual(allowed.status, 200, `an unblocked pair rings (${allowed.text})`);
-                    assert.strictEqual(allowed.body.invited, true);
-
-                    readState.down = true;
-                    chatReads._reset();
-                    const unknown = await callUser({ user_id: viewer });
-                    assert.strictEqual(unknown.status, 503, 'an unverifiable block state refuses the ring');
-                    assert.match(unknown.body.error, /try again shortly/i);
-                } finally {
-                    readState.dmBlocked = false;
-                    readState.down = false;
-                    chatReads._reset();
-                }
-            }
         }
 
         // 12. Robot commands from chat pass the control panel's gate: control mode, anonymous switch, whitelist, cooldown.

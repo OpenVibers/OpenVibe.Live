@@ -1,35 +1,21 @@
 'use strict';
 /**
- * Who runs voice/video calls (roadmap WS-I task 1). CALLS_AUTHORITY is read here and nowhere else.
- *
- * live (default, anything but "chat"): Live's own call server (./call-server.js) serves /ws/call and
- *   the voice-channel routes, and the stream lifecycle creates and removes stream voice channels in
- *   it — exactly as before.
- * chat: OpenVibe.Chat owns calls (nginx sends /ws/call, /api/streams/voice-channels… and
- *   /api/streams/:id/call there; Chat runs with CHAT_CALLS=1 — OpenVibe.Chat docs/calls-cutover.md).
- *   Go-live with a call mode, stream end, the WHIP teardown and the admin force-end ask Chat instead
- *   of the local call server:
+ * Stream voice channels and calls are OpenVibe.Chat's (roadmap WS-I task 1, T3): nginx sends /ws/call,
+ * /api/streams/voice-channels… and /api/streams/:id/call to Chat (Chat runs with CHAT_CALLS=1; OpenVibe.Chat
+ * docs/calls-cutover.md). Live's own call server is gone (2026-10-10). What Live still does is tell Chat about a
+ * stream's lifecycle: go-live with a call mode, stream end, the WHIP teardown and the admin force-end call
  *       POST   /internal/calls/stream-channel { stream_id, mode, user_id }
  *       DELETE /internal/calls/stream-channel/:streamId
- *   with Live's service token for audience openvibe.chat (grant chat.live_bridge.write, which these
- *   calls still use now that Live's chat bridge is gone). Fire-and-forget for the
- *   caller: a network error or a 5xx is retried after 1 s, 5 s and 15 s, unless a later call for the
- *   same stream superseded it (a stream that ended while its go-live was being retried is not
- *   given a channel afterwards); a 4xx is logged and dropped. Live's /ws/call and voice-channel
- *   routes stay mounted for one release, unreached once nginx routes those paths to Chat.
+ * with Live's service token for audience openvibe.chat (grant chat.live_bridge.write). Fire-and-forget for the
+ * caller: a network error or a 5xx is retried after 1 s, 5 s and 15 s, unless a later call for the same stream
+ * superseded it (a stream that ended while its go-live was being retried is not given a channel afterwards); a 4xx
+ * is logged and dropped.
  */
 const { CHAT_URL } = require('../chat/chat-authority');
 
 const AUDIENCE = 'openvibe.chat';
 const RETRY_MS = [1000, 5000, 15000];
 const TIMEOUT_MS = 5000;
-
-function authority() {
-    return String(process.env.CALLS_AUTHORITY || '').trim().toLowerCase() === 'chat' ? 'chat' : 'live';
-}
-function isChat() { return authority() === 'chat'; }
-
-const local = () => require('./call-server');
 
 async function send(method, path, body, retried = false) {
     const principal = require('../net/network-principal');
@@ -84,14 +70,12 @@ async function deliver(streamId, method, path, body) {
 
 /** Go-live with a call mode, or the mode changed: the stream's voice channel. */
 async function createStreamChannel(streamId, mode, userId) {
-    if (!isChat()) return local().createStreamChannel(streamId, mode, userId);
     return await deliver(Number(streamId), 'POST', '/internal/calls/stream-channel', { stream_id: Number(streamId), mode, user_id: Number(userId) });
 }
 
 /** The stream ended (or was force-ended): its call ends and its voice channel goes. */
 async function removeStreamChannel(streamId) {
-    if (!isChat()) return local().removeStreamChannel(streamId);
     return await deliver(Number(streamId), 'DELETE', `/internal/calls/stream-channel/${Number(streamId)}`);
 }
 
-module.exports = { authority, isChat, createStreamChannel, removeStreamChannel, stats, RETRY_MS, AUDIENCE };
+module.exports = { createStreamChannel, removeStreamChannel, stats, RETRY_MS, AUDIENCE };

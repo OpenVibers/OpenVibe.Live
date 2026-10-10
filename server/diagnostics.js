@@ -48,7 +48,6 @@ async function snapshot(services = {}) {
         connections: {
             chat: await safe(() => services.chatDelivery.getTotalConnections()),
             broadcast: await safe(() => services.broadcastServer.clients.size),
-            call: await safe(() => services.callServer.clients.size),
             liveEventStreams: await safe(() => require('./streaming/live-events').clientCount()),
         },
         streams: {
