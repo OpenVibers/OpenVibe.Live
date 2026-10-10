@@ -7,10 +7,8 @@
  *                                 (scripts/subscribe-media-events.js), signed with
  *                                 MEDIA_EVENTS_SECRET, signature v2 only.
  *
- * The same completions Media also sends to /internal/media-webhook; ./outcomes.js applies each one
- * once whichever copy arrives first (inbox receipt keyed by Media object + event id) and
- * MEDIA_EVENTS_AUTHORITY decides whether this path acts (`both` or `events`) or only
- * acknowledges (`webhook`, the default until the subscription is proven).
+ * This is the only way Media's outcomes reach Live (the direct webhook is gone). ./outcomes.js
+ * applies each one once (inbox receipt keyed by Media object + event id), so a redelivery is a no-op.
  *
  * Only Live's own tenant counts: Events carries every Media tenant's VODs and clips, and a
  * vod/clip event whose payload.app_id is not MEDIA_APP_ID is acknowledged and ignored. Storage
@@ -30,19 +28,15 @@ async function handler(req, res) {
     // Signed but unusable: acknowledge so it is not redelivered forever.
     if (!ev || !outcomes.EVENT_ID_RE.test(String(ev.event_id || ''))) return res.status(204).end();
 
-    const name = ev.source === 'media' ? outcomes.WEBHOOK_NAMES[ev.event_type] : null;
+    const name = ev.source === 'media' ? outcomes.OUTCOME_NAMES[ev.event_type] : null;
     if (!name) return res.status(204).end();
     const data = ev.payload || {};
     if (!name.startsWith('storage.') && String(data.app_id || '') !== outcomes.MEDIA_APP_ID) return res.status(204).end();
-    if (!outcomes.accepts('events')) {
-        outcomes.stats.dropped.events++;
-        return res.status(204).end();
-    }
     const subject = ev.subject && ev.subject.type && ev.subject.id != null
         ? { type: String(ev.subject.type), id: String(ev.subject.id) }
         : outcomes.subjectOf(name, data);
     try {
-        await outcomes.handle({ via: 'events', event: name, data, eventId: ev.event_id, subject });
+        await outcomes.handle({ event: name, data, eventId: ev.event_id, subject });
     } catch (err) {
         console.error('[MediaEvents] apply failed:', err.message);
         return res.status(500).json({ error: 'apply failed' }); // Events retries

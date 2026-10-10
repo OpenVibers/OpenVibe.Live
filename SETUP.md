@@ -7,7 +7,7 @@ This document describes the OpenVibe.Live runtime setup, local development, and 
 OpenVibe.Live (port **3000**) is the streaming front — ingest (RTMP / WHIP / WebRTC / JSMPEG), chat, channels, monetization (Vibes), moderation, and the SPA. Two sibling services do heavy lifting:
 
 - **OpenVibe.Network** (`openvibe.network`, port **4000**) — SSO/OAuth2 identity provider (client id `live`), RS256 JWTs, URL registry, notifications, and the network-wide **OpenCoins wallet**. Live calls the wallet server-to-server via `OV_NETWORK_INTERNAL_URL` with its service token (client credentials).
-- **OpenVibe.Media** (`openvibe.media`, port **4100**) — owns **VODs, clips, pastes, thumbnails, and file storage** (Media API v1). Live records streams by pointing Media at its ingest (RTMP pull / RTP ports 12000-12199), proxies the SPA's `/api/vods`, `/api/clips`, `/api/pastes`, `/api/thumbnails` calls to it (`server/media-client.js`), 302-redirects file payloads to `MEDIA_PUBLIC_URL`, and receives `vod.ready` / `clip.ready` webhooks at `POST /internal/media-webhook`.
+- **OpenVibe.Media** (`openvibe.media`, port **4100**) — owns **VODs, clips, pastes, thumbnails, and file storage** (Media API v1). Live records streams by pointing Media at its ingest (RTMP pull / RTP ports 12000-12199), proxies the SPA's `/api/vods`, `/api/clips`, `/api/pastes`, `/api/thumbnails` calls to it (`server/media-client.js`), 302-redirects file payloads to `MEDIA_PUBLIC_URL`, and receives `vod.ready` / `clip.ready` outcomes as OpenVibe.Events deliveries at `POST /internal/media-events`.
 
 Live keeps locally, in its PostgreSQL database: users/streams/channel state, Vibes (PayPal tipping/cashout), channel points, comments, stream memories + AI state for Media-hosted vods/clips (`vod_ai_state` / `clip_ai_state`), ephemeral live thumbnails, and the song-request queue.
 
@@ -48,7 +48,7 @@ cp .env.example .env
 - `MEDIA_URL` — internal Media API base (default `http://127.0.0.1:4100`).
 - `MEDIA_PUBLIC_URL` — public Media host (default `https://openvibe.media`).
 - `MEDIA_APP_ID` (`live`) — Live's Media tenant. Media calls authenticate with Live's service token (`OV_OAUTH_CLIENT_ID`/`OV_OAUTH_CLIENT_SECRET`, audience `openvibe.media`, namespace `live`), which needs the `media.object.read`, `media.object.list`, `media.object.upload` and `media.object.delete` grants.
-- `MEDIA_WEBHOOK_SECRET` — HMAC secret for Media → Live webhooks.
+- `MEDIA_EVENTS_SECRET` — the secret of Live's OpenVibe.Events subscriptions to Media's outcomes (`scripts/subscribe-media-events.js`).
 
 #### Public key for token verification
 
@@ -96,7 +96,6 @@ OV_NETWORK_PUBLIC_KEY=./data/keys/openvibe-network-public.pem
 MEDIA_URL=http://127.0.0.1:4100
 MEDIA_PUBLIC_URL=http://127.0.0.1:4100
 MEDIA_APP_ID=live
-MEDIA_WEBHOOK_SECRET=dev-webhook-secret
 ```
 
 3. Run `npm run dev` (without `DATABASE_URL`, Live migrates an embedded PGlite database under `DATA_DIR`).
@@ -123,7 +122,7 @@ Server-side recording is delegated to OpenVibe.Media:
 - **Browser MediaRecorder** — chunk uploads to `/api/vods/stream/:id/chunk` are forwarded to Media's chunks endpoints.
 - **JSMPEG** — not recorded (no Media ingest for mpeg-ts push).
 
-Completion arrives via the `vod.ready` / `clip.ready` webhooks.
+Completion arrives as `media.vod.ready` / `media.clip.ready` events over OpenVibe.Events.
 
 ### WebRTC / mediasoup
 
@@ -155,7 +154,7 @@ Completion arrives via the `vod.ready` / `clip.ready` webhooks.
 - **Auth fails**: `OV_NETWORK_PUBLIC_KEY` missing/invalid, or Network unreachable.
 - **Invalid redirect_uri**: local callback URIs not registered on the `live` OAuth client in Network.
 - **VOD/clip/paste endpoints return 502**: OpenVibe.Media is down, `MEDIA_URL` is wrong, or Live's service token lacks the `media.object.*` grants.
-- **Webhook 401s in Media logs**: `MEDIA_WEBHOOK_SECRET` mismatch.
+- **VODs never leave "processing"**: Live's Events subscriptions to `media.*` are missing or `MEDIA_EVENTS_SECRET` does not match them (Events shows the deliveries failing with 401).
 - **OpenCoins balance always 0 / spends fail**: `OV_NETWORK_INTERNAL_URL`/`OV_OAUTH_CLIENT_SECRET` wrong, or the user has no linked Network account.
 - **CORS rejects browser traffic**: `BASE_URL` set to localhost in production.
 - **WebRTC fails**: `mediasoup` could not initialize or TURN is not configured.

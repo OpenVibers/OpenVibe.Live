@@ -22,10 +22,9 @@
  * OV_NETWORK_INTERNAL_URL (default http://127.0.0.1:4000), EVENTS_URL (default http://127.0.0.1:4300)
  * and MEDIA_EVENTS_SECRET (32+ characters; `openssl rand -hex 32`, put it in the env file and restart
  * Live first). An existing subscription with the same topic and endpoint is reported, not duplicated.
- * Subscribing changes nothing Live does until MEDIA_EVENTS_AUTHORITY is `both` or `events`: in the
- * default `webhook` mode deliveries are acknowledged and dropped. A new subscription gets no history;
- * replay with POST /api/v1/deliveries/replay (events.delivery.admin) if wanted — duplicates of
- * outcomes the webhook already applied are no-ops.
+ * These subscriptions are how Media's outcomes reach Live (the direct webhook is gone). A new
+ * subscription gets no history; replay with POST /api/v1/deliveries/replay (events.delivery.admin)
+ * if wanted — outcomes Live already applied are no-ops.
  */
 const fs = require('fs');
 

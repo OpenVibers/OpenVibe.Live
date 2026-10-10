@@ -43,7 +43,7 @@ The media subsystem lives in **OpenVibe.Media**:
 
 - On stream start, Live creates a VOD in Media and starts ingest — RTMP streams are pulled by Media from `rtmp://127.0.0.1:1935/live/<key>`; WebRTC/WHIP streams are forwarded over RTP to ports Media allocates (UDP 12000-12199); browser MediaRecorder chunks are proxied to Media's chunks endpoints.
 - The SPA's existing `/api/vods…`, `/api/clips…`, `/api/pastes…`, `/api/thumbnails/:filename` calls are preserved by thin proxies; big media files 302-redirect to `https://openvibe.media`.
-- Media reports `vod.ready` / `clip.ready` (and failures, storage alerts) as `media.*` OpenVibe.Events events (`POST /internal/media-events`) and, during the transition, the direct webhook `POST /internal/media-webhook` (`X-OVMedia-Signature` HMAC) — driving recording state, AI jobs, and clip chat announcements. Each outcome is applied once; `MEDIA_EVENTS_AUTHORITY` picks the path (see [docs/architecture.md](docs/architecture.md#media-outcomes-over-events)).
+- Media reports `vod.ready` / `clip.ready` (and failures, storage alerts) as `media.*` OpenVibe.Events events, delivered to `POST /internal/media-events`, driving recording state, AI jobs and clip chat announcements. Each outcome is applied once (see [docs/architecture.md](docs/architecture.md#media-outcomes-over-events)).
 - Live-owned AI/transcript state for Media-hosted content lives in `vod_ai_state` / `clip_ai_state` in Live's PostgreSQL database.
 
 ### Authentication & currencies
@@ -150,7 +150,7 @@ cp .env.example .env   # then edit — see SETUP.md (no DATABASE_URL: an embedde
 npm run dev
 ```
 
-Minimum `.env`: `BASE_URL`, `JWT_SECRET`, `OV_NETWORK_URL`, `OV_NETWORK_INTERNAL_URL`, `OV_OAUTH_CLIENT_ID`, `OV_OAUTH_CLIENT_SECRET`, `OV_NETWORK_PUBLIC_KEY`, `MEDIA_URL`, `MEDIA_PUBLIC_URL`, `MEDIA_WEBHOOK_SECRET`. Media calls use Live's service token from that OAuth client (audience `openvibe.media`, namespace `live`, grants `media.object.read`/`list`/`upload`/`delete`).
+Minimum `.env`: `BASE_URL`, `JWT_SECRET`, `OV_NETWORK_URL`, `OV_NETWORK_INTERNAL_URL`, `OV_OAUTH_CLIENT_ID`, `OV_OAUTH_CLIENT_SECRET`, `OV_NETWORK_PUBLIC_KEY`, `MEDIA_URL`, `MEDIA_PUBLIC_URL`, `MEDIA_EVENTS_SECRET`. Media calls use Live's service token from that OAuth client (audience `openvibe.media`, namespace `live`, grants `media.object.read`/`list`/`upload`/`delete`).
 
 ---
 

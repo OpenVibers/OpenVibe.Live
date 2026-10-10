@@ -658,13 +658,10 @@ app.use('/data/arena', express.static(paths.dir('ARENA_IMAGE_PATH', 'arena'), {
     setHeaders: (res) => res.setHeader('Content-Type', 'image/png'),
 }));
 
-// OpenVibe.Media → Live outcomes (vod.ready / clip.ready …), two ways during the Wave 3
-// transition, applied once whichever arrives first; MEDIA_EVENTS_AUTHORITY=webhook|both|events
-// picks the one that acts (server/media-proxy/outcomes.js). Mounted BEFORE the /internal router
-// because they authenticate with HMAC signatures, not X-Internal-Key.
-//   direct webhook (MEDIA_WEBHOOK_SECRET), to be removed once Events is proven
-app.post('/internal/media-webhook', require('./media-proxy/webhook'));
-//   OpenVibe.Events delivery of media.vod.* / media.clip.* / media.storage.* (MEDIA_EVENTS_SECRET)
+// OpenVibe.Media → Live outcomes (vod.ready / clip.ready …): the OpenVibe.Events delivery of
+// media.vod.* / media.clip.* / media.storage.* (MEDIA_EVENTS_SECRET), applied once per outcome
+// (server/media-proxy/outcomes.js). Mounted BEFORE the /internal router because it authenticates
+// with an HMAC signature, not X-Internal-Key.
 app.post('/internal/media-events', require('./media-proxy/media-events').handler);
 // Network identity events (signed out everywhere, password changed, banned): Live refuses older tokens.
 app.post('/internal/network-events', require('./auth/network-events').handler);
