@@ -3,8 +3,8 @@
    Split by class/id ownership with cascade-order checks; edit freely. */
 /*  ── from style.css ──  */
 .bc-ctrl-btn-active {
-    background: var(--accent, #8b5cf6) !important;
-    color: #fff !important;
+    background: var(--accent-strong, var(--accent, #8b5cf6)) !important;
+    color: var(--on-accent-strong, var(--on-accent, #fff)) !important;
 }
 .bc-call-explainer {
     margin: 10px 0 0;
@@ -72,7 +72,7 @@
     font-size: 0.82rem;
     transition: background 0.15s;
 }
-.bc-pip-btn:hover { background: var(--accent, #8b5cf6); color: #fff; }
+.bc-pip-btn:hover { background: var(--accent-strong, var(--accent, #8b5cf6)); color: var(--on-accent-strong, var(--on-accent, #fff)); }
 .bc-media-pip-queue {
     border-top: 1px solid var(--border);
     padding: 8px 12px;

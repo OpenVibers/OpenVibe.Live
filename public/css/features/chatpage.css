@@ -55,8 +55,8 @@
 }
 
 .vc-create-btn {
-    background: var(--accent);
-    color: #fff;
+    background: var(--accent-strong, var(--accent, #3472d8));
+    color: var(--on-accent-strong, var(--on-accent, #fff));
     border: none;
     width: 28px;
     height: 28px;

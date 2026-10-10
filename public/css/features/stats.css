@@ -44,7 +44,7 @@
     transition: background var(--dur-fast, 160ms), color var(--dur-fast, 160ms);
 }
 .sn-seg button:hover, .sn-table-btn:hover { color: var(--text-primary); }
-.sn-seg button.is-on { background: var(--accent); color: #fff; }
+.sn-seg button.is-on { background: var(--accent-strong, var(--accent, #3472d8)); color: var(--on-accent-strong, var(--on-accent, #fff)); }
 .sn-table-btn { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--border); }
 .sn-table-btn.is-on { border-color: var(--accent); color: var(--text-primary); background: color-mix(in srgb, var(--accent) 14%, transparent); }
 
