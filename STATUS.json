@@ -5,7 +5,7 @@
   "runtime": "node 22, express, PostgreSQL, node-media-server, mediasoup; no build step",
   "port": 3000,
   "domain": "openvibe.live (www, ingest, whip)",
-  "contracts": "openvibe-contracts v0.126.0",
+  "contracts": "openvibe-contracts v0.127.0",
   "sdk": "openvibe-sdk v0.35.1",
   "shared": "openvibe-shared v2.20.3",
   "capabilities": [
