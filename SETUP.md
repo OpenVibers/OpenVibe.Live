@@ -52,13 +52,16 @@ cp .env.example .env
 
 #### Public key for token verification
 
-OpenVibe.Live verifies RS256 tokens from OpenVibe.Network using one of these paths:
+OpenVibe.Live verifies RS256 tokens from OpenVibe.Network with openvibe-sdk/auth (`createNetworkKeys`), using the first
+key file that exists:
 
-1. `OV_NETWORK_PUBLIC_KEY` environment variable.
-2. `./data/keys/openvibe-tools-public.pem`.
+1. the path in the `OV_NETWORK_PUBLIC_KEY` environment variable;
+2. `<DATA_DIR>/keys/openvibe-tools-public.pem`;
 3. `/opt/openvibe/openvibe-tools/data/keys/public.pem`.
 
-If the public key cannot be loaded, authentication will fail.
+With none of them, Live verifies against Network's JWKS (`<OV_NETWORK_INTERNAL_URL>/api/.well-known/jwks`), loaded at boot
+and kept fresh, and follows a key rotation on the first token that names a new key. `/api/ready` reports the
+`network_key` check either way. A key file pins one key: after Network rotates its key, replace the file.
 
 ## Database
 

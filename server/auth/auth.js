@@ -1,17 +1,21 @@
 /**
  * OpenVibe.Live — JWT Auth Middleware
- * All authentication is handled via OpenVibe.Tools RS256 tokens.
+ * All authentication is handled via OpenVibe.Network RS256 tokens, checked by openvibe-sdk/auth.
  * Users sign in on openvibe.network and are redirected back via OAuth2.
  * Local user records are resolved via linked_accounts.
  */
-const jwt = require('jsonwebtoken');
+const { createNetworkKeys, verifyUserToken } = require('openvibe-sdk/auth');
 const fs = require('fs');
 const path = require('path');
 const { v4: uuidv4 } = require('uuid');
 const db = require('../db/database');
 
-// ── OpenVibe.Tools Public Key (RS256 verification) ──────────────
-let openvibeToolsPublicKey = null;
+// ── OpenVibe.Network signing keys (RS256 verification) ──────────
+// openvibe-sdk/auth createNetworkKeys: the key file when there is one (as before), else Network's JWKS, with a
+// rotation honoured on an unknown kid and the last good keys kept through an outage. Nothing is fetched at module
+// load: the JWKS (when used) loads on the first verification, or at boot through startNetworkKeys().
+let networkKeys = null;
+let keySource = null;
 
 // The issuer is the public-facing URL of openvibe.network (the SSO provider).
 // It's initialized from env or registry after config loads; we read it lazily
@@ -28,43 +32,37 @@ function loadNetworkPublicKey() {
         '/opt/openvibe/openvibe-tools/data/keys/public.pem',
     ].filter(Boolean);
 
+    let pem = null;
+    keySource = null;
     for (const p of keyPaths) {
         try {
             if (fs.existsSync(p)) {
-                openvibeToolsPublicKey = fs.readFileSync(p, 'utf8');
-                console.log(`[Auth] Loaded openvibe.network public key from ${p}`);
-                return;
+                pem = fs.readFileSync(p, 'utf8');
+                keySource = p;
+                break;
             }
         } catch { /* try next */ }
     }
-    console.error('[Auth] ❌ openvibe.network public key not found — authentication will NOT work!');
+    if (networkKeys) networkKeys.stop();
+    networkKeys = createNetworkKeys({ network: config.openvibeToolsInternalUrl || process.env.OV_NETWORK_INTERNAL_URL || 'http://127.0.0.1:4000', publicKey: pem, log: console });
+    if (pem) console.log(`[Auth] Loaded openvibe.network public key from ${keySource}`);
+    else console.log(`[Auth] No openvibe.network key file: verifying against Network's JWKS (${networkKeys.url})`);
 }
 loadNetworkPublicKey();
+
+/** Boot (never a drill): load Network's JWKS now and keep it fresh, when there is no key file. */
+function startNetworkKeys() { networkKeys.start().catch(() => { /* logged by the JWKS client */ }); }
+
 
 /**
  * Verify a openvibe.network RS256 JWT token.
  * Returns decoded payload or null.
  */
-// A user session token carries neither `typ` (FedCM assertions: 5 minutes, minted for one origin, to be
-// exchanged at Network, never a session) nor `actor_type` (service/app principal tokens). Both are
-// signed with the same Network key, so the signature alone does not make a token a login.
-function isUserSessionClaims(decoded) {
-    return !!decoded && typeof decoded === 'object' && decoded.typ === undefined && decoded.actor_type === undefined;
-}
-
+// verifyUserToken refuses what is not a person's session though Network signs it with the same key: a typed token
+// (`typ`/`purpose`: a FedCM assertion, a realtime ticket, an export token) and a service/app principal token.
 async function verifyToken(token) {
-    if (!openvibeToolsPublicKey) return null;
-    try {
-        const decoded = jwt.verify(token, openvibeToolsPublicKey, {
-            algorithms: ['RS256'],
-            issuer: getNetworkIssuer(),
-        });
-        if (!isUserSessionClaims(decoded)) return null;
-        // Signed out everywhere / password changed / banned since this token was issued (WS-B task 4).
-        return await require('./revocations').isRevoked(decoded) ? null : decoded;
-    } catch {
-        return null;
-    }
+    const r = await verifyTokenWithReason(token);
+    return r.ok ? r.decoded : null;
 }
 
 /**
@@ -72,18 +70,16 @@ async function verifyToken(token) {
  * For WS auth logging only.
  */
 async function verifyTokenWithReason(token) {
-    if (!openvibeToolsPublicKey) return { ok: false, reason: 'no_public_key' };
+    let decoded;
     try {
-        const decoded = jwt.verify(token, openvibeToolsPublicKey, {
-            algorithms: ['RS256'],
-            issuer: getNetworkIssuer(),
-        });
-        if (!isUserSessionClaims(decoded)) return { ok: false, reason: 'not_a_session_token' };
-        if (await require('./revocations').isRevoked(decoded)) return { ok: false, reason: 'revoked' };
-        return { ok: true, decoded };
+        decoded = await verifyUserToken(String(token || ''), { ...networkKeys.verifyOptions, issuer: getNetworkIssuer() });
     } catch (err) {
-        return { ok: false, reason: err.name, message: err.message };
+        // openvibe-sdk/auth codes: token.malformed, token.bad_signature, token.expired, token.not_user, token.no_key, …
+        return { ok: false, reason: (err && err.code) || 'token.invalid', message: err && err.message };
     }
+    // Signed out everywhere / password changed / banned since this token was issued (WS-B task 4).
+    if (await require('./revocations').isRevoked(decoded)) return { ok: false, reason: 'revoked' };
+    return { ok: true, decoded };
 }
 
 /**
@@ -430,8 +426,10 @@ module.exports = {
     verifyToken,
     verifyTokenWithReason,
     getNetworkIssuer,
-    // The Network's RS256 key also signs service tokens (server/net/service-guard.js).
-    getNetworkPublicKey: () => openvibeToolsPublicKey,
+    // The Network's keys also verify service tokens (server/net/service-guard.js).
+    networkVerifyOptions: () => networkKeys.verifyOptions,
+    networkKeysLoaded: () => networkKeys.loaded(),
+    startNetworkKeys,
     requireAuth,
     optionalAuth,
     requireAdmin,

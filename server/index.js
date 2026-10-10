@@ -847,7 +847,7 @@ const readiness = observability.createLiveReadiness({
     sfuReady: () => webrtcSFU.ready === true && !!webrtcSFU.worker,
     // A drill asks no other service anything, Media's health included.
     mediaUrl: drill.enabled ? null : mediaClient.MEDIA_URL,
-    networkKey: () => require('./auth/auth').getNetworkPublicKey(),
+    networkKey: () => require('./auth/auth').networkKeysLoaded(),
     drill: drill.enabled,
 });
 app.get('/api/ready', readiness.handler);
@@ -1373,6 +1373,8 @@ async function start() {
         // returns 503 before this line, which is what makes a deploy health gate meaningful.
         _bootComplete = true;
         console.log('[Server] Ready. Good vibes only. ▶');
+        // Network's JWKS, when there is no key file: loaded now and kept fresh (a key file needs nothing).
+        require('./auth/auth').startNetworkKeys();
         console.log('');
 
         // AI stream-memory job (no-op until enabled in openvibe.network/admin → AI).
