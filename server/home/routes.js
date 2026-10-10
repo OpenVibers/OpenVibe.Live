@@ -164,8 +164,9 @@ async function heroSlogans() {
 const lookups = require('../media-proxy/lookups');
 
 // GET /api/home/stats/series/:metric?days=30 — daily values behind a hero stat.
-// VODs, clips, pastes and archived hours live in OpenVibe.Media; the local tables stopped at the split.
-const MEDIA_SERIES = new Set(['vods', 'clips', 'pastes', 'hours']);
+// VODs, clips and archived hours live in OpenVibe.Media; pastes in OpenVibe.Community (Media's copy stopped
+// at the move); the local tables stopped at the split.
+const MEDIA_SERIES = new Set(['vods', 'clips', 'hours']);
 const _seriesCache = new Map(); // `${metric}:${days}` → { at, data }
 router.get('/stats/series/:metric', async (req, res) => {
     const metric = String(req.params.metric);
@@ -181,10 +182,16 @@ router.get('/stats/series/:metric', async (req, res) => {
             if (m && Array.isArray(m.points)) series = { ...m, kind: 'count', peak: Math.max(0, ...m.points.map(p => p.value)), source: 'media' };
         } catch (err) { console.warn('[Home] Media series unavailable:', err.message); }
         if (!series) return res.status(503).json({ error: 'Media stats are unavailable right now' });
+    } else if (metric === 'pastes') {
+        try {
+            const c = await require('../pastes-client').request('GET', '/admin/stats/series', { query: { days }, act: { staff: true }, timeoutMs: 5000 });
+            if (c && Array.isArray(c.points)) series = { ...c, kind: 'count', peak: Math.max(0, ...c.points.map(p => p.value)), source: 'community' };
+        } catch (err) { console.warn('[Home] Community paste series unavailable:', err.message); }
+        if (!series) return res.status(503).json({ error: 'Paste stats are unavailable right now' });
     } else {
         series = await db.getReadingSeries(metric, days) || await db.getHomeStatSeries(metric, days);
     }
-    if (!series) return res.status(404).json({ error: 'Unknown metric', metrics: [...db.HOME_SERIES_KEYS, ...MEDIA_SERIES] });
+    if (!series) return res.status(404).json({ error: 'Unknown metric', metrics: [...db.HOME_SERIES_KEYS, ...MEDIA_SERIES, 'pastes'] });
     if (_seriesCache.size > 200) _seriesCache.clear();
     _seriesCache.set(key, { at: Date.now(), data: series });
     res.json(series);
