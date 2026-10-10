@@ -1187,10 +1187,8 @@ async function start() {
         const adminUser = config.adminUsername || 'admin';
         await db.createUser({
             username: adminUser,
-            email: null,
             // Live keeps no passwords (sign-in is the OpenVibe account's): this account signs in through SSO once
             // an openvibe.network account with its username exists; ADMIN_PASSWORD is not used.
-            password_hash: '$sso$' + require('crypto').randomBytes(32).toString('hex'),
             display_name: adminUser,
             stream_key: uuidv4().replace(/-/g, ''),
         });
