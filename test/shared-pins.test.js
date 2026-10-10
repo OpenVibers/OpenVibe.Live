@@ -72,8 +72,9 @@ check('server/ and scripts/ take something from both packages (the scan sees the
     for (const name of PACKAGES) assert.ok([...uses.keys()].some((m) => m === name || m.startsWith(`${name}/`)), `no require of ${name} found`);
 });
 
-// Requiring a module runs it; the CLI entry points are resolved only.
-const RESOLVE_ONLY = new Set(['openvibe-shared/analytics/prune-cli']);
+// Requiring a module runs it; a CLI entry point would be resolved only (none is used since openvibe-shared 3.0.0
+// removed analytics/prune-cli).
+const RESOLVE_ONLY = new Set();
 for (const [mod, names] of [...uses].sort(([a], [b]) => a.localeCompare(b))) {
     check(`${mod} resolves${names.size > 1 || !names.has('') ? ` and exports ${[...names.keys()].filter(Boolean).join(', ')}` : ''}`, () => {
         const where = [...new Set([...names.values()].flat())].join(', ');
