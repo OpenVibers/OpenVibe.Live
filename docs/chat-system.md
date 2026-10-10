@@ -174,7 +174,7 @@ and VOD chat replay all read them the same way, so a purged range disappears fro
 wss://openvibe.live/ws/chat?stream=123
 Authorization: Bearer JWT_OR_API_TOKEN        (non-browser clients)
 ```
-Browsers send the token in the first `join` message instead (`{ "type": "join", "streamId": 123, "token": "…" }`); the `ov_token`/`token` cookies also authenticate the upgrade on the site's own origin. A `?token=` query parameter still works for older bots but is deprecated (C-05): URLs are logged.
+Browsers send the token in the first `join` message instead (`{ "type": "join", "streamId": 123, "token": "…" }`): the socket is anonymous until then. Neither a cookie nor a `?token=` query parameter signs a socket in (both removed 2026-10-10, OpenVibe.Chat#55).
 
 ### Message Types (Client → Server)
 | Type | Fields | Description |

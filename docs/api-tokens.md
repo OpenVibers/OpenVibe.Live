@@ -83,7 +83,7 @@ Authorization: Bearer hbt_YOUR_TOKEN_HERE
 { "type": "join", "streamId": 123, "token": "hbt_YOUR_TOKEN_HERE" }
 ```
 
-The token works everywhere a JWT would — the server auto-detects the `hbt_` prefix and validates accordingly. A `?token=` query parameter still works but is deprecated (compatibility shim C-05): URLs end up in proxy logs and browser history, so move to the header or the `join` message.
+The token works everywhere a JWT would — the server auto-detects the `hbt_` prefix and validates accordingly. A token in the WebSocket URL (`?token=`) no longer signs a socket in (removed 2026-10-10): URLs end up in proxy logs and browser history. Use the header or the `join` message.
 
 ## Managing Tokens
 
