@@ -23,8 +23,10 @@ const ISSUER = 'https://openvibe.network';
 // Live's chat widget and messenger are Chat's N-1 clients, checked there. /api/emotes is Chat's too
 // (plan T3; nginx sends it there), and the channel-moderation router Live used to answer at
 // /api/channels/* moved to Chat's /api/chat/channels/* — so an N-1 tab's calls to those are
-// Chat's to answer, and this harness neither records nor replays them against Live.
-const CHAT_PATHS = /^\/(api\/(chat|dm|tts|emotes|channels)(\/|$)|api\/sounds(\/|$)|ws\/)/;
+// Chat's to answer, and this harness neither records nor replays them against Live. Calls are Chat's too since Live's
+// call server was deleted (T3): nginx sends /api/streams/voice-channels… and /api/streams/:id/call there (Chat's
+// deploy/nginx/calls/openvibe.live-calls.locations.conf).
+const CHAT_PATHS = /^\/(api\/(chat|dm|tts|emotes|channels)(\/|$)|api\/sounds(\/|$)|api\/streams\/voice-channels(\/|$)|api\/streams\/[^/]+\/call$|ws\/)/;
 
 function freePort() {
     return new Promise((resolve) => { const s = net.createServer().listen(0, '127.0.0.1', () => { const p = s.address().port; s.close(() => resolve(p)); }); });

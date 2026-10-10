@@ -1,12 +1,10 @@
 'use strict';
 
-// Who runs calls (WS-I task 1, server/streaming/calls-authority.js). CALLS_AUTHORITY unset (or
-// anything but "chat"): stream voice channels are made and removed by Live's own call server and
-// nothing is sent anywhere — as before. "chat": the same hooks become POST/DELETE
-// /internal/calls/stream-channel on OpenVibe.Chat with Live's service token for audience
-// openvibe.chat, retried after a network error or a 5xx, never after a 4xx, and a retry that a later
-// call for the same stream superseded is dropped. The go-live, stream-end, WHIP and admin force-end
-// hooks all go through it. Against a stub Network + Chat.
+// Calls are OpenVibe.Chat's (WS-I task 1, T3; server/streaming/calls-authority.js). Live's own call server is gone:
+// a stream's call hooks are POST/DELETE /internal/calls/stream-channel on OpenVibe.Chat with Live's service token for
+// audience openvibe.chat, retried after a network error or a 5xx, never after a 4xx, and a retry that a later call for
+// the same stream superseded is dropped. The go-live, stream-end, WHIP and admin force-end hooks all go through it, and
+// Live serves no /ws/call or voice-channel route of its own. Against a stub Network + Chat.
 
 const assert = require('assert');
 const fs = require('fs');
@@ -15,7 +13,6 @@ const http = require('http');
 
 process.env.OV_OAUTH_CLIENT_ID = 'live';
 process.env.OV_OAUTH_CLIENT_SECRET = 'live-secret';
-delete process.env.CALLS_AUTHORITY;
 const quiet = console.log;
 console.log = () => {};
 console.warn = () => {};
@@ -54,39 +51,19 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     const db = require('../server/db/database');
     db.getStreamById = (id) => ({ id: Number(id), user_id: 7, title: `Stream ${id} title`, is_live: 1 });
     const calls = require('../server/streaming/calls-authority');
-    const callServer = require('../server/streaming/call-server');
     calls.RETRY_MS.splice(0, calls.RETRY_MS.length, 30, 30, 30);
 
     let exit = 0;
     try {
-        // 1. The flag.
-        for (const v of [undefined, '', 'live', 'LIVE', 'other']) {
-            if (v === undefined) delete process.env.CALLS_AUTHORITY; else process.env.CALLS_AUTHORITY = v;
-            assert.strictEqual(calls.authority(), 'live', String(v));
-        }
-        for (const v of ['chat', 'CHAT', ' chat ']) { process.env.CALLS_AUTHORITY = v; assert.strictEqual(calls.authority(), 'chat', v); }
-        delete process.env.CALLS_AUTHORITY;
-
-        // 2. Default: Live's call server, nothing sent.
-        const ch = await calls.createStreamChannel(41, 'mic', 7);
-        assert.deepStrictEqual([ch.id, ch.mode, ch.name, ch.createdBy], ['stream-41', 'mic', 'Stream 41 title', 7]);
-        assert.ok(callServer.channels.has('stream-41'));
-        await calls.removeStreamChannel(41);
-        assert.ok(!callServer.channels.has('stream-41'));
-        await sleep(50);
-        assert.deepStrictEqual(seen, [], 'CALLS_AUTHORITY unset sends nothing to Chat');
-
-        // 3. chat: the hooks go to Chat's internal endpoints with Live's service token; nothing local.
-        process.env.CALLS_AUTHORITY = 'chat';
+        // 1. The hooks go to Chat's internal endpoints with Live's service token.
         const created = await calls.createStreamChannel(42, 'mic+cam', 7);
         assert.deepStrictEqual(created, { ok: true });
         assert.deepStrictEqual(seen[0], { method: 'POST', url: '/internal/calls/stream-channel', auth: 'Bearer svc-live-for-openvibe.chat', body: { stream_id: 42, mode: 'mic+cam', user_id: 7 } });
         assert.ok(tokenAudiences.includes('openvibe.chat'));
-        assert.ok(!callServer.channels.has('stream-42'), 'Live\'s call server is not used');
         await calls.removeStreamChannel(42);
         assert.deepStrictEqual([seen[1].method, seen[1].url, seen[1].body], ['DELETE', '/internal/calls/stream-channel/42', null]);
 
-        // 4. A 5xx (or Chat down) is retried; a 4xx is not.
+        // 2. A 5xx (or Chat down) is retried; a 4xx is not.
         seen.length = 0;
         let n = 0;
         answer = () => (++n === 1 ? [503, { error: 'restarting' }] : [200, { ok: true }]);
@@ -98,7 +75,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
         assert.strictEqual(seen.length, 1, 'a refusal is not retried');
         assert.ok(/409/.test(calls.stats.lastError));
 
-        // 5. A retry that a later call for the same stream superseded is dropped: a stream that ended
+        // 3. A retry that a later call for the same stream superseded is dropped: a stream that ended
         //    while its go-live was being retried does not get its channel back.
         seen.length = 0;
         answer = (r) => (r.method === 'POST' ? [502, { error: 'bad gateway' }] : [200, { ok: true, removed: false }]);
@@ -110,7 +87,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
         assert.deepStrictEqual(seen.map((r) => r.method), ['POST', 'DELETE'], 'the go-live was not retried after the stream ended');
         assert.ok(calls.stats.superseded >= 1);
 
-        // 6. Every stream hook goes through the authority, not straight to Live's call server.
+        // 4. Every stream hook goes through the authority, not straight to Live's call server.
         const src = (f) => fs.readFileSync(path.join(__dirname, '..', 'server', f), 'utf8');
         const routes = src('streaming/routes.js');
         assert.ok(routes.includes('callsAuthority.createStreamChannel(streamId, callMode, req.user.id)'), 'go-live');
@@ -119,16 +96,18 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
             assert.ok(/calls-authority'\)\.removeStreamChannel\(/.test(src(f)), f);
             assert.ok(!/call-server'\)\.removeStreamChannel\(/.test(src(f)), `${f} no longer calls Live's call server directly`);
         }
-        assert.strictEqual((src('streaming/calls-authority.js').match(/process\.env\.CALLS_AUTHORITY/g) || []).length, 1);
-        for (const f of ['index.js', 'streaming/routes.js', 'streaming/whip-handler.js', 'admin/routes.js']) {
-            assert.ok(!src(f).includes('process.env.CALLS_AUTHORITY'), `${f} does not read the flag itself`);
+        // 5. Live's own call server is gone: no module, no /ws/call upgrade, no voice-channel or group-call routes, no flag.
+        assert.ok(!fs.existsSync(path.join(__dirname, '..', 'server', 'streaming', 'call-server.js')), 'call-server.js is deleted');
+        assert.ok(!src('index.js').includes("'/ws/call'"), 'index.js upgrades no /ws/call');
+        assert.ok(!/router\.(get|post|put|delete)\('\/(voice-channels|:id\/call)/.test(routes), 'no voice-channel or group-call routes in Live');
+        for (const f of ['index.js', 'streaming/routes.js', 'streaming/calls-authority.js', 'streaming/whip-handler.js', 'admin/routes.js']) {
+            assert.ok(!src(f).includes('CALLS_AUTHORITY'), `${f} reads no CALLS_AUTHORITY`);
         }
     } catch (err) {
         exit = 1;
         console.error(err);
     }
     stub.close();
-    try { callServer.close(); } catch { /* */ }
     console.log = quiet;
     console.log(exit ? 'calls authority: FAILED' : 'calls authority: all checks passed');
     process.exit(exit);
