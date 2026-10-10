@@ -97,7 +97,7 @@
     transition: background var(--motion-fast, 120ms), color var(--motion-fast, 120ms), border-color var(--motion-fast, 120ms);
 }
 .cf-chip:hover { color: var(--text-primary); border-color: color-mix(in srgb, var(--accent) 60%, var(--border-light)); }
-.cf-chip[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--on-accent, #fff); }
+.cf-chip[aria-pressed="true"] { background: var(--accent-strong, var(--accent, #3472d8)); border-color: var(--accent-strong, var(--accent, #3472d8)); color: var(--on-accent-strong, var(--on-accent, #fff)); }
 .cf-wrap--ai .cf-chip[aria-pressed="true"] { background: var(--cf-ai-fill); border-color: transparent; color: #fff; }
 .cf-chip:focus-visible, .cf-seg button:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 

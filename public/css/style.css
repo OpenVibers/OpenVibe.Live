@@ -1051,7 +1051,7 @@ body.ov-nav-overlay .navbar.ovnav-top {
     border: 1px solid transparent; transition: all 0.2s; cursor: pointer;
     box-shadow: 0 6px 18px rgba(0,0,0,0.14);
 }
-.btn-primary { background: var(--accent); color: var(--on-accent, #0b0d10); }
+.btn-primary { background: var(--accent-strong, var(--accent, #3472d8)); color: var(--on-accent-strong, var(--on-accent, #0b0d10)); }
 .btn-primary:hover { background: var(--accent-light); transform: translateY(-1px); }
 .btn-outline {
     background: transparent; color: var(--text-primary);
@@ -1086,8 +1086,8 @@ body.ov-nav-overlay .navbar.ovnav-top {
     line-height: 1;
 }
 .btn-openvibe-bucks-mini:hover {
-    background: var(--accent); color: #fff;
-    border-color: var(--accent);
+    background: var(--accent-strong, var(--accent, #3472d8)); color: var(--on-accent-strong, var(--on-accent, #fff));
+    border-color: var(--accent-strong, var(--accent, #3472d8));
 }
 
 /* ═══════════════════════════════════════════════════════════════
@@ -1829,7 +1829,7 @@ body.ov-nav-overlay .navbar.ovnav-top {
 .hero-float--live .hero-float-badge { background: #e0245e; border-color: #ff6088; }
 .hero-float--vod .hero-float-badge { background: #5865f2; border-color: #8b93ff; }
 .hero-float--clip .hero-float-badge { background: #2ecc71; border-color: #6fe0a2; color: #05130a; }
-.hero-float--paste .hero-float-badge { background: var(--accent); border-color: var(--accent-light); color: var(--on-accent, #0b0d10); }
+.hero-float--paste .hero-float-badge { background: var(--accent-strong, var(--accent, #3472d8)); border-color: var(--accent-light); color: var(--on-accent-strong, var(--on-accent, #0b0d10)); }
 .hero-float--moment .hero-float-badge { background: linear-gradient(135deg, #a855f7, #ec4899); border-color: #d8b4fe; color: #fff; }
 /* Swap = shrink + fade OUT, then the fresh content grows + fades back IN (gentle, no flash) */
 /* Hover lift on the inner — eases smoothly, never fights the drift */
@@ -1950,7 +1950,7 @@ a.pulse-card:hover { border-color: var(--accent); transform: translateY(-2px); }
 }
 .ov-rail-prev { left: 8px; }
 .ov-rail-next { right: 8px; }
-.ov-rail-btn:hover { background: var(--accent); border-color: var(--accent); color: var(--on-accent, #fff); }
+.ov-rail-btn:hover { background: var(--accent-strong, var(--accent, #3472d8)); border-color: var(--accent-strong, var(--accent, #3472d8)); color: var(--on-accent-strong, var(--on-accent, #fff)); }
 .ov-rail-btn:disabled { opacity: 0; pointer-events: none; }
 .ov-rail:not(.is-scrollable) > .ov-rail-btn { display: none; }
 .ov-rail-bar {
@@ -5405,7 +5405,7 @@ textarea.form-input { resize: vertical; min-height: 60px; }
 /* ── Offline "most watched" cycler ─────────────────────────── */
 .off-cyc-title i { color: var(--accent); }
 .off-cyc-chip:hover { color: var(--text-primary); }
-.off-cyc-chip.active { background: var(--accent); color: #fff; }
+.off-cyc-chip.active { background: var(--accent-strong, var(--accent, #3472d8)); color: var(--on-accent-strong, var(--on-accent, #fff)); }
 @keyframes offCycFade { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 .off-top-thumb { position: relative; aspect-ratio: 16 / 9; background: var(--bg-tertiary); overflow: hidden; }
 .off-top-thumb img { width: 100%; height: 100%; object-fit: cover; }
@@ -5500,7 +5500,7 @@ textarea.form-input { resize: vertical; min-height: 60px; }
 /* ── Global chat AI: header strip + insight panel ── */
 .gai-badge {
     flex-shrink: 0; display: inline-flex; align-items: center; gap: 4px;
-    padding: 2px 8px; border-radius: 999px; background: var(--accent); color: #fff;
+    padding: 2px 8px; border-radius: 999px; background: var(--accent-strong, var(--accent, #3472d8)); color: var(--on-accent-strong, var(--on-accent, #fff));
     font-size: 0.7rem; font-weight: 700; letter-spacing: 0.02em;
 }
 .gai-strip-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -5510,7 +5510,7 @@ textarea.form-input { resize: vertical; min-height: 60px; }
 /* Timeline browser: head (title + search), period chips, scrollable list with day dividers. */
 .gai-tl-head h4 { margin: 0; }
 .gai-tl-chip:hover { color: var(--text-primary); border-color: var(--accent); }
-.gai-tl-chip.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+.gai-tl-chip.active { background: var(--accent-strong, var(--accent, #3472d8)); color: var(--on-accent-strong, var(--on-accent, #fff)); border-color: var(--accent-strong, var(--accent, #3472d8)); }
 .gai-tl-day { position: sticky; top: 0; z-index: 1; margin: 4px 0 8px; padding: 3px 0; font-size: 0.7rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); background: linear-gradient(var(--bg-primary), var(--bg-primary) 70%, transparent); }
 .gai-timeline { display: flex; flex-direction: column; gap: 0; position: relative; max-height: 460px; overflow-y: auto; padding-right: 6px; scrollbar-width: thin; }
 .gai-tl-item { position: relative; padding: 0 0 14px 20px; border-left: 2px solid var(--border); }
@@ -5607,7 +5607,7 @@ button.uai-tl-more { background: none; border: none; cursor: pointer; padding: 0
 
 /* ── Channel Analytics ───────────────────────────────────── */
 .ch-analytics-period-btns .btn { padding:4px 10px; font-size:0.75rem; border-radius:6px; }
-.ch-analytics-period-btns .btn.active { background:var(--accent); color:#fff; }
+.ch-analytics-period-btns .btn.active { background:var(--accent-strong, var(--accent, #3472d8)); color:var(--on-accent-strong, var(--on-accent, #fff)); }
 .analytics-stat-card .stat-label {
     font-size:0.72rem; color:var(--text-muted,#888); text-transform:uppercase;
     letter-spacing:0.04em; margin-top:2px;
@@ -6111,8 +6111,8 @@ body.theme-light .btn-outline:hover {
     color: var(--accent, #8b5cf6);
 }
 .call-count-badge {
-    background: var(--accent, #8b5cf6);
-    color: #fff;
+    background: var(--accent-strong, var(--accent, #8b5cf6));
+    color: var(--on-accent-strong, var(--on-accent, #fff));
     font-size: 0.75rem;
     font-weight: 700;
     padding: 2px 8px;
@@ -6201,8 +6201,8 @@ body.theme-light .btn-outline:hover {
     width: 48px;
     height: 48px;
     border-radius: 50%;
-    background: var(--accent, #8b5cf6);
-    color: #fff;
+    background: var(--accent-strong, var(--accent, #8b5cf6));
+    color: var(--on-accent-strong, var(--on-accent, #fff));
     display: flex;
     align-items: center;
     justify-content: center;
@@ -7080,8 +7080,8 @@ body.theme-light .btn-outline:hover {
 }
 .sort-btn:hover { color: var(--text-primary); }
 .sort-btn.active {
-    background: var(--accent);
-    color: var(--on-accent, #0b0d10);
+    background: var(--accent-strong, var(--accent, #3472d8));
+    color: var(--on-accent-strong, var(--on-accent, #0b0d10));
 }
 /* Push page controls to the right when a sort toggle shares the pager row. */
 .pastes-pagination .sort-toggle { margin-right: auto; }
@@ -7095,7 +7095,7 @@ body.theme-light .btn-outline:hover {
 #page-documentation ul, #page-documentation ol { margin: 0.5rem 0 1rem 1.5rem; line-height: 1.7; }
 /* Endpoint tables have nowrap first columns; on a phone they were up to 100px wider than the screen
    and scrolled the whole page sideways. Below tablet width a table scrolls inside its own box. */
-.doc-copy-btn { display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.5rem 1rem; background: var(--accent); color: #fff; border: none; border-radius: var(--radius); cursor: pointer; font-size: 0.9rem; font-weight: 600; transition: opacity 0.15s; }
+.doc-copy-btn { display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.5rem 1rem; background: var(--accent-strong, var(--accent, #3472d8)); color: var(--on-accent-strong, var(--on-accent, #fff)); border: none; border-radius: var(--radius); cursor: pointer; font-size: 0.9rem; font-weight: 600; transition: opacity 0.15s; }
 .doc-copy-btn:hover { opacity: 0.85; }
 .doc-vibe-hero { background: linear-gradient(135deg, var(--surface) 0%, rgba(var(--accent-rgb, 99,102,241), 0.08) 100%); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.5rem; margin-bottom: 2rem; }
 .doc-vibe-hero h2 { margin-top: 0 !important; border: none !important; padding: 0 !important; }
@@ -8097,8 +8097,8 @@ body.theme-light .btn-outline:hover {
     font-size: 0.7rem;
     padding: 1px 5px;
     border-radius: 4px;
-    background: var(--accent, #6366f1);
-    color: #fff;
+    background: var(--accent-strong, var(--accent, #6366f1));
+    color: var(--on-accent-strong, var(--on-accent, #fff));
     margin-right: 4px;
     vertical-align: middle;
     font-weight: 600;
@@ -8124,8 +8124,8 @@ body.theme-light .btn-outline:hover {
     width: 52px;
     height: 52px;
     border-radius: 50%;
-    background: var(--accent, #6366f1);
-    color: #fff;
+    background: var(--accent-strong, var(--accent, #6366f1));
+    color: var(--on-accent-strong, var(--on-accent, #fff));
     border: none;
     font-size: 1.3rem;
     cursor: pointer;
@@ -9722,9 +9722,9 @@ body.theme-light .btn-outline:hover {
 .pc-tools-row > button.btn-openvibe-coins-mini:hover,
 .chat-tools-row > button.btn-openvibe-bucks-mini:hover,
 .pc-tools-row > button.btn-openvibe-bucks-mini:hover {
-    background: var(--accent);
-    color: #fff;
-    border-color: var(--accent);
+    background: var(--accent-strong, var(--accent, #3472d8));
+    color: var(--on-accent-strong, var(--on-accent, #fff));
+    border-color: var(--accent-strong, var(--accent, #3472d8));
 }
 /* TTS toggle: dim when off, accent when on. */
 .chat-tools-row > button.chat-tts-toggle { opacity: 0.5; }

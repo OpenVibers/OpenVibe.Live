@@ -43,7 +43,7 @@
         .actions { display: flex; gap: 10px; align-items: center; margin-top: 16px; flex-wrap: wrap; }
         button { padding: 10px 18px; border-radius: 8px; border: 1px solid transparent; font: inherit; font-weight: 600; cursor: pointer; }
         button:disabled { opacity: 0.45; cursor: not-allowed; }
-        .btn-go { background: var(--accent); color: #fff; }
+        .btn-go { background: var(--accent-strong, var(--accent, #3472d8)); color: var(--on-accent-strong, var(--on-accent, #fff)); }
         .btn-go:not(:disabled):hover { background: var(--accent-dark); }
         .btn-stop { background: transparent; color: var(--bad); border-color: var(--bad); }
         .btn-stop:not(:disabled):hover { background: rgba(231, 76, 60, 0.12); }

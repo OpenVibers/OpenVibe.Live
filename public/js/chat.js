@@ -4040,7 +4040,7 @@ function _deployCss() {
 .chat-deploy-a{margin-left:auto;display:flex;align-items:center;gap:12px}
 .chat-deploy-f a,.chat-deploy-more{color:var(--accent-light,var(--accent,#60a5fa));text-decoration:none;font:600 .78rem/1 inherit;cursor:pointer;background:none;border:0;padding:4px 0;min-height:24px}
 .chat-deploy-more::after{content:' ▾';font-size:.7em}.chat-deploy-more[aria-expanded=true]::after{content:' ▴'}
-.chat-deploy-reload{border:0;border-radius:8px;background:var(--accent,#3b82f6);color:var(--on-accent,#fff);font:700 .76rem/1 inherit;padding:7px 11px;cursor:pointer}
+.chat-deploy-reload{border:0;border-radius:8px;background:var(--accent-strong, var(--accent, #3472d8));color:var(--on-accent-strong, var(--on-accent,#fff));font:700 .76rem/1 inherit;padding:7px 11px;cursor:pointer}
 .chat-deploy-f a:focus-visible,.chat-deploy-more:focus-visible,.chat-deploy-reload:focus-visible{outline:2px solid var(--accent,#3b82f6);outline-offset:2px;border-radius:6px}
 @container (max-width:300px){.chat-deploy li{grid-template-columns:minmax(0,1fr)}.chat-deploy li a{display:none}.chat-deploy-a{margin-left:0;width:100%;justify-content:space-between}}`;
     document.head.appendChild(st);

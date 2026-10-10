@@ -11,8 +11,8 @@
     width: 52px;
     height: 52px;
     border-radius: 50%;
-    background: var(--accent);
-    color: #fff;
+    background: var(--accent-strong, var(--accent, #3472d8));
+    color: var(--on-accent-strong, var(--on-accent, #fff));
     border: none;
     cursor: pointer;
     font-size: 22px;
@@ -216,8 +216,8 @@
     height: 18px;
     padding: 0 5px;
     border-radius: 9px;
-    background: var(--accent);
-    color: #fff;
+    background: var(--accent-strong, var(--accent, #3472d8));
+    color: var(--on-accent-strong, var(--on-accent, #fff));
     font-size: 10px;
     font-weight: 700;
     display: flex;
@@ -304,8 +304,8 @@
     position: relative;
 }
 .msg-bubble-row.self .msg-bubble {
-    background: var(--accent);
-    color: #fff;
+    background: var(--accent-strong, var(--accent, #3472d8));
+    color: var(--on-accent-strong, var(--on-accent, #fff));
     border-bottom-right-radius: 4px;
 }
 .msg-bubble-row.other .msg-bubble {
@@ -381,8 +381,8 @@
     height: 36px;
     border-radius: 50%;
     border: none;
-    background: var(--accent);
-    color: #fff;
+    background: var(--accent-strong, var(--accent, #3472d8));
+    color: var(--on-accent-strong, var(--on-accent, #fff));
     cursor: pointer;
     font-size: 14px;
     display: flex;
@@ -493,8 +493,8 @@
     padding: 10px;
     border-radius: var(--radius);
     border: none;
-    background: var(--accent);
-    color: #fff;
+    background: var(--accent-strong, var(--accent, #3472d8));
+    color: var(--on-accent-strong, var(--on-accent, #fff));
     font-weight: 600;
     font-size: 14px;
     cursor: pointer;
