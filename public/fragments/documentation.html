@@ -698,6 +698,7 @@ while True:
 <!-- ═══════════════════════════════════════════════════════════ -->
 <div class="doc-tab-content" data-doc-tab="controlws" style="display:none">
 <h2>6. CONTROL WEBSOCKET — HARDWARE BRIDGE</h2>
+<p><strong>Connecting a new robot? Use <a href="https://openvibe.bot" target="_blank" rel="noopener">OpenVibe.Bot</a> and the <a href="https://github.com/OpenVibers/OpenVibe.Node" target="_blank" rel="noopener">OpenVibe Node</a> instead.</strong> The Node pairs with a one-time code (no stream key), runs your driver as a plugin (<a href="https://openvibe.bot/docs/drivers" target="_blank" rel="noopener">write a driver</a>), and Bot gives the robot a panel built from its profile, roles, a queue, limits and a latched e-stop. Bind the robot to your channel on the dashboard and its panel shows under your stream. The socket below keeps working for existing setups and is retired once they have moved to Bot.</p>
 <p>This is how your code receives viewer commands. Connect as <code>mode=hardware</code> and listen for messages. Your bridge translates them into robot/hardware actions.</p>
 
 <h3>Connection URLs</h3>
