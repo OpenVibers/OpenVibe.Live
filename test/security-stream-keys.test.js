@@ -101,20 +101,6 @@ const SEED = `(async () => {
     le.subscribe({ on() {} }, { writeHead() {}, write(s) { writes.push(String(s)); } });
     await le.announceGoLive(raw, streamer);
     out.sse = writes.join('');
-    const posted = [];
-    const realFetch = global.fetch;
-    // Network mints Live's service token, then takes the go-live call; only calls to Network's internal API are kept
-    // (anything else this process sends meanwhile, a Media read from a background job, is not the go-live call).
-    global.fetch = async (url, opts = {}) => {
-        if (String(url).endsWith('/oauth/token')) return { ok: true, status: 200, json: async () => ({ access_token: 'golive-service-token', expires_in: 300, token_type: 'Bearer' }) };
-        if (String(url).startsWith('http://127.0.0.1:9/internal/')) posted.push(String(opts.body || ''));
-        return { ok: true, status: 200, json: async () => ({}) };
-    };
-    try {
-        await require('./server/streaming/golive-notify').notifyFollowersGoLive(streamer, raw, { force: true });
-        for (let i = 0; i < 50 && !posted.length; i++) await new Promise((r) => setTimeout(r, 100));
-    } finally { global.fetch = realFetch; }
-    out.goLive = posted;
     out.rawHadKey = raw.managed_stream_key === K.slotMain && streamer.stream_key === K.account;
     return { ids: { owner, fan, peer, mod, admin, channel: ch.id, slot, slot2, live, ended, cam }, out };
 })()`;
@@ -144,10 +130,6 @@ function hits(text, needles) {
     await check('the go-live SSE event (every open page hears it) carries no credential, even from a raw row with the key', () => {
         assert.match(out.sse, /stream-live/);
         assert.deepStrictEqual(hits(out.sse, K), []);
-    });
-    await check('the go-live call to Network carries no credential', () => {
-        assert.ok(out.goLive.length >= 1, 'Network was called');
-        assert.deepStrictEqual(hits(out.goLive.join('\n'), K), []);
     });
 
     // ── The booted server ──

@@ -113,17 +113,13 @@ async function ownControlConfigId(req, raw) {
     return id;
 }
 
-const { notifyDiscordGoLive } = require('../integrations/discord-webhook');
 
 
 /**
- * Push "X went live" notification via openvibe.network unified event endpoint.
- * This lets openvibe.network handle Discord bot alerts + push notifications centrally.
- * Falls back to direct webhook + bulk push if openvibe.network is unreachable.
+ * Followers hear about a go-live from openvibe.network: Live publishes live.stream.started (server/events/
+ * stream-events.js, with the streams row), and Network's consumer sends the inbox, push, email and Discord alerts
+ * (compatibility register C-85). Live makes no direct call.
  */
-// Go-live fan-out lives in ./golive-notify (shared with the RTMP and WHIP ingest paths,
-// which never notified anyone before), with follower-id translation + 60-min dedupe.
-const { notifyFollowersGoLive } = require('./golive-notify');
 const cache = require('openvibe-shared/cache-policy');
 
 function hasOwn(obj, key) {
@@ -1999,8 +1995,6 @@ router.post('/', requireAuth, async (req, res) => {
         });
         try { require('../integrations/ai-chatbot-service').startForStream(stream); } catch (aiErr) { console.warn('[AI-Bots] start failed:', aiErr.message); }
 
-        // Notify followers that this streamer went live (fire-and-forget)
-        await notifyFollowersGoLive(req.user, stream);
         // Cross-site on-screen "went live" notification (rate-limited per slot/hour).
         try { require('./live-events').announceGoLive(stream, req.user); } catch { /* */ }
 

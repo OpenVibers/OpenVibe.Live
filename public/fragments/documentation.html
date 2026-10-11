@@ -1087,14 +1087,13 @@ https://www.101soundboards.com/sounds/12345 150p 2</code></pre>
 <table class="doc-table">
 <thead><tr><th>Method</th><th>Path</th><th>Description</th></tr></thead>
 <tbody>
-<tr><td>POST</td><td>/internal/events/stream-live</td><td>Notify: stream went live { streamer, stream }</td></tr>
 <tr><td>POST</td><td>/internal/push-single</td><td>Send push to one user { userId, title, body, url }</td></tr>
 <tr><td>POST</td><td>/internal/push-bulk</td><td>Send push to multiple users { userIds[], title, body, url }</td></tr>
 </tbody>
 </table>
 
-<h3>Fallback Webhook (OpenVibe.Live direct)</h3>
-<p>If openvibe.network is unreachable, OpenVibe.Live falls back to its built-in Discord webhook sender. Configure the webhook URL in OpenVibe.Live site settings (<code>discord_webhook_url</code>).</p>
+<h3>Go-live alerts</h3>
+<p>When a stream starts, OpenVibe.Live publishes <code>live.stream.started</code> through OpenVibe.Events, and openvibe.network tells the streamer's followers: inbox, push, email and the Discord alert. Live makes no direct call.</p>
 
 <h3>Multistream / Restream — <code>/api/restream</code></h3>
 <p>Relay a live stream out to YouTube / Twitch / Kick / custom RTMP. Manage destinations per slot (max 10); stream keys are masked on read. All <code>requireAuth</code>.</p>

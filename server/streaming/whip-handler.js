@@ -14,7 +14,6 @@ const webrtcSFU = require('./webrtc-sfu');
 const { verifyToken, resolveNetworkUser } = require('../auth/auth');
 const db = require('../db/database');
 const recorder = require('./recorder');
-const { notifyDiscordGoLive } = require('../integrations/discord-webhook');
 
 let chatRelayService;
 try { chatRelayService = require('../integrations/chat-relay-service'); } catch {}
@@ -611,8 +610,6 @@ async function autoCreateWhipSession(managedStream, user) {
         console.log(`[WHIP] Auto-created live session ${streamId} for WHIP slot ${managedStream.id} (user: ${user.username})`);
 
         // Fire-and-forget side effects
-        try { await require('./golive-notify').notifyFollowersGoLive(user, stream || { id: streamId }); }
-        catch (e) { console.warn('[WHIP] go-live notify failed:', e.message); await notifyDiscordGoLive(user, stream || { id: streamId }); }
         try { require('./live-events').announceGoLive(stream || { id: streamId }, user); } catch { /* */ }
         if (chatRelayService) {
             chatRelayService.startForStream(stream).catch(() => {});

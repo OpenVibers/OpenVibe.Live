@@ -9,7 +9,6 @@ const EventEmitter = require('events');
 const config = require('../config');
 const db = require('../db/database');
 const recorder = require('./recorder');
-const { notifyDiscordGoLive } = require('../integrations/discord-webhook');
 
 const RTMP_HEARTBEAT_INTERVAL_MS = 30000; // Refresh live stream timestamp while RTMP session is active
 
@@ -213,10 +212,7 @@ class RTMPServer extends EventEmitter {
 
             // Discord webhook notification (fire-and-forget)
             const stream = db.getStreamById ? await db.getStreamById(streamId) : { id: streamId, title: `${resolvedUser.display_name}'s Stream` };
-            // Unified go-live event (inbox + push + email to followers, Discord via network;
-            // falls back to the webhook). Deduped per slot/hour inside.
-            try { await require('./golive-notify').notifyFollowersGoLive(resolvedUser, stream || { id: streamId }); }
-            catch (e) { console.warn('[RTMP] go-live notify failed:', e.message); await notifyDiscordGoLive(resolvedUser, stream || { id: streamId }); }
+            // Followers hear it from Network (live.stream.started via Events); the page banner comes from live-events.
             try { require('./live-events').announceGoLive(stream || { id: streamId }, resolvedUser); } catch { /* */ }
 
             // Start server-side VOD recording via FFmpeg
