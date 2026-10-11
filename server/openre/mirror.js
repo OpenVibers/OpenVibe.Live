@@ -102,7 +102,6 @@ async function apply(event) {
                     if (configId) await db.applyConfigToStream(configId, streamId);
                 } catch (e) { console.warn('[OpenRestream] control config for mirrored stream failed:', e.message); }
                 const stream = await db.getStreamById(streamId) || { id: streamId };
-                try { await require('../streaming/golive-notify').notifyFollowersGoLive(user, stream); } catch (e) { console.warn('[OpenRestream] go-live notify failed:', e.message); }
                 try { require('../streaming/live-events').announceGoLive(stream, user); } catch { /* */ }
                 console.log(`[OpenRestream] session ${sessionId} mirrored into stream ${streamId} (${user.username}, slot ${slot.id})`);
             },

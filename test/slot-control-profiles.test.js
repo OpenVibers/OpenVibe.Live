@@ -56,7 +56,6 @@ require.cache[require.resolve('../server/streaming/broadcast-server')] = { id: '
 const recorder = require('../server/streaming/recorder');
 recorder.startRecording = () => {};
 recorder.stopRecording = () => {};
-require('../server/streaming/golive-notify').notifyFollowersGoLive = () => {};
 require('../server/streaming/live-events').announceGoLive = () => {};
 const rtmp = require('../server/streaming/rtmp-server');
 rtmp.start();
