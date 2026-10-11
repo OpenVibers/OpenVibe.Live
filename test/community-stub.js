@@ -9,6 +9,7 @@
  *   const stub = await startCommunityStub({ people: { usr_…: { username, display_name } } });
  *   process.env.OV_COMMUNITY_INTERNAL_URL = stub.url;
  *   stub.down = true;   // every request fails (connection reset) until set back
+ *   stub.serviceIds = 'access';   // name threads by their access id (cth_…), as Community does for services since C-14
  *   stub.calls          // [{ method, path, subject, staff, body }]
  */
 const http = require('http');
@@ -18,18 +19,19 @@ function startCommunityStub({ people = {} } = {}) {
     const threads = [];      // { id, access_id, ref, visibility, comment_count }
     const comments = [];     // { id, thread_id, parent_id, author, message, created_at, edited_at, deleted_at }
     const calls = [];
-    const state = { down: false };
+    const state = { down: false, serviceIds: 'numeric' };
     let clock = Date.parse('2026-09-01T00:00:00Z');
     const now = () => new Date(clock += 1000).toISOString();
 
     const personOf = (subject) => (subject ? { subject, username: (people[subject] || {}).username || null, display_name: (people[subject] || {}).display_name || null, avatar_url: null, profile_color: null } : null);
     const threadBy = (id) => threads.find((t) => String(t.id) === String(id) || t.access_id === id) || null;
     const replyCount = (c) => comments.filter((r) => r.parent_id === c.id && !r.deleted_at).length;
-    const shapeThread = (t) => ({ id: t.id, access_id: t.access_id, ref: t.ref, visibility: t.visibility, comment_count: comments.filter((c) => c.thread_id === t.id && !c.deleted_at).length });
+    const tid = (t) => (state.serviceIds === 'access' ? t.access_id : t.id);
+    const shapeThread = (t) => ({ id: tid(t), access_id: t.access_id, ref: t.ref, visibility: t.visibility, comment_count: comments.filter((c) => c.thread_id === t.id && !c.deleted_at).length });
     function shapeComment(c, subject, withReplies) {
         const deleted = !!c.deleted_at;
         const out = {
-            id: c.id, thread_id: c.thread_id, parent_id: c.parent_id, origin: 'user',
+            id: c.id, thread_id: tid(threads.find((t) => t.id === c.thread_id)), parent_id: c.parent_id, origin: 'user',
             author: deleted ? null : personOf(c.author), anon_name: null,
             display_name: deleted ? null : ((people[c.author] || {}).display_name || null),
             message: deleted ? null : c.message, deleted, score: 0, upvotes: 0, downvotes: 0, my_vote: 0,
@@ -129,6 +131,8 @@ function startCommunityStub({ people = {} } = {}) {
         threads, comments, calls,
         get down() { return state.down; },
         set down(v) { state.down = !!v; },
+        get serviceIds() { return state.serviceIds; },
+        set serviceIds(v) { state.serviceIds = v === 'access' ? 'access' : 'numeric'; },
         close: () => new Promise((r) => { server.closeAllConnections?.(); server.close(r); }),
     })));
 }
