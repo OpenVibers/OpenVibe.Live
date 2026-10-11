@@ -342,10 +342,9 @@ function extractToken(req) {
         return authHeader.slice(7);
     }
 
-    // Check both cookie names: 'token' (legacy openvibelive) and 'ov_token' (shared network)
+    // The Network session cookie. (Live's legacy 'token' cookie is no longer read: compatibility register C-05.)
     if (req.cookies) {
         if (req.cookies.ov_token) return req.cookies.ov_token;
-        if (req.cookies.token) return req.cookies.token;
     }
 
     // Raw Node/WebSocket upgrade requests do not go through cookie-parser,
@@ -362,7 +361,6 @@ function extractToken(req) {
             parsed[key] = decodeURIComponent(value);
         }
         if (parsed.ov_token) return parsed.ov_token;
-        if (parsed.token) return parsed.token;
     }
 
     return null;
