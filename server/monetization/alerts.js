@@ -2,7 +2,7 @@
  * alerts.js — streamer alert sounds for donations / donation-goal-reached events.
  *
  * The sound mapping lives on channel_moderation_settings, which OpenVibe.Chat owns and reads locally
- * (roadmap T3), so Live no longer reads the file or broadcasts base64 itself. With CHAT_AUTHORITY=chat it
+ * (roadmap T3), so Live no longer reads the file or broadcasts base64 itself. It
  * asks Chat to play the alert with an `alert` event on Chat's typed ingress (server/chat/chat-delivery.js),
  * and Chat resolves the sound from its own settings row, reads the shared sounds file and broadcasts the
  * `soundboard-audio` message to the channel room. A goal-reached event is `kind: 'goal'` (Chat falls back

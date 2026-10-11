@@ -179,8 +179,7 @@ async function announce(recap) {
         const delivery = require('../chat/chat-delivery');
         const g = recap.write.grade;
         const frame = { type: 'system', message: `📋 After-show report for "${recap.stream.title}" is in — grade ${g}: ${recap.write.headline}. Read it: /recap/${recap.stream.id}` };
-        if (delivery.ingress()) await delivery.event({ kind: 'channel', id: recap.streamer.id }, frame, { key: `recap:${recap.stream.id}` });
-        else await delivery.broadcastToChannelRoom(recap.streamer.id, recap.stream.id, frame);
+        await delivery.event({ kind: 'channel', id: recap.streamer.id }, frame, { key: `recap:${recap.stream.id}` });
         await db.run('UPDATE stream_recaps SET announced_at = ov_now() WHERE stream_id = ?', [recap.stream.id]);
         return true;
     } catch (e) { console.warn('[Recap] announce:', e.message); return false; }

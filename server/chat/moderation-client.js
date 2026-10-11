@@ -20,7 +20,7 @@
  * Off under LIVE_DRILL (a restore drill calls no other service) and without OV_OAUTH_CLIENT_SECRET.
  */
 const { createServiceTokenClient } = require('openvibe-sdk/auth');
-const { CHAT_URL } = require('./chat-authority');
+const { CHAT_URL } = require('./chat-client');
 
 const AUDIENCE = 'openvibe.chat';
 const CACHE_TTL_MS = 30_000;

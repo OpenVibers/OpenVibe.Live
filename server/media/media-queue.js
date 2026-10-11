@@ -899,11 +899,7 @@ class MediaQueue {
         try {
             const delivery = require('../chat/chat-delivery');
             // Chat's ingress fans a media frame out to the owner's live streams itself.
-            if (delivery.ingress()) { await delivery.event({ kind: 'owner-streams', id: streamerId }, payload); return; }
-            const streams = await db.getLiveStreamsByUserId(streamerId) || [];
-            for (const stream of streams) {
-                await delivery.broadcastToStream(stream.id, payload);
-            }
+            await delivery.event({ kind: 'owner-streams', id: streamerId }, payload);
         } catch {
             // optional
         }

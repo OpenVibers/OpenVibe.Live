@@ -22,7 +22,7 @@
  *   GET  /anon/:num, /anon-first-seen?ip     → { first_seen }
  *   GET  /tts-audio/:file                    → a clip from the arena voice cache
  *
- * /internal/chat-effects/*   capability live.chat_effects.write — side effects (CHAT_AUTHORITY=chat only)
+ * /internal/chat-effects/*   capability live.chat_effects.write — side effects
  *   anon, ip-log, viewer-counts, viewer-snapshots, user-color, ban, approve-ip, channel-settings,
  *   alert-sound, ensure-channel, site-settings, chat-message, ai/mod-command, arena-command,
  *   media-queue, hardware, paste, translate, notify/dm, notify/dm-read, notify/call-invite, asset-sync
@@ -37,7 +37,6 @@ const db = require('../db/database');
 const config = require('../config');
 const permissions = require('../auth/permissions');
 const { guard } = require('../net/service-guard');
-const { isRemote } = require('./chat-authority');
 
 const contextRouter = express.Router();
 const effectsRouter = express.Router();
@@ -252,13 +251,9 @@ contextRouter.get('/tts-audio/:file', (req, res) => {
 
 // ── Effects ────────────────────────────────────────────────────
 
+// Only a token carrying live.chat_effects.write gets in: a rehearsal Chat without that grant can never
+// award coins, post to AI viewers or change Live's rows.
 effectsRouter.use(guard('live.chat_effects.write'));
-// Live only takes Chat's writes while Chat is the authority — a rehearsal Chat pointed at
-// production Live can never award coins, post to AI viewers or overwrite chat tables.
-effectsRouter.use((req, res, next) => {
-    if (!isRemote()) return fail(res, 409, 'Live runs chat itself (CHAT_AUTHORITY is not "chat")');
-    next();
-});
 
 const chatDelivery = () => require('./chat-delivery');
 const actorOf = async (id) => (id ? await db.getUserById(id) : null);

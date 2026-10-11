@@ -35,7 +35,10 @@
  */
 const crypto = require('crypto');
 const principal = require('../net/network-principal');
-const { CHAT_URL } = require('./chat-authority');
+
+/** OpenVibe.Chat's loopback address (default 127.0.0.1:4400): the ingress, the reads and Chat's internal APIs.
+ *  Set empty, there is no Chat to ask (the test preload does this): every call is dropped and logged once. */
+const CHAT_URL = (process.env.OV_CHAT_INTERNAL_URL ?? 'http://127.0.0.1:4400').replace(/\/+$/, '');
 
 const AUDIENCE = 'openvibe.chat';
 const TIMEOUT_MS = 5000;
@@ -49,6 +52,8 @@ let lastLog = null;
 let retryMs = RETRY_MS;
 
 function drill() { try { return require('../drill').enabled; } catch { return false; } }
+/** Whether Live can ask Chat at all: a Chat address, Live's service credentials, and not a restore drill. */
+function available() { return !!CHAT_URL && principal.configured() && !drill(); }
 
 function count(family, result) {
     const f = stats.byFamily[family] || (stats.byFamily[family] = { sent: 0, refused: 0, failed: 0, dropped: 0 });
@@ -88,6 +93,7 @@ const sleep = (ms) => new Promise((resolve) => { const t = setTimeout(resolve, m
 async function send(family, body, path = `/internal/chat/${family}`) {
     if (drill()) return null;
     if (!principal.configured()) { count(family, 'dropped'); note(`${family}: not configured (OV_OAUTH_CLIENT_SECRET unset); dropped`); return null; }
+    if (!CHAT_URL) { count(family, 'dropped'); note(`${family}: no Chat address (OV_CHAT_INTERNAL_URL is empty); dropped`); return null; }
     const payload = { ...body, key: body.key || key(family) };
     if (waiting >= MAX_WAITING) { count(family, 'dropped'); note(`${family}: ${waiting} operations already waiting for Chat; dropped`); return null; }
     waiting++;
@@ -120,7 +126,7 @@ async function send(family, body, path = `/internal/chat/${family}`) {
 
 /** Chat's presence snapshot ({ total, streams, slow_mode, users, anons }), or null. */
 async function presence() {
-    if (drill() || !principal.configured()) return null;
+    if (!available()) return null;
     try {
         const { status, data } = await request('GET', '/internal/chat/presence');
         if (status === 200 && data) return data;
@@ -148,7 +154,7 @@ function qs(params) {
 
 /** GET one Chat read; its JSON body or null. Ordinary failures are logged and answered null. */
 async function read(name, path) {
-    if (drill() || !principal.configured()) return null;
+    if (!available()) return null;
     try {
         const { status, data } = await request('GET', path);
         if (status === 200 && data && data.ok !== false) return data;
@@ -159,7 +165,7 @@ async function read(name, path) {
 
 /** POST /internal/chat/stats — message/chatter counts, or the top chatters of a room. */
 async function readStats(body) {
-    if (drill() || !principal.configured()) return null;
+    if (!available()) return null;
     try {
         const { status, data } = await request('POST', '/internal/chat/stats', body || {});
         if (status === 200 && data && data.ok !== false) return data;
@@ -184,7 +190,7 @@ const readDmBlockState = async (params) => await read('dm-block-state', `/intern
  * falls back to Live's table rather than silencing every !sound.
  */
 async function readSoundByCommand(params) {
-    if (drill() || !principal.configured()) return null;
+    if (!available()) return null;
     try {
         const { status, data } = await request('GET', `/internal/chat/sounds/by-command${qs(params)}`);
         if (status === 200 && data && data.ok !== false && data.sound) return data;
@@ -195,7 +201,7 @@ async function readSoundByCommand(params) {
 }
 /** Record where Live's asset sync uploaded a channel sound (idempotent; Chat applies the same write once). */
 async function soundAsset(body) {
-    if (drill() || !principal.configured()) return null;
+    if (!available()) return null;
     try {
         // Chat's /sounds/asset takes exactly { id, media_url, media_asset_id } — no idempotency key.
         const { status, data } = await request('POST', '/internal/chat/sounds/asset', body);
@@ -206,6 +212,8 @@ async function soundAsset(body) {
 }
 
 module.exports = {
+    CHAT_URL,
+    available,
     AUDIENCE,
     key,
     stats,

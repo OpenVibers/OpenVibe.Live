@@ -8,6 +8,9 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const require = createRequire(import.meta.url);
+// Tests never reach a real OpenVibe.Chat: with an empty address there is no Chat to ask (server/chat/chat-client.js),
+// as with CHAT_AUTHORITY unset before C-01. A test that exercises Chat points OV_CHAT_INTERNAL_URL at its own stub.
+process.env.OV_CHAT_INTERNAL_URL ??= '';
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const MIGRATIONS = path.join(root, 'migrations');
 const store = process.env.LIVE_TEST_STORE || 'pglite';

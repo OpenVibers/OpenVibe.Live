@@ -17,7 +17,7 @@
  *
  *   chat_line | paid_message  donation event to the channel room + global, saved as a 'donation'
  *                             chat message (metadata.source 'tips'), the donation alert sound
- *   tts                       synthesizeAndBroadcastTTS on the live stream (or the offline channel room)
+ *   tts                       a `tts` line in the channel, which Chat reads aloud
  *   media_request             into the media queue at cost 0 — Billing charged it, Tips holds the record
  */
 const express = require('express');
@@ -122,16 +122,12 @@ router.post('/deliveries', guard('live.tips_delivery.write'), express.json({ lim
         if (b.effect === 'tts') {
             const text = String((b.tts && b.tts.text) || '').slice(0, 1200);
             if (!text) return res.status(422).json({ error: 'no text' });
-            if (delivery.ingress()) {
-                // Chat's ingress speaks a persisted line: a `tts` line in the channel, read aloud under the same keys.
-                const id = await delivery.message({
-                    stream_id: streamId, channel_user_id: userId, username: name, message: text, message_type: 'tts', source_platform: 'tips',
-                    tts: { identity_key: `tips:${i.id}`, key: `tips-${i.id}` }, key: `tips:${key}`,
-                });
-                return res.json(await remember(key, { ok: true, ref: { stream_id: streamId, chat_message_id: id } }));
-            }
-            await delivery.synthesizeAndBroadcastTTS(streamId, name, text, null, 'tips', `tips:${i.id}`, userId, `tips-${i.id}`);
-            return res.json(await remember(key, { ok: true, ref: { stream_id: streamId } }));
+            // Chat's ingress speaks a persisted line: a `tts` line in the channel, read aloud under the same keys.
+            const id = await delivery.message({
+                stream_id: streamId, channel_user_id: userId, username: name, message: text, message_type: 'tts', source_platform: 'tips',
+                tts: { identity_key: `tips:${i.id}`, key: `tips-${i.id}` }, key: `tips:${key}`,
+            });
+            return res.json(await remember(key, { ok: true, ref: { stream_id: streamId, chat_message_id: id } }));
         }
         if (b.effect === 'media_request') {
             const mq = require('../media/media-queue');

@@ -1247,7 +1247,7 @@ curl -s https://openvibe.media/live/@Goosely/chat-insight.json | jq ".chat_insig
 <thead><tr><th>Method</th><th>Path</th><th>Auth</th><th>Notes</th></tr></thead>
 <tbody>
 <tr><td>POST</td><td>/api/chat/send</td><td>Yes</td><td>Post a message to global chat (bots; API tokens need the <code>chat</code> scope)</td></tr>
-<tr><td>GET</td><td>/api/chat/:streamId/history</td><td>Opt</td><td>Per-streamer history (all slots + offline unless <code>?scope=stream</code>)</td></tr>
+<tr><td>GET</td><td>/api/chat/:streamId/history</td><td>Opt</td><td>Per-streamer history (all of the streamer's slots, plus offline messages)</td></tr>
 <tr><td>GET</td><td>/api/chat/global/history</td><td>Opt</td><td>Global chat history</td></tr>
 <tr><td>GET</td><td>/api/chat/:streamId/replay</td><td>Opt</td><td>Chat replay for VOD/clip sync (<code>?from,to</code>)</td></tr>
 <tr><td>GET</td><td>/api/chat/anon/:anonId &middot; /relay-user/:platform/:username</td><td>Opt</td><td>Anon / relay chatter meta (+ <code>/logs</code>, auth)</td></tr>

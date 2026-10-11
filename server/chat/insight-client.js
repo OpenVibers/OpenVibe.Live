@@ -15,7 +15,7 @@
  * outage costs the insight text and never a request. Off under LIVE_DRILL (a restore drill calls no
  * other service).
  */
-const { CHAT_URL } = require('./chat-authority');
+const { CHAT_URL } = require('./chat-client');
 const CACHE_TTL_MS = 60_000;
 const TIMEOUT_MS = 4000;
 

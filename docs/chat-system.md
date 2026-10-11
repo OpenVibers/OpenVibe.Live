@@ -11,9 +11,9 @@ The OpenVibe.Live chat system provides real-time messaging, moderation, and exte
 ### OpenVibe.Chat (roadmap Wave 6; live since 2026-09-23)
 
 Chat runs in [OpenVibe.Chat](https://github.com/OpenVibers/OpenVibe.Chat) (127.0.0.1:4400) with the
-same WebSocket protocol and REST paths. Live runs no chat server in any mode (`CHAT_AUTHORITY=chat`
-in production, `server/chat/chat-authority.js`); the local `ChatServer` and its `/ws/chat` upgrade
-path are deleted.
+same WebSocket protocol and REST paths. Live runs no chat server, and there is no switch (the
+`CHAT_AUTHORITY` flag was retired on 2026-10-11); the local `ChatServer` and its `/ws/chat` upgrade
+path are deleted. Without Live's service credentials (development, tests) chat is inert.
 
 - nginx sends `/ws/chat`, `/api/chat/`, `/api/dm/`, `/api/tts/` and `/api/sounds` to Chat; Live mounts
   none of them, and a `/ws/chat` upgrade that still lands on Live is destroyed.
@@ -43,8 +43,7 @@ path are deleted.
 - Chat reads Live data and asks for side effects on `/internal/chat-context/*` and
   `/internal/chat-effects/*` (`server/chat/live-context-routes.js`), with Network service tokens
   (`live.chat_context.read`, `live.chat_effects.write`,
-  `server/net/service-guard.js`). Effects re-check the acting moderator/owner/admin and are refused
-  unless `CHAT_AUTHORITY=chat`.
+  `server/net/service-guard.js`). Effects re-check the acting moderator/owner/admin.
 - Live reads chat stats, queues and history from Chat's internal read API —
   `POST /internal/chat/stats` (`site`, `user`, `stream`, `channel-top` and `site-daily`),
   `GET /internal/chat/messages`, `/timeline`, `/first-chat`, `/sounds`, `/sounds/by-command`,

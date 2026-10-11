@@ -23,7 +23,8 @@ const offenders = [];
         if (/chat_bridge_outbox/i.test(src)) offenders.push(`${rel}: chat_bridge_outbox`);
         if (/chat-remote/.test(src)) offenders.push(`${rel}: chat-remote`);
         if (/\/internal\/live\/(calls|presence)/.test(src)) offenders.push(`${rel}: the old bridge endpoints`);
-        if (/LIVE_CHAT_INGRESS/.test(src)) offenders.push(`${rel}: LIVE_CHAT_INGRESS (retired: CHAT_AUTHORITY=chat is the ingress)`);
+        if (/LIVE_CHAT_INGRESS/.test(src)) offenders.push(`${rel}: LIVE_CHAT_INGRESS (retired: Chat's ingress is the only path)`);
+        if (/process\.env\.CHAT_AUTHORITY|chat-authority/.test(src)) offenders.push(`${rel}: CHAT_AUTHORITY (retired, compatibility register C-01: Chat runs chat, with no switch)`);
     }
 })(path.join(ROOT, 'server'));
 assert.deepStrictEqual(offenders, [], `server/ still uses the old chat bridge:\n${offenders.join('\n')}`);
@@ -37,6 +38,6 @@ assert.ok(!/\bCREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?chat_bridge_outbox\b/i.t
     const db = require('../server/db/database');
     await db.initDb();
     assert.ok(!await db.getDb().prepare("SELECT 1 FROM information_schema.tables WHERE table_schema = current_schema() AND table_name = 'chat_bridge_outbox'").get(), 'chat_bridge_outbox is not in the migrated database');
-    console.log('chat bridge removed: no outbox, bridge or flag under server/; no migration or table for the outbox — all checks passed');
+    console.log('chat bridge removed: no outbox, bridge, CHAT_AUTHORITY or flag under server/; no migration or table for the outbox — all checks passed');
     process.exit(0);
 })().catch((e) => { console.error(e); process.exit(1); });

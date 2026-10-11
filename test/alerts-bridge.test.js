@@ -31,8 +31,8 @@ assert.deepStrictEqual(calls.map(({ target, frame }) => [target.kind, target.id,
     ['channel', 7, 7, null, 'goal'],
 ], 'unknown kinds fall back to the donation sound, and the alert targets the channel owner');
 
-// Outside chat mode the seam drops the event (logged once), never throws into the caller.
-delete process.env.CHAT_AUTHORITY;
+// With no Chat to ask (the preload leaves OV_CHAT_INTERNAL_URL empty) the seam drops the event (logged once),
+// never throws into the caller.
 assert.doesNotThrow(() => alerts.playAlertSound(7, 3, 'donation'));
 
 console.log('alerts event: all checks passed');

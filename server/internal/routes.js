@@ -12,11 +12,11 @@ const { bindSlot, BindError } = require('../openre/bind');
 // Service-to-service only, loopback only (nothing that came through nginx): each route checks the one capability it
 // performs on a Network service token (server/net/service-guard.js); nothing else gets in (X-Internal-Key: plan T2).
 
-// CHAT_AUTHORITY=chat: OpenVibe.Chat caches users; a role or avatar pushed here reaches it at once.
+// OpenVibe.Chat caches users; a role or avatar pushed here reaches it at once.
 async function notifyChat(userId) {
     try {
         const delivery = require('../chat/chat-delivery');
-        if (delivery.ingress()) await delivery.invalidate({ user: Number(userId) });
+        await delivery.invalidate({ user: Number(userId) });
     } catch { /* non-critical */ }
 }
 

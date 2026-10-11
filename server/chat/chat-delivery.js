@@ -2,20 +2,20 @@
 /**
  * The one seam Live's chat producers call (T3 J2; Live's own ChatServer is deleted).
  *
- * CHAT_AUTHORITY=chat: OpenVibe.Chat's typed ingress (chat-client.js) — Chat persists, broadcasts, mirrors,
- * speaks and moderates in one call per operation. This is the only path to Chat: the old ordered-calls bridge
- * and its outbox are gone, and Live no longer runs a chat server in any mode. This module also carries the
- * ChatServer surface Live's remaining modules still use.
+ * OpenVibe.Chat runs chat; its typed ingress (chat-client.js) persists, broadcasts, speaks and moderates in one
+ * call per operation. This is the only path to Chat: the old ordered-calls bridge and its outbox are gone, Live
+ * runs no chat server, and there is no mode switch (CHAT_AUTHORITY is retired, compatibility register C-01).
+ * When Live cannot ask Chat (no service credentials or an empty OV_CHAT_INTERNAL_URL, as in development and
+ * tests, or LIVE_DRILL), chat-client.js drops each call and logs it once. This module also carries the ChatServer surface Live's remaining modules still use.
  *
  * A Chat 4xx/5xx is logged and counted by chat-client.js and never thrown into the caller.
  *
- *   ingress()                      which path is active (CHAT_AUTHORITY=chat)
- *   message(body)                  ingress only: a chat line (Chat's /messages body) → Promise<real id | null>
+ *   message(body)                  a chat line (Chat's /messages body) → Promise<real id | null>
  *   event(target, frame, opts)     a transient frame; target { kind: stream|channel|global|all|user | Chat's own kinds }
- *   moderate(action, fields)       ingress only: Chat's /moderation actions → Promise<Chat's answer | null>
+ *   moderate(action, fields)       Chat's /moderation actions → Promise<Chat's answer | null>
  *   logModeration(entry)           a moderation-log row (Chat's moderation_actions shape)
  *   disconnect({ userId, ip, streamId })
- *   invalidate(hint, legacy)       a cache hint ({ user, user_data, approvals, bans, channel })
+ *   invalidate(hint)               a cache hint ({ user, user_data, approvals, bans, channel })
  *   after(value, fn)               fn(value) now for a plain value, after it resolves for a promise
  *
  * The pushes Live's modules used to make on the chat server keep their names here — broadcastToStream,
@@ -31,10 +31,7 @@
  * which send Chat a cache hint instead of waiting for its cache to expire.
  */
 const db = require('../db/database');
-const chatAuthority = require('./chat-authority');
 const client = require('./chat-client');
-
-function ingress() { return chatAuthority.isRemote(); }
 
 function defined(o) {
     const out = {};
@@ -67,7 +64,6 @@ function dropped(name, why = 'has no Chat ingress target and was dropped') {
 }
 
 async function event(target, frame, { key } = {}) {
-    if (!ingress()) { dropped(`event(${target.kind})`, 'dropped — Live runs no chat server (CHAT_AUTHORITY is not chat)'); return undefined; }
     const t = { kind: target.kind };
     if (target.id != null) t.id = Number(target.id);
     return await client.event({ key: key ? client.key('events', key) : undefined, target: t, frame: defined(frame) });
@@ -88,15 +84,12 @@ async function logModeration(entry) {
 }
 
 async function disconnect({ userId, ip, streamId } = {}) {
-    if (!ingress()) { dropped('disconnectUser', 'dropped — Live runs no chat server (CHAT_AUTHORITY is not chat)'); return undefined; }
     return await moderate('disconnect', { user_id: userId || undefined, ip: ip || undefined, stream_id: streamId || undefined });
 }
 const disconnectUser = disconnect;
 
-/** legacy: what to run when Live is the chat authority (cache hints had no single local call). */
-async function invalidate(hint, legacy) {
-    if (ingress()) return await client.invalidate(defined(hint));
-    return legacy ? legacy() : undefined;
+async function invalidate(hint) {
+    return await client.invalidate(defined(hint));
 }
 
 function after(value, fn) {
@@ -159,15 +152,16 @@ async function _pollPresence() {
     } catch { /* keep the last snapshot */ }
 }
 
-/** Start the presence poll (and the cache-hint observers). Called once at startup; no-op outside chat mode. */
+/** Start the presence poll (and the cache-hint observers). Called once at startup; off when Live cannot ask Chat
+ *  (LIVE_DRILL included). */
 async function init() {
-    if (!ingress()) return null;
+    if (!client.available()) return null;
     if (!_dbObserved) { _dbObserved = true; _observeDb(); }
     if (_presenceTimer) return null;
     _pollPresence().catch((e) => console.warn('[Chat] presence:', e.message));
     _presenceTimer = setInterval(() => _pollPresence().catch((e) => console.warn('[Chat] presence:', e.message)), PRESENCE_MS);
     if (_presenceTimer.unref) _presenceTimer.unref();
-    console.log('[Chat] CHAT_AUTHORITY=chat — chat runs in OpenVibe.Chat; Live delivers through its ingress');
+    console.log('[Chat] chat runs in OpenVibe.Chat; Live delivers through its ingress');
     return null;
 }
 
@@ -308,8 +302,7 @@ async function resolveAnon(ip) {
     return { anon_number: num, first_seen: await db.getAnonFirstSeen(key) };
 }
 
-module.exports = {
-    ingress, message, event, moderate, logModeration, disconnect, disconnectUser, invalidate, after, client,
+module.exports = { message, event, moderate, logModeration, disconnect, disconnectUser, invalidate, after, client,
     broadcastToStream, broadcastToChannelRoom, broadcastGlobal, broadcastAll, sendDm, sendUserUpdate,
     forwardToGlobal, forwardToStreamerRooms, triggerChannelSound, synthesizeAndBroadcastTTS,
     init, close, slowModeByStream, getTotalConnections, getStreamViewerCount, getConnectedUserIp, findClientByAnonId,

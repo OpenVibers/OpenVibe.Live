@@ -26,7 +26,7 @@ const stats = { received: 0, revoked: 0, unchanged: 0, profiles: 0, ignored: 0, 
 const notifyChat = async (userId) => {
     try {
         const delivery = require('../chat/chat-delivery');
-        if (delivery.ingress()) await delivery.invalidate({ user: Number(userId) });
+        await delivery.invalidate({ user: Number(userId) });
     } catch { /* non-critical */ }
 };
 
