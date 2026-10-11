@@ -398,10 +398,8 @@ async function establishNetworkSession(req, res, tokenData) {
 
     const isSecure = (process.env.BASE_URL || '').startsWith('https');
 
-    // Set access token cookie (readable by JS for API calls)
-    res.cookie('token', openvibeToolsToken, { httpOnly: false, path: '/', maxAge: 7 * 24 * 60 * 60 * 1000, sameSite: 'Lax', secure: isSecure });
-
-    // Also set ov_token (used by shared navbar/notification libs)
+    // The session cookie, readable by JS for API calls and by the shared navbar/notification libs. (Live's old
+    // `token` cookie, the same token under another name, is no longer set: compatibility register C-05.)
     res.cookie('ov_token', openvibeToolsToken, { httpOnly: false, path: '/', maxAge: 7 * 24 * 60 * 60 * 1000, sameSite: 'Lax', secure: isSecure });
     // Long-lived hint (outlives the token): this browser has signed in here, so a later visit
     // with no session may try one silent sign-in through the network.
@@ -581,7 +579,6 @@ router.post('/refresh', async (req, res) => {
         }
 
         const isSecure = (process.env.BASE_URL || '').startsWith('https');
-        res.cookie('token', tokenData.access_token, { httpOnly: false, path: '/', maxAge: 7 * 24 * 60 * 60 * 1000, sameSite: 'Lax', secure: isSecure });
         res.cookie('ov_token', tokenData.access_token, { httpOnly: false, path: '/', maxAge: 7 * 24 * 60 * 60 * 1000, sameSite: 'Lax', secure: isSecure });
         if (tokenData.refresh_token) {
             res.cookie('ov_refresh', tokenData.refresh_token, { httpOnly: true, maxAge: 30 * 24 * 60 * 60 * 1000, sameSite: 'Lax', secure: isSecure, path: '/api/auth' });
@@ -596,7 +593,7 @@ router.post('/refresh', async (req, res) => {
 // ── Logout (clear all auth cookies) ──────────────────────────
 function clearSessionCookies(res) {
     const isSecure = (process.env.BASE_URL || '').startsWith('https');
-    res.clearCookie('token', { sameSite: 'Lax', secure: isSecure });
+    res.clearCookie('token', { sameSite: 'Lax', secure: isSecure });   // a leftover legacy cookie (no longer set, C-05)
     res.clearCookie('ov_token', { sameSite: 'Lax', secure: isSecure });
     res.clearCookie('ov_refresh', { path: '/api/auth', sameSite: 'Lax', secure: isSecure });
     res.cookie('ov_sso_hint', 'guest', { ...HINT_COOKIE, secure: isSecure });

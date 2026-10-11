@@ -2753,8 +2753,6 @@ function _getAuthToken() {
     try {
         const openvibeMatch = document.cookie.match(/(?:^|;\s*)ov_token=([^;]+)/);
         if (openvibeMatch) return decodeURIComponent(openvibeMatch[1]);
-        const legacyMatch = document.cookie.match(/(?:^|;\s*)token=([^;]+)/);
-        if (legacyMatch) return decodeURIComponent(legacyMatch[1]);
         const stored = localStorage.getItem('token');
         return stored || null;
     } catch {

@@ -185,7 +185,6 @@ function getStoredAuthToken() {
         localStorage.getItem('token'),
         localStorage.getItem('ov_token'),
         (document.cookie.match(/(?:^|; )ov_token=([^;]+)/) || [])[1],
-        (document.cookie.match(/(?:^|; )token=([^;]+)/) || [])[1],
     ].filter(Boolean);
 
     if (!candidates.length) return null;
