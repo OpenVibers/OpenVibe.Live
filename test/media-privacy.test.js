@@ -219,6 +219,37 @@ async function check(name, fn) {
         await sameAsMissing('POST', '/api/thumbnails/generate/clip/201', '/api/thumbnails/generate/clip/999', 7);
     });
 
+    await check('thumbnail by id (image URLs): the current thumbnail of a visible item, a private one looks missing', async () => {
+        for (const id of [100, 101, 102, 103]) VODS[id].thumbnail_url = `/t/vod-${id}-7.jpg`;
+        CLIPS[200].thumbnail_url = '/t/clip-200-7.jpg';
+        CLIPS[201].thumbnail_url = '/t/clip-201-7.jpg';
+        try {
+            const pub = await call('GET', '/api/thumbnails/generate/vod/100', null);
+            assert.deepStrictEqual([pub.status, pub.headers.location], [302, media.publicUrl('/t/vod-100-7.jpg')]);
+            const unlisted = await call('GET', '/api/thumbnails/generate/vod/103', null);
+            assert.deepStrictEqual([unlisted.status, unlisted.headers.location], [302, media.publicUrl('/t/vod-103-7.jpg')], 'unlisted: whoever has the link');
+            const clip = await call('GET', '/api/thumbnails/generate/clip/200', null);
+            assert.deepStrictEqual([clip.status, clip.headers.location], [302, media.publicUrl('/t/clip-200-7.jpg')]);
+            await sameAsMissing('GET', '/api/thumbnails/generate/vod/101', '/api/thumbnails/generate/vod/999', null);
+            await sameAsMissing('GET', '/api/thumbnails/generate/vod/102', '/api/thumbnails/generate/vod/999', 7);
+            await sameAsMissing('GET', '/api/thumbnails/generate/clip/201', '/api/thumbnails/generate/clip/999', 7);
+            assert.strictEqual((await call('GET', '/api/thumbnails/generate/vod/abc', null)).status, 400);
+        } finally {
+            for (const id of [100, 101, 102, 103]) delete VODS[id].thumbnail_url;
+            delete CLIPS[200].thumbnail_url;
+            delete CLIPS[201].thumbnail_url;
+        }
+    });
+
+    await check('player file sources: by id, straight to Media (which applies visibility)', async () => {
+        const v = await call('GET', '/api/vods/100/file?t=5', null);
+        assert.deepStrictEqual([v.status, v.headers.location], [302, media.vodPlaybackUrl(100)]);
+        const c = await call('GET', '/api/clips/200/file', null);
+        assert.deepStrictEqual([c.status, c.headers.location], [302, media.clipUrl(200)]);
+        assert.match(c.headers['cache-control'], /max-age=0/);
+        assert.strictEqual((await call('GET', '/api/clips/x1/file', null)).status, 400);
+    });
+
     await check('comments on a private item: unreadable and unpostable for strangers', async () => {
         const posted = await call('POST', '/api/comments/vod/101', 3, { message: 'secret note' });
         assert.strictEqual(posted.status, 201, 'the owner may comment');

@@ -32,7 +32,7 @@ const TIP_CURRENCY_KEY = 'openvibe_vibes';
 // PowerChat's /chat avatarUrl only renders when it's a full absolute http(s) URL — relative
 // paths, data:/blob:, or bare values are silently treated as "no avatar" (an initial-letter
 // placeholder shows instead). OpenVibe.Live stores avatars as site-relative paths
-// (e.g. /data/pastes/screenshots/..), so we resolve them against the public base URL and
+// (e.g. /data/avatars/..), so we resolve them against the public base URL and
 // prefer https so the avatar actually displays on the overlay.
 function _absoluteAvatarUrl(raw) {
     if (!raw || typeof raw !== 'string') return null;

@@ -262,7 +262,6 @@ async function loadVodPlayer(vodId, seekTo) {
         // scrubber seek past the real footage → permanent black screen).
         window._liveVodIsLive = false;
         window._liveVodDuration = 0;
-        window._liveVodFilename = null;
         // Clean up chat replay
         if (window._chatReplayTimer) {
             cancelAnimationFrame(window._chatReplayTimer);
@@ -345,7 +344,7 @@ async function loadVodPlayer(vodId, seekTo) {
                 if (typeof renderVodContextStrip === 'function') renderVodContextStrip(v.id);
             }
 
-            const filename = v.file_path.split('/').pop();
+            const fileUrl = `/api/vods/${Number(v.id)}/file`;
             // Record the server-probed duration (ffprobe truth). The player clamps
             // to this when the browser mis-reports the WebM container duration.
             const serverDur = Number(v.duration_seconds || v.duration || 0);
@@ -355,7 +354,7 @@ async function loadVodPlayer(vodId, seekTo) {
                 video.dataset.hlsFallbackBound = '1';
                 video.addEventListener('error', () => { vodFallBackToFile(video); });
             }
-            attachVodSource(video, v.is_recording ? null : v.hls_url, `/api/vods/file/${filename}?t=${Date.now()}`, routeGen);
+            attachVodSource(video, v.is_recording ? null : v.hls_url, `${fileUrl}?t=${Date.now()}`, routeGen);
             video.style.display = 'block';
 
             if (v.is_recording) {
@@ -365,12 +364,11 @@ async function loadVodPlayer(vodId, seekTo) {
 
                 window._liveVodDuration = v.duration_seconds || 0;
                 window._liveVodId = v.id;
-                window._liveVodFilename = filename;
                 window._liveVodIsLive = true;
 
                 if (jumpLiveBtn) {
                     jumpLiveBtn.onclick = () => {
-                        video.src = `/api/vods/file/${filename}?t=${Date.now()}`;
+                        video.src = `${fileUrl}?t=${Date.now()}`;
                         video.addEventListener('loadedmetadata', function _jumpOnce() {
                             video.removeEventListener('loadedmetadata', _jumpOnce);
                             const dur = isFinite(video.duration) ? video.duration : window._liveVodDuration;
@@ -407,7 +405,7 @@ async function loadVodPlayer(vodId, seekTo) {
                                 window._liveVodLastSeekableRefresh = now;
                                 const currentTime = video.currentTime;
                                 const wasPaused = video.paused;
-                                video.src = `/api/vods/file/${filename}?t=${now}`;
+                                video.src = `${fileUrl}?t=${now}`;
                                 video.addEventListener('loadedmetadata', function _restore() {
                                     video.removeEventListener('loadedmetadata', _restore);
                                     const dur = isFinite(video.duration) ? video.duration : window._liveVodDuration;
@@ -561,8 +559,7 @@ function openClipCreator() {
     const preview = document.getElementById('clip-preview-video');
     if (preview) {
         // The main player may be on the HLS playlist (a blob: URL): the preview cuts from the file.
-        const filename = (video.dataset.fileUrl || video.src).split('/').pop().split('?')[0];
-        preview.src = `/api/vods/file/${filename}`;
+        preview.src = video.dataset.fileUrl || video.src;
         preview.currentTime = _vpClipStart;
         preview.muted = true;
     }
@@ -1124,7 +1121,6 @@ async function loadClipPlayer(clipId) {
             }
         }
         if (cl.file_path) {
-            const filename = cl.file_path.split('/').pop();
             // Handle video load errors (corrupt files, codec issues)
             video.onerror = () => {
                 if (vodFallBackToFile(video)) return;   // the playlist failed: the file gets its chance first
@@ -1138,7 +1134,7 @@ async function loadClipPlayer(clipId) {
                         </div>`;
                 }
             };
-            attachVodSource(video, cl.hls_url, `/api/vods/file/${filename}`, routeGen);
+            attachVodSource(video, cl.hls_url, `/api/clips/${Number(cl.id)}/file`, routeGen);
             video.style.display = 'block';
             setupCustomVideoControls('clp');
 

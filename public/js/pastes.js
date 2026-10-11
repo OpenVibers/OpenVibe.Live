@@ -292,7 +292,7 @@ async function loadPasteViewer(slug) {
 
         let contentHtml;
         if (isScreenshot) {
-            const screenshotUrl = p.screenshot_url || `/data/pastes/screenshots/${p.screenshot_path?.split('/').pop()}`;
+            const screenshotUrl = p.screenshot_url || '';
             contentHtml = `
                 <div class="paste-screenshot-view">
                     <img src="${escapeHtml(screenshotUrl)}" alt="Screenshot" class="paste-screenshot-img"

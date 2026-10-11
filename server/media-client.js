@@ -307,9 +307,6 @@ function clipUrl(id) { return `${MEDIA_PUBLIC_URL}/c/${id}`; }
 function pasteScreenshotUrl(slug) { return `${MEDIA_PUBLIC_URL}/p/${encodeURIComponent(slug)}/screenshot`; }
 function thumbUrl(id) { return `${MEDIA_PUBLIC_URL}/t/${id}`; }
 function fileUrl(key) { return `${MEDIA_PUBLIC_URL}/f/${key}`; }
-// TODO(contract): paste screenshots have no explicit public route in the contract;
-// legacy /data/pastes/screenshots/<name> URLs are mapped onto the files route.
-function screenshotUrl(filename) { return `${MEDIA_PUBLIC_URL}/f/screenshots/${encodeURIComponent(filename)}`; }
 
 /** Absolute-ize a Media-relative URL (e.g. thumbnail_url from an API response). */
 function publicUrl(u) {
@@ -416,5 +413,5 @@ module.exports = {
     uploadFile, getFileMeta, deleteFile,
     uploadThumbnail, generateThumbnail,
     // URL builders
-    vodPlaybackUrl, clipUrl, pasteScreenshotUrl, thumbUrl, fileUrl, screenshotUrl, publicUrl,
+    vodPlaybackUrl, clipUrl, pasteScreenshotUrl, thumbUrl, fileUrl, publicUrl,
 };

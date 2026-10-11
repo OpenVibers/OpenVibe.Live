@@ -16,7 +16,6 @@
 const express = require('express');
 const { v4: uuidv4 } = require('uuid');
 const multer = require('multer');
-const path = require('path');
 const fs = require('fs');
 const db = require('../db/database');
 const { requireAuth, optionalAuth } = require('./auth');
@@ -53,7 +52,6 @@ function sanitizeDisplayName(raw) {
 function isAllowedAvatarUrl(value) {
     if (!value) return true;
     if (value.startsWith('/data/avatars/')) return true;
-    if (value.startsWith('/data/pastes/screenshots/')) return true;
     try {
         const url = new URL(value);
         return url.protocol === 'http:' || url.protocol === 'https:';
@@ -242,7 +240,7 @@ router.get('/avatar/history', requireAuth, async (req, res) => {
         const activePasteId = me?.avatar_paste_id || null;
         const media = require('../media-client');
         const rows = (await require('../media-proxy/lookups').avatarPastes(me)).map(r => {
-            const url = media.publicUrl(r.screenshot_url) || (r.screenshot_path ? media.screenshotUrl(path.basename(r.screenshot_path)) : null);
+            const url = media.publicUrl(r.screenshot_url);
             return {
                 slug: r.slug,
                 title: r.title,

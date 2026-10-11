@@ -603,13 +603,13 @@ router.post('/:id/publish', requireAuth, async (req, res) => {
     }
 });
 
-// Big media payloads live on openvibe.media now — 302 out instead of streaming through.
-// TODO(contract): legacy /api/vods/file/<basename> URLs are mapped onto Media's /v/ route
-// by filename; Media's inherited serving resolves both ids and legacy basenames.
-router.get('/file/:filename', optionalAuth, (req, res) => {
-    const filename = require('path').basename(req.params.filename);
+// The player's file source: the bytes live on openvibe.media, so 302 to Media's playback route by id
+// (Media applies the recording's visibility there).
+router.get('/:id/file', (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isSafeInteger(id) || id <= 0) return res.status(400).json({ error: 'Bad VOD id' });
     res.set('Cache-Control', 'private, max-age=0');
-    res.redirect(302, `${media.MEDIA_PUBLIC_URL}/v/${encodeURIComponent(filename)}`);
+    res.redirect(302, media.vodPlaybackUrl(id));
 });
 
 router.post('/upload', requireAuth, memUpload.single('video'), async (req, res) => {
