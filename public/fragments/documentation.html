@@ -130,15 +130,11 @@
 └──────────────────────────────────────────────────────┘</code></pre>
 
 <h3>Event Flow: Stream Goes Live</h3>
-<pre><code>1. Streamer calls POST /api/streams (OpenVibe.Live)
-2. OpenVibe.Live creates stream record, starts media endpoint
-3. OpenVibe.Live calls POST /internal/events/stream-live (openvibe.network)
-4. openvibe.network Discord bot sends embed to #alerts channel (with dedupe)
-5. openvibe.network creates STREAM_LIVE notifications for:
-   - All followers of the streamer
-   - Users opted into "all live" alerts
-6. Push notifications fire via Web Push (VAPID)
-7. Fallback: OpenVibe.Live sends direct webhook if openvibe.network unreachable</code></pre>
+<pre><code>1. Streamer goes live (Go-Live API, RTMP, WHIP or the OpenRestream mirror)
+2. OpenVibe.Live creates the stream record and publishes live.stream.started to OpenVibe.Events
+3. openvibe.network's Events consumer tells the streamer's followers (its own follows):
+   inbox notification, Web Push (VAPID), email and Discord, at most once per streamer per window
+4. A go-live while openvibe.network is down waits in OpenVibe.Events and is delivered on retry</code></pre>
 
 <h3>WebSocket Services</h3>
 <table class="doc-table">
