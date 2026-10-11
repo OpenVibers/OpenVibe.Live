@@ -612,7 +612,7 @@ let dvrState = {
     active: false,       // DVR feature is available (live VOD exists)
     isLive: true,        // Currently showing real-time stream (vs rewound)
     vodId: null,         // Live VOD ID
-    vodFilename: null,   // Live VOD filename for HTTP src
+    vodFile: null,       // the live VOD's file URL (HTTP src while seeking back)
     duration: 0,         // Current total duration (seconds) from server
     seekable: false,     // Seekable copy available
     pollTimer: null,     // Interval for polling live-info
@@ -2310,7 +2310,7 @@ async function pollDVR(streamId) {
             const vod = data.vod;
             dvrState.vodId = vod.id;
             if (vod.file_path) {
-                dvrState.vodFilename = vod.file_path.split('/').pop();
+                dvrState.vodFile = `/api/vods/${Number(vod.id)}/file`;
             }
 
             // Fetch live-info for seekable status and duration
@@ -2321,7 +2321,7 @@ async function pollDVR(streamId) {
             } catch {}
 
             // Show DVR controls when we have a seekable copy
-            if (dvrState.seekable && dvrState.vodFilename) {
+            if (dvrState.seekable && dvrState.vodFile) {
                 dvrState.active = true;
                 showDVRControls();
             }
@@ -2485,7 +2485,7 @@ function setupDVRSeek() {
  * @param {number} targetTime - Seek position in seconds
  */
 function switchToDVR(targetTime) {
-    if (!dvrState.vodFilename || !dvrState.seekable) return;
+    if (!dvrState.vodFile || !dvrState.seekable) return;
 
     const video = document.getElementById('video-element');
     const canvas = document.getElementById('video-canvas');
@@ -2525,7 +2525,7 @@ function switchToDVR(targetTime) {
 
     // Switch video source from live to HTTP VOD file
     video.srcObject = null;
-    video.src = `/api/vods/file/${dvrState.vodFilename}?t=${Date.now()}`;
+    video.src = `${dvrState.vodFile}?t=${Date.now()}`;
 
     video.addEventListener('loadedmetadata', function _seekOnLoad() {
         video.removeEventListener('loadedmetadata', _seekOnLoad);
@@ -2617,7 +2617,7 @@ function destroyDVR() {
     dvrState.active = false;
     dvrState.isLive = true;
     dvrState.vodId = null;
-    dvrState.vodFilename = null;
+    dvrState.vodFile = null;
     dvrState.duration = 0;
     dvrState.seekable = false;
     dvrState.streamStartTime = 0;
@@ -3216,15 +3216,14 @@ async function openClipTrimEditor(clipId) {
         // Can't preview — fall back to the simple title prompt.
         return promptClipTitle(clipId);
     }
-    const fileName = String(clip.file_path).split('/').pop();
     const dur = Number(clip.duration_seconds);
 
-    const show = () => _buildClipTrimModal(clipId, fileName, dur, clip.title || '');
+    const show = () => _buildClipTrimModal(clipId, dur, clip.title || '');
     if (document.fullscreenElement) document.exitFullscreen().then(show).catch(show);
     else show();
 }
 
-function _buildClipTrimModal(clipId, fileName, dur, defaultTitle) {
+function _buildClipTrimModal(clipId, dur, defaultTitle) {
     const fmt = (s) => {
         s = Math.max(0, s);
         const m = Math.floor(s / 60);
@@ -3243,7 +3242,7 @@ function _buildClipTrimModal(clipId, fileName, dur, defaultTitle) {
         <h3 style="margin:0 0 4px 0"><i class="fa-solid fa-scissors"></i> Trim &amp; Name Your Clip</h3>
         <p style="margin:0 0 14px 0;opacity:0.7;font-size:0.88rem">Drag the handles to trim the start and end. Only the final cut is saved.</p>
         <div style="position:relative;background:#000;border-radius:10px;overflow:hidden;margin-bottom:14px">
-            <video id="clip-trim-video" src="/api/vods/file/${fileName}" muted playsinline autoplay
+            <video id="clip-trim-video" src="/api/clips/${Number(clipId)}/file" muted playsinline autoplay
                    style="width:100%;max-height:46vh;display:block;background:#000"></video>
         </div>
         <div style="margin-bottom:10px">

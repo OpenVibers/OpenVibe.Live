@@ -703,13 +703,6 @@ app.use('/data/avatars', express.static(paths.data('avatars'), {
     },
 }));
 
-// Paste screenshots live in OpenVibe.Media now — legacy /data/pastes/screenshots/<name>
-// URLs (avatars, old pastes, hero moments) 302-redirect to the Media public host.
-app.get('/data/pastes/screenshots/:filename', (req, res) => {
-    res.set('Cache-Control', 'public, max-age=300');
-    res.redirect(302, mediaClient.screenshotUrl(path.basename(req.params.filename)));
-});
-
 // Old relative paste URLs on THIS origin: screenshot bytes still live on the Media public host;
 // raw text is served by OpenVibe.Community, the paste's home.
 app.get('/p/:slug/screenshot', (req, res) => {

@@ -1147,7 +1147,7 @@ https://www.101soundboards.com/sounds/12345 150p 2</code></pre>
 <tr><td>PUT</td><td>/api/vods/:id</td><td>Owner/mod</td><td>Edit <code>title, description, visibility</code> (<code>public|unlisted|private</code>)</td></tr>
 <tr><td>DELETE</td><td>/api/vods/:id</td><td>Owner/mod</td><td>Delete VOD + media (local + B2/R2)</td></tr>
 <tr><td>POST</td><td>/api/vods/bulk</td><td>Yes</td><td>Bulk <code>delete|public|unlisted|private</code> (<code>{ ids[], action }</code>)</td></tr>
-<tr><td>GET</td><td>/api/vods/file/:filename</td><td>Opt</td><td>Serve VOD/clip media (range requests)</td></tr>
+<tr><td>GET</td><td>/api/vods/:id/file</td><td>No</td><td>302 to the recording on openvibe.media (<code>/v/:id</code>, range requests; Media applies its visibility)</td></tr>
 <tr><td>POST</td><td>/api/vods/clips</td><td>Yes</td><td><strong>Create clip.</strong> From an uploaded blob, a live server-cut (<code>stream_id, live:true, duration, at</code>), or a VOD cut (<code>vod_id, start_time, end_time</code>) + <code>title?</code></td></tr>
 </tbody>
 </table>
@@ -1159,6 +1159,7 @@ https://www.101soundboards.com/sounds/12345 150p 2</code></pre>
 <tr><td>GET</td><td>/api/clips</td><td>No</td><td>List public clips (<code>?limit,offset,username,sort</code>)</td></tr>
 <tr><td>GET</td><td>/api/clips/mine &middot; /my-stream</td><td>Yes</td><td>Clips I made / clips others took of my streams</td></tr>
 <tr><td>GET</td><td>/api/clips/:id</td><td>Opt</td><td>Clip detail (tracks a view)</td></tr>
+<tr><td>GET</td><td>/api/clips/:id/file</td><td>No</td><td>302 to the clip on openvibe.media (<code>/c/:id</code>)</td></tr>
 <tr><td>PUT</td><td>/api/clips/:id/title &middot; /visibility</td><td>Yes</td><td>Rename / set visibility</td></tr>
 <tr><td>DELETE</td><td>/api/clips/:id</td><td>Streamer/mod</td><td>Delete clip (creator only if channel opted in)</td></tr>
 </tbody>

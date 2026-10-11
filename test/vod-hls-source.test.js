@@ -11,11 +11,11 @@ const js = fs.readFileSync(path.join(__dirname, '..', 'public', 'js', 'app-media
 const between = (startMark, endMark) => { const a = js.indexOf(startMark); const b = js.indexOf(endMark, a); assert.ok(a >= 0 && b > a, startMark); return js.slice(a, b); };
 const helpers = between('let _vodHls = null;', 'async function loadVodPlayer(');
 
-assert.match(js, /attachVodSource\(video, v\.is_recording \? null : v\.hls_url, `\/api\/vods\/file\/\$\{filename\}\?t=\$\{Date\.now\(\)\}`, routeGen\)/, 'a finished VOD prefers its playlist; a recording keeps the file');
-assert.match(js, /attachVodSource\(video, cl\.hls_url, `\/api\/vods\/file\/\$\{filename\}`, routeGen\)/, 'a clip prefers its playlist');
+assert.match(js, /attachVodSource\(video, v\.is_recording \? null : v\.hls_url, `\$\{fileUrl\}\?t=\$\{Date\.now\(\)\}`, routeGen\)/, 'a finished VOD prefers its playlist; a recording keeps the file');
+assert.match(js, /attachVodSource\(video, cl\.hls_url, `\/api\/clips\/\$\{Number\(cl\.id\)\}\/file`, routeGen\)/, 'a clip prefers its playlist; its file is asked by id');
 const appJs = fs.readFileSync(path.join(__dirname, '..', 'public', 'js', 'app.js'), 'utf8');
 assert.match(appJs, /stop\('vodDropHls'\);/, 'leaving the page drops the hls.js instance');
-assert.match(js, /\(video\.dataset\.fileUrl \|\| video\.src\)\.split\('\/'\)/, 'the clip preview cuts from the file, not a blob: URL');
+assert.match(js, /preview\.src = video\.dataset\.fileUrl \|\| video\.src;/, 'the clip preview cuts from the file, not a blob: URL');
 assert.match(js, /if \(vodFallBackToFile\(video\)\) return;/, "the clip player's error message waits for the file fallback");
 
 class FakeVideo {
@@ -48,14 +48,14 @@ function sandbox({ hlsSupported = true } = {}) {
     {   // hls.js path
         const { ctx, made } = sandbox();
         const v = new FakeVideo();
-        assert.strictEqual(await ctx.attachVodSource(v, 'https://openvibe.media/o/obj_1/master.m3u8', '/api/vods/file/a.webm?t=1'), 'hls');
+        assert.strictEqual(await ctx.attachVodSource(v, 'https://openvibe.media/o/obj_1/master.m3u8', '/api/vods/1/file?t=1'), 'hls');
         assert.strictEqual(made[0].url, 'https://openvibe.media/o/obj_1/master.m3u8');
         assert.strictEqual(made[0].media, v);
-        assert.strictEqual(v.dataset.fileUrl, '/api/vods/file/a.webm?t=1');
+        assert.strictEqual(v.dataset.fileUrl, '/api/vods/1/file?t=1');
         v.currentTime = 42;
         made[0].handlers.hlsError(null, { fatal: true });   // the playlist fails: the file takes over at the same spot
         assert.strictEqual(made[0].destroyed, true);
-        assert.strictEqual(v.src, '/api/vods/file/a.webm?t=1');
+        assert.strictEqual(v.src, '/api/vods/1/file?t=1');
         v.fire('loadedmetadata');
         assert.strictEqual(v.currentTime, 42);
         assert.strictEqual(ctx.vodFallBackToFile(v), false, 'it falls back once');
@@ -63,7 +63,7 @@ function sandbox({ hlsSupported = true } = {}) {
     {   // a non-fatal hls.js error changes nothing
         const { ctx, made } = sandbox();
         const v = new FakeVideo();
-        await ctx.attachVodSource(v, 'https://openvibe.media/o/obj_2/master.m3u8', '/api/vods/file/b.webm');
+        await ctx.attachVodSource(v, 'https://openvibe.media/o/obj_2/master.m3u8', '/api/vods/2/file');
         made[0].handlers.hlsError(null, { fatal: false });
         assert.strictEqual(v.src, '');
         assert.strictEqual(made[0].destroyed, false);
@@ -71,22 +71,22 @@ function sandbox({ hlsSupported = true } = {}) {
     {   // native HLS (Safari): the playlist is the src; a media error falls back
         const { ctx, made } = sandbox();
         const v = new FakeVideo(true);
-        assert.strictEqual(await ctx.attachVodSource(v, 'https://openvibe.media/o/obj_3/master.m3u8', '/api/vods/file/c.webm'), 'hls');
+        assert.strictEqual(await ctx.attachVodSource(v, 'https://openvibe.media/o/obj_3/master.m3u8', '/api/vods/3/file'), 'hls');
         assert.strictEqual(made.length, 0);
         assert.strictEqual(v.src, 'https://openvibe.media/o/obj_3/master.m3u8');
         assert.strictEqual(ctx.vodFallBackToFile(v), true);
-        assert.strictEqual(v.src, '/api/vods/file/c.webm');
+        assert.strictEqual(v.src, '/api/vods/3/file');
     }
     {   // no playlist, or no HLS support: the file
         const { ctx } = sandbox();
         const v = new FakeVideo();
-        assert.strictEqual(await ctx.attachVodSource(v, null, '/api/vods/file/d.webm'), 'file');
-        assert.strictEqual(v.src, '/api/vods/file/d.webm');
+        assert.strictEqual(await ctx.attachVodSource(v, null, '/api/vods/4/file'), 'file');
+        assert.strictEqual(v.src, '/api/vods/4/file');
         assert.strictEqual(ctx.vodFallBackToFile(v), false);
         const { ctx: ctx2 } = sandbox({ hlsSupported: false });
         const w = new FakeVideo();
-        assert.strictEqual(await ctx2.attachVodSource(w, 'https://openvibe.media/o/obj_4/master.m3u8', '/api/vods/file/e.webm'), 'file');
-        assert.strictEqual(w.src, '/api/vods/file/e.webm');
+        assert.strictEqual(await ctx2.attachVodSource(w, 'https://openvibe.media/o/obj_4/master.m3u8', '/api/vods/5/file'), 'file');
+        assert.strictEqual(w.src, '/api/vods/5/file');
     }
     {   // switching VODs drops the previous hls.js instance
         const { ctx, made } = sandbox();

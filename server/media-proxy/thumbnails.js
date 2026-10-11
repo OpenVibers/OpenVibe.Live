@@ -69,15 +69,22 @@ async function generateFor(kind, id, req, res) {
 }
 router.post('/generate/vod/:id', optionalAuth, async (req, res) => await generateFor('vod', req.params.id, req, res));
 router.post('/generate/clip/:id', optionalAuth, async (req, res) => await generateFor('clip', req.params.id, req, res));
-// GET variants: <img> onerror fallbacks point here. Media's legacy
-// /api/thumbnails/<kind>-<id>-<ts>.jpg route resolves the CURRENT thumbnail for
-// that id (names drift on regeneration), so bounce through it with a fake ts.
+// GET variants: image URLs that name a recording (AI moment pastes, <img> fallbacks) point here and
+// 302 to its CURRENT thumbnail (file names change on regeneration). Never for a private recording, or the
+// redirect would hand its thumbnail URL to anyone who guesses the id.
 function _generateRedirect(kind) {
-    return (req, res) => {
-        const id = parseInt(req.params.id, 10);
-        if (!Number.isFinite(id)) return res.status(400).json({ error: 'Bad id' });
+    return async (req, res) => {
+        const id = Number(req.params.id);
+        if (!Number.isSafeInteger(id) || id <= 0) return res.status(400).json({ error: 'Bad id' });
+        let meta = null;
+        try { meta = kind === 'vod' ? await media.getVod(id) : await media.getClip(id); } catch (err) {
+            if (!(err && err.status === 404)) return res.status(502).json({ error: 'Media service unavailable' });
+        }
+        const visibility = meta && (meta.visibility || (Number(meta.is_public) ? 'public' : 'private'));
+        const url = meta && visibility !== 'private' && media.publicUrl(meta.thumbnail_url);
+        if (!url) return res.status(404).json({ error: 'No thumbnail' });
         res.set('Cache-Control', 'public, max-age=300');
-        res.redirect(302, media.publicUrl(`/api/thumbnails/${kind}-${id}-0.jpg`));
+        res.redirect(302, url);
     };
 }
 router.get('/generate/vod/:id', _generateRedirect('vod'));

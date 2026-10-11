@@ -160,16 +160,15 @@ async function check(name, fn) {
             'a growing recording with bytes is seekable, so the page refreshes toward the live edge');
     });
 
-    await check('live tail: the page plays the recording through /api/vods/file/<basename> → Media /v/<basename>', async () => {
+    await check('live tail: the page plays the recording through /api/vods/<id>/file → Media /v/<id>', async () => {
         const detail = await call('GET', `/api/vods/${rtmpVod}`);
         assert.strictEqual(detail.status, 200);
-        assert.strictEqual(detail.json.vod.file_path, `vod-${rtmpVod}.mp4`);
-        const r = await call('GET', `/api/vods/file/${detail.json.vod.file_path}?t=123`);
+        const r = await call('GET', `/api/vods/${rtmpVod}/file?t=123`);
         assert.strictEqual(r.status, 302);
-        assert.strictEqual(r.headers.location, `https://media.test/v/vod-${rtmpVod}.mp4`);
+        assert.strictEqual(r.headers.location, `https://media.test/v/${rtmpVod}`);
         assert.match(r.headers['cache-control'], /max-age=0/, 'the redirect is never cached: the tail refresh must reach Media');
-        const sneaky = await call('GET', '/api/vods/file/..%2F..%2Fetc%2Fpasswd');
-        assert.strictEqual(sneaky.headers.location, 'https://media.test/v/passwd', 'only a basename is forwarded');
+        assert.strictEqual((await call('GET', '/api/vods/..%2Fetc/file')).status, 400, 'only a numeric id is forwarded');
+        assert.strictEqual((await call('GET', `/api/vods/file/vod-${rtmpVod}.mp4`)).status, 404, 'file names are not a route any more (C-75)');
     });
 
     await check('finalise: stream end stops the RTMP recording once, and Media finalises it', async () => {
@@ -234,8 +233,9 @@ async function check(name, fn) {
     await check('the VOD page wires tail, finalise and seek to those endpoints', async () => {
         const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'js', 'app-media.js'), 'utf8');
         const player = src.slice(src.indexOf('async function loadVodPlayer('), src.indexOf('// Navigate to streamer on click'));
-        assert.match(player, /const filename = v\.file_path\.split\('\/'\)\.pop\(\);/, 'playback is by the basename Media returns');
-        assert.match(player, /video\.src = `\/api\/vods\/file\/\$\{filename\}\?t=\$\{Date\.now\(\)\}`/, 'and through Live\'s redirect, cache-busted');
+        assert.match(player, /const fileUrl = `\/api\/vods\/\$\{Number\(v\.id\)\}\/file`;/, 'playback is by the VOD\'s id, never a file name (C-75)');
+        assert.match(player, /video\.src = `\$\{fileUrl\}\?t=\$\{Date\.now\(\)\}`/, 'and through Live\'s redirect, cache-busted');
+        assert.ok(!/api\/vods\/file\//.test(src), 'no player asks for a file by name');
         assert.match(player, /api\(`\/vods\/\$\{v\.id\}\/live-info`\)/, 'a recording is polled through live-info');
         assert.match(player, /if \(!info\.isRecording\) \{[\s\S]{0,400}loadVodPlayer\(v\.id\);/, 'finalisation reloads it as a finished VOD');
         assert.match(player, /if \(info\.seekable\) \{[\s\S]{0,1400}video\.currentTime = Math\.min\(currentTime, dur\);/, 'the tail refresh keeps the viewer\'s position');

@@ -14,7 +14,6 @@
  * "AI Moments" below). People's work keeps normal, indexable pages.
  */
 'use strict';
-const path = require('node:path');
 const seo = require('openvibe-shared/seo');
 const { esc } = seo;
 const db = require('../db/database');
@@ -738,7 +737,6 @@ async function _pasteMeta(slug) {
     const desc = clean(p.ai_summary || (isScreenshot ? `A screenshot shared on ${SITE_NAME}.` : String(p.content || '').slice(0, 220)) || `A paste on ${SITE_NAME}.`, 200);
     let image = DEFAULT_OG_IMAGE;
     if (isScreenshot && p.screenshot_url) image = media.publicUrl(p.screenshot_url);
-    else if (isScreenshot && p.screenshot_path) image = media.screenshotUrl(path.basename(p.screenshot_path));
     const canonicalPath = `/p/${slug}`;
     let tags = [];
     try { tags = p.ai_tags ? JSON.parse(p.ai_tags) : []; } catch { tags = []; }

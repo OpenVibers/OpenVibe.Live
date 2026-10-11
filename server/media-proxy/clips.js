@@ -210,6 +210,14 @@ router.get('/', async (req, res) => {
 });
 
 // ── Clip detail ──────────────────────────────────────────────
+// The player's file source: 302 to Media's clip route by id (Media applies the clip's visibility there).
+router.get('/:id/file', (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isSafeInteger(id) || id <= 0) return res.status(400).json({ error: 'Bad clip id' });
+    res.set('Cache-Control', 'private, max-age=0');
+    res.redirect(302, media.clipUrl(id));
+});
+
 router.get('/:id', optionalAuth, async (req, res) => {
     try {
         if (!/^\d+$/.test(req.params.id)) return clipNotFound(res);
