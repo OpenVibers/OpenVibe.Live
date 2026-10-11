@@ -11,7 +11,7 @@
  * superseded it (a stream that ended while its go-live was being retried is not given a channel afterwards); a 4xx
  * is logged and dropped.
  */
-const { CHAT_URL } = require('../chat/chat-authority');
+const { CHAT_URL } = require('../chat/chat-client');
 
 const AUDIENCE = 'openvibe.chat';
 const RETRY_MS = [1000, 5000, 15000];

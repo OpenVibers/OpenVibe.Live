@@ -740,7 +740,7 @@ app.use('/api/streams', streamRoutes);
 const liveEvents = require('./streaming/live-events');
 app.get('/api/live-events', (req, res) => liveEvents.subscribe(req, res));
 // OpenVibe.Chat owns the chat REST routes (/api/chat/, /api/dm/, /api/tts/, /api/sounds); nginx
-// sends them there, so Live mounts none of them and keeps no CHAT_AUTHORITY rollback.
+// sends them there, so Live mounts none of them.
 app.use('/api/funds', monetizationRoutes);
 app.use('/api/coins', coinsRoutes);
 app.use('/api/payments', require('./monetization/payments-routes'));

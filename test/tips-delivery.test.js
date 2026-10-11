@@ -38,8 +38,7 @@ const token = (cap, aud = 'openvibe.live') => serviceAuth.signServiceToken({ iss
     await d.prepare("INSERT INTO linked_accounts (user_id, service, service_user_id, subject_id) VALUES (501, 'network', '77', ?)").run(SUBJECT);
 
     // Chat persists and shows the line (Live keeps no chat table): stub the ingress call and record
-    // what Live sends, and keep stubbing TTS synthesis (Chat speaks tts lines; the delivery seam is
-    // Live's only path).
+    // what Live sends. Chat speaks tts lines, so Live never synthesises (the stub proves it).
     const delivery = require('../server/chat/chat-delivery');
     const sent = [];
     let nextId = 700;
@@ -114,11 +113,16 @@ const token = (cap, aud = 'openvibe.live') => serviceAuth.signServiceToken({ iss
     assert.strictEqual((await d.prepare("SELECT state FROM tips_deliveries WHERE idempotency_key = 'tint_1:chat_line'").get()).state, 'done');
     server2.close();
 
-    // TTS on the (offline) channel room.
+    // TTS: a `tts` line in the channel, which Chat reads aloud under the same keys.
     const t = await post({ ...job, effect: 'tts', tts: { text: 'read me', voice: 'gary' } }, { key: 'tint_1:tts' });
     assert.strictEqual(t.status, 200);
-    assert.strictEqual(tts[0][2], 'read me');
-    assert.strictEqual(tts[0][6], 501);
+    const line = sent[sent.length - 1];
+    assert.strictEqual(line.message, 'read me');
+    assert.strictEqual(line.message_type, 'tts');
+    assert.strictEqual(line.channel_user_id, 501);
+    assert.deepStrictEqual(line.tts, { identity_key: 'tips:tint_1', key: 'tips-tint_1' });
+    assert.strictEqual(t.json.ref.chat_message_id, nextId - 1);
+    assert.deepStrictEqual(tts, [], 'Live never synthesises');
 
     // A hidden amount (Tips privacy.hide_amount sends null) stays hidden: no "0 Vibes" anywhere.
     const h = await post({ ...job, text: undefined, interaction: { ...job.interaction, id: 'tint_h', amount: null, message: 'hi' } }, { key: 'tint_h:chat_line' });

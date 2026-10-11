@@ -2,7 +2,7 @@
 
 // Chat moved to OpenVibe.Chat (roadmap Wave 6). What Live answers it on /internal/chat-context/*
 // and /internal/chat-effects/* (service tokens, capabilities, re-checked moderators), and the chat
-// server Live's own modules get with CHAT_AUTHORITY=chat (presence reads, cache hints and pushes
+// server Live's own modules get (presence reads, cache hints and pushes
 // over Chat's typed ingress; no bridge, no outbox). Against stub Network and Chat servers.
 
 const assert = require('assert');
@@ -23,7 +23,6 @@ process.env.OV_NETWORK_URL = 'https://openvibe.network';
 process.env.OV_OAUTH_CLIENT_ID = 'live';
 process.env.OV_OAUTH_CLIENT_SECRET = 'live-secret';
 process.env.SOUNDS_PATH = path.join(tmp, 'sounds');
-process.env.CHAT_AUTHORITY = 'chat';
 const quiet = console.log;
 console.log = () => {};
 console.warn = () => {};
@@ -369,10 +368,8 @@ const waitFor = async (pred, what, ms = 3000) => {
         assert.strictEqual(settings.tts_enabled, await db.getSetting('tts_enabled'), 'typed like Live\'s getSetting');
         assert.ok(!('stripe_secret_key' in settings), 'only chat settings leave Live');
 
-        // 5. Effects need CHAT_AUTHORITY=chat.
-        process.env.CHAT_AUTHORITY = '';
-        assert.strictEqual((await call('POST', '/internal/chat-effects/user-color', { token: WRITE, body: { user_id: viewer, color: '#ff00ff' } })).status, 409);
-        process.env.CHAT_AUTHORITY = 'chat';
+        // 5. Effects: the live.chat_effects.write token is the gate (a read token got 403 above); there is
+        // no CHAT_AUTHORITY mode since C-01.
         assert.strictEqual((await call('POST', '/internal/chat-effects/user-color', { token: WRITE, body: { user_id: viewer, color: '#ff00ff' } })).status, 200);
         assert.strictEqual((await db.getUserById(viewer)).profile_color, '#ff00ff');
 
@@ -660,9 +657,11 @@ const waitFor = async (pred, what, ms = 3000) => {
             readState.down = false;
             chatReads._reset();
 
-            // (5) The home-stats peek outside chat mode: a messages-only zero (Live keeps no
-            // chat_messages since the drop, so there is nothing local to count).
-            process.env.CHAT_AUTHORITY = '';
+            // (5) The home-stats peek when Live cannot ask Chat (as in development and tests):
+            // a messages-only zero (Live keeps no chat_messages since the drop, so there is nothing local to count).
+            const chatClient = require('../server/chat/chat-client');
+            const available = chatClient.available;
+            chatClient.available = () => false;
             try {
                 chatReads._reset();
                 const peeked = chatReads.siteStatsPeek();
@@ -671,7 +670,7 @@ const waitFor = async (pred, what, ms = 3000) => {
                 const full = await chatReads.siteStats();
                 assert.strictEqual(full.messages, 0, 'the full local read is zero too');
             } finally {
-                process.env.CHAT_AUTHORITY = 'chat';
+                chatClient.available = available;
                 chatReads._reset();
             }
 

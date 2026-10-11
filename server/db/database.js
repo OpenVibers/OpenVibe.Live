@@ -1442,7 +1442,7 @@ async function homeSeriesLocal(metric, days = 30) {
 }
 
 /**
- * The daily series behind a hero stat. With CHAT_AUTHORITY=chat the two chat metrics (`messages`,
+ * The daily series behind a hero stat. The two chat metrics (`messages`,
  * `active`) answer from Chat's site-wide per-day read (chat-reads.homeSeriesPeek — a cached
  * stale-while-revalidate peek that falls back to Live's own tables when Chat is unreachable);
  * every other metric is Live's own.

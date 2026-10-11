@@ -14,7 +14,7 @@ const path = require('path');
 const ROOT = path.join(__dirname, '..');
 assert.ok(!fs.existsSync(path.join(ROOT, 'server', 'chat', 'history-store.js')), 'history-store.js is deleted — history is Chat\'s now');
 
-delete process.env.CHAT_AUTHORITY;   // not chat mode: the seam answers its empty local answers
+// No Chat here (the preload leaves OV_CHAT_INTERNAL_URL empty): the seam answers its empty local answers.
 const db = require('../server/db/database');
 const reads = require('../server/chat/chat-reads');
 

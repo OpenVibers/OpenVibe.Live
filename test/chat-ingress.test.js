@@ -1,6 +1,6 @@
 'use strict';
 
-// CHAT_AUTHORITY=chat (T3 J2): Live's chat producers call OpenVibe.Chat's typed service-token
+// T3 J2: Live's chat producers call OpenVibe.Chat's typed service-token
 // ingress (/internal/chat/messages|events|moderation|invalidate, presence) through
 // server/chat/chat-delivery.js — the only path; the old bridge (/internal/live/calls) and its outbox
 // are gone. Each producer family reaches its endpoint with a bearer token and a stable idempotency
@@ -23,7 +23,6 @@ process.env.OV_NETWORK_PUBLIC_KEY = path.join(tmp, 'network.pem');
 process.env.OV_NETWORK_URL = 'https://openvibe.network';
 process.env.OV_OAUTH_CLIENT_ID = 'live';
 process.env.OV_OAUTH_CLIENT_SECRET = 'live-secret';
-process.env.CHAT_AUTHORITY = 'chat';
 const quiet = console.log;
 console.log = () => {};
 console.warn = () => {};
@@ -133,7 +132,7 @@ function assertSigned(c, what) {
     const streamId = Number((await db.createStream({ user_id: streamer, channel_id: channel.id, title: 'Live now' })).lastInsertRowid);
 
     const delivery = require('../server/chat/chat-delivery');
-    assert.strictEqual(delivery.ingress(), true, 'CHAT_AUTHORITY=chat is ingress, with no flag');
+    assert.ok(!('ingress' in delivery), 'Chat\'s ingress is the only path: no mode to ask about (C-01)');
     await delivery.init();
     delivery.client._setRetryMs([20, 20]);
 
@@ -300,14 +299,15 @@ function assertSigned(c, what) {
         const direct = calls.slice(n).map((c) => [c.family, (c.body.target && c.body.target.kind) || c.body.action || (c.body.user != null ? 'user' : null)]);
         assert.deepStrictEqual(direct.sort(), [['events', 'stream'], ['events', 'user'], ['invalidate', 'user'], ['moderation', 'disconnect']].sort());
         assert.ok(!JSON.stringify(calls.slice(n)).includes('never'), 'only the public account fields');
-        // CHAT_AUTHORITY unset under a RemoteChatServer (a test or a bad env edit): dropped, never bounced back.
+        // CHAT_AUTHORITY is ignored now (C-01): a leftover empty value still delivers to Chat.
         process.env.CHAT_AUTHORITY = '';
-        assert.strictEqual(delivery.ingress(), false);
-        assert.strictEqual(await delivery.broadcastToStream(streamId, { type: 'system', message: 'x' }), undefined);
-        process.env.CHAT_AUTHORITY = 'chat';
+        const pushesBefore = calls.length;
+        await delivery.broadcastToStream(streamId, { type: 'system', message: 'still delivered' });
+        await waitFor(() => calls.length > pushesBefore, 'a push with CHAT_AUTHORITY unset');
+        delete process.env.CHAT_AUTHORITY;
         delivery.close();
 
-        quiet('chat ingress (CHAT_AUTHORITY=chat): all checks passed');
+        quiet('chat ingress: all checks passed');
     } catch (err) {
         console.error(err);
         exit = 1;

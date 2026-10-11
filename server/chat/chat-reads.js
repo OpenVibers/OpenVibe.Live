@@ -6,11 +6,11 @@
  * recaps, AI context, admin console, mod queues and the call-invite gate read them through Chat's
  * internal read API (server/chat/chat-client.js). Live keeps no copy of any of them since 2026-10-05
  * (the read mirror was retired on both sides; the tables themselves are dropped at boot by
- * migration 007_drop_chat_tables), so outside chat mode every one of these answers null / empty.
+ * migration 007_drop_chat_tables).
  *
- * Mode-aware: when CHAT_AUTHORITY=chat, every answer comes from Chat; otherwise (dev, drills) the
- * same call answers null / empty — the caller never has to know which. Unsetting CHAT_AUTHORITY is
- * not a rollback lever: Live runs no chat server any more either way.
+ * Every answer comes from Chat. When Live cannot ask Chat (no service credentials or an empty
+ * OV_CHAT_INTERNAL_URL, as in development and tests, or LIVE_DRILL), the same call answers null /
+ * empty: the caller never has to know which. (The CHAT_AUTHORITY switch is retired: compatibility register C-01.)
  *
  * Caching: an answer is fresh for CACHE_TTL_MS. An async read past that asks Chat again; a peek
  * (for a caller that cannot await) answers the last good value while that refresh runs, so a peek
@@ -26,7 +26,6 @@
  * Callers that can await use the async function; the few that cannot (the AI persona prompt, the
  * home-stats snapshot, the TTS engine) use the matching peek*().
  */
-const { isRemote } = require('./chat-authority');
 const client = require('./chat-client');
 
 const CACHE_TTL_MS = 15_000;        // how long an answer is used without asking Chat again
@@ -38,8 +37,7 @@ const inflight = new Map();  // key -> Promise
 let cacheMax = 2000;         // test hook; the cap remember()/rememberFailure() evict down to
 let lastLog = null;
 
-function drill() { try { return require('../drill').enabled; } catch { return false; } }
-function remote() { return isRemote() && !drill(); }
+function remote() { return client.available(); }
 function local() { return require('../db/database'); }
 /** Run a Live-table read for a synchronous caller, answering `dflt` if it throws. Still used for
  *  the non-chat home metrics (users, follows, …), which Live owns. */
