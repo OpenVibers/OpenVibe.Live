@@ -228,7 +228,7 @@ router.post('/:type/:id', requireAuth, async (req, res) => {
         let parent = null;
         if (parentId) {
             parent = await comments.getComment(parentId, subject, { ip: req.ip });
-            if (!parent || !parent.thread || parent.thread.id !== thread.id) {
+            if (!parent || !parent.thread || !comments.sameThread(thread, parent.thread.id)) {
                 return res.status(400).json({ error: 'Invalid parent comment' });
             }
         }

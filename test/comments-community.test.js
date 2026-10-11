@@ -75,6 +75,7 @@ async function check(name, fn) {
         100: { id: 100, user_id: 3, title: 'Public VOD', visibility: 'public', is_public: 1, status: 'ready' },
         101: { id: 101, user_id: 3, title: 'Private VOD', visibility: 'private', is_public: 0, status: 'ready' },
         102: { id: 102, user_id: 3, title: 'Unlisted VOD', visibility: 'unlisted', is_public: 0, status: 'ready' },
+        103: { id: 103, user_id: 3, title: 'Later VOD', visibility: 'public', is_public: 1, status: 'ready' },
     };
     const CLIPS = { 200: { id: 200, user_id: 5, stream_id: streamA, title: 'Public clip', visibility: 'public', is_public: 1, status: 'ready' } };
     const missing = (what) => new media.MediaApiError(`${what} not found`, 404, { error: `${what} not found` });
@@ -174,7 +175,7 @@ async function check(name, fn) {
         const asOwner = (await call('GET', '/api/comments/vod/100', 3)).json;
         assert.ok(asOwner.comments.every((c) => c.can_delete), 'the VOD\'s owner may delete any comment on it');
         assert.ok(!asOwner.comments[0].can_edit, 'but edit only their own');
-        assert.strictEqual(last('GET', /^\/threads\/\d+$/).subject, SUB('B'), 'read as the viewer');
+        assert.strictEqual(last('GET', /^\/threads\/cth_[^/]+$/).subject, SUB('B'), 'read as the viewer, by the thread\'s access id (C-14)');
         const page = (await call('GET', '/api/comments/vod/100?limit=1&offset=1')).json;
         assert.deepStrictEqual(page.comments.map((c) => c.message), ['great stream']);
         assert.ok(!r.text.includes('legacy local row'), 'Live\'s own table is not read');
@@ -253,6 +254,34 @@ async function check(name, fn) {
         assert.strictEqual((await call('GET', '/api/vods/100')).json.vod.comment_count, null);
         assert.ok(Date.now() - again < 1000 && again - t0 < 5000, 'no waiting on a Community that is down');
         stub.down = false;
+    });
+
+    await check('once Community names threads by access id for services (C-14), resolve, comment, reply and hide still work', async () => {
+        // A parent on a thread resolved before the switch (VOD 100's, remembered with its numeric id).
+        const before = await call('POST', '/api/comments/vod/100', 3, { message: 'said before the switch' });
+        assert.strictEqual(before.status, 201, before.text);
+        stub.serviceIds = 'access';
+        try {
+            // A thread resolved now has no numeric id: comment_thread_refs keeps the access id only.
+            const fresh = await call('POST', '/api/comments/vod/103', 3, { message: 'first comment on a later VOD' });
+            assert.strictEqual(fresh.status, 201, fresh.text);
+            const row = await raw.prepare("SELECT thread_id, access_id FROM comment_thread_refs WHERE content_type = 'vod' AND content_id = 103").get();
+            assert.strictEqual(row.thread_id, null, 'no numeric id to keep');
+            assert.ok(/^cth_/.test(row.access_id));
+            const reply = await call('POST', '/api/comments/vod/103', 5, { message: 'reply under the access id', parent_id: fresh.json.comment.id });
+            assert.strictEqual(reply.status, 201, `reply on the new thread: ${reply.text}`);
+            // A thread resolved before the switch: Community now names it by access id, and the reply still matches.
+            const old = await call('POST', '/api/comments/vod/100', 5, { message: 'reply on an older thread', parent_id: before.json.comment.id });
+            assert.strictEqual(old.status, 201, `reply on the older thread: ${old.text}`);
+            // A parent in another thread is still refused.
+            const cross = await call('POST', '/api/comments/vod/103', 5, { message: 'cross', parent_id: before.json.comment.id });
+            assert.strictEqual(cross.status, 400, cross.text);
+            // Every call Live made addresses the thread by its access id.
+            const sent = stub.calls.filter((c) => /^\/threads\/[^/]+\/comments$/.test(c.path)).slice(-3).map((c) => c.path.split('/')[2]);
+            assert.ok(sent.every((id) => /^cth_/.test(decodeURIComponent(id))), sent.join(','));
+        } finally {
+            stub.serviceIds = 'numeric';
+        }
     });
 
     await check('deleting a VOD hides its Community thread', async () => {

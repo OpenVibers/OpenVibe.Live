@@ -78,18 +78,34 @@ async function call(method, path, { body, act = {}, ip = null, timeoutMs = 5000,
     return out;
 }
 
-/** The Community thread of a VOD/clip (resolved once, then remembered). → { id, access_id } */
+/**
+ * The Community thread of a VOD/clip (resolved once, then remembered). → { id, access_id, ids }
+ * `id` is the thread's access id (cth_…), the one id Live sends Community (compatibility register C-14: services
+ * address threads as browsers do). `ids` is every id a Community answer may name this thread by: the access id, and
+ * the numeric id Community handed services before C-14 (kept in comment_thread_refs.thread_id for rows made then).
+ */
 async function threadFor(type, id, label, { timeoutMs, ip } = {}) {
     if (!TYPES.includes(type)) throw new CommentsError(400, 'Invalid content type');
     const known = await db.getDb().prepare('SELECT thread_id, access_id FROM comment_thread_refs WHERE content_type = ? AND content_id = ?').get(type, Number(id));
-    if (known) return { id: known.thread_id, access_id: known.access_id };
+    if (known) return threadOf(known.access_id, known.thread_id);
     const ref = { service: 'live', type, id: String(id) };
     if (label) ref.label = String(label).slice(0, 200);
     const out = await call('POST', '/threads/resolve', { body: { ref }, timeoutMs, ip });
     const t = out && out.thread;
-    if (!t || !Number.isInteger(t.id) || !t.access_id) throw unavailable('resolve');
-    await db.getDb().prepare('INSERT INTO comment_thread_refs (content_type, content_id, thread_id, access_id) VALUES (?, ?, ?, ?) ON CONFLICT DO NOTHING').run(type, Number(id), t.id, t.access_id);
-    return { id: t.id, access_id: t.access_id };
+    if (!t || !ACCESS_ID_RE.test(String(t.access_id || ''))) throw unavailable('resolve');
+    const numeric = Number.isInteger(t.id) ? t.id : null;
+    await db.getDb().prepare('INSERT INTO comment_thread_refs (content_type, content_id, thread_id, access_id) VALUES (?, ?, ?, ?) ON CONFLICT DO NOTHING').run(type, Number(id), numeric, t.access_id);
+    return threadOf(t.access_id, numeric);
+}
+
+const ACCESS_ID_RE = /^cth_[A-Za-z0-9_-]{22}$/;
+function threadOf(accessId, numeric) {
+    return { id: accessId, access_id: accessId, ids: numeric != null ? [accessId, String(numeric)] : [accessId] };
+}
+
+/** Does a Community answer's thread id (`comment.thread.id`) name this thread? */
+function sameThread(thread, otherId) {
+    return otherId != null && thread.ids.includes(String(otherId));
 }
 
 /** Read a thread page (as the viewer, if signed in). q: { sort, after, limit, parent } */
@@ -129,7 +145,7 @@ function hideThreadOf(type, id) {
     _hideQueue = _hideQueue.then(async () => {
         try {
             const t = await threadFor(type, id);
-            await call('PUT', `/threads/${t.id}/visibility`, { body: { visibility: 'hidden' } });
+            await call('PUT', `/threads/${encodeURIComponent(t.id)}/visibility`, { body: { visibility: 'hidden' } });
         } catch (err) {
             console.warn(`[Comments] could not hide the comment thread of ${type} ${id}: ${err.message}`);
         }
@@ -150,6 +166,7 @@ async function liveUserForSubject(subject) {
 const threadUrl = (accessId) => `${COMMUNITY_PUBLIC_URL()}/c/${encodeURIComponent(accessId)}`;
 
 module.exports = {
+    sameThread,
     CommentsError, TYPES, threadFor, readThread, addComment, getComment, editComment, deleteComment,
     hideThreadOf, liveUserForSubject, subjectForLiveUser, threadUrl,
 };
