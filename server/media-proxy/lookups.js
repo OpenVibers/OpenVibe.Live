@@ -356,16 +356,17 @@ async function sitePasteStats() {
 
 /**
  * The archive counters on top of Live's own stats: VODs, clips, hours from Media; pastes from
- * Community (or Media). Fields stay null when neither answered.
+ * Community, the paste authority (Media stopped carrying paste counts). Fields stay null when the
+ * service that owns them did not answer.
  */
 async function withArchiveStats(stats) {
     const [m, p] = await Promise.all([siteMediaStats(), sitePasteStats()]);
+    stats.pastes = null;
+    stats.pasteImages = null;
+    stats.pasteText = null;
     if (m) {
         stats.vods = m.vods;
         stats.clips = m.clips;
-        stats.pastes = m.pastes;
-        stats.pasteImages = m.pasteImages;
-        stats.pasteText = m.pasteText;
         stats.streamHours = Math.round((m.durationSeconds || 0) / 3600);
         stats.recent = { ...stats.recent, vods: m.recent?.vods, clips: m.recent?.clips, hours: m.recent?.hours };
     }
