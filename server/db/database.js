@@ -627,6 +627,18 @@ async function getClipsNeedingTranscript(limit = 2) {
           AND (transcript_next_at IS NULL OR transcript_next_at <= ov_now())
         ORDER BY (transcript_status='retry'), clip_id DESC LIMIT ?`, [limit]);
 }
+// In AI mode one workflow fills both fields. The transcript retry schedule also
+// throttles failed overview attempts, including rows with an older transcript.
+async function getMediaNeedingAiAnalysis(kind, limit = 6) {
+    const clip = kind === 'clip';
+    const table = clip ? 'clip_ai_state' : 'vod_ai_state';
+    const id = clip ? 'clip_id' : 'vod_id';
+    return await all(`SELECT ${id} AS id, s.* FROM ${table} s
+        WHERE (ai_overview IS NULL OR ai_overview = '' OR ai_transcript_json IS NULL)
+          AND (transcript_next_at IS NULL OR transcript_next_at <= ov_now())
+          AND (transcript_status IS NULL OR transcript_status <> 'processing')
+        ORDER BY ${id} DESC LIMIT ?`, [limit]);
+}
 // status setter. On a 'retry', pass retryDelayMin to schedule the next eligible attempt
 // (exponential backoff); any other status clears the schedule.
 async function setVodTranscriptStatus(id, status, error = null, retryDelayMin = 0) {
@@ -3874,7 +3886,7 @@ module.exports = {
     createStream, endStream, onStreamLifecycle, endOtherLiveStreamsForSlot, updateViewerCount,
     addStreamMemory, getStreamMemories, getLatestStreamMemory, updateStreamAiOverview,
     setVodAiOverview, setClipAiOverview, setVodTranscript, setClipTranscript, getStreamMemoriesInRange,
-    getVodsNeedingOverview, getClipsNeedingOverview, getVodsNeedingTimeline, getVodsNeedingTranscript, getClipsNeedingTranscript,
+    getVodsNeedingOverview, getClipsNeedingOverview, getVodsNeedingTimeline, getVodsNeedingTranscript, getClipsNeedingTranscript, getMediaNeedingAiAnalysis,
     setVodTranscriptStatus, setClipTranscriptStatus, bumpVodTranscriptAttempt, bumpClipTranscriptAttempt,
     cleanupMalformedAiText, recordAiUsage, getAiCostToday, getAiCostTodayForUser, getAiUsageSummary,
     getStreamMemoriesByUser, countStreamMemoriesByUser, getStreamTranscriptSegments,

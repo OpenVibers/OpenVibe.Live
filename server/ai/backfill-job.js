@@ -13,6 +13,7 @@
 const db = require('../db/database');
 const ai = require('./ai-analysis');
 const media = require('../media-client');
+const remote = require('./ai-media-analyze');
 
 let _timer = null;
 let _busy = false;
@@ -40,54 +41,68 @@ async function tick() {
     if (_busy) return;
     _busy = true;
     try {
-        // Transcripts — FREE local whisper (no API/cost), so they run independent of
-        // the AI master switch. We DON'T stop while streams are live — instead we drop
-        // to low-power (fewer whisper threads) and a smaller batch so we never starve
-        // the live encoders.
         let anyLive = false;
         try { anyLive = ((db.getLiveStreams && await db.getLiveStreams()) || []).length > 0; } catch { /* */ }
-        // When the continuous timeline is running it is already decoding live audio
-        // constantly, and VOD backfill does NOT share its serialisation — so both would
-        // run whisper at once, on top of the live encoder. Measured effect on this 4-core
-        // box: load average 5.44. VOD transcripts have no deadline whatsoever, so simply
-        // stand them down until the stream ends; they catch up at full speed afterwards.
-        // The live timeline has its OWN whisper lane now (transcribe.js), so VOD/clip work
-        // no longer has to stand down for the whole stream — it runs niced, low-power, and
-        // only when the box has headroom. (The old stand-down meant nothing was ever
-        // transcribed while the owner streamed, which on this site is most of the day.)
-        const cores = require('os').cpus().length || 4;
-        const load1 = (require('os').loadavg()[0]) || 0;
-        const headroom = load1 < cores * 1.25;
-        if (!headroom) {
-            if (!_loadWarnedAt || Date.now() - _loadWarnedAt > 600000) { _loadWarnedAt = Date.now(); console.log(`[AI backfill] load ${load1.toFixed(1)} on ${cores} cores — deferring batch transcription`); }
-        } else if (ai.transcriptionEnabled && await ai.transcriptionEnabled()) {
-            try { require('./transcribe').setLowPower(anyLive); } catch { /* */ }
-            const batch = anyLive ? 1 : 2;   // throttle while live, catch up faster when idle
-            // Take several candidates and process the first `batch` that resolve: a row whose
-            // Media metadata won't resolve (still recording, Media down) used to occupy the
-            // whole LIMIT every minute and block every row behind it.
-            try {
-                let done = 0;
-                for (const row of await db.getVodsNeedingTranscript(batch + 6)) {
-                    if (done >= batch) break;
-                    const vod = await _vodMeta(row);
-                    if (!vod) continue;
-                    await ai.generateVodTranscript(vod);
-                    done++;
-                }
-            } catch (e) { console.warn('[AI backfill] vod transcript:', e.message); }
-            try {
-                let done = 0;
-                for (const row of await db.getClipsNeedingTranscript(batch + 6)) {
-                    if (done >= batch) break;
-                    const clip = await _clipMeta(row);
-                    if (!clip) continue;
-                    await ai.generateClipTranscript(clip);
-                    done++;
-                }
-            } catch (e) { console.warn('[AI backfill] clip transcript:', e.message); }
+        if (remote.enabled()) {
+            for (const [kind, metadata] of [['vod', _vodMeta], ['clip', _clipMeta]]) {
+                try {
+                    for (const row of await db.getMediaNeedingAiAnalysis(kind, 6)) {
+                        const item = await metadata(row);
+                        if (!item) continue;
+                        await remote.analyze(kind, item);
+                        break;
+                    }
+                } catch (e) { console.warn(`[AI backfill] ${kind} media.analyze:`, e.message); }
+            }
         }
+        if (!remote.enabled()) {
+            // Transcripts — FREE local whisper (no API/cost), so they run independent of
+            // the AI master switch. We DON'T stop while streams are live — instead we drop
+            // to low-power (fewer whisper threads) and a smaller batch so we never starve
+            // the live encoders.
+            // When the continuous timeline is running it is already decoding live audio
+            // constantly, and VOD backfill does NOT share its serialisation — so both would
+            // run whisper at once, on top of the live encoder. Measured effect on this 4-core
+            // box: load average 5.44. VOD transcripts have no deadline whatsoever, so simply
+            // stand them down until the stream ends; they catch up at full speed afterwards.
+            // The live timeline has its OWN whisper lane now (transcribe.js), so VOD/clip work
+            // no longer has to stand down for the whole stream — it runs niced, low-power, and
+            // only when the box has headroom. (The old stand-down meant nothing was ever
+            // transcribed while the owner streamed, which on this site is most of the day.)
+            const cores = require('os').cpus().length || 4;
+            const load1 = (require('os').loadavg()[0]) || 0;
+            const headroom = load1 < cores * 1.25;
+            if (!headroom) {
+                if (!_loadWarnedAt || Date.now() - _loadWarnedAt > 600000) { _loadWarnedAt = Date.now(); console.log(`[AI backfill] load ${load1.toFixed(1)} on ${cores} cores — deferring batch transcription`); }
+            } else if (ai.transcriptionEnabled && await ai.transcriptionEnabled()) {
+                try { require('./transcribe').setLowPower(anyLive); } catch { /* */ }
+                const batch = anyLive ? 1 : 2;   // throttle while live, catch up faster when idle
+                // Take several candidates and process the first `batch` that resolve: a row whose
+                // Media metadata won't resolve (still recording, Media down) used to occupy the
+                // whole LIMIT every minute and block every row behind it.
+                try {
+                    let done = 0;
+                    for (const row of await db.getVodsNeedingTranscript(batch + 6)) {
+                        if (done >= batch) break;
+                        const vod = await _vodMeta(row);
+                        if (!vod) continue;
+                        await ai.generateVodTranscript(vod);
+                        done++;
+                    }
+                } catch (e) { console.warn('[AI backfill] vod transcript:', e.message); }
+                try {
+                    let done = 0;
+                    for (const row of await db.getClipsNeedingTranscript(batch + 6)) {
+                        if (done >= batch) break;
+                        const clip = await _clipMeta(row);
+                        if (!clip) continue;
+                        await ai.generateClipTranscript(clip);
+                        done++;
+                    }
+                } catch (e) { console.warn('[AI backfill] clip transcript:', e.message); }
+            }
 
+        }
         if (!await ai.isEnabled()) return;
 
         // Paste summaries. Pastes moved to Media at the migration, but the analysis job
@@ -118,6 +133,8 @@ async function tick() {
                 }
             } catch (e) { console.warn('[AI backfill] paste:', e.message); }
         }
+
+        if (remote.enabled()) return;
 
         // VOD overviews (frames + audio pulled from the Media playback URL; self-marks).
         try {

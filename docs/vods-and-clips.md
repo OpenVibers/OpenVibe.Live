@@ -1,5 +1,20 @@
 # VODs & Clips
 
+## Finished media analysis
+
+`LIVE_MEDIA_ANALYSIS=local` is the default: Live's existing frame and transcript jobs produce
+VOD and clip overviews and timed transcripts. Set `LIVE_MEDIA_ANALYSIS=ai` to send each finished
+VOD or clip's signed Media URL to OpenVibe.AI's `media.analyze` workflow (AI runs one analysis at a time at nice 15).
+Live fills a missing overview (an overview it already has is kept), derives the short overview, and stores timed speech
+segments in `vod_ai_state` or `clip_ai_state`. Live waits up to a minute for the run
+(`LIVE_MEDIA_ANALYSIS_WAIT_MS`, 60000); a longer analysis is re-joined 15 minutes later by its idempotency key
+(`live.media.analyze:<kind>:<id>:<attempt>`), so the same recording is never analysed twice at once and no loop waits
+for it.
+AI's signals, scenes, and highlights have no Live state columns and are not stored. Failed or
+unavailable analyses retry with backoff; Live does not run its VOD/clip decoder in this mode.
+Live stream captions and sound events continue using their real-time paths. The
+`live_media_analysis_retry_total` metric counts deferred analyses by media kind.
+
 > Written before the media split. Storage, cutting, thumbnails and files now live in OpenVibe.Media;
 > Live proxies to it (`server/media-proxy/`) and starts/stops recordings (`server/streaming/recorder.js`).
 > Pastes live in OpenVibe.Community. Live's old local `vods`/`clips`/`pastes` tables are frozen: nothing

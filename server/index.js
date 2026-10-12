@@ -238,6 +238,7 @@ function releaseEnv() {
 // answers direct loopback callers only; through nginx it is a 404 (server/web/observability.js).
 const observability = require('./web/observability');
 const { registry: metricsRegistry } = observability.mountMetrics(app, { release });
+if (!drill.enabled) require('./ai/ai-media-analyze').registerMetrics(metricsRegistry);
 const vibeCodingPublishServer = new VibeCodingPublishServer(db);
 
 function normalizeOrigin(origin) {

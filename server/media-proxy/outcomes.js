@@ -112,8 +112,12 @@ async function apply(event, data) {
                     try {
                         const ai = require('../ai/ai-analysis');
                         const vodMeta = { id: vodId, ...data };
-                        if (ai.transcriptionEnabled && await ai.transcriptionEnabled()) ai.generateVodTranscript(vodMeta).catch(() => {});
-                        if (ai.isEnabled && await ai.isEnabled() && ai.withinBudget && await ai.withinBudget()) ai.generateVodOverview(vodMeta).catch(() => {});
+                        const remote = require('../ai/ai-media-analyze');
+                        if (remote.enabled()) remote.analyze('vod', vodMeta).catch(() => {});
+                        else {
+                            if (ai.transcriptionEnabled && await ai.transcriptionEnabled()) ai.generateVodTranscript(vodMeta).catch(() => {});
+                            if (ai.isEnabled && await ai.isEnabled() && ai.withinBudget && await ai.withinBudget()) ai.generateVodOverview(vodMeta).catch(() => {});
+                        }
                     } catch { /* backfill poller will pick it up */ }
                     console.log(`[MediaOutcome] VOD ${vodId} ready (${data.duration || data.duration_seconds || '?'}s)`);
                 },
@@ -141,7 +145,9 @@ async function apply(event, data) {
                 after: async () => {
                     try {
                         const ai = require('../ai/ai-analysis');
-                        if (ai.isEnabled && await ai.isEnabled() && ai.withinBudget && await ai.withinBudget()) {
+                        const remote = require('../ai/ai-media-analyze');
+                        if (remote.enabled()) remote.analyze('clip', { id: data.id, ...data }).catch(() => {});
+                        else if (ai.isEnabled && await ai.isEnabled() && ai.withinBudget && await ai.withinBudget()) {
                             ai.generateClipOverview({ id: data.id, ...data }).catch(() => {});
                         }
                     } catch { /* */ }
