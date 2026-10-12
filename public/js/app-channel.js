@@ -92,6 +92,15 @@ async function renderChannelVodsSection(username, liveStreams, vods, meta = {}) 
         filterBar.style.display = 'none';
     }
 
+    // The same channel on OpenVibe.Video (its recordings and clips with AI chapters, captions and playlists), once it
+    // has any; Video's channel pages take the usernames Live's links do.
+    const videoLink = document.getElementById('ch-vods-video-link');
+    if (videoLink) {
+        const ok = /^[A-Za-z0-9_]{1,32}$/.test(String(username || '')) && Array.isArray(vods) && vods.length > 0;
+        videoLink.style.display = ok ? '' : 'none';
+        if (ok) videoLink.href = `https://openvibe.video/@${username}`;
+    }
+
     const pageSize = meta.limit || CHANNEL_VODS_PAGE_SIZE;
     const offset = meta.offset || 0;
     const total = meta.total || vods.length;
