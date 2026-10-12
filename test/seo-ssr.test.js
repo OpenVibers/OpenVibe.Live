@@ -314,6 +314,15 @@ const server = http.createServer(app).listen(0, '127.0.0.1', async () => {
         assert.ok(xml.includes('<loc>https://openvibe.live/@alice</loc>'), 'the channel with videos');
         assert.ok(!xml.includes('<loc>https://openvibe.live/vod/100</loc>'), 'recordings are listed by OpenVibe.Video, their canonical home');
         assert.ok(!xml.includes('/vod/199<'), 'no private VOD');
+        // An honest lastmod everywhere it can be known: list pages and channels their newest item, the rest the
+        // release's commit time once server/index.js has set it.
+        const newestVod = day(30).slice(0, 10);
+        assert.ok(xml.includes(`<loc>https://openvibe.live/vods</loc><lastmod>${newestVod}</lastmod>`), 'the VOD list: its newest recording');
+        assert.ok(/<loc>https:\/\/openvibe\.live\/@alice<\/loc><lastmod>\d{4}-\d{2}-\d{2}<\/lastmod>/.test(xml), 'a channel: its newest recording or clip');
+        seo.setReleasedAt('2026-10-01T12:00:00Z');
+        const withRelease = await seo.buildSitemap();
+        assert.ok(withRelease.includes('<loc>https://openvibe.live/chat</loc><lastmod>2026-10-01</lastmod>'), 'a static page: the release\'s commit time');
+        seo.setReleasedAt(null);
     });
 
     await check('server/index.js sends the fallback shell through seo.shellHtml', () => {

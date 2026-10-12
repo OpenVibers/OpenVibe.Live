@@ -222,6 +222,12 @@ const appRoot = process.env.OV_APP_ROOT || path.join(__dirname, '..');
 const release = require('openvibe-shared/release').createRelease({
     service: 'live', root: appRoot, env: releaseEnv(), components: require('./web/release-components').componentsFor(appRoot), recheckMs: 30000,
 });
+// Static pages' sitemap lastmod is the release's commit time — never the boot time (released_at falls back to it
+// when the commit time cannot be read).
+{
+    const r = release.full();
+    if (r.released_at !== r.booted_at) require('./seo/discovery').setReleasedAt(r.released_at);
+}
 function releaseEnv() {
     if (process.env.RELEASE_COMMIT) return process.env;
     // The release id is the directory `current` points at (…/releases/<time>-<sha8>), read at every rebuild.

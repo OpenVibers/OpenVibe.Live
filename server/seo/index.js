@@ -17,6 +17,6 @@ function register(app) {
 module.exports = {
     register,
     middleware: pages.middleware, shellHtml: pages.shellHtml, render: pages.render, _pageMeta: pages._pageMeta,
-    sitemapHandler: discovery.sitemapHandler, buildSitemap: discovery.buildSitemap,
+    sitemapHandler: discovery.sitemapHandler, buildSitemap: discovery.buildSitemap, setReleasedAt: discovery.setReleasedAt,
     robotsTxt: discovery.robotsTxt, llmsTxt: discovery.llmsTxt, llmsFullTxt: discovery.llmsFullTxt,
 };
