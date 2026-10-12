@@ -602,13 +602,26 @@ function _watchTabsClip() {
     upd();
 }
 
+// A direct visit paints the channel's markup before its data. Until the data (ch-data) channel.css outlines the
+// header's placeholder words; until the first render, and offline until the "Most watched" block and the discover
+// board that land above the tabs (ch-ready), it keeps the tabs out of the layout and the page at full height, so the
+// data arriving pushes nothing on screen down. Never longer than 2.5 s after the data.
+let _channelReadyTimer = null;
+function _channelReady(ready = true) {
+    const page = document.getElementById('page-channel');
+    if (page) { page.classList.toggle('ch-ready', ready); if (!ready) page.classList.remove('ch-data'); }
+    clearTimeout(_channelReadyTimer);
+}
+
 async function loadChannelPage(username, managedStreamRef = null, legacySessionId = null) {
     _restoreChannelChat();
     _watchTabsClip();
+    let offlineBlocks = null;
     try {
         const isNewChannel = currentChannelUsername !== username;
         currentChannelUsername = username;
         if (isNewChannel) {
+            _channelReady(false);
             channelVodsPageByUser[username] = 1;
             channelClipsPageByUser[username] = 1;
             // Reset VOD filter/sort state for fresh channel navigation
@@ -632,6 +645,7 @@ async function loadChannelPage(username, managedStreamRef = null, legacySessionI
 
         const data = await api(`/streams/channel/${username}?vodLimit=${CHANNEL_VODS_PAGE_SIZE}&vodOffset=${channelVodOffset}&clipLimit=${CHANNEL_CLIPS_PAGE_SIZE}&clipOffset=${channelClipOffset}${initialVodExtra}`);
         const ch = data.channel;
+        { const page = document.getElementById('page-channel'); if (page) page.classList.add('ch-data'); if (page && !page.classList.contains('ch-ready')) _channelReadyTimer = setTimeout(_channelReady, 2500); }
         // The tab says whose channel this is, as the server-rendered <title> did (a live stream
         // replaces it with the stream's title in activateChannelStream).
         if (ch && ch.username) setPageTitle(`${ch.display_name || ch.username} (@${ch.username})`);
@@ -809,7 +823,7 @@ async function loadChannelPage(username, managedStreamRef = null, legacySessionI
             setupBanBtn(document.getElementById('ch-btn-ban-offline'));
 
             // Customizable offline screen (image / video / custom HTML)
-            _renderOfflineScreen(ch);
+            offlineBlocks = _renderOfflineScreen(ch);
 
             // Offline: join the streamer's PERSISTENT chat room (not global) so
             // viewers can keep chatting + see history while the streamer is offline.
@@ -850,8 +864,10 @@ async function loadChannelPage(username, managedStreamRef = null, legacySessionI
         });
 
         // Analytics is loaded lazily when its tab is first opened (see switchChannelTab).
+        Promise.resolve(offlineBlocks).catch(() => {}).then(() => _channelReady());
 
     } catch (e) {
+        _channelReady();
         console.error('Channel load error:', e);
         toast('Channel not found', 'error');
         navigate('/');
@@ -2919,6 +2935,7 @@ function _wireAboutDrag() {
 // Render a streamer's customizable offline screen into #ch-offline-screen.
 // image/video → served asset; html → sandboxed iframe (no same-origin, so the
 // streamer's markup can't touch viewers' session). Falls back to a tasteful default.
+// Resolves once the offline blocks that land above the tabs ("Most watched", the discover board) are in.
 function _renderOfflineScreen(ch) {
     const host = document.getElementById('ch-offline-screen');
     if (!host) return;
@@ -2935,7 +2952,7 @@ function _renderOfflineScreen(ch) {
                 <div class="ch-offline-explore ch-offline-explore--over" id="ch-offline-explore"></div>
             </div>
             <button class="ch-offline-reopen" id="ch-offline-reopen" onclick="_reopenOfflineOverlay()" title="Show most-watched content"><i class="fa-solid fa-fire"></i> Top content</button>`;
-        _fillOfflineExplore(ch && ch.username);
+        return _fillOfflineExplore(ch && ch.username);
     } else if (type === 'video' && url) {
         host.innerHTML = `<video class="ch-offline-media" src="${esc(url)}" autoplay muted loop playsinline></video>`;
     } else if (type === 'html' && (ch.offline_html || ch.offline_css)) {
@@ -2962,7 +2979,7 @@ function _renderOfflineScreen(ch) {
             <div class="ch-offline-default-sub">is offline — explore their top content, or say hi in chat</div>
             <div class="ch-offline-explore" id="ch-offline-explore"></div>
         </div>`;
-        _fillOfflineExplore(ch && ch.username);
+        return _fillOfflineExplore(ch && ch.username);
     }
 }
 
@@ -3037,7 +3054,7 @@ async function _fillOfflineExplore(username) {
         let d = document.getElementById('ch-discover');
         if (!d) { d = document.createElement('div'); d.id = 'ch-discover'; }
         anchor.insertAdjacentElement('afterend', d);
-        if (typeof renderOfflineDiscover === 'function') renderOfflineDiscover(username, d);
+        if (typeof renderOfflineDiscover === 'function') return renderOfflineDiscover(username, d);
     };
     if (!built.length) {
         host.innerHTML = '';
@@ -3046,10 +3063,9 @@ async function _fillOfflineExplore(username) {
         const re = document.getElementById('ch-offline-reopen');
         if (ov) ov.style.display = 'none';
         if (re) re.classList.remove('show');
-        mountDiscover();
-        return;
+        return mountDiscover();
     }
-    mountDiscover();
+    const discovered = mountDiscover();
 
     _offlineRanges = built;
     _offlineIdx = 0;
@@ -3074,6 +3090,7 @@ async function _fillOfflineExplore(username) {
         </div>`;
     _offlineCyclerRender();
     _startOfflineCycler();
+    return discovered;
 }
 
 function _startOfflineCycler() {

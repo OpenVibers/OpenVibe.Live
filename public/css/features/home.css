@@ -226,6 +226,8 @@ body.egg-rainbow { animation: eggRainbow 2.6s linear; }
     max-width: min(640px, 90vw); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .hero-latest:hover { border-color: var(--accent); color: var(--text-primary); }
+/* Until shipped.js fills it, the line keeps its height without showing an empty pill, so the stats below stay put. */
+.hero-latest:empty { visibility: hidden; min-height: 33px; }
 .pulse-card {
     display: block; padding: 13px 15px; border-radius: 14px; text-decoration: none; color: var(--text-primary);
     background: var(--bg-secondary); border: 1px solid var(--border);
@@ -1005,9 +1007,10 @@ body.egg-rainbow { animation: eggRainbow 2.6s linear; }
    label under it and the delta pill on a third line: ~80px tall cards that were mostly air.
    Now: one 9-across row on wide screens (icon, number, label, short delta), three horizontal
    rows on tablets (icon · number+label · delta right), three tight columns on phones. The
-   reserved min-height matches each layout so nothing jumps while the numbers load. */
+   reserved min-height matches each layout, "Show all" button included (measured 2026-10-12 at
+   360–1920 px), so nothing jumps while the numbers load. */
 .hero-latest { margin-top: 18px; }
-.hero-stats { margin: 16px 0 10px; gap: 10px; min-height: 108px; }
+.hero-stats { margin: 16px 0 10px; gap: 10px; min-height: 120px; }
 .hero-stat-strip {
     display: grid; grid-template-columns: repeat(9, minmax(0, 1fr)); grid-auto-rows: auto;
     gap: 8px; max-width: 1240px; margin: 0 auto; width: 100%; padding: 0;
@@ -1040,7 +1043,7 @@ body.egg-rainbow { animation: eggRainbow 2.6s linear; }
 .hero-stat-strip .hero-stat-chart-hint { font-size: 0.5rem; margin-left: 2px; }
 /* Tablets and small laptops: three horizontal rows — icon · number + label · delta on the right. */
 @media (max-width: 1279px) {
-    .hero-stats { min-height: 176px; }
+    .hero-stats { min-height: 204px; }
     .hero-stat-strip { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; max-width: 960px; }
     .hero-stat-strip .hero-stat { grid-template-columns: auto minmax(0, 1fr) auto; grid-template-rows: auto; padding: 8px 12px; }
     .hero-stat-strip .hero-stat > i { grid-row: 1; }
@@ -1052,7 +1055,7 @@ body.egg-rainbow { animation: eggRainbow 2.6s linear; }
 }
 /* Phones: three tight columns, number over label, short pill. */
 @media (max-width: 699px) {
-    .hero-stats { min-height: 214px; margin-top: 14px; }
+    .hero-stats { min-height: 256px; margin-top: 14px; }
     .hero-stat-strip { gap: 6px; }
     .hero-stat-strip .hero-stat { grid-template-columns: auto minmax(0, 1fr); grid-template-rows: auto auto; padding: 7px 8px; column-gap: 6px; row-gap: 2px; border-radius: 10px; }
     .hero-stat-strip .hero-stat > i { grid-row: 1 / 3; width: 24px; height: 24px; font-size: 0.66rem; border-radius: 7px; }

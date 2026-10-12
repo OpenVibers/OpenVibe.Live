@@ -5,7 +5,9 @@
 
 const API = '';   // same-origin
 let currentUser = null;
-let currentPage = 'home';
+// The page the server already shows (server/web/assets.js marks the route's own section active), so the first
+// showPage() of a direct visit is not a "change" and does not hide and fade in a page that is already painted.
+let currentPage = ((document.querySelector('section.page.active') || {}).id || 'page-home').replace(/^page-/, '');
 let currentStreamId = null;
 let currentStreamData = null; // increments each stream switch; guards against fast-switch races
 let openvibeAppMetaData = null;

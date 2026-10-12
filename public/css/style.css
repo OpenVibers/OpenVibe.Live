@@ -2963,6 +2963,9 @@ a.pulse-card:hover { border-color: var(--accent); transform: translateY(-2px); }
     position: relative; width: 100%;
     background: #000; border-radius: 0;
     overflow: hidden;
+    /* The usual shape before the video knows its own: a taller video still grows the box (aspect-ratio is a minimum
+       for content), and nothing below jumps when a 16:9 one arrives. */
+    aspect-ratio: 16 / 9; max-height: 70vh;
 }
 .vod-player-container:hover .video-overlay { opacity: 1; }
 .vod-player-container.paused .video-overlay { opacity: 1; }

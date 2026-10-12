@@ -276,7 +276,23 @@ function renderRoute(html, urlPath) {
         out = out.slice(0, start) + body + out.slice(end + '<!--/ov:fragment-->'.length);
         out = out.replace(`data-fragment="${frag}">`, `data-fragment="${frag}" data-fragment-loaded="1">`);
     }
-    return out;
+    return activePage(out, names, reg);
+}
+
+/**
+ * The route's own page is the one shown from the first paint. index.html marks the home page `active`, so a direct
+ * visit to a channel, a VOD or the chat painted the home page (its hero and lists) until the router ran and swapped
+ * pages — a flash of the wrong page and the largest layout shifts measured on the site (CLS 1.0 on a channel page,
+ * 0.5 on a VOD, phone profile). The route's last feature with a page fragment names its section; the router's own
+ * showPage() then finds it already active.
+ */
+function activePage(html, names, reg) {
+    const frag = [...names].reverse().map((n) => reg.features[n] && reg.features[n].fragment)
+        .find((f) => f && html.includes(`class="page" data-fragment="${f}"`));
+    if (!frag) return html;
+    return html
+        .replace('<section id="page-home" class="page active">', '<section id="page-home" class="page">')
+        .replace(`class="page" data-fragment="${frag}"`, `class="page active" data-fragment="${frag}"`);
 }
 
 /**

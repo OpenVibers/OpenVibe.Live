@@ -108,6 +108,15 @@
     border-radius: 0; display: block;
 }
 .vod-player-info { margin-bottom: 24px; }
+/* Before a VOD's or clip's data (app-media.js _mediaReady): outlines for the placeholder words, and the parts that
+   arrive on their own (AI timeline, activity strip, clips, comments) stay out of the layout until they are all in. */
+:is(#page-vod-player, #page-clip-player):not(.mp-data) :is(#vp-title, #vp-streamer, #vp-duration, #vp-views, #clp-title, #clp-streamer, #clp-duration, #clp-views) {
+    color: transparent; background: color-mix(in srgb, var(--text-muted) 14%, transparent); border-radius: 6px;
+}
+:is(#page-vod-player, #page-clip-player):not(.mp-data) :is(#vp-title, #clp-title) { width: fit-content; }
+:is(#page-vod-player, #page-clip-player):not(.mp-data) :is(#vp-avatar, #clp-avatar, .vod-player-meta i) { visibility: hidden; }
+#page-vod-player:not(.mp-ready) :is(#vp-ai-timeline, #vp-context, .vod-player-layout > .section-header, #vp-clips-grid, #vp-comments) { display: none; }
+#page-clip-player:not(.mp-ready) #clp-comments { display: none; }
 .vod-player-info {
     background: rgba(22,22,26,0.74);
     border: 1px solid rgba(255,255,255,0.05);
