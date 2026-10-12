@@ -33,6 +33,9 @@ const RECHECK_MS = 2000;
 const HASH_LEN = 12;
 // Directories whose files are versioned in documents and loadable through the manifest.
 const MANIFEST_DIRS = ['js', 'css', 'fragments'];
+// The first-paint subset of style.css (server/web/critical-css.js): generated, not a file in public/.
+const critical = require('./critical-css');
+const CORE_CSS = '/css/style.core.css';
 const REF_RE = /(["'])(\/(?:js|css|shared|fragments)\/[A-Za-z0-9_./-]+?\.(?:js|css|html))(?:\?v=[A-Za-z0-9_.-]*)?\1/g;
 const MANIFEST_MARK = '<!--ov:asset-manifest-->';
 const ROUTE_CSS_MARK = '<!--ov:route-css-->';
@@ -64,6 +67,7 @@ function resolveIn(root, urlPath) {
  * bytes belong to the old hash — and Cloudflare would cache that for a year.
  */
 function hashOf(urlPath, { fresh = false } = {}) {
+    if (urlPath === CORE_CSS) { const c = critical.core(); return c ? c.hash : null; }
     const now = Date.now();
     const entry = files.get(urlPath);
     if (entry && !fresh && now - entry.checkedAt < RECHECK_MS) return entry.hash;
@@ -255,6 +259,7 @@ function renderRoute(html, urlPath) {
     const jsTags = js.map((j) => `<script src="${versioned(j)}" defer data-ov-feature-asset></script>`).join('\n');
     const bootTag = `<script type="application/json" id="ov-route-features">${JSON.stringify(names)}</script>`;
     let out = html.replace(ROUTE_CSS_MARK, cssTags).replace(ROUTE_JS_MARK, `${bootTag}\n${jsTags}`);
+    out = firstPaintCss(out, urlPath);
     if (lateTags) out = out.replace('</head>', `    ${lateTags}\n</head>`);
     // The route's page markup, inline: a direct visit renders without a second round trip, and
     // crawlers get the same content they did when every page shipped in index.html.
@@ -272,6 +277,34 @@ function renderRoute(html, urlPath) {
         out = out.replace(`data-fragment="${frag}">`, `data-fragment="${frag}" data-fragment-loaded="1">`);
     }
     return out;
+}
+
+/**
+ * The public routes whose first view critical-selectors.json was measured on (scripts/perf/critical-css.js): their shell
+ * links the subset as the blocking stylesheet and the full style.css right after it, without blocking. Every other
+ * route (the dashboard, settings, the broadcast desk, admin…) keeps style.css blocking, exactly as before.
+ */
+const FIRST_PAINT_ROUTES = /^\/(?:$|content|vods|clips|moments|arena|chat|pastes|search)(?:[/?#]|$)|^\/@[A-Za-z0-9_]+\/?$|^\/(?:vod|clip)\/\d+\/?$/;
+const STYLE_LINK = /<link rel="stylesheet" href="(\/css\/style\.css\?v=[A-Za-z0-9_.-]+)">/;
+function firstPaintCss(html, urlPath) {
+    const p = String(urlPath || '/').split(/[?#]/)[0] || '/';
+    if (!FIRST_PAINT_ROUTES.test(p)) return html;
+    const m = STYLE_LINK.exec(html);
+    const core = m && hashOf(CORE_CSS);
+    if (!core) return html;
+    const full = m[1];
+    return html.replace(m[0], `<link rel="stylesheet" href="${CORE_CSS}?v=${core}" data-ov-first-paint>
+    <link rel="stylesheet" href="${full}" media="print" onload="this.media='all';this.onload=null">
+    <noscript><link rel="stylesheet" href="${full}"></noscript>`);
+}
+
+/** GET /css/style.core.css: the generated subset, immutable under its current ?v=, short-cached otherwise. */
+function serveCoreCss(req, res, next) {
+    const c = critical.core();
+    if (!c) return next();
+    const v = typeof req.query.v === 'string' ? req.query.v : '';
+    if (v && v === c.hash) setImmutable(res); else setNoCache(res);
+    res.type('text/css').send(c.css);
 }
 
 /** A page fragment's HTML (public/fragments/<name>.html), cached until the file changes. */
@@ -385,6 +418,6 @@ function staticHeaders(res) {
 module.exports = {
     PUBLIC_DIR, MANIFEST_MARK,
     setSharedDir, hashOf, versioned, manifest, rewriteHtml, document, features, featuresFor, routeAssets, renderRoute, fragment, cspReportOnly,
-    versionedStatic, staticHeaders, setNoCache, setImmutable,
+    versionedStatic, staticHeaders, setNoCache, setImmutable, serveCoreCss, firstPaintCss, CORE_CSS, FIRST_PAINT_ROUTES,
     _findPrevious: findPrevious,
 };

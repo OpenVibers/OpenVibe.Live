@@ -130,6 +130,28 @@ Shared 1.17 to 1.20 changed `release-watch.js`, which every page loads after fir
 
 The release client adds one request (the EventSource, which excludes itself from idle-network checks) and no measurable paint or blocking cost. The size budgets in `npm test` (scripts/perf/check-budgets.js) still pass.
 
+## Measurement 2026-10-12: the first-paint stylesheet
+
+A phone-profile sweep of every OpenVibe home page (4x CPU, ~1.6 Mbit/s) put openvibe.live last: first paint 4.9–5.3 s.
+Every route blocked on all of `style.css` (468 KB raw, ~97 KB brotli as served), while CDP rule coverage over the public
+routes (home, content, VODs, clips, moments, arena, chat, search, a channel, a VOD, a clip, pastes) at 412 and 1366 px
+used 436 of its selectors, 17–18 % of the file.
+
+- `scripts/perf/critical-css.js` writes those selectors to `public/css/critical-selectors.json`; `server/web/critical-css.js`
+  builds the subset from the `style.css` on disk (rules naming a listed selector, `:root`/`html`/`body`/`*`, each inside
+  its `@media`/`@supports`/`@container`, and only the `@keyframes` they use): 84 KB raw, ~15 KB brotli.
+- On those routes the shell links `/css/style.core.css?v=…` (generated, content-hashed, served before the `/css` static
+  mount) as the blocking stylesheet, and the full `style.css` right after it with `media="print"` flipped on load, plus a
+  `<noscript>` copy. Both sit where `style.css` sat, before the feature stylesheets, so once the full file has arrived the
+  cascade is exactly the old one (the subset's rules come earlier and are repeated unchanged). Other routes (dashboard,
+  settings, broadcast, admin, …) keep `style.css` blocking.
+- A/B on production pages through a local same-origin proxy (brotli, phone profile): first paint home 2.48 → 1.47 s,
+  channel 2.51 → 1.46 s, VOD 2.24 → 1.48 s (LCP 3.8 → 1.5 s); LCP and CLS elsewhere unchanged; the settled pages are
+  pixel-identical apart from animations and timestamps.
+- Re-run `node scripts/perf/critical-css.js` after changing a public page's look: a rule it does not list still arrives
+  with the full file, just after the first paint. `test/critical-css.test.js` fails when more than a tenth of the listed
+  selectors are no longer in `style.css`.
+
 ## Budgets
 
 `npm run perf:budget` (scripts/perf/check-budgets.js) fails if the home page's raw HTML, eagerly

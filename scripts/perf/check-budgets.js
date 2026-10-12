@@ -24,8 +24,8 @@ const BUDGETS = {
     jsFiles: 26,             // measured 23 (incl. route scripts for "/")
     jsRawKB: 1150,           // measured ~1000
     jsBrotliKB: 262,         // measured 260.1 (2026-10-09: the shared navbar grew with My Profile and the OpenRestream brand)
-    cssRawKB: 760,           // measured ~717 (style.css + home + icons + i18n)
-    cssBrotliKB: 130,
+    cssRawKB: 270,           // measured ~243 since the first-paint subset (style.core.css) replaced style.css (~717 before)
+    cssBrotliKB: 55,         // measured ~47.5 (was ~130)
 };
 // Code that must never be part of the home page's first load.
 const FORBIDDEN_ON_HOME = ['/js/broadcast.js', '/js/broadcast-workspace.js', '/js/dashboard.js', '/js/call.js', '/js/voice-channels.js',
