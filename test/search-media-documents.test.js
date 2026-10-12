@@ -75,7 +75,7 @@ const vod = (id, extra = {}) => ({ id, app_id: 'live', user_id: 1, stream_id: 1,
     let ev = index()[0];
     assert.strictEqual(ev.event_type, 'live.index_document.upserted'); valid(ev);
     assert.deepStrictEqual(ev.subject, { type: 'vod', id: '912', revision: 1 });
-    assert.strictEqual(ev.payload.canonical_url, 'https://openvibe.live/vod/912');
+    assert.strictEqual(ev.payload.canonical_url, 'https://openvibe.video/v/912');
     assert.ok(ev.payload.summary.startsWith('Alex builds the rating menu'));
     assert.ok(ev.payload.body.includes('we are building the forum'), 'the transcript is searchable');
     assert.deepStrictEqual(ev.payload.facets, { duration_seconds: 5400, channel: 'alex', category: 'tech' });

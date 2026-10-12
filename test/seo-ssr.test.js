@@ -246,11 +246,11 @@ const server = http.createServer(app).listen(0, '127.0.0.1', async () => {
             const r = await get('/vod/100', c.headers);
             assert.strictEqual(r.status, 200, c.name);
             assert.match(r.cache, /^public, max-age=\d+, must-revalidate$/, c.name);
-            assert.deepStrictEqual(canonicalsOf(r.body), ['https://openvibe.live/vod/100'], c.name);
+            assert.deepStrictEqual(canonicalsOf(r.body), ['https://openvibe.video/v/100'], `${c.name}: the canonical page is on OpenVibe.Video`);
             assert.ok(/^Build night 100 — Alice \| OpenVibe\.Live$/.test(titleOf(r.body)), titleOf(r.body));
         }
         const r = await get('/vod/100?t=125');
-        assert.deepStrictEqual(canonicalsOf(r.body), ['https://openvibe.live/vod/100'], 'a timestamp link is the same page');
+        assert.deepStrictEqual(canonicalsOf(r.body), ['https://openvibe.video/v/100'], 'a timestamp link is the same page');
         const vo = ldOf(r.body).find((n) => n['@type'] === 'VideoObject');
         assert.deepStrictEqual(vo.author, { '@type': 'Person', name: 'Alice' });
         assert.deepStrictEqual(vo.hasPart.map((x) => [x['@type'], x.startOffset, x.url]), [
@@ -272,12 +272,12 @@ const server = http.createServer(app).listen(0, '127.0.0.1', async () => {
             const r = await get('/clip/200', c.headers);
             assert.strictEqual(r.status, 200, c.name);
             assert.match(r.cache, /^public, max-age=\d+, must-revalidate$/, c.name);
-            assert.deepStrictEqual(canonicalsOf(r.body), ['https://openvibe.live/clip/200'], c.name);
+            assert.deepStrictEqual(canonicalsOf(r.body), ['https://openvibe.video/c/200'], `${c.name}: the canonical page is on OpenVibe.Video`);
             assert.deepStrictEqual(robotsOf(r.body), ['index,follow'], c.name);
         }
         const b = bodyOf((await get('/clip/200')).body);
         assert.ok(b.includes("Clipped by Bob from Alice&#39;s stream"), b.slice(0, 300));
-        assert.ok(b.includes('https://openvibe.live/vod/100?t=61'));
+        assert.ok(b.includes('https://openvibe.video/v/100?t=61'), 'the moment, on OpenVibe.Video');
     });
 
     await check('without JavaScript the body shows (with the site links) and the empty app shell is hidden', async () => {
@@ -312,7 +312,7 @@ const server = http.createServer(app).listen(0, '127.0.0.1', async () => {
     await check('the sitemap lists the channel pages, named from Live\'s accounts (Media rows carry ids only)', async () => {
         const xml = await seo.buildSitemap();
         assert.ok(xml.includes('<loc>https://openvibe.live/@alice</loc>'), 'the channel with videos');
-        assert.ok(xml.includes('<loc>https://openvibe.live/vod/100</loc>'));
+        assert.ok(!xml.includes('<loc>https://openvibe.live/vod/100</loc>'), 'recordings are listed by OpenVibe.Video, their canonical home');
         assert.ok(!xml.includes('/vod/199<'), 'no private VOD');
     });
 
