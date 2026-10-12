@@ -160,6 +160,7 @@ async function _mediaSource(row, kind = 'vod') {
 const _overviewInFlight = new Set();
 async function generateVodOverview(vod) {
     if (!vod) return null;
+    if (require('./ai-media-analyze').enabled()) return require('./ai-media-analyze').analyze('vod', vod);
     if (!await isEnabled() || !await withinBudget()) return null;
     // Guard against the on-finalize trigger and the backfill poller processing the same
     // VOD at once (that would double-extract frames + duplicate timeline memories).
@@ -218,6 +219,7 @@ async function _generateVodOverviewInner(vod) {
  */
 async function ensureVodTimeline(vod) {
     if (!vod || !vod.stream_id) return;
+    if (require('./ai-media-analyze').enabled()) return;
     if (!await isEnabled() || !await withinBudget()) return;
     const ma = require('./media-analysis');
     const src = await _mediaSource(vod);
@@ -265,6 +267,7 @@ async function _applyTxLowPower() {
  * a clean silent run is marked terminal — so an interrupted run is never lost.
  */
 async function generateVodTranscript(vod) {
+    if (require('./ai-media-analyze').enabled()) return require('./ai-media-analyze').analyze('vod', vod);
     if (!vod || !await transcriptionEnabled()) return null;
     return _txRun(async () => {
         await _applyTxLowPower();
@@ -302,6 +305,7 @@ async function generateVodTranscript(vod) {
 
 /** Transcript-only pass for a clip — FREE local whisper (see generateVodTranscript). */
 async function generateClipTranscript(clip) {
+    if (require('./ai-media-analyze').enabled()) return require('./ai-media-analyze').analyze('clip', clip);
     if (!clip || !await transcriptionEnabled()) return null;
     return _txRun(async () => {
         await _applyTxLowPower();
@@ -335,6 +339,7 @@ async function generateClipTranscript(clip) {
  */
 async function generateClipOverview(clip) {
     if (!clip) return null;
+    if (require('./ai-media-analyze').enabled()) return require('./ai-media-analyze').analyze('clip', clip);
     if (!await isEnabled() || !await withinBudget()) return null;
     const src = await _mediaSource(clip, 'clip');
     if (!src) { try { await db.setClipAiOverview(clip.id, { overview: ' ', transcript: null }); } catch { /* */ } return null; }
