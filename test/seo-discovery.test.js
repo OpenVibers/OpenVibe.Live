@@ -47,7 +47,7 @@ async function check(name, fn) {
             }
             assert.ok(locs.every((u) => u.startsWith('https://openvibe.live/')), locs.join(' '));
             assert.ok(!locs.some((u) => u.includes('/p/')), 'pastes are Community\'s');
-            assert.ok(r.text.includes('<loc>https://openvibe.live/</loc><changefreq>daily</changefreq><priority>1.0</priority>'));
+            assert.ok(/<loc>https:\/\/openvibe\.live\/<\/loc>(<lastmod>\d{4}-\d{2}-\d{2}<\/lastmod>)?<changefreq>daily<\/changefreq><priority>1\.0<\/priority>/.test(r.text), 'the home page (with its newest item as lastmod when there is one)');
             assert.strictEqual(r.headers['cache-control'], 'public, max-age=3600, stale-while-revalidate=3600');
         });
 

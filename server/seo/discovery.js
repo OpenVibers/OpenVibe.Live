@@ -44,7 +44,17 @@ async function buildSitemap() {
             statics.push([f === 'README.md' ? '/docs' : `/docs/${f.slice(0, -3)}`, 'weekly', 0.5]);
         }
     } catch { /* docs folder absent in some deploys */ }
-    for (const [u, cf, pr] of statics) entry(u, null, cf, pr);
+    // Every entry carries an honest lastmod: a list page its newest item, a channel its newest recording or clip,
+    // the rest the release's commit time (setReleasedAt; none when the release has no commit time).
+    const newest = { vod: null, clip: null };
+    const channelNewest = new Map();
+    const later = (a, b) => (!a ? b : !b ? a : (a > b ? a : b));
+    const seen = (kind, row, ch) => {
+        const t = isoTime(row.created_at);
+        if (!t) return;
+        newest[kind] = later(newest[kind], t);
+        if (ch) channelNewest.set(ch, later(channelNewest.get(ch), t));
+    };
     const page = async (fetch, per, cap, emit) => {
         let off = 0;
         while (off < cap) {
@@ -60,6 +70,7 @@ async function buildSitemap() {
     await page((l, o) => media.listVods({ limit: l, offset: o }).then(r => r?.vods || []), 200, SITEMAP_CAP, async (v) => {
         const ch = await channelOf(v, v.user_id);
         if (ch) seenChannels.add(ch);
+        seen('vod', v, ch);
     });
     // People's clips only: AI Moments are noindex and never listed (the /moments
     // collection above is their indexable form). The filter is checked again per row, so an
@@ -68,9 +79,12 @@ async function buildSitemap() {
         if (isAiClip(c)) return;
         const ch = await channelOf({}, c.channel_user_id != null ? c.channel_user_id : c.user_id);
         if (ch) seenChannels.add(ch);
+        seen('clip', c, ch);
     });
     // No /p/ here: pastes are OpenVibe.Community's, and its sitemap lists them under their canonical URL.
-    for (const u of seenChannels) if (u) entry(`/@${u}`, null, 'daily', 0.6);
+    const lists = { '/': later(newest.vod, newest.clip), '/content': later(newest.vod, newest.clip), '/vods': newest.vod, '/clips': newest.clip };
+    for (const [u, cf, pr] of statics) entry(u, lists[u] || releasedAt, cf, pr);
+    for (const u of seenChannels) if (u) entry(`/@${u}`, channelNewest.get(u) || null, 'daily', 0.6);
     return seo.sitemapXml(urls);
 }
 async function sitemapHandler(req, res) {
@@ -175,4 +189,13 @@ function register(app) {
     app.get('/llms-full.txt', textHandler(llmsFullTxt));
 }
 
-module.exports = { register, sitemapHandler, buildSitemap, robotsTxt, llmsTxt, llmsFullTxt };
+/** The release's commit time (server/index.js, from openvibe-shared/release), for static pages' lastmod. */
+let releasedAt = null;
+function setReleasedAt(iso) { releasedAt = isoTime(iso); }
+function isoTime(v) {
+    if (!v) return null;
+    const d = new Date(String(v).includes('T') ? v : `${String(v).replace(' ', 'T')}Z`);
+    return Number.isNaN(d.getTime()) ? null : d.toISOString();
+}
+
+module.exports = { register, sitemapHandler, buildSitemap, robotsTxt, llmsTxt, llmsFullTxt, setReleasedAt };
