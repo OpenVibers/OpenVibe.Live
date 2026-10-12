@@ -219,6 +219,20 @@ async function check(name, fn) {
         await sameAsMissing('POST', '/api/thumbnails/generate/clip/201', '/api/thumbnails/generate/clip/999', 7);
     });
 
+    await check('thumbnail regeneration: a recording with no picture answers 200 with none, and Media is asked once an hour', async () => {
+        const realGenerate = media.generateThumbnail;
+        let asked = 0;
+        media.generateThumbnail = async () => { asked++; throw new media.MediaApiError('The recording has no video', 404, { error: 'The recording has no video', code: 'media.no_video' }); };
+        try {
+            for (let i = 0; i < 3; i++) {
+                const r = await call('POST', '/api/thumbnails/generate/vod/100', null);
+                assert.deepStrictEqual([r.status, r.json && r.json.thumbnail_url], [200, null], r.text);
+            }
+            assert.strictEqual(asked, 1, 'the answer is remembered');
+            await sameAsMissing('POST', '/api/thumbnails/generate/vod/101', '/api/thumbnails/generate/vod/999', null);
+        } finally { media.generateThumbnail = realGenerate; }
+    });
+
     await check('thumbnail by id (image URLs): the current thumbnail of a visible item, a private one looks missing', async () => {
         for (const id of [100, 101, 102, 103]) VODS[id].thumbnail_url = `/t/vod-${id}-7.jpg`;
         CLIPS[200].thumbnail_url = '/t/clip-200-7.jpg';
