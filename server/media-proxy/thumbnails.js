@@ -49,6 +49,24 @@ router.post('/live/:streamId', requireAuth, upload.single('thumbnail'), async (r
 });
 
 // ── Regenerate VOD / clip thumbnails (delegated to Media) ────
+// Some recordings have no picture to take (audio-only browser broadcasts, a file that is gone): Media answers
+// 404, and that stays true. Every visitor's page asks again for a missing thumbnail, so the answer is kept for
+// an hour and given as 200 with no thumbnail: the page shows its placeholder, with no failed request in the
+// console and no new Media job (VODs 5718 and 5721 logged a 500 on every home-page visit, 2026-10-12).
+const NO_PICTURE_MS = 60 * 60 * 1000;
+const noPicture = new Map();   // `${kind}:${id}` → until (ms), oldest first
+function noPictureKnown(key) {
+    const until = noPicture.get(key);
+    if (!until) return false;
+    if (until > Date.now()) return true;
+    noPicture.delete(key);
+    return false;
+}
+function rememberNoPicture(key) {
+    if (noPicture.size >= 5000) noPicture.delete(noPicture.keys().next().value);
+    noPicture.set(key, Date.now() + NO_PICTURE_MS);
+}
+
 async function generateFor(kind, id, req, res) {
     try {
         const meta = kind === 'vod' ? await media.getVod(id) : await media.getClip(id);
@@ -58,9 +76,18 @@ async function generateFor(kind, id, req, res) {
         const canManage = !!req.user && (meta.user_id === req.user.id || can(req.user, 'staff.streams.manage'));
         const isPublic = meta.visibility ? meta.visibility === 'public' : !!meta.is_public;
         if (!canManage && !isPublic) return res.status(403).json({ error: `Not your ${kind}` });
-        const out = await media.generateThumbnail(kind, id);
+        const key = `${kind}:${Number(id)}`;
+        if (noPictureKnown(key)) return res.json({ thumbnail_url: null });
+        let out;
+        try { out = await media.generateThumbnail(kind, id); } catch (err) {
+            if (!(err && err.name === 'MediaApiError' && err.status === 404)) throw err;
+            rememberNoPicture(key);
+            return res.json({ thumbnail_url: null });
+        }
         const url = media.publicUrl(out?.url || meta.thumbnail_url);
         if (url) return res.json({ thumbnail_url: url });
+        // Media is still working on it (202 with its job): no picture yet, nothing failed.
+        if (out && out.job) return res.status(202).json({ thumbnail_url: null });
         res.status(500).json({ error: 'Failed to generate thumbnail' });
     } catch (err) {
         if (err && err.name === 'MediaApiError' && err.status) return res.status(err.status).json(err.body || { error: err.message });
