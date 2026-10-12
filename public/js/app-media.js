@@ -104,6 +104,17 @@ function downloadMediaTranscript(btn) {
 }       // streamer's user id — the stable chat room key
 // The site-wide VOD and clip lists are the Content feed now (public/js/content-feed.js).
 // AI "memory" timeline on the VOD player — clickable timestamps that seek the video.
+// OpenVibe.Video (openvibe.video) serves public watch pages for recordings and clips that are public or unlisted
+// and finished; the link appears only for those. Private items and recordings in progress keep Live's page alone.
+function _showVideoLink(elId, kind, item) {
+    const a = document.getElementById(elId);
+    if (!a) return;
+    const vis = item.visibility || (item.is_public ? 'public' : 'private');
+    const ok = (vis === 'public' || vis === 'unlisted') && !item.is_recording && Number.isSafeInteger(Number(item.id));
+    a.style.display = ok ? '' : 'none';
+    if (ok) a.href = `https://openvibe.video/${kind === 'clip' ? 'c' : 'v'}/${Number(item.id)}`;
+}
+
 async function loadVodAiTimeline(vodId) {
     const el = document.getElementById('vp-ai-timeline');
     if (!el) return;
@@ -288,6 +299,7 @@ async function loadVodPlayer(vodId, seekTo) {
         document.getElementById('vp-date').textContent = formatDateTime(v.created_at);
         document.getElementById('vp-duration').textContent = formatDuration(v.duration_seconds || v.duration);
         document.getElementById('vp-views').textContent = `${v.view_count || 0} views${v.unique_views != null ? ` · ${v.unique_views} unique` : ''}`;
+        _showVideoLink('vp-video-link', 'vod', v);
         document.getElementById('vp-description').textContent = v.description || '';
         _renderMediaAiOverview('vp-description', v.ai_overview);
         _renderMediaTranscript('vp-description', 'vod', v);
@@ -1032,6 +1044,7 @@ async function loadClipPlayer(clipId) {
         // View count
         const clpViews = document.getElementById('clp-views');
         if (clpViews) clpViews.textContent = `${cl.view_count || 0} views${cl.unique_views != null ? ` · ${cl.unique_views} unique` : ''}`;
+        _showVideoLink('clp-video-link', 'clip', cl);
 
         // Protocol badge
         const clpProto = document.getElementById('clp-protocol');
