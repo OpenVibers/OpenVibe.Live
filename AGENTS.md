@@ -53,6 +53,7 @@ Each feature lives in its own `server/<feature>/` directory with `routes.js` + s
 ## Key Pitfalls
 
 - **No build step:** Changes to `public/` take effect on deploy without a restart; caching follows content hashes. `npm test` fails if the home page's size budgets grow (scripts/perf/check-budgets.js).
+- **First-paint CSS:** public routes block only on `/css/style.core.css`, a subset of `style.css` generated from `public/css/critical-selectors.json` (`server/web/critical-css.js`); the full `style.css` follows without blocking. After changing how a public page looks, re-run `node scripts/perf/critical-css.js` (docs/performance-audit.md).
 - **Inline handlers on lazy features:** a function called from `onclick=` in markup that exists before its feature loads must be listed in that feature's `stubs`.
 - **New page routes:** the SPA fallback answers 404 for any path [server/web/page-status.js](server/web/page-status.js) does not know. A new top-level route goes in both `routeFromURL()` and that file's page list.
 - **innerHTML usage:** Frontend has heavy `innerHTML` — prefer DOM node creation for new code to avoid XSS.
