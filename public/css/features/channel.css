@@ -1127,6 +1127,14 @@
 .ch-actions { flex-shrink: 0; }
 
 .channel-below-fold { padding-top: 6px; }
+/* Before the channel's data (app-channel.js _channelReady): the page keeps a full viewport (below) so the footer stays
+   under the fold, the tabs stay out of the layout until what lands above them is in, and the header shows outlines
+   rather than its placeholder words ("Channel", "0 followers"). */
+#page-channel:not(.ch-ready) .channel-below-fold { display: none; }
+#page-channel:not(.ch-data) :is(#ch-display-name-offline, #ch-username-offline, #ch-follower-count-offline, #ch-category-badge-offline) {
+    width: fit-content; color: transparent; background: color-mix(in srgb, var(--text-muted) 14%, transparent); border-color: transparent; border-radius: 6px;
+}
+#page-channel:not(.ch-data) #ch-avatar-offline { color: transparent; }
 .ch-analytics-period-btns { display:flex; gap:4px; margin-left:auto; }
 .analytics-stat-cards {
     display:grid; grid-template-columns:repeat(auto-fill,minmax(140px,1fr));
@@ -1541,6 +1549,8 @@ body.controls-docked .messenger-toggle { z-index: 1100; }
 /* The channel page ends where its content ends: a full-viewport minimum left a screen of empty space above the footer
    whenever the open tab was short. */
 #page-channel.page { min-height: 0; }
+/* …except before its data, while it is the placeholder markup (see _channelReady). */
+#page-channel.page:not(.ch-ready) { min-height: 100vh; }
 
 /* The offline area: one gutter for everything in its main column (the discover board sat flush with the edge). */
 .ch-offline-area .stream-main > #ch-discover { padding: 0 14px; box-sizing: border-box; }

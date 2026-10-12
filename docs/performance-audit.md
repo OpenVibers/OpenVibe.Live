@@ -152,6 +152,32 @@ used 436 of its selectors, 17–18 % of the file.
   with the full file, just after the first paint. `test/critical-css.test.js` fails when more than a tenth of the listed
   selectors are no longer in `style.css`.
 
+## Measurement 2026-10-12: layout shift on direct visits
+
+With the first paint earlier, what moved afterwards showed: on a phone a direct visit to a channel scored CLS 1.31, a
+clip 0.99, a VOD 0.43 and the home page 0.13 (Chrome's "good" line is 0.1). Each had the same shape: the shell painted
+placeholder markup, then the data, and then several parts that load on their own, each pushing the page down.
+
+- **The right page from the start.** The shell marked home active, so a channel visit painted the home page until the
+  router swapped. `renderRoute` now moves `active` to the route's own section (`activePage` in `server/web/assets.js`),
+  and `app.js` starts `currentPage` from it, so its first `showPage()` is not a change and does not fade the page in again.
+- **Channel** (`_channelReady` in `app-channel.js`): until the data (`ch-data`) the header's placeholder words
+  ("Channel", "0 followers") are outlines; until the first render and, offline, the "Most watched" block and the discover
+  board (`ch-ready`, at most 2.5 s after the data) the tabs are out of the layout and the page keeps a full viewport, so
+  the footer never shows and climbs back down.
+- **VOD and clip** (`_mediaReady` in `app-media.js`, `mp-data`/`mp-ready`): the same outlines; the AI timeline, the
+  activity strip, the source card, the clips and the comments appear together. `.vod-player-container` keeps a 16:9 box
+  (`max-height: 70vh`, like the video) before the video knows its size; a taller video still grows it.
+- **Home hero:** the countdown line ships as `&nbsp;` instead of `hidden`; the "shipped" line is no longer `hidden`
+  (shipped.js collapsed it, then refilled it) and keeps its 33 px while empty; the stats board's reserved heights now
+  include the "Show all" button (256 / 204 / 120 px, phone / tablet / wide).
+- The cosmetics modal and the messenger panel are built by scripts whose stylesheets load without blocking; until those
+  land the shell's inline style keeps them closed and the messenger toggle in its corner.
+
+Same A/B harness (phone profile, worst of two runs): channel 1.31 → 0.012, clip 0.99 → 0.025, VOD 0.43 → 0.004, home
+0.127 → 0.011; at 1366 px channel 0.09 → 0.015, VOD 0.19 → 0.001, home 0.06 → 0.01. First paint unchanged.
+`test/first-paint-stability.test.js` holds the pieces in place.
+
 ## Budgets
 
 `npm run perf:budget` (scripts/perf/check-budgets.js) fails if the home page's raw HTML, eagerly

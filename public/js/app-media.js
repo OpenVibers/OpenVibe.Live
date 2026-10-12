@@ -260,8 +260,27 @@ function vodFallBackToFile(video) {
     return true;
 }
 
+// A direct visit paints a VOD's or clip's markup before its data. Until the data (mp-data) media.css outlines the info
+// card's placeholder words; until the parts that load on their own are in (mp-ready: the AI timeline, the activity
+// strip, the source card) it keeps them, the clips and the comments out of the layout, so they arrive together and
+// push nothing on screen down. Never longer than 2.5 s after the data.
+const _mediaReadyTimers = {};
+function _mediaReady(pageId, ready = true) {
+    const page = document.getElementById(pageId);
+    if (page) { page.classList.toggle('mp-ready', ready); if (!ready) page.classList.remove('mp-data'); }
+    clearTimeout(_mediaReadyTimers[pageId]);
+}
+function _mediaHasData(pageId) {
+    const page = document.getElementById(pageId);
+    if (page) page.classList.add('mp-data');
+    clearTimeout(_mediaReadyTimers[pageId]);
+    _mediaReadyTimers[pageId] = setTimeout(() => _mediaReady(pageId), 2500);
+}
+
 async function loadVodPlayer(vodId, seekTo) {
     const routeGen = typeof ov !== 'undefined' && ov && typeof ov.gen === 'function' ? ov.gen() : null;
+    const blocks = [];
+    _mediaReady('page-vod-player', false);
     try {
         // Clean up any previous live VOD poll
         if (window._liveVodPollTimer) {
@@ -287,13 +306,14 @@ async function loadVodPlayer(vodId, seekTo) {
         const data = await api(`/vods/${vodId}`);
         const v = data.vod;
         const clips = data.clips || [];
+        _mediaHasData('page-vod-player');
 
         // Store for comments
         window._vpVodId = v.id;
 
         document.getElementById('vp-title').textContent = v.title || 'Video';
         setPageTitle(v.title || 'Video');
-        loadVodAiTimeline(v.id);
+        blocks.push(loadVodAiTimeline(v.id));
         document.getElementById('vp-streamer').textContent = v.display_name || v.username || 'Unknown';
         { const _a = document.getElementById('vp-avatar'); if (_a) _a.innerHTML = _avatarInner(v.avatar_url, v.username); }
         document.getElementById('vp-date').textContent = formatDateTime(v.created_at);
@@ -353,7 +373,7 @@ async function loadVodPlayer(vodId, seekTo) {
                     vpStream.style.display = 'none';
                 }
                 // Activity strip: chat lines, chatters, viewers, mic moments, follows, report.
-                if (typeof renderVodContextStrip === 'function') renderVodContextStrip(v.id);
+                if (typeof renderVodContextStrip === 'function') blocks.push(renderVodContextStrip(v.id));
             }
 
             const fileUrl = `/api/vods/${Number(v.id)}/file`;
@@ -530,7 +550,9 @@ async function loadVodPlayer(vodId, seekTo) {
 
         // Load comments
         loadComments('vod', v.id, 'vp');
+        Promise.allSettled(blocks).then(() => _mediaReady('page-vod-player'));
     } catch (e) {
+        _mediaReady('page-vod-player');
         console.error('Failed to load VOD player', e);
         toast('Failed to load video: ' + (e.message || 'not found'), 'error');
         navigate('/vods');
@@ -1008,6 +1030,8 @@ function _renderClipAttribution(el, cl) {
 
 async function loadClipPlayer(clipId) {
     const routeGen = typeof ov !== 'undefined' && ov && typeof ov.gen === 'function' ? ov.gen() : null;
+    const blocks = [];
+    _mediaReady('page-clip-player', false);
     try {
         // Clean up chat replay
         if (window._chatReplayTimer) {
@@ -1022,6 +1046,7 @@ async function loadClipPlayer(clipId) {
 
         const data = await api(`/clips/${clipId}`);
         const cl = data.clip;
+        _mediaHasData('page-clip-player');
 
         // Store for comments
         window._clpClipId = cl.id;
@@ -1095,7 +1120,7 @@ async function loadClipPlayer(clipId) {
                 clpSource.style.display = 'none';
             }
             // Upgrade the plain line into the rich "from this stream" card when the VOD context loads.
-            if (cl.vod_id && typeof renderClipSourceCard === 'function') renderClipSourceCard(cl);
+            if (cl.vod_id && typeof renderClipSourceCard === 'function') blocks.push(renderClipSourceCard(cl));
         }
 
         const video = document.getElementById('clp-video');
@@ -1214,7 +1239,9 @@ async function loadClipPlayer(clipId) {
 
         // Load comments
         loadComments('clip', cl.id, 'clp');
+        Promise.allSettled(blocks).then(() => _mediaReady('page-clip-player'));
     } catch (e) {
+        _mediaReady('page-clip-player');
         toast('Clip not found', 'error');
         navigate('/clips');
     }

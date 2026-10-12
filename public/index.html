@@ -101,6 +101,10 @@
     .ov-route-error>div{flex:1;min-width:180px;display:grid;gap:2px}
     .ov-route-error span{color:var(--text-muted,#8b93ad);font-size:.9rem}
     @media (prefers-reduced-motion:reduce){.ov-route-skel span{animation:none}}
+    /* Widgets their scripts build before cosmetics.css / messenger.css land (both load without blocking): closed, they
+       stay out of the page instead of painting unstyled under the footer, and the toggle sits where it will. */
+    .cosmetics-modal-overlay:not(.active),.messenger-panel:not(.open){display:none}
+    .messenger-toggle{position:fixed;bottom:20px;left:20px;width:52px;height:52px;border:0;border-radius:50%;background:var(--accent-strong,#3472d8);color:var(--on-accent-strong,#fff)}
     </style>
 
     <!-- Stylesheets.
@@ -190,7 +194,8 @@
                      every few seconds would be read out to screen-reader users over and over. -->
                 <p class="hero-tagline">Live streaming for <span class="hero-rotate-wrap"><span class="hero-rotate visible" id="hero-rotate">stealth campers</span></span></p>
                 <p class="hero-quip visible" id="hero-quip">No investors. No suits. Just vibes.</p>
-                <div class="hero-slogan-timer" id="hero-slogan-timer" hidden></div>
+                <!-- Holds its line from the first paint (the countdown fills it with the page's data), so the buttons below do not move. -->
+                <div class="hero-slogan-timer" id="hero-slogan-timer">&nbsp;</div>
                 <div class="hero-cta" data-fx-viewport>
                     <button style="--i:0" class="hb hb-stream" onclick="currentUser ? navigate('/broadcast') : showModal('register')"><span class="hb-ico"><i class="fa-solid fa-broadcast-tower"></i></span><span class="hb-label">Stream</span><i class="fa-solid fa-chevron-right hb-go" aria-hidden="true"></i></button>
                     <a href="https://openvibe.tools" style="--i:1" class="hb hb-tools"><span class="hb-ico"><i class="fa-solid fa-screwdriver-wrench"></i></span><span class="hb-label">Tools</span><i class="fa-solid fa-chevron-right hb-go" aria-hidden="true"></i></a>
@@ -221,7 +226,7 @@
             </div>
                 <!-- Newest shipped commit — built in the open, receipts included. Sits under the
                      philosophy row so the proof is next to the promise. -->
-                <a class="hero-latest" id="hero-latest" data-ov-shipped="latest" data-service="live" href="/updates" onclick="return handleLinkClick(event, '/updates')" hidden></a>
+                <a class="hero-latest" id="hero-latest" data-ov-shipped="latest" data-service="live" href="/updates" onclick="return handleLinkClick(event, '/updates')"></a>
                 <div class="hero-stats" id="hero-stats" aria-label="Site stats"><div class="ovsk ovsk-panel" aria-hidden="true"><div class="ovsk-bar" style="height:14px;width:45%"></div><div class="ovsk-bar" style="height:10px;width:92%"></div><div class="ovsk-bar" style="height:10px;width:68%"></div></div></div>
             </div>
         </div>
