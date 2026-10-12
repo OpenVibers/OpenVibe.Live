@@ -1,8 +1,8 @@
 'use strict';
 /**
  * Live's VOD and clip pages in OpenVibe.Search (roadmap WS-O task 10; Contracts 0.45.0
- * live.index_document.* types vod and clip): Live owns the canonical /vod/<id> and /clip/<id> pages of
- * the Media items recorded from its streams (title, channel, AI overview, transcript), so Live sends
+ * live.index_document.* types vod and clip): Live owns the Media items recorded from its streams (title,
+ * channel, AI overview, transcript); their canonical pages are OpenVibe.Video's (../web/video-url.js), so Live sends
  * their Search documents through its transactional outbox (./stream-events.js), with a tombstone once
  * an item is deleted, made private or unlisted, or failed. Items come from Media (media-client), never
  * from the frozen local vods/clips tables; the AI overview and transcript are Live's vod_ai_state and
@@ -21,8 +21,8 @@
 const crypto = require('crypto');
 const db = require('../db/database');
 const streamEvents = require('./stream-events');
+const { videoUrl } = require('../web/video-url');
 
-const PUBLIC_BASE = (process.env.LIVE_PUBLIC_ORIGIN || 'https://openvibe.live').replace(/\/+$/, '');
 const DAY_MS = 86400000;
 const PAGE = 200;
 const TOUCH_DELAY_MS = Number(process.env.LIVE_SEARCH_TOUCH_DELAY_MS) || 1500;
@@ -79,7 +79,8 @@ async function documentFor(kind, row) {
     const reasons = [...(aiClip ? ['ai_unreviewed'] : []), ...(stream && stream.is_nsfw ? ['sensitive'] : [])];
     const doc = {
         owner: 'live', type: kind, id: String(row.id), deleted: false, visibility: 'public',
-        canonical_url: `${PUBLIC_BASE}/${kind}/${row.id}`,
+        // The canonical page is OpenVibe.Video's (web/video-url.js), as Live's own page says.
+        canonical_url: videoUrl(kind, row.id),
         title: clean(row.title || fallbackTitle, 500),
         summary,
         body: [clean(row.description, 4000), clean(ai.overview, 8000), ai.transcript].filter(Boolean).join('\n').slice(0, 40000),

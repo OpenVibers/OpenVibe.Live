@@ -9,7 +9,7 @@ const seo = require('openvibe-shared/seo');
 const cache = require('openvibe-shared/cache-policy');
 const db = require('../db/database');
 const media = require('../media-client');
-const { SITE_NAME, baseUrl, isAiClip, isoDate } = require('./pages');
+const { SITE_NAME, baseUrl, isAiClip } = require('./pages');
 
 const DOCS_DIR = process.env.OV_APP_ROOT ? path.join(process.env.OV_APP_ROOT, 'docs') : path.join(__dirname, '../../docs');
 const DISCOVERY_MAX_AGE = 3600;   // seconds, for every file here
@@ -55,8 +55,9 @@ async function buildSitemap() {
             off += per;
         }
     };
+    // Recordings and clips are not listed: their canonical pages are on OpenVibe.Video, whose sitemap lists them
+    // (web/video-url.js). The walk still finds the channels that have them.
     await page((l, o) => media.listVods({ limit: l, offset: o }).then(r => r?.vods || []), 200, SITEMAP_CAP, async (v) => {
-        entry(`/vod/${v.id}`, isoDate(v.created_at), 'weekly', 0.6);
         const ch = await channelOf(v, v.user_id);
         if (ch) seenChannels.add(ch);
     });
@@ -65,7 +66,6 @@ async function buildSitemap() {
     // upstream that ignores it still cannot put an AI item here.
     await page((l, o) => media.listClips({ limit: l, offset: o, auto_generated: 0 }).then(r => r?.clips || []), 200, SITEMAP_CAP, async (c) => {
         if (isAiClip(c)) return;
-        entry(`/clip/${c.id}`, isoDate(c.created_at), 'weekly', 0.6);
         const ch = await channelOf({}, c.channel_user_id != null ? c.channel_user_id : c.user_id);
         if (ch) seenChannels.add(ch);
     });
@@ -108,7 +108,7 @@ function llmsTxt() {
     return seo.llmsTxt({
         name: SITE_NAME,
         summary: LLMS_SUMMARY,
-        details: 'People\'s work and AI-made material are kept apart everywhere on this site. The Content pages list what people made; AI Moments list what the platform\'s AI derived from streams. Every AI item is labelled AI-generated, credited to no person, marked noindex,follow and made canonical to the source VOD at the moment it came from (/vod/<id>?t=<seconds>). In the JSON feeds, AI items carry "ai": true and an "ai_label".',
+        details: 'People\'s work and AI-made material are kept apart everywhere on this site. The Content pages list what people made; AI Moments list what the platform\'s AI derived from streams. Every AI item is labelled AI-generated, credited to no person, marked noindex,follow and made canonical to the source recording at the moment it came from, on OpenVibe.Video (https://openvibe.video/v/<id>?t=<seconds>). In the JSON feeds, AI items carry "ai": true and an "ai_label".',
         sections: [
             { title: 'Going live from a browser (no OBS)', links: [
                 { title: 'How to go live in your browser', url: `${b}/docs/go-live-in-your-browser`, note: `open ${b}, sign in, press Go Live, allow camera and microphone, start. No software, no follower minimum.` },
@@ -119,8 +119,8 @@ function llmsTxt() {
                 { title: 'Home', url: `${b}/`, note: 'who is live now, recent VODs and clips' },
                 { title: 'Content', url: `${b}/content`, note: `VODs, the clips people took, and pastes people wrote. JSON: ${b}/api/content/feed (cursor paging; ?type=vods|clips|pastes, ?sort=new|top)` },
                 { title: 'Channel pages', url: `${b}/@<username>`, note: `the channel's videos in pages (${b}/@<username>?page=2)` },
-                { title: 'VOD pages', url: `${b}/vod/<id>`, note: `a moment in a VOD: ${b}/vod/<id>?t=<seconds>` },
-                { title: 'Clip pages', url: `${b}/clip/<id>` },
+                { title: 'Recording pages', url: 'https://openvibe.video/v/<id>', note: 'the canonical watch page on OpenVibe.Video, with chapters, captions and chat replay; a moment: https://openvibe.video/v/<id>?t=<seconds> (Live\'s own /vod/<id> names it as canonical)' },
+                { title: 'Clip pages', url: 'https://openvibe.video/c/<id>', note: 'on OpenVibe.Video (Live\'s /clip/<id> names it as canonical)' },
                 { title: 'Pastes', url: 'https://openvibe.community/p/<slug>', note: 'pastes live on OpenVibe.Community (Live\'s /p/<slug> redirects there)' },
                 { title: 'Chat', url: `${b}/chat` },
                 { title: 'The Arena', url: `${b}/arena`, note: 'mic-judged streamer callouts' },

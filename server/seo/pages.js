@@ -68,6 +68,7 @@ const _feedPage = async (feed, page = 1) => await _cached(`feed:${feed}:${page}`
 const _feedList = async (feed) => (await _feedPage(feed, 1)).items;
 const { isPrivate } = require('../media-proxy/access');
 const pageStatus = require('../web/page-status');
+const { videoUrl } = require('../web/video-url');
 
 // ── One item (VOD, clip, paste) ──
 // Fetched at most once at a time per id and kept a minute (a missing id 30 s, a failure not at
@@ -585,7 +586,8 @@ async function _sourceMoment(vodId, seconds) {
     const v = await _vodGet(Number(vodId));
     if (!v || !_pub(v)) return null;
     const t = Math.max(0, Math.floor(Number(seconds) || 0));
-    return { path: `/vod/${Number(vodId)}${t ? `?t=${t}` : ''}`, vod: v };
+    // The moment on the recording's canonical page, OpenVibe.Video (web/video-url.js).
+    return { path: videoUrl('vod', vodId, t), vod: v };
 }
 
 async function _vodMeta(id) {
@@ -640,7 +642,9 @@ async function _vodMeta(id) {
     });
     return {
         title: `${title}${author ? ' — ' + author : ''} | ${SITE_NAME}`, description: desc,
-        canonicalPath, image, ogType: 'video.other', robots: indexable ? 'index,follow' : 'noindex,follow',
+        // A public, finished recording's canonical page is on OpenVibe.Video; this page stays its og:url.
+        ...(indexable && !v.is_recording ? { canonicalPath: videoUrl('vod', id), ogUrlPath: canonicalPath } : { canonicalPath }),
+        image, ogType: 'video.other', robots: indexable ? 'index,follow' : 'noindex,follow',
         video: { duration: Math.floor(Number(v.duration_seconds) || 0) },
         jsonLd: [vo, _breadcrumb([{ name: 'Home', url: '/' }, ...(owner ? [{ name: author || owner.username, url: `/@${owner.username}` }] : [{ name: 'VODs', url: '/vods' }]), { name: title, url: canonicalPath }])],
         snapshot,
@@ -680,7 +684,8 @@ async function _clipMeta(id) {
     });
     return {
         title: `${title} — clip | ${SITE_NAME}`, description: desc,
-        canonicalPath, image, ogType: 'video.other', robots: indexable ? 'index,follow' : 'noindex,follow',
+        ...(indexable ? { canonicalPath: videoUrl('clip', id), ogUrlPath: canonicalPath } : { canonicalPath }),
+        image, ogType: 'video.other', robots: indexable ? 'index,follow' : 'noindex,follow',
         video: { duration: Math.floor(Number(c.duration_seconds) || 0) },
         jsonLd: [vo, _breadcrumb([{ name: 'Home', url: '/' }, ...(channel ? [{ name: _nameOf(channel), url: `/@${channel.username}` }] : [{ name: 'Clips', url: '/clips' }]), { name: title, url: canonicalPath }])],
         snapshot,
@@ -858,7 +863,8 @@ function _headBlock(meta) {
     let tags = seo.headTags({
         title: meta.title, description: meta.description, canonical,
         // One English page per URL (the SPA translates in place): the page is its own en and x-default.
-        alternates: [{ hreflang: 'en', href: canonical }, { hreflang: 'x-default', href: canonical }],
+        // (Only when the canonical is on this site: a recording's or clip's canonical is on OpenVibe.Video.)
+        alternates: canonical.startsWith(`${baseUrl()}/`) || canonical === baseUrl() ? [{ hreflang: 'en', href: canonical }, { hreflang: 'x-default', href: canonical }] : [],
         image: abs(meta.image || DEFAULT_OG_IMAGE), type: meta.ogType || 'website', siteName: SITE_NAME,
         robots: meta.robots || 'index,follow', jsonLd: meta.jsonLd || [],
     });

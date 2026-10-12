@@ -105,17 +105,17 @@ console.log('AI Moments pages');
     await check('an auto-clip is noindex,follow, canonical to its VOD at the moment, labelled AI', async () => {
         const m = await seo._pageMeta('/clip/20');
         assert.strictEqual(m.robots, 'noindex,follow');
-        assert.strictEqual(m.canonicalPath, '/vod/10?t=125');
+        assert.strictEqual(m.canonicalPath, 'https://openvibe.video/v/10?t=125');
         assert.strictEqual(m.ogUrlPath, '/clip/20', 'a shared link still previews the clip');
         assert.ok(/AI clip from Alice's stream/.test(m.title), m.title);
         assert.ok(/^AI-generated clip/.test(m.description), m.description);
         assert.ok(m.snapshot.includes("AI clip · from Alice&#39;s stream"), 'the byline says what made it');
-        assert.ok(m.snapshot.includes('https://openvibe.live/vod/10?t=125'), 'the page links its source');
+        assert.ok(m.snapshot.includes('https://openvibe.video/v/10?t=125'), 'the page links its source, on OpenVibe.Video');
         assert.ok(!/Clipped by/.test(m.snapshot), 'never "Clipped by" the streamer');
         assertNoPerson(m, 'auto-clip');
         const vo = mainLd(m);
         assert.strictEqual(vo.keywords, 'AI-generated');
-        assert.strictEqual(vo.isBasedOn, 'https://openvibe.live/vod/10?t=125');
+        assert.strictEqual(vo.isBasedOn, 'https://openvibe.video/v/10?t=125');
         const crumbs = m.jsonLd.find((n) => n['@type'] === 'BreadcrumbList').itemListElement.map((i) => i.name);
         assert.deepStrictEqual(crumbs.slice(0, 2), ['Home', 'AI Moments']);
     });
@@ -123,7 +123,7 @@ console.log('AI Moments pages');
     await check('the rendered page carries it: robots, canonical and og:url', async () => {
         const html = seo.render(await seo._pageMeta('/clip/20'), '/clip/20');
         assert.ok(html.includes('<meta name="robots" content="noindex,follow">'));
-        assert.ok(html.includes('<link rel="canonical" href="https://openvibe.live/vod/10?t=125">'));
+        assert.ok(html.includes('<link rel="canonical" href="https://openvibe.video/v/10?t=125">'));
         assert.ok(html.includes('<meta property="og:url" content="https://openvibe.live/clip/20">'));
         assert.strictEqual((html.match(/<link rel="canonical"/g) || []).length, 1, 'one canonical');
         assert.strictEqual((html.match(/<meta name="robots"/g) || []).length, 1, 'one robots tag');
@@ -139,7 +139,8 @@ console.log('AI Moments pages');
     await check("a person's clip stays indexable, self-canonical, credited to the clipper", async () => {
         const m = await seo._pageMeta('/clip/21');
         assert.strictEqual(m.robots, 'index,follow');
-        assert.strictEqual(m.canonicalPath, '/clip/21');
+        assert.strictEqual(m.canonicalPath, 'https://openvibe.video/c/21', 'canonical on OpenVibe.Video');
+        assert.strictEqual(m.ogUrlPath, '/clip/21', 'this page stays its og:url');
         assert.deepStrictEqual(mainLd(m).author, { '@type': 'Person', name: 'Bob' });
         assert.ok(m.snapshot.includes('Clipped by Bob'));
     });
@@ -147,7 +148,7 @@ console.log('AI Moments pages');
     await check('an AI moment paste points at the VOD second it came from', async () => {
         const m = await seo._pageMeta('/p/ai-shot');
         assert.strictEqual(m.robots, 'noindex,follow');
-        assert.strictEqual(m.canonicalPath, '/vod/10?t=300');
+        assert.strictEqual(m.canonicalPath, 'https://openvibe.video/v/10?t=300');
         assert.ok(/AI note from "Night stream"/.test(m.title), m.title);
         assert.ok(m.snapshot.includes('AI note · from &quot;Night stream&quot; at 5:00'), m.snapshot.slice(0, 300));
         assert.ok(!m.snapshot.includes('Shared by'), 'never "Shared by OpenVibe AI"');
@@ -158,7 +159,7 @@ console.log('AI Moments pages');
     await check("a paste caught live is canonical to its stream's VOD at that second", async () => {
         const m = await seo._pageMeta('/p/ai-live');
         assert.strictEqual(m.robots, 'noindex,follow');
-        assert.strictEqual(m.canonicalPath, '/vod/10?t=42');
+        assert.strictEqual(m.canonicalPath, 'https://openvibe.video/v/10?t=42');
         assert.ok(m.snapshot.includes('while the stream was live'));
         assertNoPerson(m, 'live AI paste');
     });
@@ -173,7 +174,7 @@ console.log('AI Moments pages');
     await check('an AI-written recap is noindex, canonical to the VOD, and not by the streamer', async () => {
         const m = await seo._pageMeta(`/recap/${streamId}`);
         assert.strictEqual(m.robots, 'noindex,follow');
-        assert.strictEqual(m.canonicalPath, '/vod/10');
+        assert.strictEqual(m.canonicalPath, 'https://openvibe.video/v/10');
         assert.ok(/AI recap of Alice's stream/.test(m.title), m.title);
         assert.ok(m.snapshot.includes('The streamer did not write it.'));
         assertNoPerson(m, 'AI recap');
@@ -188,8 +189,7 @@ console.log('AI Moments pages');
 
     await check("the sitemap lists people's clips only, even when Media ignores the filter", async () => {
         const xml = await seo.buildSitemap();
-        assert.ok(xml.includes('/clip/21<'), "a person's clip is listed");
-        assert.ok(!xml.includes('/clip/20<') && !xml.includes('/clip/22<'), 'no auto-clip');
+        assert.ok(!/<loc>[^<]*\/(clip|vod)\//.test(xml), 'no recording or clip: their canonical pages are on OpenVibe.Video');
         assert.ok(!/<loc>[^<]*\/p\//.test(xml), 'no paste at all: Community is their canonical home');
         assert.ok(xml.includes('/moments<'), 'the Moments collection is the indexable form');
         assert.ok(clipQueries.some((q) => q.auto_generated === 0), 'asked Media for people\'s clips');

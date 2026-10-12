@@ -58,6 +58,15 @@ From the dashboard:
   (`vod_ai_state`/`clip_ai_state`, `content_views`) and its Search document is re-read at once
 - **Thumbnails** are auto-generated; broken thumbnails auto-regenerate on load
 
+## The canonical page is on OpenVibe.Video
+
+A public, finished recording's and a person's public clip's canonical page is on OpenVibe.Video
+(`https://openvibe.video/v/<id>`, `/c/<id>`; `server/web/video-url.js`, `VIDEO_PUBLIC_URL` overrides the origin). Live's
+own `/vod/<id>` and `/clip/<id>` pages keep working and keep their own `og:url`, but their `<link rel="canonical">`
+names the Video page, Live's sitemap leaves recordings and clips out (Video's sitemap lists them), the documents Live
+sends to OpenVibe.Search link there, and an AI clip's canonical moment is the Video page at that second. Unlisted
+items, recordings in progress and private items keep their Live canonical (they are not indexed anywhere).
+
 ## Views
 
 A view is one `content_views` row per item and address: Live's detail read (`GET /api/vods/:id`, `GET /api/clips/:id`)

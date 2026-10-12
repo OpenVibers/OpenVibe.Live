@@ -50,7 +50,7 @@ async function main() {
 
     await check('names the public pages and the JSON behind them', () => {
         for (const u of ['https://openvibe.live/content', 'https://openvibe.live/moments', 'https://openvibe.live/@<username>',
-            'https://openvibe.live/vod/<id>?t=<seconds>', 'https://openvibe.live/clip/<id>', 'https://openvibe.live/api/content/feed',
+            'https://openvibe.video/v/<id>?t=<seconds>', 'https://openvibe.video/c/<id>', 'https://openvibe.live/api/content/feed',
             'https://openvibe.live/api/content/moments', 'https://openvibe.community/p/<slug>', 'https://openvibe.live/sitemap.xml']) {
             assert.ok(text.includes(u), `missing ${u}`);
         }
