@@ -58,6 +58,15 @@ From the dashboard:
   (`vod_ai_state`/`clip_ai_state`, `content_views`) and its Search document is re-read at once
 - **Thumbnails** are auto-generated; broken thumbnails auto-regenerate on load
 
+## Views
+
+A view is one `content_views` row per item and address: Live's detail read (`GET /api/vods/:id`, `GET /api/clips/:id`)
+adds it. openvibe.video reads those over loopback, so its watch page counts its viewers with a beacon instead:
+`POST /api/views/vod/:id` or `/api/views/clip/:id` (`server/media-proxy/view-beacon.js`), sent from the viewer's browser
+when playback starts. It answers only `https://openvibe.video`'s origin, reads no cookie, counts only a public or
+unlisted finished item (Live's visibility rule, remembered for a minute), is limited to 60 a minute per address, and
+answers 204 whether or not it counted.
+
 ## Who sees a private VOD or clip
 
 A private item (visibility `private`, or a legacy row with no visibility and `is_public = 0`) is visible only to its owners — the uploader or clipper, the clipped channel's streamer, the streamer whose stream it came from — and to staff (admin, global mod). Everyone else gets exactly the answer an unknown id gets: the same 404 and body on `/api/vods/:id` and its `live-info`/`memories`/`context`, `/api/clips/:id`, comments (including a comment's replies, edit and delete), thumbnail regeneration and the write routes (a 403 would confirm the id exists). It is also left out of `/api/chat-ai/vod-transcripts`, the server-rendered `/vod/:id` and `/clip/:id` pages, and `/api/streams/recent`. The rule lives in `server/media-proxy/access.js`; Media applies the same rule to `openvibe.media/v/:id` and `/c/:id`. Unlisted items stay reachable by direct link.

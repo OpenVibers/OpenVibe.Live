@@ -373,11 +373,12 @@ app.use(helmet({
             // https://cloudflareinsights.com is where Cloudflare Web Analytics' beacon (script-src static.cloudflareinsights.com) reports.
             connectSrc: ["'self'", "wss:", "https://openvibe.network", "https://openvibe.events", "https://openvibe.media", "https://openvibe.games", "https://cdn.jsdelivr.net", "https://esm.sh", "https://static.cloudflareinsights.com", "https://cloudflareinsights.com", whipConnectSrc],
             // VODs/clips play from openvibe.media (the /api proxies 302 there), which may
-            // itself redirect to presigned B2/R2 object-store URLs — all must be allowed
-            // or the browser blocks the media element.
+            // itself redirect to presigned B2/R2 object-store URLs or, for a B2 copy, to its
+            // origin shield edge.openvibe.media — all must be allowed or the browser blocks
+            // the media element (CSP checks every redirect hop).
             // data: — the mod TTS voice preview plays a data:audio/… URL; without it the browser
             // rejects the element ("no supported source") even though the backend returned audio.
-            mediaSrc: ["'self'", "blob:", "data:", "https://openvibe.media", "https://s3.us-west-004.backblazeb2.com", "https://*.backblazeb2.com", "https://*.r2.cloudflarestorage.com"],
+            mediaSrc: ["'self'", "blob:", "data:", "https://openvibe.media", "https://edge.openvibe.media", "https://s3.us-west-004.backblazeb2.com", "https://*.backblazeb2.com", "https://*.r2.cloudflarestorage.com"],
             frameSrc: ["'self'", "https://openvibe.network", "https://www.youtube.com", "https://www.youtube-nocookie.com", "https://player.vimeo.com", ...botFrameSrc],
             workerSrc: ["'self'", "blob:"],
             scriptSrcAttr: ["'unsafe-inline'"],
@@ -413,6 +414,9 @@ function isAllowedOrigin(origin) {
 // that is what lets a static, backend-less site publish from the browser (docs/whip.md).
 // It must therefore bypass the credentialed allowlist below, which would 403 the preflight.
 app.use('/whip', whipHandler.whipCors);
+// Views counted from openvibe.video's watch pages (a beacon from the viewer's browser): its own narrow
+// origin rule and no cookie, so it sits before the credentialed allowlist too.
+app.use('/api/views', require('./media-proxy/view-beacon').createViewBeacon({ rateLimit }));
 
 const allowlistedCors = cors({
     origin(origin, callback) {
