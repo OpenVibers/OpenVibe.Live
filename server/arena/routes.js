@@ -130,7 +130,7 @@ router.get('/voice/:user', optionalAuth, async (req, res) => {
         if (who !== 'announcer' && !user) return res.status(404).json({ error: 'No such user' });
         const out = await voice.speak({ user, text });
         res.set({ 'Content-Type': out.mimeType, 'Cache-Control': 'public, max-age=604800, immutable', 'X-Arena-Voice': out.voice, 'X-Cache': out.cached ? 'HIT' : 'MISS' });
-        require('fs').createReadStream(out.path).pipe(res);
+        require('stream').pipeline(require('fs').createReadStream(out.path), res, () => {});   // closes the file when the listener leaves
     } catch (err) { res.status(err.message && /budget|hoarse/.test(err.message) ? 429 : 500).json({ error: err.message || 'Voice failed' }); }
 });
 

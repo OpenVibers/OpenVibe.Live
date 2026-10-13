@@ -382,8 +382,9 @@ async function proxy(req, res, apiPath, { actingUser, method, query, body } = {}
         if (v) res.set(h, v);
     }
     if (!upstream.body) return res.end();
-    const { Readable } = require('stream');
-    Readable.fromWeb(upstream.body).pipe(res);
+    const { Readable, pipeline } = require('stream');
+    // pipeline: a viewer who leaves cancels Media's body too (.pipe() kept downloading it into a closed response).
+    pipeline(Readable.fromWeb(upstream.body), res, () => {});
 }
 
 /**

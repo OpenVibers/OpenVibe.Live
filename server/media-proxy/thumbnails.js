@@ -10,6 +10,9 @@
 const express = require('express');
 const path = require('path');
 const fs = require('fs');
+// pipeline, never .pipe(res): a viewer who leaves mid-file destroys the response, and .pipe() left the file open for the
+// life of the process (36 deleted live thumbnails were still open after 12 h, 2026-10-13).
+const { pipeline } = require('stream');
 const multer = require('multer');
 const db = require('../db/database');
 const { can } = require('../auth/permissions');
@@ -134,7 +137,7 @@ router.get('/:filename', async (req, res) => {
         const current = await liveThumbs.getStreamThumbnailState(Number(alias[1]));
         if (current.exists) {
             res.writeHead(200, { 'Content-Type': 'image/jpeg', 'Content-Length': fs.statSync(current.filePath).size, 'Cache-Control': 'no-cache' });
-            return fs.createReadStream(current.filePath).pipe(res);
+            return pipeline(fs.createReadStream(current.filePath), res, () => {});
         }
         res.set('Cache-Control', 'no-cache');
         // The fallback frame for a WebRTC stream is a Media thumbnail URL (server/index.js).
@@ -149,7 +152,7 @@ router.get('/:filename', async (req, res) => {
             'Content-Length': stat.size,
             'Cache-Control': 'public, max-age=30',
         });
-        return fs.createReadStream(localPath).pipe(res);
+        return pipeline(fs.createReadStream(localPath), res, () => {});
     }
     if (filename.startsWith('stream-')) {
         // Missing live thumbnail → transparent pixel (old behavior; avoids broken cards).

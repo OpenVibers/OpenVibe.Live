@@ -137,7 +137,7 @@ function proxy() {
             delete headers['proxy-connection']; delete headers['proxy-authorization'];
             const upstream = http.request(target, { method: req.method, headers, lookup: safeLookup }, (up) => {
                 res.writeHead(up.statusCode, up.headers);
-                up.pipe(res);
+                require('stream').pipeline(up, res, () => {});   // a client that leaves ends the upstream request too
             });
             upstream.on('error', (e) => { if (!res.headersSent) res.writeHead(e.code === 'EGRESS_DENIED' ? 403 : 502); res.end(); });
             req.pipe(upstream);
