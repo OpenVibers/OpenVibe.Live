@@ -82,6 +82,22 @@ names the Video page, Live's sitemap leaves recordings and clips out (Video's si
 sends to OpenVibe.Search link there, and an AI clip's canonical moment is the Video page at that second. Unlisted
 items, recordings in progress and private items keep their Live canonical (they are not indexed anywhere).
 
+## Playback URLs
+
+Every VOD and clip row Live answers (`/api/vods`, `/api/vods/:id`, `/api/clips`, `/api/clips/:id` and the per-user
+lists) carries three URLs, set by `setPlaybackUrls()` in `server/media-client.js`:
+
+- `playback_url`: Media's HLS master playlist (`…/o/<object>/master.m3u8`) when the object has a timeline, otherwise
+  the byte route (`openvibe.media/v/<id>`, `/c/<id>`) for old and MP4-only objects.
+- `hls_url`: the playlist alone, absent until Media has one. A private object's playlist is signed for
+  `MEDIA_HLS_PLAYLIST_TTL_S` (Media's setting, 6 h by default): it is read from Media for each response and never
+  stored or cached by Live (a private item's detail answer is `private, no-store`; a public object's playlist is unsigned).
+- `file_url`: always the byte route, for anything that needs a real file (downloads, ffmpeg, previews).
+  `GET /api/vods/:id/file` and `/api/clips/:id/file` redirect to it.
+
+The watch pages play `hls_url` when there is one and fall back to the file. The server-rendered pages name no
+playback URL at all: their schema.org `contentUrl` is the page and their `og:video` tags carry only the duration.
+
 ## Views
 
 A view is one `content_views` row per item and address: Live's detail read (`GET /api/vods/:id`, `GET /api/clips/:id`)

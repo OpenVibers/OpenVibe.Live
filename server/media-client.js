@@ -315,6 +315,22 @@ function publicUrl(u) {
     return `${MEDIA_PUBLIC_URL}${u.startsWith('/') ? '' : '/'}${u}`;
 }
 
+/**
+ * The playback fields of a Media VOD or clip row, set in place and absolutized: file_url is the byte route (/v/:id,
+ * /c/:id — always a real file, for downloads, ffmpeg and anything else that needs one), hls_url is Media's timeline
+ * playlist (absent until the object has one), and playback_url is that playlist when there is one, else the file.
+ * A private object's hls_url is signed with a TTL (Media's MEDIA_HLS_PLAYLIST_TTL_S): it is computed per response
+ * from Media's answer and never stored.
+ */
+function setPlaybackUrls(row, kind) {
+    if (!row) return row;
+    const file = kind === 'clip' ? clipUrl(row.id) : vodPlaybackUrl(row.id);
+    row.file_url = row.file_url || publicUrl(row.playback_url) || file;
+    if (row.hls_url) row.hls_url = publicUrl(row.hls_url);
+    row.playback_url = row.hls_url || row.file_url;
+    return row;
+}
+
 // ── Express proxy helper ─────────────────────────────────────────────────────
 
 /**
@@ -414,5 +430,5 @@ module.exports = {
     uploadFile, getFileMeta, deleteFile,
     uploadThumbnail, generateThumbnail,
     // URL builders
-    vodPlaybackUrl, clipUrl, pasteScreenshotUrl, thumbUrl, fileUrl, publicUrl,
+    vodPlaybackUrl, clipUrl, pasteScreenshotUrl, thumbUrl, fileUrl, publicUrl, setPlaybackUrls,
 };
