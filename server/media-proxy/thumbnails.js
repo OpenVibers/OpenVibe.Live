@@ -53,7 +53,11 @@ router.post('/live/:streamId', requireAuth, upload.single('thumbnail'), async (r
 // 404, and that stays true. Every visitor's page asks again for a missing thumbnail, so the answer is kept for
 // an hour and given as 200 with no thumbnail: the page shows its placeholder, with no failed request in the
 // console and no new Media job (VODs 5718 and 5721 logged a 500 on every home-page visit, 2026-10-12).
+// Media answers 429 when its job queue is full (a backfill can hold the tenant's 50 slots for hours): no picture
+// YET, and nothing failed here. That answer is kept for 5 minutes and given as 200 with no thumbnail too; the
+// 429 used to reach every visitor's console (the browser check of release 977747d7, 2026-10-12).
 const NO_PICTURE_MS = 60 * 60 * 1000;
+const MEDIA_BUSY_MS = 5 * 60 * 1000;
 const noPicture = new Map();   // `${kind}:${id}` → until (ms), oldest first
 function noPictureKnown(key) {
     const until = noPicture.get(key);
@@ -62,9 +66,9 @@ function noPictureKnown(key) {
     noPicture.delete(key);
     return false;
 }
-function rememberNoPicture(key) {
+function rememberNoPicture(key, ms = NO_PICTURE_MS) {
     if (noPicture.size >= 5000) noPicture.delete(noPicture.keys().next().value);
-    noPicture.set(key, Date.now() + NO_PICTURE_MS);
+    noPicture.set(key, Date.now() + ms);
 }
 
 async function generateFor(kind, id, req, res) {
@@ -80,8 +84,8 @@ async function generateFor(kind, id, req, res) {
         if (noPictureKnown(key)) return res.json({ thumbnail_url: null });
         let out;
         try { out = await media.generateThumbnail(kind, id); } catch (err) {
-            if (!(err && err.name === 'MediaApiError' && err.status === 404)) throw err;
-            rememberNoPicture(key);
+            if (!(err && err.name === 'MediaApiError' && (err.status === 404 || err.status === 429))) throw err;
+            rememberNoPicture(key, err.status === 429 ? MEDIA_BUSY_MS : NO_PICTURE_MS);
             return res.json({ thumbnail_url: null });
         }
         const url = media.publicUrl(out?.url || meta.thumbnail_url);

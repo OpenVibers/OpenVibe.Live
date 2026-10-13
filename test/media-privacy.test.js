@@ -233,6 +233,20 @@ async function check(name, fn) {
         } finally { media.generateThumbnail = realGenerate; }
     });
 
+    await check('thumbnail regeneration: Media\'s full job queue (429) is no picture yet, not an error, and is not asked again at once', async () => {
+        const realGenerate = media.generateThumbnail;
+        VODS[104] = { id: 104, user_id: 3, title: 'Brand new VOD', visibility: 'public', is_public: 1, status: 'ready' };
+        let asked = 0;
+        media.generateThumbnail = async () => { asked++; throw new media.MediaApiError('At most 50 jobs may be queued or running per tenant', 429, { error: 'At most 50 jobs may be queued or running per tenant' }); };
+        try {
+            for (let i = 0; i < 3; i++) {
+                const r = await call('POST', '/api/thumbnails/generate/vod/104', null);
+                assert.deepStrictEqual([r.status, r.json && r.json.thumbnail_url], [200, null], r.text);
+            }
+            assert.strictEqual(asked, 1, 'a busy answer is remembered for a while');
+        } finally { media.generateThumbnail = realGenerate; delete VODS[104]; }
+    });
+
     await check('thumbnail by id (image URLs): the current thumbnail of a visible item, a private one looks missing', async () => {
         for (const id of [100, 101, 102, 103]) VODS[id].thumbnail_url = `/t/vod-${id}-7.jpg`;
         CLIPS[200].thumbnail_url = '/t/clip-200-7.jpg';

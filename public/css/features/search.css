@@ -36,3 +36,6 @@
 .ls-facet button[aria-pressed="true"] { border-color: var(--accent); color: var(--text-primary); background: var(--bg-tertiary); }
 .ls-facet button .ls-count { color: var(--text-muted); margin-left: 4px; }
 
+
+/* Without JavaScript (the server inlines this fragment for a direct visit): what needs it, and where to go instead. */
+.ls-noscript { margin: 16px 0 0; line-height: 1.6; }
