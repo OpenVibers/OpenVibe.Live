@@ -3,7 +3,7 @@
 // own section active (server/web/assets.js activePage) and the router takes it as the current page; the channel, VOD
 // and clip pages hold back the parts that arrive on their own until they are all in; the player keeps a 16:9 box; the
 // home hero reserves its countdown line, its "shipped" line and its stats board; and the widgets built before their
-// stylesheets stay out of the page.
+// stylesheets stay out of the page. Without JavaScript none of that waiting applies.
 const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
@@ -70,5 +70,27 @@ assert.ok(/\.hero-stats \{ margin: 16px 0 10px; gap: 10px; min-height: 120px; \}
 const inline = /<style id="ovsk-css">([\s\S]*?)<\/style>/.exec(index)[1];
 assert.ok(inline.includes('.cosmetics-modal-overlay:not(.active),.messenger-panel:not(.open){display:none}') && /\.messenger-toggle\{position:fixed;/.test(inline), 'closed widgets stay out of the page until their stylesheets land');
 ok('the home hero reserves its late lines and the early widgets stay out of the flow');
+
+// ── Without JavaScript ──
+// The data never comes, so the pending-state rules apply only with scripting; and a route whose section is only filled
+// by script says so, with links (the browser check needs 200 characters of text: /chat and /search had 89 and 107
+// once a direct visit showed their own section instead of the home page, 2026-10-12).
+const scriptingBlock = (css, rule) => {
+    const at = css.indexOf(rule);
+    const open = css.lastIndexOf('@media (scripting: enabled) {', at);
+    return at > 0 && open !== -1 && css.slice(open, at).split('}').length - 1 < css.slice(open, at).split('{').length - 1;
+};
+for (const rule of ['#page-channel:not(.ch-ready) .channel-below-fold { display: none; }', '#page-channel:not(.ch-data) #ch-avatar-offline', '#page-channel.page:not(.ch-ready) { min-height: 100vh; }']) {
+    assert.ok(scriptingBlock(chCss, rule), `channel.css: "${rule}" only with scripting`);
+}
+for (const rule of ['#page-vod-player:not(.mp-ready)', '#page-clip-player:not(.mp-ready) #clp-comments', ':is(#page-vod-player, #page-clip-player):not(.mp-data) :is(#vp-avatar']) {
+    assert.ok(scriptingBlock(mCss, rule), `media.css: "${rule}" only with scripting`);
+}
+const noscriptText = (html) => ((/<noscript>([\s\S]*?)<\/noscript>/.exec(html) || [])[1] || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+for (const frag of ['chat', 'search']) {
+    const text = noscriptText(read(`public/fragments/${frag}.html`));
+    assert.ok(text.length >= 200, `${frag}: ${text.length} characters without JavaScript`);
+}
+ok('without JavaScript nothing waits for data, and the script-only routes say what needs it');
 
 console.log(`first-paint-stability: ${pass} checks passed`);

@@ -1474,6 +1474,9 @@ async function handleSfuViewerReady(msg, ws, video, updateStatus, scheduleRewatc
         return;
     }
 
+    // Declared out here: the catch below closes it (a const inside the try was out of the catch's scope, so a
+    // failed setup threw a ReferenceError there and never re-watched or showed an error).
+    let recvTransport = null;
     try {
         // Step 1: Load mediasoup-client
         updateStatus('Starting playback', {
@@ -1506,7 +1509,7 @@ async function handleSfuViewerReady(msg, ws, video, updateStatus, scheduleRewatc
         }
         console.log('[Player] Using SFU ICE servers:', iceServers.map((s) => (Array.isArray(s.urls) ? s.urls.join(',') : s.urls)).join(' | '));
 
-        const recvTransport = device.createRecvTransport({
+        recvTransport = device.createRecvTransport({
             id: transportParams.id,
             iceParameters: transportParams.iceParameters,
             iceCandidates: transportParams.iceCandidates,
@@ -1879,14 +1882,21 @@ async function handleSfuViewerReady(msg, ws, video, updateStatus, scheduleRewatc
         console.log(`[Player] SFU viewer consuming ${consumedCount} track(s)`);
 
     } catch (err) {
+        // A browser mediasoup-client has no WebRTC handler for fails the same way on every try: say so now
+        // instead of re-watching 25 times first.
+        if (err && err.name === 'UnsupportedError') {
+            console.warn('[Player] SFU viewing is not supported in this browser:', err.message);
+            showStreamError('This browser cannot play this live stream. Try a current Chrome, Edge, Firefox or Safari.');
+            return;
+        }
         console.error('[Player] SFU viewer setup failed:', err);
         // Close the transport explicitly so the server sees it as dead on the next
         // watch — otherwise the server's re-watch guard keeps the old transport alive
         // and never sends a fresh sfu-viewer-ready (root cause of the Firefox retry loop).
-        if (player._sfuRecvTransport === recvTransport) {
+        if (recvTransport && player._sfuRecvTransport === recvTransport) {
             player._sfuRecvTransport = null;
         }
-        try { recvTransport.close(); } catch (_) {}
+        try { if (recvTransport) recvTransport.close(); } catch (_) {}
         _totalIceFailures++;
         if (_totalIceFailures < MAX_ICE_FAILURES) {
             scheduleRewatch(2000);

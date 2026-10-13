@@ -341,3 +341,6 @@
 .vc-connected-panel.is-open { animation: vcPanelIn 220ms cubic-bezier(.2, .9, .3, 1); }
 @keyframes vcPanelIn { from { opacity: 0; transform: translateY(6px); } }
 @media (prefers-reduced-motion: reduce) { .vc-channel-item.is-entering, .vc-channel-item.is-leaving, .vc-connected-panel.is-open { animation: none; } }
+
+/* Without JavaScript (the server inlines this fragment for a direct visit): what needs it, and where to go instead. */
+.chat-noscript { max-width: 720px; margin: 24px auto; padding: 0 16px; line-height: 1.6; }
