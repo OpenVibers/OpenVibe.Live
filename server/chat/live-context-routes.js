@@ -245,7 +245,7 @@ contextRouter.get('/tts-audio/:file', (req, res) => {
         const hit = require('../arena/voice').cachedByName(req.params.file);
         if (!hit) return fail(res, 404, 'No such clip');
         res.set({ 'Content-Type': hit.mimeType });
-        require('fs').createReadStream(hit.path).pipe(res);
+        require('stream').pipeline(require('fs').createReadStream(hit.path), res, () => {});   // closes the file when the listener leaves
     } catch (err) { fail(res, 500, err.message); }
 });
 
