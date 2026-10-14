@@ -12,7 +12,7 @@
 const express = require('express');
 const db = require('../db/database');
 const { channelSocialLinks, catalog } = require('./links');
-const { preview } = require('./preview');
+const { preview, forPage } = require('./preview');
 const cache = require('openvibe-shared/cache-policy');
 
 const router = express.Router();
@@ -33,7 +33,7 @@ router.get('/preview/:username/:index', async (req, res) => {
         if (link.preview === false) return res.json({ kind: link.kind, url: link.url, items: [], disabled: true });
         const p = await preview(link);
         res.set('Cache-Control', 'public, max-age=300');
-        res.json(p);
+        res.json(forPage(p));
     } catch (err) {
         console.error('[Social] preview error:', err.message);
         res.status(500).json({ error: 'Preview failed' });

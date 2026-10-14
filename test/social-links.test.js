@@ -119,5 +119,15 @@ async function check(name, fn) { await fn(); passed++; console.log(`  ✓ ${name
         assert.ok(/\/preview\/:username\/:index/.test(src));
         assert.ok(!/req\.query\.url/.test(src));
     });
+    await check('the page gets every preview picture through /api/img-proxy, never the platform\'s own CDN', async () => {
+        const { forPage } = require('../server/social/preview');
+        const avatar = 'https://static-cdn.jtvnw.net/user-default-pictures-uv/x-profile_image-300x300.png';
+        const p = forPage({ title: 'goosely', image: avatar, live: { live: true, thumbnail: 'https://static-cdn.jtvnw.net/previews-ttv/live_user_goosely-440x248.jpg?t=1' }, items: [{ text: 'hi', image: 'https://cdn.bsky.app/img/a.jpg' }, { text: 'no picture' }] });
+        assert.strictEqual(p.image, `/api/img-proxy?url=${encodeURIComponent(avatar)}`);
+        assert.ok(p.live.thumbnail.startsWith('/api/img-proxy?url=https%3A%2F%2Fstatic-cdn.jtvnw.net'));
+        assert.deepStrictEqual(p.items.map((i) => i.image && i.image.slice(0, 15)), ['/api/img-proxy?', null]);
+        assert.strictEqual(forPage({ title: 'x', image: 'http://plain.example/a.png' }).image, null, 'never a plain-http picture');
+        assert.match(require('fs').readFileSync(require('path').join(__dirname, '..', 'server', 'social', 'routes.js'), 'utf8'), /res\.json\(forPage\(p\)\)/);
+    });
     console.log(`social-links: ${passed} checks passed`);
 })().catch((err) => { console.error(err); process.exit(1); });

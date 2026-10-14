@@ -38,6 +38,20 @@ const clip = (s, n = 280) => { const t = decode(String(s || '').replace(/<[^>]+>
 const RARITY = { common: 'Common', uncommon: 'Uncommon', rare: 'Rare', epic: 'Epic', legendary: 'Legendary' };
 const httpsOnly = (u) => (typeof u === 'string' && /^https:\/\//i.test(u) ? u : null);
 
+/**
+ * A preview as the channel page shows it: every picture (avatar, live thumbnail, post image) through Live's image proxy
+ * (/api/img-proxy), so a viewer's browser never asks the platform itself. That keeps viewers private, and the page's
+ * img-src needs no list of every platform's CDN (a Twitch avatar on static-cdn.jtvnw.net was blocked).
+ */
+function forPage(p) {
+    if (!p || typeof p !== 'object') return p;
+    const via = (u) => (httpsOnly(u) ? `/api/img-proxy?url=${encodeURIComponent(u)}` : null);
+    const out = { ...p, image: via(p.image) };
+    if (p.live) out.live = { ...p.live, thumbnail: via(p.live.thumbnail) };
+    if (Array.isArray(p.items)) out.items = p.items.map((it) => ({ ...it, image: via(it.image) }));
+    return out;
+}
+
 /** OpenGraph / meta tags of a page. */
 async function openGraph(url) {
     const r = await getText(url);
@@ -180,4 +194,4 @@ function remember(key, value, ttl) {
     cache.set(key, { at: Date.now(), ttl, value });
 }
 
-module.exports = { preview, openGraph, ADAPTERS, _cache: cache };
+module.exports = { preview, openGraph, ADAPTERS, _cache: cache, forPage };
