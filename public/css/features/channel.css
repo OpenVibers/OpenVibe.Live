@@ -1402,8 +1402,11 @@
 
 /* ── Resizing the chat (public/js/channel-chat-resize.js) ─────
    One grip per chat: on its left edge beside the stream (width), on its top edge as a bottom sheet (height). */
-/* Not for vertical (9:16) streams: their wider chat column (clamp(340px, 35vw, 500px), above) must win. */
-#page-channel .stream-layout:not(:has(.video-container.is-vertical)) > .chat-sidebar { width: var(--chat-w); }
+/* The column's saved width is for the side layout only (1181px and wider). Outside a media query it outranked the
+   overlay and sheet rules below (:has() adds the specificity of its argument), so a width saved on a wide screen made
+   a phone's bottom sheet 260px wide with the page showing beside it (2026-10-14).
+   Not for vertical (9:16) streams: their wider chat column (clamp(340px, 35vw, 500px), above) must win. */
+@media (min-width: 1181px) { #page-channel .stream-layout:not(:has(.video-container.is-vertical)) > .chat-sidebar { width: var(--chat-w); } }
 @media (max-width: 1180px) and (orientation: landscape) { #page-channel .stream-layout > .chat-sidebar { width: var(--chat-ow, min(420px, 44vw)); } }
 @media (max-width: 1180px) and (orientation: portrait) { #page-channel .stream-layout > .chat-sidebar { width: 100%; height: var(--chat-sheet-h, 55dvh); max-height: 92dvh; } }
 #page-channel.chat-resizing, #page-channel.chat-resizing * { user-select: none; }
