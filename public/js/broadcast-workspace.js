@@ -6,7 +6,7 @@
 
    A. Persistent stream profile (server-backed, per managed stream):
       Structured columns: title, description, category, is_nsfw,
-        protocol, control_config_id, slug
+        protocol, slug
         Saved via: PUT /streams/managed/:id  (manual Save button)
       Broadcast settings blob: bitrate, fps, resolution, browserMode,
         micOnlyImage, screenShareOpts
@@ -630,9 +630,6 @@ function _wsRenderPanel() {
 
             </div>
 
-                <!-- Control profile lives under Settings; createNewStream() and the save
-                     payload both read #bc-control-config, which is rendered there. -->
-
                 <!-- Hidden element required by createNewStream() -->
                 <select id="bc-managed-stream" style="display:none">
                     <option value="${ms.id}" selected>${esc(ms.title || '')}</option>
@@ -729,22 +726,6 @@ function _wsRenderPanel() {
         <!-- ═══ TAB: Settings ═══ -->
         <div class="bc-ws-tab-panel" data-wstabpanel="settings">
             <div class="bc-ws-profile-section">
-
-                <!-- Control Profile -->
-                <details class="bc-ws-slot-settings">
-                    <summary><i class="fa-solid fa-gamepad"></i> Control Profile</summary>
-                    <div class="bc-ws-slot-settings-inner">
-                        <p class="muted" style="font-size:0.82rem;margin-bottom:10px">
-                            Lets viewers send commands to hardware attached to this slot. Leave as None
-                            for an ordinary stream.
-                        </p>
-                        <div class="form-group">
-                            <select id="bc-control-config" class="form-input form-input-sm" onchange="_wsMarkDirty()">
-                                <option value="">None (no controls)</option>
-                            </select>
-                        </div>
-                    </div>
-                </details>
 
                 <!-- Picture-in-picture camera -->
                 <details class="bc-ws-slot-settings">
@@ -1150,8 +1131,7 @@ function _wsRenderPanel() {
     // Restore active tab
     _wsTabSwitch(_wsState.activeTab || 'profile');
 
-    // Async post-render: populate control configs and check device permissions
-    _wsPopulateControlConfigs(ms.control_config_id);
+    // Async post-render: check device permissions
     // Corner/size selects are derived from the stored {x,y,w} fractions.
     _wsPipDefaultsRestore(ms);
     if (method === 'browser') {
@@ -1816,25 +1796,6 @@ function _wsSyncScreenShareHiddenDefaults(browserMode) {
     }
 }
 
-/* ── Control config population ───────────────────────────────── */
-
-async function _wsPopulateControlConfigs(selectedId) {
-    const select = document.getElementById('bc-control-config');
-    if (!select) return;
-    try {
-        const data = await api('/controls/configs');
-        const configs = data.configs || [];
-        select.innerHTML = '<option value="">None (no controls)</option>';
-        configs.forEach(cfg => {
-            const opt = document.createElement('option');
-            opt.value = cfg.id;
-            opt.textContent = `${cfg.name} (${cfg.button_count || 0} buttons)`;
-            if (cfg.id === selectedId) opt.selected = true;
-            select.appendChild(opt);
-        });
-    } catch { /* leave as None */ }
-}
-
 /* ── Stream key tools ────────────────────────────────────────── */
 
 function _wsToggleKeyVisibility() {
@@ -1957,7 +1918,6 @@ async function _wsSaveAll() {
             protocol: ms.protocol,
             streaming_method: ms.streaming_method || 'browser',
             browser_mode: ms.browser_mode || _wsState.profile.browserMode || 'camera',
-            control_config_id: parseInt(document.getElementById('bc-control-config')?.value) || null,
             slug: document.getElementById('bc-slug')?.value.trim().toLowerCase() || null,
             // Slot-level settings
             default_vod_visibility: ms.default_vod_visibility || 'public',

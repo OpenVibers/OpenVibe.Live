@@ -77,7 +77,6 @@ async function apply(event) {
                 user_id: user.id,
                 channel_id: channel && channel.id,
                 managed_stream_id: slot.id,
-                control_config_id: slot.control_config_id || null,
                 title: slot.title || `${user.display_name || user.username}'s Stream`,
                 description: slot.description || '',
                 category: slot.category || null,
@@ -96,11 +95,6 @@ async function apply(event) {
             outcome: created ? 'created' : 'attached',
             after: async () => {
                 for (const sid of ended) { try { require('../streaming/broadcast-server').endStream(sid); } catch { /* */ } }
-                try {
-                    const channel = await db.getChannelByUserId(user.id);
-                    const configId = slot.control_config_id || (channel && channel.active_control_config_id);
-                    if (configId) await db.applyConfigToStream(configId, streamId);
-                } catch (e) { console.warn('[OpenRestream] control config for mirrored stream failed:', e.message); }
                 const stream = await db.getStreamById(streamId) || { id: streamId };
                 try { require('../streaming/live-events').announceGoLive(stream, user); } catch { /* */ }
                 console.log(`[OpenRestream] session ${sessionId} mirrored into stream ${streamId} (${user.username}, slot ${slot.id})`);

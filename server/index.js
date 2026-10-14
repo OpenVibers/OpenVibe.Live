@@ -10,7 +10,7 @@
  * Identity/SSO + OpenCoins wallet: OpenVibe.Network (openvibe.network)
  * Chat: WebSocket with anon handling + word filter
  * Currencies: Vibes (tips/cashout, local) + OpenCoins (network wallet)
- * Controls: Interactive hardware API (Raspberry Pi)
+ * Robots: OpenVibe.Bot's (a channel bound to a robot embeds its panel; chat commands drive it through Bot)
  */
 
 // Prevent sub-service port conflicts from crashing the main HTTP server
@@ -100,7 +100,6 @@ const rtmpServer = require('./streaming/rtmp-server');
 
 // Real-time
 const chatDelivery = require('./chat/chat-delivery');
-const controlServer = require('./controls/control-server');
 const broadcastServer = require('./streaming/broadcast-server');
 const VibeCodingPublishServer = require('./vibe-coding/publish-server');
 
@@ -121,8 +120,6 @@ const thumbnailRoutes = require('./media-proxy/thumbnails');
 const liveThumbs = require('./media-proxy/live-thumbs');
 const pasteRoutes = require('./media-proxy/pastes');
 const recorder = require('./streaming/recorder');
-const controlRoutes = require('./controls/routes');
-const onvifRoutes = require('./controls/onvif-routes');
 const adminRoutes = require('./admin/routes');
 const { requireAuth } = require('./auth/auth');
 const permissions = require('./auth/permissions');
@@ -197,7 +194,6 @@ const stopper = gracefulStop({
         try { restreamManager.stopAll(); } catch { /* */ }
         try { recorder.stopAll(); } catch { /* */ }
         try { chatDelivery.close(); } catch { /* */ }
-        try { controlServer.close(); } catch { /* */ }
         try { broadcastServer.close(); } catch { /* */ }
         try { jsmpegRelay.closeAll(); } catch { /* */ }
         try { webrtcSFU.closeAll(); } catch { /* */ }
@@ -762,8 +758,6 @@ app.use('/api/recap', require('./recap/routes'));            // after-show repor
 app.use('/api/social', require('./social/routes').router);   // channel social links and their previews (server/social/)
 app.get('/embed/x-timeline', require('./social/routes').xTimelinePage);
 app.use('/api/comments', commentRoutes);
-app.use('/api/controls', controlRoutes);
-app.use('/api/onvif', onvifRoutes);
 app.use('/api/admin/openre', require('./openre/routes'));
 app.use('/api/admin', adminRoutes);
 app.use('/api/mod', require('./admin/mod-routes'));
@@ -860,7 +854,7 @@ app.get('/api/ready', readiness.handler);
 
 observability.registerDomainGauges(metricsRegistry, {
     liveStreams: async () => (await db.getLiveStreams()).length,
-    wsServers: { broadcast: broadcastServer, control: controlServer },
+    wsServers: { broadcast: broadcastServer },
     outboxStatus: async () => await require('./events/stream-events').counts(),
 });
 
@@ -1146,8 +1140,6 @@ server.on('upgrade', async (req, socket, head) => {
         vibeCodingPublishServer.handleUpgrade(req, socket, head);
     } else if (url.startsWith('/ws/broadcast')) {
         broadcastServer.handleUpgrade(req, socket, head);
-    } else if (url.startsWith('/ws/control')) {
-        controlServer.handleUpgrade(req, socket, head);
     } else if (url.startsWith('/ws/robotstreamer-publish')) {
         robotStreamerService.handleUpgrade(req, socket, head);
     } else {
@@ -1211,10 +1203,7 @@ async function start() {
     newsService.setChatServer(chatDelivery);
     newsService.start();
 
-    // 4. Initialize control server
-    controlServer.init(server);
-
-    // 4b. Initialize broadcast server
+    // 4. Initialize the broadcast server
     broadcastServer.init(server);
 
     // Group calls and voice channels are OpenVibe.Chat's (/ws/call is routed there by nginx).
@@ -1339,7 +1328,6 @@ async function start() {
         console.log(`[Server] HTTP server:  http://${config.host}:${config.port}`);
         console.log(`[Server] WebSocket:    ws://${config.host}:${config.port}/ws/chat`);
         console.log(`[Server] WebSocket:    ws://${config.host}:${config.port}/ws/broadcast`);
-        console.log(`[Server] WebSocket:    ws://${config.host}:${config.port}/ws/control`);
         console.log(`[Server] Environment:  ${config.nodeEnv}`);
         console.log(`[Server] BASE_URL:     ${config.baseUrl}`);
         console.log(`[Server] WHIP_PUBLIC_URL: ${config.whip?.publicUrl}`);

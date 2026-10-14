@@ -1028,30 +1028,64 @@ const waitFor = async (pred, what, ms = 3000) => {
 
         }
 
-        // 12. Robot commands from chat pass the control panel's gate: control mode, anonymous switch, whitelist, cooldown.
+        // 12. Robot commands from chat drive the channel's OpenVibe.Bot robot, through Bot's gate as the viewer who typed
+        //     them (server/bot/bot-client.js): no robot → said so; not signed in → refused here; a refusal from Bot comes
+        //     back in chat words. A stub stands in for Network's token endpoint and Bot's command route.
         {
-            const sent = [];
-            require('../server/controls/control-server').hardwareClients.set('key-streamer', { readyState: 1, send: (m) => sent.push(JSON.parse(m)) });
-            const hw = (body) => call('POST', '/internal/chat-effects/hardware', { token: WRITE, body: { streamer_user_id: streamer, command: 'forward', ...body } });
-            const setCh = async (mode, anon) => await d.prepare('UPDATE channels SET control_mode = ?, anon_controls_enabled = ? WHERE id = ?').run(mode, anon, channel.id);
-            await setCh('open', 1);
-            assert.strictEqual((await hw({ from_anon: 'anon1' })).body.ok, true, 'open channel: anyone');
-            assert.strictEqual((await hw({ from_anon: 'anon1' })).body.reason, 'cooldown', 'one command per viewer per 250 ms');
-            assert.strictEqual((await hw({ from_anon: 'anon2' })).body.ok, true, 'the cooldown is per viewer');
-            await setCh('open', 0);
-            assert.strictEqual((await hw({ from_anon: 'anon3' })).body.reason, 'login_required');
-            assert.strictEqual((await hw({ from_user_id: viewer })).body.ok, true, 'signed-in viewers still may');
-            await setCh('whitelist', 1);
-            assert.strictEqual((await hw({ from_anon: 'anon4' })).body.reason, 'login_required', 'whitelist mode never lets anonymous drive');
-            assert.strictEqual((await hw({ from_user_id: mod })).body.reason, 'not_whitelisted');
-            await d.prepare('INSERT INTO control_whitelist (channel_id, user_id) VALUES (?, ?)').run(channel.id, mod);
-            assert.strictEqual((await hw({ from_user_id: mod })).body.ok, true, 'whitelisted');
-            assert.strictEqual((await hw({ from_user_id: streamer })).body.ok, true, 'the owner always may');
-            await setCh('disabled', 1);
-            assert.strictEqual((await hw({ from_user_id: streamer, command: 'say:hi' })).body.reason, 'controls_disabled');
-            assert.strictEqual(sent.length, 5, 'only the allowed commands reached the robot');
-            assert.ok(sent.every((m) => m.type === 'command'));
-            require('../server/controls/control-server').hardwareClients.delete('key-streamer');
+            const http = require('http');
+            const seen = [];
+            let answer = { status: 200, body: { result: 'ack' } };
+            const stub = http.createServer((req, res) => {
+                let raw = '';
+                req.on('data', (c) => { raw += c; });
+                req.on('end', () => {
+                    res.setHeader('Content-Type', 'application/json');
+                    if (req.url === '/oauth/token') return res.end(JSON.stringify({ access_token: 'live-bot-token', token_type: 'Bearer', expires_in: 300 }));
+                    seen.push({ url: req.url, auth: req.headers.authorization, subject: req.headers['x-ov-subject'], body: JSON.parse(raw || '{}') });
+                    res.statusCode = answer.status;
+                    return res.end(JSON.stringify(answer.body));
+                });
+            });
+            await new Promise((r) => stub.listen(0, '127.0.0.1', r));
+            const stubUrl = `http://127.0.0.1:${stub.address().port}`;
+            const ENV = ['OV_OAUTH_CLIENT_SECRET', 'OV_NETWORK_INTERNAL_URL', 'LIVE_BOT_INTERNAL_URL'];
+            const before = Object.fromEntries(ENV.map((k) => [k, process.env[k]]));
+            Object.assign(process.env, { OV_OAUTH_CLIENT_SECRET: 'test-secret', OV_NETWORK_INTERNAL_URL: stubUrl, LIVE_BOT_INTERNAL_URL: stubUrl });
+            const pause = () => new Promise((r) => setTimeout(r, 270));
+            const ROBOT = 'rob_01TESTROBOT0000000000000001';
+            try {
+                const hw = (body) => call('POST', '/internal/chat-effects/hardware', { token: WRITE, body: { streamer_user_id: streamer, command: 'forward', ...body } });
+                const none = await hw({ from_user_id: viewer });
+                assert.deepStrictEqual([none.body.ok, none.body.reason], [false, 'no_robot'], 'a channel with no robot');
+                await d.prepare('UPDATE channels SET bot_robot_id = ? WHERE id = ?').run(ROBOT, channel.id);
+                assert.strictEqual((await hw({ from_anon: 'anon1' })).body.reason, 'login_required', 'a viewer who is not signed in cannot drive');
+                const ok = await hw({ from_user_id: viewer });
+                assert.strictEqual(ok.body.ok, true, JSON.stringify(ok.body));
+                const first = seen.at(-1);
+                assert.strictEqual(first.url, `/api/v1/robots/${ROBOT}/commands`);
+                assert.strictEqual(first.auth, 'Bearer live-bot-token', 'Live\'s own service token');
+                assert.strictEqual(first.subject, 'usr_01J9ZZZZZZZZZZZZZZZZZZZZZZ', 'as the viewer (their linked Network subject)');
+                assert.deepStrictEqual([first.body.kind, first.body.value, first.body.ms], ['drive', { throttle: 0.6 }, 600]);
+                assert.match(first.body.id, /^chat-/);
+                assert.strictEqual((await hw({ from_user_id: viewer })).body.reason, 'cooldown', 'one command per viewer per 250 ms');
+                await pause();
+                await hw({ from_subject: 'usr_01J9YYYYYYYYYYYYYYYYYYYYYY', command: 'say:hello robot' });
+                const said = seen.at(-1);
+                assert.deepStrictEqual([said.subject, said.body.kind, said.body.value, 'ms' in said.body], ['usr_01J9YYYYYYYYYYYYYYYYYYYYYY', 'say', { text: 'hello robot' }, false], 'Chat names the viewer by subject');
+                answer = { status: 403, body: { code: 'bot.not_your_turn', detail: 'wait for your turn' } };
+                await pause();
+                const refused = await hw({ from_user_id: viewer, command: 'turn_left' });
+                assert.deepStrictEqual([refused.body.ok, refused.body.reason, refused.body.message], [false, 'bot.not_your_turn', 'It is not your turn at the robot yet.']);
+                assert.deepStrictEqual(seen.at(-1).body.value, { steer: -0.7 });
+                answer = { status: 503, body: {} };
+                await pause();
+                assert.strictEqual((await hw({ from_user_id: viewer })).body.reason, 'robot_unavailable', 'Bot down is said so');
+                assert.strictEqual((await hw({ from_user_id: viewer, command: 'self_destruct' })).status, 400, 'an unknown command');
+                await d.prepare('UPDATE channels SET bot_robot_id = NULL WHERE id = ?').run(channel.id);
+            } finally {
+                stub.close();
+                for (const k of ENV) { if (before[k] === undefined) delete process.env[k]; else process.env[k] = before[k]; }
+            }
         }
 
         quiet('chat context (Live side of OpenVibe.Chat): all checks passed');

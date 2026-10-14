@@ -88,7 +88,6 @@ app.use('/api/restream', require('../server/streaming/restream-routes'));
 app.use('/api/vods', require('../server/media-proxy/vods'));
 app.use('/api/clips', require('../server/media-proxy/clips'));
 app.use('/api/thumbnails', require('../server/media-proxy/thumbnails'));
-app.use('/api/onvif', require('../server/controls/onvif-routes'));
 app.use('/api/vibe-coding', require('../server/vibe-coding/routes'));
 const server = http.createServer(app).listen(0, '127.0.0.1');
 
@@ -133,8 +132,6 @@ async function check(name, fn) {
     VODS[100].stream_id = streamA;
     const destA = Number((await db.createRestreamDestination(ALICE, { platform: 'custom', name: 'Alice mirror', server_url: 'rtmp://ingest.example.test/live', stream_key: DEST_KEY, managed_stream_id: slotA })).id);
     const tokenA = (await db.createApiToken(ALICE, 'Alice bot', ['chat', 'read'])).id;
-    const camA = Number((await raw.prepare("INSERT INTO camera_profiles (user_id, stream_id, name, onvif_url, username, password_hash) VALUES (?, ?, 'Alice cam', 'http://camera.example.test', 'admin', 'x') RETURNING id").run(ALICE, streamA)).lastInsertRowid);
-    const presetA = Number((await raw.prepare("INSERT INTO camera_presets (camera_id, name, pan, tilt, zoom) VALUES (?, 'Desk', 0.5, 0.5, 0.5) RETURNING id").run(camA)).lastInsertRowid);
     // Bob has his own slot and stream, so "my slot" routes have something of his to compare against.
     const chanB = await db.getChannelByUserId(BOB);
     const slotB = Number((await db.createManagedStream({ user_id: BOB, channel_id: chanB.id, slug: 'main', title: 'Bob main', protocol: 'rtmp', stream_key: 'ef'.repeat(20) })).lastInsertRowid);
@@ -243,23 +240,12 @@ async function check(name, fn) {
         refused(await call('DELETE', `/api/auth/tokens/${tokenA}`, BOB), 'DELETE token');
         assert.strictEqual((await row('api_tokens', tokenA)).is_active, 1);
     });
-    await check('ONVIF cameras: Bob cannot read, edit or delete Alice\'s camera or its presets', async () => {
-        const before = [await row('camera_profiles', camA), await row('camera_presets', presetA)];
-        refused(await call('GET', `/api/onvif/cameras/${camA}`, BOB), 'GET camera');
-        refused(await call('GET', `/api/onvif/cameras/${camA}/presets`, BOB), 'GET presets');
-        refused(await call('PUT', `/api/onvif/cameras/${camA}`, BOB, { name: 'pwned', onvif_url: 'http://bob.example.test' }), 'PUT camera');
-        refused(await call('POST', `/api/onvif/cameras/${camA}/presets`, BOB, { name: 'x', pan: 0, tilt: 0, zoom: 0 }), 'POST preset');
-        refused(await call('DELETE', `/api/onvif/cameras/${camA}/presets/${presetA}`, BOB), 'DELETE preset');
-        refused(await call('DELETE', `/api/onvif/cameras/${camA}`, BOB), 'DELETE camera');
-        assert.deepStrictEqual([await row('camera_profiles', camA), await row('camera_presets', presetA)], before);
-    });
-    await check('control: Alice can read her camera and revoke her token', async () => {
-        assert.strictEqual((await call('GET', `/api/onvif/cameras/${camA}`, ALICE)).status, 200);
+    await check('Alice can revoke her own token', async () => {
         assert.strictEqual((await call('DELETE', `/api/auth/tokens/${tokenA}`, ALICE)).status, 200);
     });
     await check('anonymous callers get 401 on all of them', async () => {
         for (const [m, p] of [['PUT', '/api/vods/100'], ['DELETE', '/api/clips/200'], ['PUT', `/api/streams/managed/${slotA}`], ['POST', `/api/streams/managed/${slotA}/regenerate-key`],
-            ['DELETE', `/api/restream/destinations/${destA}`], ['DELETE', `/api/auth/tokens/${tokenA}`], ['DELETE', `/api/onvif/cameras/${camA}`]]) {
+            ['DELETE', `/api/restream/destinations/${destA}`], ['DELETE', `/api/auth/tokens/${tokenA}`]]) {
             const r = await call(m, p, null, {}).catch((e) => ({ status: 0, text: e.message }));
             assert.strictEqual(r.status, 401, `${m} ${p}: ${r.status} ${r.text}`);
         }

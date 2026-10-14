@@ -528,10 +528,6 @@ function showModal(id) {
         'buy-funds': openvibeBucksBuyModal(),
         cashout: openvibeBucksCashoutModal(),
         'stream-key': streamKeyModal(),
-        'add-camera': addCameraModal(),
-        'discover-cameras': discoverCamerasModal(),
-        'create-config': createConfigModal(),
-        'add-config-button': addConfigButtonModal(),
         'add-goal': addGoalModal(),
         'add-reward': addRewardModal(),
         'redeem-reward': (data) => redeemRewardModal(data),
@@ -912,9 +908,6 @@ function teardownRoute(nextPath) {
 
     // Loops other modules own. Each is optional — a module that isn't loaded simply isn't stopped.
     const stop = (fn) => { try { if (typeof window[fn] === 'function') window[fn](); } catch { /* */ } };
-    // Hardware controls: the socket and its reconnect loop outlived the channel, and the global
-    // key handler kept sending bound keys to the last channel's device from any page.
-    stop('destroyControlWs');
     // A VOD or clip playing Media's playlist: its hls.js instance, worker and loaders end with the page.
     stop('vodDropHls');
     try { currentStreamId = null; } catch { /* */ }
@@ -2209,115 +2202,6 @@ function streamKeyModal() {
             <i class="fa-solid fa-rotate"></i> Regenerate
         </button>`;
 }
-function createConfigModal() {
-    return `
-        <h3><i class="fa-solid fa-sliders"></i> New Control Profile</h3>
-        <p class="muted" style="font-size:0.85rem;margin-bottom:12px">Create a reusable set of control buttons. You can set up different profiles for different robots, games, or setups.</p>
-        <div class="form-group">
-            <label>Profile Name</label>
-            <input type="text" id="modal-config-name" class="form-input" placeholder="e.g. Cozmo Robot, RC Car, Camera Rig" maxlength="60">
-        </div>
-        <div class="form-group">
-            <label>Description (optional)</label>
-            <input type="text" id="modal-config-desc" class="form-input" placeholder="Brief description" maxlength="200">
-        </div>
-        <button class="btn btn-primary btn-lg" onclick="doCreateConfig()" style="width:100%;margin-top:8px">
-            <i class="fa-solid fa-plus"></i> Create Profile
-        </button>`;
-}
-
-function addConfigButtonModal() {
-    return `
-        <h3><i class="fa-solid fa-plus"></i> Add Control Button</h3>
-        <div class="form-group">
-            <label>Command</label>
-            <input type="text" id="modal-cfgbtn-cmd" class="form-input" placeholder="e.g. forward" maxlength="100">
-        </div>
-        <div class="form-group">
-            <label>Label</label>
-            <input type="text" id="modal-cfgbtn-label" class="form-input" placeholder="e.g. Forward" maxlength="50">
-        </div>
-        <div class="form-group">
-            <label>Icon (FontAwesome class)</label>
-            <input type="text" id="modal-cfgbtn-icon" class="form-input" placeholder="e.g. fa-arrow-up" value="fa-gamepad">
-        </div>
-        <div class="form-group">
-            <label>Type</label>
-            <select id="modal-cfgbtn-type" class="form-input">
-                <option value="button">Button (single click)</option>
-                <option value="keyboard">Keyboard (hold to activate)</option>
-                <option value="dpad">D-Pad</option>
-                <option value="toggle">Toggle</option>
-            </select>
-        </div>
-        <div class="form-group">
-            <label>Key Binding (optional)</label>
-            <input type="text" id="modal-cfgbtn-keybind" class="form-input" placeholder="e.g. w, a, s, d" maxlength="20">
-            <span class="bc-field-hint">Keyboard shortcut for this button</span>
-        </div>
-        <div class="form-group">
-            <label>Cooldown (seconds)</label>
-            <input type="number" id="modal-cfgbtn-cooldown" class="form-input" value="0.5" min="0" max="30" step="0.1">
-        </div>
-        <details style="margin-top:8px">
-            <summary style="cursor:pointer;font-weight:600;font-size:0.85rem;color:var(--text-secondary)"><i class="fa-solid fa-palette"></i> Custom Styling</summary>
-            <div style="margin-top:8px;display:flex;flex-direction:column;gap:8px;">
-                <div class="form-group" style="margin:0">
-                    <label style="font-size:0.85rem">Text Color</label>
-                    <input type="text" id="modal-cfgbtn-color" class="form-input form-input-sm" placeholder="#fff or red or var(--accent)">
-                </div>
-                <div class="form-group" style="margin:0">
-                    <label style="font-size:0.85rem">Background</label>
-                    <input type="text" id="modal-cfgbtn-bg" class="form-input form-input-sm" placeholder="#333 or darkblue">
-                </div>
-                <div class="form-group" style="margin:0">
-                    <label style="font-size:0.85rem">Border Color</label>
-                    <input type="text" id="modal-cfgbtn-border" class="form-input form-input-sm" placeholder="var(--accent) or var(--accent)">
-                </div>
-            </div>
-        </details>
-        <button class="btn btn-primary btn-lg" onclick="doAddConfigButton()" style="width:100%;margin-top:12px">
-            <i class="fa-solid fa-plus"></i> Add Button
-        </button>`;
-}
-
-function addCameraModal() {
-    return `
-        <h3><i class="fa-solid fa-video"></i> Add ONVIF Camera</h3>
-        <p class="muted" style="font-size:0.85rem;">Connect to an ONVIF-compatible camera (Hikvision, Axis, Dahua, etc.)</p>
-        <div class="form-group">
-            <label>Camera Name</label>
-            <input type="text" id="modal-cam-name" class="form-input" placeholder="e.g. Front Door">
-        </div>
-        <div class="form-group">
-            <label>ONVIF URL</label>
-            <input type="text" id="modal-cam-url" class="form-input" placeholder="http://192.168.1.100:8080">
-        </div>
-        <div class="form-group">
-            <label>Username</label>
-            <input type="text" id="modal-cam-username" class="form-input" placeholder="admin">
-        </div>
-        <div class="form-group">
-            <label>Password</label>
-            <input type="password" id="modal-cam-password" class="form-input">
-        </div>
-        <button class="btn btn-primary btn-lg" onclick="doAddCamera()" style="width:100%;margin-top:8px">
-            <i class="fa-solid fa-plus"></i> Add Camera
-        </button>`;
-}
-
-function discoverCamerasModal() {
-    return `
-        <h3><i class="fa-solid fa-magnifying-glass"></i> Discover Cameras</h3>
-        <p class="muted" style="font-size:0.85rem;">Scan your network for ONVIF devices. This may take a few seconds.</p>
-        <button class="btn btn-primary btn-lg" onclick="doDiscoverCameras()" style="width:100%;margin-bottom:12px">
-            <i class="fa-solid fa-wifi"></i> Scan Network
-        </button>
-        <div id="discovery-status" style="min-height:100px;padding:8px;border:1px solid var(--border);border-radius:var(--radius);background:var(--bg-hover)">
-            <p class="muted">Click "Scan Network" to discover devices...</p>
-        </div>`;
-}
-
 // Working media state for the goal editor modal.
 let _goalMediaUrl = '';
 let _goalMediaType = '';

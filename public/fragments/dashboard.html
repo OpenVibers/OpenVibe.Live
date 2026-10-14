@@ -9,7 +9,7 @@
                 <button class="ch-tab" role="tab" aria-selected="false" data-dtab="content" onclick="switchDashTab('content', this)"><i class="fa-solid fa-photo-film"></i> Content</button>
                 <button class="ch-tab" role="tab" aria-selected="false" data-dtab="moderation" onclick="switchDashTab('moderation', this)"><i class="fa-solid fa-shield-halved"></i> Moderation</button>
                 <button class="ch-tab" role="tab" aria-selected="false" data-dtab="chatai" onclick="switchDashTab('chatai', this)"><i class="fa-solid fa-comments"></i> Chat</button>
-                <button class="ch-tab" role="tab" aria-selected="false" data-dtab="controls" onclick="switchDashTab('controls', this)"><i class="fa-solid fa-gamepad"></i> Controls</button>
+                <button class="ch-tab" role="tab" aria-selected="false" data-dtab="controls" onclick="switchDashTab('controls', this)"><i class="fa-solid fa-robot"></i> Robot &amp; API</button>
                 <button class="ch-tab" role="tab" aria-selected="false" data-dtab="money" onclick="switchDashTab('money', this)"><i class="fa-solid fa-hand-holding-dollar"></i> Monetize</button>
                 <button class="ch-tab" role="tab" aria-selected="false" data-dtab="points" onclick="switchDashTab('points', this)"><i class="fa-solid fa-star"></i> Points</button>
             </div>
@@ -54,116 +54,6 @@
                     <p class="muted" style="font-size:0.82rem;margin-bottom:0">Per-slot overlay URLs are available in each stream slot's Settings tab on the <a href="/broadcast">Broadcast page</a>.<br>Browser Source size: 800×600 is a good starting point. Background stays transparent.</p>
                 </div>
 
-                <!-- Controls Manager -->
-                <div class="dash-card" id="dash-card-controls">
-                    <h3><i class="fa-solid fa-gamepad"></i> Interactive Controls</h3>
-
-                    <!-- Control Config Profiles -->
-                    <div style="margin-bottom:12px">
-                        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-                            <label style="font-weight:600;font-size:0.9rem;color:var(--text-secondary)"><i class="fa-solid fa-sliders"></i> Control Profiles</label>
-                            <div style="display:flex;gap:6px">
-                                <button class="btn btn-small btn-outline" onclick="showModal('create-config')"><i class="fa-solid fa-plus"></i> New Profile</button>
-                                <button class="btn btn-small btn-outline" onclick="openClonePresetModal()"><i class="fa-solid fa-clone"></i> Clone Preset</button>
-                            </div>
-                        <!-- Clone Preset Config Modal -->
-                        <div id="clone-preset-config-modal" class="modal-overlay" style="display:none" onclick="if(event.target===this)closeModal()">
-                            <div class="modal" onclick="event.stopPropagation()">
-                                <button class="modal-close" onclick="closeModal()">&times;</button>
-                                <div class="modal-header">
-                                    <h3><i class="fa-solid fa-clone"></i> Clone Preset Control Profile</h3>
-                                </div>
-                                <div class="modal-body">
-                                    <p class="muted" style="margin-bottom:10px">Choose a preset profile to clone. You can edit the name and description before creating your own copy.</p>
-                                    <div class="form-group">
-                                        <label>Preset</label>
-                                        <select id="clone-preset-select" class="form-input">
-                                            <option value="">Loading...</option>
-                                        </select>
-                                    </div>
-                                    <div class="form-group">
-                                        <label>Name</label>
-                                        <input type="text" id="clone-preset-name" class="form-input" maxlength="50" placeholder="Profile name">
-                                    </div>
-                                    <div class="form-group">
-                                        <label>Description</label>
-                                        <input type="text" id="clone-preset-desc" class="form-input" maxlength="200" placeholder="Profile description (optional)">
-                                    </div>
-                                </div>
-                                <div class="modal-footer">
-                                    <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
-                                    <button class="btn btn-primary" onclick="doClonePresetConfig()"><i class="fa-solid fa-clone"></i> Clone</button>
-                                </div>
-                            </div>
-                        </div>
-                        </div>
-                        <div id="dash-config-list"></div>
-                        <div id="dash-config-editor" style="display:none">
-                            <div style="display:flex;align-items:center;justify-content:space-between;margin:12px 0 8px">
-                                <h4 id="dash-config-editor-title" style="margin:0;font-size:0.95rem;color:var(--accent)">Editing: Config</h4>
-                                <div style="display:flex;gap:6px">
-                                    <button class="btn btn-small btn-outline" onclick="showModal('add-config-button')"><i class="fa-solid fa-plus"></i> Add Button</button>
-                                    <button class="btn btn-small btn-outline" onclick="closeConfigEditor()"><i class="fa-solid fa-times"></i> Close</button>
-                                </div>
-                            </div>
-                            <div id="dash-config-buttons-list"></div>
-                        </div>
-                    </div>
-
-                    <hr style="border-color:var(--border);margin:12px 0">
-
-                    <!-- Control Settings -->
-                    <details class="dash-control-settings" style="margin-top:12px;">
-                        <summary style="cursor:pointer;font-weight:600;font-size:0.9rem;color:var(--text-secondary)"><i class="fa-solid fa-sliders"></i> Control Settings</summary>
-                        <div style="margin-top:12px;display:flex;flex-direction:column;gap:10px;">
-                            <div class="form-group" style="margin:0">
-                                <label style="font-size:0.85rem">Control Mode</label>
-                                <select id="dash-control-mode" class="form-input form-input-sm" onchange="updateControlSettings()">
-                                    <option value="open">Open (anyone can control)</option>
-                                    <option value="whitelist">Whitelist Only</option>
-                                    <option value="disabled">Disabled</option>
-                                </select>
-                            </div>
-                            <label class="bc-toggle-label" style="font-size:0.85rem;gap:8px">
-                                <input type="checkbox" id="dash-anon-controls" checked onchange="updateControlSettings()">
-                                Allow anonymous users to use controls
-                            </label>
-                            <label class="bc-toggle-label" style="font-size:0.85rem;gap:8px">
-                                <input type="checkbox" id="dash-video-click" onchange="updateControlSettings()">
-                                Enable video click (viewers click on stream to send coordinates)
-                            </label>
-                            <p class="bc-field-hint" style="margin:2px 0 0">Command rate limits are per-button (set each control's cooldown in its profile). A high global burst cap prevents floods automatically.</p>
-                        </div>
-                    </details>
-
-                    <!-- Whitelist -->
-                    <details id="dash-control-whitelist-section" style="margin-top:8px;display:none">
-                        <summary style="cursor:pointer;font-weight:600;font-size:0.9rem;color:var(--text-secondary)"><i class="fa-solid fa-list-check"></i> Control Whitelist</summary>
-                        <div style="margin-top:8px">
-                            <div id="dash-control-whitelist"></div>
-                            <div style="display:flex;gap:8px;margin-top:8px">
-                                <input type="text" id="dash-whitelist-username" class="form-input form-input-sm" placeholder="Username" style="flex:1">
-                                <button class="btn btn-small btn-outline" onclick="addToControlWhitelist()"><i class="fa-solid fa-plus"></i> Add</button>
-                            </div>
-                        </div>
-                    </details>
-
-                    <!-- Hardware Bridge Scripts -->
-                    <details style="margin-top:8px">
-                        <summary style="cursor:pointer;font-weight:600;font-size:0.9rem;color:var(--text-secondary)"><i class="fa-solid fa-robot"></i> Hardware Bridge Scripts</summary>
-                        <div style="margin-top:8px">
-                            <p class="bc-field-hint" style="margin-bottom:8px">Download Python scripts to connect hardware (robots, GPIO, servos) to your control profiles. Each script is pre-configured with your stream key and the buttons from the selected profile.</p>
-                            <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-                                <select id="dash-bridge-config-select" class="form-input form-input-sm" style="flex:1;min-width:140px">
-                                    <option value="">Select a control profile...</option>
-                                </select>
-                                <button class="btn btn-small btn-outline" onclick="downloadDashBridgeScript('generic')" title="Generic hardware bridge — prints commands"><i class="fa-solid fa-download"></i> Generic Script</button>
-                                <button class="btn btn-small btn-outline" onclick="downloadDashBridgeScript('cozmo')" title="Cozmo robot bridge — requires pycozmo"><i class="fa-solid fa-robot"></i> Cozmo Script</button>
-                            </div>
-                        </div>
-                    </details>
-                </div>
-
                 <!-- API Tokens (Bot / Integration) -->
                 <div class="dash-card" id="dash-card-tokens">
                     <h3><i class="fa-solid fa-key"></i> API Tokens</h3>
@@ -197,30 +87,17 @@
 
                 <!-- OpenVibe.Bot robot shown on the channel page (LIVE_BOT_EMBED; shown by loadBotEmbedSetting when the flag is on) -->
                 <div class="dash-card" id="dash-card-bot-embed" style="display:none">
-                    <h3><i class="fa-solid fa-robot"></i> Bot robot</h3>
+                    <h3><i class="fa-solid fa-robot"></i> Your robot</h3>
+                    <p class="muted" style="font-size:0.85rem">Pair a robot on <a href="https://openvibe.bot/robots/new" target="_blank" rel="noopener">OpenVibe.Bot</a> (a Raspberry Pi car, a Cozmo, a phone or a pan-tilt camera) and put its id here. Its live panel shows under your stream, and chat drives it with <code>!forward</code>, <code>!backward</code>, <code>!left</code>, <code>!right</code>, <code>!headup</code>, <code>!liftup</code> and <code>!say</code>. Who may drive is the robot's setting on OpenVibe.Bot: only you, people you invite, or anyone signed in taking turns.</p>
                     <div class="settings-row">
-                        <label class="settings-row-label" for="dash-bot-robot-id">Bot robot id</label>
+                        <label class="settings-row-label" for="dash-bot-robot-id">Robot id</label>
                         <div class="settings-row-content">
                             <input type="text" id="dash-bot-robot-id" placeholder="rob_…" autocomplete="off" spellcheck="false">
                         </div>
                     </div>
                     <button class="btn btn-primary btn-small" onclick="saveBotEmbedSetting()"><i class="fa-solid fa-floppy-disk"></i> Save</button>
                     <span id="dash-bot-robot-status" class="muted" style="font-size:0.82rem" role="status"></span>
-                </div>
-
-                <!-- ONVIF Camera Controls -->
-                <div class="dash-card" id="dash-card-cameras">
-                    <h3><i class="fa-solid fa-video"></i> Camera Controls (ONVIF PTZ)</h3>
-                    <p class="muted" style="font-size: 0.85rem;">Add ONVIF-compatible cameras (Hikvision, Axis, Dahua, etc.) for pan/tilt/zoom viewer control.</p>
-                    <div id="dash-cameras-list"></div>
-                    <div style="display: flex; gap: 8px; margin-top: 8px;">
-                        <button class="btn btn-outline" onclick="showModal('discover-cameras')">
-                            <i class="fa-solid fa-magnifying-glass"></i> Discover Cameras
-                        </button>
-                        <button class="btn btn-outline" onclick="showModal('add-camera')">
-                            <i class="fa-solid fa-plus"></i> Add Camera Manually
-                        </button>
-                    </div>
+                    <p class="muted" style="font-size:0.8rem;margin:10px 0 0">No robot yet? <a href="https://openvibe.bot/try" target="_blank" rel="noopener">Drive a simulated one</a>, or see <a href="https://openvibe.bot/models" target="_blank" rel="noopener">what it can drive</a>.</p>
                 </div>
 
                 <!-- Donation Goals -->

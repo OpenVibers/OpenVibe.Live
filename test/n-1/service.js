@@ -27,6 +27,10 @@ const ISSUER = 'https://openvibe.network';
 // call server was deleted (T3): nginx sends /api/streams/voice-channels… and /api/streams/:id/call there (Chat's
 // deploy/nginx/calls/openvibe.live-calls.locations.conf).
 const CHAT_PATHS = /^\/(api\/(chat|dm|tts|emotes|channels)(\/|$)|api\/sounds(\/|$)|api\/streams\/voice-channels(\/|$)|api\/streams\/[^/]+\/call$|ws\/)/;
+// Live's robot controls were deleted (plan T15; robots are OpenVibe.Bot's): an N-1 tab's /api/controls and /api/onvif calls
+// now answer 404, and every one of them was already wrapped to fail quietly (the controls panel, the dashboard's
+// controls and ONVIF cards, the broadcast profile pickers), so they are not this release's to answer either.
+const RETIRED_PATHS = /^\/api\/(controls|onvif)(\/|$)/;
 
 function freePort() {
     return new Promise((resolve) => { const s = net.createServer().listen(0, '127.0.0.1', () => { const p = s.address().port; s.close(() => resolve(p)); }); });
@@ -76,7 +80,7 @@ module.exports = {
         { name: 'navigator.sendBeacon', method: 'POST' },
     ],
     strip: ['API', 'location.origin', 'window.location.origin'],
-    keep: (pathname) => !CHAT_PATHS.test(pathname),
+    keep: (pathname) => !CHAT_PATHS.test(pathname) && !RETIRED_PATHS.test(pathname),
     /** Pages an open tab may hold: the shell (its scripts, styles and links) and a server-rendered channel. */
     crawl: ['/', '/@n1star'],
     origins: ['https://openvibe.live'],

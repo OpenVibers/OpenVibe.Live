@@ -6,7 +6,7 @@ OpenVibe.Live is a self-hosted live streaming platform, one of the OpenVibe serv
 
 - **Express.js** (CommonJS) — HTTP API, HTML documents, static assets
 - **PostgreSQL** (`openvibe-sdk/db`, through PgBouncer; PGlite in development and tests) — users, channels, streams, tokens, AI state, request analytics (`ov_live`, since 2026-10-08)
-- **WebSocket** (`ws`) — chat, broadcast signaling, calls, hardware controls
+- **WebSocket** (`ws`) — broadcast signaling (chat and calls are OpenVibe.Chat's; robots are OpenVibe.Bot's)
 - **mediasoup** — WebRTC SFU; **werift** — WHIP ingest; **Node-Media-Server** — RTMP ingest
 - **FFmpeg** — recording hand-off, restreams, thumbnails, audio capture for transcription
 - **OpenVibe.Network** — SSO/OAuth2 (RS256 JWTs), OpenCoins wallet, shared browser modules (`openvibe-shared`, a pinned OpenVibe.Shared release served at `/shared/*` from `node_modules`)

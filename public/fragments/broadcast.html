@@ -632,18 +632,6 @@ WantedBy=multi-user.target</code>
                         </p>
                     </div>
 
-                    <!-- Interactive Controls Status -->
-                    <div class="bc-settings-group">
-                        <div class="bc-settings-title"><i class="fa-solid fa-gamepad"></i> Interactive Controls</div>
-                        <div id="bc-ext-controls-status" style="margin-bottom:8px"><p class="muted" style="font-size:0.85rem">Loading...</p></div>
-                        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-                            <select id="bc-ext-live-config-select" class="form-input form-input-sm" style="flex:1;min-width:120px">
-                                <option value="">None (no controls)</option>
-                            </select>
-                            <button class="btn btn-small btn-outline" onclick="applyLiveControlProfile()"><i class="fa-solid fa-check"></i> Apply</button>
-                        </div>
-                        <p class="bc-call-explainer" style="margin-top:6px"><i class="fa-solid fa-circle-info"></i> Change profile without ending the stream. Viewers see the new buttons immediately.</p>
-                    </div>
                 </div>
 
                 <!-- ═══ WebRTC Browser Broadcast (live controls) ═══ -->
@@ -910,19 +898,6 @@ WantedBy=multi-user.target</code>
                                 <span class="bc-setting-label">Low Bitrate Alert</span>
                                 <div class="bc-setting-control"><label class="bc-toggle"><input type="checkbox" id="bc-lowBitrateAudio" onchange="_lowBitrateAlertEnabled = this.checked; try { localStorage.setItem('bc-lowbitrate-audio', this.checked ? '1' : '0'); } catch{}"><span class="bc-toggle-slider"></span></label></div>
                             </div>
-                        </div>
-
-                        <!-- Interactive Controls Profile (live) -->
-                        <div class="bc-settings-group" id="bc-browser-controls-group">
-                            <div class="bc-settings-title"><i class="fa-solid fa-gamepad"></i> Interactive Controls</div>
-                            <div id="bc-browser-controls-status" style="margin-bottom:8px"><p class="muted" style="font-size:0.85rem">Loading…</p></div>
-                            <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-                                <select id="bc-live-config-select" class="form-input form-input-sm" style="flex:1;min-width:120px">
-                                    <option value="">None (no controls)</option>
-                                </select>
-                                <button class="btn btn-small btn-outline" onclick="applyLiveControlProfile()"><i class="fa-solid fa-check"></i> Apply</button>
-                            </div>
-                            <p class="bc-call-explainer" style="margin-top:6px"><i class="fa-solid fa-circle-info"></i> Change profile without ending the stream. Viewers see the new buttons immediately.</p>
                         </div>
 
                         <!-- Restreams — configured in Broadcast Settings tab -->

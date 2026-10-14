@@ -1663,7 +1663,6 @@ function activateChannelStream(stream) {
         }
     }
     if (typeof initChat === 'function') initChat(stream.id, stream.user_id || _activeChannelUserId);
-    if (typeof loadStreamControls === 'function') loadStreamControls(stream.id);
     if (typeof startCoinHeartbeat === 'function') startCoinHeartbeat(stream.id);
     if (typeof updateChannelPointsNav === 'function') updateChannelPointsNav(stream.user_id);
     startUptime(stream.started_at);
@@ -3324,7 +3323,6 @@ async function openStream(streamId) {
 
         if (typeof initPlayer === 'function') initPlayer(s);
         if (typeof initChat === 'function') initChat(streamId, s.user_id || _activeChannelUserId);
-        if (typeof loadStreamControls === 'function') loadStreamControls(streamId);
         if (typeof startCoinHeartbeat === 'function') startCoinHeartbeat(streamId);
         if (typeof updateChannelPointsNav === 'function') updateChannelPointsNav(s.user_id);
         loadStreamGoals(streamId);

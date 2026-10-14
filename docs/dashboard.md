@@ -10,7 +10,7 @@ Your RTMP stream key is shown (hidden by default) for use with OBS, Streamlabs, 
 
 Create long-lived API tokens for bots and integrations. Tokens authenticate via the `Authorization: Bearer hbt_...` header for REST API and chat WebSocket connections.
 
-Available scopes: `chat`, `read`, `stream`, `control`.
+Available scopes: `chat`, `read`, `stream`, `vibe_coding_publish`.
 
 See [API Tokens](api-tokens.md) for full details.
 
@@ -48,9 +48,9 @@ On the **Home** tab, *Let OpenVibe's AI make Moments from my streams* (on by def
 - **Coin Rewards** — Create custom rewards viewers can redeem with Nickels (TTS, sound effects, chat highlights, etc.)
 - **Redemption Queue** — Fulfill or reject viewer reward redemptions.
 
-## Camera Controls (ONVIF PTZ)
+## Your robot
 
-Add ONVIF-compatible cameras for viewer-controlled pan/tilt/zoom. Supports discovery and manual configuration.
+On the **Robot & API** tab, put the id of a robot you paired on [OpenVibe.Bot](https://openvibe.bot/robots/new) (a Raspberry Pi car, a Cozmo, a phone or an ONVIF pan-tilt camera). Its live panel shows under your stream, and chat drives it with `!forward`, `!backward`, `!left`, `!right`, `!headup`, `!liftup` and `!say`, each passed to Bot as the viewer who typed it; who may drive is the robot's own setting on Bot.
 
 ## Donation Goals
 
