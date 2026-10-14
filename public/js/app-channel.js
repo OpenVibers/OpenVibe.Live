@@ -1341,7 +1341,7 @@ function renderWeatherWidget(data) {
     if (hasHourly) {
         const utcOff = data.utc_offset_seconds;
         html += `<div class="weather-hourly weather-tab-panel" data-panel="hourly">`;
-        html += `<div class="weather-hourly-scroll">`;
+        html += `<div class="weather-hourly-scroll" tabindex="0" role="group" aria-label="Hourly forecast">`;
         for (const h of data.hourly) {
             const hw = getWeatherInfo(h.weather_code, true);
             const isCurrent = isCurrentHour(h.time, utcOff);
@@ -2495,6 +2495,12 @@ function _startCaptions(username, displayName, isLive) {
 function _stopCaptions() { if (_captionsTimer) { clearInterval(_captionsTimer); _captionsTimer = null; } }
 function toggleCaptionsPanel() { document.getElementById('ch-captions')?.classList.toggle('collapsed'); }
 
+// An image-only panel link needs a name for screen readers: the panel's title, else where it goes.
+function _panelLinkName(p) {
+    if (p.title) return p.title;
+    try { return `Open ${new URL(p.link).hostname.replace(/^www\./i, '')}`; } catch { return 'Open link'; }
+}
+
 function _aboutPanelViewHTML(p, i) {
     const w = ABOUT_WIDTHS.includes(p.width) ? p.width : 'md';
     if (p.type === 'weather') {
@@ -2504,7 +2510,7 @@ function _aboutPanelViewHTML(p, i) {
         </div>`;
     }
     const img = p.image
-        ? (p.link ? `<a href="${esc(p.link)}" target="_blank" rel="noopener"><img src="${esc(p.image)}" alt="" loading="lazy"></a>`
+        ? (p.link ? `<a href="${esc(p.link)}" target="_blank" rel="noopener" aria-label="${esc(_panelLinkName(p))}"><img src="${esc(p.image)}" alt="" loading="lazy"></a>`
                   : `<img src="${esc(p.image)}" alt="" loading="lazy">`)
         : '';
     const title = p.title ? `<div class="ch-about-panel-title">${esc(p.title)}</div>` : '';
