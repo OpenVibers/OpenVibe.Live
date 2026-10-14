@@ -39,13 +39,17 @@ const RARITY = { common: 'Common', uncommon: 'Uncommon', rare: 'Rare', epic: 'Ep
 const httpsOnly = (u) => (typeof u === 'string' && /^https:\/\//i.test(u) ? u : null);
 
 /**
- * A preview as the channel page shows it: every picture (avatar, live thumbnail, post image) through Live's image proxy
- * (/api/img-proxy), so a viewer's browser never asks the platform itself. That keeps viewers private, and the page's
+ * A preview as the channel page shows it: every picture (avatar, live thumbnail, post image) from another platform goes
+ * through Live's image proxy (/api/img-proxy), so a viewer's browser never asks the platform itself. That keeps viewers private, and the page's
  * img-src needs no list of every platform's CDN (a Twitch avatar on static-cdn.jtvnw.net was blocked).
  */
+// OpenVibe's own image hosts are in the page's img-src and serve generated avatars as SVG, which the image proxy refuses
+// (415): their pictures stay direct.
+const FIRST_PARTY_IMAGES = new Set(['openvibe.network', 'openvibe.media', 'openvibe.community']);
 function forPage(p) {
     if (!p || typeof p !== 'object') return p;
-    const via = (u) => (httpsOnly(u) ? `/api/img-proxy?url=${encodeURIComponent(u)}` : null);
+    const firstParty = (u) => { try { return FIRST_PARTY_IMAGES.has(new URL(u).hostname); } catch { return false; } };
+    const via = (u) => (!httpsOnly(u) ? null : firstParty(u) ? u : `/api/img-proxy?url=${encodeURIComponent(u)}`);
     const out = { ...p, image: via(p.image) };
     if (p.live) out.live = { ...p.live, thumbnail: via(p.live.thumbnail) };
     if (Array.isArray(p.items)) out.items = p.items.map((it) => ({ ...it, image: via(it.image) }));

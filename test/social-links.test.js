@@ -127,6 +127,9 @@ async function check(name, fn) { await fn(); passed++; console.log(`  ✓ ${name
         assert.ok(p.live.thumbnail.startsWith('/api/img-proxy?url=https%3A%2F%2Fstatic-cdn.jtvnw.net'));
         assert.deepStrictEqual(p.items.map((i) => i.image && i.image.slice(0, 15)), ['/api/img-proxy?', null]);
         assert.strictEqual(forPage({ title: 'x', image: 'http://plain.example/a.png' }).image, null, 'never a plain-http picture');
+        // OpenVibe's own avatar (a generated SVG, which the proxy refuses with 415) stays direct: its host is in img-src.
+        assert.strictEqual(forPage({ title: 'iZoR_One', image: 'https://openvibe.network/avatar/iZoR_One?s=160' }).image, 'https://openvibe.network/avatar/iZoR_One?s=160');
+        assert.strictEqual(forPage({ title: 'x', image: 'https://openvibe.network.evil.example/a.png' }).image.slice(0, 15), '/api/img-proxy?', 'only the exact hosts');
         assert.match(require('fs').readFileSync(require('path').join(__dirname, '..', 'server', 'social', 'routes.js'), 'utf8'), /res\.json\(forPage\(p\)\)/);
     });
     console.log(`social-links: ${passed} checks passed`);
