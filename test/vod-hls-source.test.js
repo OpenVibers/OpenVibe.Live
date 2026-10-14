@@ -108,10 +108,11 @@ function sandbox({ hlsSupported = true } = {}) {
         assert.strictEqual(made.length, 1, 'no new hls.js instance for a page that is gone');
         assert.strictEqual(w.src, '');
     }
-    // The media proxies keep Media's playlist URL on VOD and clip rows.
+    // The media proxies keep Media's playlist URL on VOD and clip rows (behaviour: test/vod-clip-playback-url.test.js).
     for (const f of ['vods.js', 'clips.js']) {
         const src = fs.readFileSync(path.join(__dirname, '..', 'server', 'media-proxy', f), 'utf8');
-        assert.match(src, /hls_url = media\.publicUrl\(/, `${f} keeps hls_url`);
+        assert.match(src, /media\.setPlaybackUrls\(/, `${f} keeps hls_url`);
     }
+    assert.match(fs.readFileSync(path.join(__dirname, '..', 'server', 'media-client.js'), 'utf8'), /row\.hls_url = publicUrl\(row\.hls_url\)/, 'media-client absolutizes hls_url');
     console.log('vod hls source: all checks passed');
 })().catch((e) => { console.error(e); process.exit(1); });
