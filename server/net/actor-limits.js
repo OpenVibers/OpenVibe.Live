@@ -25,7 +25,7 @@ const num = (v, d) => { const n = parseInt(v, 10); return Number.isFinite(n) && 
 
 /** Writes never counted per actor (paths relative to /api). */
 const EXEMPT = [
-    /^\/auth\//, /^\/controls(\/|$)/, /^\/onvif(\/|$)/, /^\/kiosk(\/|$)/, /^\/robotstreamer(\/|$)/,
+    /^\/auth\//, /^\/kiosk(\/|$)/, /^\/robotstreamer(\/|$)/,
     /^\/vods\/stream\/[^/]+\/(chunk|finalize)$/, /^\/thumbnails\/live(\/|$)/,
     /^\/streams\/[^/]+\/heartbeat$/, /^\/streams\/diag-log$/,
 ];

@@ -484,47 +484,66 @@ effectsRouter.post('/media-queue', async (req, res) => {
     }
 });
 
-// Cozmo / !say: the robot's control socket is in Live, keyed by the streamer's stream key. Chat commands pass the
-// same gate as the control panel (control-server.js validateControlPermission): the channel's control mode, its
-// anonymous-control switch and its whitelist, judged on the viewer Chat names (`from_user_id`; none = anonymous),
-// plus a per-viewer cooldown so a chat flood cannot drive a robot faster than a held key.
-const HARDWARE_COMMANDS = new Set(['forward', 'backward', 'turn_left', 'turn_right', 'lift_up', 'lift_down', 'head_up', 'head_down']);
+// !forward, !say … : a channel's chat commands drive the OpenVibe.Bot robot the channel is bound to (channels.bot_robot_id),
+// through Bot's gate as the viewer who typed them (server/bot/bot-client.js): the robot's access policy, queue, turn
+// budget, cooldowns and e-stop all apply, and Bot audits every one. Live keeps no robot code and no control socket
+// (plan T15). OpenVibe.Chat names the viewer by Network subject (`from_subject`); a viewer who is not signed in cannot
+// drive a robot. Each motion is a short pulse: Bot clamps `ms` to the profile's max_command_ms and the device stops
+// by itself after it. A per-viewer cooldown keeps a chat flood from queueing faster than a held key.
+const CHAT_ROBOT_COMMANDS = {
+    forward: { kind: 'drive', value: { throttle: 0.6 } },
+    backward: { kind: 'drive', value: { throttle: -0.6 } },
+    turn_left: { kind: 'drive', value: { steer: -0.7 } },
+    turn_right: { kind: 'drive', value: { steer: 0.7 } },
+    lift_up: { kind: 'actuator', value: { name: 'lift', value: 1 } },
+    lift_down: { kind: 'actuator', value: { name: 'lift', value: -1 } },
+    head_up: { kind: 'actuator', value: { name: 'head', value: 1 } },
+    head_down: { kind: 'actuator', value: { name: 'head', value: -1 } },
+};
+const CHAT_ROBOT_MS = 600;
 const HARDWARE_COOLDOWN_MS = 250;
+const SUBJECT_RE = /^usr_[0-9A-HJKMNP-TV-Z]{26}$/;
 const hardwareLast = new Map();   // `${streamer}:${viewer}` → last command ms
-async function hardwareRefusal(owner, actorId) {
-    const channel = await db.getChannelByUserId(owner.id);
-    if (!channel) return null;
-    const mode = channel.control_mode || 'open';
-    if (mode === 'disabled') return 'controls_disabled';
-    if (!actorId && (!channel.anon_controls_enabled || mode === 'whitelist')) return 'login_required';
-    if (mode === 'whitelist' && actorId !== owner.id
-        && !await db.get('SELECT 1 FROM control_whitelist WHERE channel_id = ? AND user_id = ?', [channel.id, actorId])) return 'not_whitelisted';
-    return null;
-}
+// What a refusal from Bot means, in chat words (Bot's codes, OpenVibe.Bot docs/protocol.md §2).
+const ROBOT_REFUSALS = {
+    'bot.not_an_operator': 'You cannot drive this robot. Its owner decides who may.',
+    'bot.not_your_turn': 'It is not your turn at the robot yet.',
+    'bot.turn_budget': 'Your turn at the robot is used up.',
+    'bot.cooldown': null,
+    'bot.estop_latched': 'The robot\'s emergency stop is on.',
+    'bot.device_offline': 'The robot is offline.',
+    'bot.command_not_allowed': 'This robot does not do that.',
+    'bot.unknown_actuator': 'This robot does not do that.',
+    'bot.robot_not_found': 'This channel\'s robot no longer exists.',
+};
 effectsRouter.post('/hardware', async (req, res) => {
     const command = String(req.body?.command || '');
-    if (!HARDWARE_COMMANDS.has(command) && !/^say:[\s\S]{1,200}$/.test(command)) return fail(res, 400, 'unknown command');
+    const say = /^say:([\s\S]{1,200})$/.exec(command);
+    const mapped = say ? { kind: 'say', value: { text: say[1] } } : CHAT_ROBOT_COMMANDS[command];
+    if (!mapped) return fail(res, 400, 'unknown command');
     const user = await db.getUserById(int(req.body.streamer_user_id));
     if (!user) return res.json({ ok: false, reason: 'no_user' });
-    const actorId = int(req.body.from_user_id) || null;
-    const refused = await hardwareRefusal(user, actorId);
-    if (refused) return res.json({ ok: false, reason: refused });
-    const who = actorId ? `u${actorId}` : `a:${String(req.body.from_anon || req.body.from_user || '').slice(0, 64)}`;
-    const key = `${user.id}:${who}`;
+    const channel = await db.getChannelByUserId(user.id);
+    if (!channel || !channel.bot_robot_id) return res.json({ ok: false, reason: 'no_robot', message: 'This channel has no robot. Its owner can bind one from OpenVibe.Bot.' });
+    let subject = SUBJECT_RE.test(String(req.body.from_subject || '')) ? String(req.body.from_subject) : null;
+    if (!subject && int(req.body.from_user_id)) subject = await require('../auth/identity-sync').subjectOf(int(req.body.from_user_id));
+    if (!subject) return res.json({ ok: false, reason: 'login_required', message: 'Sign in to drive the robot.' });
+    const key = `${user.id}:${subject}`;
     const now = Date.now();
     if (now - (hardwareLast.get(key) || 0) < HARDWARE_COOLDOWN_MS) return res.json({ ok: false, reason: 'cooldown' });
     hardwareLast.set(key, now);
     if (hardwareLast.size > 5000) hardwareLast.delete(hardwareLast.keys().next().value);
-    const controlServer = require('../controls/control-server');
-    const hwWs = controlServer.hardwareClients.get(user.stream_key);
-    if (!hwWs || hwWs.readyState !== 1) return res.json({ ok: false, reason: 'no_hardware' });
-    hwWs.send(JSON.stringify({
-        type: 'command',
-        command,
-        from_user: String(req.body.from_user || ''),
-        timestamp: new Date().toISOString(),
-    }));
-    res.json({ ok: true });
+    const bot = require('../bot/bot-client');
+    try {
+        const out = await bot.command(channel.bot_robot_id, subject, { id: `chat-${require('crypto').randomUUID()}`, ...mapped, ...(mapped.kind === 'say' ? {} : { ms: CHAT_ROBOT_MS }) });
+        return res.json({ ok: true, result: out.result || null });
+    } catch (err) {
+        if (err instanceof bot.BotRefusal) {
+            const message = Object.prototype.hasOwnProperty.call(ROBOT_REFUSALS, err.code) ? ROBOT_REFUSALS[err.code] : (err.message || 'The robot refused that.');
+            return res.json({ ok: false, reason: err.code, ...(message ? { message } : {}) });
+        }
+        return res.json({ ok: false, reason: 'robot_unavailable', message: 'The robot service did not answer. Try again in a moment.' });
+    }
 });
 
 // /paste from chat, through Live's pastes client (OpenVibe.Community).

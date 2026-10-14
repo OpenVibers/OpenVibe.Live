@@ -1,77 +1,3 @@
-// Preset control profiles for new users
-const CONTROL_PRESETS = [
-    {
-        name: 'Robot Car (WASD)',
-        description: 'Basic robot car: forward, back, left, right, stop. Hold-to-drive (key_down/key_up) for smooth continuous movement.',
-        buttons: [
-            { label: 'Forward', command: 'forward', icon: 'fa-arrow-up', control_type: 'keyboard', key_binding: 'w', cooldown_ms: 100, sort_order: 0 },
-            { label: 'Left', command: 'turn_left', icon: 'fa-arrow-left', control_type: 'keyboard', key_binding: 'a', cooldown_ms: 100, sort_order: 1 },
-            { label: 'Stop', command: 'stop', icon: 'fa-stop', control_type: 'button', key_binding: '', cooldown_ms: 100, sort_order: 2 },
-            { label: 'Right', command: 'turn_right', icon: 'fa-arrow-right', control_type: 'keyboard', key_binding: 'd', cooldown_ms: 100, sort_order: 3 },
-            { label: 'Back', command: 'backward', icon: 'fa-arrow-down', control_type: 'keyboard', key_binding: 's', cooldown_ms: 100, sort_order: 4 },
-        ]
-    },
-    {
-        name: 'Cozmo Robot',
-        description: 'Full Cozmo robot controls: hold-to-drive (WASD), face animations, machine gun lift, mode toggle, emergency stop.',
-        buttons: [
-            // Drive — keyboard type = sends key_down/key_up for smooth continuous drive
-            { label: 'Forward',      command: 'forward',         icon: 'fa-arrow-up',         control_type: 'keyboard', key_binding: 'w',     cooldown_ms: 100, sort_order: 0 },
-            { label: 'Left',         command: 'turn_left',       icon: 'fa-arrow-left',       control_type: 'keyboard', key_binding: 'a',     cooldown_ms: 100, sort_order: 1 },
-            { label: 'Stop',         command: 'stop',            icon: 'fa-stop',             control_type: 'button',   key_binding: 'space', cooldown_ms: 100, sort_order: 2 },
-            { label: 'Right',        command: 'turn_right',      icon: 'fa-arrow-right',      control_type: 'keyboard', key_binding: 'd',     cooldown_ms: 100, sort_order: 3 },
-            { label: 'Back',         command: 'backward',        icon: 'fa-arrow-down',       control_type: 'keyboard', key_binding: 's',     cooldown_ms: 100, sort_order: 4 },
-            // Face animations — button type = single tap
-            { label: 'Machine Gun',  command: 'machine_gun',     icon: 'fa-burst',            control_type: 'button',   key_binding: 'p',     cooldown_ms: 1000, sort_order: 5 },
-            { label: 'Otter',        command: 'otter',           icon: 'fa-otter',            control_type: 'button',   key_binding: 'g',     cooldown_ms: 300, sort_order: 6 },
-            { label: 'Dual Otter',   command: 'dual_otter',      icon: 'fa-otter',            control_type: 'button',   key_binding: 'y',     cooldown_ms: 300, sort_order: 7 },
-            { label: 'Mecha MG',     command: 'mechaMG',         icon: 'fa-robot',            control_type: 'button',   key_binding: 'm',     cooldown_ms: 300, sort_order: 8 },
-            { label: 'ArmCat',       command: 'armcat',          icon: 'fa-cat',              control_type: 'button',   key_binding: 'k',     cooldown_ms: 300, sort_order: 9 },
-            { label: 'NFlag',        command: 'nflag',           icon: 'fa-flag',             control_type: 'button',   key_binding: 'n',     cooldown_ms: 300, sort_order: 10 },
-            { label: 'Glance',       command: 'random_glance',   icon: 'fa-eye',              control_type: 'button',   key_binding: 'h',     cooldown_ms: 300, sort_order: 11 },
-            { label: 'Toggle Mode',  command: 'toggle_mode',     icon: 'fa-shuffle',          control_type: 'button',   key_binding: 'x',     cooldown_ms: 500, sort_order: 12 },
-        ]
-    },
-    {
-        name: 'Camera PTZ',
-        description: 'Pan/tilt/zoom camera controls (ONVIF compatible).',
-        buttons: [
-            { label: 'Pan Left', command: 'pan_left', icon: 'fa-arrow-left', control_type: 'onvif', key_binding: 'a', cooldown_ms: 300, sort_order: 0 },
-            { label: 'Pan Right', command: 'pan_right', icon: 'fa-arrow-right', control_type: 'onvif', key_binding: 'd', cooldown_ms: 300, sort_order: 1 },
-            { label: 'Tilt Up', command: 'tilt_up', icon: 'fa-arrow-up', control_type: 'onvif', key_binding: 'w', cooldown_ms: 300, sort_order: 2 },
-            { label: 'Tilt Down', command: 'tilt_down', icon: 'fa-arrow-down', control_type: 'onvif', key_binding: 's', cooldown_ms: 300, sort_order: 3 },
-            { label: 'Zoom In', command: 'zoom_in', icon: 'fa-magnifying-glass-plus', control_type: 'onvif', key_binding: 'e', cooldown_ms: 300, sort_order: 4 },
-            { label: 'Zoom Out', command: 'zoom_out', icon: 'fa-magnifying-glass-minus', control_type: 'onvif', key_binding: 'q', cooldown_ms: 300, sort_order: 5 },
-        ]
-    },
-    {
-        name: 'Gamepad (ABXY)',
-        description: 'Gamepad-style controls: A, B, X, Y, Start, Select.',
-        buttons: [
-            { label: 'A', command: 'a', icon: 'fa-circle', control_type: 'button', key_binding: 'j', cooldown_ms: 200, sort_order: 0 },
-            { label: 'B', command: 'b', icon: 'fa-circle', control_type: 'button', key_binding: 'k', cooldown_ms: 200, sort_order: 1 },
-            { label: 'X', command: 'x', icon: 'fa-circle', control_type: 'button', key_binding: 'u', cooldown_ms: 200, sort_order: 2 },
-            { label: 'Y', command: 'y', icon: 'fa-circle', control_type: 'button', key_binding: 'i', cooldown_ms: 200, sort_order: 3 },
-            { label: 'Start', command: 'start', icon: 'fa-play', control_type: 'button', key_binding: 'enter', cooldown_ms: 500, sort_order: 4 },
-            { label: 'Select', command: 'select', icon: 'fa-stop', control_type: 'button', key_binding: 'shift', cooldown_ms: 500, sort_order: 5 },
-        ]
-    }
-];
-
-async function seedControlPresetsForUser(userId) {
-    const existing = await all('SELECT * FROM control_configs WHERE user_id = ?', [userId]);
-    if (existing.length > 0) return;
-    for (const preset of CONTROL_PRESETS) {
-        const { lastInsertRowid } = await run('INSERT INTO control_configs (user_id, name, description) VALUES (?, ?, ?) RETURNING id', [userId, preset.name, preset.description]);
-        for (const btn of preset.buttons) {
-            await run(
-                `INSERT INTO control_config_buttons (config_id, label, command, icon, control_type, key_binding, cooldown_ms, sort_order, btn_color, btn_bg, btn_border_color)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, '', '', '')`,
-                [lastInsertRowid, btn.label, btn.command, btn.icon, btn.control_type, btn.key_binding, btn.cooldown_ms, btn.sort_order]
-            );
-        }
-    }
-}
 /**
  * OpenVibe.Live — Database Connection & Helpers
  * PostgreSQL through openvibe-sdk/db (ADR-035, plan T4). The schema is migrations/NNNN_*.sql, run with the owner role
@@ -350,19 +276,6 @@ async function getLiveStreamsByUserId(userId) {
     `, [userId]);
 }
 
-async function getLiveStreamsByControlConfigId(controlConfigId) {
-    return await all(`
-        SELECT s.*, COALESCE(NULLIF(s.ai_category, ''), s.category) AS category, s.category AS chosen_category, u.username, u.display_name, u.avatar_url, u.profile_color,
-               ms.slug AS managed_stream_slug, ms.stream_key AS managed_stream_key,
-               ms.title AS managed_stream_title
-        FROM streams s
-        JOIN users u ON s.user_id = u.id
-        LEFT JOIN managed_streams ms ON s.managed_stream_id = ms.id
-        WHERE s.control_config_id = ? AND s.is_live = 1
-        ORDER BY s.started_at DESC
-    `, [controlConfigId]);
-}
-
 async function getStreamsByUserId(userId, limit = 50) {
     return await all(`
         SELECT s.*, COALESCE(NULLIF(s.ai_category, ''), s.category) AS category, s.category AS chosen_category, u.username, u.display_name, u.avatar_url, u.profile_color,
@@ -403,12 +316,12 @@ async function fireStreamLifecycle(kind, streamId) {
     try { await getDb().tx(() => streamLifecycleHook(kind, streamId)); } catch (err) { console.warn(`[Events] stream ${kind} event for ${streamId} not queued:`, err.message); }
 }
 
-async function createStream({ user_id, channel_id, managed_stream_id, control_config_id, title, description, category, protocol, is_nsfw, thumbnail_url }) {
+async function createStream({ user_id, channel_id, managed_stream_id, title, description, category, protocol, is_nsfw, thumbnail_url }) {
     return await getDb().tx(async () => {
         const result = await run(
-            `INSERT INTO streams (user_id, channel_id, managed_stream_id, control_config_id, title, description, category, protocol, is_nsfw, thumbnail_url, is_live, started_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ov_now()) RETURNING id`,
-            [user_id, channel_id || null, managed_stream_id || null, control_config_id || null, title || 'Untitled Stream', description || '', category || null, protocol || 'webrtc', is_nsfw ? 1 : 0, thumbnail_url || null]
+            `INSERT INTO streams (user_id, channel_id, managed_stream_id, title, description, category, protocol, is_nsfw, thumbnail_url, is_live, started_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ov_now()) RETURNING id`,
+            [user_id, channel_id || null, managed_stream_id || null, title || 'Untitled Stream', description || '', category || null, protocol || 'webrtc', is_nsfw ? 1 : 0, thumbnail_url || null]
         );
         await fireStreamLifecycle('started', result.lastInsertRowid);
         return result;
@@ -1040,11 +953,11 @@ async function updateViewerCount(streamId, count) {
 
 // ── Managed Stream helpers ───────────────────────────────────
 
-async function createManagedStream({ user_id, channel_id, slug, title, description, category, protocol, streaming_method, stream_key, is_nsfw, control_config_id }) {
+async function createManagedStream({ user_id, channel_id, slug, title, description, category, protocol, streaming_method, stream_key, is_nsfw }) {
     return await run(
-        `INSERT INTO managed_streams (user_id, channel_id, slug, title, description, category, protocol, streaming_method, stream_key, is_nsfw, control_config_id)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
-        [user_id, channel_id || null, slug || null, title || 'Untitled Stream', description || '', category || null, protocol || 'webrtc', streaming_method || null, stream_key, is_nsfw ? 1 : 0, control_config_id || null]
+        `INSERT INTO managed_streams (user_id, channel_id, slug, title, description, category, protocol, streaming_method, stream_key, is_nsfw)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
+        [user_id, channel_id || null, slug || null, title || 'Untitled Stream', description || '', category || null, protocol || 'webrtc', streaming_method || null, stream_key, is_nsfw ? 1 : 0]
     );
 }
 
@@ -1106,7 +1019,7 @@ async function getManagedStreamByIdOrSlug(userId, idOrSlug) {
 async function updateManagedStream(managedStreamId, userId, fields) {
     const allowed = new Set([
         'slug', 'title', 'description', 'category', 'tags', 'protocol',
-        'is_nsfw', 'control_config_id', 'sort_order',
+        'is_nsfw', 'sort_order',
         'streaming_method', 'browser_mode',
         'default_vod_visibility', 'default_clip_visibility', 'slot_vod_recording_enabled', 'slot_clip_recording_enabled',
         'slot_clip_notify_enabled', 'slot_powerchat_relay', 'slot_powerchat_count_rs_views',
@@ -1712,7 +1625,7 @@ async function updateChannel(userId, fields) {
     const updates = [];
     const params = [];
     for (const [key, val] of Object.entries(fields)) {
-        if (val !== undefined && ['title', 'description', 'category', 'tags', 'protocol', 'is_nsfw', 'force_nsfw', 'auto_record', 'vod_recording_enabled', 'force_vod_recording_disabled', 'offline_banner_url', 'panels', 'emote_sources', 'weather_zip', 'weather_detail', 'weather_show_location', 'control_mode', 'anon_controls_enabled', 'control_rate_limit_ms', 'active_control_config_id', 'video_click_enabled', 'offline_screen_type', 'offline_screen_url', 'offline_html', 'offline_css', 'hide_ai_overview', 'ai_overview_pref', 'chat_language', 'ai_derivation_enabled', 'social_links', 'bot_robot_id'].includes(key)) {
+        if (val !== undefined && ['title', 'description', 'category', 'tags', 'protocol', 'is_nsfw', 'force_nsfw', 'auto_record', 'vod_recording_enabled', 'force_vod_recording_disabled', 'offline_banner_url', 'panels', 'emote_sources', 'weather_zip', 'weather_detail', 'weather_show_location', 'offline_screen_type', 'offline_screen_url', 'offline_html', 'offline_css', 'hide_ai_overview', 'ai_overview_pref', 'chat_language', 'ai_derivation_enabled', 'social_links', 'bot_robot_id'].includes(key)) {
             updates.push(`${key} = ?`);
             params.push(['tags', 'panels', 'emote_sources'].includes(key) ? (typeof val === 'string' ? val : JSON.stringify(val)) : val);
         }
@@ -2375,196 +2288,6 @@ async function setSubscriptionStatus(id, status, fields = {}) {
 // server/media-proxy/lookups.js; Live's own AI state for them is vod_ai_state / clip_ai_state.
 // The legacy local vods/clips tables are frozen and unread: test/frozen-tables.test.js fails on
 // a new write or read (register C-73; the drop procedure is in docs/vods-and-clips.md).
-
-// ── Control helpers ──────────────────────────────────────────
-
-async function getStreamControls(streamId) {
-    return await all('SELECT * FROM stream_controls WHERE stream_id = ? ORDER BY sort_order', [streamId]);
-}
-
-async function createControl({ stream_id, label, command, icon, control_type, key_binding, cooldown_ms, sort_order, btn_color, btn_bg, btn_border_color }) {
-    return await run(
-        `INSERT INTO stream_controls (stream_id, label, command, icon, control_type, key_binding, cooldown_ms, sort_order, btn_color, btn_bg, btn_border_color)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
-        [stream_id, label, command, icon || 'fa-gamepad', control_type || 'button', key_binding || null, cooldown_ms || 100, sort_order || 0, btn_color || '', btn_bg || '', btn_border_color || '']
-    );
-}
-
-// ── Control Config helpers ──────────────────────────────────
-
-async function getControlConfigs(userId) {
-    return await all('SELECT * FROM control_configs WHERE user_id = ? ORDER BY created_at DESC', [userId]);
-}
-
-async function getControlConfig(configId) {
-    return await get('SELECT * FROM control_configs WHERE id = ?', [configId]);
-}
-
-async function createControlConfig({ user_id, name, description }) {
-    return await run(
-        'INSERT INTO control_configs (user_id, name, description) VALUES (?, ?, ?) RETURNING id',
-        [user_id, name, description || '']
-    );
-}
-
-async function updateControlConfig(configId, fields) {
-    const updates = [];
-    const params = [];
-    for (const [key, val] of Object.entries(fields)) {
-        if (val !== undefined && ['name', 'description'].includes(key)) {
-            updates.push(`${key} = ?`);
-            params.push(val);
-        }
-    }
-    if (updates.length === 0) return;
-    updates.push('updated_at = ov_now()');
-    params.push(configId);
-    return await run(`UPDATE control_configs SET ${updates.join(', ')} WHERE id = ?`, params);
-}
-
-async function deleteControlConfig(configId) {
-    return await run('DELETE FROM control_configs WHERE id = ?', [configId]);
-}
-
-async function getConfigButtons(configId) {
-    return await all('SELECT * FROM control_config_buttons WHERE config_id = ? ORDER BY sort_order', [configId]);
-}
-
-async function createConfigButton({ config_id, label, command, icon, control_type, key_binding, cooldown_ms, sort_order, btn_color, btn_bg, btn_border_color }) {
-    return await run(
-        `INSERT INTO control_config_buttons (config_id, label, command, icon, control_type, key_binding, cooldown_ms, sort_order, btn_color, btn_bg, btn_border_color)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
-        [config_id, label, command, icon || 'fa-gamepad', control_type || 'button', key_binding || null, cooldown_ms || 100, sort_order || 0, btn_color || '', btn_bg || '', btn_border_color || '']
-    );
-}
-
-async function updateConfigButton(buttonId, fields, configId) {
-    const allowed = ['label', 'command', 'icon', 'control_type', 'key_binding', 'cooldown_ms', 'sort_order', 'btn_color', 'btn_bg', 'btn_border_color', 'is_enabled'];
-    const updates = [];
-    const params = [];
-    for (const [key, val] of Object.entries(fields)) {
-        if (val !== undefined && allowed.includes(key)) {
-            updates.push(`${key} = ?`);
-            params.push(val);
-        }
-    }
-    if (updates.length === 0) return;
-    params.push(buttonId);
-    // Callers that authorised a config pass its id, so a button id from another config matches nothing.
-    if (configId != null) { params.push(configId); return await run(`UPDATE control_config_buttons SET ${updates.join(', ')} WHERE id = ? AND config_id = ?`, params); }
-    return await run(`UPDATE control_config_buttons SET ${updates.join(', ')} WHERE id = ?`, params);
-}
-
-async function deleteConfigButton(buttonId, configId) {
-    if (configId != null) return await run('DELETE FROM control_config_buttons WHERE id = ? AND config_id = ?', [buttonId, configId]);
-    return await run('DELETE FROM control_config_buttons WHERE id = ?', [buttonId]);
-}
-
-async function bindStreamToControlConfig(streamId, controlConfigId) {
-    if (controlConfigId === null) {
-        return await run('UPDATE streams SET control_config_id = NULL WHERE id = ?', [streamId]);
-    }
-    return await run('UPDATE streams SET control_config_id = ? WHERE id = ?', [controlConfigId, streamId]);
-}
-
-async function applyConfigToStream(configId, streamId) {
-    // Delete existing non-ONVIF controls from stream
-    await run('DELETE FROM stream_controls WHERE stream_id = ? AND (control_type != ? OR control_type IS NULL)', [streamId, 'onvif']);
-    // Copy buttons from config into stream_controls
-    const buttons = await getConfigButtons(configId);
-    for (let i = 0; i < buttons.length; i++) {
-        const b = buttons[i];
-        if (!b.is_enabled) continue;
-        await createControl({
-            stream_id: streamId,
-            label: b.label,
-            command: b.command,
-            icon: b.icon,
-            control_type: b.control_type,
-            key_binding: b.key_binding,
-            cooldown_ms: b.cooldown_ms,
-            sort_order: b.sort_order || i,
-            btn_color: b.btn_color,
-            btn_bg: b.btn_bg,
-            btn_border_color: b.btn_border_color,
-        });
-    }
-    await bindStreamToControlConfig(streamId, configId);
-    return buttons.filter(b => b.is_enabled).length;
-}
-
-// ── API Key helpers ──────────────────────────────────────────
-
-async function createApiKey({ user_id, key_hash, label, permissions }) {
-    return await run(
-        `INSERT INTO api_keys (user_id, key_hash, label, permissions)
-         VALUES (?, ?, ?, ?) RETURNING id`,
-        [user_id, key_hash, label || 'Default', JSON.stringify(permissions || ['control', 'stream'])]
-    );
-}
-
-async function getApiKeyByHash(hash) {
-    return await get('SELECT * FROM api_keys WHERE key_hash = ? AND is_active = 1', [hash]);
-}
-
-// ── ONVIF Camera helpers ─────────────────────────────────────
-
-async function createCameraProfile({ user_id, stream_id, name, onvif_url, username, password_hash, pan_speed, tilt_speed, zoom_speed }) {
-    return await run(
-        `INSERT INTO camera_profiles (user_id, stream_id, name, onvif_url, username, password_hash, pan_speed, tilt_speed, zoom_speed)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
-        [user_id, stream_id || null, name, onvif_url, username, password_hash, pan_speed || 0.5, tilt_speed || 0.5, zoom_speed || 0.5]
-    );
-}
-
-async function getCameraProfile(cameraId) {
-    return await get('SELECT * FROM camera_profiles WHERE id = ?', [cameraId]);
-}
-
-async function getCameraProfilesByUser(userId) {
-    return await all('SELECT * FROM camera_profiles WHERE user_id = ? ORDER BY created_at DESC', [userId]);
-}
-
-async function getCameraProfilesByStream(streamId) {
-    return await all('SELECT * FROM camera_profiles WHERE stream_id = ? AND is_active = 1 ORDER BY name', [streamId]);
-}
-
-async function updateCameraProfile(cameraId, data) {
-    const { name, onvif_url, username, password_hash, pan_speed, tilt_speed, zoom_speed, is_active, last_connected } = data;
-    return await run(
-        `UPDATE camera_profiles SET name = ?, onvif_url = ?, username = ?, password_hash = ?, 
-         pan_speed = ?, tilt_speed = ?, zoom_speed = ?, is_active = ?, last_connected = ?, updated_at = ov_now()
-         WHERE id = ?`,
-        [name, onvif_url, username, password_hash, pan_speed, tilt_speed, zoom_speed, is_active, last_connected, cameraId]
-    );
-}
-
-async function deleteCameraProfile(cameraId) {
-    // Cascade delete presets and associated controls
-    await run('DELETE FROM camera_presets WHERE camera_id = ?', [cameraId]);
-    await run('UPDATE stream_controls SET camera_id = NULL WHERE camera_id = ?', [cameraId]);
-    return await run('DELETE FROM camera_profiles WHERE id = ?', [cameraId]);
-}
-
-async function createCameraPreset({ camera_id, name, pan, tilt, zoom, preset_token }) {
-    return await run(
-        `INSERT INTO camera_presets (camera_id, name, pan, tilt, zoom, preset_token)
-         VALUES (?, ?, ?, ?, ?, ?) RETURNING id`,
-        [camera_id, name, pan, tilt, zoom, preset_token || null]
-    );
-}
-
-async function getCameraPreset(presetId) {
-    return await get('SELECT * FROM camera_presets WHERE id = ?', [presetId]);
-}
-
-async function getCameraPresetsByCamera(cameraId) {
-    return await all('SELECT * FROM camera_presets WHERE camera_id = ? ORDER BY name', [cameraId]);
-}
-
-async function deleteCameraPreset(presetId) {
-    return await run('DELETE FROM camera_presets WHERE id = ?', [presetId]);
-}
 
 // ── Ban helpers ──────────────────────────────────────────────
 
@@ -3882,7 +3605,7 @@ module.exports = {
     isValidManagedStreamSlug, isManagedStreamSlugTaken,
     ensureStreamerRoleOnFeed,
     // Streams (sessions)
-    getLiveStreams, getRecentStreams, getStreamById, setStreamAiCategory, effectiveCategory, getStreamByUserId, getLiveStreamsByUserId, getLiveStreamsByControlConfigId, getStreamsByUserId, getStreamHistoryByManagedStream,
+    getLiveStreams, getRecentStreams, getStreamById, setStreamAiCategory, effectiveCategory, getStreamByUserId, getLiveStreamsByUserId, getStreamsByUserId, getStreamHistoryByManagedStream,
     createStream, endStream, onStreamLifecycle, endOtherLiveStreamsForSlot, updateViewerCount,
     addStreamMemory, getStreamMemories, getLatestStreamMemory, updateStreamAiOverview,
     setVodAiOverview, setClipAiOverview, setVodTranscript, setClipTranscript, getStreamMemoriesInRange,
@@ -3944,17 +3667,6 @@ module.exports = {
     countPendingMediaRequestsForUser, getMediaRequestMaxQueuePosition,
     findActiveMediaRequestByCanonicalUrl, updateMediaRequest,
     renormalizePendingMediaRequestPositions,
-    // Controls
-    getStreamControls, createControl, bindStreamToControlConfig,
-    // ONVIF Cameras
-    createCameraProfile, getCameraProfile, getCameraProfilesByUser, getCameraProfilesByStream,
-    updateCameraProfile, deleteCameraProfile,
-    createCameraPreset, getCameraPreset, getCameraPresetsByCamera, deleteCameraPreset,
-    // API Keys
-    createApiKey, getApiKeyByHash,
-    // Control Configs
-    getControlConfigs, getControlConfig, createControlConfig, updateControlConfig, deleteControlConfig,
-    getConfigButtons, createConfigButton, updateConfigButton, deleteConfigButton, applyConfigToStream,
     // Bans
     isUserBanned, isIpBanned, getIpBan, invalidateIpBanCache, forgiveBan,
     getAiChatbotConfig, upsertAiChatbotConfig,

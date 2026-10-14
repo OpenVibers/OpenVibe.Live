@@ -104,15 +104,13 @@ console.log('OK I: geometry persists, hide is recoverable, audio defaults to mut
     const streamPanel = ws.slice(prof, settings);
     const settingsPanel = ws.slice(settings, endpoint);
 
-    assert.ok(!streamPanel.includes('id="bc-control-config"'),
-        'the control profile select must no longer render in the Stream tab');
-    assert.ok(settingsPanel.includes('id="bc-control-config"'),
-        'the control profile select must render in the Settings tab');
+    // Live's robot controls are gone (robots are OpenVibe.Bot's): no control profile select anywhere.
+    assert.ok(!ws.includes('id="bc-control-config"'), 'no control profile select in the workspace');
     assert.ok(settingsPanel.includes('id="bc-ws-pip-source"'),
         'the PiP camera picker must render in the Settings tab');
 
-    // Both must be their own collapsible sections, matching the other Settings groups.
-    for (const label of ['Control Profile', 'Picture-in-picture Camera']) {
+    // It is its own collapsible section, matching the other Settings groups.
+    for (const label of ['Picture-in-picture Camera']) {
         // Anchor on the SUMMARY text: an HTML comment carries the same label just above
         // the <details>, and matching that would look in the wrong place entirely.
         const idx = settingsPanel.indexOf(`${label}</summary>`);
@@ -121,7 +119,7 @@ console.log('OK I: geometry persists, hide is recoverable, audio defaults to mut
         assert.ok(before.includes('<details class="bc-ws-slot-settings">'),
             `"${label}" must be a collapsible <details> section like the rest of Settings`);
     }
-    console.log('OK J: control profile and PiP camera are collapsible sections under Settings');
+    console.log('OK J: the PiP camera is a collapsible section under Settings, and there is no control profile');
 }
 
 // ── K: PiP starting geometry round-trips through corner/size ─────────────────────────

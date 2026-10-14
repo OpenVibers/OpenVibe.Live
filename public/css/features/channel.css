@@ -2,12 +2,7 @@
    download them. Loaded with the feature (public/features.json), directly after style.css in the cascade.
    Split by class/id ownership with cascade-order checks; edit freely. */
 /*  ── from style.css ──  */
-.controls-row {
-    display: flex;
-    flex-direction: row;
-    gap: 8px;
-    flex-wrap: wrap;
-}
+
 #ch-pastes-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(min(100%, 220px), 1fr));
@@ -572,46 +567,6 @@
     border-radius: var(--radius); border: 1px solid var(--border);
 }
 .goal-label { font-weight: 600; margin-bottom: 6px; color: var(--accent); }
-.controls-panel {
-    margin: 0; padding: 8px 14px;
-    background: var(--bg-card);
-    border-radius: 0;
-    border-top: none;
-    border-bottom: 1px solid var(--border);
-}
-.controls-header {
-    display: flex; align-items: center; gap: 8px;
-    margin-bottom: 6px;
-}
-.controls-grid {
-    display: flex; gap: 8px; flex-wrap: wrap;
-}
-.control-btn.on-cooldown { opacity: 0.5; pointer-events: none; }
-.click-ripple-remote {
-    border-color: rgba(255,255,255,0.5);
-}
-.onvif-widget {
-    margin: 12px 0; padding: 12px;
-    background: var(--bg-secondary);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    transition: all 0.2s;
-}
-
-.onvif-header {
-    display: flex; justify-content: space-between; align-items: center;
-    margin-bottom: 12px;
-    padding-bottom: 8px; border-bottom: 1px solid var(--border);
-}
-
-.onvif-status {
-    font-size: 1rem; font-weight: bold;
-    animation: pulse 2s infinite;
-}
-
-.onvif-controls {
-    display: flex; flex-direction: column; gap: 10px;
-}
 .dpad-container {
     display: grid; grid-template-columns: repeat(3, 1fr);
     grid-template-rows: repeat(3, 1fr);
@@ -717,7 +672,6 @@
     .ch-offline-header { flex-wrap: wrap; gap: 12px; padding: 16px; }
     .ch-avatar-lg { width: 56px; height: 56px; font-size: 1.4rem; }
     .viewer-badge, .uptime-badge { font-size: 0.68rem; padding: 2px 5px; }
-    .controls-panel { padding: 8px; }
     #video-element, #video-canvas { width: 100%; }
     .channel-below-fold { padding: 0 8px 24px; }
     .channel-below-fold .section-header { padding: 12px 0; }
@@ -763,7 +717,6 @@
     .ch-info-bar { padding: 4px 8px; gap: 6px; }
     .ch-info-bar .ch-avatar { width: 28px; height: 28px; font-size: 0.8rem; }
     .ch-stream-title { display: none; }
-    .controls-panel { padding: 4px 8px; margin: 8px 0; }
 }
 .live-tabs-scroll {
     display: flex; gap: 0; overflow-x: auto; align-items: stretch;
@@ -1280,49 +1233,6 @@
 .ai-tl-subtabs { display: flex; gap: 6px; margin: 14px 0 16px; border-bottom: 1px solid var(--border, rgba(255,255,255,0.08)); }
 .ai-tl-subtab { font-size: 0.9rem; font-weight: 700; color: var(--text-muted); background: none; border: none; border-bottom: 2px solid transparent; padding: 8px 14px; cursor: pointer; display: inline-flex; align-items: center; gap: 7px; margin-bottom: -1px; transition: color .15s; }
 .ai-tl-pane--hidden { display: none; }
-.controls-header { justify-content: space-between; }
-.controls-status { display: inline-flex; align-items: center; gap: 6px; font-size: 0.72rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
-.controls-status-txt { color: var(--text-muted); }
-.controls-dock-btn { flex-shrink: 0; }
-.controls-dock-ph { color: var(--text-muted); font-size: 0.9rem; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 12px 2px; }
-.controls-dock-bar {
-    pointer-events: auto;
-    display: flex; align-items: center; gap: 8px;
-    max-width: 100%; width: max-content;
-    padding: 7px 9px;
-    background: color-mix(in srgb, var(--bg-card) 92%, transparent);
-    backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
-    border: 1px solid var(--border); border-radius: 14px;
-    box-shadow: 0 14px 38px rgba(0,0,0,.55);
-}
-.controls-dock-grip { flex-shrink: 0; color: var(--accent); font-size: 0.95rem; padding: 0 2px; }
-.controls-dock-body::-webkit-scrollbar { height: 5px; }
-.controls-dock-close { flex-shrink: 0; background: var(--bg-hover); border: 1px solid var(--border); color: var(--text-muted); width: 30px; height: 30px; border-radius: 9px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all .15s; }
-.controls-dock-close:hover { color: var(--text-primary); border-color: var(--accent); }
-.controls-dock .controls-grid { flex-wrap: nowrap; gap: 6px; }
-.controls-dock .control-btn { position:relative; flex-direction: row; min-width: 0; padding: 7px 11px; font-size: 0.78rem; gap: 6px; white-space: nowrap; }
-.controls-dock .control-btn i { font-size: 0.98rem; }
-@media (max-width: 560px) {
-    .controls-dock .control-btn > i { display: none; }
-    .controls-dock .control-btn { padding: 9px 12px; }
-    .controls-dock-bar { gap: 6px; padding: 6px 8px; }
-}
-@media (prefers-reduced-motion: reduce) { .controls-dock { animation: none; } }
-.ch-controls-section .controls-panel { border-top: 1px solid var(--border); }
-.controls-header-btns { display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0; }
-.ch-controls-toggle {
-    display: inline-flex; align-items: center; gap: 5px; flex-shrink: 0;
-    background: color-mix(in srgb, var(--accent) 16%, transparent);
-    border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
-    color: var(--accent); cursor: pointer;
-    padding: 5px 10px; border-radius: 8px; font-size: 0.85rem; line-height: 1;
-    transition: all 0.15s;
-}
-.ch-controls-toggle:hover { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 26%, transparent); color: var(--accent-light); }
-.ch-controls-toggle-caret { font-size: 0.64rem; }
-.ch-info-bar-right .ch-controls-toggle { order: -1; }
-.controls-dock-btn { padding: 5px 9px; flex-shrink: 0; }
-body.controls-docked .messenger-toggle { z-index: 1100; }
 .ov-pip:hover { border-color: rgba(255, 255, 255, .38); }
 .ov-pip.is-dragging { cursor: grabbing; box-shadow: 0 10px 30px rgba(0, 0, 0, .7); }
 .ov-pip.is-dragging, .ov-pip.is-resizing { user-select: none; }
@@ -1492,8 +1402,11 @@ body.controls-docked .messenger-toggle { z-index: 1100; }
 
 /* ── Resizing the chat (public/js/channel-chat-resize.js) ─────
    One grip per chat: on its left edge beside the stream (width), on its top edge as a bottom sheet (height). */
-/* Not for vertical (9:16) streams: their wider chat column (clamp(340px, 35vw, 500px), above) must win. */
-#page-channel .stream-layout:not(:has(.video-container.is-vertical)) > .chat-sidebar { width: var(--chat-w); }
+/* The column's saved width is for the side layout only (1181px and wider). Outside a media query it outranked the
+   overlay and sheet rules below (:has() adds the specificity of its argument), so a width saved on a wide screen made
+   a phone's bottom sheet 260px wide with the page showing beside it (2026-10-14).
+   Not for vertical (9:16) streams: their wider chat column (clamp(340px, 35vw, 500px), above) must win. */
+@media (min-width: 1181px) { #page-channel .stream-layout:not(:has(.video-container.is-vertical)) > .chat-sidebar { width: var(--chat-w); } }
 @media (max-width: 1180px) and (orientation: landscape) { #page-channel .stream-layout > .chat-sidebar { width: var(--chat-ow, min(420px, 44vw)); } }
 @media (max-width: 1180px) and (orientation: portrait) { #page-channel .stream-layout > .chat-sidebar { width: 100%; height: var(--chat-sheet-h, 55dvh); max-height: 92dvh; } }
 #page-channel.chat-resizing, #page-channel.chat-resizing * { user-select: none; }

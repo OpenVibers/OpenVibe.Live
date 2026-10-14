@@ -63,7 +63,6 @@ const express = require('express');
 const app = express();
 app.use(express.json());
 app.use('/api/mod', require('../server/admin/mod-routes'));
-app.use('/api/controls', require('../server/controls/routes'));
 app.use('/api/admin', require('../server/admin/routes'));
 app.use('/api/media', require('../server/media/routes'));
 app.use('/api/ai-viewers', require('../server/ai/viewers/routes'));
@@ -102,18 +101,6 @@ async function check(name, fn) {
         const r = await call('POST', '/api/mod/delete-message', 4, { message_id: MSG_B });
         assert.strictEqual(r.status, 200, r.text);
         assert.ok(moderated.some((m) => m.action === 'delete-message' && m.fields.id === MSG_B), 'Chat is asked to delete it');
-    });
-
-    await check('controls: a button id from someone else\'s profile cannot be edited or deleted through yours', async () => {
-        const cfgA = (await db.run("INSERT INTO control_configs (user_id, name, description) VALUES (3, 'A', '') RETURNING id")).lastInsertRowid;
-        const cfgB = (await db.run("INSERT INTO control_configs (user_id, name, description) VALUES (4, 'B', '') RETURNING id")).lastInsertRowid;
-        const btnB = (await db.run("INSERT INTO control_config_buttons (config_id, label, command) VALUES (?, 'Fire', 'fire') RETURNING id", [cfgB])).lastInsertRowid;
-        const put = await call('PUT', `/api/controls/configs/${cfgA}/buttons/${btnB}`, 3, { command: 'self_destruct' });
-        assert.strictEqual(put.status, 404, put.text);
-        const del = await call('DELETE', `/api/controls/configs/${cfgA}/buttons/${btnB}`, 3);
-        assert.strictEqual(del.status, 404, del.text);
-        const row = await raw.prepare('SELECT command FROM control_config_buttons WHERE id = ?').get(btnB);
-        assert.strictEqual(row && row.command, 'fire');
     });
 
     await check('admin: a non-owner admin cannot demote the owner, grant admin, or ban the owner/an admin', async () => {
@@ -208,12 +195,11 @@ async function check(name, fn) {
     await check('API tokens: scopes gate writes; money, staff and credential routes refuse tokens', () => {
         const t = (method, url, scopes) => auth.apiTokenAllows({ method, originalUrl: url }, scopes);
         assert.strictEqual(t('GET', '/api/streams', ['read']), true);
-        assert.strictEqual(t('POST', '/api/funds/cashout', ['read', 'stream', 'chat', 'control']), false);
+        assert.strictEqual(t('POST', '/api/funds/cashout', ['read', 'stream', 'chat']), false);
         assert.strictEqual(t('GET', '/api/admin/users', ['read']), false);
         assert.strictEqual(t('DELETE', '/api/vods/3', ['read', 'chat']), false);
         assert.strictEqual(t('DELETE', '/api/vods/3', ['stream']), true);
         assert.strictEqual(t('POST', '/api/chat/send', ['chat']), true);
-        assert.strictEqual(t('POST', '/api/controls/configs', ['read']), false);
         assert.strictEqual(t('GET', '/api/auth/stream-key', ['read']), false);
     });
 

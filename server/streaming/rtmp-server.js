@@ -156,24 +156,6 @@ class RTMPServer extends EventEmitter {
                 streamId = result.lastInsertRowid;
             }
 
-            // Apply the per-slot control config, mirroring WHIP: the slot's own
-            // control_config_id wins, falling back to the channel default. This
-            // fixes viewers seeing the wrong (channel-default) controls when a
-            // streamer set different controls per stream slot.
-            try {
-                const streamRow = await db.getStreamById(streamId);
-                const slot = managedStream
-                    || (streamRow && streamRow.managed_stream_id ? await db.getManagedStreamById(streamRow.managed_stream_id) : null);
-                const channel = await db.getChannelByUserId(resolvedUser.id);
-                const configId = (slot && slot.control_config_id) || (channel && channel.active_control_config_id);
-                if (configId) {
-                    const applied = await db.applyConfigToStream(configId, streamId);
-                    console.log(`[RTMP] Applied control config ${configId} to stream ${streamId} (${applied} buttons)${slot && slot.control_config_id ? ' [per-slot]' : ' [channel default]'}`);
-                }
-            } catch (cfgErr) {
-                console.warn('[RTMP] Failed to apply control config:', cfgErr.message);
-            }
-
             // Dedup: end any other stale live session on this slot (keep this one).
             try {
                 const streamRow2 = await db.getStreamById(streamId);

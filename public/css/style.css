@@ -3121,37 +3121,8 @@ a.pulse-card:hover { border-color: var(--accent); transform: translateY(-2px); }
     text-align: right; margin-top: 4px;
 }
 
-/* Controls Panel — flat action bar directly below the video */
-.controls-header h3 {
-    font-size: 0.78rem; color: var(--text-muted);
-    margin-bottom: 0; font-weight: 600;
-    text-transform: uppercase; letter-spacing: 0.05em;
-    display: flex; align-items: center; gap: 6px;
-}
-.control-btn {
-    position: relative; /* anchor the absolutely-positioned .control-keybind badge */
-    display: flex; flex-direction: column; align-items: center; gap: 2px;
-    padding: 10px 14px; background: var(--bg-hover);
-    border: 1px solid var(--border); border-radius: var(--radius);
-    color: var(--text-primary); font-size: 0.8rem;
-    min-width: 60px; cursor: pointer;
-    transition: all 0.15s;
-}
-.control-btn:hover { border-color: var(--accent); color: var(--accent); }
-.control-btn:active { background: var(--accent); color: #000; }
-.control-btn i { font-size: 1.2rem; }
-
 /* Keyboard hold button */
-.control-btn-keyboard { position: relative; }
-.control-btn-keyboard.key-held {
-    background: var(--accent); color: #000;
-    box-shadow: 0 0 12px color-mix(in srgb, var(--accent) 60%, transparent);
-}
-.control-btn-keyboard.remote-held {
-    border-color: var(--accent);
-    box-shadow: 0 0 8px color-mix(in srgb, var(--accent) 40%, transparent);
-    animation: control-pulse 0.8s infinite;
-}
+
 @keyframes control-pulse {
     0%, 100% { box-shadow: 0 0 8px color-mix(in srgb, var(--accent) 40%, transparent); }
     50% { box-shadow: 0 0 16px color-mix(in srgb, var(--accent) 70%, transparent); }
@@ -3175,31 +3146,6 @@ a.pulse-card:hover { border-color: var(--accent); transform: translateY(-2px); }
 }
 /* Let the native video controls through */
 .video-overlay { z-index: 10; }
-
-.click-ripple {
-    position: absolute; width: 24px; height: 24px;
-    margin-left: -12px; margin-top: -12px;
-    border-radius: 50%;
-    border: 2px solid var(--accent);
-    animation: click-ripple-anim 0.6s ease-out forwards;
-    pointer-events: none;
-}
-@keyframes click-ripple-anim {
-    0% { transform: scale(0.5); opacity: 1; }
-    100% { transform: scale(3); opacity: 0; }
-}
-
-/* ONVIF Camera Controls */
-
-.onvif-header h3 {
-    font-size: 0.95rem; color: var(--accent); margin: 0;
-    display: flex; align-items: center; gap: 6px;
-}
-
-.onvif-status.connected { color: #0f0; }
-.onvif-status.unreachable { color: #f00; animation: none; }
-.onvif-status.unknown { color: #888; animation: none; }
-
 @keyframes pulse {
     0%, 100% { opacity: 1; }
     50% { opacity: 0.6; }
@@ -5003,9 +4949,6 @@ textarea.form-input { resize: vertical; min-height: 60px; }
     .video-controls { padding: 4px 8px; gap: 3px; }
     .vc-btn { min-width: 28px; min-height: 28px; padding: 4px 5px; font-size: 0.9rem; }
 
-    /* Controls panel compact */
-    .controls-header h3 { font-size: 0.9rem; }
-
     /* Mobile chat is open — no scrim over video, keep it visible */
 
     /* Offline chat inherits the .chat-sidebar mobile bottom-sheet behavior (same as live). */
@@ -5066,10 +5009,6 @@ textarea.form-input { resize: vertical; min-height: 60px; }
     .ch-info-bar-top h2 { font-size: 0.88rem; }
 
     .mobile-chat-toggle { width: 48px; height: 48px; font-size: 1.1rem; bottom: 16px; right: 12px; }
-
-    /* Control buttons compact on small phones */
-    .control-btn { min-width: 50px; padding: 8px 10px; font-size: 0.75rem; }
-    .control-btn i { font-size: 1rem; }
 
     /* Context menu fits small screens */
     .chat-context-menu {
@@ -5136,9 +5075,6 @@ textarea.form-input { resize: vertical; min-height: 60px; }
     .hero h1 { font-size: 1.3rem; }
     .hero p { font-size: 0.85rem; }
     .ch-info-bar-top h2 { font-size: 0.82rem; }
-    .controls-header h3 { font-size: 0.82rem; }
-    .control-btn { min-width: 44px; padding: 6px 8px; font-size: 0.7rem; }
-    .control-btn i { font-size: 0.9rem; }
     .btn-follow { font-size: 0.72rem; padding: 3px 8px; }
     .dash-card h3 { font-size: 0.9rem; }
     .modal { width: 98%; padding: 16px; border-radius: 14px; }
@@ -10108,33 +10044,7 @@ body.theme-light .btn-outline:hover {
 .ai-tl-subtab.active { color: var(--accent, #8b5cf6); border-bottom-color: var(--accent, #8b5cf6); }
 /* Keep legacy .ch-panel-actions working (still used by the Controls header). */
 .ch-panel-actions { display: flex; justify-content: flex-end; align-items: center; gap: 8px; }
-
-/* Controls tab header (compact status + dock button) */
-.controls-dock-ph i { color: var(--accent); }
-
-/* ═══════════════ Docked controls (fixed compact bottom bar) ═══════════════ */
-.controls-dock {
-    position: fixed; left: 0; right: 0; bottom: 0; z-index: 1200;
-    padding: 0 8px calc(8px + env(safe-area-inset-bottom, 0px));
-    display: flex; justify-content: center; pointer-events: none;
-    animation: dockUp .2s ease;
-}
 @keyframes dockUp { from { transform: translateY(110%); opacity: 0; } to { transform: none; opacity: 1; } }
-.controls-dock-body { display: flex; align-items: center; min-width: 0; overflow-x: auto; scrollbar-width: thin; }
-/* Compact, single-row buttons inside the dock */
-@media (max-width: 560px) {
-    /* On phones show the LABEL and hide the icon — the label tells you what the button
-       does, which matters more than the glyph (keep the keybind badge). */
-}
-
-/* ═══════════════ Controls section under the player + collapse toggle ═══════════════ */
-/* Small collapse/expand toggle in the streamer info bar (top-right) */
-/* Header holds the hide-toggle + dock button, grouped at the right. */
-/* Hide/expand toggle — visually DISTINCT from the dock button: a soft accent-tinted
-   pill (vs the dock button's plain outline), so you can tell them apart at a glance. */
-/* When it lives in the info bar (collapsed), keep it snug next to the follower count. */
-/* Dock button: plain outline icon (distinct from the tinted toggle). */
-.controls-dock-btn i { font-size: 0.9rem; }
 /* Keep the DMs FAB BEHIND the docked controls bar so it doesn't cover the buttons */
 
 /* ── Rendered markdown (GitHub-README style) ─────────────────────────────
@@ -10285,10 +10195,6 @@ body.theme-light .btn-outline:hover {
     background: rgba(0,0,0,.62); border: 1px solid rgba(255,255,255,.18);
     color: #fff; font-size: .74rem;
     backdrop-filter: blur(3px);
-}
-
-@media (max-width: 640px) {
-    /* Fingers need a bigger target than a hover-revealed 18px corner. */
 }
 
 /* ── AI Chat Viewers v3 panel ─────────────────────────────── */
@@ -11091,21 +10997,6 @@ a .arena-thread:hover { color: var(--text-primary); background: color-mix(in srg
     .section-header h2 > i:first-child { width: 26px; height: 26px; border-radius: 9px; font-size: 0.74rem; }
 }
 
-
-/* The philosophy + legal row sits between the hero buttons and the stat board now, so it needs
-   to read as a quiet footnote rather than a third row of buttons competing with them. */
-
-/* ── Home rails on a phone ───────────────────────────────────────────────────
-   One 300px-minimum card per row meant four VODs, four clips and four pastes each took a full
-   screen of scrolling to get past, which read as spam rather than a taste of what's there. The
-   secondary rails go two-up on a phone with a trimmed-down card: the AI summary and the relative
-   timestamp are detail for a browse page, not for a glance on the way down the front page.
-
-   Live Now keeps one card per row. It is the thing people came for and it should be big. */
-@media (max-width: 640px) {
-    /* The AI blurb is three lines of text per card; at two-up it buries the thumbnails. */
-}
-
 /* ── Load more ───────────────────────────────────────────────────────────────
    A Prev/Next pager with a page counter belongs on a browse page where someone is hunting for a
    particular thing. On a front-page rail it is machinery nobody wants to operate. */
@@ -11358,16 +11249,6 @@ a .arena-thread:hover { color: var(--text-primary); background: color-mix(in srg
 
 /* A sheen that crosses a card once on hover — transform only, clipped to the card. */
 @keyframes ctaCardSheen { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
-
-/* Money section: a sentence and three short points, not another wall of feature cards. The lede
-   was the one centred paragraph in a section that is otherwise left-aligned. */
-
-/* Cards arrive when the section is opened. They used to play a rise animation at page load,
-   while the body was collapsed to zero height — an animation nobody could see. */
-
-@media (max-width: 640px) {
-    /* Methods and features become compact rows: icon beside the text. */
-}
 
 
 

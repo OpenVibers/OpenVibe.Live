@@ -52,7 +52,6 @@ const tokenFor = (id, subject) => jwt.sign({ sub: String(id), username: `u${id}`
         for (let i = 0; i < 20; i++) assert.strictEqual((await call('GET', '/api/streams', ann)).status, 200, 'reads are not counted');
         for (let i = 0; i < 10; i++) assert.strictEqual((await call('POST', '/api/pastes')).status, 200, 'signed-out writes keep the address limit only');
         for (let i = 0; i < 10; i++) {
-            assert.strictEqual((await call('POST', '/api/controls/1/move', ann)).status, 200, 'robot controls are never counted');
             assert.strictEqual((await call('POST', '/api/vods/stream/9/chunk', ann)).status, 200, 'recording chunks are never counted');
             assert.strictEqual((await call('POST', '/api/streams/9/heartbeat', ann)).status, 200, 'heartbeats are never counted');
         }

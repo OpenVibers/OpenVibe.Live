@@ -104,15 +104,6 @@ async function staffMayModerate(actor, ownerUserId) {
     return !(target && target.is_owner);
 }
 
-/** A control profile id a slot may point at: one of the caller's own (admins may use anyone's). */
-async function ownControlConfigId(req, raw) {
-    if (raw === null || raw === undefined || raw === '') return null;
-    const id = parseInt(raw);
-    const cfg = Number.isFinite(id) ? await db.getControlConfig(id) : null;
-    if (!cfg || (cfg.user_id !== req.user.id && !can(req.user, 'staff.streams.manage'))) return undefined;
-    return id;
-}
-
 
 
 /**
@@ -1494,7 +1485,7 @@ router.get('/setup-progress', requireAuth, async (req, res) => {
     // Chat owns channel_moderators and channel_moderation_settings (roadmap T3).
     const channelMod = channel.id ? await moderation.getChannelModeration(channel.id).catch(() => null) : null;
     const mods = channelMod ? channelMod.moderator_ids.length : 0;
-    const controls = await safe(async () => (await db.get('SELECT COUNT(*) AS n FROM control_configs WHERE user_id = ?', [uid])).n, 0);
+    const robot = await safe(async () => !!((await db.getChannelByUserId(uid)) || {}).bot_robot_id, false);
     const aibot = await safe(async () => (await db.get('SELECT COUNT(*) AS n FROM channel_ai_bots WHERE channel_user_id = ?', [uid])).n, 0);
     // Pastes live in OpenVibe.Community: the person's own count, unlisted and private included.
     const pastes = await require('../media-proxy/lookups').countUserPastes(user && user.id ? user : null, { hidden: 'owner' });
@@ -1519,7 +1510,7 @@ router.get('/setup-progress', requireAuth, async (req, res) => {
         { id: 'mods', group: 'Community & money', title: 'Add a moderator', why: 'Someone you trust watching chat while you stream.', done: mods > 0, count: mods, go: '/dashboard' },
         { id: 'requests', group: 'Community & money', title: 'Open media requests', why: 'Viewers spend OpenCoins to queue clips and tracks on your stream.', done: requests, go: '/dashboard' },
         { id: 'moderation', group: 'Community & money', title: 'Set your chat rules', why: 'Slow mode, followers-only and emote-only, tuned how you want them.', done: modRules, go: '/dashboard' },
-        { id: 'controls', group: 'Build & mod', title: 'Build viewer controls', why: 'Let chat drive a robot, trigger hardware or press your buttons.', done: controls > 0, count: controls, go: '/dashboard' },
+        { id: 'robot', group: 'Build & mod', title: 'Connect a robot', why: 'Pair a robot on OpenVibe.Bot and bind it to your channel: its panel shows under your stream and chat can drive it.', done: robot, go: 'https://openvibe.bot/robots/new' },
         { id: 'aibot', group: 'Build & mod', title: 'Add an AI chat regular', why: 'Keeps an empty chat warm and answers the usual questions.', done: aibot > 0, count: aibot, go: '/dashboard' },
         { id: 'paste', group: 'Build & mod', title: 'Publish a paste', why: 'Share code, configs or notes from your stream — they get their own page.', done: pastes > 0, count: pastes, go: '/pastes' },
     ];
@@ -1582,8 +1573,6 @@ router.post('/managed', requireAuth, async (req, res) => {
             streaming_method: cleanText(req.body.streaming_method, { maxLength: 20 }) || null,
             stream_key,
             is_nsfw,
-            // Someone else's profile would copy their buttons onto this slot and keep it in sync.
-            control_config_id: await ownControlConfigId(req, req.body.control_config_id) || null,
         });
 
         const managedStream = await db.getManagedStreamById(result.lastInsertRowid);
@@ -1631,11 +1620,6 @@ router.put('/managed/:id', requireAuth, async (req, res) => {
         if (hasOwn(req.body, 'tags')) {
             fields.tags = cleanTags(req.body.tags);
             if (fields.tags === null) return res.status(400).json({ error: 'Invalid tags' });
-        }
-        if (hasOwn(req.body, 'control_config_id')) {
-            const cfgId = await ownControlConfigId(req, req.body.control_config_id);
-            if (cfgId === undefined) return res.status(403).json({ error: 'Not your control profile' });
-            fields.control_config_id = cfgId;
         }
         if (hasOwn(req.body, 'pip_source_msid')) {
             // null / '' clears the overlay. Anything else must be one of this user's own
@@ -1839,7 +1823,9 @@ router.get('/:id', optionalAuth, async (req, res) => {
         }
 
         stream.cameras = await db.all('SELECT * FROM cameras WHERE stream_id = ?', [stream.id]);
-        stream.controls = await db.getStreamControls(stream.id);
+        // Always empty: Live's robot controls are gone (OpenVibe.Bot's now). Kept one release for N-1 tabs that read it;
+        // it goes with the controls tables' contract migration.
+        stream.controls = [];
         stream.channel = publicChannel(await db.getChannelByUserId(stream.user_id)) || null;
 
         // Picture-in-picture camera overlay: another SLOT of this owner's whose live
@@ -1910,30 +1896,11 @@ router.post('/', requireAuth, async (req, res) => {
         // Use managed stream's settings as defaults, allow per-session overrides
         const streamProtocol = protocol || cleanProtocol(managedStream.protocol) || cleanProtocol(channel.protocol) || 'webrtc';
         const streamCategory = category || cleanText(managedStream.category, { maxLength: MAX_CATEGORY_LENGTH }) || cleanText(channel.category, { maxLength: MAX_CATEGORY_LENGTH }) || null;   // null → the AI classifies the stream from what it shows
-        const requestedControlConfigId = req.body.control_config_id !== undefined ? (req.body.control_config_id === null ? null : parseInt(req.body.control_config_id)) : undefined;
-
-        if (requestedControlConfigId !== undefined && requestedControlConfigId !== null) {
-            const config = await db.getControlConfig(requestedControlConfigId);
-            if (!config) {
-                return res.status(404).json({ error: 'Control config not found' });
-            }
-            if (config.user_id !== req.user.id) {
-                return res.status(403).json({ error: 'Not authorized for this control profile' });
-            }
-        }
-
-        // Effective config: explicit non-null override > managed stream's saved default > null
-        // Note: null sent by client means "no explicit choice" (async select not yet populated),
-        // so fall back to the managed stream's configured profile rather than stripping controls.
-        const effectiveConfigId = (requestedControlConfigId != null)
-            ? requestedControlConfigId
-            : (managedStream.control_config_id || null);
 
         const result = await db.createStream({
             user_id: req.user.id,
             channel_id: channel.id,
             managed_stream_id: managedStream.id,
-            control_config_id: effectiveConfigId,
             title: title || cleanText(managedStream.title, { maxLength: MAX_TITLE_LENGTH }) || `${req.user.display_name}'s Stream`,
             description: description ?? cleanText(managedStream.description, { maxLength: MAX_DESCRIPTION_LENGTH, allowEmpty: true }) ?? '',
             category: streamCategory,
@@ -1967,24 +1934,6 @@ router.post('/', requireAuth, async (req, res) => {
             `INSERT INTO cameras (stream_id, camera_index, label, protocol) VALUES (?, 0, 'Main', ?)`,
             [streamId, streamProtocol]
         );
-
-        // Apply the control config to populate stream_controls for viewers.
-        if (effectiveConfigId !== null) {
-            try {
-                const applied = await db.applyConfigToStream(effectiveConfigId, streamId);
-                console.log(`[Streams] Applied control config ${effectiveConfigId} to stream ${streamId} (${applied} buttons)`);
-            } catch (cfgErr) {
-                console.warn(`[Streams] Failed to apply control config:`, cfgErr.message);
-            }
-        } else if (channel.active_control_config_id) {
-            // No slot-level config at all: fall back to channel default
-            try {
-                const applied = await db.applyConfigToStream(channel.active_control_config_id, streamId);
-                console.log(`[Streams] Auto-applied channel default control config ${channel.active_control_config_id} to stream ${streamId} (${applied} buttons)`);
-            } catch (cfgErr) {
-                console.warn(`[Streams] Failed to auto-apply channel default control config:`, cfgErr.message);
-            }
-        }
 
         const stream = await db.getStreamById(streamId);
         robotStreamerService.startForStream(stream).catch((rsErr) => {

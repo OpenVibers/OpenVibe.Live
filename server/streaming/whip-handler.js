@@ -599,13 +599,6 @@ async function autoCreateWhipSession(managedStream, user) {
         await db.run('UPDATE streams SET last_heartbeat = ov_now() WHERE id = ?', [streamId]);
         await db.run(`INSERT INTO cameras (stream_id, camera_index, label, protocol) VALUES (?, 0, 'Main', 'webrtc')`, [streamId]);
 
-        // Apply control config
-        const channel = await db.getChannelByUserId(user.id);
-        const configId = managedStream.control_config_id || (channel && channel.active_control_config_id);
-        if (configId) {
-            try { await db.applyConfigToStream(configId, streamId); } catch {}
-        }
-
         const stream = await db.getStreamById(streamId);
         console.log(`[WHIP] Auto-created live session ${streamId} for WHIP slot ${managedStream.id} (user: ${user.username})`);
 

@@ -62,9 +62,11 @@ Each feature lives in its own `server/<feature>/` directory with `routes.js` + s
 - **DM delivery:** Server verifies `dm.isParticipant()` before delivering — always maintain this check.
 - **Schema:** every table is in `migrations/`; `ensureTables()` is gone. The frozen and Chat-owned tables are not in the PostgreSQL schema at all.
 
+**Robots:** OpenVibe.Bot owns them (plan T15). Live has no control socket, hardware API or ONVIF code: a channel bound to a robot (`channels.bot_robot_id`, `PUT /api/streams/channel/:username/bot`) embeds the robot's panel (`server/bot/embed.js`), and chat's `!forward`/`!say` … reach Live at `POST /internal/chat-effects/hardware`, which forwards them to Bot's `POST /api/v1/robots/:id/commands` as the viewer (`server/bot/bot-client.js`, Network grant `bot.robot.control`). The old controls tables stay unread until their contract migration drops them.
+
 ## WebSocket Endpoints
 
-`/ws/broadcast`, `/ws/control`, `/ws/call`, `/ws/robotstreamer-publish` — upgraded via the handler in `server/index.js` with origin checks and IP bans. `/ws/chat` is OpenVibe.Chat's (nginx routes it to 127.0.0.1:4400); Live runs no chat WebSocket server.
+`/ws/broadcast`, `/ws/call`, `/ws/robotstreamer-publish` — upgraded via the handler in `server/index.js` with origin checks and IP bans. `/ws/chat` is OpenVibe.Chat's (nginx routes it to 127.0.0.1:4400); Live runs no chat WebSocket server.
 
 ## Testing
 

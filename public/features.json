@@ -64,15 +64,6 @@
         "/js/stream-pip.js"
       ]
     },
-    "controls": {
-      "js": [
-        "/js/controls.js"
-      ],
-      "stubs": [
-        "toggleControlsSection",
-        "toggleControlsDock"
-      ]
-    },
     "context": {
       "css": [
         "/css/context-cards.css"
@@ -110,7 +101,6 @@
       ],
       "deps": [
         "player",
-        "controls",
         "context",
         "chatExtras",
         "uploads"
@@ -247,13 +237,10 @@
         "/js/settings.js",
         "/js/dashboard-moderation.js",
         "/js/powerchat.js",
-        "/js/onvif-dashboard.js",
         "/js/dashboard.js"
       ],
       "stubs": [
-        "regenerateDashStreamKey",
-        "doCreateConfig",
-        "doAddConfigButton"
+        "regenerateDashStreamKey"
       ]
     },
     "arena": {

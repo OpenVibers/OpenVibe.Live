@@ -24,7 +24,6 @@ function stub(modPath, exportsObj) {
 stub(path.join(__dirname, '../server/db/database'), {});
 stub(path.join(__dirname, '../server/auth/auth'), { authenticateWs: () => null, extractWsToken: () => null });
 
-const controlServer = require('../server/controls/control-server');
 const chatRelay = require('../server/integrations/chat-relay-service');
 
 const tick = () => new Promise((resolve) => setImmediate(resolve));
@@ -49,39 +48,7 @@ async function capture(fn) {
 }
 
 (async () => {
-    // ── 1. control socket: a rejecting command handler ──────────────────────
-    const listeners = [];
-    const ws = {
-        readyState: 1,
-        on: (event, fn) => { if (event === 'message') listeners.push(fn); },
-        send: () => {},
-        close: () => {},
-    };
-    await controlServer.handleViewerConnection(ws, null, new URLSearchParams(''));
-    assert.strictEqual(listeners.length, 1, 'the viewer control socket registers exactly one message handler');
-
-    const realHandleCommand = controlServer.handleCommand;
-    controlServer.handleCommand = async () => { throw new Error('camera exploded'); };
-
-    let control;
-    try {
-        control = await capture(() => listeners[0](JSON.stringify({ type: 'command', control_id: 1 })));
-    } finally {
-        controlServer.handleCommand = realHandleCommand;
-    }
-    assert.deepStrictEqual(control.unhandled, [], 'an awaited command failure is not an unhandled rejection');
-    assert.ok(control.warns.some((w) => w.includes('camera exploded')),
-        `the command failure is logged, got ${JSON.stringify(control.warns)}`);
-
-    // The synchronous branches still run and a malformed frame is still ignored.
-    let keyEvents = 0;
-    controlServer.handleKeyEvent = () => { keyEvents++; };
-    listeners[0]('not json at all');
-    listeners[0](JSON.stringify({ type: 'key_down', key: 'w' }));
-    assert.strictEqual(keyEvents, 1, 'key events still reach their handler');
-    delete controlServer.handleKeyEvent;
-
-    // ── 2. chat relay: a bridge whose connect() rejects ─────────────────────
+    // ── The chat relay: a bridge whose connect() rejects ─────────────────────
     const realKick = chatRelay._connectKick;
     const realYouTube = chatRelay._connectYouTube;
     chatRelay._connectKick = async () => { throw new Error('kick ws refused'); };
@@ -104,5 +71,5 @@ async function capture(fn) {
     assert.ok(relay.warns.some((w) => w.includes('youtube api refused')),
         `the YouTube connect failure is logged, got ${JSON.stringify(relay.warns)}`);
 
-    console.log('floating-promise-fixes: control command + chat-relay bridge rejections are logged, not unhandled');
+    console.log('floating-promise-fixes: chat-relay bridge rejections are logged, not unhandled');
 })().catch((err) => { console.error(err); process.exit(1); });

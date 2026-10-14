@@ -107,11 +107,14 @@ Live's own principal (`live`) holds grants to call:
 
 API writes are limited per person (`server/net/actor-limits.js`, `LIVE_LIMITS_MINUTE` / `_HOUR`).
 
+**Robots are OpenVibe.Bot's (plan T15).** Live has no control socket, hardware API or ONVIF code. A bound channel's chat commands (`!forward`, `!backward`, `!left`, `!right`, `!headup`/`!headdown`, `!liftup`/`!liftdown`, `!say`) reach `POST /internal/chat-effects/hardware` from OpenVibe.Chat and go to Bot as the viewer who typed them (`server/bot/bot-client.js`): Bot's roles, queue, cooldowns and e-stop decide.
+
 **Bot panel embed (`LIVE_BOT_EMBED`, off by default).** A channel can show its OpenVibe.Bot robot's embeddable panel (`<LIVE_BOT_URL>/panel/<robot id>/embed`). With `LIVE_BOT_EMBED=1` the channel owner (not mods, not staff) binds a robot with `PUT /api/streams/channel/:username/bot` `{ "robot_id": "rob_…" | null }` (null or `""` unbinds; stored in `channels.bot_robot_id`; limited per person as `live.bot.bind`), and `GET /api/streams/channel/:username` carries `bot_embed: { enabled: true, robot_id, url }`. Live never calls Bot to bind: the robot owner's `embed_public` toggle in Bot is the gate, so binding someone else's robot shows nothing until its owner makes it public. With the flag off the route answers 404 and the channel JSON has no `bot_embed` key (the stored id is kept). Turn it on in this order: Bot deployed with `GET /panel/:id/embed` and its `BOT_EMBED_ORIGINS` including this site's origins → set `LIVE_BOT_EMBED=1` → bind a channel. The owner binds from the dashboard's Controls tab (a "Bot robot id" field shown only with the flag on), and a bound channel's page shows the panel in a sandboxed, lazy iframe under the player (`public/js/bot-embed.js`, its own `botEmbed` feature, loaded only for a bound channel; the frame is removed when the route ends). Unbound channels and the flag off load nothing new.
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
 | `LIVE_BOT_EMBED` | off | `1` turns on the channel ↔ Bot robot binding and `bot_embed` on the channel JSON (`server/bot/`) |
+| `LIVE_BOT_INTERNAL_URL` | `http://127.0.0.1:4630` | where Live sends a bound channel's chat robot commands (Bot's `POST /api/v1/robots/:id/commands`, as the viewer, Network grant `bot.robot.control`) |
 | `LIVE_BOT_URL` | `https://openvibe.bot` | Bot's origin for the embed URL; a bare https origin (http://localhost* outside production), else the default with a warning |
 
 ## Acceptance

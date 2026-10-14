@@ -271,7 +271,7 @@ const safe = { DATA_DIR, HOST: '127.0.0.1', PORT: '13000' };
         assert.deepStrictEqual(await counts(), before);
     });
     await check('WebSocket upgrades are refused with 403', async () => {
-        for (const p of ['/ws/chat', '/ws/broadcast', '/ws/call', '/ws/control', '/ws/robotstreamer-publish']) {
+        for (const p of ['/ws/chat', '/ws/broadcast', '/ws/call', '/ws/robotstreamer-publish']) {
             const r = await request('GET', p, { headers: { Connection: 'Upgrade', Upgrade: 'websocket', 'Sec-WebSocket-Version': '13', 'Sec-WebSocket-Key': 'dGhlIHNhbXBsZSBub25jZQ==' } });
             assert.strictEqual(r.status, 403, `${p} answered ${r.status}`);
             assert.ok(!r.upgraded);

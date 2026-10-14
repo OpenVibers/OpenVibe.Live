@@ -94,19 +94,6 @@
                             </div>
                         </div>
                     </div>
-                    <!-- Interactive Controls — right under the player when the stream has them; collapsible via the toggle in the info bar. -->
-                    <div class="ch-controls-section" id="ch-controls-section" style="display:none">
-                        <div class="controls-panel" id="controls-panel">
-                            <div class="controls-header">
-                                <span class="controls-status" id="controls-status"></span>
-                                <div class="controls-header-btns">
-                                    <button class="ch-controls-toggle" id="ch-controls-toggle" onclick="toggleControlsSection()" title="Hide controls" aria-label="Hide or show controls"><i class="fa-solid fa-chevron-up"></i></button>
-                                    <button class="btn btn-sm btn-outline controls-dock-btn" id="controls-dock-btn" onclick="toggleControlsDock()" title="Dock controls to the bottom of the screen so you can use them while watching &amp; chatting" aria-label="Dock controls to bottom"><i class="fa-solid fa-arrow-down"></i></button>
-                                </div>
-                            </div>
-                            <div class="controls-grid" id="controls-grid"></div>
-                        </div>
-                    </div>
                     <!-- OpenVibe.Bot robot panel for a channel bound to a robot (LIVE_BOT_EMBED; filled by public/js/bot-embed.js) -->
                     <section id="ch-bot-section" aria-labelledby="ch-bot-heading" hidden>
                         <h3 id="ch-bot-heading">Robot</h3>
@@ -461,14 +448,4 @@
             </div>
         </div>
 
-        <!-- Compact docked controls: a fixed bottom bar so viewers can drive controls
-             while still watching + chatting. Lives outside the tab panels so it persists
-             across tabs; hidden until toggled from the Controls tab. -->
-        <div class="controls-dock" id="controls-dock" style="display:none" role="region" aria-label="Docked stream controls">
-            <div class="controls-dock-bar">
-                <span class="controls-dock-grip" title="Stream controls"><i class="fa-solid fa-gamepad"></i></span>
-                <div class="controls-dock-body" id="controls-dock-body"></div>
-                <button class="controls-dock-close" onclick="toggleControlsDock()" title="Close docked controls" aria-label="Close docked controls"><i class="fa-solid fa-xmark"></i></button>
-            </div>
-        </div>
     

@@ -708,12 +708,6 @@ const TOKEN_SCOPE_DEFINITIONS = Object.freeze([
         description: 'Start or stop streams and update stream state or metadata.',
     },
     {
-        id: 'control',
-        label: 'control',
-        title: 'Hardware control bridge',
-        description: 'Use the hardware control bridge and related remote-control surfaces.',
-    },
-    {
         id: 'vibe_coding_publish',
         label: 'vibe_coding_publish',
         title: 'Vibe coding publisher',
@@ -739,9 +733,9 @@ const TOKEN_PRESET_DEFINITIONS = Object.freeze([
     {
         id: 'stream-controller',
         label: 'Stream Controller',
-        description: 'Recommended for integrations that control live state, metadata, or hardware workflows.',
+        description: 'Recommended for integrations that control live state and stream metadata.',
         suggested_label: 'Stream Controller',
-        scopes: ['read', 'stream', 'control'],
+        scopes: ['read', 'stream'],
     },
 ]);
 

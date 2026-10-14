@@ -32,8 +32,7 @@
                 <button class="docs-tab" onclick="showDocTab('chat',this)">Chat</button>
                 <button class="docs-tab" onclick="showDocTab('money',this)">Money</button>
                 <button class="docs-tab" onclick="showDocTab('ai',this)">AI</button>
-                <button class="docs-tab" onclick="showDocTab('controls',this)">Controls</button>
-                <button class="docs-tab" onclick="showDocTab('controlws',this)">Control WS</button>
+                <button class="docs-tab" onclick="showDocTab('robots',this)">Robots</button>
                 <button class="docs-tab" onclick="showDocTab('audio',this)">TTS &amp; Audio</button>
                 <button class="docs-tab" onclick="showDocTab('integrations',this)">Integrations</button>
                 <button class="docs-tab" onclick="showDocTab('vods',this)">VODs</button>
@@ -121,10 +120,8 @@
 │  ├─ /api/streams   — Stream CRUD + go-live           │
 │  ├─ /api/chat      — Chat REST API                   │
 │  ├─ /api/tts       — TTS voice config                │
-│  ├─ /api/controls  — Interactive control profiles    │
 │  ├─ /ws/chat       — Real-time chat                  │
 │  ├─ /ws/broadcast  — WebRTC signaling                │
-│  ├─ /ws/control    — Hardware command relay           │
 │  ├─ /whip/:id      — WHIP WebRTC ingestion           │
 │  └─ RTMP server    — rtmp://host/live                │
 └──────────────────────────────────────────────────────┘</code></pre>
@@ -142,7 +139,6 @@
 <tbody>
 <tr><td>/ws/chat</td><td>Chat rooms (per-stream or global)</td><td>Optional (anon allowed)</td></tr>
 <tr><td>/ws/broadcast</td><td>WebRTC SFU signaling</td><td>JWT required</td></tr>
-<tr><td>/ws/control</td><td>Interactive controls relay (viewer ↔ hardware)</td><td>JWT or API key</td></tr>
 <tr><td>/ws/call</td><td>Group voice/video calls</td><td>JWT required</td></tr>
 </tbody>
 </table>
@@ -610,334 +606,34 @@ while True:
 </div>
 
 <!-- ═══════════════════════════════════════════════════════════ -->
-<!-- TAB: Controls                                              -->
+<!-- TAB: Robots                                                -->
 <!-- ═══════════════════════════════════════════════════════════ -->
-<div class="doc-tab-content" data-doc-tab="controls" style="display:none">
-<h2>5. INTERACTIVE CONTROL SYSTEM — ROBOT/HARDWARE GUIDE</h2>
-<p>The control system lets streamers expose interactive buttons that viewers press to control physical hardware (robots, cameras, servo rigs, etc.). Three interaction types: single-press buttons, keyboard hold (continuous drive), and video-click (x/y coordinates on the live video feed).</p>
+<div class="doc-tab-content" data-doc-tab="robots" style="display:none">
+<h2>5. ROBOTS — OPENVIBE.BOT</h2>
+<p>Robots live on <a href="https://openvibe.bot" target="_blank" rel="noopener">OpenVibe.Bot</a>, the open control panel for robots: pairing, the drive panel, roles and turn queues, limits, the latched e-stop, video and the command audit are all there. OpenVibe.Live shows a channel's robot and lets its chat drive it; it has no control socket or hardware API of its own.</p>
 
-<h3>Control Config Profiles</h3>
-<p>Streamers create reusable control configs. Each config holds buttons. When going live, a config is applied to the stream — its buttons get copied to that stream session.</p>
+<h3>A robot on your channel</h3>
+<ol>
+<li>Add a robot on <a href="https://openvibe.bot/robots/new" target="_blank" rel="noopener">openvibe.bot/robots/new</a>: a Raspberry Pi car, a Cozmo through a computer beside it, a phone (scan a QR code, nothing to install) or an ONVIF camera. Its pairing page has the one command (or the QR code) that brings it online.</li>
+<li>On the robot's panel, turn on <b>Let anyone watch where it is embedded</b>, and choose who may drive: only you and people you add, people you invite, or anyone signed in taking timed turns.</li>
+<li>In your dashboard (<b>Robot &amp; API</b>), put the robot's id (<code>rob_…</code>). Its live panel shows under your stream: everyone sees its camera and readouts, and anyone allowed to drive presses <b>Drive</b>.</li>
+</ol>
+<p>The binding is <code>PUT /api/streams/channel/:username/bot</code> with <code>{ "robot_id": "rob_…" }</code> (or <code>null</code> to unbind), the channel owner only.</p>
+
+<h3>Chat commands</h3>
 <table class="doc-table">
-<thead><tr><th>Method</th><th>Path</th><th>Auth</th><th>Description</th></tr></thead>
+<thead><tr><th>Command</th><th>What the robot gets</th></tr></thead>
 <tbody>
-<tr><td>GET</td><td>/api/controls/configs</td><td>Yes</td><td>List your configs (with button count)</td></tr>
-<tr><td>POST</td><td>/api/controls/configs</td><td>Yes</td><td>Create config { name, description }</td></tr>
-<tr><td>GET</td><td>/api/controls/configs/:id</td><td>Yes</td><td>Config with full buttons array</td></tr>
-<tr><td>PUT</td><td>/api/controls/configs/:id</td><td>Yes</td><td>Update name / description</td></tr>
-<tr><td>DELETE</td><td>/api/controls/configs/:id</td><td>Yes</td><td>Delete config</td></tr>
-<tr><td>POST</td><td>/api/controls/configs/:id/buttons</td><td>Yes</td><td>Add button to config</td></tr>
-<tr><td>PUT</td><td>/api/controls/configs/:id/buttons/:btnId</td><td>Yes</td><td>Update button</td></tr>
-<tr><td>DELETE</td><td>/api/controls/configs/:id/buttons/:btnId</td><td>Yes</td><td>Delete button</td></tr>
-<tr><td>POST</td><td>/api/controls/configs/:id/activate</td><td>Yes</td><td>Set as channel default config</td></tr>
-<tr><td>POST</td><td>/api/controls/configs/deactivate</td><td>Yes</td><td>Clear channel default</td></tr>
-<tr><td>POST</td><td>/api/controls/configs/:id/apply/:streamId</td><td>Yes</td><td>Copy config buttons onto a live stream</td></tr>
-<tr><td>GET</td><td>/api/controls/configs/:id/bridge-script?type=generic|cozmo</td><td>Yes</td><td>Download a Python hardware bridge script pre-configured with the profile's buttons</td></tr>
+<tr><td><code>!forward</code> / <code>!backward</code></td><td>a short drive pulse forward or back</td></tr>
+<tr><td><code>!left</code> / <code>!right</code></td><td>a short turn</td></tr>
+<tr><td><code>!headup</code> / <code>!headdown</code>, <code>!liftup</code> / <code>!liftdown</code></td><td>the head or lift, on robots that have one (Cozmo)</td></tr>
+<tr><td><code>!say &lt;text&gt;</code></td><td>speech, on robots that speak</td></tr>
 </tbody>
 </table>
+<p>Each command goes to OpenVibe.Bot as the viewer who typed it, so the robot's rules decide: signed-in viewers only, the owner's access policy and turn queue, per-person cooldowns, and nothing while the e-stop is latched. A refusal is answered in chat ("It is not your turn at the robot yet").</p>
 
-<h3>Button Schema</h3>
-<pre><code>{
-  "label":        "Forward",     // Display name shown to viewers (max 50)
-  "command":      "forward",     // String sent to your hardware bridge (max 100)
-  "icon":         "fa-arrow-up", // FontAwesome icon class (without fa-solid prefix)
-  "control_type": "keyboard",    // "button" | "keyboard" | "toggle" | "dpad"
-  "key_binding":  "w",           // Optional keyboard shortcut for viewers (max 20)
-  "cooldown_ms":  100,           // Per-press cooldown in ms (0-30000)
-  "sort_order":   0,             // Display order (ascending)
-  "btn_color":    "#ffffff",     // Button text color (CSS color — safe values only)
-  "btn_bg":       "#1a1a2e",     // Button background color
-  "btn_border_color": "#6366f1", // Button border color
-  "is_enabled":   1              // 1=shown, 0=hidden
-}
-</code></pre>
-
-<h3>Control Type Behaviour</h3>
-<table class="doc-table">
-<thead><tr><th>control_type</th><th>Viewer Interaction</th><th>Messages Sent</th></tr></thead>
-<tbody>
-<tr><td>button</td><td>Single click or key tap</td><td>command</td></tr>
-<tr><td>keyboard</td><td>Hold mouse/touch/key → continuous. Release → stop</td><td>key_down on press, key_up on release</td></tr>
-<tr><td>toggle</td><td>Click to toggle on/off</td><td>command (on) / command (off)</td></tr>
-<tr><td>dpad</td><td>D-pad style directional</td><td>command</td></tr>
-</tbody>
-</table>
-
-<h3>Channel Control Settings</h3>
-<table class="doc-table">
-<thead><tr><th>Method</th><th>Path</th><th>Description</th></tr></thead>
-<tbody>
-<tr><td>GET</td><td>/api/controls/settings/channel</td><td>Get settings</td></tr>
-<tr><td>PUT</td><td>/api/controls/settings/channel</td><td>Update settings</td></tr>
-</tbody>
-</table>
-<pre><code>{
-  "control_mode":          "open",   // "open" | "whitelist" | "disabled"
-  "anon_controls_enabled": true,     // Allow anonymous viewers to use controls
-  "control_rate_limit_ms": 100,      // Global rate limit per user (100-30000)
-  "video_click_enabled":   true,     // Enable video click input
-  "video_click_rate_limit_ms": 0      // Per-user minimum time between video clicks; 0 = use global rate limit
-}
-</code></pre>
-
-<h3>Per-Stream Controls (Legacy / Direct)</h3>
-<table class="doc-table">
-<thead><tr><th>Method</th><th>Path</th><th>Description</th></tr></thead>
-<tbody>
-<tr><td>GET</td><td>/api/controls/:streamId</td><td>Get all controls + settings for a stream</td></tr>
-<tr><td>POST</td><td>/api/controls/:streamId</td><td>Add a button directly to active stream</td></tr>
-<tr><td>PUT</td><td>/api/controls/:streamId/:id</td><td>Update control</td></tr>
-<tr><td>DELETE</td><td>/api/controls/:streamId/:id</td><td>Delete control</td></tr>
-<tr><td>POST</td><td>/api/controls/:streamId/presets/cozmo</td><td>Apply Cozmo robot preset buttons</td></tr>
-</tbody>
-</table>
-</div>
-
-<!-- ═══════════════════════════════════════════════════════════ -->
-<!-- TAB: Control WS                                            -->
-<!-- ═══════════════════════════════════════════════════════════ -->
-<div class="doc-tab-content" data-doc-tab="controlws" style="display:none">
-<h2>6. CONTROL WEBSOCKET — HARDWARE BRIDGE</h2>
-<p><strong>Connecting a new robot? Use <a href="https://openvibe.bot" target="_blank" rel="noopener">OpenVibe.Bot</a> and the <a href="https://github.com/OpenVibers/OpenVibe.Node" target="_blank" rel="noopener">OpenVibe Node</a> instead.</strong> The Node pairs with a one-time code (no stream key), runs your driver as a plugin (<a href="https://openvibe.bot/docs/drivers" target="_blank" rel="noopener">write a driver</a>), and Bot gives the robot a panel built from its profile, roles, a queue, limits and a latched e-stop. Bind the robot to your channel on the dashboard and its panel shows under your stream. The socket below keeps working for existing setups and is retired once they have moved to Bot.</p>
-<p>This is how your code receives viewer commands. Connect as <code>mode=hardware</code> and listen for messages. Your bridge translates them into robot/hardware actions.</p>
-
-<h3>Connection URLs</h3>
-<pre><code># Hardware bridge (your robot/device — receives commands)
-wss://openvibe.live/ws/control?mode=hardware&stream_key=YOUR_STREAM_KEY
-
-# Viewer (browser/bot — sends commands)
-wss://openvibe.live/ws/control?mode=viewer&token=JWT&stream=STREAM_ID
-</code></pre>
-
-<h3>Hardware Receives These Messages</h3>
-<table class="doc-table">
-<thead><tr><th>Type</th><th>Payload Fields</th><th>When</th></tr></thead>
-<tbody>
-<tr><td>connected</td><td>message</td><td>Immediately on connect — confirms auth</td></tr>
-<tr><td>command</td><td>command, control_id, from_user, timestamp</td><td>Viewer clicked a button (button/toggle/dpad type)</td></tr>
-<tr><td>key_down</td><td>command, control_id, from_user, timestamp</td><td>Viewer started holding a keyboard-type button</td></tr>
-<tr><td>key_up</td><td>command, control_id, from_user, timestamp</td><td>Viewer released the button</td></tr>
-<tr><td>video_click</td><td>x (0-1), y (0-1), from_user, timestamp</td><td>Viewer clicked on the video feed. 0,0 = top-left, 1,1 = bottom-right</td></tr>
-</tbody>
-</table>
-
-<h3>Hardware Can Send</h3>
-<table class="doc-table">
-<thead><tr><th>Type</th><th>Payload</th><th>Effect</th></tr></thead>
-<tbody>
-<tr><td>status</td><td>{ any fields }</td><td>Relayed to all viewers as hardware_status message</td></tr>
-</tbody>
-</table>
-
-<h3>Viewer Sends These Messages</h3>
-<table class="doc-table">
-<thead><tr><th>Type</th><th>Payload</th><th>Description</th></tr></thead>
-<tbody>
-<tr><td>command</td><td>{ command, control_id }</td><td>Single button press</td></tr>
-<tr><td>key_down</td><td>{ command, control_id }</td><td>Start holding (keyboard type)</td></tr>
-<tr><td>key_up</td><td>{ command, control_id }</td><td>Release hold</td></tr>
-<tr><td>video_click</td><td>{ x: 0-1, y: 0-1 }</td><td>Click on video feed</td></tr>
-</tbody>
-</table>
-
-<h3>Viewer Receives These Messages</h3>
-<table class="doc-table">
-<thead><tr><th>Type</th><th>Key Fields</th><th>Description</th></tr></thead>
-<tbody>
-<tr><td>controls</td><td>controls[], settings{}</td><td>Initial buttons + channel settings on connect</td></tr>
-<tr><td>command_executed</td><td>command, by</td><td>Someone pressed a button (activity feed)</td></tr>
-<tr><td>key_held</td><td>command, by</td><td>Someone started holding a key</td></tr>
-<tr><td>key_released</td><td>command, by</td><td>Someone released a key</td></tr>
-<tr><td>video_click_activity</td><td>x, y, by</td><td>Someone clicked the video</td></tr>
-<tr><td>hardware_status</td><td>any</td><td>Status update from hardware bridge</td></tr>
-<tr><td>error</td><td>message</td><td>Denied / not live / banned</td></tr>
-<tr><td>cooldown</td><td>message</td><td>Rate limited</td></tr>
-</tbody>
-</table>
-
-<h3>Permission Model</h3>
-<table class="doc-table">
-<thead><tr><th>control_mode</th><th>Who can send commands</th></tr></thead>
-<tbody>
-<tr><td>open</td><td>Any viewer (anon allowed if anon_controls_enabled=true)</td></tr>
-<tr><td>whitelist</td><td>Stream owner + explicitly whitelisted users only</td></tr>
-<tr><td>disabled</td><td>Nobody — controls are turned off</td></tr>
-</tbody>
-</table>
-
-<h3>Hardware Bridge — Python (Full Example)</h3>
-<pre><code>#!/usr/bin/env python3
-"""
-OpenVibe.Live Hardware Bridge — generic template.
-pip install websocket-client
-"""
-import json, time, threading, websocket
-
-STREAM_KEY = 'YOUR_STREAM_KEY'
-WS_URL = f'wss://openvibe.live/ws/control?mode=hardware&stream_key={STREAM_KEY}'
-
-held_keys = set()  # Track currently held keyboard commands
-
-def do_command(cmd):
-    """Map command strings to your hardware."""
-    print(f'Command: {cmd}')
-    # Example: call GPIO, serial, HTTP, etc.
-    # if cmd == 'forward': robot.drive(speed=100)
-
-def do_start_hold(cmd):
-    """Called when a keyboard-type button starts being held."""
-    held_keys.add(cmd)
-    print(f'Hold start: {cmd}')
-
-def do_stop_hold(cmd):
-    """Called when a keyboard-type button is released."""
-    held_keys.discard(cmd)
-    print(f'Hold stop: {cmd}')
-    if not held_keys:
-        print('All keys released — stop movement')
-        # robot.stop()
-
-def do_video_click(x, y):
-    """Called when a viewer clicks the video feed. x,y are 0-1 normalized."""
-    print(f'Video click at ({x:.2f}, {y:.2f})')
-    # Navigate toward click: x < 0.4 = turn left, x > 0.6 = turn right
-    # y close to 0 = far away (drive more), y close to 1 = near (drive less)
-
-def on_message(ws, raw):
-    try:
-        msg = json.loads(raw)
-        t = msg.get('type')
-        if t == 'connected':
-            print('Hardware bridge authenticated!')
-        elif t == 'command':
-            do_command(msg['command'])
-        elif t == 'key_down':
-            do_start_hold(msg['command'])
-        elif t == 'key_up':
-            do_stop_hold(msg['command'])
-        elif t == 'video_click':
-            do_video_click(msg['x'], msg['y'])
-    except Exception as e:
-        print(f'Error: {e}')
-
-def on_open(ws): print('Connected')
-def on_close(ws, *a): print('Disconnected')
-def on_error(ws, e): print(f'WS error: {e}')
-
-while True:
-    ws = websocket.WebSocketApp(WS_URL, on_message=on_message,
-        on_open=on_open, on_close=on_close, on_error=on_error)
-    ws.run_forever(ping_interval=30)
-    print('Reconnecting in 5s...')
-    time.sleep(5)
-</code></pre>
-
-<h3>Hardware Bridge — Node.js (Full Example)</h3>
-<pre><code>const WebSocket = require('ws');
-
-const STREAM_KEY = 'YOUR_STREAM_KEY';
-const WS_URL = `wss://openvibe.live/ws/control?mode=hardware&stream_key=${STREAM_KEY}`;
-const heldKeys = new Set();
-
-function connect() {
-  const ws = new WebSocket(WS_URL);
-
-  ws.on('message', (raw) => {
-    const msg = JSON.parse(raw);
-    switch (msg.type) {
-      case 'connected':
-        console.log('Hardware bridge authenticated!');
-        break;
-      case 'command':
-        console.log(`Button: ${msg.command} by ${msg.from_user}`);
-        doCommand(msg.command);
-        break;
-      case 'key_down':
-        heldKeys.add(msg.command);
-        console.log(`Hold start: ${msg.command}`);
-        startContinuous(msg.command);
-        break;
-      case 'key_up':
-        heldKeys.delete(msg.command);
-        console.log(`Hold stop: ${msg.command}`);
-        if (heldKeys.size === 0) stopAll();
-        break;
-      case 'video_click':
-        console.log(`Click at (${msg.x.toFixed(2)}, ${msg.y.toFixed(2)}) by ${msg.from_user}`);
-        navigateToClick(msg.x, msg.y);
-        break;
-    }
-  });
-
-  ws.on('close', () => setTimeout(connect, 5000));
-  ws.on('error', (e) => console.error(e));
-}
-
-function doCommand(cmd) { /* implement hardware control */ }
-function startContinuous(cmd) { /* start motors etc. */ }
-function stopAll() { /* stop all motors */ }
-function navigateToClick(x, y) { /* steer toward x,y */ }
-
-connect();
-</code></pre>
-
-<h3>API Keys (for hardware bridges without JWT)</h3>
-<table class="doc-table">
-<thead><tr><th>Method</th><th>Path</th><th>Description</th></tr></thead>
-<tbody>
-<tr><td>POST</td><td>/api/controls/api-key</td><td>Generate API key (shown once — save it)</td></tr>
-<tr><td>GET</td><td>/api/controls/api-keys</td><td>List keys (masked)</td></tr>
-<tr><td>GET</td><td>/api/controls/cozmo-script</td><td>Download pre-built Cozmo robot bridge Python script</td></tr>
-</tbody>
-</table>
-
-<h3>Per-Profile Bridge Script Generator</h3>
-<p>Download Python bridge scripts that come pre-configured with your control profile's buttons and your stream key. Available from the Dashboard (Hardware Bridge Scripts section) or the Broadcast page (Script button next to profile selector).</p>
-<table class="doc-table">
-<thead><tr><th>Type</th><th>Description</th></tr></thead>
-<tbody>
-<tr><td>generic</td><td>Prints all commands to console. Edit handle_command() / handle_key_down() / handle_key_up() to control your hardware. Works with any device — GPIO, serial, HTTP, etc.</td></tr>
-<tr><td>cozmo</td><td>Pre-mapped to pycozmo actions (drive, lift, head, animations). Includes COMMAND_MAP dict so you can remap your custom button commands to Cozmo movements.</td></tr>
-</tbody>
-</table>
-<pre><code># Download via API:
-GET /api/controls/configs/42/bridge-script?type=generic
-GET /api/controls/configs/42/bridge-script?type=cozmo
-
-# Both return a .py file download with:
-# - Your stream key (auto-connects as hardware bridge)
-# - All enabled buttons from the profile listed as BUTTONS
-# - Skeleton handler functions ready to fill in
-</code></pre>
-
-<h3>Hardware Status Indicator</h3>
-<p>When a hardware bridge connects, viewers see a live connection indicator:</p>
-<table class="doc-table">
-<thead><tr><th>Indicator</th><th>Meaning</th></tr></thead>
-<tbody>
-<tr><td>&#x26AB; (grey)</td><td>No controls configured for this stream</td></tr>
-<tr><td>&#x1F7E1; (yellow)</td><td>Controls present but no hardware bridge connected</td></tr>
-<tr><td>&#x1F7E2; (green)</td><td>Hardware bridge is online — commands will be received</td></tr>
-</tbody>
-</table>
-<p>Hardware bridges send <code>{ type: "status", connected: true }</code> on connect. The server broadcasts this to all viewers as a <code>hardware_status</code> message. Send a status with <code>connected: true</code> to turn the indicator green.</p>
-
-<h3>ONVIF Camera Control</h3>
-<p>Control PTZ cameras via ONVIF. Cameras appear as controls in the stream control panel.</p>
-<table class="doc-table">
-<thead><tr><th>Method</th><th>Path</th><th>Description</th></tr></thead>
-<tbody>
-<tr><td>POST</td><td>/api/onvif/discover</td><td>Auto-discover ONVIF cameras on local network</td></tr>
-<tr><td>POST</td><td>/api/onvif/cameras</td><td>Add camera { host, port, username, password, name }</td></tr>
-<tr><td>GET</td><td>/api/onvif/cameras</td><td>List cameras</td></tr>
-<tr><td>PUT</td><td>/api/onvif/cameras/:id</td><td>Update camera</td></tr>
-<tr><td>DELETE</td><td>/api/onvif/cameras/:id</td><td>Delete camera</td></tr>
-<tr><td>GET</td><td>/api/onvif/cameras/:id/presets</td><td>List presets</td></tr>
-<tr><td>POST</td><td>/api/onvif/cameras/:id/presets</td><td>Create preset</td></tr>
-</tbody>
-</table>
-<p>ONVIF movements (send via control WS with <code>isOnvif: true, cameraId: X, movement: Y</code>):</p>
-<p>pan_left, pan_right, tilt_up, tilt_down, zoom_in, zoom_out</p>
+<h3>Building for robots</h3>
+<p>Drivers, robot profiles, the device protocol, the REST API with the same gate, and a simulated rover to try it all are on OpenVibe.Bot: <a href="https://openvibe.bot/docs" target="_blank" rel="noopener">Build for OpenVibe.Bot</a> · <a href="https://openvibe.bot/try" target="_blank" rel="noopener">try the panel</a> · <a href="https://openvibe.bot/models" target="_blank" rel="noopener">supported models</a>.</p>
 </div>
 
 <!-- ═══════════════════════════════════════════════════════════ -->
