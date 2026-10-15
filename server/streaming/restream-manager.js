@@ -946,7 +946,8 @@ class RestreamManager extends EventEmitter {
             if (session.status === 'stopped') return; // intentional stop
 
             const duration = Date.now() - (session.startedAt || Date.now());
-            const lastLines = stderrBuf.split('\n').filter(Boolean).slice(-5).join(' | ');
+            // ffmpeg names the output URL in its errors ("Error opening output rtmps://…/app/<key>"): keys never reach a log.
+            const lastLines = require('../utils/redact').redactUrl(stderrBuf.split('\n').filter(Boolean).slice(-5).join(' | '));
             console.log(`[Restream] FFmpeg exited for ${session.key}: code=${code}, ran ${(duration / 1000).toFixed(1)}s`);
             if (lastLines) console.log(`[Restream]   stderr: ${lastLines.slice(0, 300)}`);
 
@@ -974,7 +975,7 @@ class RestreamManager extends EventEmitter {
         setTimeout(async () => {
             if (liveConfirmed || session.process !== proc || session.status !== 'starting') return;
             if (progressSeenAt) { confirmLive(); return; }      // progress arrived but no frames yet: treat as connected
-            session.lastErrorRaw = stderrBuf.split('\n').filter(Boolean).slice(-3).join(' | ') || 'no output progress';
+            session.lastErrorRaw = require('../utils/redact').redactUrl(stderrBuf.split('\n').filter(Boolean).slice(-3).join(' | ')) || 'no output progress';
             session.lastError = `No response from the ingest within ${LIVE_ACK_TIMEOUT_MS / 1000}s — ${RestreamManager.friendlyFfmpegError(session.lastErrorRaw, session.destination?.platform)}`;
             console.warn(`[Restream] ${session.key}: ${session.lastError}`);
             try { proc.kill('SIGTERM'); } catch { /* */ }
