@@ -31,6 +31,7 @@ spawnSync('ffmpeg', ['-y', '-f', 'lavfi', '-i', 'sine=frequency=440:duration=610
 const keys = crypto.generateKeyPairSync('rsa', { modulusLength: 2048 });
 const runs = [];
 let failAt = null;
+let failCode = 'provider.unavailable';
 const network = http.createServer((req, res) => {
     let raw = ''; req.on('data', (c) => { raw += c; });
     req.on('end', () => {
@@ -46,7 +47,7 @@ const ai = http.createServer((req, res) => {
         runs.push(body);
         res.setHeader('Content-Type', 'application/json');
         const s = body.input.start_sec;
-        if (s === failAt) { res.statusCode = 201; return res.end(JSON.stringify({ run: { id: 'run_x', status: 'failed', error: { code: 'provider.error' } } })); }
+        if (s === failAt) { res.statusCode = 201; return res.end(JSON.stringify({ run: { id: 'run_x', status: 'failed', error: { code: failCode } } })); }
         res.statusCode = 201;
         res.end(JSON.stringify({ run: { id: 'run_01JAB2C3D4E5F6G7H8J9K0MNPA', status: 'succeeded', synthetic: false, workflow: { key: body.workflow }, output: { text: `words at ${s}`, language: 'en', segments: [{ start: s + 1.5, end: s + 4, text: `words at ${s}` }] }, usage: { tokens_in: 0, tokens_out: 0, cost_usd: 0 } } }));
     });
@@ -79,10 +80,20 @@ const media = http.createServer((req, res) => {
         r = await ma.transcribeOnly(url, { resumeFromSec: 600, priorSegments: [{ start: 1, end: 2, text: 'kept' }] });
         assert.deepStrictEqual(runs.map((x) => [x.input.start_sec, x.input.low_power]), [[600, false]]);
         assert.strictEqual(r.text, 'kept words at 600');
-        // A failed window is reported; the others still count.
+        // A window AI cannot do right now (its whisper down): the pass stops there instead of leaving a hole, and says
+        // where, so the retry resumes from that window.
         runs.length = 0; failAt = 300;
+        const saved = [];
+        r = await ma.transcribeOnly(url, { onWindow: (sec) => saved.push(sec) });
+        assert.deepStrictEqual(runs.map((x) => x.input.start_sec), [0, 300], 'nothing after the failed window is tried');
+        assert.deepStrictEqual([r.ok, r.partial, r.stoppedAtSec, r.error, r.text, saved], [false, true, 300, 'provider.unavailable', 'words at 0', [300]]);
+        runs.length = 0; failAt = null;
+        r = await ma.transcribeOnly(url, { resumeFromSec: 300, priorSegments: r.segments });
+        assert.deepStrictEqual([runs.map((x) => x.input.start_sec), r.ok, r.text], [[300, 600], true, 'words at 0 words at 300 words at 600'], 'the retry fills the gap');
+        // An error a retry will not fix (the media unreadable there) is reported and skipped; the others still count.
+        runs.length = 0; failAt = 300; failCode = 'media.unreadable';
         r = await ma.transcribeOnly(url);
-        assert.deepStrictEqual([r.ok, r.segments.length], [true, 2]);
+        assert.deepStrictEqual([r.ok, r.partial, r.segments.length], [true, undefined, 2]);
     } finally {
         for (const s of [network, ai, media]) s.close();
         fs.rmSync(tmp, { recursive: true, force: true });

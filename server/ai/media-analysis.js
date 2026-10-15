@@ -226,6 +226,10 @@ async function _aiWindow(src, start, len) {
     return { ok: true, segments: (out.segments || []).filter(g => g && g.text).map(g => ({ start: Number(g.start) || 0, end: Number(g.end) || 0, text: String(g.text) })), error: null };
 }
 
+// AI errors that a later attempt will not fix: anything else (its whisper down, a run interrupted, a timeout) is worth
+// waiting out rather than skipping the window.
+const PERMANENT_AI_ERRORS = new Set(['media.unreadable', 'media.not_found', 'media.too_long', 'validation.failed']);
+
 async function _transcribeSpan(src, duration, { resumeFromSec = 0, priorSegments = null, onWindow = null } = {}) {
     const transcribe = require('./transcribe');
     // Recordings on Media are transcribed by OpenVibe.AI; only a local file (legacy) is still decoded here.
@@ -264,6 +268,7 @@ async function _transcribeSpan(src, duration, { resumeFromSec = 0, priorSegments
         console.warn(`[AI] VOD is ${Math.round(total / 60)}min — transcribing the first ${MAX_WINDOWS * WINDOW_SEC / 60}min only`);
         windows.length = MAX_WINDOWS;
     }
+    let stopped = null;
     for (const start of windows) {
         const len = Math.min(WINDOW_SEC, total - start);
         if (viaAi) {
@@ -273,6 +278,10 @@ async function _transcribeSpan(src, duration, { resumeFromSec = 0, priorSegments
             if (w.ok && typeof onWindow === 'function') {
                 try { await onWindow(Math.min(total, start + len), segments); } catch { /* progress is best-effort */ }
             }
+            // A window AI cannot do right now (its whisper's circuit open, the run interrupted): stop here. The caller
+            // retries later from this window (progress is saved per window), instead of storing a transcript with a
+            // hole where this window was (10-14: 46 windows of one recording failed in the same second and were skipped).
+            if (!w.ok && !PERMANENT_AI_ERRORS.has(w.error)) { stopped = { atSec: start, error: w.error || 'OpenVibe.AI did not transcribe' }; break; }
             continue;
         }
         const wav = _tmp('wav');
@@ -295,7 +304,10 @@ async function _transcribeSpan(src, duration, { resumeFromSec = 0, priorSegments
     // retries instead of marking the VOD permanently silent.
     // Windows are contiguous now, so the transcript reads as continuous prose rather than
     // three disconnected excerpts joined by an ellipsis.
-    return { text: parts.join(' ').replace(/\s+/g, ' ').trim(), segments, ok: anyOk, error: anyOk ? null : lastErr };
+    const text = parts.join(' ').replace(/\s+/g, ' ').trim();
+    // partial: stopped at a window worth retrying; the text so far is what came before it.
+    if (stopped) return { text, segments, ok: false, partial: true, stoppedAtSec: stopped.atSec, error: stopped.error };
+    return { text, segments, ok: anyOk, error: anyOk ? null : lastErr };
 }
 
 /**
