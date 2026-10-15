@@ -2021,6 +2021,7 @@ async function handleThumbnailError(img) {
             const res = await fetch(regenerateUrl, { method: 'POST', credentials: 'include' });
             const data = await res.json().catch(() => ({}));
             if (res.ok && data.thumbnail_url) {
+                img.removeAttribute('srcset');   // the sized variants were of the thumbnail that failed
                 img.src = `${data.thumbnail_url}${data.thumbnail_url.includes('?') ? '&' : '?'}t=${Date.now()}`;
                 img.style.display = '';
                 if (fallback) fallback.style.display = 'none';
@@ -2038,7 +2039,11 @@ function thumbImg(thumbnailUrl, fallbackIcon, alt, regenerateUrl = null) {
         ? `<span class="ov-mark ov-mark--ph" data-size="44" data-static="1"${extra || ''}></span>`
         : `<i class="fa-solid ${fallbackIcon}"${extra || ''}></i>`;
     if (thumbnailUrl) {
-        return `<img src="${esc(thumbnailUrl)}" alt="${esc(alt || '')}" loading="lazy" data-regenerate-url="${esc(regenerateUrl || '')}" onerror="handleThumbnailError(this)">
+        // openvibe.media thumbnails come in sizes (Media's /t/:id?w=&fmt=): a card loads a WebP near its width.
+        const sized = /^https:\/\/openvibe\.media\/t\/[^?#\s]+$/.test(thumbnailUrl);
+        const src = sized ? `${thumbnailUrl}?w=480&fmt=webp` : thumbnailUrl;
+        const set = sized ? ` srcset="${esc([320, 480, 640].map((w) => `${thumbnailUrl}?w=${w}&fmt=webp ${w}w`).join(', '))}" sizes="(max-width: 600px) 100vw, 320px"` : '';
+        return `<img src="${esc(src)}"${set} alt="${esc(alt || '')}" loading="lazy" data-regenerate-url="${esc(regenerateUrl || '')}" onerror="handleThumbnailError(this)">
                 ${iconHtml(' style="display:none"')}`;
     }
     if (regenerateUrl) {
