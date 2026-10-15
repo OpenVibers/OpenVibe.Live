@@ -99,4 +99,17 @@ assert.ok(shell.includes('<link rel="icon" type="image/svg+xml" href="/assets/lo
 assert.ok(fs.existsSync(path.join(__dirname, '..', 'public', 'assets', 'logo.svg')), 'the icon file exists');
 console.log('✅ page shell: canonical and icon');
 
+// Search results: a long heading is the whole <title>, and the description is the first paragraph's sentences up to 160
+// characters (the go-live guide's paragraph is 300).
+{
+    const long = 'A very long first sentence that explains the page in plain words for people who search for it. ' + 'And then more words follow. '.repeat(8);
+    const page = renderPage({ name: 'x', title: 'Go live from your browser: no OBS, no downloads, no follower minimum', html: `<p>${long}</p>`, headings: [] });
+    assert.ok(page.includes('<title>Go live from your browser: no OBS, no downloads, no follower minimum</title>'), 'a long title has no suffix');
+    const d = (/<meta name="description" content="([^"]*)"/.exec(page) || [])[1];
+    assert.ok(d.length <= 160 && d.endsWith('.'), `description is whole sentences within 160: ${d}`);
+    const short = renderPage({ name: 'y', title: 'WHIP', html: '<p>Short.</p>', headings: [] });
+    assert.ok(short.includes('<title>WHIP — OpenVibe.Live Docs</title>') && short.includes('content="Short."'));
+    console.log('✅ page shell: search title and description');
+}
+
 console.log('\n✅ All docs renderer tests passed');
