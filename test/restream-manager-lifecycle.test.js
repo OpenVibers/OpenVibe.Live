@@ -128,6 +128,14 @@ manager.sessions.delete('1:9');
     assert.ok(bad.nextRestartAt > Date.now(), 'dashboard can count down to the retry');
     bad.status = 'stopped'; clearTimeout(bad.restartTimer); manager.sessions.delete(bad.key);
 
+    // RTP ports: a pair something already holds is skipped (the rotating counter wraps after 5000 pairs).
+    const dgram = require('dgram');
+    const holder = dgram.createSocket('udp4');
+    await new Promise((r) => holder.bind(20001, '127.0.0.1', r));
+    manager._nextPort = 20000;
+    assert.strictEqual(await manager._allocateFreePort(), 20002, 'the pair 20000/20001 is in use, so the next pair is used');
+    holder.close();
+
     console.log = quiet;
     console.log('restream-manager lifecycle: all checks passed');
     process.exit(0);

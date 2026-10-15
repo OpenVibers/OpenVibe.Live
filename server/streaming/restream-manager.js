@@ -551,7 +551,7 @@ class RestreamManager extends EventEmitter {
         const audioProducer = webrtcSFU.findProducerByKind(roomId, 'audio');
 
         // Step 3: Allocate ports and create PlainRtpTransport consumers
-        const videoRtpPort = this._allocatePort();
+        const videoRtpPort = await this._allocateFreePort();
         const videoRtcpPort = videoRtpPort + 1;
         let audioRtpPort, audioRtcpPort;
 
@@ -563,7 +563,7 @@ class RestreamManager extends EventEmitter {
             console.log(`[Restream] WebRTC: Video consumer created — PT:${videoConsumer.payloadType} SSRC:${videoConsumer.ssrc} port:${videoRtpPort}`);
 
             if (audioProducer) {
-                audioRtpPort = this._allocatePort();
+                audioRtpPort = await this._allocateFreePort();
                 audioRtcpPort = audioRtpPort + 1;
                 audioConsumer = await webrtcSFU.createPlainConsumer(
                     roomId, audioProducer.id, '127.0.0.1', audioRtpPort, audioRtcpPort
@@ -819,6 +819,26 @@ class RestreamManager extends EventEmitter {
         this._nextPort += 2;
         if (this._nextPort > 30000) this._nextPort = 20000;
         return port;
+    }
+
+    /**
+     * The next RTP/RTCP pair that nothing on this host holds right now. The rotating counter wraps after 5000 pairs, and
+     * a session that has run for days (or another program) may still hold the pair it comes back to: ffmpeg then fails
+     * with "bind failed: Address already in use". Each candidate's two ports are bound for a moment on 127.0.0.1 and
+     * released; a pair in use is skipped (64 tries, then the plain counter as before).
+     */
+    async _allocateFreePort() {
+        const dgram = require('dgram');
+        const free = (port) => new Promise((resolve) => {
+            const sock = dgram.createSocket('udp4');
+            sock.once('error', () => { try { sock.close(); } catch {} resolve(false); });
+            sock.bind(port, '127.0.0.1', () => sock.close(() => resolve(true)));
+        });
+        for (let i = 0; i < 64; i++) {
+            const port = this._allocatePort();
+            if (await free(port) && await free(port + 1)) return port;
+        }
+        return this._allocatePort();
     }
 
     /**

@@ -21,6 +21,12 @@ const http = require('http');
 const db = require('../db/database');
 const chatReads = require('../chat/chat-reads');
 
+// Kick's chat runs on Pusher with an app key Kick changes now and then (32cbd69e… stopped working in October 2026 with
+// "App key … not in this cluster"). Kick's own web client asks web.kick.com which realtime provider and credentials to
+// use; the relay asks the same, for Pusher only, and keeps the answer for six hours. The last key seen working is the
+// fallback when that request fails.
+const KICK_PUSHER_FALLBACK = { key: '34bf7a0ff419a2a775b9', cluster: 'us2' };
+const KICK_PUSHER_TTL_MS = 6 * 3600 * 1000;
 const RECONNECT_BASE_MS = 5000;
 const RECONNECT_MAX_MS = 60000;
 
@@ -577,9 +583,10 @@ class ChatRelayService {
 
         if (bridge.stopped) return;
 
-        // Step 2: Connect to Pusher
-        const PUSHER_KEY = '32cbd69e4b950bf97679';
-        const wsUrl = `wss://ws-us2.pusher.com/app/${PUSHER_KEY}?protocol=7&client=js&version=8.4.0-rc2&flash=false`;
+        // Step 2: Connect to Pusher with the key and cluster Kick names today
+        const pusher = await this._kickPusherConfig(bridge);
+        if (bridge.stopped) return;
+        const wsUrl = `wss://ws-${pusher.cluster}.pusher.com/app/${pusher.key}?protocol=7&client=js&version=8.4.0-rc2&flash=false`;
         const ws = new WebSocket(wsUrl);
         bridge.ws = ws;
 
@@ -628,7 +635,9 @@ class ChatRelayService {
 
                 case 'pusher:error': {
                     const errData = safeJsonParse(msg.data) || msg.data;
-                    console.warn(`[ChatRelay] Kick: Pusher error for ${bridge.channelName}:`, errData);
+                    // 4001: the app key is not in this cluster — Kick moved it; ask again before the reconnect.
+                    if (errData && errData.code === 4001) this._kickPusher = null;
+                    console.warn(`[ChatRelay] Kick: Pusher error for ${bridge.channelName}: ${errData && errData.code ? `${errData.code} ${errData.message || ''}` : JSON.stringify(errData)}`);
                     break;
                 }
 
@@ -704,6 +713,40 @@ class ChatRelayService {
      * @param {string} channelName - Kick channel slug
      * @returns {Promise<{chatroomId: number, kickChannelId: number|null}>}
      */
+    /**
+     * Kick's current Pusher credentials ({ key, cluster }), as web.kick.com hands them to its own web client when the
+     * client accepts only Pusher; cached six hours, the fallback when the request fails or answers something else.
+     */
+    async _kickPusherConfig(bridge) {
+        const now = Date.now();
+        if (this._kickPusher && now - this._kickPusher.at < KICK_PUSHER_TTL_MS) return this._kickPusher;
+        const channelId = bridge && bridge.kickChannelId;
+        const url = channelId ? `https://web.kick.com/api/v1/realtime/channels/${encodeURIComponent(channelId)}/chat/connection` : 'https://web.kick.com/api/v1/realtime/connection';
+        try {
+            const res = await fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json', Accept: 'application/json', 'x-app-platform': 'web',
+                    'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36',
+                },
+                body: JSON.stringify({ client: { id: require('crypto').randomUUID(), type: 'web' }, capabilities: { accepted_providers: [{ provider: 'pusher' }] } }),
+                signal: AbortSignal.timeout(10000),
+            });
+            const body = await res.json().catch(() => null);
+            const conn = res.ok && body && body.data && Array.isArray(body.data.connections) ? body.data.connections.find((c) => c && c.provider === 'pusher') : null;
+            const c = conn && conn.credentials;
+            if (c && /^[a-f0-9]{16,40}$/.test(String(c.app_key)) && /^[a-z0-9-]{2,20}$/.test(String(c.cluster))) {
+                if (!this._kickPusher || this._kickPusher.key !== c.app_key) console.log(`[ChatRelay] Kick: Pusher key ${String(c.app_key).slice(0, 6)}… on ${c.cluster}`);
+                this._kickPusher = { key: c.app_key, cluster: c.cluster, at: now };
+                return this._kickPusher;
+            }
+            console.warn(`[ChatRelay] Kick: realtime connection answered ${res.status} without Pusher credentials; using the last known key`);
+        } catch (err) {
+            console.warn(`[ChatRelay] Kick: could not ask for Pusher credentials (${err.message}); using the last known key`);
+        }
+        return { ...(this._kickPusher || KICK_PUSHER_FALLBACK), at: now };
+    }
+
     async _getKickChannelInfo(channelName) {
         const slug = String(channelName || '').toLowerCase();
         try {
