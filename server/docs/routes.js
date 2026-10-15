@@ -225,11 +225,20 @@ function publicBase() {
     return b.replace(/\/+$/, '');
 }
 
+/** A search-result summary: the text when it fits 160 characters, else its sentences up to that, else cut at a word. */
+function summaryOf(text, max = 160) {
+    if (text.length <= max) return text;
+    const cut = text.slice(0, max);
+    const end = Math.max(cut.lastIndexOf('. '), cut.lastIndexOf('! '), cut.lastIndexOf('? '), cut.endsWith('.') ? max - 1 : -1);
+    return end >= 60 ? cut.slice(0, end + 1) : `${cut.slice(0, cut.lastIndexOf(' '))}…`;
+}
+
 function renderPage({ name, title, html, headings }) {
-    const pageTitle = title ? `${title} — OpenVibe.Live Docs` : 'OpenVibe.Live Docs';
+    // A long heading is the whole title (search results cut a title near 60 characters, so no suffix after it).
+    const pageTitle = title ? (title.length > 45 ? title : `${title} — OpenVibe.Live Docs`) : 'OpenVibe.Live Docs';
     // The first paragraph is the page's summary for search engines and link previews.
     const firstP = /<p>([\s\S]*?)<\/p>/.exec(html);
-    const description = firstP ? firstP[1].replace(/<[^>]+>/g, '').replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/\s+/g, ' ').trim().slice(0, 300) : '';
+    const description = firstP ? summaryOf(firstP[1].replace(/<[^>]+>/g, '').replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/\s+/g, ' ').trim()) : '';
     const canonical = `${publicBase()}/docs${name === 'README' ? '' : `/${name}`}`;
     const toc = headings.length
         ? `<nav class="toc" aria-label="On this page">${headings.map(h => `<a href="#${h.id}">${escapeHtml(h.text)}</a>`).join('')}</nav>`
