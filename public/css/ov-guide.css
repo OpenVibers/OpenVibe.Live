@@ -117,6 +117,7 @@ body.ovg-lock { overflow: hidden; }
 .ovg-error { padding: 12px; border-radius: 12px; background: color-mix(in srgb, #ff5a5f 12%, var(--bg-secondary)); border: 1px solid #ff5a5f; }
 .ovg-field { display: grid; gap: 6px; font-size: 0.8rem; font-weight: 700; color: var(--text-secondary); margin-bottom: 10px; }
 .ovg-field-label { font-size: 0.8rem; font-weight: 700; color: var(--text-secondary); margin: 2px 0 6px; }
+.ovg-field-text .muted { font-weight: 500; color: var(--text-muted); }
 .ovg-prefix { display: flex; align-items: center; gap: 0; } .ovg-prefix span { padding: 9px 12px; border: 1px solid var(--border); border-right: 0; border-radius: 10px 0 0 10px; background: var(--bg-tertiary); font-weight: 900; } .ovg-prefix .form-input { border-radius: 0 10px 10px 0; }
 .ovg-drop { display: flex; align-items: center; justify-content: center; gap: 10px; min-height: 96px; border: 2px dashed color-mix(in srgb, var(--accent) 45%, var(--border)); border-radius: 14px; background: var(--bg-secondary); cursor: pointer; color: var(--text-secondary); font-weight: 700; padding: 12px; transition: border-color .15s, background .15s; }
 .ovg-drop:hover { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 6%, var(--bg-secondary)); }

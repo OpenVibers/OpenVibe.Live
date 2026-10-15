@@ -201,7 +201,8 @@
         secret: (label, value) => `<div class="ovg-kv"><span>${cfg.esc(label)}</span><code class="ovg-secret" data-secret="${cfg.esc(value)}">••••••••••••••••</code><button type="button" class="ovg-copy" data-copy="${cfg.esc(value)}"><i class="fa-regular fa-copy"></i> Copy</button><button type="button" class="ovg-copy" data-reveal="1"><i class="fa-regular fa-eye"></i> Show</button></div>`,
         steps: (items) => `<ol class="ovg-obs">${items.map(i => `<li>${i}</li>`).join('')}</ol>`,
         chips: (items, name) => `<div class="ovg-chips" data-chips="${cfg.esc(name || '')}">${items.map(([v, l, i]) => `<button type="button" class="ovg-chip" data-chip="${cfg.esc(v)}">${i ? `<i class="fa-solid ${i}"></i> ` : ''}${cfg.esc(l)}</button>`).join('')}</div>`,
-        field: (label, inputHtml) => `<label class="ovg-field">${label}${inputHtml}</label>`,
+        // The label is one grid row (its text and any "(optional)" note together), the control the next.
+        field: (label, inputHtml) => `<label class="ovg-field"><span class="ovg-field-text">${label}</span>${inputHtml}</label>`,
         wire(root) {
             root.querySelectorAll('[data-copy]').forEach(b => b.addEventListener('click', async () => { try { await navigator.clipboard.writeText(b.dataset.copy); b.innerHTML = '<i class="fa-solid fa-check"></i> Copied'; setTimeout(() => { b.innerHTML = '<i class="fa-regular fa-copy"></i> Copy'; }, 1500); } catch { cfg.toast('Copy failed — long-press to copy', 'error'); } }));
             root.querySelectorAll('[data-reveal]').forEach(b => b.addEventListener('click', () => { const c = b.parentElement.querySelector('.ovg-secret'); if (!c) return; const on = c.dataset.on === '1'; c.textContent = on ? '••••••••••••••••' : c.dataset.secret; c.dataset.on = on ? '' : '1'; b.innerHTML = on ? '<i class="fa-regular fa-eye"></i> Show' : '<i class="fa-regular fa-eye-slash"></i> Hide'; }));
