@@ -289,7 +289,15 @@ async function generateVodTranscript(vod) {
                 onWindow: async (sec, segs) => await db.saveVodTranscriptProgress(vod.id, sec, segs),
             });
         } catch (e) { r = { text: '', segments: [], ok: false, error: e.message }; }
-        if (r.text) {                                            // got speech → store it (+segments)
+        if (r.partial) {                                         // stopped at a window AI could not do yet
+            const n = await db.bumpVodTranscriptAttempt(vod.id);
+            if (n >= MAX_TX_ATTEMPTS && r.text) {               // the last attempt: keep what came before the gap
+                try { await db.setVodTranscript(vod.id, r.text, r.segments || []); } catch { /* */ }
+                await db.setVodTranscriptStatus(vod.id, 'done', `transcribed up to ${Math.round((r.stoppedAtSec || 0) / 60)} min: ${r.error}`);
+            } else {                                             // retry later from that window (progress is saved)
+                await db.setVodTranscriptStatus(vod.id, n >= MAX_TX_ATTEMPTS ? 'failed' : 'retry', r.error || 'transcription stopped', _txBackoffMin(n));
+            }
+        } else if (r.text) {                                     // got speech → store it (+segments)
             try { await db.setVodTranscript(vod.id, r.text, r.segments || []); } catch { /* */ }
             await db.setVodTranscriptStatus(vod.id, 'done');
         } else if (r.ok) {                                       // ran clean, genuinely no speech → terminal
