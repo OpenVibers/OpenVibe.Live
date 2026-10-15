@@ -53,7 +53,7 @@
 <p>OpenVibe.Live is a self-hosted, open-source live streaming platform with interactive controls, chat bots, TTS, soundboards, and hardware bridges. This documentation is designed for <strong>vibe coding</strong> — copy the section you need into your LLM and start building.</p>
 
 <h3>Quick Architecture Overview</h3>
-<table class="doc-table">
+<table class="doc-table" tabindex="0">
 <thead><tr><th>Layer</th><th>Tech</th><th>Notes</th></tr></thead>
 <tbody>
 <tr><td>Backend</td><td>Node.js + Express</td><td>All routes return JSON</td></tr>
@@ -67,7 +67,7 @@
 </table>
 
 <h3>Which doc to copy for which task?</h3>
-<table class="doc-table">
+<table class="doc-table" tabindex="0">
 <thead><tr><th>Building a...</th><th>Copy this tab</th></tr></thead>
 <tbody>
 <tr><td>Chat bot / overlay</td><td><strong>Chat</strong> — WS protocol, bot examples, commands</td></tr>
@@ -84,7 +84,7 @@
 </table>
 
 <h3>How the OpenVibe is split</h3>
-<table class="doc-table">
+<table class="doc-table" tabindex="0">
 <thead><tr><th>Service</th><th>URL</th><th>Owns</th></tr></thead>
 <tbody>
 <tr><td>OpenVibe.Live</td><td>openvibe.live</td><td>Streaming, chat, TTS, controls, VODs, soundboard</td></tr>
@@ -134,7 +134,7 @@
 4. A go-live while openvibe.network is down waits in OpenVibe.Events and is delivered on retry</code></pre>
 
 <h3>WebSocket Services</h3>
-<table class="doc-table">
+<table class="doc-table" tabindex="0">
 <thead><tr><th>Path</th><th>Purpose</th><th>Auth</th></tr></thead>
 <tbody>
 <tr><td>/ws/chat</td><td>Chat rooms (per-stream or global)</td><td>Optional (anon allowed)</td></tr>
@@ -168,7 +168,7 @@ openvibe.network /api/admin/streamer-mod/*  →  OpenVibe.Live /api/mod/*</code>
 <p><strong>Roles:</strong> <code>admin</code> &gt; <code>global_mod</code> &gt; <code>streamer</code> &gt; <code>user</code> (+ anonymous). Banned accounts get <code>403</code>.</p>
 
 <h3>REST Endpoints</h3>
-<table class="doc-table">
+<table class="doc-table" tabindex="0">
 <thead><tr><th>Method</th><th>Path</th><th>Auth</th><th>Notes</th></tr></thead>
 <tbody>
 <tr><td>GET</td><td>/api/auth/sso/login</td><td>No</td><td>302 &rarr; openvibe.network OAuth authorize</td></tr>
@@ -189,7 +189,7 @@ openvibe.network /api/admin/streamer-mod/*  →  OpenVibe.Live /api/mod/*</code>
 
 <h3>API Tokens (<code>hbt_</code> prefix)</h3>
 <p>Long-lived, scoped tokens for bots/integrations. Create them from Dashboard &rarr; API Tokens (max 10 active). The token string is shown once. Use as <code>Authorization: Bearer hbt_xxxxxxxxxxxx</code>.</p>
-<table class="doc-table">
+<table class="doc-table" tabindex="0">
 <thead><tr><th>Method</th><th>Path</th><th>Notes</th></tr></thead>
 <tbody>
 <tr><td>POST</td><td>/api/auth/tokens</td><td>Create <code>{ label, scopes[], expiresAt? }</code> &rarr; <code>{ id, token, ... }</code> (JWT auth only, not an hbt_ token)</td></tr>
@@ -221,7 +221,7 @@ console.log('Acting as:', me.user.username);
 <p><strong>Model:</strong> a <strong>managed stream</strong> is a persistent <em>slot</em> (a saved config: title, category, protocol, its own <code>stream_key</code>, plus recording/clip/privacy settings). A <strong>stream</strong> is one live session started from a slot. You do NOT create streams directly &mdash; you create a slot, then <strong>go live</strong> from it.</p>
 
 <h3>Managed streams (slots)</h3>
-<table class="doc-table">
+<table class="doc-table" tabindex="0">
 <thead><tr><th>Method</th><th>Path</th><th>Auth</th><th>Notes</th></tr></thead>
 <tbody>
 <tr><td>GET</td><td>/api/streams/managed</td><td>Yes</td><td>My slots + slot limit</td></tr>
@@ -234,7 +234,7 @@ console.log('Acting as:', me.user.username);
 <p><strong>Per-slot settings</strong> (PUT <code>/managed/:id</code>): <code>streaming_method</code> (<code>browser|whip|cli|rtmp</code> &mdash; auto-derives <code>protocol</code>), <code>browser_mode</code> (<code>camera|mic_only|screen</code>), <code>default_vod_visibility</code> / <code>default_clip_visibility</code> (<code>public|unlisted|private</code>), <code>slot_vod_recording_enabled</code>, <code>slot_clip_recording_enabled</code>, <code>slot_clip_notify_enabled</code> (0/1), weather fields, <code>control_config_id</code>.</p>
 
 <h3>Go live / sessions</h3>
-<table class="doc-table">
+<table class="doc-table" tabindex="0">
 <thead><tr><th>Method</th><th>Path</th><th>Auth</th><th>Notes</th></tr></thead>
 <tbody>
 <tr><td>POST</td><td>/api/streams</td><td>Yes</td><td><strong>Go live</strong> from a slot. Body: <code>managed_stream_id</code> (required) + optional <code>title, category, tags, is_nsfw, control_config_id</code> &rarr; <code>{ stream, endpoint }</code></td></tr>
@@ -247,7 +247,7 @@ console.log('Acting as:', me.user.username);
 </table>
 
 <h3>Discovery &amp; channels</h3>
-<table class="doc-table">
+<table class="doc-table" tabindex="0">
 <thead><tr><th>Method</th><th>Path</th><th>Auth</th><th>Notes</th></tr></thead>
 <tbody>
 <tr><td>GET</td><td>/api/streams</td><td>Opt</td><td>All currently-live streams (+ external viewer totals)</td></tr>
@@ -298,7 +298,7 @@ console.log(endpoint.whipUrlBase); // POST your SDP offer here (see WebRTC tab)
 
 <h3>WHIP Ingestion (OBS / ffmpeg / custom encoder)</h3>
 <p>RFC 9725 compliant. POST a raw SDP offer, receive SDP answer.</p>
-<table class="doc-table">
+<table class="doc-table" tabindex="0">
 <thead><tr><th>Method</th><th>Path</th><th>Notes</th></tr></thead>
 <tbody>
 <tr><td>POST</td><td>/whip/:streamId</td><td>Body: raw SDP (Content-Type: application/sdp). Auth: Bearer JWT. Returns SDP answer + Location header.</td></tr>
@@ -310,7 +310,7 @@ console.log(endpoint.whipUrlBase); // POST your SDP offer here (see WebRTC tab)
 <h3>Broadcast WebSocket — /ws/broadcast</h3>
 <p>Connect: <code>wss://openvibe.live/ws/broadcast?streamId=ID&amp;role=broadcaster|viewer&amp;token=JWT</code></p>
 <p>All messages are JSON. Send: <code>ws.send(JSON.stringify({ type: 'watch' }))</code></p>
-<table class="doc-table">
+<table class="doc-table" tabindex="0">
 <thead><tr><th>Type</th><th>Dir</th><th>Key Fields</th><th>Description</th></tr></thead>
 <tbody>
 <tr><td>welcome</td><td>S→C</td><td>peerId, role, streamId, viewerCount, iceServers</td><td>Sent immediately on connect</td></tr>
@@ -357,7 +357,7 @@ GET /api/streams/rtmp-proxy/:streamId.flv
 <p>Omit <code>stream</code> for global chat; omit the token to connect anonymously (assigned an anonXXXXX identity). A token in the URL does not sign the socket in: URLs end up in logs.</p>
 
 <h3>Client → Server Messages</h3>
-<table class="doc-table">
+<table class="doc-table" tabindex="0">
 <thead><tr><th>Type</th><th>Payload</th><th>Description</th></tr></thead>
 <tbody>
 <tr><td>chat</td><td>{ message, reply_to_id?, auto_delete_minutes? }</td><td>Send a message (max 500 chars)</td></tr>
@@ -369,7 +369,7 @@ GET /api/streams/rtmp-proxy/:streamId.flv
 </table>
 
 <h3>Server → Client Messages</h3>
-<table class="doc-table">
+<table class="doc-table" tabindex="0">
 <thead><tr><th>Type</th><th>Key Fields</th><th>Description</th></tr></thead>
 <tbody>
 <tr><td>auth</td><td>authenticated, username, role, user_id, slowmode_seconds, slur_filter_enabled</td><td>Identity confirmation, the answer to every join.</td></tr>
@@ -464,7 +464,7 @@ while True:
 </code></pre>
 
 <h3>Chat Commands (built-in)</h3>
-<table class="doc-table">
+<table class="doc-table" tabindex="0">
 <thead><tr><th>Command</th><th>Description</th></tr></thead>
 <tbody>
 <tr><td>/tts &lt;text&gt;</td><td>Text-to-speech via TTS system</td></tr>
@@ -476,7 +476,7 @@ while True:
 </table>
 
 <h3>User Roles</h3>
-<table class="doc-table">
+<table class="doc-table" tabindex="0">
 <thead><tr><th>Role</th><th>Description</th></tr></thead>
 <tbody>
 <tr><td>admin</td><td>Platform admin</td></tr>
@@ -488,7 +488,7 @@ while True:
 </table>
 
 <h3>Chat REST API</h3>
-<table class="doc-table">
+<table class="doc-table" tabindex="0">
 <thead><tr><th>Method</th><th>Path</th><th>Auth</th><th>Description</th></tr></thead>
 <tbody>
 <tr><td>POST</td><td>/api/chat/send</td><td>Yes</td><td>Post a message to global chat (bots; API tokens need the <code>chat</code> scope)</td></tr>
@@ -509,7 +509,7 @@ while True:
 <p><strong>Vibes</strong> are integer, "bit"-style units (like Twitch bits). <strong>100 bucks = $1.00</strong> of streamer <em>cashout</em> value (1 buck = 1 USD cent). Viewers <strong>buy at a premium</strong> with volume discounts (per-buck price $0.0150 down to $0.0110), streamers cash out at a flat $0.01/buck, and the spread is the platform margin. Each user has <strong>two balances</strong>: a <code>spendable</code> balance (bucks you bought &mdash; used to donate/subscribe) and a <code>cashout</code> balance (bucks you <em>received</em> as donations/sub share &mdash; the only balance you can cash out). Cashouts go to a 14-day escrow for admin review; minimum cashout is <strong>500 bucks ($5.00)</strong>. Two <em>free</em> currencies also exist: global <strong>GOLD</strong> and per-channel loyalty points (<strong>OpenCoins</strong>).</p>
 
 <h3>Vibes &mdash; <code>/api/funds</code></h3>
-<table class="doc-table">
+<table class="doc-table" tabindex="0">
 <thead><tr><th>Method</th><th>Path</th><th>Auth</th><th>Notes</th></tr></thead>
 <tbody>
 <tr><td>GET</td><td>/api/funds/balance</td><td>Yes</td><td>Both balances + USD cashout values (<code>usd_value = cashout_balance / 100</code>)</td></tr>
@@ -528,7 +528,7 @@ while True:
 
 <h3>Buying Vibes &amp; subscriptions &mdash; <code>/api/payments</code></h3>
 <p>Real-money purchases via <strong>Stripe, PayPal, CCBill, or crypto (NOWPayments)</strong>. Off by default (<code>payments_enabled</code>). Every purchase creates an order, then a provider webhook fulfills it once (idempotent).</p>
-<table class="doc-table">
+<table class="doc-table" tabindex="0">
 <thead><tr><th>Method</th><th>Path</th><th>Auth</th><th>Notes</th></tr></thead>
 <tbody>
 <tr><td>GET</td><td>/api/payments/config</td><td>No</td><td>Live providers + pricing: <code>packages</code>, <code>cashoutBucksPerUsd</code> (100), <code>minPurchaseBucks</code>, <code>subPriceUsd</code></td></tr>
@@ -543,7 +543,7 @@ while True:
 
 <h3>OpenCoins / Coins &mdash; <code>/api/coins</code></h3>
 <p>Free currencies. <strong>GOLD</strong> is a global wallet (games, cosmetics, media requests). <strong>Channel points ("OpenCoins")</strong> are per-streamer loyalty points earned by watching/chatting a channel and spent on that streamer's rewards. Defaults: watch = 10/5min, chat = 5 (max 1/min), follow = 50 once; not earnable on your own stream.</p>
-<table class="doc-table">
+<table class="doc-table" tabindex="0">
 <thead><tr><th>Method</th><th>Path</th><th>Auth</th><th>Notes</th></tr></thead>
 <tbody>
 <tr><td>GET</td><td>/api/coins/balance &middot; /channel-balance</td><td>Yes</td><td>Global GOLD / per-streamer points (<code>?streamerId</code>)</td></tr>
@@ -558,7 +558,7 @@ while True:
 
 <h3>Cosmetics &mdash; <code>/api/cosmetics</code></h3>
 <p>Chat cosmetics (name effects, hats, particles, voices) unlocked from openvibe-quest game items and equipped per slot.</p>
-<table class="doc-table">
+<table class="doc-table" tabindex="0">
 <thead><tr><th>Method</th><th>Path</th><th>Auth</th><th>Notes</th></tr></thead>
 <tbody>
 <tr><td>GET</td><td>/api/cosmetics/catalog</td><td>No</td><td>Full catalog grouped by category</td></tr>
@@ -577,7 +577,7 @@ while True:
 
 <h3>Chat-AI insight (read-only) &mdash; <code>/api/chat/ai</code> and <code>/api/chat-ai</code></h3>
 <p>Rolling LLM summaries of the chat, kept by OpenVibe.Chat: a global "community vibe", plus per-user / per-anon / per-relay-user insight (overview + running memory + a short timeline). A channel's AI timeline and a user's streamer side are OpenVibe.Live's and include the chatter insight. No auth required to read.</p>
-<table class="doc-table">
+<table class="doc-table" tabindex="0">
 <thead><tr><th>Method</th><th>Path</th><th>Notes</th></tr></thead>
 <tbody>
 <tr><td>GET</td><td>/api/chat/ai/global</td><td>Site-wide chat overview + timeline + memory</td></tr>
@@ -591,7 +591,7 @@ while True:
 
 <h3>AI Chat Viewers &mdash; <code>/api/ai-viewers</code></h3>
 <p>Persistent, context-aware AI chatter bots per channel. They read the streamer/user/global AI insight + live situation and post one at a time. All endpoints are <code>requireAuth</code> (streamer configures their own).</p>
-<table class="doc-table">
+<table class="doc-table" tabindex="0">
 <thead><tr><th>Method</th><th>Path</th><th>Notes</th></tr></thead>
 <tbody>
 <tr><td>GET / PUT</td><td>/api/ai-viewers/config</td><td>My config + budget/usage (enabled, num_ambient_bots, pacing_seconds, persona, transcribe/vision, use_shared_key, daily_budget_cents, BYO key/base/model)</td></tr>
@@ -621,7 +621,7 @@ while True:
 <p>The binding is <code>PUT /api/streams/channel/:username/bot</code> with <code>{ "robot_id": "rob_…" }</code> (or <code>null</code> to unbind), the channel owner only.</p>
 
 <h3>Chat commands</h3>
-<table class="doc-table">
+<table class="doc-table" tabindex="0">
 <thead><tr><th>Command</th><th>What the robot gets</th></tr></thead>
 <tbody>
 <tr><td><code>!forward</code> / <code>!backward</code></td><td>a short drive pulse forward or back</td></tr>
@@ -644,7 +644,7 @@ while True:
 
 <h3>Text-to-Speech</h3>
 <p>TTS reads chat messages, donation alerts, and custom text aloud on stream. Viewers hear it in the broadcast audio mix. Streamers configure which voice, volume, rate, and message types trigger TTS.</p>
-<table class="doc-table">
+<table class="doc-table" tabindex="0">
 <thead><tr><th>Method</th><th>Path</th><th>Description</th></tr></thead>
 <tbody>
 <tr><td>GET</td><td>/api/tts/settings</td><td>Current TTS config (voice, volume, rate, filters)</td></tr>
@@ -689,7 +689,7 @@ https://www.101soundboards.com/sounds/12345 2.5
 https://www.101soundboards.com/sounds/12345 150p 2</code></pre>
 
 <h4>Channel Soundboard Settings</h4>
-<table class="doc-table">
+<table class="doc-table" tabindex="0">
 <thead><tr><th>Setting</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
 <tbody>
 <tr><td>soundboard_enabled</td><td>boolean</td><td>true</td><td>Enable/disable soundboard in this channel</td></tr>
@@ -700,7 +700,7 @@ https://www.101soundboards.com/sounds/12345 150p 2</code></pre>
 </table>
 
 <h4>Rate Limits</h4>
-<table class="doc-table">
+<table class="doc-table" tabindex="0">
 <thead><tr><th>Scope</th><th>Limit</th></tr></thead>
 <tbody>
 <tr><td>Per user</td><td>One sound every 8 seconds</td></tr>
@@ -720,7 +720,7 @@ https://www.101soundboards.com/sounds/12345 150p 2</code></pre>
 
 <h3>Discord Bot (via openvibe.network)</h3>
 <p>The Discord bot runs on openvibe.network (not OpenVibe.Live). When a stream goes live, OpenVibe.Live fires an internal event, and the bot posts an embed in the configured alerts channel.</p>
-<table class="doc-table">
+<table class="doc-table" tabindex="0">
 <thead><tr><th>Feature</th><th>Description</th></tr></thead>
 <tbody>
 <tr><td>Live alerts</td><td>Rich embed with stream title, thumbnail, streamer, and link</td></tr>
@@ -731,7 +731,7 @@ https://www.101soundboards.com/sounds/12345 150p 2</code></pre>
 </table>
 
 <h3>Discord Admin API (openvibe.network)</h3>
-<table class="doc-table">
+<table class="doc-table" tabindex="0">
 <thead><tr><th>Method</th><th>Path</th><th>Description</th></tr></thead>
 <tbody>
 <tr><td>GET</td><td>/api/admin/discord</td><td>Bot status + config (tokens masked)</td></tr>
@@ -743,7 +743,7 @@ https://www.101soundboards.com/sounds/12345 150p 2</code></pre>
 </table>
 
 <h3>Discord Account Linking</h3>
-<table class="doc-table">
+<table class="doc-table" tabindex="0">
 <thead><tr><th>Method</th><th>Path</th><th>Description</th></tr></thead>
 <tbody>
 <tr><td>GET</td><td>/api/auth/discord/link</td><td>Initiate Discord OAuth2 (redirects to Discord)</td></tr>
@@ -755,7 +755,7 @@ https://www.101soundboards.com/sounds/12345 150p 2</code></pre>
 
 <h3>Web Push Notifications</h3>
 <p>Push notifications use VAPID (Web Push API). Users subscribe via their browser, and receive alerts for stream go-live events.</p>
-<table class="doc-table">
+<table class="doc-table" tabindex="0">
 <thead><tr><th>Method</th><th>Path</th><th>Description</th></tr></thead>
 <tbody>
 <tr><td>GET</td><td>/api/push/vapid-key</td><td>Get VAPID public key for subscription</td></tr>
@@ -767,7 +767,7 @@ https://www.101soundboards.com/sounds/12345 150p 2</code></pre>
 </table>
 
 <h3>Notification Preferences</h3>
-<table class="doc-table">
+<table class="doc-table" tabindex="0">
 <thead><tr><th>Preference</th><th>Values</th><th>Description</th></tr></thead>
 <tbody>
 <tr><td>stream (per-follow)</td><td>enabled/disabled</td><td>Get notified when a followed streamer goes live</td></tr>
@@ -777,7 +777,7 @@ https://www.101soundboards.com/sounds/12345 150p 2</code></pre>
 
 <h3>Internal Events API (server-to-server)</h3>
 <p>OpenVibe.Live emits events to openvibe.network through its internal API, with a service token scoped to the capability of each call.</p>
-<table class="doc-table">
+<table class="doc-table" tabindex="0">
 <thead><tr><th>Method</th><th>Path</th><th>Description</th></tr></thead>
 <tbody>
 <tr><td>POST</td><td>/internal/push-single</td><td>Send push to one user { userId, title, body, url }</td></tr>
@@ -790,7 +790,7 @@ https://www.101soundboards.com/sounds/12345 150p 2</code></pre>
 
 <h3>Multistream / Restream — <code>/api/restream</code></h3>
 <p>Relay a live stream out to YouTube / Twitch / Kick / custom RTMP. Manage destinations per slot (max 10); stream keys are masked on read. All <code>requireAuth</code>.</p>
-<table class="doc-table">
+<table class="doc-table" tabindex="0">
 <thead><tr><th>Method</th><th>Path</th><th>Notes</th></tr></thead>
 <tbody>
 <tr><td>GET</td><td>/api/restream/presets</td><td>Platform + quality/encoder preset metadata</td></tr>
@@ -804,7 +804,7 @@ https://www.101soundboards.com/sounds/12345 150p 2</code></pre>
 
 <h3>RobotStreamer — <code>/api/robotstreamer</code></h3>
 <p>Publish a server-ingested stream to a RobotStreamer robot and (optionally) mirror its chat. Config is per stream slot only: a slot without its own config does not restream to RobotStreamer, and every call except GET needs <code>managed_stream_id</code>. All <code>requireAuth</code>.</p>
-<table class="doc-table">
+<table class="doc-table" tabindex="0">
 <thead><tr><th>Method</th><th>Path</th><th>Notes</th></tr></thead>
 <tbody>
 <tr><td>GET</td><td>/api/robotstreamer/integration</td><td>Load a slot's RS settings + available robots (<code>?managed_stream_id</code>; without it only the server's passthrough capability, <code>exists:false</code>)</td></tr>
@@ -815,7 +815,7 @@ https://www.101soundboards.com/sounds/12345 150p 2</code></pre>
 
 <h3>PowerChat — <code>/api/powerchat</code></h3>
 <p>Two-way bridge with PowerChat (alerts/overlays). OpenVibe.Live chat + viewer counts + point redemptions flow <strong>into</strong> PowerChat's overlays; signed webhooks flow <strong>out</strong> &mdash; a PowerChat <code>donation.completed</code> is mapped onto the Vibes donation pipeline (PowerChat cents = bucks 1:1) and credits the active goal.</p>
-<table class="doc-table">
+<table class="doc-table" tabindex="0">
 <thead><tr><th>Method</th><th>Path</th><th>Notes</th></tr></thead>
 <tbody>
 <tr><td>GET</td><td>/api/powerchat/status</td><td>Connection + granted scopes</td></tr>
@@ -835,7 +835,7 @@ https://www.101soundboards.com/sounds/12345 150p 2</code></pre>
 <h2>7. VODS, CLIPS &amp; PASTES</h2>
 <p>Recording mode is per slot: <code>vod</code> (kept + browsable), <code>clips_only</code> (ephemeral &mdash; recorded only to source live clips, deleted on stream end), or <code>none</code>. <strong>RTMP</strong> streams record losslessly to fragmented <code>.mp4</code> (H.264/AAC); WebRTC/jsmpeg record to <code>.webm</code>. New-VOD and new-clip visibility follow the slot's <code>default_vod_visibility</code> / <code>default_clip_visibility</code>.</p>
 <h3>VODs — <code>/api/vods</code></h3>
-<table class="doc-table">
+<table class="doc-table" tabindex="0">
 <thead><tr><th>Method</th><th>Path</th><th>Auth</th><th>Notes</th></tr></thead>
 <tbody>
 <tr><td>GET</td><td>/api/vods</td><td>Opt</td><td>List public VODs (<code>?limit,offset,username,sort</code>) (+ my private when logged in)</td></tr>
@@ -850,7 +850,7 @@ https://www.101soundboards.com/sounds/12345 150p 2</code></pre>
 </table>
 
 <h3>Clips — <code>/api/clips</code></h3>
-<table class="doc-table">
+<table class="doc-table" tabindex="0">
 <thead><tr><th>Method</th><th>Path</th><th>Auth</th><th>Notes</th></tr></thead>
 <tbody>
 <tr><td>GET</td><td>/api/clips</td><td>No</td><td>List public clips (<code>?limit,offset,username,sort</code>)</td></tr>
@@ -863,7 +863,7 @@ https://www.101soundboards.com/sounds/12345 150p 2</code></pre>
 </table>
 
 <h3>Comments — <code>/api/comments</code> (on VODs &amp; clips)</h3>
-<table class="doc-table">
+<table class="doc-table" tabindex="0">
 <thead><tr><th>Method</th><th>Path</th><th>Auth</th><th>Notes</th></tr></thead>
 <tbody>
 <tr><td>GET</td><td>/api/comments/:type/:id</td><td>Opt</td><td>List comments + replies, newest first (<code>type</code> = <code>vod|clip</code>, <code>?limit,offset</code>) &rarr; <code>{ comments, total, thread? }</code>; <code>thread.url</code> is the same thread on OpenVibe.Community (public and unlisted items)</td></tr>
@@ -876,7 +876,7 @@ https://www.101soundboards.com/sounds/12345 150p 2</code></pre>
 <p>Comments are <a href="https://openvibe.community">OpenVibe.Community</a> comment threads: the same thread shows on Community's page for it. When Community cannot be reached these routes answer <code>503</code> with <code>code: "comments_unavailable"</code>.</p>
 
 <h3>Pastes — <code>/api/pastes</code></h3>
-<table class="doc-table">
+<table class="doc-table" tabindex="0">
 <thead><tr><th>Method</th><th>Path</th><th>Auth</th><th>Notes</th></tr></thead>
 <tbody>
 <tr><td>GET</td><td>/api/pastes</td><td>Opt</td><td>List public pastes (<code>?limit,offset,type,username,search,sort</code>)</td></tr>
@@ -889,7 +889,7 @@ https://www.101soundboards.com/sounds/12345 150p 2</code></pre>
 
 <h3>Live Frame API — <code>openvibe.media/live/:selector/frame.jpg</code></h3>
 <p>Grab a <strong>near-realtime JPEG frame</strong> of any actively-live stream slot — built for external APIs, bots, dashboards, and dev tooling. No auth, CORS-open (<code>Access-Control-Allow-Origin: *</code>), so you can hotlink it in an <code>&lt;img&gt;</code>, poll it from a script, or draw it onto a canvas.</p>
-<table class="doc-table">
+<table class="doc-table" tabindex="0">
 <thead><tr><th>Selector</th><th>Example</th><th>Resolves to</th></tr></thead>
 <tbody>
 <tr><td>Slot id</td><td><code>/live/1/frame.jpg</code></td><td>That managed-stream slot (id from your Stream Manager)</td></tr>
@@ -906,7 +906,7 @@ curl -f -o now.jpg https://openvibe.media/live/@Goosely/frame.jpg &amp;&amp; ech
 
 <h3>Transcript &amp; AI Timeline API — <code>openvibe.media/live/:selector/transcript.json</code></h3>
 <p>The full <strong>audio transcription log</strong> and <strong>AI overview timeline</strong> for a stream slot or streamer — same selector grammar as the frame API, JSON out, no auth, CORS-open, cached <strong>30s</strong> (that cache is the rate limit).</p>
-<table class="doc-table">
+<table class="doc-table" tabindex="0">
 <thead><tr><th>Selector</th><th>Example</th><th>Scope</th></tr></thead>
 <tbody>
 <tr><td>Slot id / slug</td><td><code>/live/whip/transcript.json</code></td><td>That slot's sessions (slugs resolve while live; ids always work)</td></tr>
@@ -937,7 +937,7 @@ curl -s https://openvibe.media/live/@Goosely/chat-insight.json | jq ".chat_insig
 <h2>8. API REFERENCE — EVERYTHING ELSE</h2>
 
 <h3>Chat REST — <code>/api/chat</code></h3>
-<table class="doc-table">
+<table class="doc-table" tabindex="0">
 <thead><tr><th>Method</th><th>Path</th><th>Auth</th><th>Notes</th></tr></thead>
 <tbody>
 <tr><td>POST</td><td>/api/chat/send</td><td>Yes</td><td>Post a message to global chat (bots; API tokens need the <code>chat</code> scope)</td></tr>
@@ -950,7 +950,7 @@ curl -s https://openvibe.media/live/@Goosely/chat-insight.json | jq ".chat_insig
 </table>
 
 <h3>Emotes — <code>/api/emotes</code> (served by OpenVibe.Chat)</h3>
-<table class="doc-table">
+<table class="doc-table" tabindex="0">
 <thead><tr><th>Method</th><th>Path</th><th>Auth</th><th>Notes</th></tr></thead>
 <tbody>
 <tr><td>GET</td><td>/api/emotes/all/:streamId</td><td>Opt</td><td>All emotes for a context: <code>{ defaults, channel[], global[], ffz[], bttv[], '7tv'[] }</code>. Use <code>?channel=&lt;username&gt;</code> to resolve a channel without a live stream (<code>streamId</code> 0)</td></tr>
@@ -962,7 +962,7 @@ curl -s https://openvibe.media/live/@Goosely/chat-insight.json | jq ".chat_insig
 </table>
 
 <h3>Sounds — <code>/api/sounds</code> (viewer <code>!command</code> sound clips)</h3>
-<table class="doc-table">
+<table class="doc-table" tabindex="0">
 <thead><tr><th>Method</th><th>Path</th><th>Auth</th><th>Notes</th></tr></thead>
 <tbody>
 <tr><td>GET</td><td>/api/sounds/all/:streamId &middot; /channel/:userId</td><td>No</td><td>Sounds available for a stream / channel</td></tr>
@@ -972,7 +972,7 @@ curl -s https://openvibe.media/live/@Goosely/chat-insight.json | jq ".chat_insig
 </table>
 
 <h3>Direct Messages — <code>/api/dm</code></h3>
-<table class="doc-table">
+<table class="doc-table" tabindex="0">
 <thead><tr><th>Method</th><th>Path</th><th>Auth</th><th>Notes</th></tr></thead>
 <tbody>
 <tr><td>GET / POST</td><td>/api/dm/conversations</td><td>Yes</td><td>List / create a 1:1 or group conversation</td></tr>
@@ -983,7 +983,7 @@ curl -s https://openvibe.media/live/@Goosely/chat-insight.json | jq ".chat_insig
 </table>
 
 <h3>Analytics — <code>/api/analytics</code></h3>
-<table class="doc-table">
+<table class="doc-table" tabindex="0">
 <thead><tr><th>Method</th><th>Path</th><th>Auth</th><th>Notes</th></tr></thead>
 <tbody>
 <tr><td>GET</td><td>/api/analytics/channel/:username</td><td>Opt</td><td>Public channel summary (<code>?days</code> &le; 365, no revenue)</td></tr>
@@ -993,7 +993,7 @@ curl -s https://openvibe.media/live/@Goosely/chat-insight.json | jq ".chat_insig
 </table>
 
 <h3>Media queue, News, Home &amp; utility</h3>
-<table class="doc-table">
+<table class="doc-table" tabindex="0">
 <thead><tr><th>Method</th><th>Path</th><th>Auth</th><th>Notes</th></tr></thead>
 <tbody>
 <tr><td>GET</td><td>/api/media/channel/:username</td><td>Opt</td><td>Media-request queue state; <code>POST /api/media/request</code> adds a request (spends coins)</td></tr>
@@ -1007,7 +1007,7 @@ curl -s https://openvibe.media/live/@Goosely/chat-insight.json | jq ".chat_insig
 </table>
 
 <h3>Rate Limits</h3>
-<table class="doc-table">
+<table class="doc-table" tabindex="0">
 <thead><tr><th>Scope</th><th>Window</th><th>Limit</th></tr></thead>
 <tbody>
 <tr><td>GET / HEAD requests</td><td>1 minute</td><td>900</td></tr>
