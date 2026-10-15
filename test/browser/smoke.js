@@ -215,14 +215,17 @@ const pageState = `(() => ({
     if (!ONLY_SIGNED && !ROUTES_ONLY) {
         const { cdp, errors } = await openPage(412);
         const writes = [];
-        // Session plumbing (a guest's token refresh) and analytics beacons are not the page acting.
-        const plumbing = /\/api\/(auth\/|analytics)/;
+        // Session plumbing (a guest's token refresh) and analytics beacons (Live's own, and the OpenVibe Frame's
+        // page-view hit on openvibe.network) are not the page acting.
+        const plumbing = /\/api\/(auth\/|analytics|frame\/hit)/;
         cdp.on('Network.requestWillBeSent', (p) => { if (p.request.method !== 'GET' && p.request.method !== 'HEAD' && p.request.url.includes('/api/') && !plumbing.test(p.request.url)) writes.push(`${p.request.method} ${p.request.url.replace(BASE, '')}`); });
         for (const mode of ['direct', 'spa']) {
             errors.length = 0;
             writes.length = 0;
             if (mode === 'direct') { await cdp.send('Page.navigate', { url: BASE + '/broadcast' }); await sleep(SETTLE); }
-            else { await cdp.send('Page.navigate', { url: BASE + '/' }); await sleep(SETTLE); await cdp.evaluate('navigate("/broadcast")'); await sleep(SETTLE); }
+            // In SPA mode only what happens after the move counts: the home page's own requests (a card asking for a
+            // missing thumbnail) are the home page acting, not the gate.
+            else { await cdp.send('Page.navigate', { url: BASE + '/' }); await sleep(SETTLE); writes.length = 0; await cdp.evaluate('navigate("/broadcast")'); await sleep(SETTLE); }
             const st = await cdp.evaluate(`(() => {
                 const gate = document.getElementById('bc-signin-gate');
                 const ws = document.getElementById('bc-workspace');
