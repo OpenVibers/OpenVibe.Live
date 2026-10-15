@@ -217,6 +217,7 @@ transaction as the change it describes.
 |---|---|---|
 | `live.stream.started` / `live.stream.ended` | a `streams` row goes live / ends | `stream <id>` |
 | `live.release.deployed` | the first boot that runs new commits ([server/events/release-events.js](../server/events/release-events.js)), queued with the `deploy_last_announced` update; payload: `service`, `release`, `commit`, `previous`, `commit_count`, `commits[]` (≤ 40), `deployed_at`, `notes_url` | `release <head sha>` |
+| `live.setup.task_completed` | a go-live setup hub task reads as done for the first time ([server/streaming/setup-progress.js](../server/streaming/setup-progress.js)), queued with its `live_setup_tasks` row; payload: `task`, `user`, `title`, `group`, `completed_at`, `done`, `total`. OpenVibe.Quest turns each task into a quest | `user <usr_…>` |
 
 The chat deploy notice is Chat's: Live queues `live.release.deployed` and OpenVibe.Chat folds and
 stores the rolling card (C-84). Live keeps no chat table of its own.

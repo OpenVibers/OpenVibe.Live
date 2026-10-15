@@ -1516,6 +1516,9 @@ router.get('/setup-progress', requireAuth, async (req, res) => {
     ];
     const done = tasks.filter(t => t.done).length;
     const next = tasks.find(t => !t.done) || null;
+    // A task done for the first time is recorded once, with live.setup.task_completed for OpenVibe.Quest. The hub
+    // answers even when that fails: the next visit records it.
+    await require('./setup-progress').record(uid, tasks).catch((err) => console.warn('[SetupProgress] record failed:', err.message));
     res.set('Cache-Control', cache.htmlHeaders({ private: true }));
     res.json({ tasks, done, total: tasks.length, next, username: user.username });
 });
