@@ -146,7 +146,9 @@ const server = http.createServer(app);
 // SIGTERM/SIGINT (non-drill) run this once: stop steps, beforeDrain (sockets and child processes stop while the
 // HTTP server still takes connections), a 4 s drain, then the close steps; past 5 s the process exits 1.
 // signals: false: shutdown() below installs the handlers, because a drill stops its own way.
-const { gracefulStop } = require('openvibe-sdk/service');
+const { gracefulStop, telemetry } = require('openvibe-sdk/service');
+const { createPgTelemetrySink, startTelemetryRetention } = require('openvibe-sdk/telemetry');
+let telemetryRetention = null;   // request telemetry's 14-day retention, started in start() (never under LIVE_DRILL)
 const stopper = gracefulStop({
     name: 'Live',
     server,
@@ -201,6 +203,7 @@ const stopper = gracefulStop({
     },
     close: [
         async () => { try { await analyticsStore.close(); } catch (err) { console.error('[Analytics] Shutdown:', err); } },
+        async () => { if (telemetryRetention) await telemetryRetention.stop(); await telemetry.stop(); },   // request telemetry flushes while the database is open
         async () => {
             await db.close();
             console.log('[Server] Goodbye — keep the vibe alive.');
@@ -240,6 +243,7 @@ function releaseEnv() {
 // answers direct loopback callers only; through nginx it is a 404 (server/web/observability.js).
 const observability = require('./web/observability');
 const { registry: metricsRegistry } = observability.mountMetrics(app, { release });
+app.use(telemetry.middleware);   // request telemetry (openvibe-sdk/service): a no-op until start() calls telemetry.init()
 if (!drill.enabled) require('./ai/ai-media-analyze').registerMetrics(metricsRegistry);
 const vibeCodingPublishServer = new VibeCodingPublishServer(db);
 
@@ -1168,6 +1172,10 @@ async function start() {
     await db.initDb();
     await analyticsStore.ready();
     console.log('[Server] Database ready');
+    // Request telemetry (openvibe-sdk/service, plan T1): one aggregated sample per route template, method and status
+    // class each minute, stored in telemetry_samples; rows older than 14 days go daily. A drill never gets here.
+    telemetry.init({ service: 'live', sink: createPgTelemetrySink({ db: db.getDb(), log: console }), skipPrefixes: ['/shared'], intervalMs: 60_000 });
+    telemetryRetention = startTelemetryRetention({ db: db.getDb(), log: console, olderThanDays: 14 });
 
     // Seed/refresh built-in themes on every start (upserts by slug, so re-tuned
     // palettes always take effect; IDs stay stable).

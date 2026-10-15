@@ -18,7 +18,7 @@ const source = fs.readFileSync(path.join(__dirname, '../server/index.js'), 'utf8
 const quiet = { log() {}, warn() {}, error() {} };
 
 // ── Static: server/index.js ──────────────────────────────────────────────────────
-assert.match(source, /const \{ gracefulStop \} = require\('openvibe-sdk\/service'\)/);
+assert.match(source, /const \{ gracefulStop(, [A-Za-z]+)* \} = require\('openvibe-sdk\/service'\)/);
 assert.strictEqual(source.split('gracefulStop(').length - 1, 1, 'exactly one gracefulStop( call');
 const at = source.indexOf('gracefulStop(');
 const call = source.slice(at, source.indexOf('\n});', at));
