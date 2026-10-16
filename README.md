@@ -78,7 +78,7 @@ The media subsystem lives in **OpenVibe.Media**:
 - **Chat, its messages and every chat table**: OpenVibe.Chat (since 2026-09-23). Live keeps no copy: reads and writes go through `server/chat/chat-reads.js` and `chat-delivery.js`, and the twelve tables it still held are dropped at boot by migration `007_drop_chat_tables`.
 - **Recordings, clips, thumbnails, files**: OpenVibe.Media. The local `vods`/`clips`/`pastes` tables are frozen (`test/frozen-tables.test.js`).
 - **Pastes and comments**: OpenVibe.Community.
-- **AI**: OpenVibe.AI. Live calls no model provider itself. Every prompt is an AI template; streamers' own keys are stored there; VOD and clip transcripts run there. Only live-stream captions still use Live's whisper.cpp.
+- **AI**: OpenVibe.AI. Live calls no model provider itself. Every prompt is an AI template; streamers' own keys are stored there; VOD and clip transcripts run there. Live-stream captions run in Live's own speech-to-text (`server/ai/transcribe.js`). Both use NVIDIA Parakeet TDT 0.6B v3 for English and 24 European languages and whisper.cpp for the rest.
 - **Search, events, tips, VIP, money ledger**: OpenVibe.Search, Events, Tips, VIP and Billing.
 
 ## Depends on
