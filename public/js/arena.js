@@ -176,7 +176,7 @@ function _aRenderCams(live) {
     <div class="arena-cam-grid">${live.map(f => {
         const lock = f.ears && f.ears.focus;
         return `<div class="arena-cam ${f.transcribed ? '' : 'is-quiet'} ${lock ? 'is-locked' : ''}" style="--fc:${_aEsc(f.user.profile_color || '#8b5cf6')}">
-            ${_aA(_aChannelLink(f.user, f.stream.slug || f.stream.managed_stream_id), `${f.thumbnail_url ? `<img class="arena-live-thumb" src="${_aEsc(f.thumbnail_url)}" alt="">` : _aPortrait(f, 'md')}<span class="arena-cam-rec"><span class="arena-live-dot arena-live-dot-sm"></span> LIVE · <i class="fa-solid fa-eye"></i> ${_aNum(f.stream.viewer_count)}</span>`, 'arena-cam-thumb')}
+            ${_aA(_aChannelLink(f.user, f.stream.slug || f.stream.managed_stream_id), `${f.thumbnail_url ? `<img class="arena-live-thumb" src="${_aEsc(f.thumbnail_url)}" alt="" onerror="this.hidden=true">` : ''}${_aPortrait(f, 'md')}<span class="arena-cam-rec"><span class="arena-live-dot arena-live-dot-sm"></span> LIVE · <i class="fa-solid fa-eye"></i> ${_aNum(f.stream.viewer_count)}</span>`, 'arena-cam-thumb')}
             <div class="arena-cam-body">
                 <div class="arena-mic-head">
                     ${_aA(_aFighterLink(f.user), `<strong>${_aEsc(f.user.display_name || f.user.username)}</strong>`)}
