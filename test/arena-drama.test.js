@@ -51,7 +51,12 @@ const db = require('../server/db/database');
     await stream(returner, { startMin: 20 * 1440 + 60, endMin: 20 * 1440, peak: 1 });
     await stream(returner, { startMin: 30, peak: 1, title: 'back' });
 
+    // Chat announcements: captured instead of sent.
+    const delivery = require('../server/chat/chat-delivery');
+    const sent = [];
+    delivery.message = async (line) => { sent.push(line); return sent.length; };
     const first = await drama.detect({ now: NOW });
+    await new Promise((r) => setTimeout(r, 100));
     const kinds = (await db.all('SELECT kind, user_id FROM arena_drama ORDER BY id')).map((r) => `${r.kind}:${r.user_id}`);
     for (const k of [`rage_quit:${rager}`, `title_drama:${rager}`, `viewer_crash:${crasher}`, `chat_explosion:${crasher}`, `meltdown:${screamer}`, `ghost_town:${ghost}`, `the_return:${returner}`]) {
         assert.ok(kinds.includes(k), `${k} in ${kinds.join(', ')}`);
@@ -68,6 +73,14 @@ const db = require('../server/db/database');
     assert.deepStrictEqual(JSON.parse(md.facts_json), { count: 3, seconds: 60, sounds: { Yell: 1, Screaming: 1, Shout: 1 } });
     const crash = JSON.parse((await db.get("SELECT facts_json FROM arena_drama WHERE kind = 'viewer_crash'")).facts_json);
     assert.deepStrictEqual([crash.from, crash.to], [8, 2]);
+
+    // Stories at alert 3+ reach chat once each: the live subject's stream room (mirrored), else global chat.
+    assert.ok(sent.length >= 2 && sent.every((l) => l.message_type === 'system' && l.username === 'ARENA ALERT' && /^arena:\d+$/.test(l.key)));
+    const rqLine = sent.find((l) => l.key === `arena:${rq.id}`);
+    assert.ok(rqLine && rqLine.is_global && !rqLine.stream_id && /\/arena\/drama\/\d+$/.test(rqLine.message), 'an ended stream: global chat');
+    const mdLine = sent.find((l) => l.key === `arena:${md.id}`);
+    assert.deepStrictEqual([mdLine.stream_id, mdLine.mirror], [ss, true], 'a live subject: their stream room, mirrored');
+    assert.ok(!sent.some((l) => l.message.includes('GHOST')), 'alert 1-2 stories stay off chat');
 
     // Reactions: one per viewer, changing it replaces it.
     await drama.react(rq.id, 'w', `user:${viewer}`);

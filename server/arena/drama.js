@@ -27,6 +27,7 @@
  *   lolcowIndex({ days }) · cloutRankings()   the two boards; rankings carry this week's moves
  *   rapSheet(userId)                           one streamer's dossier
  *   setOptOut(userId, out)                     keep a streamer out (and hide their stories) or let them back in
+ *   announce(id)                               a 3+ alert story as a line in chat (the live stream's room, else global)
  */
 'use strict';
 
@@ -100,8 +101,30 @@ async function createStory({ kind, userId, otherUserId = null, streamId = null, 
     if (alert >= 3) {
         try { require('./notify').arenaNotify(userId, { type: 'drama', title: `You made the Arena: ${headline.slice(0, 100)}`, message: blurb.slice(0, 200), icon: '🚨', url: `/arena/drama/${id}`, key: `drama:${id}` }); } catch { /* */ }
     }
-    rewrite(id, { kind, streamer: name, other: fx.other || null, facts: fx, quote: cleanQuote }, userId).catch(() => {});
+    // The AI headline first (when it comes), then the chat hears about it.
+    rewrite(id, { kind, streamer: name, other: fx.other || null, facts: fx, quote: cleanQuote }, userId).catch(() => {}).then(() => announce(id)).catch(() => {});
     return id;
+}
+
+// A story at alert 3+ is announced in chat: in the subject's stream room (mirrored to global chat) while they are live,
+// else in global chat. At most ANNOUNCE_PER_HOUR an hour, one line per story (Chat dedupes by key).
+const ANNOUNCE_PER_HOUR = 6;
+let _announced = [];
+async function announce(id) {
+    const row = await db.get("SELECT id, user_id, headline, alert, status FROM arena_drama WHERE id = ?", [id]);
+    if (!row || row.status !== 'live' || Number(row.alert) < 3) return false;
+    const now = Date.now();
+    _announced = _announced.filter((t) => now - t < 3600_000);
+    if (_announced.length >= ANNOUNCE_PER_HOUR) return false;
+    _announced.push(now);
+    let base = 'https://openvibe.live';
+    try { base = String(require('../config').baseUrl || base).replace(/\/$/, ''); } catch { /* */ }
+    const live = await db.get('SELECT id FROM streams WHERE user_id = ? AND is_live = 1 ORDER BY started_at DESC LIMIT 1', [row.user_id]);
+    const headline = String(row.headline).startsWith('🚨') ? row.headline : `🚨 ${row.headline}`;
+    const line = { username: 'ARENA ALERT', user_id: null, message: `${headline} → ${base}/arena/drama/${row.id}`.slice(0, 480), message_type: 'system', key: `arena:${row.id}`,
+        metadata: { arena_drama_id: row.id, url: `${base}/arena/drama/${row.id}` }, ...(live ? { stream_id: live.id, mirror: true } : { is_global: true }) };
+    await require('../chat/chat-delivery').message(line);
+    return true;
 }
 
 async function rewrite(id, payload, userId) {
@@ -402,4 +425,4 @@ async function setOptOut(userId, out) {
 
 async function hide(id) { await db.run("UPDATE arena_drama SET status = 'hidden' WHERE id = ?", [Number(id)]); }
 
-module.exports = { detect, beefStory, createStory, feed, story, react, lolcowIndex, cloutRankings, rapSheet, setOptOut, optedOut, hide, REACTIONS, TEMPLATES: T, _test: { detectStreams, detectSnapshots, detectSounds, detectDaily, weekStart, toMs, fmt } };
+module.exports = { detect, beefStory, createStory, announce, feed, story, react, lolcowIndex, cloutRankings, rapSheet, setOptOut, optedOut, hide, REACTIONS, TEMPLATES: T, _test: { detectStreams, detectSnapshots, detectSounds, detectDaily, weekStart, toMs, fmt } };
