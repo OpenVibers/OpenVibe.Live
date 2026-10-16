@@ -372,11 +372,25 @@ async function getStreamMemories(streamId) {
 async function getLatestStreamMemory(streamId) {
     return await get('SELECT * FROM stream_memories WHERE stream_id = ? ORDER BY offset_seconds DESC LIMIT 1', [streamId]);
 }
+// AI text shown publicly is one paragraph of prose: a model that answered with a
+// list, headings or bold labels ("- Streamer handle: x (@x).") has its headings
+// left out and its list markers, bold and labels dropped before the lines are joined.
+const _PROSE_LABEL = /^(?:streamer(?: handle)?|handle|(?:profile )?overview|summary|profile|content(?: niche)?|niche|tone(?:\/vibe)?|vibe|(?:recurring )?themes|activities|moderation(?: notes)?|notes?|bio|category)\s*:\s*/i;
+function _plainProse(text) {
+    const raw = String(text || '');
+    if (!/^\s*(?:#{1,6}\s|[-*•]\s|\d+[.)]\s|>)|\*\*|__/m.test(raw) && !_PROSE_LABEL.test(raw.trim())) return raw;
+    return raw.split(/\r?\n/)
+        .filter((l) => !/^\s*#{1,6}\s/.test(l))
+        .map((l) => l.replace(/^\s*(?:[-*•]\s+|\d+[.)]\s+|>\s*)/, '').replace(/\*\*|__/g, '').trim().replace(_PROSE_LABEL, '').trim())
+        .filter(Boolean)
+        .map((l) => (/[.!?…"')\]]$/.test(l) ? l : `${l}.`))
+        .join(' ');
+}
 // Derive a concise short overview from a long one — the lead sentence(s), capped
 // ~150 chars at a sentence/word boundary. Deterministic + free (no AI call), so it
 // can be cached at write time and shown on listing cards.
 function _shortOverview(text) {
-    const t = (text || '').replace(/\s+/g, ' ').trim();
+    const t = _plainProse(text).replace(/\s+/g, ' ').trim();
     // ' ' is the "tried, nothing to say" sentinel the AI jobs store to mark a row done.
     // It must round-trip as a non-empty value — the backfill queues treat NULL/'' as
     // still-pending, so collapsing the sentinel to null meant unprocessable VODs were
@@ -619,6 +633,17 @@ async function cleanupMalformedAiText() {
             if (clean && clean !== r.v) { await run('UPDATE streamer_overviews SET overview = ? WHERE user_id = ?', [clean, r.k]); fixed++; }
         }
     } catch { /* */ }
+    // Streamer overviews written as a list ("- Streamer handle: …") before the
+    // prompt asked for prose: the stored text and its card line become prose.
+    try {
+        const rows = await all(`SELECT user_id AS k, overview AS v FROM streamer_overviews
+                                 WHERE overview ~ '(^|\n)\\s*([-*•#]|\\d+[.)])\\s' OR overview LIKE '%**%' OR overview_short ~ '^\\s*[-*•#]'`);
+        for (const r of rows) {
+            const clean = _plainProse(r.v);
+            await run('UPDATE streamer_overviews SET overview = ?, overview_short = ? WHERE user_id = ?', [clean, _shortOverview(clean), r.k]);
+            fixed++;
+        }
+    } catch { /* */ }
     if (fixed) console.log(`[AI] Cleaned ${fixed} malformed JSON AI text value(s)`);
     return fixed;
 }
@@ -816,7 +841,7 @@ async function upsertStreamerOverview(userId, { overview, model = null, sources 
                 ON CONFLICT(user_id) DO UPDATE SET
                     overview = excluded.overview, overview_short = excluded.overview_short, model = excluded.model,
                     sources = excluded.sources, generated_at = ov_now()`,
-        [userId, overview || '', _shortOverview(overview), model, sources]);
+        [userId, _plainProse(overview || ''), _shortOverview(overview), model, sources]);
 }
 async function getStreamerOverview(userId) {
     return await get('SELECT * FROM streamer_overviews WHERE user_id = ?', [userId]);
