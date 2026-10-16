@@ -113,6 +113,8 @@ console.log('✅ roster + ratings are pure mic');
     const cs = await listener.consoleState(u3);
     assert.ok(cs.listening && cs.last_mic_judgement && cs.last_mic_judgement.is_trash_talk && cs.focus === null, 'console shows the mic judgement, no lock');
     assert.strictEqual((await arena.liveFighters())[0].user.id, u3);
+    const camThumb = (await arena.liveFighters())[0].thumbnail_url;
+    assert.ok(camThumb === null || typeof camThumb === 'string', `a live cam's frame is a URL or null, never ${JSON.stringify(camThumb)} (an un-awaited lookup made it {}, and the page asked for /[object Object])`);
     assert.ok((await arena.liveFighters())[0].last_moment && (await arena.liveFighters())[0].last_moment.aimed_at === 'chat', 'live cam carries the last judged line');
     // Name-drop → focus lock → beef.
     await db.run(`UPDATE streams SET started_at = datetime('now', '-700 seconds') WHERE id = ?`, [liveId]);
