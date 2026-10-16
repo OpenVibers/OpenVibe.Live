@@ -23,11 +23,21 @@ You don't need any of the following:
 
 ## What you can do while live
 
-- **Switch cameras:** front and back on a phone, or any connected webcam.
-- **Share your screen,** a window or a tab. You can also show your camera as a picture-in-picture over it.
+- **Flip cameras:** front and back on a phone in one tap, or choose any connected webcam.
+- **Share your screen,** a window or a tab. You can also show your camera in a corner over it.
 - **Mute** your microphone or turn off your camera without ending the stream.
 - **Watch your stream's health:** bitrate, frame rate and resolution.
 - **Chat with viewers** on the same page. Your stream can be kept as a VOD, and people can clip it.
+
+**On a phone,** going live turns the screen into a live studio, the way phone streaming apps work:
+
+- The camera fills the screen, and chat runs over the bottom of the picture, where you can read and answer it.
+- The top shows LIVE, how long you have been live, how many people are watching, your restreams and your connection.
+- The buttons on the right are Flip (front and back camera), Mute, Camera, Light (a back camera's flash), Chat (hide or
+  show it), Clip (the last 30 seconds) and More.
+- **More** opens share, watch as a viewer, choose any camera, media requests, a one-minute clip, chat read aloud,
+  your restreams, stream health, all settings and the full page.
+- **End** asks before it ends the stream.
 
 Your stream reaches viewers over **WebRTC**, with less than a second of delay. That is fast enough for a real conversation with chat, and for viewers to control a robot or camera in real time.
 

@@ -46,15 +46,28 @@ OpenVibe.Live supports four live broadcast methods, each suited to different use
 ### Live Controls
 When streaming via WebRTC browser, you have access to:
 - **Stop Stream** — End the broadcast
-- **Switch Cam** — Change camera device
-- **Screen Share** — Share screen/window/tab
-- **Cam PiP** — Picture-in-Picture camera overlay on screen share
-- **Mic** — Toggle microphone
-- **Stats** — Show bitrate, FPS, resolution, codec overlay
-- **Preview** — Toggle self-preview on/off (saves CPU)
-- **Viewer** — Open a popup showing exactly what viewers see (real mediasoup consumer path)
+- **Mute** / **Camera off** — Silence the microphone or black out the camera without ending the stream (the track is
+  disabled; the choice holds when the camera is switched or a track recovers)
+- **Flip camera** — Front ↔ back in one tap (shown when the device has more than one camera)
+- **Choose camera** — Pick any camera from a list
+- **Share screen** — Share screen/window/tab
+- **Camera in corner** — Picture-in-picture camera over a shared screen
+- **Mic** — Add or remove the microphone while sharing a screen
+- **Stream health** — Show bitrate, FPS, resolution, codec overlay
+- **Test chat voice** / **Skip spoken message** — Hear how chat is read aloud; stop the current message and clear the queue
+- **Hide preview** — Hide your own preview (you stay live; saves CPU and battery)
+- **Watch as viewer** — Open your channel the way viewers see it (real mediasoup consumer path)
 - **Clip** — Create a clip from the live stream
-- **Media** — Media request PiP player
+- **Media requests** — Media request PiP player
+
+### The live studio on a phone
+On a phone (narrower than 760 px, or a phone turned sideways), a browser stream opens the live studio
+(`public/js/broadcast-studio.js`): the camera fills the screen, the stream chat sits over the bottom of the picture,
+and the controls sit on top. The top bar has LIVE, time live, people watching, restream status and connection, with
+**End** (it asks first). The right-hand rail has Flip, Mute, Camera, Light (the torch, when the camera has one), Chat,
+Clip (the last 30 seconds) and More, a sheet with share, watch as viewer, choose camera, screen, media requests, a
+one-minute clip, chat read aloud, the restream controls, stream health, all settings and **Full page** (the classic
+page, with a button back). The studio drives the same functions as the page and reads its counters.
 
 ### Stream Chat
 The broadcast page includes an embedded chat sidebar with:

@@ -1,0 +1,175 @@
+/**
+ * The live studio on a phone (public/js/broadcast-studio.js; owner, 2026-10-16: "I can't change cameras on the
+ * whim… all these buttons that don't really mean anything").
+ *
+ * - Flip goes front ↔ back in one tap: to the first camera facing the other way (a phone lists its main camera
+ *   first, then ultra-wide and others), else to the next camera; one camera says so; screen sharing says to stop it.
+ * - Mute and camera off are track.enabled = false, and they hold when the track is replaced (a camera switch, a
+ *   recovery) because the studio applies them again every second.
+ * - The camera buttons are visible once the camera runs: the live view used to show before capture started, which
+ *   hid "Switch Cam" for the whole stream.
+ * - The live controls say what they do: "watching" (not "total viewers"), no "WEBRTC" badge, RobotStreamer's line
+ *   in words (no "VP8 passthrough · 75 ms to RS"), "Test chat voice" / "Skip spoken message" (not "Test TTS" /
+ *   "Reset TTS"), and the studio script loads with the broadcast feature.
+ *
+ * A real browser pass (Chrome's fake camera, phone, sideways phone and desktop) is in the PR; this is what `npm test`
+ * can check without one.
+ *
+ *   node test/broadcast-studio.test.js
+ */
+'use strict';
+const assert = require('assert');
+const fs = require('fs');
+const path = require('path');
+
+const root = path.join(__dirname, '..');
+const read = (p) => fs.readFileSync(path.join(root, p), 'utf8');
+const studioSrc = read('public/js/broadcast-studio.js');
+const devicesSrc = read('public/js/broadcast-devices.js');
+const bc = read('public/js/broadcast.js');
+const fragment = read('public/fragments/broadcast.html');
+const featuresFile = JSON.parse(read('public/features.json'));
+const features = featuresFile.features || featuresFile;
+let failures = 0;
+async function check(name, fn) {
+    try { await fn(); console.log(`  ✓ ${name}`); } catch (err) { failures++; console.log(`  ✗ ${name}\n      ${err && err.stack ? err.stack.split('\n').slice(0, 3).join('\n      ') : err}`); }
+}
+
+/** The source of a top-level function declaration, braces matched. */
+function extract(src, name) {
+    const m = new RegExp(`(?:async )?function ${name}\\(`).exec(src);
+    assert.ok(m, `${name}() must exist`);
+    let i = src.indexOf('{', m.index);
+    let depth = 0;
+    for (; i < src.length; i++) {
+        if (src[i] === '{') depth++;
+        else if (src[i] === '}' && --depth === 0) return src.slice(m.index, i + 1);
+    }
+    throw new Error(`unbalanced ${name}`);
+}
+
+function fakeElement(tag) {
+    const kids = [];
+    const attrs = {};
+    return {
+        tagName: String(tag).toUpperCase(), style: {}, dataset: {}, hidden: false, children: kids, className: '', textContent: '',
+        classList: { _s: new Set(), add(c) { this._s.add(c); }, remove(c) { this._s.delete(c); }, toggle(c, on) { if (on === undefined ? !this._s.has(c) : on) this._s.add(c); else this._s.delete(c); }, contains(c) { return this._s.has(c); } },
+        setAttribute(k, v) { attrs[k] = String(v); }, getAttribute(k) { return attrs[k]; },
+        addEventListener() {}, append(...n) { kids.push(...n); }, replaceChildren(...n) { kids.splice(0, kids.length, ...n); },
+        querySelector() { return null; }, querySelectorAll() { return []; }, remove() {}, before() {}, focus() {},
+    };
+}
+function track(kind, settings = {}, label = '') {
+    return { kind, enabled: true, label, getSettings: () => settings, getCapabilities: () => ({}), applyConstraints: async () => {} };
+}
+
+/** Load the studio with a stream whose tracks are `stream`; returns its API and what it called. */
+function loadStudio({ stream, cameras = [], screenShare = false }) {
+    const calls = { switched: [], toasts: [] };
+    const ticks = [];
+    const els = {};
+    const g = {
+        window: { matchMedia: () => ({ matches: true, addEventListener() {} }) },
+        document: {
+            getElementById: (id) => els[id] || null,
+            createElement: fakeElement, createComment: () => fakeElement('#comment'),
+            querySelector: () => null, addEventListener() {}, activeElement: null,
+            body: { classList: fakeElement('body').classList, append() {} },
+        },
+        setInterval: (fn) => { ticks.push(fn); return 1; },
+        navigator: {}, location: { origin: 'https://openvibe.live' },
+        broadcastState: { activeStreamId: 7, settings: { screenShare } },
+        getActiveStreamState: () => ({ localStream: stream, streamData: { title: 'Test' } }),
+        toast: (msg, kind) => calls.toasts.push([kind || 'info', msg]),
+        _enumerateBroadcastVideoInputs: async () => cameras,
+        _switchActiveCamera: async (id) => { calls.switched.push(id); },
+        syncBroadcastLiveButtonVisibility: () => { calls.synced = (calls.synced || 0) + 1; },
+    };
+    // eslint-disable-next-line no-new-func
+    const getHint = new Function(`${extract(devicesSrc, '_getCameraFacingHint')}; return _getCameraFacingHint;`)();
+    g._getCameraFacingHint = getHint;
+    // eslint-disable-next-line no-new-func
+    new Function(...Object.keys(g), studioSrc)(...Object.values(g));
+    return { api: g.window.bcStudio, calls, tick: () => ticks.forEach((f) => f()), els, g };
+}
+
+(async () => {
+    await check('Mute and camera off disable the tracks, and hold when a track is replaced', async () => {
+        const audio = track('audio');
+        const video = track('video', { deviceId: 'front', facingMode: 'user' });
+        const tracks = { a: [audio], v: [video] };
+        const stream = { getAudioTracks: () => tracks.a, getVideoTracks: () => tracks.v, getTracks: () => [...tracks.a, ...tracks.v] };
+        const s = loadStudio({ stream });
+        s.api.toggleMic();
+        s.api.toggleCamera();
+        assert.deepStrictEqual([audio.enabled, video.enabled], [false, false]);
+        // A camera switch or a recovery hands the stream a new, enabled track: the next tick turns it off again.
+        const fresh = track('video', { deviceId: 'back' });
+        tracks.v = [fresh];
+        s.tick();
+        assert.strictEqual(fresh.enabled, false, 'the replaced camera track stays off');
+        s.api.toggleMic();
+        s.api.toggleCamera();
+        assert.deepStrictEqual([audio.enabled, fresh.enabled], [true, true]);
+    });
+
+    await check('Flip goes to the main camera facing the other way, then back', async () => {
+        const cams = [
+            { deviceId: 'b0', label: 'camera2 0, facing back' },
+            { deviceId: 'f1', label: 'camera2 1, facing front' },
+            { deviceId: 'b2', label: 'camera2 2, facing back' },
+        ];
+        let current = track('video', { deviceId: 'f1', facingMode: 'user' });
+        const stream = { getAudioTracks: () => [], getVideoTracks: () => [current], getTracks: () => [current] };
+        const s = loadStudio({ stream, cameras: cams });
+        await s.api.flip();
+        assert.deepStrictEqual(s.calls.switched, ['b0'], 'front → the first back camera (the main one, not the ultra-wide)');
+        current = track('video', { deviceId: 'b0', facingMode: 'environment' });
+        await s.api.flip();
+        assert.deepStrictEqual(s.calls.switched, ['b0', 'f1'], 'back → front');
+    });
+
+    await check('Flip without facing labels goes to the next camera; one camera or a shared screen says so', async () => {
+        const cams = [{ deviceId: 'x', label: 'USB Camera' }, { deviceId: 'y', label: 'HD Webcam' }];
+        const cur = track('video', { deviceId: 'x' }, 'USB Camera');
+        const stream = { getAudioTracks: () => [], getVideoTracks: () => [cur], getTracks: () => [cur] };
+        const s = loadStudio({ stream, cameras: cams });
+        await s.api.flip();
+        assert.deepStrictEqual(s.calls.switched, ['y']);
+        const one = loadStudio({ stream, cameras: [cams[0]] });
+        await one.api.flip();
+        assert.deepStrictEqual([one.calls.switched, one.calls.toasts[0][1]], [[], 'This device has only one camera']);
+        const screen = loadStudio({ stream, cameras: cams, screenShare: true });
+        await screen.api.flip();
+        assert.ok(screen.calls.switched.length === 0 && /sharing your screen/.test(screen.calls.toasts[0][1]));
+    });
+
+    await check('the camera buttons show once the camera runs (the live view used to hide them for good)', async () => {
+        const stream = { getAudioTracks: () => [], getVideoTracks: () => [], getTracks: () => [] };
+        const s = loadStudio({ stream });
+        s.tick();
+        assert.strictEqual(s.calls.synced, 1, 'a stream appearing re-syncs the live buttons');
+        const create = extract(bc, 'createNewStream');
+        assert.ok(/await startMediaCapture\(streamData\.id, \{ cameraId: createCamera, audioId: createAudio \}\);\s*\}\s*\/\/[^\n]*\n\s*syncBroadcastLiveButtonVisibility\(\);/.test(create), 'and again right after capture starts');
+        assert.strictEqual((bc.match(/function syncBroadcastLiveButtonVisibility\(/g) || []).length, 1, 'defined once');
+    });
+
+    await check('the live controls say what they do', async () => {
+        assert.ok(!/total viewers/.test(fragment) && /<strong id="bc-viewer-count">0<\/strong> watching/.test(fragment));
+        for (const gone of ['Switch Cam', 'Test TTS', 'Reset TTS', '> Viewer', '> Stats']) assert.ok(!fragment.includes(gone), `no "${gone}"`);
+        for (const label of ['Flip camera', 'Choose camera', 'Mute', 'Camera off', 'Stream health', 'Test chat voice', 'Skip spoken message', 'Media requests', 'Hide preview', 'Watch as viewer']) assert.ok(fragment.includes(label), `"${label}"`);
+        const status = extract(bc, 'updateBroadcastStatus');
+        assert.ok(!/toUpperCase/.test(status) && /connected:\s+\{ text: '',/.test(status), 'no protocol badge ("WEBRTC") while connected');
+        const rs = extract(bc, 'rsDetailLine');
+        assert.ok(!/passthrough`|to RS`/.test(rs) && /ms delay/.test(rs) && /reconnected once/.test(rs), 'RobotStreamer in words');
+    });
+
+    await check('the studio loads with the broadcast feature, after broadcast.js', async () => {
+        const js = features.broadcast.js;
+        assert.ok(js.indexOf('/js/broadcast-studio.js') > js.indexOf('/js/broadcast.js'));
+        assert.ok(/body\.bc-studio-on \.bc-video-container \{[^}]*position: fixed/.test(read('public/css/features/broadcast.css')));
+    });
+
+    if (failures) { console.log(`\n${failures} failed`); process.exit(1); }
+    console.log('\nall passed');
+})();
