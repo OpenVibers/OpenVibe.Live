@@ -13,7 +13,8 @@
    MediaStreamTrack.enabled = false: viewers get silence or black while the stream and its recording go on. The
    choice is applied again every second, so a replaced track (a camera switch, a recovery) keeps it.
 
-   window.bcStudio (toggleMic, toggleCamera, flip, open) also serves the desktop control row. */
+   Before going live, a phone also keeps "Go live" in reach (a bar at the bottom while the slot's own button is off
+   screen). window.bcStudio (toggleMic, toggleCamera, flip, open) also serves the desktop control row. */
 (function () {
     'use strict';
     // A phone held upright, or turned sideways (wide but short, with a touch screen).
@@ -381,6 +382,35 @@
         else if (st.sheet) closeSheet();
     });
 
+    // ── Before going live on a phone: "Go live" stays in reach ──
+    // The slot workspace puts the real Go Live button below the title, method, capture mode, quality and devices,
+    // about two screens down on a phone. While it is out of view, a bar at the bottom presses it.
+    function goLiveButton() { const b = $('bc-ws-golive-btn'); return b && b.offsetParent ? b : null; }
+    function syncGoLiveDock() {
+        const real = NARROW.matches && onBroadcastPage() && !localStream() ? goLiveButton() : null;
+        let inView = false;
+        if (real) { const r = real.getBoundingClientRect(); inView = r.top < window.innerHeight - 8 && r.bottom > 0; }
+        const show = !!real && !inView;
+        let dock = $('bcs-golive');
+        if (show && !dock) {
+            dock = el('div', { class: 'bcs-golive', id: 'bcs-golive' },
+                el('button', { type: 'button', class: 'bcs-golive-btn', onclick: () => { const b = goLiveButton(); if (b && !b.disabled) b.click(); } },
+                    icon('fa-tower-broadcast'), ' Go live'),
+                el('small', { class: 'bcs-golive-where' }));
+            document.body.append(dock);
+        }
+        if (dock) {
+            dock.hidden = !show;
+            if (show) {
+                const where = real.parentElement && real.parentElement.querySelector('.bc-create-reassurance');
+                dock.querySelector('.bcs-golive-where').textContent = where ? where.textContent.trim() : '';
+                dock.querySelector('.bcs-golive-btn').disabled = !!real.disabled;
+            }
+        }
+        document.body.classList.toggle('bc-golive-dock-on', show);
+    }
+    document.addEventListener('scroll', () => { if ($('bcs-golive') || goLiveButton()) syncGoLiveDock(); }, { capture: true, passive: true });
+
     // ── Once a second: mount, update or leave ──
     function tick() {
         const has = !!localStream();
@@ -393,6 +423,7 @@
         }
         if (wanted()) { if (!st.root) mount(); refresh(); }
         else { if (st.root) unmount(); applyTracks(); syncDesktopButtons(); }
+        syncGoLiveDock();
     }
     setInterval(tick, 1000);
     if (NARROW.addEventListener) NARROW.addEventListener('change', tick);

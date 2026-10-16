@@ -6,6 +6,8 @@
  *   first, then ultra-wide and others), else to the next camera; one camera says so; screen sharing says to stop it.
  * - Mute and camera off are track.enabled = false, and they hold when the track is replaced (a camera switch, a
  *   recovery) because the studio applies them again every second.
+ * - Before going live on a phone, a "Go live" bar presses the slot's own Go Live button while that one is two screens
+ *   down, under the title, method, capture mode, quality and devices.
  * - The camera buttons are visible once the camera runs: the live view used to show before capture started, which
  *   hid "Switch Cam" for the whole stream.
  * - The live controls say what they do: "watching" (not "total viewers"), no "WEBRTC" badge, RobotStreamer's line
@@ -162,6 +164,14 @@ function loadStudio({ stream, cameras = [], screenShare = false }) {
         assert.ok(!/toUpperCase/.test(status) && /connected:\s+\{ text: '',/.test(status), 'no protocol badge ("WEBRTC") while connected');
         const rs = extract(bc, 'rsDetailLine');
         assert.ok(!/passthrough`|to RS`/.test(rs) && /ms delay/.test(rs) && /reconnected once/.test(rs), 'RobotStreamer in words');
+    });
+
+    await check('before going live on a phone, a "Go live" bar presses the slot\'s own button while it is off screen', async () => {
+        const dock = extract(studioSrc, 'syncGoLiveDock');
+        assert.ok(/NARROW\.matches && onBroadcastPage\(\) && !localStream\(\)/.test(dock), 'phones, on /broadcast, not live yet');
+        assert.ok(/getBoundingClientRect\(\)/.test(dock) && /const show = !!real && !inView/.test(dock), 'only while the real button is out of view');
+        assert.ok(/b && !b\.disabled\) b\.click\(\)/.test(dock), 'it clicks the real Go Live button (same checks, same settings)');
+        assert.ok(/id="bc-ws-golive-btn"/.test(read('public/js/broadcast-workspace.js')), 'the button it presses exists');
     });
 
     await check('the studio loads with the broadcast feature, after broadcast.js', async () => {
