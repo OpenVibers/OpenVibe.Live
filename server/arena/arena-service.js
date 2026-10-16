@@ -470,7 +470,7 @@ async function liveFighters() {
             user: c.user, rank: c.rank, ratings: c.ratings, record: c.record, image_url: c.image_url, level: c.level.level,
             persona: { fighter_name: c.persona.fighter_name, title: c.persona.title, class: c.persona.class, taunt: c.persona.taunt },
             stream: { id: s.id, title: s.title, category: s.category, viewer_count: s.viewer_count || 0, started_at: s.started_at, slug: s.managed_stream_slug || null, managed_stream_id: s.managed_stream_id || null },
-            thumbnail_url: thumbs ? (thumbs.getCurrentLiveThumbnailUrl(s.id) || null) : null,
+            thumbnail_url: thumbs ? ((await thumbs.getCurrentLiveThumbnailUrl(s.id)) || null) : null,
             hot_mic: hotMic, transcribed, ears, last_moment: lastMoment, open_beefs: (await beef.openBeefsFor(s.user_id)).length,
         };
     }))).sort((x, y) => y.ratings.power - x.ratings.power);
