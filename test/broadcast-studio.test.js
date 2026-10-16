@@ -71,7 +71,7 @@ function loadStudio({ stream, cameras = [], screenShare = false }) {
     const ticks = [];
     const els = {};
     const g = {
-        window: { matchMedia: () => ({ matches: true, addEventListener() {} }) },
+        window: { matchMedia: () => ({ matches: true, addEventListener() {} }), addEventListener() {}, innerHeight: 900 },
         document: {
             getElementById: (id) => els[id] || null,
             createElement: fakeElement, createComment: () => fakeElement('#comment'),
@@ -172,6 +172,21 @@ function loadStudio({ stream, cameras = [], screenShare = false }) {
         assert.ok(/getBoundingClientRect\(\)/.test(dock) && /const show = !!real && !inView/.test(dock), 'only while the real button is out of view');
         assert.ok(/b && !b\.disabled\) b\.click\(\)/.test(dock), 'it clicks the real Go Live button (same checks, same settings)');
         assert.ok(/id="bc-ws-golive-btn"/.test(read('public/js/broadcast-workspace.js')), 'the button it presses exists');
+    });
+
+    await check('nothing in the studio takes a phone off the live tab (that ended the owner\'s stream, 10-16)', async () => {
+        const chat = read('public/js/chat.js');
+        assert.ok(/opts\.live && !_broadcastingHere\(\) \? '<button type="button" class="chat-deploy-reload"/.test(chat), 'no "Reload to update" for the broadcaster');
+        assert.ok(/if \(_broadcastingHere\(\)\) \{[^}]*Reloading would end your stream/.test(chat), 'and a reload click is refused while broadcasting');
+        const viewer = extract(bc, 'openViewerPreview');
+        assert.ok(/bcStudio\.phone\(\) && getStreamState\(streamId\)\?\.localStream\) return bcStudio\.showViewer\(url\)/.test(viewer), 'the viewer preview opens in the page on a phone');
+        const show = extract(studioSrc, 'showViewer');
+        assert.ok(/m\.muted = true/.test(show), 'with its sound off (the mic would hear it)');
+        assert.ok(!/navigator\.share/.test(studioSrc), 'Copy link, not the system share sheet');
+        assert.ok(/addEventListener\('beforeunload'[\s\S]{0,120}localStream\(\)[\s\S]{0,80}preventDefault/.test(studioSrc), 'leaving while live asks first');
+        const css = read('public/css/features/broadcast.css');
+        assert.ok(/body\.bc-studio-on #bc-chat-messages \.chat-deploy/.test(css), 'update cards stay out of the studio chat');
+        assert.ok(/height: min\(24dvh, 180px\)/.test(css), 'the studio chat keeps to the bottom quarter');
     });
 
     await check('the studio loads with the broadcast feature, after broadcast.js', async () => {
