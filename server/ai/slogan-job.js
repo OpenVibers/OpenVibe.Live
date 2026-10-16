@@ -36,12 +36,14 @@ function _stripAudiencePrefix(s) {
 }
 const _BAD_AUDIENCE = /\b(live\s*-?\s*)?stream(ing|s)?\b|\blivestream/i;
 const _NO_FREE = /\b(free|no[- ]cost)\b|\$\s?0\b/i;
+// Copy about a real person never mentions their looks or age ("ara007 shirtless thoughts" made the hero once).
+const _LOOKS = /\b(shirtless|topless|bare-?chested|naked|nude|cleavage|bikini|underwear|teen(age)?|young|kids?|child(ren)?|boys?|girls?)\b/i;
 function _cleanList(arr, maxLen, max) {
     if (!Array.isArray(arr)) return [];
     const seen = new Set(); const out = [];
     for (const raw of arr) {
         let s = String(raw == null ? '' : raw).trim().replace(/^["'‘’“”\-•\s]+|["'‘’“”\s]+$/g, '').replace(/[.,;:]+$/, '');
-        if (!s || s.length > maxLen) continue;
+        if (!s || s.length > maxLen || _LOOKS.test(s)) continue;
         const k = s.toLowerCase();
         if (seen.has(k)) continue;
         seen.add(k); out.push(s);
@@ -51,10 +53,10 @@ function _cleanList(arr, maxLen, max) {
 }
 function _topUp(fresh, old, cap) {
     const seen = new Set(fresh.map(s => s.toLowerCase())); const out = fresh.slice();
-    for (const s of (old || [])) { const v = String(s || '').trim(); if (!v) continue; const k = v.toLowerCase(); if (seen.has(k)) continue; seen.add(k); out.push(v); if (out.length >= cap) break; }
+    for (const s of (old || [])) { const v = String(s || '').trim(); if (!v || _LOOKS.test(v)) continue; const k = v.toLowerCase(); if (seen.has(k)) continue; seen.add(k); out.push(v); if (out.length >= cap) break; }
     return out.slice(0, cap);
 }
-const SLOGAN_FORMAT = 3; // bump to force a one-time regen after a prompt/format change
+const SLOGAN_FORMAT = 4; // bump to force a one-time regen after a prompt/format change (4: no copy about looks)
 async function _loadPool() {
     try { const cur = await db.getState('home_hero_slogans'); const o = typeof cur === 'string' ? JSON.parse(cur) : cur; if (o) return { audiences: o.audiences || [], quips: o.quips || [], updated_at: o.updated_at || 0, v: o.v || 1 }; } catch { /* */ }
     return { audiences: [], quips: [], updated_at: 0, v: 0 };

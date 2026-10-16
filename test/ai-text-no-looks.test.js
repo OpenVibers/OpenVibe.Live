@@ -43,6 +43,13 @@ const db = require('../server/db/database');
     assert.deepStrictEqual(Object.values(await db.get('SELECT ai_overview, ai_overview_short FROM streams WHERE id = ?', [sid])), ['The streamer plays Fortnite.', 'The streamer plays Fortnite.']);
     assert.strictEqual((await db.get('SELECT description FROM stream_memories WHERE offset_seconds = 9060')).description, 'An older version of the game loads.', 'looks words about things stay');
 
+    // The home hero's AI copy: a line about someone's looks is never served, even from a batch stored before.
+    const words = ['crouton connoisseurs', 'van-dwelling coders', 'ara007 shirtless thoughts', 'goosely fans', 'late-night tinkerers', 'young gamers'];
+    await db.setState('home_hero_slogans', JSON.stringify({ audiences: words, quips: ['chat is cooking', 'a shirtless take', 'goosely did it again', 'rust compiles eventually', 'one more build'], updated_at: Date.now(), v: 4 }));
+    const hero = await require('../server/home/routes').heroSlogans();
+    assert.ok(hero.ai && !hero.audiences.some((a) => /shirtless|young/.test(a)) && !hero.quips.some((q) => /shirtless/.test(q)), JSON.stringify(hero));
+    assert.strictEqual(hero.audiences.length, 4);
+
     console.log('ai-text-no-looks: all checks passed');
     process.exit(0);
 })().catch((e) => { console.error(e); process.exit(1); });
