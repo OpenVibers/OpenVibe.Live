@@ -44,7 +44,18 @@ const SRT_DEFAULT_LATENCY_MS = 120;        // SRT's own default; enough for a sa
  * which Kick uses). Using an OpenSSL-based binary avoids this completely.
  * Falls back to system ffmpeg if the static binary doesn't exist.
  */
-const OPENSSL_FFMPEG_PATH = path.join(__dirname, '../../bin/ffmpeg');
+const LEGACY_OPENSSL_FFMPEG_PATH = path.join(__dirname, '../../bin/ffmpeg');
+/**
+ * The OpenSSL FFmpeg to use, found when a restream starts: RESTREAM_OPENSSL_FFMPEG, else <data dir>/bin/ffmpeg (shared
+ * across releases), else the checkout's bin/ffmpeg. A release folder holds no binaries, so since the release layout
+ * (2026-09-27) only the data-dir copy is found in production. Null when there is none (system ffmpeg, GnuTLS).
+ */
+function opensslFfmpegPath() {
+    for (const p of [require('../paths').dir('RESTREAM_OPENSSL_FFMPEG', 'bin', 'ffmpeg'), LEGACY_OPENSSL_FFMPEG_PATH]) {
+        try { if (fs.statSync(p).isFile()) return p; } catch { /* next */ }
+    }
+    return null;
+}
 
 /**
  * Quality presets for restream encoding.
@@ -423,6 +434,10 @@ class RestreamManager extends EventEmitter {
         if (/NetStream\.Publish\.BadName|Authentication|Unauthorized|403|Access denied|invalid stream key|bad name|not authorized|Publish rejected/i.test(t)) return `${name} rejected the stream key — check the key (and that it is a live key, not an expired one)`;
         if (/Name or service not known|Temporary failure in name resolution|getaddrinfo|could not resolve/i.test(t)) return `Could not resolve the ingest host name — check the server URL`;
         if (/Connection refused|No route to host|Network is unreachable|Connection timed out|timed out|Failed to connect|Cannot open connection/i.test(t)) return `Could not connect to ${name}'s ingest server — it may be down or the URL/port is wrong`;
+        // Twitch and Kick (IVS) hang up on an unknown key while the output opens: "Error opening output …
+        // Input/output error", after a TLS "End of file" on rtmps://. That is the key, not TLS (both FFmpeg builds
+        // fail the same way with a made-up key; the owner's reset Twitch and Kick keys did exactly this, 10-16).
+        if (/Error opening output/i.test(t) && /End of file|Input\/output error|pull function/i.test(t)) return `${name} refused the stream as it started — almost always a wrong or reset stream key (or another stream already using it). Copy a fresh key from ${name} and paste it into this restream destination`;
         if (/TLS|SSL|gnutls|handshake|certificate/i.test(t)) return `TLS handshake with ${name} failed — try the plain rtmp:// ingest URL or the platform's rtmps:// address`;
         if (/Broken pipe|Connection reset|End of file|EOF|I\/O error|Input\/output error|Server closed/i.test(t)) return `${name} closed the connection — usually a rejected key, a second stream on the same key, or a platform-side hiccup (auto-retrying)`;
         if (/srt|SRT/.test(t) && /passphrase|encrypt|crypto|Wrong password/i.test(t)) return `SRT passphrase rejected — the passphrase (or its length, 10–79 characters) does not match the receiver`;
@@ -852,11 +867,12 @@ class RestreamManager extends EventEmitter {
         // Use OpenSSL FFmpeg binary for RTMPS destinations (GnuTLS has TLS rekeying issues)
         const destUrl = args[args.length - 1] || '';
         const isRtmps = destUrl.startsWith('rtmps://');
-        const useOpenSslBinary = isRtmps && fs.existsSync(OPENSSL_FFMPEG_PATH);
-        const ffmpegBin = useOpenSslBinary ? OPENSSL_FFMPEG_PATH : 'ffmpeg';
+        const opensslBin = isRtmps ? opensslFfmpegPath() : null;
+        const useOpenSslBinary = !!opensslBin;
+        const ffmpegBin = opensslBin || 'ffmpeg';
 
         if (isRtmps && !useOpenSslBinary) {
-            console.warn(`[Restream] RTMPS destination but OpenSSL FFmpeg not found at ${OPENSSL_FFMPEG_PATH} — using system ffmpeg (GnuTLS TLS rekeying issues likely)`);
+            console.warn(`[Restream] RTMPS destination but no OpenSSL FFmpeg (${require('../paths').dir('RESTREAM_OPENSSL_FFMPEG', 'bin', 'ffmpeg')}) — using system ffmpeg (GnuTLS TLS rekeying issues likely)`);
         }
 
         // Masks rtmp(s)/srt keys, SRT passphrases and the local /live/<key>.flv source, not just rtmp URLs.
