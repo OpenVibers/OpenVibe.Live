@@ -105,6 +105,20 @@ const db = require('../server/db/database');
     await drama.setOptOut(rager, false);
     assert.ok(await drama.createStory({ kind: 'marathon', userId: rager, dedupeKey: 'marathon:test', facts: { hours: 9, started: 'x' }, happenedAt: NOW }));
 
+    // The AI rewrite: taken when it names everyone exactly (case aside), dropped when it misspells a name.
+    const arenaSvc = require('../server/arena/arena-service');
+    const aiSvc = require('../server/ai/ai-service');
+    arenaSvc.aiOn = async () => true;
+    let answer = { headline: '🚨 GHOST STREAMS 90 MINUTES TO NOBODY', blurb: 'Peak 0. Chat 0. Brutal.', alert: 2 };
+    aiSvc.structured = async (workflow, input) => { assert.strictEqual(workflow, 'live.arena.drama'); assert.strictEqual(input.streamer, 'ghost'); return answer; };
+    const g1 = await drama.createStory({ kind: 'ghost_town', userId: ghost, dedupeKey: 'ai:1', facts: { minutes: 90, peak: 0, messages: 0 }, happenedAt: NOW });
+    await new Promise((r) => setTimeout(r, 50));
+    assert.deepStrictEqual(await db.get('SELECT headline, ai FROM arena_drama WHERE id = ?', [g1]), { headline: '🚨 GHOST STREAMS 90 MINUTES TO NOBODY', ai: 1 });
+    answer = { headline: '🚨 GOSTY STREAMS TO NOBODY', blurb: 'x', alert: 2 };
+    const g2 = await drama.createStory({ kind: 'ghost_town', userId: ghost, dedupeKey: 'ai:2', facts: { minutes: 90, peak: 0, messages: 0 }, happenedAt: NOW });
+    await new Promise((r) => setTimeout(r, 50));
+    assert.deepStrictEqual(await db.get('SELECT headline, ai FROM arena_drama WHERE id = ?', [g2]), { headline: '👻 ghost STREAMED 90 MINUTES TO AN EMPTY ROOM', ai: 0 }, 'a misspelled name keeps the template');
+
     console.log('arena-drama: all checks passed');
     process.exit(0);
 })().catch((e) => { console.error(e); process.exit(1); });
