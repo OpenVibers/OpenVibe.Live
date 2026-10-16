@@ -249,6 +249,9 @@ a.arena-tag:hover { color: var(--accent-light); }
 .arena-cam.is-quiet { opacity: 0.75; }
 .arena-cam-thumb img.arena-live-thumb { width: 100%; height: 100%; object-fit: cover; display: block; }
 .arena-cam-thumb .arena-portrait { width: 100%; height: 100%; }
+/* The stream's frame when it loads; the portrait when there is none yet (a restart, a new stream) or it fails. */
+.arena-cam-thumb img.arena-live-thumb[hidden] { display: none; }
+.arena-cam-thumb img.arena-live-thumb:not([hidden]) ~ .arena-portrait { display: none; }
 .arena-cam-lock { display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px; border-radius: 999px; font-size: 0.74rem; font-weight: 700; color: #fecaca; background: color-mix(in srgb, var(--live-red) 18%, transparent); border: 1px solid color-mix(in srgb, var(--live-red) 45%, transparent); width: fit-content; }
 .arena-cam-lock i { color: var(--live-red); }
 .arena-cam-last q { display: block; font-size: 0.9rem; color: var(--text-primary); line-height: 1.35; quotes: '“' '”'; }
