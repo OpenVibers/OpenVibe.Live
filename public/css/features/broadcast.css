@@ -2646,3 +2646,21 @@ body.bc-studio-on .toast-container { z-index: 1500; }
 @media (prefers-reduced-motion: reduce) {
     .bcs-live-dot, .bcs-sheet, .bcs-sheet-wrap { animation: none; }
 }
+
+/* "Go live" in reach on a phone before going live (public/js/broadcast-studio.js): pinned while the slot's own Go Live
+   button is below the fold. */
+.bcs-golive {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 1050; display: grid; gap: 4px; justify-items: center;
+    padding: 10px max(14px, env(safe-area-inset-right, 0px)) calc(10px + env(safe-area-inset-bottom, 0px)) max(14px, env(safe-area-inset-left, 0px));
+    background: linear-gradient(to bottom, transparent, var(--bg-primary, #0b0b10) 34%);
+}
+.bcs-golive[hidden] { display: none; }
+.bcs-golive-btn {
+    width: 100%; max-width: 520px; min-height: 52px; border: 0; border-radius: 14px; cursor: pointer;
+    background: var(--accent-strong, #2563eb); color: var(--on-accent-strong, #fff); font: inherit; font-size: 1.05rem; font-weight: 800;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.35);
+}
+.bcs-golive-btn:disabled { opacity: 0.6; cursor: default; }
+.bcs-golive-btn:focus-visible { outline: 3px solid #93c5fd; outline-offset: 2px; }
+.bcs-golive-where { color: var(--text-secondary, #a1a1aa); font-size: 0.76rem; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+body.bc-golive-dock-on .messenger-toggle { display: none !important; }
