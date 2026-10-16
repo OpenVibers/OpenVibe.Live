@@ -245,10 +245,12 @@
     },
     "arena": {
       "css": [
-        "/css/features/arena.css"
+        "/css/features/arena.css",
+        "/css/features/arena-alert.css"
       ],
       "js": [
-        "/js/arena.js"
+        "/js/arena.js",
+        "/js/arena-alert.js"
       ]
     },
     "recap": {

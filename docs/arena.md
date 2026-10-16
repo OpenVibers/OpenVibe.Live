@@ -1,16 +1,18 @@
-# Arena — Battle Cam (pure mic)
+# Arena — ARENA ALERT (v4, 2026-10-16)
 
-The **Arena** tab (`/arena`) is streamer-vs-streamer shit talk with exactly one input: **what fighters say into the microphone**. The continuous audio transcription of every live cam (`stream_timeline_events`, see the AI timeline) is read every 15 seconds and judged. Nobody clicks "fight", nobody votes, nothing typed in chat counts. There is no board, no topics, no chat levels, no bounties, no check-ins — those were removed in v3 (2026-09-10) because they were not mic.
+The **Arena** tab (`/arena`) is the site's drama desk and competitive board, in the owner's words "drama alert type competitive shit … based on streamer activity". It replaced the mic-only Battle Cam home (v3, 2026-09-10): the mic still feeds it (beefs, the judged lines), and now so does everything else streamers measurably do.
 
-- **Callouts → beefs** — a fighter says another fighter's name while talking shit → the ears lock on, the judge scores it, the beef opens by itself, the target goes on the clock; silence is a forfeit. The mic judge can also open a beef without the name being in the transcript, when it decides the shit talk is clearly *aimed at* a roster fighter.
-- **The feed** — everything else that is actually shit talk (at chat, the mods, other platforms, the game, the world) is judged, scored 0–10, VOD-linked and lands in the live feed. It pays Trash Level XP. Gameplay narration and small talk score nothing.
-- **The ladder** — every fighter is rated on seven mic-only stats, as percentiles across the roster, plus an AI persona and portrait written from their transcripts.
+- **ARENA ALERT** (`server/arena/drama.js`, `public/js/arena-alert.js`) — every 5 min the desk reads the last 3 hours of activity and writes one story per event (`arena_drama`, deduped): **rage quits** (a stream over in < 15 min from someone who usually goes 45+), **viewer crashes** (halved within 20 min, from 3+) and **spikes** (doubled, to 4+), **chat explosions** (3× the stream's usual rate, 15+ in 5 min), **meltdowns** and **tears** (3+ yells/screams/shouts, or sobs, within 2 min on the sound timeline, quoted with what was said around them), **marathons** (8 h+), **ghost towns** (an hour+ to 0-1 viewers and no chat), **comebacks** (14+ days away), **title drama**, **new personal peaks**; once a day **fell off** (4+ streams the month before, none for 7 days), **no days off** (every 7 days in a row) and the **quote of the day**; beefs report their opening, win and forfeit. A story gets a template headline at once (facts and numbers only) and an AI rewrite from OpenVibe.AI's `live.arena.drama` (≤ 20 an hour): drama-news voice, roast what happened on stream, never invent an event or accuse, no identity slurs, sexual content, threats, doxxing or self-harm jokes; quotes are the streamer's own words. Alert level 1-5 (🚨). A subject with alert ≥ 3 is notified.
+- **Reactions** — 🔥 💀 🤡 W L, one per viewer per story (`arena_drama_reactions`; the person, else a salted address hash).
+- **Lolcow Index** — cow points from stories over the last 7 days (newer counts more; rage quits, crashes, meltdowns, tears, ghost towns, dramatic titles, falling off, ducking a beef), 0-100 against the top cow, who wears the 🐄.
+- **Clout Rankings** — the last 7 days: hours live ×2 + average viewers ×10 + peak ×3 + chat messages ÷ 50 + new followers ×5 + the clout points of their stories (spikes, records, comebacks, streaks, beef wins) + beef wins ×10 − half their cow points. This week's moves against the snapshot taken each Monday (`arena_clout_weeks`); tags COOKED (cow meter 70+), ON THE RISE, FALLING, UNDEFEATED.
+- **Rap sheet** (`/arena/<username>`, above the fighter page) — cow meter, clout rank, beef W–L, every story about them.
+- **Opting out** — `PUT /api/arena/opt-out {out}` (the "keep themselves out" link): no new stories about them, the old ones hidden; they can come back. Staff hide a story with `POST /api/arena/drama/:id/hide`.
+- **Beefs and the ears** (below) are unchanged: a name said on mic opens a beef, the other side is on the clock, silence is a forfeit.
 
-**No personas, no portraits, no AI ring names** (removed 2026-09-11): fighters are the streamers, under their own names and avatars. The only AI on this page is the judge.
+API: `GET /api/arena/drama?limit&before&user`, `/drama/:id`, `POST /drama/:id/react {reaction}`, `GET /lolcow`, `/clout`, `/rap/:user`, `GET|PUT /opt-out`. Pages: `/arena`, `/arena/drama/<id>`, `/arena/<username>`, `/arena/beef/<id>`, `/arena/live/<username>`.
 
-**Backfill** (`server/arena/backfill.js`): the listener only hears live cams, so past speech (last 7 days, ended streams) is judged by the job every 20 min (and 90 s after boot): chunks of ≥ 20 words, only the ones that look spicy or name a fighter go to a model (≤ 160 calls per run), name-drops become `callout` moments with the target attached (no clocks for old speech), the rest `trash` moments — dated when they were *said*, VOD-linked. A per-fighter cursor keeps it incremental. Admin: `POST /api/arena/backfill`.
-
-With AI off everything still works: keyword judges, template headlines.
+The transcripts all of this reads come from Parakeet TDT 0.6B v3 since 2026-10-16 (`server/ai/transcribe.js`; whisper for other languages).
 
 ## Speech policy
 
@@ -30,7 +32,7 @@ The roster is **whoever has been heard**: every streamer with transcribed speech
 | **Stamina** | minutes of speech heard (90 d) | 0.10 |
 | **Pace** | words per minute on mic | 0.08 |
 
-POWER = weighted sum + a **mouth bonus** (≤ +12: recent XP ÷ 25 + 3 per beef win in 7 days). Audience numbers (viewers, chat volume, followers, clips, tips) do not exist anywhere in the Arena.
+POWER = weighted sum + a **mouth bonus** (≤ +12: recent XP ÷ 25 + 3 per beef win in 7 days). These mic ratings (the fighter page's POWER) use no audience numbers; the Clout Rankings above are where viewers, chat and followers count.
 
 **Persona** (`chat` role, 24 h TTL): fighter name, title, class, element, moves, weakness, `taunt` + three `taunts` (ragebait in *their speaking voice*), `typing_style` (how they talk), `spoken_as` (nicknames/mishearings, fed to name detection), six `custom_stats` unique to them and `stat_quips` — written from their transcript lines, their best judged shit talk, who they call out, who calls them out and what they rant at. **Quotes**: AI-picked lines from the transcripts, VOD-linked. **Portraits**: the ones drawn earlier from their own stream frames stay; no new ones are drawn (the image provider was called with the shared key, and Live calls no model provider itself since roadmap WS-O task 2).
 
@@ -69,10 +71,11 @@ Every hit is also written to the mic ledger as a `beef_hit` moment. Headlines (o
 
 ## Pages
 
-`/arena` — Battle Cam: your beefs on the clock · **live cams** (thumbnail, lock indicator, last judged line, open beefs, pending words) · open + settled beefs · **the feed** (every judged line, newest first, aimed-at chips, ▶ to the VOD second, 🔊 in their voice) · the ladder (rows expand: the seven mic stats radar, taunts, quips) · rules.
+`/arena` — ARENA ALERT: masthead and BREAKING ticker · the cams on air · the top story of the day · BREAKING (every story, reactions, ▶ to the moment, 🔊 the quote in their voice) · Lolcow Index · Clout Rankings · Beef Watch · Hot Mic (the latest judged lines) · how the desk works.
+`/arena/drama/<id>` — one story with its receipts (the measured facts) and more on the same streamer.
 `/arena/beef/<id>` — tale of the tape, tug-of-war, live clock, ringside feed, receipts, hype buttons.
 `/arena/live/<username>` — the ears.
-`/arena/<username>` — POWER, Trash Level card (judged lines, avg score, bangers, answered-when-called-out), the seven mic stats with drill-downs, their lines on record, characteristics radar, rap sheet, ragebait bubbles, on the mic (voice meters + quotes), rivalries, beefs.
+`/arena/<username>` — the rap sheet (cow meter, clout rank, beef W–L, their stories), then POWER, Trash Level card (judged lines, avg score, bangers, answered-when-called-out), the seven mic stats with drill-downs, their lines on record, characteristics radar, rap sheet, ragebait bubbles, on the mic (voice meters + quotes), rivalries, beefs.
 
 Old `/arena/topic/*` and `/arena/chatter/*` links show a "this part is gone" note.
 
