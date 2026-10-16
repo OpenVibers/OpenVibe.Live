@@ -123,7 +123,7 @@ const db = require('../server/db/database');
     const aiSvc = require('../server/ai/ai-service');
     arenaSvc.aiOn = async () => true;
     let answer = { headline: '🚨 GHOST STREAMS 90 MINUTES TO NOBODY', blurb: 'Peak 0. Chat 0. Brutal.', alert: 2 };
-    aiSvc.structured = async (workflow, input) => { assert.strictEqual(workflow, 'live.arena.drama'); assert.strictEqual(input.streamer, 'ghost'); return answer; };
+    aiSvc.structured = async (workflow, input) => { assert.strictEqual(workflow, 'live.arena.drama'); assert.strictEqual(input.streamer, 'ghost'); assert.match(input.what, /^Peak: 0 viewers\. Chat messages: 0\.$/); return answer; };
     const g1 = await drama.createStory({ kind: 'ghost_town', userId: ghost, dedupeKey: 'ai:1', facts: { minutes: 90, peak: 0, messages: 0 }, happenedAt: NOW });
     await new Promise((r) => setTimeout(r, 50));
     assert.deepStrictEqual(await db.get('SELECT headline, ai FROM arena_drama WHERE id = ?', [g1]), { headline: '🚨 GHOST STREAMS 90 MINUTES TO NOBODY', ai: 1 });
