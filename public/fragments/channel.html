@@ -365,14 +365,14 @@
                         <a id="ch-vods-video-link" class="btn btn-small btn-outline" href="#" style="display:none" title="This channel's recordings and clips on OpenVibe.Video, with AI chapters, captions and playlists"><i class="fa-solid fa-film"></i> On OpenVibe.Video</a>
                         <button class="btn btn-small btn-outline sel-all-btn" data-sel-container="ch-vods-grid" style="display:none" onclick="_selAllToggle(this.dataset.selContainer)"><i class="fa-solid fa-check-double"></i> <span class="sel-all-label">Select all</span></button>
                     </div>
-                    <div class="stream-grid" id="ch-vods-grid"><p class="muted">No videos yet</p></div>
+                    <div class="stream-grid" id="ch-vods-grid"><p class="muted">Loading videos…</p></div>
                     <div id="ch-vods-pagination" class="pastes-pagination" style="display:none"></div>
                 </div>
 
                 <!-- Clips (clips OF this streamer's streams) -->
                 <div class="ch-tab-panel" id="ch-panel-clips" role="tabpanel">
                     <p class="ch-panel-hint" id="ch-clips-of-header"><i class="fa-solid fa-scissors"></i> Moments viewers clipped from these streams.</p>
-                    <div class="stream-grid" id="ch-clips-of-grid"><p class="muted">No clips yet</p></div>
+                    <div class="stream-grid" id="ch-clips-of-grid"><p class="muted">Loading clips…</p></div>
                     <div id="ch-clips-of-pagination" class="pastes-pagination" style="display:none"></div>
                     <!-- What the AI cut from these streams, after what people made (roadmap 33.6). -->
                     <div class="ch-ai-clips" id="ch-ai-clips-section" hidden>
@@ -389,7 +389,7 @@
                         <div class="clips-taken-filters" id="clips-taken-filters" style="display:none"></div>
                         <button class="btn btn-small btn-outline sel-all-btn" data-sel-container="ch-clips-grid" style="display:none" onclick="_selAllToggle(this.dataset.selContainer)"><i class="fa-solid fa-check-double"></i> <span class="sel-all-label">Select all</span></button>
                     </div>
-                    <div class="stream-grid" id="ch-clips-grid"><p class="muted">No clips yet</p></div>
+                    <div class="stream-grid" id="ch-clips-grid"><p class="muted">Loading clips…</p></div>
                     <div id="ch-clips-pagination" class="pastes-pagination" style="display:none"></div>
                 </div>
 
@@ -398,7 +398,7 @@
                     <div class="ch-panel-bar" id="ch-pastes-header">
                         <button class="btn btn-small btn-outline sel-all-btn" data-sel-container="ch-pastes-grid" style="display:none" onclick="_selAllToggle(this.dataset.selContainer)"><i class="fa-solid fa-check-double"></i> <span class="sel-all-label">Select all</span></button>
                     </div>
-                    <div id="ch-pastes-grid" class="pastes-grid"><p class="muted">No pastes yet</p></div>
+                    <div id="ch-pastes-grid" class="pastes-grid"><p class="muted">Loading pastes…</p></div>
                     <div id="ch-pastes-pagination" class="pastes-pagination" style="display:none"></div>
                 </div>
 
