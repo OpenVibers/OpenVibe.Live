@@ -3667,7 +3667,7 @@ function buildChatMessageEl(msg, opts = {}) {
             const metaLine = isAuto
                 ? `<div class="clip-chat-meta"><i class="fa-solid fa-robot"></i> Auto-generated highlight</div>`
                 : `<div class="clip-chat-meta">${avatar}<span>Clipped by ${creator}</span></div>`;
-            text = `<a class="clip-chat-card${isAuto ? ' clip-chat-card-ai' : ''}" href="/clip/${clip.clip_id}" onclick="return handleLinkClick(event, '/clip/${clip.clip_id}')" title="Watch clip">
+            text = `<a class="clip-chat-card${isAuto ? ' clip-chat-card-ai' : ''}" href="${videoHref('clip', clip.clip_id)}" onclick="return handleLinkClick(event, '${videoHref('clip', clip.clip_id)}')" title="Watch clip">
                 ${thumb}
                 <div class="clip-chat-info">
                     ${label}

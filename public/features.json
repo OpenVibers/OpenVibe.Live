@@ -22,14 +22,6 @@
         "channel"
       ]
     },
-    "appMedia": {
-      "css": [
-        "/css/features/media.css"
-      ],
-      "js": [
-        "/js/app-media.js"
-      ]
-    },
     "feeds": {
       "css": [
         "/css/features/content.css"
@@ -112,20 +104,6 @@
       ],
       "stubs": [
         "toggleChannelChat"
-      ]
-    },
-    "vodPage": {
-      "fragment": "vod-player",
-      "deps": [
-        "context",
-        "appMedia"
-      ]
-    },
-    "clipPage": {
-      "fragment": "clip-player",
-      "deps": [
-        "context",
-        "appMedia"
       ]
     },
     "voice": {
@@ -330,18 +308,6 @@
       "path": "^/search/?$",
       "features": [
         "search"
-      ]
-    },
-    {
-      "path": "^/vod/[^/]+",
-      "features": [
-        "vodPage"
-      ]
-    },
-    {
-      "path": "^/clip/[^/]+",
-      "features": [
-        "clipPage"
       ]
     },
     {

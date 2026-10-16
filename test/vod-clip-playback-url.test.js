@@ -3,8 +3,7 @@
  *
  * The media proxies set playback_url from the Media row: the object's hls_url (Media's timeline playlist) when it
  * has one, the byte route (/v/:id, /c/:id) when it does not (old objects, MP4-only). file_url is always the byte
- * route, for anything that needs a real file. The server-rendered /vod/:id and /clip/:id pages never carry the
- * playlist (their contentUrl is the page; there is no og:video URL and recordings are not in the sitemap).
+ * route, for anything that needs a real file. (The watch pages are OpenVibe.Video's: /vod/:id and /clip/:id 301 there.)
  *
  * The real routers run on the test database with Media stubbed in-process.
  *
@@ -118,18 +117,6 @@ async function check(name, fn) {
         assert.strictEqual(by[200].playback_url, SIGNED);
         assert.strictEqual(by[201].playback_url, media.clipUrl(201));
         assert.strictEqual(by[201].file_url, media.clipUrl(201));
-    });
-
-    await check('server-rendered /vod/:id and /clip/:id never carry the playlist', async () => {
-        const seo = require('../server/seo');
-        for (const p of ['/vod/100', '/clip/200']) {
-            const meta = await seo._pageMeta(p);
-            assert.ok(meta, `${p} renders`);
-            const s = JSON.stringify(meta);
-            assert.ok(!/\.m3u8/.test(s), `${p} has no .m3u8`);
-            const vo = meta.jsonLd.find((x) => x && /VideoObject/.test(x['@type']));
-            if (vo && vo.contentUrl) assert.ok(!/\.m3u8/.test(vo.contentUrl), `${p} contentUrl is not a playlist`);
-        }
     });
 
     await check('the file routes still redirect to the byte route', async () => {

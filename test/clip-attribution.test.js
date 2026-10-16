@@ -9,9 +9,8 @@
  *     Moments (?auto_generated=1), each labelled;
  *   - the channel page lists people's clips (by and of the streamer) apart from its AI clips, which
  *     come back as their own labelled list with a total; "Clips Taken" asks for people's clips;
- *   - the clip page's attribution line says "AI clip · from <streamer>'s stream" for an auto-clip,
- *     and "Clipped by <clipper>" only for a person's clip (public/js/app-media.js, run against a
- *     small stand-in DOM).
+ *   - (the clip page and its attribution line are OpenVibe.Video's since the handover,
+ *     server/web/video-handover.js).
  *
  *   node test/clip-attribution.test.js
  */
@@ -20,7 +19,6 @@ const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
 const http = require('http');
-const vm = require('vm');
 
 process.env.NODE_ENV = 'test';
 const quiet = console.log;
@@ -37,27 +35,6 @@ const CLIPS = [
 ];
 const asked = [];
 let honour = true;
-
-// ── A small stand-in DOM, enough for _renderClipAttribution ──
-class El {
-    constructor(tag) { this.tagName = tag; this.children = []; this.className = ''; this.attrs = {}; this.listeners = {}; this.href = ''; this.classList = { toggle: (c, on) => { const set = new Set(this.className.split(/\s+/).filter(Boolean)); if (on) set.add(c); else set.delete(c); this.className = [...set].join(' '); } }; }
-    set textContent(v) { this.children = v ? [String(v)] : []; }
-    get textContent() { return this.children.map((c) => (typeof c === 'string' ? c : c.textContent)).join(''); }
-    append(...nodes) { this.children.push(...nodes); }
-    setAttribute(k, v) { this.attrs[k] = v; }
-    addEventListener(t, fn) { this.listeners[t] = fn; }
-    find(tag) { for (const c of this.children) { if (typeof c === 'string') continue; if (c.tagName === tag) return c; const f = c.find(tag); if (f) return f; } return null; }
-}
-function loadAttribution() {
-    const src = fs.readFileSync(path.join(__dirname, '../public/js/app-media.js'), 'utf8');
-    const start = src.indexOf('function _renderClipAttribution(');
-    assert.ok(start > 0, 'app-media.js defines _renderClipAttribution');
-    const end = src.indexOf('\n}\n', start) + 3;
-    const ctx = { document: { createElement: (t) => new El(t) }, channelPath: (u) => `/@${u}`, handleLinkClick: () => false };
-    vm.createContext(ctx);
-    vm.runInContext(`${src.slice(start, end)}\nthis._renderClipAttribution = _renderClipAttribution;`, ctx);
-    return ctx._renderClipAttribution;
-}
 
 const ids = (rows) => (rows || []).map((c) => c.id).sort();
 
@@ -180,22 +157,6 @@ async function check(name, fn) {
         assert.strictEqual(r.status, 200);
         assert.strictEqual(asked[0].auto_generated, 0);
         assert.ok(!r.json.clips.some((c) => c.auto_generated), 'no AI clip');
-    });
-
-    await check('the clip page says "AI clip · from Alice\'s stream" for an auto-clip, never "Clipped by"', () => {
-        const render = loadAttribution();
-        const el = new El('div');
-        render(el, { auto_generated: true, username: 'alice', display_name: 'Alice', source_streamer_username: 'alice', source_streamer_display_name: 'Alice' });
-        const text = el.textContent;
-        assert.ok(text.startsWith(" AI clip · from Alice's stream"), text);
-        assert.ok(!/Clipped by/.test(text), text);
-        assert.ok(/No one clipped it/.test(text));
-        assert.strictEqual(el.find('a').href, '/@alice', 'links the channel');
-        assert.ok(/clp-ai-attribution/.test(el.className));
-        const person = new El('div');
-        render(person, { auto_generated: false, username: 'bob', display_name: 'Bob' });
-        assert.strictEqual(person.textContent, ' Clipped by Bob');
-        assert.ok(!/clp-ai-attribution/.test(person.className));
     });
 
     server.close();

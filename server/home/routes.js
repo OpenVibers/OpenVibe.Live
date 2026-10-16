@@ -14,6 +14,7 @@ const express = require('express');
 const db = require('../db/database');
 const { can } = require('../auth/permissions');
 const media = require('../media-client');
+const { videoUrl } = require('../web/video-url');
 
 const router = express.Router();
 const SLOGAN_INTERVAL_MS = 6 * 60 * 60 * 1000; // must match slogan-job INTERVAL_MS
@@ -82,10 +83,10 @@ async function heroMedia() {
     try {
         const pool = await _mediaContent();
         for (const v of pool.vods) {
-            items.push({ kind: 'vod', title: v.title || 'VOD', thumbnail: media.publicUrl(v.thumbnail_url) || media.thumbUrl(`vod-${v.id}`), href: `/vod/${v.id}`, username: v.username });
+            items.push({ kind: 'vod', title: v.title || 'VOD', thumbnail: media.publicUrl(v.thumbnail_url) || media.thumbUrl(`vod-${v.id}`), href: videoUrl('vod', v.id), username: v.username });
         }
         for (const c of pool.clips) {
-            items.push({ kind: 'clip', title: c.title || 'Clip', thumbnail: media.publicUrl(c.thumbnail_url) || media.thumbUrl(`clip-${c.id}`), href: `/clip/${c.id}`, username: c.username });
+            items.push({ kind: 'clip', title: c.title || 'Clip', thumbnail: media.publicUrl(c.thumbnail_url) || media.thumbUrl(`clip-${c.id}`), href: videoUrl('clip', c.id), username: c.username });
         }
         for (const p of pool.pastes) {
             items.push({
@@ -103,7 +104,7 @@ async function heroMedia() {
             if (!m || !m.vodId) continue;
             items.push({
                 kind: 'moment', title: m.title || 'AI Moment', thumbnail: m.thumbnail || null,
-                href: `/vod/${m.vodId}?t=${m.offset || 0}`, username: m.username,
+                href: videoUrl('vod', m.vodId, m.offset || 0), username: m.username,
             });
         }
     } catch { /* */ }
@@ -118,7 +119,7 @@ async function heroMoments() {
         const hm = JSON.parse(await db.getState('home_hero_moments') || '{}');
         return (hm.moments || [])
             .filter(m => m && m.vodId && m.thumbnail)
-            .map(m => ({ title: m.title || 'AI Moment', thumbnail: m.thumbnail, href: `/vod/${m.vodId}?t=${m.offset || 0}`, username: m.username }));
+            .map(m => ({ title: m.title || 'AI Moment', thumbnail: m.thumbnail, href: videoUrl('vod', m.vodId, m.offset || 0), username: m.username }));
     } catch { return []; }
 }
 

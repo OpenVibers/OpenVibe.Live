@@ -73,14 +73,17 @@ From the dashboard:
   (`vod_ai_state`/`clip_ai_state`, `content_views`) and its Search document is re-read at once
 - **Thumbnails** are auto-generated; broken thumbnails auto-regenerate on load
 
-## The canonical page is on OpenVibe.Video
+## Recordings and clips are watched on OpenVibe.Video
 
-A public, finished recording's and a person's public clip's canonical page is on OpenVibe.Video
-(`https://openvibe.video/v/<id>`, `/c/<id>`; `server/web/video-url.js`, `VIDEO_PUBLIC_URL` overrides the origin). Live's
-own `/vod/<id>` and `/clip/<id>` pages keep working and keep their own `og:url`, but their `<link rel="canonical">`
-names the Video page, Live's sitemap leaves recordings and clips out (Video's sitemap lists them), the documents Live
-sends to OpenVibe.Search link there, and an AI clip's canonical moment is the Video page at that second. Unlisted
-items, recordings in progress and private items keep their Live canonical (they are not indexed anywhere).
+Every recording and clip has its page on OpenVibe.Video (`https://openvibe.video/v/<id>`, `/c/<id>`;
+`server/web/video-url.js`, `VIDEO_PUBLIC_URL` overrides the origin): the player, AI chapters and captions, the chat
+replay, comments, clipping, and the owner's visibility and delete, for private items too (to their owner). Live's old
+`/vod/<id>` and `/clip/<id>` URLs answer a 301 there (`server/web/video-handover.js`, mounted before the SEO renderer
+like the paste handover; a `?t=` start time goes along as seconds). Every watch link Live renders points there: the
+SPA through `videoHref()` (the shell's `ov-video-base` meta names the origin), the server through `videoUrl()`. Live's
+sitemap leaves recordings and clips out (Video's lists them), and the documents Live sends to OpenVibe.Search link
+there. `/vods` and `/clips` stay on Live as the Content feed with a filter, linking out. Live keeps the recording
+pipeline, the API (`/api/vods`, `/api/clips`) that OpenVibe.Video reads, and the owner's manager on the dashboard.
 
 ## Playback URLs
 
