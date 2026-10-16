@@ -230,8 +230,8 @@ async function detectSounds(streams, sinceTxt) {
                 if (n >= 3 && (!best || n > best.n)) best = { n, from: hits[i], to: hits[j] };
             }
             if (!best) continue;
-            const lines = await db.all(`SELECT text FROM stream_timeline_events WHERE stream_id = ? AND kind = 'speech' AND start_sec BETWEEN ? AND ? ORDER BY start_sec`, [s.id, best.from.start_sec - 20, best.to.start_sec + 20]);
-            const quote = lines.map((l) => String(l.text || '')).filter((t) => t && !arena()._isBannedText(t)).sort((a, b) => b.length - a.length)[0] || null;
+            const lines = await db.all(`SELECT text, start_sec FROM stream_timeline_events WHERE stream_id = ? AND kind = 'speech' AND start_sec BETWEEN ? AND ? ORDER BY start_sec`, [s.id, best.from.start_sec - 20, best.to.start_sec + 20]);
+            const quote = pickQuote(lines, best.from.start_sec, best.to.start_sec);
             const counts = {};
             for (const h of hits.slice(hits.indexOf(best.from), hits.indexOf(best.to) + 1)) counts[h.label] = (counts[h.label] || 0) + 1;
             out.push({ kind, userId: s.user_id, streamId: s.id, vodId: best.from.vod_id || null, sec: best.from.start_sec, dedupeKey: `${kind}:${s.id}:${Math.floor(best.from.start_sec / 600)}`,
@@ -239,6 +239,18 @@ async function detectSounds(streams, sinceTxt) {
         }
     }
     return out;
+}
+
+// The line said around a meltdown that sounds like one: heat (swearing, exclamations, "why", "I can't") counts most,
+// then how close it was to the shouting, then length; a mundane line far from it only when nothing else was said.
+const HEAT = /\b(fuck\w*|shit\w*|damn\w*|bro|dude|wtf|why|what the|i can'?t|i'?m done|i swear|stop|rigged|trash|garbage|hate|kill me|are you (kidding|serious))\b|!/i;
+function pickQuote(lines, fromSec, toSec) {
+    const mid = (Number(fromSec) + Number(toSec)) / 2;
+    const scored = lines.map((l) => ({ t: String(l.text || '').trim(), at: Number(l.start_sec) }))
+        .filter((l) => l.t.split(/\s+/).length >= 4 && !arena()._isBannedText(l.t))
+        .map((l) => ({ ...l, score: (HEAT.test(l.t) ? 10 : 0) - Math.abs(l.at - mid) / 6 + Math.min(l.t.length, 160) / 80 }));
+    scored.sort((a, b) => b.score - a.score);
+    return scored.length ? scored[0].t : null;
 }
 
 /** Once a day: who fell off, who has not missed a day, and the quote of the day. */
@@ -430,4 +442,4 @@ async function setOptOut(userId, out) {
 
 async function hide(id) { await db.run("UPDATE arena_drama SET status = 'hidden' WHERE id = ?", [Number(id)]); }
 
-module.exports = { detect, beefStory, createStory, announce, feed, story, react, lolcowIndex, cloutRankings, rapSheet, setOptOut, optedOut, hide, REACTIONS, TEMPLATES: T, _test: { detectStreams, detectSnapshots, detectSounds, detectDaily, weekStart, toMs, fmt } };
+module.exports = { detect, beefStory, createStory, announce, feed, story, react, lolcowIndex, cloutRankings, rapSheet, setOptOut, optedOut, hide, REACTIONS, TEMPLATES: T, _test: { detectStreams, detectSnapshots, detectSounds, detectDaily, weekStart, toMs, fmt, pickQuote } };

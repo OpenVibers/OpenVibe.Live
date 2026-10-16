@@ -132,6 +132,15 @@ const db = require('../server/db/database');
     await new Promise((r) => setTimeout(r, 50));
     assert.deepStrictEqual(await db.get('SELECT headline, ai FROM arena_drama WHERE id = ?', [g2]), { headline: '👻 ghost STREAMED 90 MINUTES TO AN EMPTY ROOM', ai: 0 }, 'a misspelled name keeps the template');
 
+    // The meltdown quote: the heated line near the shouting beats a longer mundane one.
+    const { pickQuote } = drama._test;
+    assert.strictEqual(pickQuote([
+        { text: 'so the charge on each capacitor of the panel decides what you see on the screen today', start_sec: 95 },
+        { text: 'bro why does this keep happening to me', start_sec: 128 },
+        { text: 'ok', start_sec: 130 },
+    ], 100, 160), 'bro why does this keep happening to me');
+    assert.strictEqual(pickQuote([{ text: 'ok', start_sec: 1 }], 0, 10), null, 'too short to quote');
+
     console.log('arena-drama: all checks passed');
     process.exit(0);
 })().catch((e) => { console.error(e); process.exit(1); });
