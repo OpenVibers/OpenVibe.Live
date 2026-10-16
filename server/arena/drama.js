@@ -133,6 +133,10 @@ async function rewrite(id, payload, userId) {
     const out = await require('../ai/ai-service').structured('live.arena.drama', payload, { meter: { kind: 'arena_drama', role: 'chat', ownerUserId: userId, source: 'arena' } });
     if (!out || !out.headline || !out.blurb) return;
     if (arena()._isBannedText(out.headline) || arena()._isBannedText(out.blurb)) return;
+    // A real person's name misspelled ("Goosey" for goosely) is worse than the template: the AI headline must carry
+    // every name it was given, exactly (case aside).
+    const names = [payload.streamer, payload.other].filter(Boolean).map((n) => String(n).toLowerCase());
+    if (!names.every((n) => String(out.headline).toLowerCase().includes(n))) return;
     await db.run('UPDATE arena_drama SET headline = ?, blurb = ?, alert = ?, ai = 1 WHERE id = ?', [String(out.headline).slice(0, 160), String(out.blurb).slice(0, 480), Math.min(5, Math.max(1, Number(out.alert) || 1)), id]);
 }
 
