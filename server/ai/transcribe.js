@@ -7,7 +7,8 @@
  *     Measured 2026-10-16 on 2 min of real stream talk on this 4-core box: 394 words in 31 s,
  *     punctuated, where whisper base.en (the old live model) caught 327 words in 15 s and dropped
  *     whole sentences ("they put in" → "the Putin"), and large-v3-turbo needed 121 s (1x real time,
- *     too slow for live). A 10 s live segment decodes in 2.5 s on 2 threads, like base.en did.
+ *     too slow for live). A 10 s live segment decodes in 2.5 s on 2 threads, like base.en did. Audio longer than 45 s
+ *     (VOD windows) is decoded in 30 s pieces: one 300 s piece needed 3.1 GB.
  *   - whisper.cpp, for every other language (Japanese, Korean, Chinese…) and as the fallback when
  *     Parakeet is not installed. ASR_ENGINE=whisper forces it everywhere.
  *
@@ -271,7 +272,48 @@ function parseParakeet(stderr, offsetSec = 0) {
     return out;
 }
 
-function _parakeetInner(wavPath, { timeoutMs = 180000, offsetSec = 0, live = false } = {}) {
+// Parakeet's memory and time grow faster than the audio: measured on this box, 10 s took 0.74 GB, 60 s 1.1 GB and a
+// 300 s VOD window 3.1 GB in 154 s. Anything longer than CHUNK_MAX_SEC is cut into CHUNK_SEC pieces (PCM, cut exactly,
+// so each piece's times only shift by its start) and decoded one after another.
+const CHUNK_SEC = 30;
+const CHUNK_MAX_SEC = 45;
+function wavSeconds(wavPath) {
+    try { return Math.max(0, (fs.statSync(wavPath).size - 44) / 32000); } catch { return 0; }   // 16 kHz mono s16le
+}
+function _splitWav(wavPath, dir) {
+    return new Promise((resolve) => {
+        let ff;
+        try { ff = _track(spawn('nice', ['-n', '15', 'ffmpeg', '-nostdin', '-loglevel', 'error', '-y', '-i', wavPath, '-f', 'segment', '-segment_time', String(CHUNK_SEC), '-c', 'copy', path.join(dir, 'p%04d.wav')], { stdio: 'ignore' })); }
+        catch { return resolve(null); }
+        ff.on('close', (code) => {
+            if (code !== 0) return resolve(null);
+            try { resolve(fs.readdirSync(dir).filter((n) => /^p\d{4}\.wav$/.test(n)).sort().map((n) => path.join(dir, n))); } catch { resolve(null); }
+        });
+        ff.on('error', () => resolve(null));
+    });
+}
+async function _parakeetInner(wavPath, opts = {}) {
+    if (!wavPath || wavSeconds(wavPath) <= CHUNK_MAX_SEC) return await _parakeetOnce(wavPath, opts);
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'openvibe-pk-'));
+    try {
+        const pieces = await _splitWav(wavPath, dir);
+        if (!pieces || !pieces.length) return { text: '', segments: [], ok: false, error: 'could not split the audio' };
+        const segments = [];
+        const deadline = Date.now() + (opts.timeoutMs || 180000);
+        for (let i = 0; i < pieces.length; i++) {
+            const left = deadline - Date.now();
+            if (left <= 0) return { text: '', segments: [], ok: false, error: 'timeout' };
+            const r = await _parakeetOnce(pieces[i], { ...opts, timeoutMs: left, offsetSec: (opts.offsetSec || 0) + i * CHUNK_SEC });
+            if (!r.ok) return r;
+            segments.push(...r.segments);
+        }
+        return { text: _joinSegments(segments), segments, ok: true, engine: 'parakeet' };
+    } finally {
+        try { fs.rmSync(dir, { recursive: true, force: true }); } catch { /* */ }
+    }
+}
+
+function _parakeetOnce(wavPath, { timeoutMs = 180000, offsetSec = 0, live = false } = {}) {
     return new Promise((resolve) => {
         if (!parakeetAvailable() || !wavPath || !fs.existsSync(wavPath)) return resolve({ text: '', segments: [], ok: false, error: 'parakeet unavailable' });
         const args = ['-t', String(_threads(live)), '-ps', '-np', '-m', PARAKEET_MODEL, '-f', wavPath];
