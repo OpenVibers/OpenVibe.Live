@@ -1,8 +1,10 @@
 /**
- * OpenVibe.Live — Arena tab — BATTLE CAM mode (pure mic)
+ * OpenVibe.Live — Arena tab. The home is ARENA ALERT, the drama desk (public/js/arena-alert.js, Arena v4); this file
+ * keeps the shared helpers, beefs, the ears and the fighter pages.
  *
  * Routes (handled from app.js):
- *   /arena                     live cams · the shit-talk feed · beefs · the ladder
+ *   /arena                     ARENA ALERT (arena-alert.js)
+ *   /arena/drama/<id>          one story (arena-alert.js)
  *   /arena/beef/<id>           one beef: tug-of-war, clock, ringside feed, receipts
  *   /arena/live/<username>     the ears: what the listener hears from a live fighter (auto-refresh)
  *   /arena/<username>          fighter profile (mic stats, voice + quotes, level, receipts, beefs, rivalries)
@@ -152,93 +154,20 @@ async function loadArenaPage(segments = []) {
     try {
         if (first === 'beef' && second) return await _aRenderBeef(root, Number(second));
         if (first === 'live' && second) return await _aRenderConsole(root, second);
+        if (first === 'drama' && second) return await _aRenderStory(root, second);
         if (first === 'topic' || first === 'chatter') return _aGone(root);
-        if (first) return await _aRenderFighter(root, first);
-        return await _aRenderHome(root);
+        if (first) {
+            root.innerHTML = '<div id="aa-rap-slot"></div><div id="arena-fighter-slot"></div>';
+            await Promise.all([_aRenderRapSheet(document.getElementById('aa-rap-slot'), first), _aRenderFighter(document.getElementById('arena-fighter-slot'), first)]);
+            return;
+        }
+        return await _aRenderAlertHome(root);
     } catch (err) {
         root.innerHTML = `<div class="arena-empty"><i class="fa-solid fa-plug-circle-xmark"></i><p>${_aEsc(err?.message || 'The arena lights went out.')}</p></div>`;
     }
 }
 function _aGone(root) {
-    root.innerHTML = `<div class="arena-empty"><i class="fa-solid fa-microphone-lines"></i><p>That part of the Arena is gone. It's <b>pure mic</b> now — no boards, no topics, no chat levels. Everything that counts is said on stream.</p>${_aA('/arena', 'Back to the cams', 'btn btn-primary')}</div>`;
-}
-
-// ── Home: Battle Cam ─────────────────────────────────────────
-
-async function _aRenderHome(root) {
-    root.innerHTML = _aSpinner('Putting the ears on…');
-    const [feed, beefs, live, roster] = await Promise.all([api('/arena/feed?limit=40').catch(() => ({ feed: [] })), api('/arena/beefs'), api('/arena/live').catch(() => ({ live: [] })), api('/arena/fighters')]);
-    _arenaRoster = roster;
-    if (Array.isArray(roster.stats) && roster.stats.length) { ARENA_STATS = roster.stats; ARENA_STAT_LABEL = Object.fromEntries(roster.stats.map(k => [k, roster.stat_meta?.[k]?.label || k])); }
-    _arenaFeedTop = feed.feed?.[0]?.id || 0;
-    root.innerHTML = `
-        <div class="arena-hero arena-hero-cam">
-            <div>
-                <h1><i class="fa-solid fa-microphone-lines"></i> Battle Cam</h1>
-                <p class="arena-lede">Pure mic. No personas, no AI characters, no chat points, no votes. This page is the shit talk that was actually said on stream — judged, scored, and replayable at the second it happened. Call another streamer out on mic and the beef opens itself; they're on the clock, silence is a forfeit. Talk shit at chat, at the mods, at the world, and it lands in the feed and levels you up.</p>
-            </div>
-            <div class="arena-hero-actions">
-                <span class="arena-note">${roster.ai ? '<i class="fa-solid fa-ear-listen"></i> AI judge on' : '<i class="fa-solid fa-ear-deaf"></i> AI off — keyword judging'}</span>
-                ${_aMe() ? _aA('/broadcast', '<i class="fa-solid fa-tower-broadcast"></i> Get on a cam', 'btn btn-primary') : ''}
-            </div>
-        </div>
-        <section class="arena-me" id="arena-me">${_aMe() ? _aSpinner('Checking your beefs…') : `<div class="arena-me-guest"><i class="fa-solid fa-microphone"></i> <b>Sign in</b>, go live with transcription on, and the Arena hears you. Say a name. See what happens.</div>`}</section>
-        <section class="arena-live arena-cams" id="arena-live">${_aRenderCams(live.live || [])}</section>
-        <section class="arena-beefs" id="arena-beefs">${_aRenderBeefs(beefs)}</section>
-        <section class="arena-feed-section" id="arena-feed">${_aRenderFeed(feed.feed || [])}</section>
-        <section class="arena-leaderboard">
-            <div class="arena-board-head">
-                <h2><i class="fa-solid fa-ranking-star"></i> The ladder <small>${roster.fighters.length} fighters · every number from the mic</small></h2>
-                <input type="search" id="arena-search" placeholder="Find a fighter…" autocomplete="off">
-            </div>
-            <div class="arena-list" id="arena-list"></div>
-        </section>
-        <section class="arena-rules">
-            <h3>How Battle Cam works</h3>
-            <ul>
-                <li><b>The ears.</b> Every 15 s the Arena reads the live transcription of every fighter's cam. That is the only input. Chat can <code>!hype</code> a side of a beef and that is all chat can do.</li>
-                <li><b>Callouts → beefs.</b> Say another fighter's name (however the mic hears it) while talking shit → the ears lock on, the judge scores it, the beef opens and they're on the clock: <b>15 min if live, 24 h if not</b>. Every answer flips the clock. Silence is a forfeit. Best mouth after 24 h wins. Beat someone ranked 4+ spots above you → <b>upset</b>.</li>
-                <li><b>Free shit talk.</b> Not aimed at a fighter? Still judged. Ranting at chat, the mods, other platforms, the game — if it's actually shit talk it lands in the feed with a score and pays Trash Level XP. Gameplay narration and small talk score nothing.</li>
-                <li><b>The ladder.</b> Seven ratings, all mic: <b>Heat</b> (how good the shit talk is) · <b>Aim</b> (callouts per hour on mic) · <b>Kills</b> (beefs won) · <b>Mouth</b> (share of stream spent talking) · <b>Clapback</b> (answering when called out) · <b>Stamina</b> (minutes of speech) · <b>Pace</b> (words per minute). Percentiles across the roster → POWER, plus a mouth bonus for recent XP and wins.</li>
-                <li><b>Language.</b> Nothing is censored for being offensive. The only lines that don't count: real threats, anything sexual about minors, and doxxing.</li>
-            </ul>
-        </section>`;
-    _aRenderList(roster.fighters);
-    _aBindHome(root);
-    if (_aMe()) _aRenderMe().catch(() => { const el = document.getElementById('arena-me'); if (el) el.innerHTML = ''; });
-    document.getElementById('arena-search')?.addEventListener('input', (e) => {
-        const q = e.target.value.trim().toLowerCase();
-        _aRenderList(!q ? roster.fighters : roster.fighters.filter(f => [f.user.display_name, f.user.username].filter(Boolean).some(s => s.toLowerCase().includes(q))));
-    });
-    _aEvery(12000, async () => {
-        try {
-            const [b, l, fd] = await Promise.all([api('/arena/beefs'), api('/arena/live'), api('/arena/feed?limit=40')]);
-            const beefsEl = document.getElementById('arena-beefs'), liveEl = document.getElementById('arena-live'), feedEl = document.getElementById('arena-feed');
-            if (beefsEl) beefsEl.innerHTML = _aRenderBeefs(b);
-            if (liveEl) liveEl.innerHTML = _aRenderCams(l.live || []);
-            if (feedEl) { const top = fd.feed?.[0]?.id || 0; feedEl.innerHTML = _aRenderFeed(fd.feed || [], { fresh: top > _arenaFeedTop ? fd.feed.filter(m => m.id > _arenaFeedTop).length : 0 }); if (top > _arenaFeedTop) _aFlash(feedEl, 'new line on the mic'); _arenaFeedTop = top; }
-            _aBindHome(root);
-        } catch { /* keep the last render */ }
-    });
-    _aEvery(1000, () => _aTickClocks(root));
-}
-
-async function _aRenderMe() {
-    const el = document.getElementById('arena-me');
-    if (!el) return;
-    const me = await api('/arena/me');
-    if (!me.on_roster) { el.innerHTML = `<div class="arena-me-guest"><i class="fa-solid fa-microphone-slash"></i> You're not on the roster yet — the Arena only knows what the transcription hears. Go live with audio transcription on and say something worth judging.</div>`; return; }
-    const f = me.fighter, l = f.level, pct = l.xp_per_level ? Math.round((l.xp_into_level / l.xp_per_level) * 100) : 0;
-    el.innerHTML = `<div class="arena-me-inner">
-        <div class="arena-me-left">${_aPortrait(f, 'sm')}<div><div class="arena-me-name"><b>${_aEsc(f.fighter_name)}</b> <span class="arena-lvl">TRASH LVL ${l.level}</span> <span class="arena-note">#${f.rank} · PWR ${f.power} · ${f.record.wins}W–${f.record.losses}L</span></div>
-            <span class="arena-xp-track"><span class="arena-xp-fill" style="width:${pct}%"></span></span>
-            <small class="arena-note">${l.xp_into_level}/${l.xp_per_level} to level ${l.level + 1} · <b>+${l.recent_xp} XP</b> this week · ${f.mic.moments} judged lines (30d) · avg ${f.mic.avg_quality}/10</small></div></div>
-        <div class="arena-me-right">
-            ${me.on_clock.length ? me.on_clock.map(b => `<div class="arena-me-alert">${_aA(_aBeefLink(b), `<i class="fa-solid fa-stopwatch"></i> <b>${_aEsc((b.a.user.id === f.user.id ? b.b : b.a).fighter_name)}</b> called you out — answer on your own cam`)} ${_aClockTag(b)}</div>`).join('') : `<div class="arena-me-row arena-note"><i class="fa-solid fa-circle-check"></i> Nobody has you on the clock.</div>`}
-            ${me.moments.length ? `<div class="arena-me-row"><i class="fa-solid fa-quote-left"></i> last judged: <q>${_aEsc(me.moments[0].text)}</q> ${_aQ(me.moments[0].quality)}</div>` : ''}
-            <div class="arena-me-row">${_aA(_aFighterLink(f.user), 'your fighter page <i class="fa-solid fa-arrow-right"></i>', 'arena-subject-open')} ${me.live ? _aA(_aConsoleLink(f.user), '<i class="fa-solid fa-ear-listen"></i> your ears', 'arena-tag arena-tag-hot') : ''}</div>
-        </div>
-    </div>`;
+    root.innerHTML = `<div class="arena-empty"><i class="fa-solid fa-microphone-lines"></i><p>That part of the Arena is gone. The drama is on ARENA ALERT now.</p>${_aA('/arena', 'Back to ARENA ALERT', 'btn btn-primary')}</div>`;
 }
 
 function _aRenderCams(live) {

@@ -9,6 +9,14 @@
  *   GET  /levels                                      Trash Level ladder (XP from mic only)
  *   GET  /me                                          the signed-in fighter's own state (beefs on them, level, moments)
  *   GET  /voice/:user?t=<text>                        the line read in that user's chat TTS voice
+ *
+ *   Arena v4, the drama desk (drama.js):
+ *   GET  /drama?limit&before&user                      ARENA ALERT stories, newest first, with reactions
+ *   GET  /drama/:id · POST /drama/:id/react {reaction} one reaction per viewer (fire, skull, clown, w, l)
+ *   POST /drama/:id/hide                               admin: take a story down
+ *   GET  /lolcow · /clout                              the Lolcow Index and the Clout Rankings (with this week's moves)
+ *   GET  /rap/:user                                    one streamer's rap sheet
+ *   GET  /opt-out · PUT /opt-out {out}                 a streamer keeps themselves out of the Arena (or comes back)
  */
 'use strict';
 
@@ -146,6 +154,42 @@ router.get('/me', requireAuth, async (req, res) => {
         res.json({ on_roster: onRoster, fighter, beefs, on_clock: onClock, moments: onRoster ? await mic.momentsFor(req.user.id, 6) : [], live: onRoster ? !!await db.get('SELECT 1 FROM streams WHERE user_id = ? AND is_live = 1 LIMIT 1', [req.user.id]) : false });
     } catch (err) { fail(res, err, 'Failed to load your arena'); }
 });
+
+// ── Arena v4: the drama desk ──
+const drama = require('./drama');
+router.get('/drama', optionalAuth, async (req, res) => {
+    try {
+        const limit = Math.min(60, Math.max(1, parseInt(req.query.limit, 10) || 30));
+        const user = req.query.user ? await userFrom(req.query.user) : null;
+        if (req.query.user && !user) return res.status(404).json({ error: 'No such user' });
+        res.set('Cache-Control', 'no-store');
+        res.json({ stories: await drama.feed({ limit, before: req.query.before || null, userId: user ? user.id : null, voterKey: await arena.voterKeyFor(req) }), ai: await arena.aiOn() });
+    } catch (err) { fail(res, err, 'Failed to load the drama'); }
+});
+router.get('/drama/:id', optionalAuth, async (req, res) => {
+    try { const s = await drama.story(req.params.id, await arena.voterKeyFor(req)); if (!s) return res.status(404).json({ error: 'No such story' }); res.set('Cache-Control', 'no-store'); res.json(s); }
+    catch (err) { fail(res, err, 'Failed to load the story'); }
+});
+router.post('/drama/:id/react', optionalAuth, async (req, res) => {
+    try { res.json({ reactions: await drama.react(req.params.id, String(req.body?.reaction || ''), await arena.voterKeyFor(req)) }); }
+    catch (err) { res.status(400).json({ error: err.message }); }
+});
+router.post('/drama/:id/hide', requireAuth, permissions.requireAdmin, async (req, res) => {
+    try { await drama.hide(req.params.id); res.json({ ok: true }); } catch (err) { fail(res, err, 'Failed to hide'); }
+});
+router.get('/lolcow', async (req, res) => { try { res.set('Cache-Control', 'public, max-age=60'); res.json({ index: await drama.lolcowIndex() }); } catch (err) { fail(res, err, 'Failed to load the Lolcow Index'); } });
+router.get('/clout', async (req, res) => { try { res.set('Cache-Control', 'public, max-age=60'); res.json({ rankings: await drama.cloutRankings() }); } catch (err) { fail(res, err, 'Failed to load the rankings'); } });
+router.get('/rap/:user', async (req, res) => {
+    try {
+        const user = await userFrom(req.params.user);
+        if (!user) return res.status(404).json({ error: 'No such user' });
+        const sheet = await drama.rapSheet(user.id);
+        res.set('Cache-Control', 'no-store');
+        res.json(sheet);
+    } catch (err) { fail(res, err, 'Failed to load the rap sheet'); }
+});
+router.get('/opt-out', requireAuth, async (req, res) => { try { res.json({ opted_out: await drama.optedOut(req.user.id) }); } catch (err) { fail(res, err, 'Failed'); } });
+router.put('/opt-out', requireAuth, async (req, res) => { try { res.json(await drama.setOptOut(req.user.id, !!req.body?.out)); } catch (err) { fail(res, err, 'Failed'); } });
 
 router.get('/levels', async (req, res) => { try { res.json({ levels: await mic.levelsLeaderboard(20) }); } catch (err) { fail(res, err, 'Failed'); } });
 

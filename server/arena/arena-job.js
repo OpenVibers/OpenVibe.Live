@@ -39,11 +39,17 @@ async function start() {
     _clock = setInterval(() => housekeeping().catch(e => console.warn('[Arena] housekeeping:', e.message)), CLOCK_MS);
     if (_clock.unref) _clock.unref();
     setTimeout(() => housekeeping().catch(() => {}), 20_000).unref?.();
-    console.log('[Arena] job started (backfill of past speech every 20 min; listener every 15 s; beef clocks every 60 s) — Battle Cam mode: pure mic');
+    console.log('[Arena] job started (drama desk every 5 min; backfill of past speech every 20 min; listener every 15 s; beef clocks every 60 s)');
 }
 
+let _lastDrama = 0;
 async function housekeeping() {
     if (!await arena.arenaEnabled()) return;
+    // The drama desk (drama.js): every 5 min, read what streamers did and write the stories.
+    if (Date.now() - _lastDrama >= 5 * 60 * 1000) {
+        _lastDrama = Date.now();
+        try { const r = await require('./drama').detect(); if (r.created) console.log(`[Arena] drama desk: ${r.created} new stor${r.created === 1 ? 'y' : 'ies'}`); } catch (e) { console.warn('[Arena] drama desk:', e.message); }
+    }
     // Clocks only: forfeit beefs whose clock ran out, hard-end the ones past 24 h. There is no chat
     // scan, no discovery and no lore — the Arena is pure mic (listener.js).
     try { await require('./beef').tick(); } catch (e) { console.warn('[Arena] beef tick:', e.message); }

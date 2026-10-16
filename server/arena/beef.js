@@ -89,6 +89,7 @@ async function recordHit(speakerId, targetId, hit) {
         console.log(`[Arena] beef #${beef.id} opened: user ${speakerId} → user ${targetId}${history.fights ? ' (rematch)' : ''}`);
         try { require('./notify').arenaNotify(targetId, { type: 'beef_open', title: `${await nameOf(speakerId)} has words for you${history.fights ? ' — rematch' : ''}`, message: `${hit.best_line ? `“${String(hit.best_line).slice(0, 120)}” — ` : ''}answer on your own stream within ${await isLive(targetId) ? `${RESPONSE_LIVE_MIN} min` : `${RESPONSE_OFFLINE_HOURS} h`} or forfeit.`, icon: '🥊', url: `/arena/beef/${beef.id}`, key: `open:${beef.id}`, senderId: speakerId, senderName: await nameOf(speakerId) }); } catch { /* */ }
         const id = beef.id;
+        require('./drama').beefStory('open', { id, a_user_id: speakerId, b_user_id: targetId }, { about: hit.about, opening_line: hit.best_line }).catch(() => {});
         headlineFor('open', { a: await nameOf(speakerId), b: await nameOf(targetId), opening_line: hit.best_line, about: hit.about, rematch: history.fights > 0, record_between: history }).then(async h => { if (h) await db.run('UPDATE arena_beefs SET headline = ? WHERE id = ?', [h, id]); }).catch(() => {});
     }
     const side = beef.a_user_id === speakerId ? 'a' : 'b';
@@ -135,6 +136,10 @@ async function resolve(beef, resolution, winnerId) {
     if (winnerId) await mic().addXp(winnerId, XP_BEEF_WIN + (upset ? 20 : 0), upset ? 'beef_upset_win' : 'beef_win', beef.id);
     console.log(`[Arena] beef #${beef.id} resolved: ${resolution}${winnerId ? ` winner user ${winnerId}` : ' draw'}${upset ? ' UPSET' : ''}`);
     try { const n = require('./notify'); for (const uid of [beef.a_user_id, beef.b_user_id]) { const won = winnerId === uid, draw = winnerId == null; n.arenaNotify(uid, { type: 'beef_over', title: draw ? `Draw with ${await nameOf(uid === beef.a_user_id ? beef.b_user_id : beef.a_user_id)}` : won ? `You won the beef with ${await nameOf(loserId)}${upset ? ' — UPSET' : ''}` : `${await nameOf(winnerId)} won the beef${resolution === 'forfeit' ? ' — you ran out the clock' : ' on points'}`, message: won ? `+${XP_BEEF_WIN + (upset ? 20 : 0)} XP. ${t.a}–${t.b}.` : `${t.a}–${t.b}. Say their name on mic for a rematch.`, icon: won ? '🏆' : draw ? '🤝' : '💀', url: `/arena/beef/${beef.id}`, key: `over:${beef.id}` }); } } catch { /* */ }
+    if (winnerId && loserId) {
+        const ws = winnerId === beef.a_user_id ? t.a : t.b, ls = winnerId === beef.a_user_id ? t.b : t.a;
+        require('./drama').beefStory(resolution === 'forfeit' ? 'forfeit' : 'win', beef, { winnerId, loserId, scoreWinner: ws, scoreLoser: ls, upset: !!upset }).catch(() => {});
+    }
     const id = beef.id;
     headlineFor(resolution, ctx).then(async h => { if (h) await db.run('UPDATE arena_beefs SET result_headline = ? WHERE id = ?', [h, id]); }).catch(() => {});
     try { await arena().loadRoster(true); } catch { /* */ }
