@@ -6192,6 +6192,9 @@ function openViewerPreview() {
     const streamData = ss?.streamData || null;
     const slot = streamData?.managed_stream_slug || streamData?.managed_stream_id || null;
     const url = currentUser?.username ? channelPath(currentUser.username, slot) : '/';
+    // On a phone a popup is a new tab, and a phone pauses the camera of the tab left behind: the stream ended
+    // (owner, 10-16). There the preview opens over the page instead (broadcast-studio.js).
+    if (window.bcStudio && bcStudio.phone() && getStreamState(streamId)?.localStream) return bcStudio.showViewer(url);
     _viewerPreviewWindow = window.open(
         url,
         'viewer-preview',

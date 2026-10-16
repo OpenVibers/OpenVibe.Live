@@ -20,7 +20,7 @@
     // A phone held upright, or turned sideways (wide but short, with a touch screen).
     const NARROW = window.matchMedia('(max-width: 760px), (pointer: coarse) and (max-height: 520px)');
     const st = {
-        root: null, micOff: false, camOff: false, torch: false, chatHidden: false, busy: false,
+        root: null, micOff: false, camOff: false, torch: false, chatHidden: false, busy: false, viewer: null, viewerMute: 0,
         dismissedFor: null, hadLocal: false, sheet: null, confirm: null, parked: [], cameras: 0, lastFocus: null,
     };
 
@@ -121,18 +121,50 @@
         createBroadcastClip();
     }
 
-    async function share() {
+    /** Copies the channel link. (The system share sheet takes a phone away from this tab, which pauses the camera.) */
+    function share() {
         const user = typeof currentUser !== 'undefined' && currentUser ? currentUser.username : null;
         if (!user) return;
         const url = `${location.origin}/@${encodeURIComponent(user)}`;
-        const ss = streamState();
-        const title = (ss && ss.streamData && ss.streamData.title) || 'My stream';
-        if (navigator.share) {
-            try { await navigator.share({ title, url }); return; } catch (err) { if (err && err.name === 'AbortError') return; }
-        }
-        if (typeof copyToClipboard === 'function') copyToClipboard(url);
-        else if (navigator.clipboard) navigator.clipboard.writeText(url).then(() => say('Link copied', 'success'), () => {});
+        if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(url).then(() => say('Link copied. Paste it anywhere to share your stream.', 'success'), () => say(url));
+        else if (typeof copyToClipboard === 'function') copyToClipboard(url);
+        else say(url);
     }
+
+    // ── Staying on this tab ──
+    // A phone pauses the camera of a tab it leaves, and the stream ends a minute later: every way out of the page
+    // while live either stays in it (the viewer preview below), asks first (leaving), or says what happened.
+    /** What viewers see, over the page: the channel in a frame, its sound off (the phone's mic would hear it). */
+    function showViewer(url) {
+        closeViewer();
+        const frame = el('iframe', { class: 'bcs-viewer-frame', src: url, title: 'Your stream, as viewers see it' });
+        const box = el('div', { class: 'bcs-viewer', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'What viewers see' },
+            el('div', { class: 'bcs-viewer-head' },
+                el('div', null, el('b', { text: 'What viewers see' }), el('small', { text: 'A few seconds behind you, sound off' })),
+                el('button', { type: 'button', class: 'bcs-x', 'aria-label': 'Close', onclick: closeViewer }, icon('fa-xmark'))),
+            frame);
+        st.viewer = el('div', { class: 'bcs-sheet-wrap bcs-center', onclick: (e) => { if (e.target === st.viewer) closeViewer(); } }, box);
+        document.body.append(st.viewer);
+        st.viewerMute = setInterval(() => {
+            try { for (const m of frame.contentDocument.querySelectorAll('video, audio')) { m.muted = true; m.volume = 0; } } catch { /* not loaded yet */ }
+        }, 400);
+    }
+    function closeViewer() {
+        clearInterval(st.viewerMute);
+        if (st.viewer) { st.viewer.remove(); st.viewer = null; }
+    }
+    window.addEventListener('beforeunload', (e) => {
+        if (!localStream()) return;
+        e.preventDefault();
+        e.returnValue = 'You are live. Leaving this page ends your stream.';
+    });
+    let hiddenAt = 0;
+    document.addEventListener('visibilitychange', () => {
+        if (!localStream()) { hiddenAt = 0; return; }
+        if (document.hidden) { hiddenAt = Date.now(); return; }
+        if (hiddenAt && NARROW.matches && Date.now() - hiddenAt > 3000) say('Keep this tab open in front while you are live. A phone pauses the camera in other tabs and apps, and the stream ends after a minute.');
+        hiddenAt = 0;
+    });
 
     // ── The overlay ──
     function railButton(act, ico, label, onClick) {
@@ -177,6 +209,7 @@
     function unmount() {
         closeSheet();
         closeConfirm();
+        closeViewer();
         document.body.classList.remove('bc-studio-on', 'bc-studio-chat-off');
         if (st.root) st.root.remove();
         st.root = null;
@@ -343,7 +376,7 @@
             el('div', { class: 'bcs-grab', 'aria-hidden': 'true' }),
             el('div', { class: 'bcs-sheet-head' },
                 el('div', { class: 'bcs-sheet-who' }, el('b', { id: 'bcs-sheet-title', text: title }), user ? el('small', { text: `openvibe.live/@${user}` }) : null),
-                el('button', { type: 'button', class: 'bcs-chip bcs-chip-strong', onclick: share }, icon('fa-share-nodes'), ' Share'),
+                el('button', { type: 'button', class: 'bcs-chip bcs-chip-strong', onclick: share }, icon('fa-link'), ' Copy link'),
                 el('button', { type: 'button', class: 'bcs-x', 'aria-label': 'Close', onclick: closeSheet }, icon('fa-xmark'))),
             grid, voice, st.parked.length ? restreams : null);
         st.sheet = el('div', { class: 'bcs-sheet-wrap', onclick: (e) => { if (e.target === st.sheet) closeSheet(); } }, sheet);
@@ -378,7 +411,8 @@
 
     document.addEventListener('keydown', (e) => {
         if (e.key !== 'Escape') return;
-        if (st.confirm) closeConfirm();
+        if (st.viewer) closeViewer();
+        else if (st.confirm) closeConfirm();
         else if (st.sheet) closeSheet();
     });
 
@@ -429,5 +463,5 @@
     if (NARROW.addEventListener) NARROW.addEventListener('change', tick);
     ensureReturn();
 
-    window.bcStudio = { toggleMic, toggleCamera, flip, open: () => { st.dismissedFor = null; tick(); }, _state: st };
+    window.bcStudio = { toggleMic, toggleCamera, flip, showViewer, phone: () => NARROW.matches, open: () => { st.dismissedFor = null; tick(); }, _state: st };
 })();

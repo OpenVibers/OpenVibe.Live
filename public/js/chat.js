@@ -4071,7 +4071,7 @@ function renderDeployCard(data, opts = {}) {
     const rest = commits.length - SHOW;
     el.innerHTML = `<button type="button" class="chat-deploy-h" aria-expanded="${wasExpanded ? 'true' : 'false'}"><b>🚀 ${commits.length} update${commits.length === 1 ? '' : 's'} shipped</b><span class="chat-deploy-t" title="${esc(last.toLocaleString())}">${esc(range)}${deploys > 1 ? ' · ' + deploys + ' deploys' : ''}</span></button>
         <ul>${commits.map((c, i) => `<li class="${i >= SHOW ? 'is-hidden' : ''}${fresh.has(c.hash) ? ' is-fresh' : ''}">${c.hash ? `<a href="https://github.com/OpenVibers/OpenVibe.Live/commit/${esc(c.hash)}" target="_blank" rel="noopener">${esc(c.short || String(c.hash).slice(0, 7))}</a>` : '<i></i>'}<span>${esc(c.subject)}</span></li>`).join('')}</ul>
-        <div class="chat-deploy-f">${rest > 0 ? `<button type="button" class="chat-deploy-more" aria-expanded="${wasOpen ? 'true' : 'false'}">${wasOpen ? 'Show fewer' : `Show ${rest} more`}</button>` : ''}<span class="chat-deploy-a"><a href="/updates" target="_blank" rel="noopener">Patch notes</a>${opts.live ? '<button type="button" class="chat-deploy-reload" title="Load the new version">Reload to update</button>' : ''}</span></div>`;
+        <div class="chat-deploy-f">${rest > 0 ? `<button type="button" class="chat-deploy-more" aria-expanded="${wasOpen ? 'true' : 'false'}">${wasOpen ? 'Show fewer' : `Show ${rest} more`}</button>` : ''}<span class="chat-deploy-a"><a href="/updates" target="_blank" rel="noopener">Patch notes</a>${opts.live && !_broadcastingHere() ? '<button type="button" class="chat-deploy-reload" title="Load the new version">Reload to update</button>' : ''}</span></div>`;
     if (wasOpen) el.classList.add('is-open');
     el.classList.toggle('is-collapsed', !wasExpanded);
     const head = el.querySelector('.chat-deploy-h');
@@ -4079,11 +4079,19 @@ function renderDeployCard(data, opts = {}) {
     const more = el.querySelector('.chat-deploy-more');
     if (more) more.addEventListener('click', () => { const open = el.classList.toggle('is-open'); more.textContent = open ? 'Show fewer' : `Show ${rest} more`; more.setAttribute('aria-expanded', String(open)); });
     const reload = el.querySelector('.chat-deploy-reload');
-    if (reload) reload.addEventListener('click', () => { location.href = location.pathname + '?_=' + Date.now(); });
+    if (reload) reload.addEventListener('click', () => {
+        // Reloading the broadcast page ends a stream sent from this browser (the owner lost one that way, 10-16).
+        if (_broadcastingHere()) { if (typeof toast === 'function') toast('Reloading would end your stream. Reload after you end it.', 'info'); return; }
+        location.href = location.pathname + '?_=' + Date.now();
+    });
     // A live update moves the card to the end (it IS the newest message); history keeps its position.
     if (!el.isConnected || opts.live) container.appendChild(el);
     scrollChat();
     if (opts.live && _chatUserScrolledUp) _onNewChatMessageWhileScrolledUp();
+}
+/** Is this browser sending a live stream (the broadcast page's camera or screen)? Then nothing here may reload it. */
+function _broadcastingHere() {
+    try { return typeof broadcastState !== 'undefined' && [...broadcastState.streams.values()].some((s) => s && s.localStream); } catch { return false; }
 }
 /** Old rows were prose: "🚀 Server restarted (abc1234) — a · b · c (2m ago)". Pull the subjects back out. */
 function _legacyDeploy(m) {
