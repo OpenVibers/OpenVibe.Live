@@ -2,11 +2,11 @@
  * AI Moments pages (server/seo/pages.js, roadmap §33.4 and §33.8): what the AI made from a stream is
  * labelled as AI-made, credited to no person, kept out of search and pointed at its source.
  *
- *   - An auto-clip (Media auto_generated), an AI moment paste (Community origin 'ai') and an
- *     AI-written after-show recap render noindex,follow, with the canonical on the source VOD at
- *     the moment (/vod/<id>?t=<s>) when that VOD is known and public, else on themselves.
+ *   - An AI moment paste (Community origin 'ai') and an AI-written after-show recap render
+ *     noindex,follow, with the canonical on the source VOD at the moment (its OpenVibe.Video page)
+ *     when that VOD is known and public, else on themselves. Clips and VODs are OpenVibe.Video's.
  *   - Their structured data names no Person and no author; it says AI-generated and links the source.
- *   - People's clips and pastes keep index,follow, their own canonical and their author.
+ *   - People's pastes keep index,follow, their own canonical and their author.
  *   - The sitemap lists people's clips only, even when the upstream ignores the filter.
  *
  * Media and Community are stubbed in-process; the database is a temp file.
@@ -102,47 +102,9 @@ async function check(name, fn) {
 
 console.log('AI Moments pages');
 
-    await check('an auto-clip is noindex,follow, canonical to its VOD at the moment, labelled AI', async () => {
-        const m = await seo._pageMeta('/clip/20');
-        assert.strictEqual(m.robots, 'noindex,follow');
-        assert.strictEqual(m.canonicalPath, 'https://openvibe.video/v/10?t=125');
-        assert.strictEqual(m.ogUrlPath, '/clip/20', 'a shared link still previews the clip');
-        assert.ok(/AI clip from Alice's stream/.test(m.title), m.title);
-        assert.ok(/^AI-generated clip/.test(m.description), m.description);
-        assert.ok(m.snapshot.includes("AI clip · from Alice&#39;s stream"), 'the byline says what made it');
-        assert.ok(m.snapshot.includes('https://openvibe.video/v/10?t=125'), 'the page links its source, on OpenVibe.Video');
-        assert.ok(!/Clipped by/.test(m.snapshot), 'never "Clipped by" the streamer');
-        assertNoPerson(m, 'auto-clip');
-        const vo = mainLd(m);
-        assert.strictEqual(vo.keywords, 'AI-generated');
-        assert.strictEqual(vo.isBasedOn, 'https://openvibe.video/v/10?t=125');
-        const crumbs = m.jsonLd.find((n) => n['@type'] === 'BreadcrumbList').itemListElement.map((i) => i.name);
-        assert.deepStrictEqual(crumbs.slice(0, 2), ['Home', 'AI Moments']);
-    });
-
-    await check('the rendered page carries it: robots, canonical and og:url', async () => {
-        const html = seo.render(await seo._pageMeta('/clip/20'), '/clip/20');
-        assert.ok(html.includes('<meta name="robots" content="noindex,follow">'));
-        assert.ok(html.includes('<link rel="canonical" href="https://openvibe.video/v/10?t=125">'));
-        assert.ok(html.includes('<meta property="og:url" content="https://openvibe.live/clip/20">'));
-        assert.strictEqual((html.match(/<link rel="canonical"/g) || []).length, 1, 'one canonical');
-        assert.strictEqual((html.match(/<meta name="robots"/g) || []).length, 1, 'one robots tag');
-    });
-
-    await check('an auto-clip whose VOD is private keeps its own canonical (never a 404 target)', async () => {
-        const m = await seo._pageMeta('/clip/22');
-        assert.strictEqual(m.robots, 'noindex,follow');
-        assert.strictEqual(m.canonicalPath, '/clip/22');
-        assertNoPerson(m, 'auto-clip of a private VOD');
-    });
-
-    await check("a person's clip stays indexable, self-canonical, credited to the clipper", async () => {
-        const m = await seo._pageMeta('/clip/21');
-        assert.strictEqual(m.robots, 'index,follow');
-        assert.strictEqual(m.canonicalPath, 'https://openvibe.video/c/21', 'canonical on OpenVibe.Video');
-        assert.strictEqual(m.ogUrlPath, '/clip/21', 'this page stays its og:url');
-        assert.deepStrictEqual(mainLd(m).author, { '@type': 'Person', name: 'Bob' });
-        assert.ok(m.snapshot.includes('Clipped by Bob'));
+    await check('VOD and clip pages are OpenVibe.Video\'s: the renderer has nothing for them (they 301 there first)', async () => {
+        assert.strictEqual(await seo._pageMeta('/clip/20'), null);
+        assert.strictEqual(await seo._pageMeta('/vod/10'), null);
     });
 
     await check('an AI moment paste points at the VOD second it came from', async () => {

@@ -301,14 +301,9 @@ async function check(name, fn) {
         assert.ok(!/secret/.test(r.text));
     });
 
-    await check('server-rendered /vod/:id and /clip/:id: private is the unknown-id fall-through', async () => {
+    await check('/vod/:id and /clip/:id are OpenVibe.Video\'s pages: Live renders none of them, private or public', async () => {
         const seo = require('../server/seo');
-        assert.strictEqual(await seo._pageMeta('/vod/101'), null);
-        assert.strictEqual(await seo._pageMeta('/vod/102'), null);
-        assert.strictEqual(await seo._pageMeta('/clip/201'), null);
-        assert.strictEqual(await seo._pageMeta('/vod/999'), null);
-        assert.ok(await seo._pageMeta('/vod/100'), 'public VODs still render');
-        assert.ok(await seo._pageMeta('/clip/200'), 'public clips still render');
+        for (const p of ['/vod/101', '/vod/102', '/clip/201', '/vod/999', '/vod/100', '/clip/200']) assert.strictEqual(await seo._pageMeta(p), null, p);
     });
 
     await check('recently-ended streams: only a public VOD from Media rides along', async () => {

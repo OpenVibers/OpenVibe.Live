@@ -114,7 +114,7 @@ async function renderChannelVodsSection(username, liveStreams, vods, meta = {}) 
                 if (liveVod && liveVod.vod) {
                     const v = liveVod.vod;
                     liveVodHtml += `
-                        <a class="stream-card" href="/vod/${v.id}" onclick="return handleLinkClick(event, '/vod/${v.id}')" style="border:2px solid var(--accent);position:relative">
+                        <a class="stream-card" href="${videoHref('vod', v.id)}" onclick="return handleLinkClick(event, '${videoHref('vod', v.id)}')" style="border:2px solid var(--accent);position:relative">
                             <div class="stream-card-thumb">
                                 ${thumbImg(v.thumbnail_url, 'fa-video', v.title, `/api/thumbnails/generate/vod/${v.id}`)}
                                 <span class="stream-card-nsfw" style="background:#e53e3e;animation:pulse 2s infinite">● RECORDING</span>
@@ -134,7 +134,7 @@ async function renderChannelVodsSection(username, liveStreams, vods, meta = {}) 
         const canManage = _channelCanManage(username);
         _selSetContext(canManage, () => _reloadChannelContent(username));
         vodsGrid.innerHTML = liveVodHtml + vods.map(v => _selWrap('vod', v.id, `
-            <a class="stream-card" href="/vod/${v.id}" onclick="return handleLinkClick(event, '/vod/${v.id}')">
+            <a class="stream-card" href="${videoHref('vod', v.id)}" onclick="return handleLinkClick(event, '${videoHref('vod', v.id)}')">
                 <div class="stream-card-thumb">
                     ${thumbImg(v.thumbnail_url, 'fa-video', v.title, `/api/thumbnails/generate/vod/${v.id}`)}
                     ${_visBadge(v.visibility, v.is_public, canManage)}
@@ -210,7 +210,7 @@ function renderChannelClipsSection(username, clips, meta = {}) {
         const canManage = _channelCanManage(username);
         _selSetContext(canManage, () => _reloadChannelContent(username));
         clipsGrid.innerHTML = clips.map(cl => _selWrap('clip', cl.id, `
-            <a class="stream-card" href="/clip/${cl.id}" onclick="return handleLinkClick(event, '/clip/${cl.id}')">
+            <a class="stream-card" href="${videoHref('clip', cl.id)}" onclick="return handleLinkClick(event, '${videoHref('clip', cl.id)}')">
                 <div class="stream-card-thumb">
                     ${thumbImg(cl.thumbnail_url, 'fa-scissors', cl.title, `/api/thumbnails/generate/clip/${cl.id}`)}
                     ${_visBadge(cl.visibility, cl.is_public, canManage)}
@@ -291,7 +291,7 @@ function _renderClipsTakenGrid(username, data) {
         return;
     }
     grid.innerHTML = clips.map(cl => _selWrap('clip', cl.id, `
-            <a class="stream-card" href="/clip/${cl.id}" onclick="return handleLinkClick(event, '/clip/${cl.id}')">
+            <a class="stream-card" href="${videoHref('clip', cl.id)}" onclick="return handleLinkClick(event, '${videoHref('clip', cl.id)}')">
                 <div class="stream-card-thumb">
                     ${thumbImg(cl.thumbnail_url, 'fa-scissors', cl.title, `/api/thumbnails/generate/clip/${cl.id}`)}
                     ${_visBadge(cl.visibility, cl.is_public, canManage)}
@@ -333,7 +333,7 @@ function renderChannelClipsOfSection(username, clips, meta = {}) {
 
     if (clips.length) {
         grid.innerHTML = clips.map(cl => `
-            <a class="stream-card" href="/clip/${cl.id}" onclick="return handleLinkClick(event, '/clip/${cl.id}')">
+            <a class="stream-card" href="${videoHref('clip', cl.id)}" onclick="return handleLinkClick(event, '${videoHref('clip', cl.id)}')">
                 <div class="stream-card-thumb">
                     ${thumbImg(cl.thumbnail_url, 'fa-scissors', cl.title, `/api/thumbnails/generate/clip/${cl.id}`)}
                     ${cl.stream_protocol ? protocolBadge(cl.stream_protocol) : ''}
@@ -367,7 +367,7 @@ function renderChannelAiClipsSection(username, clips, meta = {}) {
     grid.textContent = '';
     if (!total) { renderVodsPagination('ch-ai-clips-pagination', 1, 0, pageSize, 'setChannelAiClipsPage', 'AI clips'); return; }
     for (const cl of clips) {
-        const href = `/clip/${Number(cl.id)}`;
+        const href = `${videoHref('clip', Number(cl.id))}`;
         const card = document.createElement('a');
         card.className = 'stream-card';
         card.href = href;
@@ -1906,7 +1906,7 @@ function _aiTimelineMomentHTML(mom, vodId) {
         ? `<img class="ai-tl-moment-thumb" src="${esc(thumbUrl)}" alt="" loading="lazy" onerror="this.remove()">`
         : '';
     const jump = vodId
-        ? `<a class="ai-tl-stamp" href="/vod/${vodId}?t=${off}" onclick="return handleLinkClick(event, '/vod/${vodId}?t=${off}')" title="Watch this moment"><i class="fa-solid fa-play"></i> ${stamp}</a>`
+        ? `<a class="ai-tl-stamp" href="${videoHref('vod', vodId, off)}" onclick="return handleLinkClick(event, '${videoHref('vod', vodId, off)}')" title="Watch this moment"><i class="fa-solid fa-play"></i> ${stamp}</a>`
         : `<span class="ai-tl-stamp ai-tl-stamp--novod" title="No VOD available for this moment"><i class="fa-solid fa-clock"></i> ${stamp}</span>`;
     return `<div class="ai-tl-moment">${thumb}<div class="ai-tl-moment-body">${jump}<div class="ai-tl-moment-desc">${desc}</div>${tagHTML ? `<div class="ai-tl-tags">${tagHTML}</div>` : ''}</div></div>`;
 }
@@ -1942,7 +1942,7 @@ function _aiTimelineSessionHTML(s) {
     const dateStr = when ? new Date((String(when).includes('T') ? when : when.replace(' ', 'T') + 'Z')).toLocaleDateString([], { year: 'numeric', month: 'short', day: 'numeric' }) : '';
     const ov = (s.ai_overview || s.ai_overview_short || '').trim();
     const memCount = s.memory_count != null ? s.memory_count : (Array.isArray(s.memories) ? s.memories.length : 0);
-    const _vodHref = s.vod_id ? `/vod/${s.vod_id}` : null;
+    const _vodHref = s.vod_id ? `${videoHref('vod', s.vod_id)}` : null;
     const _asLink = (label) => _vodHref ? `<a href="${_vodHref}" onclick="return handleLinkClick(event, '${_vodHref}')">${label}</a>` : label;
     const aiTitle = _aiSessionTitle(s);
     const mainTitle = aiTitle ? _asLink(esc(aiTitle)) : _asLink(esc(s.title || 'Untitled stream'));
@@ -2054,7 +2054,7 @@ async function _aiTlToggleTranscript(btn) {
             }
             const nSpeech = blocks.filter(b => b.kind === 'speech').length, nSound = blocks.filter(b => b.kind === 'sounds').length;
             const cov = data.coverageSec ? `${_aiTimeFmt(data.coverageSec)} of speech transcribed` : '';
-            const jumpFor = (t, cls = 'ai-tl-ts') => vod ? `<a class="${cls}" href="/vod/${vod}?t=${Math.floor(t)}" onclick="return handleLinkClick(event, '/vod/${vod}?t=${Math.floor(t)}')" title="Watch from here">${_aiTimeFmt(t)}</a>` : `<span class="${cls}">${_aiTimeFmt(t)}</span>`;
+            const jumpFor = (t, cls = 'ai-tl-ts') => vod ? `<a class="${cls}" href="${videoHref('vod', vod, Math.floor(t))}" onclick="return handleLinkClick(event, '${videoHref('vod', vod, Math.floor(t))}')" title="Watch from here">${_aiTimeFmt(t)}</a>` : `<span class="${cls}">${_aiTimeFmt(t)}</span>`;
             const toolbar = `<div class="ai-tl-tr-bar">
                 <div class="ai-tl-tr-filter" role="tablist">
                     <button type="button" class="active" data-f="all">All</button>
@@ -2379,7 +2379,7 @@ function _aboutAiOverviewHTML() {
 let _aboutRecent = { username: null, vods: [], clips: [] };
 function _aboutRowCard(kind, it) {
     const isVod = kind === 'vod';
-    const href = isVod ? `/vod/${it.id}` : `/clip/${it.id}`;
+    const href = isVod ? `${videoHref('vod', it.id)}` : `${videoHref('clip', it.id)}`;
     const gen = isVod ? `/api/thumbnails/generate/vod/${it.id}` : `/api/thumbnails/generate/clip/${it.id}`;
     const views = Number(it.view_count || 0);
     return `<a class="ch-about-card" href="${href}" onclick="return handleLinkClick(event, '${href}')">
@@ -3162,7 +3162,7 @@ function _offlineCyclerRender() {
 }
 function _offlineTopCard(kind, item) {
     const isVod = kind === 'vod';
-    const href = isVod ? `/vod/${item.id}` : `/clip/${item.id}`;
+    const href = isVod ? `${videoHref('vod', item.id)}` : `${videoHref('clip', item.id)}`;
     const icon = isVod ? 'fa-video' : 'fa-scissors';
     const label = isVod ? 'VOD' : 'Clip';
     const thumbGen = isVod ? `/api/thumbnails/generate/vod/${item.id}` : `/api/thumbnails/generate/clip/${item.id}`;

@@ -166,7 +166,7 @@ placeholder markup, then the data, and then several parts that load on their own
   ("Channel", "0 followers") are outlines; until the first render and, offline, the "Most watched" block and the discover
   board (`ch-ready`, at most 2.5 s after the data) the tabs are out of the layout and the page keeps a full viewport, so
   the footer never shows and climbs back down.
-- **VOD and clip** (`_mediaReady` in `app-media.js`, `mp-data`/`mp-ready`): the same outlines; the AI timeline, the
+- **VOD and clip** (until 2026-10, then OpenVibe.Video's pages; `_mediaReady` in the removed `app-media.js`): the same outlines; the AI timeline, the
   activity strip, the source card, the clips and the comments appear together. `.vod-player-container` keeps a 16:9 box
   (`max-height: 70vh`, like the video) before the video knows its size; a taller video still grows it.
 - **Home hero:** the countdown line ships as `&nbsp;` instead of `hidden`; the "shipped" line is no longer `hidden`

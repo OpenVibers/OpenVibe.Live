@@ -581,7 +581,7 @@ function _ssoHint() {
 // What the signed-in account watches/opens here shows up in its network-wide History and the
 // "Recently used" rows of the shared navbar on every other site. Recorded after the route
 // rendered and its title settled; never for guests, and only for the pages worth remembering.
-const _HISTORY_PAGES = { channel: 'stream', 'vod-player': 'vod', 'clip-player': 'clip', 'paste-viewer': 'paste', pastes: null, rundown: 'page' };
+const _HISTORY_PAGES = { channel: 'stream', 'paste-viewer': 'paste', pastes: null, rundown: 'page' };
 let _historyTimer = null;
 function _recordHistory(pageId) {
     const type = _HISTORY_PAGES[pageId];
@@ -848,6 +848,7 @@ function ovViewsBadge(n) {
 
 function handleLinkClick(event, urlPath, replace = false) {
     if (isModifiedLinkClick(event)) return true;
+    if (isOffSite(urlPath)) return true;   // the link's own href leaves Live
     event?.preventDefault?.();
     navigate(urlPath, replace);
     return false;
@@ -910,20 +911,13 @@ function teardownRoute(nextPath) {
 
     // Loops other modules own. Each is optional — a module that isn't loaded simply isn't stopped.
     const stop = (fn) => { try { if (typeof window[fn] === 'function') window[fn](); } catch { /* */ } };
-    // A VOD or clip playing Media's playlist: its hls.js instance, worker and loaders end with the page.
-    stop('vodDropHls');
     try { currentStreamId = null; } catch { /* */ }
-    // The VOD/clip chat replay re-arms itself every animation frame; nothing stopped it.
-    if (window._chatReplayTimer) { cancelAnimationFrame(window._chatReplayTimer); window._chatReplayTimer = null; }
-    window._vpChatReplay = null; window._clpChatReplay = null;
     // Channel strays that kept fetching or cycling off-route.
     stop('stopGoalWidget');
     stop('_stopOfflineCycler');
     stop('_stopCaptions');
     if (typeof _channelPastesTimer !== 'undefined' && _channelPastesTimer) { clearInterval(_channelPastesTimer); _channelPastesTimer = null; }
     if (typeof _goalCycleTimer !== 'undefined' && _goalCycleTimer) { clearInterval(_goalCycleTimer); _goalCycleTimer = null; }
-    // A Back press with the clip creator open left its key handler, drag handlers and preview loop.
-    try { const cm = document.getElementById('vp-clip-modal'); if (cm && cm.style.display && cm.style.display !== 'none') stop('closeClipCreator'); } catch { /* */ }
     stop('stopAiViewerActivity');
     stop('stopPlayerStatsPoll');
     // The broadcast desk's polls only matter while you are on it. Leaving them running elsewhere
@@ -937,7 +931,11 @@ function teardownRoute(nextPath) {
     }
 }
 
+/** A URL that leaves Live (an OpenVibe.Video watch page, another OpenVibe site): the browser goes there, not the SPA. */
+const isOffSite = (url) => /^https?:\/\//i.test(String(url || '')) && !String(url).startsWith(`${location.origin}/`);
+
 function navigate(urlPath, replace = false) {
+    if (isOffSite(urlPath)) { if (replace) location.replace(urlPath); else location.href = urlPath; return; }
     teardownRoute(urlPath);
 
     // Normalize path
@@ -1023,6 +1021,17 @@ function whenRouteReady(pageId, render) {
     });
 }
 
+/**
+ * A recording's or clip's page on openvibe.video (the shell's ov-video-base meta names the origin): videoHref('vod', 12),
+ * videoHref('clip', 7), videoHref('vod', 12, 95) for a moment. Plain links: they leave Live, so no SPA navigation.
+ */
+function videoHref(kind, id, t = null) {
+    const meta = document.querySelector('meta[name="ov-video-base"]');
+    const base = (meta && meta.content) || 'https://openvibe.video';
+    const at = t != null && Number(t) > 0 ? `?t=${Math.floor(Number(t))}` : '';
+    return `${base}/${kind === 'clip' ? 'c' : 'v'}/${encodeURIComponent(String(id))}${at}`;
+}
+
 /** A paste's page on openvibe.community (the shell's ov-pastes-base meta names it). */
 function pasteHref(slug) {
     const meta = document.querySelector('meta[name="ov-pastes-base"]');
@@ -1074,15 +1083,11 @@ function routeFromURL() {
         // Channels, VODs and clips through OpenVibe.Search (public/js/app-search.js).
         showPage('search');
         whenRouteReady('search', () => loadSearchPage());
-    } else if (segments[0] === 'vod' && segments[1]) {
-        // VOD player: /vod/:id  (optional ?t=<seconds> to auto-seek, e.g. from a clip link)
-        showPage('vod-player');
+    } else if ((segments[0] === 'vod' || segments[0] === 'clip') && segments[1]) {
+        // Recordings and clips are watched on openvibe.video (the server 301s these paths too).
         const _t = parseFloat(new URLSearchParams(window.location.search).get('t'));
-        whenRouteReady('vod-player', () => loadVodPlayer(segments[1], Number.isFinite(_t) && _t > 0 ? _t : null));
-    } else if (segments[0] === 'clip' && segments[1]) {
-        // Clip player: /clip/:id
-        showPage('clip-player');
-        whenRouteReady('clip-player', () => loadClipPlayer(segments[1]));
+        location.replace(videoHref(segments[0], segments[1], Number.isFinite(_t) && _t > 0 ? _t : null));
+        return;
     } else if (segments[0] === 'dashboard') {
         showPage('dashboard');
         whenRouteReady('dashboard', () => { if (typeof loadDashboard === 'function') loadDashboard(); });
@@ -1267,7 +1272,7 @@ function ovWakeBrandMark() {
     }, BRAND_AWAKE_MS);
 }
 
-const _PAGE_LABELS = { 'vod-player': 'video', 'clip-player': 'clip', broadcast: 'Go Live', recap: 'recap' };
+const _PAGE_LABELS = { broadcast: 'Go Live', recap: 'recap' };
 function _pageLabel(page) { return _PAGE_LABELS[page] || String(page).replace(/-/g, ' ').replace(/^./, (c) => c.toUpperCase()); }
 
 function showPage(page) {

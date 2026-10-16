@@ -19,7 +19,7 @@ const doc = assets.document('index.html').html;
 const active = (html) => [...html.matchAll(/<section id="(page-[a-z-]+)" class="page active"/g)].map((m) => m[1]);
 assert.deepStrictEqual(active(doc), ['page-home'], 'the shell itself shows home');
 for (const [url, page] of [
-    ['/', 'page-home'], ['/@someone', 'page-channel'], ['/vod/12', 'page-vod-player'], ['/clip/7', 'page-clip-player'],
+    ['/', 'page-home'], ['/@someone', 'page-channel'],
     ['/chat', 'page-chat'], ['/content', 'page-content'], ['/dashboard', 'page-dashboard'],
 ]) {
     assert.deepStrictEqual(active(assets.renderRoute(doc, url)), [page], `${url}: only ${page} is active`);
@@ -43,21 +43,9 @@ assert.ok(chCss.indexOf('#page-channel.page:not(.ch-ready)') > chCss.indexOf('#p
 assert.ok(chCss.includes('#page-channel:not(.ch-data) :is(#ch-offline-header, #ch-offline-screen) { visibility: hidden; }'), 'the offline header and screen are invisible (still laid out) until the data: social links add rows no outline can reserve');
 ok('the channel holds its tabs and height until its data and offline blocks are in');
 
-// ── VOD and clip pages ──
-const mJs = read('public/js/app-media.js');
-const mCss = read('public/css/features/media.css');
-assert.ok(/function _mediaReady\(pageId, ready = true\)/.test(mJs) && /function _mediaHasData\(pageId\)/.test(mJs), 'one helper for both pages');
-for (const [id, block] of [['page-vod-player', 'blocks.push(loadVodAiTimeline(v.id));'], ['page-clip-player', 'blocks.push(renderClipSourceCard(cl));']]) {
-    assert.ok(mJs.includes(`_mediaReady('${id}', false);`) && mJs.includes(`_mediaHasData('${id}');`) && mJs.includes(`Promise.allSettled(blocks).then(() => _mediaReady('${id}'));`), `${id}: pending → data → ready`);
-    assert.ok(mJs.includes(block), `${id}: waits for its own blocks`);
-}
-assert.ok(mJs.includes('blocks.push(renderVodContextStrip(v.id));'), 'the VOD also waits for the activity strip');
-assert.ok(mCss.includes('#page-vod-player:not(.mp-ready) :is(#vp-ai-timeline, #vp-context, .vod-player-layout > .section-header, #vp-clips-grid, #vp-comments) { display: none; }'), 'VOD parts held back');
-assert.ok(mCss.includes('#page-clip-player:not(.mp-ready) #clp-comments { display: none; }'), 'clip comments held back');
-const style = read('public/css/style.css');
-const player = /\.vod-player-container \{([^}]*)\}/.exec(style);
-assert.ok(player && /aspect-ratio: 16 \/ 9;/.test(player[1]) && /max-height: 70vh;/.test(player[1]), 'the player keeps a 16:9 box (capped like the video) before the video knows its size');
-ok('VOD and clip pages keep the player box and hold back the late parts');
+// VOD and clip pages are OpenVibe.Video's since the handover (server/web/video-handover.js): nothing of theirs is here.
+assert.ok(!fs.existsSync(path.join(ROOT, 'public/js/app-media.js')) && !fs.existsSync(path.join(ROOT, 'public/css/features/media.css')), 'the old player is gone');
+ok('VOD and clip pages live on OpenVibe.Video');
 
 // ── Home hero and early widgets ──
 const index = read('public/index.html');
@@ -82,9 +70,6 @@ const scriptingBlock = (css, rule) => {
 };
 for (const rule of ['#page-channel:not(.ch-ready) .channel-below-fold { display: none; }', '#page-channel:not(.ch-data) :is(#ch-offline-header, #ch-offline-screen)', '#page-channel.page:not(.ch-ready) { min-height: 100vh; }']) {
     assert.ok(scriptingBlock(chCss, rule), `channel.css: "${rule}" only with scripting`);
-}
-for (const rule of ['#page-vod-player:not(.mp-ready)', '#page-clip-player:not(.mp-ready) #clp-comments', ':is(#page-vod-player, #page-clip-player):not(.mp-data) :is(#vp-avatar']) {
-    assert.ok(scriptingBlock(mCss, rule), `media.css: "${rule}" only with scripting`);
 }
 const noscriptText = (html) => ((/<noscript>([\s\S]*?)<\/noscript>/.exec(html) || [])[1] || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
 for (const frag of ['chat', 'search']) {

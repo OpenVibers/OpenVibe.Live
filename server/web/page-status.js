@@ -20,9 +20,9 @@
  *   /dashboard/… /broadcast/… /chat/… /rundown/…        any depth: these pages route sub-paths themselves (/arena/… redirects)
  *   /@user  /@user/<slot>                               a user that exists; a renamed one's old name
  *                                                       answers 301 → /@current (never a bare /name)
- *   /vod/:id  /clip/:id                                 a Media item this visitor may see — a private
- *                                                       one is missing to everyone but its owners and
- *                                                       staff (server/media-proxy/access.js)
+ *   /vod/:id  /clip/:id                                 a numeric id 301s to OpenVibe.Video before this runs
+ *                                                       (server/web/video-handover.js); anything else is
+ *                                                       answered here (a 404)
  *   /p/:slug                                            a paste that exists
  *   /recap/:streamId  /stream/:id                       a stream that exists
  *
