@@ -1264,6 +1264,25 @@ router.get('/recently-online', async (req, res) => {
         } catch (err) {
             console.warn('[Streaming] recently-online thumb enrichment failed:', err.message);
         }
+        // Who on this page is live right now: the card says so (and which slot), instead of "last online 22h ago".
+        try {
+            const ids = streamers.map(s => s.user_id).filter(Boolean);
+            if (ids.length) {
+                const live = await db.all(`SELECT id, user_id, managed_stream_id, title, started_at, viewer_count, thumbnail_url FROM streams
+                    WHERE is_live = 1 AND user_id IN (${ids.map(() => '?').join(', ')}) ORDER BY started_at DESC`, ids);
+                for (const s of streamers) {
+                    const mine = live.filter(l => l.user_id === s.user_id);
+                    if (!mine.length) continue;
+                    s.live = { started_at: mine[0].started_at, viewer_count: mine.reduce((n, l) => n + (Number(l.viewer_count) || 0), 0), title: mine[0].title || null };
+                    for (const ms of (s.managed_streams || [])) {
+                        const l = mine.find(x => x.managed_stream_id != null && Number(x.managed_stream_id) === Number(ms.managed_stream_id));
+                        if (l) { ms.is_live = true; ms.live_started_at = l.started_at; if (l.thumbnail_url) ms.live_thumbnail = l.thumbnail_url; }
+                    }
+                    // The live slot leads the card's list.
+                    s.managed_streams.sort((a, b) => (b.is_live ? 1 : 0) - (a.is_live ? 1 : 0));
+                }
+            }
+        } catch (err) { console.warn('[Streaming] recently-online live status failed:', err.message); }
         // Each streamer's nearest active donation goal → progress bar on the card.
         try {
             const goals = await db.getActiveGoalsForUsers(streamers.map(s => s.user_id).filter(Boolean));

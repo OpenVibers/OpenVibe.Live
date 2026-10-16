@@ -1387,6 +1387,18 @@ async function loadHomeRecentOnline(opts) {
     } catch { rail.filling = false; }
 }
 
+const _SG_THUMB_PLACEHOLDER = '<div class="streamer-group-stream-thumb-placeholder"><i class="fa-solid fa-video"></i></div>';
+// openvibe.media thumbnails come sized (Media's /t/:id?w=&fmt=): a 320 px WebP is about a third of the JPEG.
+function _sgThumbSrc(url) {
+    if (!url) return null;
+    return /^https:\/\/openvibe\.media\/t\/[^?#\s]+$/.test(url) ? `${url}?w=320&fmt=webp` : url;
+}
+// A thumbnail that does not load (a dropped request on a phone, a frame not written yet) becomes the placeholder.
+function _sgThumbFail(img) {
+    const box = img && img.parentNode;
+    if (box) box.innerHTML = _SG_THUMB_PLACEHOLDER;
+}
+
 function renderRecentlyOnline(containerId, streamers, append) {
     const container = document.getElementById(containerId);
     if (!container) return;
@@ -1401,15 +1413,21 @@ function renderRecentlyOnline(containerId, streamers, append) {
         const channelHref = `/@${s.username}`;
         const streamsHtml = msList.length ? msList.map(ms => {
             const href = channelPath(s.username, ms.slug || ms.managed_stream_id);
-            const thumb = ms.vod_thumbnail
-                ? `<img src="${esc(ms.vod_thumbnail)}" alt="" loading="lazy" class="streamer-group-stream-thumb-img">`
-                : `<div class="streamer-group-stream-thumb-placeholder"><i class="fa-solid fa-video"></i></div>`;
+            // A live slot shows its current frame; otherwise the latest recording's. A picture that fails to load
+            // becomes the placeholder (_sgThumbFail) instead of a broken image.
+            const src = _sgThumbSrc(ms.is_live && ms.live_thumbnail ? ms.live_thumbnail : ms.vod_thumbnail);
+            const thumb = src
+                ? `<img src="${esc(src)}" alt="" loading="lazy" class="streamer-group-stream-thumb-img" onerror="_sgThumbFail(this)">`
+                : _SG_THUMB_PLACEHOLDER;
+            const when = ms.is_live
+                ? `<span class="sg-live"><span class="sg-live-dot"></span> Live now</span>${ms.live_started_at ? ` · ${formatUptime(ms.live_started_at)}` : ''}`
+                : `<i class="fa-solid fa-clock"></i> ${ms.last_live_at ? timeAgo(ms.last_live_at) : 'long ago'}`;
             return `
-                <a class="streamer-group-stream" href="${href}" onclick="return handleLinkClick(event, '${href}')">
+                <a class="streamer-group-stream${ms.is_live ? ' is-live' : ''}" href="${href}" onclick="return handleLinkClick(event, '${href}')">
                     <div class="streamer-group-stream-thumb">${thumb}</div>
                     <div class="streamer-group-stream-info">
                         <div class="streamer-group-stream-title">${esc(ms.title || 'Stream')}</div>
-                        <div class="streamer-group-stream-time muted"><i class="fa-solid fa-clock"></i> ${ms.last_live_at ? timeAgo(ms.last_live_at) : 'long ago'}</div>
+                        <div class="streamer-group-stream-time muted">${when}</div>
                     </div>
                 </a>`;
         }).join('') : `<a class="streamer-group-stream" href="${channelHref}" onclick="return handleLinkClick(event, '${channelHref}')">
@@ -1421,7 +1439,9 @@ function renderRecentlyOnline(containerId, streamers, append) {
                     <a class="streamer-group-identity" href="${channelHref}" onclick="return handleLinkClick(event, '${channelHref}')">
                         ${avatar}
                         <span class="streamer-group-name">${esc(s.display_name || s.username)}</span>
-                        <span class="streamer-group-last-online muted"><i class="fa-solid fa-clock"></i> ${timeAgo(s.last_online_at)}</span>
+                        ${s.live
+                            ? `<span class="streamer-group-last-online sg-live"><span class="sg-live-dot"></span> LIVE · <i class="fa-solid fa-eye"></i> ${Number(s.live.viewer_count) || 0}</span>`
+                            : `<span class="streamer-group-last-online muted"><i class="fa-solid fa-clock"></i> ${timeAgo(s.last_online_at)}</span>`}
                     </a>
                 </div>
                 ${_cardAiHTML(s.ai_overview_short, s.ai_overview)}
