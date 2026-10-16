@@ -19,7 +19,8 @@ const opt = (name, def) => { const i = args.indexOf(name); return i === -1 ? def
 const BASE = String(opt('--base', 'https://openvibe.live')).replace(/\/+$/, '');
 const SETTLE = Number(opt('--settle', 9000));
 // The public routes people land on from search, links and the home page (signed out).
-const ROUTES = ['/', '/content', '/vods', '/clips', '/moments', '/rundown', '/chat', '/search?q=game', '/@iZoR_One', '/vod/5717', '/clip/441', '/pastes', '/docs'];
+// (VOD and clip pages are OpenVibe.Video's: /vod/<id> and /clip/<id> 301 there.)
+const ROUTES = ['/', '/content', '/vods', '/clips', '/moments', '/rundown', '/chat', '/search?q=game', '/@iZoR_One', '/pastes', '/docs'];
 const WIDTHS = [[412, 900, true], [1366, 900, false]];
 
 async function coverage(url, [width, height, mobile]) {
