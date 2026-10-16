@@ -269,13 +269,13 @@ function updateRsRestreamSlotUI() {
     // Status + action buttons
     html += '<div class="bc-rs-status-row">';
     if (isLive) {
-        html += `<span class="bc-rs-status bc-rs-live"><i class="fa-solid fa-circle"></i> RS Live</span>`;
+        html += `<span class="bc-rs-status bc-rs-live"><i class="fa-solid fa-circle"></i> Live on RobotStreamer</span>`;
         html += `<button class="bc-ctrl-btn bc-ctrl-btn-sm" onclick="stopRsRestream()"><i class="fa-solid fa-stop"></i> Stop</button>`;
     } else if (isStarting) {
         html += `<span class="bc-rs-status bc-rs-connecting"><i class="fa-solid fa-spinner fa-spin"></i> Connecting…</span>`;
         html += `<button class="bc-ctrl-btn bc-ctrl-btn-sm" onclick="stopRsRestream()"><i class="fa-solid fa-stop"></i> Cancel</button>`;
     } else if (hasFailed) {
-        html += `<span class="bc-rs-status bc-rs-error"><i class="fa-solid fa-circle-exclamation"></i> Failed</span>`;
+        html += `<span class="bc-rs-status bc-rs-error"><i class="fa-solid fa-circle-exclamation"></i> RobotStreamer failed</span>`;
         html += `<button class="bc-ctrl-btn bc-ctrl-btn-sm" onclick="startOrRetryRsRestream()"><i class="fa-solid fa-rotate-right"></i> Retry</button>`;
     } else if (slotId && slotSs?.localStream) {
         // Slot assigned but not started yet (could be reconnecting)
@@ -284,12 +284,12 @@ function updateRsRestreamSlotUI() {
             html += `<span class="bc-rs-status bc-rs-connecting"><i class="fa-solid fa-spinner fa-spin"></i> Reconnecting…</span>`;
             html += `<button class="bc-ctrl-btn bc-ctrl-btn-sm" onclick="stopRsRestream()"><i class="fa-solid fa-stop"></i> Cancel</button>`;
         } else {
-            html += `<span class="bc-rs-status bc-rs-ready"><i class="fa-solid fa-robot"></i> Ready</span>`;
+            html += `<span class="bc-rs-status bc-rs-ready"><i class="fa-solid fa-robot"></i> RobotStreamer ready</span>`;
             html += `<button class="bc-ctrl-btn bc-ctrl-btn-sm" onclick="startOrRetryRsRestream()"><i class="fa-solid fa-play"></i> Start</button>`;
         }
     } else {
         // No slot assigned
-        html += `<span class="bc-rs-status bc-rs-off"><i class="fa-solid fa-robot"></i> RS Off</span>`;
+        html += `<span class="bc-rs-status bc-rs-off"><i class="fa-solid fa-robot"></i> RobotStreamer off</span>`;
         html += `<button class="bc-ctrl-btn bc-ctrl-btn-sm" onclick="startOrRetryRsRestream()"><i class="fa-solid fa-play"></i> Start</button>`;
     }
     html += '</div>';
@@ -1557,6 +1557,8 @@ async function createNewStream() {
             } else {
                 await startMediaCapture(streamData.id, { cameraId: createCamera, audioId: createAudio });
             }
+            // The live view showed before the camera started, which hid the camera buttons.
+            syncBroadcastLiveButtonVisibility();
 
             connectSignaling(streamData.id);
             maybeStartRsRestream(streamData.id);
@@ -3102,15 +3104,14 @@ function rsDetailLine(rs) {
     const bits = [];
     const now = Date.now();
     if (rs.state === 'live') {
-        bits.push(`up ${fmtUptime(rs.uptime_ms || 0)}`);
-        bits.push(rs.video_codec ? `${String(rs.video_codec).replace('video/', '')} passthrough` : 'passthrough');
-        if (!rs.has_audio) bits.push('<span class="bc-restream-warn">no audio</span>');
+        bits.push(`live for ${fmtUptime(rs.uptime_ms || 0)}`);
+        if (!rs.has_audio) bits.push('<span class="bc-restream-warn">no sound reaching RobotStreamer</span>');
         if (rs.rs) {
-            if (rs.rs.rtt_ms != null) bits.push(`${rs.rs.rtt_ms} ms to RS`);
+            if (rs.rs.rtt_ms != null) bits.push(`${rs.rs.rtt_ms} ms delay`);
             if (rs.rs.loss_pct != null && rs.rs.loss_pct >= 1) bits.push(`<span class="bc-restream-warn">${rs.rs.loss_pct}% loss</span>`);
             if (rs.rs.stalled_ms > 1500) bits.push(`<span class="bc-restream-warn">source stalled ${Math.round(rs.rs.stalled_ms / 1000)}s</span>`);
         }
-        if (rs.restarts) bits.push(`${rs.restarts} reconnect${rs.restarts === 1 ? '' : 's'}`);
+        if (rs.restarts) bits.push(rs.restarts === 1 ? 'reconnected once' : `reconnected ${rs.restarts} times`);
     } else if (rs.state === 'starting') {
         bits.push('connecting to RobotStreamer…');
     } else if (rs.state === 'restarting') {
@@ -4261,13 +4262,12 @@ let _platformViewerBreakdown = [];
 function updateBroadcastStatus(state) {
     const el = document.getElementById('bc-connection-status'); if (!el) return;
     // Determine streaming method label from active stream
-    const ss = getActiveStreamState();
-    const proto = (ss?.streamData?.protocol || 'webrtc').toUpperCase();
+    // Connected says nothing (it used to print the protocol, "WEBRTC"); only trouble shows.
     const map = {
-        connected:    { text: proto,            cls: 'bc-status-good' },
+        connected:    { text: '',               cls: 'bc-status-good is-quiet' },
         checking:     { text: 'Connecting…',    cls: 'bc-status-warn' },
-        completed:    { text: proto,            cls: 'bc-status-good' },
-        disconnected: { text: 'Disconnected',   cls: 'bc-status-bad'  },
+        completed:    { text: '',               cls: 'bc-status-good is-quiet' },
+        disconnected: { text: 'Reconnecting…',  cls: 'bc-status-bad'  },
         failed:       { text: 'Failed',          cls: 'bc-status-bad'  },
         error:        { text: 'Error',           cls: 'bc-status-bad'  },
         new:          { text: 'Starting…',       cls: 'bc-status-warn' },
@@ -5050,27 +5050,6 @@ function _syncScreenShareUI() {
     const camBtn = document.getElementById('bc-btn-cam-overlay');
     if (camBtn) camBtn.style.display = active ? '' : 'none';
     if (!active && camBtn) camBtn.classList.remove('bc-ctrl-btn-active');
-}
-
-/**
- * Sync which live-control buttons are visible/enabled based on the current active
- * stream's protocol.  Browser streams show Screen/Cam-PiP/Mic; RTMP/JSMPEG/WHIP do not.
- */
-function syncBroadcastLiveButtonVisibility() {
-    const isBrowser = !!(getActiveStreamState()?.localStream);
-    const hasDisplayMedia = !!(navigator.mediaDevices?.getDisplayMedia);
-
-    const screenBtn = document.getElementById('bc-btn-screenshare');
-    const switchCamBtn = document.getElementById('bc-btn-switch-cam');
-
-    if (screenBtn) {
-        screenBtn.style.display = (isBrowser && hasDisplayMedia) ? '' : 'none';
-        screenBtn.title = hasDisplayMedia ? 'Toggle screen share' : 'Screen sharing not supported in this browser';
-    }
-    if (switchCamBtn) {
-        switchCamBtn.style.display = isBrowser ? '' : 'none';
-    }
-    // Mic / Cam PiP are further gated by _syncScreenShareLiveControls()
 }
 
 /**
@@ -6184,10 +6163,10 @@ function toggleBroadcastPreview() {
     if (!video || !btn) return;
     if (video.style.display === 'none') {
         video.style.display = '';
-        btn.innerHTML = '<i class="fa-solid fa-eye"></i> Preview';
+        btn.innerHTML = '<i class="fa-solid fa-eye-slash"></i> Hide preview';
     } else {
         video.style.display = 'none';
-        btn.innerHTML = '<i class="fa-solid fa-eye-slash"></i> Preview';
+        btn.innerHTML = '<i class="fa-solid fa-eye"></i> Show preview';
     }
 }
 

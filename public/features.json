@@ -213,7 +213,8 @@
         "/js/broadcast-devices.js",
         "/js/call.js",
         "/js/broadcast-workspace.js",
-        "/js/broadcast.js"
+        "/js/broadcast.js",
+        "/js/broadcast-studio.js"
       ]
     },
     "pastes": {

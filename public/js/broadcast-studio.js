@@ -1,0 +1,402 @@
+/* The live studio on a phone (owner, 2026-10-16: "I can't change cameras on the whim… all these buttons that don't
+   really mean anything"). While a stream from this browser is live on a narrow screen, the camera fills the screen
+   and the controls sit on the picture, the way phone streaming apps work:
+
+     top      LIVE, time live, people watching, restreams, connection, End
+     right    Flip (front ↔ back in one tap), Mic, Camera, Light (a back camera's torch), Chat, Clip, More
+     bottom   the stream chat, over the picture
+     More     a sheet: share, watch as a viewer, any camera, screen, media requests, a longer clip, chat read
+              aloud, restreams, stream health, all settings and the full page
+
+   It drives what broadcast.js already has (_switchActiveCamera, stopBroadcast, createBroadcastClip, …) and reads
+   the page's own counters, so there is no second copy of the streaming state. Mic and camera off set
+   MediaStreamTrack.enabled = false: viewers get silence or black while the stream and its recording go on. The
+   choice is applied again every second, so a replaced track (a camera switch, a recovery) keeps it.
+
+   window.bcStudio (toggleMic, toggleCamera, flip, open) also serves the desktop control row. */
+(function () {
+    'use strict';
+    // A phone held upright, or turned sideways (wide but short, with a touch screen).
+    const NARROW = window.matchMedia('(max-width: 760px), (pointer: coarse) and (max-height: 520px)');
+    const st = {
+        root: null, micOff: false, camOff: false, torch: false, chatHidden: false, busy: false,
+        dismissedFor: null, hadLocal: false, sheet: null, confirm: null, parked: [], cameras: 0, lastFocus: null,
+    };
+
+    const $ = (id) => document.getElementById(id);
+    function el(tag, attrs, ...kids) {
+        const n = document.createElement(tag);
+        for (const [k, v] of Object.entries(attrs || {})) {
+            if (v == null || v === false) continue;
+            if (k === 'class') n.className = v;
+            else if (k === 'text') n.textContent = v;
+            else if (k.startsWith('on') && typeof v === 'function') n.addEventListener(k.slice(2), v);
+            else n.setAttribute(k, v === true ? '' : v);
+        }
+        for (const kid of kids) if (kid != null && kid !== false) n.append(kid);
+        return n;
+    }
+    const icon = (name) => el('i', { class: `fa-solid ${name}`, 'aria-hidden': 'true' });
+    const say = (text, kind) => { if (typeof toast === 'function') toast(text, kind || 'info'); };
+
+    function streamState() {
+        try { return typeof getActiveStreamState === 'function' ? getActiveStreamState() : null; } catch { return null; }
+    }
+    function localStream() { const ss = streamState(); return ss && ss.localStream ? ss.localStream : null; }
+    function activeId() { try { return typeof broadcastState !== 'undefined' ? broadcastState.activeStreamId : null; } catch { return null; } }
+    function screenSharing() { try { return !!broadcastState.settings.screenShare; } catch { return false; } }
+    function videoTrack() { const s = localStream(); return s ? s.getVideoTracks()[0] || null : null; }
+    function onBroadcastPage() { const p = $('page-broadcast'); return !!(p && p.classList.contains('active')); }
+    function browserViewShown() { const v = $('bc-browser-broadcast'); return !!(v && v.style.display !== 'none'); }
+    function liveHere() { return onBroadcastPage() && browserViewShown() && !!localStream(); }
+    function wanted() { return NARROW.matches && liveHere() && st.dismissedFor !== activeId(); }
+
+    // ── Mic, camera and light: the choice holds across replaced tracks ──
+    function applyTracks() {
+        const s = localStream();
+        if (!s) return;
+        for (const t of s.getAudioTracks()) if (t.enabled === st.micOff) t.enabled = !st.micOff;
+        for (const t of s.getVideoTracks()) if (t.enabled === st.camOff) t.enabled = !st.camOff;
+    }
+    function torchCapable() {
+        const t = videoTrack();
+        try { return !!(t && typeof t.getCapabilities === 'function' && t.getCapabilities().torch); } catch { return false; }
+    }
+    function facing() {
+        const t = videoTrack();
+        if (!t) return null;
+        const s = (t.getSettings && t.getSettings()) || {};
+        if (s.facingMode) return s.facingMode;
+        return typeof _getCameraFacingHint === 'function' ? _getCameraFacingHint({ label: t.label }) : null;
+    }
+
+    function toggleMic() { st.micOff = !st.micOff; applyTracks(); refresh(); }
+    function toggleCamera() { st.camOff = !st.camOff; applyTracks(); refresh(); }
+    async function toggleLight() {
+        const t = videoTrack();
+        if (!t || !torchCapable()) return;
+        const on = !st.torch;
+        try { await t.applyConstraints({ advanced: [{ torch: on }] }); st.torch = on; } catch { say('This camera cannot turn its light on', 'error'); }
+        refresh();
+    }
+
+    /** Front ↔ back in one tap: the first camera facing the other way (a phone's main one), else the next camera. */
+    async function flip() {
+        if (st.busy) return;
+        if (screenSharing()) return say('You are sharing your screen. Stop sharing to use the camera.');
+        if (typeof _switchActiveCamera !== 'function' || typeof _enumerateBroadcastVideoInputs !== 'function') return;
+        st.busy = true;
+        refresh();
+        try {
+            const cams = await _enumerateBroadcastVideoInputs({ ensureLabels: false });
+            st.cameras = cams.length;
+            if (cams.length < 2) { say('This device has only one camera'); return; }
+            const now = (videoTrack() && videoTrack().getSettings && videoTrack().getSettings()) || {};
+            const was = facing();
+            const other = was && cams.find((d) => d.deviceId !== now.deviceId && _getCameraFacingHint(d) && _getCameraFacingHint(d) !== was);
+            const i = cams.findIndex((d) => d.deviceId === now.deviceId);
+            const next = other || cams[(i + 1) % cams.length];
+            st.torch = false;
+            await _switchActiveCamera(next.deviceId);
+            applyTracks();
+        } catch (err) {
+            say('Could not switch camera: ' + ((err && err.message) || 'unknown error'), 'error');
+        } finally {
+            st.busy = false;
+            refresh();
+        }
+    }
+
+    function quickClip(seconds) {
+        if (typeof createBroadcastClip !== 'function' || typeof _getBroadcastUptimeSeconds !== 'function') return;
+        const end = Math.floor(_getBroadcastUptimeSeconds());
+        if (end < 5) return say('Stream a few more seconds first, then clip it');
+        // The clip panel's marks are what createBroadcastClip reads.
+        if (seconds === 30 && typeof setBroadcastClipLast30 === 'function') setBroadcastClipLast30();
+        else { try { _bcClipEnd = end; _bcClipStart = Math.max(0, end - seconds); } catch { /* the panel's own defaults stand */ } }
+        const title = $('bc-clip-title');
+        if (title) title.value = '';
+        say(`Clipping the last ${Math.min(seconds, end)} seconds…`);
+        createBroadcastClip();
+    }
+
+    async function share() {
+        const user = typeof currentUser !== 'undefined' && currentUser ? currentUser.username : null;
+        if (!user) return;
+        const url = `${location.origin}/@${encodeURIComponent(user)}`;
+        const ss = streamState();
+        const title = (ss && ss.streamData && ss.streamData.title) || 'My stream';
+        if (navigator.share) {
+            try { await navigator.share({ title, url }); return; } catch (err) { if (err && err.name === 'AbortError') return; }
+        }
+        if (typeof copyToClipboard === 'function') copyToClipboard(url);
+        else if (navigator.clipboard) navigator.clipboard.writeText(url).then(() => say('Link copied', 'success'), () => {});
+    }
+
+    // ── The overlay ──
+    function railButton(act, ico, label, onClick) {
+        return el('button', { type: 'button', class: 'bcs-btn', 'data-act': act, onclick: onClick },
+            el('span', { class: 'bcs-ico' }, icon(ico)), el('span', { class: 'bcs-lbl', text: label }));
+    }
+    function build() {
+        const top = el('div', { class: 'bcs-top' },
+            el('div', { class: 'bcs-top-l' },
+                el('span', { class: 'bcs-live' }, el('span', { class: 'bcs-live-dot', 'aria-hidden': 'true' }), 'LIVE'),
+                el('span', { class: 'bcs-pill', id: 'bcs-time', title: 'Time live' }, '0:00'),
+                el('span', { class: 'bcs-pill', id: 'bcs-viewers', title: 'Watching now' }, icon('fa-eye'), el('b', { text: '0' })),
+                el('button', { type: 'button', class: 'bcs-pill bcs-restream', id: 'bcs-restream', hidden: true, onclick: () => openSheet('restreams') })),
+            el('div', { class: 'bcs-top-r' },
+                el('button', { type: 'button', class: 'bcs-pill bcs-health', id: 'bcs-health', onclick: toggleHealth },
+                    el('span', { class: 'bcs-dot', 'aria-hidden': 'true' }), el('span', { class: 'bcs-health-t', text: 'Connecting' })),
+                el('button', { type: 'button', class: 'bcs-end', id: 'bcs-end', onclick: openConfirm }, 'End')));
+        const rail = el('div', { class: 'bcs-rail', role: 'toolbar', 'aria-label': 'Live controls', 'aria-orientation': 'vertical' },
+            railButton('flip', 'fa-camera-rotate', 'Flip', flip),
+            railButton('mic', 'fa-microphone', 'Mic', toggleMic),
+            railButton('cam', 'fa-video', 'Camera', toggleCamera),
+            railButton('light', 'fa-bolt', 'Light', toggleLight),
+            railButton('chat', 'fa-comment', 'Chat', () => { st.chatHidden = !st.chatHidden; refresh(); }),
+            railButton('clip', 'fa-scissors', 'Clip', () => quickClip(30)),
+            railButton('more', 'fa-ellipsis', 'More', () => openSheet()));
+        return el('div', { class: 'bcs', id: 'bc-studio' }, top, el('div', { class: 'bcs-flags', id: 'bcs-flags', 'aria-live': 'polite' }), rail);
+    }
+
+    function mount() {
+        document.body.classList.add('bc-studio-on');
+        st.root = build();
+        document.body.append(st.root);
+        // The overlay chat replaces the phone chat sheet.
+        try { if (typeof _bcMobileChatOpen !== 'undefined' && _bcMobileChatOpen && typeof toggleBroadcastMobileChat === 'function') toggleBroadcastMobileChat(); } catch { /* not open */ }
+        const v = $('bc-video-preview');
+        if (v) v.play().catch(() => {});
+        const msgs = $('bc-chat-messages');
+        if (msgs) msgs.scrollTop = msgs.scrollHeight;
+        if (typeof _enumerateBroadcastVideoInputs === 'function') _enumerateBroadcastVideoInputs({ ensureLabels: false }).then((c) => { st.cameras = c.length; refresh(); }, () => {});
+        refresh();
+    }
+    function unmount() {
+        closeSheet();
+        closeConfirm();
+        document.body.classList.remove('bc-studio-on', 'bc-studio-chat-off');
+        if (st.root) st.root.remove();
+        st.root = null;
+        const v = $('bc-video-preview');
+        if (v) { v.classList.remove('bcs-mirror'); v.play().catch(() => {}); }
+    }
+
+    function text(id) { const n = $(id); return n ? n.textContent.trim() : ''; }
+    function restreamSummary() {
+        const scope = [$('bc-rs-control'), $('bc-restream-control')].filter((n) => n && n.style.display !== 'none');
+        let live = 0, starting = 0, failed = 0;
+        for (const n of scope) {
+            live += n.querySelectorAll('.bc-rs-live, .bc-restream-status-live').length;
+            starting += n.querySelectorAll('.bc-rs-connecting, .bc-restream-status-starting').length;
+            failed += n.querySelectorAll('.bc-rs-error, .bc-restream-status-error, .bc-restream-status-failed').length;
+        }
+        if (failed) return { cls: 'is-bad', text: failed === 1 ? 'Restream failed' : `${failed} restreams failed` };
+        if (starting) return { cls: 'is-warn', text: 'Restream connecting' };
+        if (live) return { cls: 'is-ok', text: `Also on ${live}` };
+        return null;
+    }
+    const HEALTH = {
+        good: ['is-ok', 'Good'], fair: ['is-warn', 'Weak'], poor: ['is-bad', 'Poor'], offline: ['is-bad', 'Offline'],
+        connecting: ['is-warn', 'Connecting'], measuring: ['is-warn', 'Checking'],
+    };
+
+    /** Brings the overlay up to date with the page (once a second, and after every action). */
+    function refresh() {
+        applyTracks();
+        syncDesktopButtons();
+        if (!st.root) return;
+        document.body.classList.toggle('bc-studio-chat-off', st.chatHidden);
+        // 0:05:07 → 5:07 while under an hour.
+        const up = /^(\d+):(\d\d):(\d\d)$/.exec(text('bc-uptime'));
+        $('bcs-time').textContent = up ? (up[1] === '0' ? `${Number(up[2])}:${up[3]}` : `${up[1]}:${up[2]}:${up[3]}`) : (text('bc-uptime') || '0:00');
+        const viewers = $('bcs-viewers').querySelector('b');
+        viewers.textContent = text('bc-viewer-count') || '0';
+        $('bcs-viewers').title = `${viewers.textContent} watching now`;
+
+        const rs = restreamSummary();
+        const chip = $('bcs-restream');
+        chip.hidden = !rs;
+        if (rs) { chip.className = `bcs-pill bcs-restream ${rs.cls}`; chip.textContent = rs.text; }
+
+        const conn = $('bc-connection-status');
+        const bad = conn && conn.classList.contains('bc-status-bad');
+        const [cls, label] = bad ? ['is-bad', 'Reconnecting'] : (HEALTH[text('bc-stat-health').toLowerCase()] || ['is-warn', 'Connecting']);
+        const health = $('bcs-health');
+        health.className = `bcs-pill bcs-health ${cls}`;
+        health.querySelector('.bcs-health-t').textContent = label;
+        health.setAttribute('aria-label', `Connection: ${label}. Show stream health`);
+
+        const set = (act, { on, ico, label: lbl, hidden, busy }) => {
+            const b = st.root.querySelector(`[data-act="${act}"]`);
+            if (!b) return;
+            b.hidden = !!hidden;
+            if (on !== undefined) b.setAttribute('aria-pressed', on ? 'true' : 'false');
+            if (ico) b.querySelector('i').className = `fa-solid ${ico}`;
+            if (lbl) b.querySelector('.bcs-lbl').textContent = lbl;
+            b.classList.toggle('is-off', act === 'mic' ? st.micOff : act === 'cam' ? st.camOff : false);
+            b.classList.toggle('is-busy', !!busy);
+        };
+        set('flip', { hidden: st.cameras === 1 || screenSharing(), busy: st.busy, ico: st.busy ? 'fa-spinner fa-spin' : 'fa-camera-rotate' });
+        set('mic', { on: st.micOff, ico: st.micOff ? 'fa-microphone-slash' : 'fa-microphone', label: st.micOff ? 'Unmute' : 'Mute' });
+        set('cam', { on: st.camOff, ico: st.camOff ? 'fa-video-slash' : 'fa-video', label: st.camOff ? 'Camera on' : 'Camera' });
+        set('light', { hidden: !torchCapable(), on: st.torch, label: st.torch ? 'Light off' : 'Light' });
+        set('chat', { on: !st.chatHidden, ico: st.chatHidden ? 'fa-comment-slash' : 'fa-comment', label: st.chatHidden ? 'Show chat' : 'Chat' });
+
+        const flags = [];
+        if (st.micOff) flags.push(['fa-microphone-slash', 'Mic off: viewers hear nothing']);
+        if (st.camOff) flags.push(['fa-video-slash', 'Camera off: viewers see black']);
+        const v = $('bc-video-preview');
+        if (v && v.style.display === 'none') flags.push(['fa-eye-slash', 'Preview hidden, still live']);
+        const box = $('bcs-flags');
+        const sig = JSON.stringify(flags);
+        if (box.dataset.sig !== sig) {
+            box.dataset.sig = sig;
+            box.replaceChildren(...flags.map(([i, t]) => el('span', { class: 'bcs-flag' }, icon(i), t)));
+        }
+        if (v) v.classList.toggle('bcs-mirror', facing() === 'user' && !screenSharing());
+    }
+
+    // ── Desktop row: the same Mute / Camera off / Flip ──
+    function syncDesktopButtons() {
+        const live = !!localStream();
+        const mic = $('bc-btn-mic-mute');
+        if (mic) {
+            mic.style.display = live && !screenSharing() ? '' : 'none';
+            mic.classList.toggle('bc-ctrl-btn-active', st.micOff);
+            mic.setAttribute('aria-pressed', st.micOff ? 'true' : 'false');
+            mic.replaceChildren(icon(st.micOff ? 'fa-microphone-slash' : 'fa-microphone'), st.micOff ? ' Unmute' : ' Mute');
+        }
+        const cam = $('bc-btn-cam-off');
+        if (cam) {
+            cam.style.display = live && !screenSharing() ? '' : 'none';
+            cam.classList.toggle('bc-ctrl-btn-active', st.camOff);
+            cam.setAttribute('aria-pressed', st.camOff ? 'true' : 'false');
+            cam.replaceChildren(icon(st.camOff ? 'fa-video-slash' : 'fa-video'), st.camOff ? ' Camera on' : ' Camera off');
+        }
+        const fl = $('bc-btn-flip');
+        if (fl) fl.style.display = live && !screenSharing() && st.cameras > 1 ? '' : 'none';
+        const back = $('bcs-return');
+        if (back) back.hidden = !(NARROW.matches && liveHere() && st.dismissedFor === activeId());
+    }
+
+    // ── More ──
+    function tile(ico, label, onClick, hint) {
+        return el('button', { type: 'button', class: 'bcs-tile', onclick: onClick },
+            icon(ico), el('span', { class: 'bcs-tile-t', text: label }), hint ? el('small', { text: hint }) : null);
+    }
+    /** The full page, optionally scrolled to `target` (a selector); a button brings the studio back. */
+    function leave(target) {
+        st.dismissedFor = activeId();
+        unmount();
+        ensureReturn();
+        syncDesktopButtons();
+        if (target) { const n = document.querySelector(target); if (n) n.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+    }
+    function ensureReturn() {
+        if ($('bcs-return')) return;
+        document.body.append(el('button', { type: 'button', class: 'bcs-return', id: 'bcs-return', hidden: true,
+            onclick: () => { st.dismissedFor = null; tick(); } }, icon('fa-mobile-screen'), ' Back to live studio'));
+    }
+
+    function openSheet(section) {
+        closeSheet();
+        st.lastFocus = document.activeElement;
+        const ss = streamState();
+        const title = (ss && ss.streamData && ss.streamData.title) || 'Your stream';
+        const user = typeof currentUser !== 'undefined' && currentUser ? currentUser.username : '';
+        const preview = $('bc-video-preview');
+        const previewHidden = preview && preview.style.display === 'none';
+        const canScreen = !!(navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia) && typeof toggleScreenShare === 'function';
+        const after = (fn) => () => { closeSheet(); fn(); };
+
+        const grid = el('div', { class: 'bcs-grid' },
+            tile('fa-tv', 'Watch as a viewer', after(() => openViewerPreview())),
+            tile('fa-camera', 'Choose camera', after(() => openCameraSwitcher())),
+            canScreen ? tile('fa-display', screenSharing() ? 'Stop sharing screen' : 'Share screen', after(() => toggleScreenShare())) : null,
+            tile('fa-film', 'Media requests', after(() => toggleMediaPip())),
+            tile('fa-scissors', 'Clip last minute', after(() => quickClip(60))),
+            tile(previewHidden ? 'fa-eye' : 'fa-eye-slash', previewHidden ? 'Show my preview' : 'Hide my preview', after(() => toggleBroadcastPreview()), previewHidden ? null : 'Saves battery'),
+            tile('fa-chart-line', 'Stream health', after(toggleHealth)),
+            tile('fa-sliders', 'All settings', after(() => leave('#bc-live-section .bc-settings-group'))),
+            tile('fa-up-right-and-down-left-from-center', 'Full page', after(() => leave())));
+
+        const voice = el('div', { class: 'bcs-row' },
+            el('div', null, el('b', { text: 'Chat read aloud' }), el('small', { text: 'Messages are spoken on this device' })),
+            el('div', { class: 'bcs-row-acts' },
+                el('button', { type: 'button', class: 'bcs-chip', onclick: () => testTTS() }, 'Test'),
+                el('button', { type: 'button', class: 'bcs-chip', onclick: () => cancelTTS() }, 'Skip current')));
+
+        const restreams = el('div', { class: 'bcs-sec', id: 'bcs-restreams' }, el('h3', { text: 'Restreams' }));
+        for (const id of ['bc-rs-control', 'bc-restream-control']) {
+            const n = $(id);
+            if (!n || n.style.display === 'none' || !n.childElementCount) continue;
+            const mark = document.createComment(`bc-studio:${id}`);
+            n.before(mark);
+            st.parked.push({ node: n, mark });
+            restreams.append(n);
+        }
+
+        const sheet = el('div', { class: 'bcs-sheet', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'bcs-sheet-title' },
+            el('div', { class: 'bcs-grab', 'aria-hidden': 'true' }),
+            el('div', { class: 'bcs-sheet-head' },
+                el('div', { class: 'bcs-sheet-who' }, el('b', { id: 'bcs-sheet-title', text: title }), user ? el('small', { text: `openvibe.live/@${user}` }) : null),
+                el('button', { type: 'button', class: 'bcs-chip bcs-chip-strong', onclick: share }, icon('fa-share-nodes'), ' Share'),
+                el('button', { type: 'button', class: 'bcs-x', 'aria-label': 'Close', onclick: closeSheet }, icon('fa-xmark'))),
+            grid, voice, st.parked.length ? restreams : null);
+        st.sheet = el('div', { class: 'bcs-sheet-wrap', onclick: (e) => { if (e.target === st.sheet) closeSheet(); } }, sheet);
+        document.body.append(st.sheet);
+        const focus = section === 'restreams' && st.parked.length ? restreams : sheet.querySelector('.bcs-tile');
+        if (section === 'restreams' && st.parked.length) restreams.scrollIntoView({ block: 'start' });
+        if (focus && focus.focus) focus.focus({ preventScroll: section === 'restreams' });
+    }
+    function closeSheet() {
+        for (const { node, mark } of st.parked.splice(0)) { mark.replaceWith(node); }
+        if (st.sheet) { st.sheet.remove(); st.sheet = null; if (st.lastFocus && st.lastFocus.focus) st.lastFocus.focus(); }
+    }
+
+    function toggleHealth() { if (typeof toggleBroadcastStats === 'function') toggleBroadcastStats(); }
+
+    function openConfirm() {
+        closeConfirm();
+        st.lastFocus = document.activeElement;
+        const keep = el('button', { type: 'button', class: 'bcs-chip', onclick: closeConfirm }, 'Keep streaming');
+        const box = el('div', { class: 'bcs-confirm', role: 'alertdialog', 'aria-modal': 'true', 'aria-labelledby': 'bcs-confirm-t', 'aria-describedby': 'bcs-confirm-d' },
+            el('h3', { id: 'bcs-confirm-t', text: 'End your stream?' }),
+            el('p', { id: 'bcs-confirm-d', text: 'Viewers will see it end. Restreams stop too, and the recording goes to your VODs.' }),
+            el('div', { class: 'bcs-confirm-acts' }, keep,
+                el('button', { type: 'button', class: 'bcs-end', onclick: () => { closeConfirm(); stopBroadcast(); } }, 'End stream')));
+        st.confirm = el('div', { class: 'bcs-sheet-wrap bcs-center', onclick: (e) => { if (e.target === st.confirm) closeConfirm(); } }, box);
+        document.body.append(st.confirm);
+        keep.focus();
+    }
+    function closeConfirm() {
+        if (st.confirm) { st.confirm.remove(); st.confirm = null; if (st.lastFocus && st.lastFocus.focus) st.lastFocus.focus(); }
+    }
+
+    document.addEventListener('keydown', (e) => {
+        if (e.key !== 'Escape') return;
+        if (st.confirm) closeConfirm();
+        else if (st.sheet) closeSheet();
+    });
+
+    // ── Once a second: mount, update or leave ──
+    function tick() {
+        const has = !!localStream();
+        if (has !== st.hadLocal) {
+            st.hadLocal = has;
+            // The camera button was hidden when the live view showed before the camera started.
+            if (typeof syncBroadcastLiveButtonVisibility === 'function') syncBroadcastLiveButtonVisibility();
+            if (has && typeof _enumerateBroadcastVideoInputs === 'function') _enumerateBroadcastVideoInputs({ ensureLabels: false }).then((c) => { st.cameras = c.length; syncDesktopButtons(); }, () => {});
+            if (!has) { st.micOff = false; st.camOff = false; st.torch = false; st.dismissedFor = null; }
+        }
+        if (wanted()) { if (!st.root) mount(); refresh(); }
+        else { if (st.root) unmount(); applyTracks(); syncDesktopButtons(); }
+    }
+    setInterval(tick, 1000);
+    if (NARROW.addEventListener) NARROW.addEventListener('change', tick);
+    ensureReturn();
+
+    window.bcStudio = { toggleMic, toggleCamera, flip, open: () => { st.dismissedFor = null; tick(); }, _state: st };
+})();

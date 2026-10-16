@@ -663,7 +663,7 @@ WantedBy=multi-user.target</code>
                     <!-- Info bar -->
                     <div class="bc-info-bar" id="bc-info-bar" style="display:none">
                         <div class="bc-info-item">
-                            <i class="fa-solid fa-eye"></i> <strong id="bc-viewer-count">0</strong> total viewers
+                            <i class="fa-solid fa-eye"></i> <strong id="bc-viewer-count">0</strong> watching
                         </div>
                         <div class="bc-info-item" id="bc-rs-viewer-count" style="display:none">
                             <i class="fa-solid fa-robot"></i> <strong>0</strong> on RS
@@ -683,38 +683,47 @@ WantedBy=multi-user.target</code>
                             <button class="bc-ctrl-btn bc-ctrl-btn-danger" id="bc-toggle-stream" onclick="stopBroadcast()">
                                 <i class="fa-solid fa-stop"></i> Stop Stream
                             </button>
+                            <button class="bc-ctrl-btn" id="bc-btn-mic-mute" onclick="bcStudio.toggleMic()" aria-pressed="false" style="display:none">
+                                <i class="fa-solid fa-microphone"></i> Mute
+                            </button>
+                            <button class="bc-ctrl-btn" id="bc-btn-cam-off" onclick="bcStudio.toggleCamera()" aria-pressed="false" style="display:none">
+                                <i class="fa-solid fa-video"></i> Camera off
+                            </button>
+                            <button class="bc-ctrl-btn" id="bc-btn-flip" onclick="bcStudio.flip()" title="Switch between the front and back camera" style="display:none">
+                                <i class="fa-solid fa-camera-rotate"></i> Flip camera
+                            </button>
                             <button class="bc-ctrl-btn" id="bc-btn-switch-cam" onclick="openCameraSwitcher()">
-                                <i class="fa-solid fa-camera-rotate"></i> Switch Cam
+                                <i class="fa-solid fa-camera"></i> Choose camera
                             </button>
                             <button class="bc-ctrl-btn" id="bc-btn-screenshare" onclick="toggleScreenShare()">
-                                <i class="fa-solid fa-display"></i> Screen
+                                <i class="fa-solid fa-display"></i> Share screen
                             </button>
                             <button class="bc-ctrl-btn" id="bc-btn-cam-overlay" onclick="toggleCameraOverlay()" style="display:none">
-                                <i class="fa-solid fa-video"></i> Cam PiP
+                                <i class="fa-solid fa-video"></i> Camera in corner
                             </button>
                             <button class="bc-ctrl-btn" id="bc-btn-toggle-mic" onclick="toggleScreenShareMic()" style="display:none">
                                 <i class="fa-solid fa-microphone"></i> Mic
                             </button>
                             <button class="bc-ctrl-btn" onclick="toggleBroadcastStats()">
-                                <i class="fa-solid fa-chart-line"></i> Stats
+                                <i class="fa-solid fa-chart-line"></i> Stream health
                             </button>
-                            <button class="bc-ctrl-btn" onclick="testTTS()">
-                                <i class="fa-solid fa-volume-high"></i> Test TTS
+                            <button class="bc-ctrl-btn" onclick="testTTS()" title="Hear how chat messages are read aloud">
+                                <i class="fa-solid fa-volume-high"></i> Test chat voice
                             </button>
-                            <button class="bc-ctrl-btn" onclick="cancelTTS()">
-                                <i class="fa-solid fa-ban"></i> Reset TTS
+                            <button class="bc-ctrl-btn" onclick="cancelTTS()" title="Stop the message being read aloud and clear the queue">
+                                <i class="fa-solid fa-forward"></i> Skip spoken message
                             </button>
                             <button class="bc-ctrl-btn" id="bc-btn-clip" onclick="toggleBroadcastClipPanel()">
                                 <i class="fa-solid fa-scissors"></i> Clip
                             </button>
                             <button class="bc-ctrl-btn" id="bc-btn-media-pip" onclick="toggleMediaPip()">
-                                <i class="fa-solid fa-film"></i> Media
+                                <i class="fa-solid fa-film"></i> Media requests
                             </button>
-                            <button class="bc-ctrl-btn" id="bc-btn-toggle-preview" onclick="toggleBroadcastPreview()">
-                                <i class="fa-solid fa-eye"></i> Preview
+                            <button class="bc-ctrl-btn" id="bc-btn-toggle-preview" onclick="toggleBroadcastPreview()" title="Hide your own preview (you stay live; it saves battery)">
+                                <i class="fa-solid fa-eye-slash"></i> Hide preview
                             </button>
-                            <button class="bc-ctrl-btn" onclick="openViewerPreview()" title="Open a popup showing exactly what viewers see">
-                                <i class="fa-solid fa-tv"></i> Viewer
+                            <button class="bc-ctrl-btn" onclick="openViewerPreview()" title="Open your channel the way viewers see it">
+                                <i class="fa-solid fa-tv"></i> Watch as viewer
                             </button>
                         </div>
 
@@ -1186,7 +1195,7 @@ WantedBy=multi-user.target</code>
             <div class="bc-camera-sheet-panel" role="dialog" aria-modal="true" aria-labelledby="bc-camera-sheet-title">
                 <div class="bc-camera-sheet-header">
                     <div>
-                        <h3 id="bc-camera-sheet-title"><i class="fa-solid fa-camera"></i> Switch Camera</h3>
+                        <h3 id="bc-camera-sheet-title"><i class="fa-solid fa-camera"></i> Choose a camera</h3>
                         <p id="bc-camera-sheet-subtitle">Pick the exact camera you want to use live.</p>
                     </div>
                     <button class="bc-camera-sheet-close" type="button" onclick="closeCameraSwitcher()" aria-label="Close camera switcher">

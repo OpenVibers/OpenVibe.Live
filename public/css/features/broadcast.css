@@ -2452,3 +2452,197 @@
     .bc-ws-profile-split > .bc-ws-col--method .bc-method-picker-sm { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .bc-ws-profile-split > .bc-ws-col--details .bc-switch { margin-bottom: 14px; }
 }
+
+/* ── Live controls, plainer everywhere ──
+   The connection badge says nothing while all is well (it used to print "WEBRTC"); the LIVE badge's dot pulses,
+   not the whole badge; the RobotStreamer detail line wraps instead of running off the screen. */
+.bc-connection-status.is-quiet { display: none; }
+.bc-live-badge { animation: none; }
+.bc-live-badge i { animation: pulse-live 1.5s infinite; }
+.bc-rs-control .bc-restream-detail { flex-basis: 100%; min-width: 0; white-space: normal; overflow-wrap: anywhere; }
+@media (prefers-reduced-motion: reduce) { .bc-live-badge i { animation: none; } }
+/* On a phone's full page the live controls are a grid of tiles (icon over a short label), not a column of thirteen
+   full-width bars; ending the stream keeps its own full-width row. */
+@media (max-width: 768px) {
+    .bc-ctrl-buttons { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+    .bc-ctrl-btn {
+        flex-direction: column; justify-content: center; gap: 5px; min-height: 66px; padding: 10px 4px;
+        font-size: 0.78rem; line-height: 1.2; text-align: center; box-shadow: none;
+    }
+    .bc-ctrl-btn i { font-size: 1.05rem; }
+    .bc-ctrl-btn-danger { grid-column: 1 / -1; flex-direction: row; min-height: 48px; font-size: 0.95rem; }
+}
+
+/* ── The live studio on a phone (public/js/broadcast-studio.js) ──
+   body.bc-studio-on: the camera fills the screen, the stream chat sits over its lower part, the studio's own
+   controls (#bc-studio) sit on top, and the page behind stays as it was for "Full page". */
+body.bc-studio-on { overflow: hidden; }
+body.bc-studio-on .bc-video-container {
+    position: fixed; inset: 0; z-index: 1200; margin: 0; width: 100vw; height: 100vh; height: 100dvh;
+    min-height: 0 !important; max-height: none !important; border: 0; border-radius: 0; background: #000; aspect-ratio: auto;
+}
+body.bc-studio-on .bc-video-container video { width: 100%; height: 100%; max-height: none !important; object-fit: contain; }
+/* A vertical camera on a vertical screen fills it, the way phone camera apps show it. */
+body.bc-studio-on .bc-video-container.bc-vertical-preview video { object-fit: cover; }
+body.bc-studio-on #bc-video-preview.bcs-mirror { transform: scaleX(-1); }
+body.bc-studio-on .bc-video-container .bc-live-badge,
+body.bc-studio-on .bc-video-container .bc-connection-status,
+body.bc-studio-on .bc-video-container .bc-video-placeholder { display: none !important; }
+body.bc-studio-on .bc-stats-overlay { top: calc(58px + env(safe-area-inset-top, 0px)); left: 12px; z-index: 1205; }
+body.bc-studio-on .messenger-toggle,
+body.bc-studio-on .bc-mobile-chat-fab,
+body.bc-studio-on #navbar-mount,
+body.bc-studio-on .navbar { display: none !important; }
+/* "Reconnecting…" stays visible, just above the chat instead of over its input. */
+body.bc-studio-on .ov-conn-pill { left: calc(50% - 38px); bottom: calc(min(40vh, 340px) + 10px + env(safe-area-inset-bottom, 0px)); z-index: 1290; }
+
+/* The stream chat over the picture: newest at the bottom, fading out upward, input at the very bottom. */
+body.bc-studio-on #bc-chat-sidebar {
+    display: flex !important; flex-direction: column; position: fixed; z-index: 1210;
+    left: 0; right: 76px; bottom: 0; top: auto; width: auto; max-width: none;
+    height: min(40vh, 340px); height: min(40dvh, 340px); max-height: none;
+    padding: 0 0 env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
+    background: none; border: 0; border-radius: 0; box-shadow: none; transform: none; transition: none;
+}
+body.bc-studio-on #bc-chat-sidebar::before {
+    content: ''; position: absolute; left: 0; right: -76px; bottom: 0; height: 130%; z-index: -1; pointer-events: none;
+    background: linear-gradient(to bottom, transparent, rgba(0,0,0,0.6));
+}
+body.bc-studio-on #bc-chat-sidebar .chat-header,
+body.bc-studio-on #bc-chat-sidebar .chat-users-panel,
+body.bc-studio-on #bc-chat-sidebar .chat-tools-row { display: none !important; }
+body.bc-studio-on #bc-chat-messages {
+    flex: 1; min-height: 0; background: none; padding: 0 10px 4px; overscroll-behavior: contain;
+    -webkit-mask-image: linear-gradient(to bottom, transparent, #000 28%); mask-image: linear-gradient(to bottom, transparent, #000 28%);
+}
+body.bc-studio-on #bc-chat-messages .chat-msg {
+    width: fit-content; max-width: 100%; margin: 3px 0; padding: 4px 9px; border-radius: 12px;
+    background: rgba(0,0,0,0.38); color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,0.85);
+}
+body.bc-studio-on #bc-chat-sidebar .chat-input-area { background: none; border: 0; padding: 4px 10px 10px; }
+body.bc-studio-on #bc-chat-input {
+    background: rgba(0,0,0,0.45); color: #fff; border: 1px solid rgba(255,255,255,0.2); border-radius: 22px;
+}
+body.bc-studio-on #bc-chat-input::placeholder { color: rgba(255,255,255,0.72); }
+body.bc-studio-on.bc-studio-chat-off #bc-chat-sidebar { display: none !important; }
+body.bc-studio-on #bc-media-pip {
+    position: fixed; z-index: 1215; top: calc(58px + env(safe-area-inset-top, 0px)); left: 10px; right: 84px;
+    max-height: 46dvh; overflow: auto;
+}
+body.bc-studio-on .bc-camera-sheet { z-index: 1400; }
+body.bc-studio-on .bc-disconnect-alert { z-index: 1450; }
+body.bc-studio-on .toast-container { z-index: 1500; }
+
+.bcs { position: fixed; inset: 0; z-index: 1220; pointer-events: none; color: #fff; }
+.bcs button { font-family: inherit; color: inherit; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.bcs [hidden] { display: none !important; }
+.bcs button:focus-visible, .bcs-sheet button:focus-visible, .bcs-return:focus-visible { outline: 3px solid #93c5fd; outline-offset: 2px; }
+.bcs-top {
+    position: absolute; top: 0; left: 0; right: 0; display: flex; justify-content: space-between; align-items: flex-start; gap: 8px;
+    padding: calc(10px + env(safe-area-inset-top, 0px)) max(12px, env(safe-area-inset-right, 0px)) 28px max(12px, env(safe-area-inset-left, 0px));
+    background: linear-gradient(rgba(0,0,0,0.55), transparent);
+}
+.bcs-top-l, .bcs-top-r { display: flex; align-items: center; gap: 6px; pointer-events: auto; }
+.bcs-top-l { flex-wrap: wrap; min-width: 0; }
+.bcs-top-r { flex: none; }
+.bcs-live {
+    display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border-radius: 999px;
+    background: #e11d48; font-size: 0.78rem; font-weight: 800; letter-spacing: 0.06em;
+}
+.bcs-live-dot { width: 7px; height: 7px; border-radius: 50%; background: #fff; animation: bcs-pulse 1.6s ease-in-out infinite; }
+@keyframes bcs-pulse { 50% { opacity: 0.35; } }
+.bcs-pill {
+    display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border-radius: 999px;
+    background: rgba(0,0,0,0.5); border: 1px solid rgba(255,255,255,0.16); font-size: 0.82rem; font-weight: 600;
+    font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.bcs-pill b { font-weight: 700; }
+.bcs-dot { width: 8px; height: 8px; border-radius: 50%; background: #9ca3af; }
+.bcs-pill.is-ok .bcs-dot, .bcs-restream.is-ok::before { background: #22c55e; }
+.bcs-pill.is-warn .bcs-dot, .bcs-restream.is-warn::before { background: #f59e0b; }
+.bcs-pill.is-bad .bcs-dot, .bcs-restream.is-bad::before { background: #ef4444; }
+.bcs-restream::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: #9ca3af; }
+.bcs-pill.is-bad { border-color: rgba(239,68,68,0.7); }
+.bcs-end { height: 34px; padding: 0 16px; border: 0; border-radius: 999px; background: #e11d48; color: #fff; font-size: 0.9rem; font-weight: 800; }
+.bcs-flags {
+    position: absolute; top: calc(56px + env(safe-area-inset-top, 0px)); left: 12px; right: 84px;
+    display: flex; flex-direction: column; align-items: flex-start; gap: 6px;
+}
+.bcs-flag {
+    display: inline-flex; align-items: center; gap: 7px; padding: 6px 11px; border-radius: 999px;
+    background: rgba(225,29,72,0.92); font-size: 0.8rem; font-weight: 700;
+}
+.bcs-rail {
+    position: absolute; right: max(6px, env(safe-area-inset-right, 0px)); bottom: calc(14px + env(safe-area-inset-bottom, 0px));
+    display: flex; flex-direction: column; align-items: center; gap: 8px; pointer-events: auto;
+}
+.bcs-btn { display: flex; flex-direction: column; align-items: center; gap: 3px; width: 64px; padding: 0; border: 0; background: none; }
+.bcs-btn[hidden] { display: none; }
+.bcs-ico {
+    display: grid; place-items: center; width: 46px; height: 46px; border-radius: 50%; font-size: 1.12rem;
+    background: rgba(0,0,0,0.5); border: 1px solid rgba(255,255,255,0.18); transition: background 0.15s, transform 0.1s;
+}
+.bcs-btn:active .bcs-ico { transform: scale(0.94); }
+.bcs-btn.is-off .bcs-ico { background: #e11d48; border-color: transparent; }
+.bcs-btn[data-act="light"][aria-pressed="true"] .bcs-ico { background: #fde047; color: #111; border-color: transparent; }
+.bcs-btn.is-busy { opacity: 0.75; }
+.bcs-lbl { font-size: 0.7rem; font-weight: 700; line-height: 1.1; text-align: center; text-shadow: 0 1px 2px rgba(0,0,0,0.9); }
+
+.bcs-sheet-wrap {
+    position: fixed; inset: 0; z-index: 1300; display: flex; align-items: flex-end; justify-content: center;
+    background: rgba(0,0,0,0.5); animation: bcs-fade 0.15s ease-out;
+}
+.bcs-sheet-wrap.bcs-center { align-items: center; padding: 16px; }
+@keyframes bcs-fade { from { opacity: 0; } }
+.bcs-sheet {
+    width: 100%; max-width: 560px; max-height: 84vh; max-height: 84dvh; overflow-y: auto; overscroll-behavior: contain;
+    background: var(--bg-secondary, #15151c); color: var(--text-primary, #f4f4f5); border-radius: 22px 22px 0 0;
+    padding: 6px 16px calc(18px + env(safe-area-inset-bottom, 0px)); box-shadow: 0 -10px 40px rgba(0,0,0,0.35);
+    animation: bcs-up 0.2s ease-out;
+}
+@keyframes bcs-up { from { transform: translateY(24px); opacity: 0.6; } }
+.bcs-grab { width: 40px; height: 4px; border-radius: 4px; background: var(--border, rgba(255,255,255,0.2)); margin: 4px auto 10px; }
+.bcs-sheet-head { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; }
+.bcs-sheet-who { flex: 1; min-width: 0; display: grid; }
+.bcs-sheet-who b { font-size: 1.02rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bcs-sheet-who small, .bcs-row small, .bcs-tile small { color: var(--text-secondary, #a1a1aa); font-size: 0.76rem; }
+.bcs-x { width: 40px; height: 40px; flex: none; border-radius: 50%; border: 0; background: var(--surface-raised, rgba(255,255,255,0.08)); color: inherit; cursor: pointer; }
+.bcs-chip {
+    display: inline-flex; align-items: center; gap: 6px; min-height: 40px; padding: 0 14px; border-radius: 999px; cursor: pointer;
+    border: 1px solid var(--border, rgba(255,255,255,0.14)); background: var(--surface-raised, rgba(255,255,255,0.06));
+    color: inherit; font: inherit; font-weight: 600; font-size: 0.88rem;
+}
+.bcs-chip-strong { background: var(--accent-strong, #2563eb); color: var(--on-accent-strong, #fff); border-color: transparent; }
+.bcs-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.bcs-tile {
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; min-height: 82px; padding: 10px 6px;
+    border-radius: 14px; border: 1px solid var(--border, rgba(255,255,255,0.08)); background: var(--surface-raised, rgba(255,255,255,0.05));
+    color: inherit; font: inherit; font-size: 0.8rem; font-weight: 600; line-height: 1.2; text-align: center; cursor: pointer;
+}
+.bcs-tile i { font-size: 1.15rem; color: var(--accent, #60a5fa); }
+.bcs-row {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 12px; padding: 12px;
+    border-radius: 14px; border: 1px solid var(--border, rgba(255,255,255,0.08));
+}
+.bcs-row > div:first-child { display: grid; gap: 2px; min-width: 0; }
+.bcs-row-acts { display: flex; gap: 6px; flex: none; }
+.bcs-sec { margin-top: 14px; }
+.bcs-sec h3 { margin: 0 0 8px; font-size: 0.9rem; }
+.bcs-sec .bc-rs-control, .bcs-sec .bc-restream-control { display: flex !important; flex-direction: column; gap: 8px; margin: 0 0 8px; }
+.bcs-confirm {
+    width: 100%; max-width: 360px; padding: 20px; border-radius: 18px; text-align: center;
+    background: var(--bg-secondary, #15151c); color: var(--text-primary, #f4f4f5); box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+}
+.bcs-confirm h3 { margin: 0 0 6px; font-size: 1.15rem; }
+.bcs-confirm p { margin: 0 0 16px; color: var(--text-secondary, #a1a1aa); font-size: 0.9rem; }
+.bcs-confirm-acts { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+.bcs-confirm-acts .bcs-end { height: 40px; }
+.bcs-return {
+    position: fixed; left: 50%; bottom: calc(16px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); z-index: 1100;
+    display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 18px; border: 0; border-radius: 999px;
+    background: #e11d48; color: #fff; font-weight: 700; box-shadow: 0 8px 24px rgba(0,0,0,0.35); cursor: pointer;
+}
+.bcs-return[hidden] { display: none; }
+@media (prefers-reduced-motion: reduce) {
+    .bcs-live-dot, .bcs-sheet, .bcs-sheet-wrap { animation: none; }
+}

@@ -106,7 +106,7 @@ console.log = log;
 console.log('OK the slot segment resolves to the slot on air (the stream id resolved to another slot)');
 
 const html = read('public/fragments/broadcast.html');
-assert.match(html, /onclick="openViewerPreview\(\)"[^>]*title="Open a popup showing exactly what viewers see"/, 'the live controls offer the Viewer popup');
+assert.match(html, /onclick="openViewerPreview\(\)"[^>]*title="Open your channel the way viewers see it"[^>]*>\s*<i[^>]*><\/i> Watch as viewer/, 'the live controls offer the viewer popup ("Watch as viewer")');
 assert.match(bc, /function toggleBroadcastPreview\(\)/, 'next to the local-preview toggle');
 console.log('OK the live controls carry the Viewer button');
 
