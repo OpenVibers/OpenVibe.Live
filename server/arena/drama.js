@@ -16,7 +16,8 @@
  * quote_of_day (the best judged mic line). Beefs report themselves (beef.js → beefStory).
  *
  * A story is written at once from a template (grounded, already spicy) and rewritten by OpenVibe.AI's
- * live.arena.drama in the desk's voice (headline, blurb, alert 1-5) when AI is on, at most AI_PER_HOUR an hour.
+ * live.arena.drama in the desk's voice (headline, blurb, alert 1-5) when AI is on, at most AI_PER_HOUR an hour; the
+ * template's plain account (`what`) goes with the facts so the model knows what the event means.
  * Each story moves two scores: cow_points (the Lolcow Index: rage quits, crashes, meltdowns, L's) and clout_points
  * (the Clout Rankings: spikes, records, marathons, W's). Streamers in arena_opt_outs get no stories.
  *
@@ -102,7 +103,7 @@ async function createStory({ kind, userId, otherUserId = null, streamId = null, 
         try { require('./notify').arenaNotify(userId, { type: 'drama', title: `You made the Arena: ${headline.slice(0, 100)}`, message: blurb.slice(0, 200), icon: '🚨', url: `/arena/drama/${id}`, key: `drama:${id}` }); } catch { /* */ }
     }
     // The AI headline first (when it comes), then the chat hears about it.
-    rewrite(id, { kind, streamer: name, other: fx.other || null, facts: fx, quote: cleanQuote }, userId).catch(() => {}).then(() => announce(id)).catch(() => {});
+    rewrite(id, { kind, streamer: name, other: fx.other || null, what: blurb, facts: fx, quote: cleanQuote }, userId).catch(() => {}).then(() => announce(id)).catch(() => {});
     return id;
 }
 
