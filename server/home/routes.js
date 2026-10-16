@@ -135,6 +135,8 @@ function _cleanAudience(raw) {
 }
 
 const NO_FREE = /\b(free|no[- ]cost)\b|\$\s?0\b/i;
+// Nor copy about a real person's looks or age ("ara007 shirtless thoughts" was served once).
+const LOOKS = /\b(shirtless|topless|bare-?chested|naked|nude|cleavage|bikini|underwear|teen(age)?|young|kids?|child(ren)?|boys?|girls?)\b/i;
 
 async function heroSlogans() {
     let s = null;
@@ -142,9 +144,9 @@ async function heroSlogans() {
         s = await db.getState('home_hero_slogans');
         if (typeof s === 'string') s = JSON.parse(s);
     } catch { s = null; }
-    // No "free"/"$0" copy (the owner's rule), even in a batch stored before the slogan job filtered it.
-    const aiAud = (s && Array.isArray(s.audiences)) ? s.audiences.map(_cleanAudience).filter(a => a && a.length <= 60 && !NO_FREE.test(a)) : [];
-    const aiQuips = (s && Array.isArray(s.quips)) ? s.quips.filter(q => q && String(q).length <= 120 && !NO_FREE.test(String(q))) : [];
+    // No "free"/"$0" copy (the owner's rule) and none about looks, even in a batch stored before the slogan job filtered it.
+    const aiAud = (s && Array.isArray(s.audiences)) ? s.audiences.map(_cleanAudience).filter(a => a && a.length <= 60 && !NO_FREE.test(a) && !LOOKS.test(a)) : [];
+    const aiQuips = (s && Array.isArray(s.quips)) ? s.quips.filter(q => q && String(q).length <= 120 && !NO_FREE.test(String(q)) && !LOOKS.test(String(q))) : [];
     const hasAi = aiAud.length >= 4 || aiQuips.length >= 4;
     const updatedAt = (s && Number(s.updated_at)) || 0;
     // The slogan job regenerates every 12h; next_at is when the current batch is due to refresh.
@@ -594,6 +596,7 @@ module.exports = router;
 module.exports.startViewerSampler = startViewerSampler;
 module.exports.FALLBACK_AUDIENCES = FALLBACK_AUDIENCES;
 module.exports.FALLBACK_QUIPS = FALLBACK_QUIPS;
+module.exports.heroSlogans = heroSlogans;
 
 // Warm the hero caches once boot has finished (~6s on production). Every deploy restarts the process with empty caches, and
 // the first home page load after it used to wait on every upstream call cold (~2.3s measured right

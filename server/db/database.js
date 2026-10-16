@@ -362,7 +362,7 @@ async function addStreamMemory({ stream_id, user_id = null, offset_seconds = 0, 
     // store a second description of a moment already captured.
     return await run(`INSERT INTO stream_memories (stream_id, user_id, offset_seconds, description, tags, thumbnail_url, transcript_json)
                 VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING RETURNING id`,
-        [stream_id, user_id, Math.max(0, Math.round(offset_seconds || 0)), description || '',
+        [stream_id, user_id, Math.max(0, Math.round(offset_seconds || 0)), _noLooks(description || ''),
          tags ? (typeof tags === 'string' ? tags : JSON.stringify(tags)) : null, thumbnail_url,
          (transcript_json && typeof transcript_json !== 'string') ? JSON.stringify(transcript_json) : (transcript_json || null)]);
 }
@@ -386,11 +386,32 @@ function _plainProse(text) {
         .map((l) => (/[.!?…"')\]]$/.test(l) ? l : `${l}.`))
         .join(' ');
 }
+// Public AI text never describes how a person looks (frame notes show on VOD pages and
+// feed every overview). Text written before the prompts said so ("A shirtless man sits…",
+// "a young boy at a desk") has that person called "the streamer" (or "someone" when only
+// an age is named), so a plain "a man" or "the streamer" stays as written.
+const _LOOKS = 'shirtless|topless|bare-chested|young|younger|teenage|teen|little|bearded|bald|blonde?|(?:dark|long|short|curly|red|gr[ae]y|black|brown)-haired|tattooed|muscular|heavyset|older|elderly|middle-aged|skinny|slim|chubby|attractive|pretty|handsome|cute';
+const _PEOPLE = 'man|woman|boy|girl|guy|gal|kid|child|teen|teenager|lady|gentleman|male|female|person|individual|streamer|youth';
+const _AGE_NOUN = /^(?:boy|girl|kid|child|teen|teenager|youth)$/i;
+const _LOOKED_AT = new RegExp(`\\b(a|an|the|one)\\s+((?:(?:${_LOOKS})[\\s,]+(?:and\\s+)?)*)(${_PEOPLE})\\b`, 'gi');
+const _LOOKED_AT_BARE = new RegExp(`\\b(?:(?:${_LOOKS})[\\s,]+(?:and\\s+)?)+(${_PEOPLE})\\b`, 'gi');
+const _cap = (m, s) => (/^[A-Z]/.test(m) ? s[0].toUpperCase() + s.slice(1) : s);
+function _noLooks(text) {
+    if (!text || typeof text !== 'string') return text;
+    return text
+        // Looks named: the person on camera. Only an age ("a child sits nearby"): someone, who may not be the streamer.
+        .replace(_LOOKED_AT, (m, art, looks, noun) => (looks ? _cap(m, 'the streamer') : _AGE_NOUN.test(noun) ? _cap(m, /^the$/i.test(art) ? 'the person' : 'someone') : m))
+        .replace(_LOOKED_AT_BARE, (m) => _cap(m, 'streamer'))
+        .replace(/\s+(?:is|are)\s+(?:shirtless|topless|bare-chested)\s+and\s+/gi, ' ')
+        .replace(/\s+(?:is|are)\s+(?:shirtless|topless|bare-chested)\b/gi, ' is on camera')
+        .replace(/\s*,\s*(?:shirtless|topless|bare-chested)\s*,/gi, '')
+        .replace(/\b(?:shirtless|topless|bare-chested)\b,?\s*/gi, '');
+}
 // Derive a concise short overview from a long one — the lead sentence(s), capped
 // ~150 chars at a sentence/word boundary. Deterministic + free (no AI call), so it
 // can be cached at write time and shown on listing cards.
 function _shortOverview(text) {
-    const t = _plainProse(text).replace(/\s+/g, ' ').trim();
+    const t = _plainProse(_noLooks(text)).replace(/\s+/g, ' ').trim();
     // ' ' is the "tried, nothing to say" sentinel the AI jobs store to mark a row done.
     // It must round-trip as a non-empty value — the backfill queues treat NULL/'' as
     // still-pending, so collapsing the sentinel to null meant unprocessable VODs were
@@ -411,7 +432,7 @@ function _shortOverview(text) {
     return (sp > 40 ? cut.slice(0, sp) : cut).trim() + '…';
 }
 async function updateStreamAiOverview(streamId, text) {
-    return await run('UPDATE streams SET ai_overview = ?, ai_overview_short = ? WHERE id = ?', [text || null, _shortOverview(text), streamId]);
+    return await run('UPDATE streams SET ai_overview = ?, ai_overview_short = ? WHERE id = ?', [_noLooks(text) || null, _shortOverview(text), streamId]);
 }
 /** AI-inferred category/tags for a stream; the channel inherits the latest inferred category. */
 async function setStreamAiCategory(streamId, category, tags) {
@@ -471,13 +492,13 @@ async function setVodAiOverview(vodId, text) {
     await _ensureVodAiState(vodId);
     // Store the FULL overview alongside the derived short — the card expander swaps
     // the short teaser for this full text, so losing it makes expansion pointless.
-    const full = (text || '').trim() || null;
+    const full = _noLooks((text || '').trim()) || null;
     return await run('UPDATE vod_ai_state SET ai_overview = ?, ai_overview_short = ? WHERE vod_id = ?', [full, _shortOverview(text), vodId]);
 }
 async function setClipAiOverview(clipId, { overview = null, transcript = null, segments = null }) {
     void transcript; // full transcript text lives in the segments JSON now
     await _ensureClipAiState(clipId);
-    const full = (overview || '').trim() || null;
+    const full = _noLooks((overview || '').trim()) || null;
     return await run('UPDATE clip_ai_state SET ai_overview = ?, ai_overview_short = ?, ai_transcript_json = COALESCE(?, ai_transcript_json) WHERE clip_id = ?',
         [full, _shortOverview(overview), _segJson(segments), clipId]);
 }
@@ -644,6 +665,23 @@ async function cleanupMalformedAiText() {
             fixed++;
         }
     } catch { /* */ }
+    // Frame notes and overviews that describe how a person looks (stored before the
+    // prompts forbade it): the person becomes "the streamer" and the card line follows.
+    const looks = "~* '(shirtless|topless|bare-chested|young|teen|little|bearded|bald|blond|haired|tattooed|muscular|heavyset|older|elderly|middle-aged|skinny|slim|chubby|attractive|pretty|handsome|cute|boy|girl|kid|child|youth)'";
+    for (const [table, key, col, short] of [['stream_memories', 'id', 'description', null], ['streams', 'id', 'ai_overview', 'ai_overview_short'],
+        ['vod_ai_state', 'vod_id', 'ai_overview', 'ai_overview_short'], ['clip_ai_state', 'clip_id', 'ai_overview', 'ai_overview_short'],
+        ['streamer_overviews', 'user_id', 'overview', 'overview_short']]) {
+        try {
+            const rows = await all(`SELECT ${key} AS k, ${col} AS v FROM ${table} WHERE ${col} ${looks}`);
+            for (const r of rows) {
+                const clean = _noLooks(r.v);
+                if (clean === r.v) continue;
+                if (short) await run(`UPDATE ${table} SET ${col} = ?, ${short} = ? WHERE ${key} = ?`, [clean, _shortOverview(clean), r.k]);
+                else await run(`UPDATE ${table} SET ${col} = ? WHERE ${key} = ?`, [clean, r.k]);
+                fixed++;
+            }
+        } catch (e) { console.warn(`[AI] looks repair (${table}):`, e.message); }
+    }
     if (fixed) console.log(`[AI] Cleaned ${fixed} malformed JSON AI text value(s)`);
     return fixed;
 }
@@ -841,7 +879,7 @@ async function upsertStreamerOverview(userId, { overview, model = null, sources 
                 ON CONFLICT(user_id) DO UPDATE SET
                     overview = excluded.overview, overview_short = excluded.overview_short, model = excluded.model,
                     sources = excluded.sources, generated_at = ov_now()`,
-        [userId, _plainProse(overview || ''), _shortOverview(overview), model, sources]);
+        [userId, _plainProse(_noLooks(overview || '')), _shortOverview(overview), model, sources]);
 }
 async function getStreamerOverview(userId) {
     return await get('SELECT * FROM streamer_overviews WHERE user_id = ?', [userId]);
