@@ -1,6 +1,15 @@
 /**
- * transcribe.js — free, LOCAL speech-to-text via whisper.cpp (no API, runs on the
- * server CPU). Used for live-stream memories and VOD/clip transcripts.
+ * transcribe.js — free, LOCAL speech-to-text (no API, runs on the server CPU). Used for
+ * live-stream memories, the live timeline (which the Arena listens to) and VOD/clip transcripts.
+ *
+ * Two engines, both from the whisper.cpp tree (ggml):
+ *   - NVIDIA Parakeet TDT 0.6B v3 (`parakeet-cli`), for English and 24 other European languages.
+ *     Measured 2026-10-16 on 2 min of real stream talk on this 4-core box: 394 words in 31 s,
+ *     punctuated, where whisper base.en (the old live model) caught 327 words in 15 s and dropped
+ *     whole sentences ("they put in" → "the Putin"), and large-v3-turbo needed 121 s (1x real time,
+ *     too slow for live). A 10 s live segment decodes in 2.5 s on 2 threads, like base.en did.
+ *   - whisper.cpp, for every other language (Japanese, Korean, Chinese…) and as the fallback when
+ *     Parakeet is not installed. ASR_ENGINE=whisper forces it everywhere.
  *
  * Reliability features:
  *   - JSON output (-oj) → per-segment timestamps (ms) we keep as contextual data.
@@ -50,6 +59,20 @@ function _modelFor(opts) {
 }
 const THREADS = Math.max(2, Math.min(8, parseInt(process.env.WHISPER_THREADS, 10) || 4));
 
+// ── Parakeet (NVIDIA Parakeet TDT, ggml, from the same whisper.cpp build) ──
+const PARAKEET_BIN = process.env.PARAKEET_BIN || path.join(HOME, 'whisper.cpp/build/bin/parakeet-cli');
+const PARAKEET_MODEL = process.env.PARAKEET_MODEL || path.join(HOME, 'whisper.cpp/models/ggml-parakeet-tdt-0.6b-v3-q8_0.bin');
+// Parakeet TDT 0.6B v3's languages (NVIDIA's model card): every other language goes to whisper.
+const PARAKEET_LANGS = new Set(['bg', 'hr', 'cs', 'da', 'nl', 'en', 'et', 'fi', 'fr', 'de', 'el', 'hu', 'it', 'lv', 'lt', 'mt', 'pl', 'pt', 'ro', 'sk', 'sl', 'es', 'sv', 'ru', 'uk']);
+function parakeetAvailable() {
+    if (process.env.ASR_ENGINE === 'whisper') return false;
+    try { return fs.existsSync(PARAKEET_BIN) && fs.existsSync(PARAKEET_MODEL); } catch { return false; }
+}
+/** The engine a decode in `language` uses: 'parakeet' or 'whisper'. */
+function engineFor(language = 'en') {
+    return parakeetAvailable() && PARAKEET_LANGS.has(String(language || 'en').slice(0, 2).toLowerCase()) ? 'parakeet' : 'whisper';
+}
+
 // ── Voice Activity Detection ──────────────────────────────────────────────
 // Measured on 60s of real stream audio: VAD cut large-v3-turbo from 51.0s to 24.0s
 // AND removed a trailing "Thank you." hallucination. Both effects matter, and the
@@ -84,6 +107,10 @@ function whisperBin() {
     return found;
 }
 function available() {
+    if (parakeetAvailable()) return true;
+    try { return !!whisperBin() && fs.existsSync(MODEL); } catch { return false; }
+}
+function whisperAvailable() {
     try { return !!whisperBin() && fs.existsSync(MODEL); } catch { return false; }
 }
 
@@ -210,6 +237,62 @@ function _joinSegments(segments) {
  * @returns {Promise<{text:string, segments:Array<{start:number,end:number,text:string}>}>}
  *          start/end in seconds (shifted by opts.offsetSec).
  */
+// ── Parakeet output → timed sentences ──────────────────────────────────────
+// `parakeet-cli -ps` prints every token on stderr with its start and end in centiseconds and whether it starts a
+// word ("▁For"). A sentence ends at . ? or !, at a pause of 1.5 s, or after 20 s, so each timeline row stays a
+// line someone said, deep-linkable by its start.
+const TOKEN_LINE = /t0=\s*(-?\d+)\s+t1=\s*(-?\d+)\s+word_start=(true|false)\s+"(.*)"\s*$/;
+// Fillers Parakeet writes out ("uh", "um") carry nothing for a reader or the Arena's quotes.
+const FILLER_RE = /(^|[\s,])(?:uh+|um+|uhm|erm|mm+)(?=[\s,.!?]|$)[,]?/gi;
+function parseParakeet(stderr, offsetSec = 0) {
+    const out = [];
+    let cur = null;
+    const close = () => {
+        if (!cur) return;
+        const text = cur.text.replace(FILLER_RE, '$1').replace(/\s+([,.!?])/g, '$1').replace(/\s+/g, ' ').replace(/^[,\s]+/, '').trim();
+        if (text) out.push({ start: offsetSec + cur.t0 / 100, end: offsetSec + cur.t1 / 100, text });
+        cur = null;
+    };
+    for (const line of String(stderr || '').split('\n')) {
+        const m = TOKEN_LINE.exec(line);
+        if (!m) continue;
+        const t0 = Number(m[1]), t1 = Number(m[2]);
+        const wordStart = m[3] === 'true';
+        const raw = m[4];
+        if (/^<.*>$/.test(raw)) continue;                      // <unk>, <|…|> control tokens
+        const piece = raw.replace(/\u2581/g, ' ');
+        if (cur && wordStart && (t0 - cur.t1 > 150 || t0 - cur.t0 > 2000)) close();
+        if (!cur) cur = { t0, t1, text: '' };
+        cur.text += wordStart && !piece.startsWith(' ') ? ` ${piece}` : piece;
+        cur.t1 = Math.max(cur.t1, t1);
+        if (/[.!?]["')\]]?$/.test(piece.trim())) close();
+    }
+    close();
+    return out;
+}
+
+function _parakeetInner(wavPath, { timeoutMs = 180000, offsetSec = 0, live = false } = {}) {
+    return new Promise((resolve) => {
+        if (!parakeetAvailable() || !wavPath || !fs.existsSync(wavPath)) return resolve({ text: '', segments: [], ok: false, error: 'parakeet unavailable' });
+        const args = ['-t', String(_threads(live)), '-ps', '-np', '-m', PARAKEET_MODEL, '-f', wavPath];
+        let ff;
+        try { ff = _track(spawn('nice', ['-n', '15', PARAKEET_BIN, ...args], { stdio: ['ignore', 'ignore', 'pipe'] })); }
+        catch (e) { return resolve({ text: '', segments: [], ok: false, error: e.message }); }
+        const chunks = [];
+        let size = 0;
+        ff.stderr.on('data', (d) => { if (size < 64 * 1024 * 1024) { chunks.push(d); size += d.length; } });
+        let done = false;
+        const finish = (result) => { if (done) return; done = true; clearTimeout(timer); resolve(result); };
+        const timer = setTimeout(() => { try { ff.kill('SIGKILL'); } catch { /* */ } finish({ text: '', segments: [], ok: false, error: 'timeout' }); }, timeoutMs);
+        ff.on('close', (code) => {
+            if (code !== 0) return finish({ text: '', segments: [], ok: false, error: `parakeet exited ${code}` });
+            const segments = _cleanSegments(parseParakeet(Buffer.concat(chunks).toString('utf8'), offsetSec));
+            finish({ text: _joinSegments(segments), segments, ok: true, engine: 'parakeet' });
+        });
+        ff.on('error', (e) => finish({ text: '', segments: [], ok: false, error: e.message }));
+    });
+}
+
 // Inner implementation. Wrapped by transcribeWavDetailed, which holds the concurrency
 // slot for the whole run so only MAX_CONCURRENT decoders exist at any moment.
 function _transcribeWavInner(wavPath, { timeoutMs = 180000, offsetSec = 0, live = false, language = 'en' } = {}) {
@@ -218,7 +301,7 @@ function _transcribeWavInner(wavPath, { timeoutMs = 180000, offsetSec = 0, live 
         // ok=false only for genuine FAILURES (missing binary, spawn/exec error, timeout,
         // non-zero exit, unparseable output). A clean run that finds no speech is ok=true
         // with empty text — the caller must NOT treat that as a failure to retry.
-        if (!bin || !available() || !wavPath || !fs.existsSync(wavPath)) {
+        if (!bin || !whisperAvailable() || !wavPath || !fs.existsSync(wavPath)) {
             return resolve({ text: '', segments: [], ok: false, error: 'whisper unavailable' });
         }
         const outBase = `${wavPath}.out`;
@@ -311,8 +394,15 @@ async function transcribeMedia(mediaPath, opts = {}) {
 async function transcribeWavDetailed(wavPath, opts = {}) {
     const lane = opts && opts.live ? 'live' : 'batch';
     await _acquire(lane);
-    try { return await _transcribeWavInner(wavPath, opts); }
-    finally { _release(lane); }
+    try {
+        if (engineFor(opts && opts.language) === 'parakeet') {
+            const r = await _parakeetInner(wavPath, opts);
+            // A Parakeet failure (a crash, a bad model file) must not leave a hole: whisper takes the same audio.
+            if (r.ok || !whisperAvailable()) return r;
+            console.warn(`[Transcribe] parakeet failed (${r.error}); whisper takes this audio`);
+        }
+        return await _transcribeWavInner(wavPath, opts);
+    } finally { _release(lane); }
 }
 
 /** Human-readable availability report (logged at boot so a broken install is visible). */
@@ -324,10 +414,11 @@ function describe() {
         model: MODEL, modelExists: fs.existsSync(MODEL),
         modelLive: MODEL_LIVE, modelLiveExists: fs.existsSync(MODEL_LIVE),        modelMulti: MODEL_MULTI, modelMultiExists: !!multilingualModel(),
         vadModel: vadModel() || null,
+        parakeet: parakeetAvailable() ? PARAKEET_MODEL : null, engineEn: engineFor('en'),
         threads: THREADS, beam: BEAM, maxConcurrent: MAX_CONCURRENT,
     };
 }
 
 function isLowPower() { return _lowPower; }
 
-module.exports = { available, describe, laneStatus, multilingualModel, transcribeWav, transcribeWavDetailed, transcribeMedia, transcribeMediaDetailed, killActive, setLowPower, isLowPower };
+module.exports = { available, describe, engineFor, parseParakeet, laneStatus, multilingualModel, transcribeWav, transcribeWavDetailed, transcribeMedia, transcribeMediaDetailed, killActive, setLowPower, isLowPower };

@@ -1381,7 +1381,7 @@ async function start() {
 
         // AI stream-memory job (no-op until enabled in openvibe.network/admin → AI).
         try { require('./ai/stream-memory-job').start(); } catch (e) { console.warn('[AI] memory job not started:', e.message); }
-        try { (() => { try { const d = require('./ai/transcribe').describe(); console.log(`[AI] whisper ${d.available ? 'available' : 'UNAVAILABLE'} — bin=${d.bin} model=${d.model}${d.modelExists ? '' : ' (MISSING)'} live=${d.modelLive}${d.modelLiveExists ? '' : ' (MISSING)'} vad=${d.vadModel || 'off'} threads=${d.threads}`); } catch (e) { console.warn('[AI] whisper probe failed:', e.message); } })();
+        try { (() => { try { const d = require('./ai/transcribe').describe(); console.log(`[AI] speech-to-text ${d.available ? 'available' : 'UNAVAILABLE'} — English via ${d.engineEn}${d.parakeet ? ` (${d.parakeet})` : ''}; whisper bin=${d.bin} model=${d.model}${d.modelExists ? '' : ' (MISSING)'} live=${d.modelLive}${d.modelLiveExists ? '' : ' (MISSING)'} vad=${d.vadModel || 'off'} threads=${d.threads}`); } catch (e) { console.warn('[AI] whisper probe failed:', e.message); } })();
     require('./ai/backfill-job').start(); } catch (e) { console.warn('[AI] backfill job not started:', e.message); }
     // AI viewers activity log: keep a week.
     setInterval(async () => { try { const n = await db.pruneAiViewerLog(7); if (n) console.log(`[AI-Viewers] pruned ${n} log row(s)`); } catch { /* */ } }, 6 * 3600 * 1000);
