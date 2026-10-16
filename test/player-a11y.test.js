@@ -8,7 +8,7 @@ const fs = require('fs');
 const path = require('path');
 
 const pub = (f) => fs.readFileSync(path.join(__dirname, '..', 'public', f), 'utf8');
-for (const f of ['fragments/vod-player.html', 'fragments/clip-player.html', 'fragments/channel.html']) {
+for (const f of ['fragments/channel.html']) {   // the VOD and clip players are OpenVibe.Video's
     const html = pub(f);
     const ranges = html.match(/<input[^>]*type="range"[^>]*>/g) || [];
     assert.ok(ranges.length, `${f} has a volume slider`);

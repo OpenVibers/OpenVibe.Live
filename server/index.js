@@ -626,10 +626,11 @@ app.use('/css', assets.versionedStatic('/css'), express.static(path.join(assets.
 app.use('/fragments', assets.versionedStatic('/fragments'), express.static(path.join(assets.PUBLIC_DIR, 'fragments'), { ...assetOpts, fallthrough: false }));
 // SEO: per-route <head> meta/OG/JSON-LD injection + dynamic sitemap. MUST be before the public
 // static below (so it can intercept "/") and before the SPA catch-all. Only touches the SPA
-// HTML routes (home, vods/clips/pastes lists, vod/clip/paste detail); everything else falls through.
-// Pastes live on openvibe.community: /p/<slug> 301s there, and it is mounted
-// before SEO so crawlers and people get the same redirect and Community is the one canonical page.
+// HTML routes (home, the vods/clips/pastes lists, channels, recaps); everything else falls through.
+// Pastes live on openvibe.community and recordings and clips on openvibe.video: /p/<slug>, /vod/<id> and
+// /clip/<id> 301 there, mounted before SEO so crawlers and people get the same redirect and one canonical page.
 require('./web/paste-handover').register(app);
+require('./web/video-handover').register(app);
 try { require('./seo').register(app); } catch (e) { console.warn('[SEO] not registered:', e.message); }
 // Standalone HTML pages (popout chat, kiosk, legal, OBS overlays…) go through the same asset rewrite
 // as the SPA shell, so their script and stylesheet URLs can never drift out of date again.

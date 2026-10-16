@@ -128,8 +128,9 @@ function _aChannelLink(u, slot = null) { return typeof channelPath === 'function
 function _aFighterLink(u) { return `/arena/${encodeURIComponent(u.username)}`; }
 function _aConsoleLink(u) { return `/arena/live/${encodeURIComponent(u.username)}`; }
 function _aBeefLink(b) { return `/arena/beef/${b.id}`; }
-function _aVodLink(vodId, sec) { return vodId ? `/vod/${vodId}?t=${Math.max(0, Math.floor(sec || 0))}` : null; }
-function _aA(href, inner, cls = '', title = '') { return `<a class="${cls}" href="${_aEsc(href)}" ${title ? `title="${_aEsc(title)}"` : ''} onclick="return handleLinkClick(event, '${_aEsc(href)}')">${inner}</a>`; }
+function _aVodLink(vodId, sec) { return vodId ? videoHref('vod', vodId, Math.max(0, Math.floor(sec || 0))) : null; }
+// A link inside Live navigates the SPA; one that leaves (an OpenVibe.Video moment) is a plain link.
+function _aA(href, inner, cls = '', title = '') { const out = /^https?:\/\//.test(href); return `<a class="${cls}" href="${_aEsc(href)}" ${title ? `title="${_aEsc(title)}"` : ''}${out ? '' : ` onclick="return handleLinkClick(event, '${_aEsc(href)}')"`}>${inner}</a>`; }
 function _aPlay(vodId, sec, label = '') { const h = _aVodLink(vodId, sec); return h ? _aA(h, `<i class="fa-solid fa-play"></i>${label ? ` ${_aEsc(label)}` : ''}`, 'arena-play', 'Hear them say it (jumps to the VOD)') : ''; }
 function _aLevelPill(level) { return `<span class="arena-lvl" title="Trash Level — XP from what you say on mic, nothing else">TL ${_aEsc(level ?? 1)}</span>`; }
 function _aBriefChip(f, extra = '') {

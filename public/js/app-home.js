@@ -1451,7 +1451,7 @@ async function loadHomeRecentVods(opts) {
             header.style.display = '';
             const _put = (html) => ovPutCards(grid, html, append);
             _put(vods.map(v => {
-                const href = `/vod/${v.id}`;
+                const href = `${videoHref('vod', v.id)}`;
                 return `
                     <a class="stream-card" href="${href}" onclick="return handleLinkClick(event, '${href}')">
                         <div class="stream-card-thumb">
@@ -1490,7 +1490,7 @@ async function loadHomeClips(opts) {
             if (header) header.style.display = '';
             const _put = (html) => ovPutCards(grid, html, append);
             _put(clips.map(c => `
-                <a class="stream-card" href="/clip/${c.id}" onclick="return handleLinkClick(event, '/clip/${c.id}')">
+                <a class="stream-card" href="${videoHref('clip', c.id)}" onclick="return handleLinkClick(event, '${videoHref('clip', c.id)}')">
                     <div class="stream-card-thumb">
                         ${thumbImg(c.thumbnail_url, 'fa-scissors', c.title, `/api/thumbnails/generate/clip/${c.id}`)}
                         ${ovViewsBadge(c.view_count)}
@@ -1564,7 +1564,7 @@ function streamCardHTML(s, isLive) {
         const msRef = s.managed_stream_slug || s.managed_stream_id || null;
         navUrl = channelPath(s.username, msRef);
     } else if (!isLive && s.vod_id && s.vod_is_public) {
-        navUrl = `/vod/${s.vod_id}`;
+        navUrl = `${videoHref('vod', s.vod_id)}`;
     } else {
         navUrl = channelPath(s.username);
     }

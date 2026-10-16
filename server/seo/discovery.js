@@ -134,7 +134,7 @@ function llmsTxt() {
                 { title: 'Content', url: `${b}/content`, note: `VODs, the clips people took, and pastes people wrote. JSON: ${b}/api/content/feed (cursor paging; ?type=vods|clips|pastes, ?sort=new|top)` },
                 { title: 'Channel pages', url: `${b}/@<username>`, note: `the channel's videos in pages (${b}/@<username>?page=2)` },
                 { title: 'Recording pages', url: 'https://openvibe.video/v/<id>', note: 'the canonical watch page on OpenVibe.Video, with chapters, captions and chat replay; a moment: https://openvibe.video/v/<id>?t=<seconds> (Live\'s own /vod/<id> names it as canonical)' },
-                { title: 'Clip pages', url: 'https://openvibe.video/c/<id>', note: 'on OpenVibe.Video (Live\'s /clip/<id> names it as canonical)' },
+                { title: 'Clip pages', url: 'https://openvibe.video/c/<id>', note: 'on OpenVibe.Video (Live\'s /clip/<id> redirects there)' },
                 { title: 'Pastes', url: 'https://openvibe.community/p/<slug>', note: 'pastes live on OpenVibe.Community (Live\'s /p/<slug> redirects there)' },
                 { title: 'Chat', url: `${b}/chat` },
                 { title: 'The Arena', url: `${b}/arena`, note: 'mic-judged streamer callouts' },

@@ -345,7 +345,8 @@ async function tick(opts = {}) {
             let tags = moment.tags || [];
 
             const vodPath = `/vod/${v.vod_id}?t=${offset}`;
-            const vodLink = `${BASE_URL}${vodPath}`;
+            // The moment on the recording's page, OpenVibe.Video (vod_link in the metadata keeps Live's path form).
+            const vodLink = require('../web/video-url').videoUrl('vod', v.vod_id, offset) || `${BASE_URL}${vodPath}`;
             const slug = _slug();
 
             // Extract the real frame at this moment so the paste is a true IMAGE paste.
