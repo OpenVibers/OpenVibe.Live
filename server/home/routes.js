@@ -184,6 +184,10 @@ router.get('/stats/series/:metric', async (req, res) => {
             if (m && Array.isArray(m.points)) series = { ...m, kind: 'count', peak: Math.max(0, ...m.points.map(p => p.value)), source: 'media' };
         } catch (err) { console.warn('[Home] Media series unavailable:', err.message); }
         if (!series) return res.status(503).json({ error: 'Media stats are unavailable right now' });
+    } else if (require('../monetization/billing-stats').METRICS[metric]) {
+        // Vibes bought and channel subscriptions: OpenVibe.Billing's (the money ledger since 2026-10-17).
+        series = await require('../monetization/billing-stats').series(metric, days);
+        if (!series) return res.status(503).json({ error: 'Billing stats are unavailable right now' });
     } else if (metric === 'pastes') {
         try {
             const c = await require('../pastes-client').request('GET', '/admin/stats/series', { query: { days }, act: { staff: true }, timeoutMs: 5000 });
@@ -193,7 +197,7 @@ router.get('/stats/series/:metric', async (req, res) => {
     } else {
         series = await db.getReadingSeries(metric, days) || await db.getHomeStatSeries(metric, days);
     }
-    if (!series) return res.status(404).json({ error: 'Unknown metric', metrics: [...db.HOME_SERIES_KEYS, ...MEDIA_SERIES, 'pastes'] });
+    if (!series) return res.status(404).json({ error: 'Unknown metric', metrics: [...db.HOME_SERIES_KEYS, ...MEDIA_SERIES, 'pastes', 'vibesBought', 'subs'] });
     if (_seriesCache.size > 200) _seriesCache.clear();
     _seriesCache.set(key, { at: Date.now(), data: series });
     res.json(series);
@@ -207,10 +211,17 @@ async function heroStats(timing) {
     // Media stats and the network coin ledger are independent upstream calls; they used to be awaited
     // one after the other, so a cold cache paid for both in sequence.
     a = Date.now();
-    const [, c] = await Promise.all([
+    const [, c, money] = await Promise.all([
         lookups.withArchiveStats(stats).then(v => { mark('media_stats', a); return v; }),
         require('../monetization/wallet-client').networkCoinStats().then(v => { mark('coins', a); return v; }).catch(() => null),
+        require('../monetization/billing-stats').counts().then(v => { mark('billing_stats', a); return v; }).catch(() => null),
     ]);
+    // Vibes bought and channel subscriptions: OpenVibe.Billing's counts (cached), empty when it does not answer.
+    if (money) {
+        stats.vibesBought = money.vibesBought;
+        stats.activeSubs = money.activeSubs;
+        stats.recent = { ...(stats.recent || {}), vibesBought: money.recent.vibesBought, subs: money.recent.subs };
+    }
     // Site-wide OpenCoins sit next to channel points on the board: one is the network-wide
     // currency people earn everywhere, the other is per-channel. The ledger lives on
     // OpenVibe.Network, so this is a cached internal call that is allowed to come back empty.
