@@ -27,6 +27,10 @@ const db = require('../server/db/database');
         ['The view is close to the camera while wearing a black beanie and hoodie, with trees around.', 'The view is close to the camera, with trees around.'],
         ['A man in a gray tank top sits against a plain light background.', 'A man sits against a plain light background.'],
         ['A man with a long beard and plaid shirt examines a woven item.', 'A man examines a woven item.'],
+        // Pose and expression are the person too (2026-10-17, the home page's "Right now").
+        ['A live stream frame shows the streamer in a small window bottom-left, appearing to be reacting with a thoughtful pose while the main screen is black.',
+            'A live stream frame shows the streamer in a small window bottom-left while the main screen is black.'],
+        ['The streamer sits in a relaxed posture at the desk.', 'The streamer sits at the desk.'],
         ['A kitchen studio with a headset-wearing host, microphone, and on-screen graphics.', 'A kitchen studio with a host, microphone, and on-screen graphics.'],
         ['Panelists discuss while wearing headsets and microphones, with a trophy nearby.', 'Panelists discuss, with a trophy nearby.'],
         ['A man wearing sunglasses on his head looks down at the camera.', 'A man looks down at the camera.'],
@@ -46,6 +50,9 @@ const db = require('../server/db/database');
         ['The streamer laughs — heard: "Put your headset on. I like your hair."', 'The streamer laughs — heard: "Put your headset on. I like your hair."'],
     ];
     let off = 0;
+    // Public memory text is the observation alone: the raw transcript clause stays for the AI's context, never shown.
+    assert.strictEqual(db.publicMemoryText('The main screen is black, suggesting a pause. — heard: "Δεν θα πούμε άλλο. Τώρα που κερδίζουμε."'), 'The main screen is black, suggesting a pause.');
+    assert.strictEqual(db.publicMemoryText(null), '');
     for (const [input, want] of cases) {
         await db.addStreamMemory({ stream_id: sid, user_id: uid, offset_seconds: (off += 60), description: input });
         const row = await db.get('SELECT description FROM stream_memories WHERE stream_id = ? AND offset_seconds = ?', [sid, off]);

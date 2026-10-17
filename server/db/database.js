@@ -433,9 +433,11 @@ const _hasLooks = (t) => _LOOKS_WORD.test(String(t || ''));
 function _noLooksTags(tags) {
     return (Array.isArray(tags) ? tags : []).filter((t) => typeof t === 'string' && t.trim() && !_LOOKS_TAG.test(t.trim()));
 }
+// Body language is the person too ("reacting with a thoughtful pose", "in a relaxed posture"): the phrase goes.
+const _POSE = /,?\s*(?:(?:appearing|seeming|seemingly)\s+(?:to\s+be\s+)?)?(?:(?:reacting|sitting|standing|leaning|posing|looking|resting)\s+)?(?:with|in)\s+(?:an?|their|his|her)\s+(?:[\w-]+\s+){0,2}(?:pose|posture|expression|facial expression|stance)\b/gi;
 function _noLooks(text) {
     if (!text || typeof text !== 'string') return text;
-    return _noClothing(text)
+    return _noClothing(text).replace(_POSE, '').replace(/\s+([,.;:!?])/g, '$1').replace(/ {2,}/g, ' ')
         // Looks named: the person on camera. Only an age ("a child sits nearby"): someone, who may not be the streamer.
         .replace(_LOOKED_AT, (m, art, looks, noun) => (looks ? _cap(m, 'the streamer') : _AGE_NOUN.test(noun) ? _cap(m, /^the$/i.test(art) ? 'the person' : 'someone') : m))
         .replace(_LOOKED_AT_BARE, (m) => _cap(m, 'streamer'))
@@ -445,6 +447,16 @@ function _noLooks(text) {
         .replace(/\s+(?:is|are)\s+(?:shirtless|topless|bare-chested)\b/gi, ' is on camera')
         .replace(/\s*,\s*(?:shirtless|topless|bare-chested)\s*,/gi, '')
         .replace(/\b(?:shirtless|topless|bare-chested)\b,?\s*/gi, '');
+}
+/**
+ * A stream memory as the public sees it (home "Right now", a VOD's AI timeline, a streamer's AI profile): the
+ * observation only. The " — heard: "…"" clause is raw speech-to-text kept for the AI's own context (often another
+ * language, misheard, 500 characters); shown, it read as a wall of garbled text (2026-10-17, a Greek stream on the
+ * home page). Looks and pose wording go as everywhere public.
+ */
+function _publicMemoryText(text) {
+    const t = String(text || '').replace(/\s+—\s+heard:[\s\S]*$/, '').trim();
+    return (_noLooks(t) || '').trim();
 }
 // Derive a concise short overview from a long one — the lead sentence(s), capped
 // ~150 chars at a sentence/word boundary. Deterministic + free (no AI call), so it
@@ -3586,7 +3598,7 @@ module.exports = {
     setVodAiOverview, setClipAiOverview, setVodTranscript, setClipTranscript, getStreamMemoriesInRange,
     getVodsNeedingOverview, getClipsNeedingOverview, getVodsNeedingTimeline, getVodsNeedingTranscript, getClipsNeedingTranscript, getMediaNeedingAiAnalysis,
     setVodTranscriptStatus, setClipTranscriptStatus, bumpVodTranscriptAttempt, bumpClipTranscriptAttempt,
-    cleanupMalformedAiText, noLooks: _noLooks, noLooksTags: _noLooksTags, hasLooks: _hasLooks, recordAiUsage, getAiCostToday, getAiCostTodayForUser, getAiUsageSummary,
+    cleanupMalformedAiText, noLooks: _noLooks, noLooksTags: _noLooksTags, hasLooks: _hasLooks, publicMemoryText: _publicMemoryText, recordAiUsage, getAiCostToday, getAiCostTodayForUser, getAiUsageSummary,
     getStreamMemoriesByUser, countStreamMemoriesByUser, getStreamTranscriptSegments,
     addTimelineEvents, getTimeline, getTimelineText, getTimelineCoverage, linkTimelineToVod, getTimelineByVod, getTimelineVodId,
     upsertStreamerOverview, getStreamerOverview, getAllStreamerOverviews, getStreamersNeedingOverview,

@@ -390,7 +390,7 @@ router.get('/:id/memories', optionalAuth, async (req, res) => {
         if (!streamId) return res.json({ memories: [] });
         const memories = (await db.getStreamMemories(streamId) || []).map(m => ({
             offset_seconds: m.offset_seconds,
-            description: m.description,
+            description: db.publicMemoryText(m.description),
             tags: m.tags ? (() => { try { return JSON.parse(m.tags); } catch { return []; } })() : [],
         }));
         res.json({ memories });
