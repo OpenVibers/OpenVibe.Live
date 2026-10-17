@@ -2268,14 +2268,14 @@ function _renderHistoryOffscreen(chatEl, fill, widget = true) {
 }
 const _idle = (fn) => (window.requestIdleCallback ? requestIdleCallback(fn, { timeout: 1200 }) : setTimeout(fn, 60));
 
-/** A payload as pieces of `n` rows in time order (as the renderer merges them), newest piece first. */
-function _historyPieces(p, n) {
+/** A payload as pieces in time order (as the renderer merges them), newest first: `first` rows, then `n` each. */
+function _historyPieces(p, n, first = n) {
     if (!p || !p.data) return [p];
     const t = (m) => { const d = Date.parse(String(m.timestamp || '').replace(' ', 'T')); return isNaN(d) ? 0 : d; };
     const all = (p.data.messages || []).map((m) => [m, 0]).concat((p.globalMsgs || []).map((m) => [m, 1])).sort((a, b) => t(a[0]) - t(b[0]));
     const out = [];
-    for (let end = all.length; end > 0; end -= n) {
-        const part = all.slice(Math.max(0, end - n), end);
+    for (let end = all.length, k = first; end > 0; end -= k, k = n) {
+        const part = all.slice(Math.max(0, end - k), end);
         out.push({ ...p, data: { ...p.data, messages: part.filter((x) => !x[1]).map((x) => x[0]) }, globalMsgs: part.filter((x) => x[1]).map((x) => x[0]) });
     }
     return out.length ? out : [p];
@@ -2435,9 +2435,9 @@ async function hydrateActiveChatHistory(streamId, { clear = false } = {}) {
     if (now.messages !== messages) return;  // the page changed under us
 
     if (payload) {
-        // The newest 120 rows first; older scrollback is put above them a piece per idle moment (all 1000 rows
-        // in one go was a 2.7 s task on a phone), keeping the reader where they are.
-        const pieces = _historyPieces(payload, 120);
+        // The newest 120 rows first; older scrollback goes above them 25 rows at a time, as many as fit in each
+        // idle moment (all 1000 rows at once was a 2.7 s task on a phone), keeping the reader where they are.
+        const pieces = _historyPieces(payload, 25, 120);
         _swapChatHistory(messages, _renderHistoryOffscreen(now, () => _renderHistoryPayload(pieces[0])));
         messages.dataset.room = room;
         _chatCacheWrite(room, payload);
@@ -2445,13 +2445,13 @@ async function hydrateActiveChatHistory(streamId, { clear = false } = {}) {
         const late = _chatLiveDuringHydrate;
         _chatLiveDuringHydrate = [];
         late.forEach((m) => addChatMessage(m));
-        const older = (i) => i < pieces.length && _idle(() => {
+        const older = (i) => i < pieces.length && _idle((dl) => {
             if (gen !== _chatHydrateGen || getChatEl().messages !== messages) return;
-            const rows = _renderHistoryOffscreen(getChatEl(), () => _renderHistoryPayload(pieces[i]), false);
             const top = messages.scrollTop, h = messages.scrollHeight;
-            messages.prepend(...rows.childNodes);
+            do messages.prepend(..._renderHistoryOffscreen(getChatEl(), () => _renderHistoryPayload(pieces[i++]), false).childNodes);
+            while (i < pieces.length && dl && dl.timeRemaining() > 15);
             messages.scrollTop = _chatPinned ? messages.scrollHeight : top + messages.scrollHeight - h;
-            older(i + 1);
+            older(i);
         });
         older(1);
     } else {
