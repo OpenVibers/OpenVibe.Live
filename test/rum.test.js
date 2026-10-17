@@ -80,7 +80,9 @@ const { createRum, pageKind, deviceClass } = require('../server/web/rum');
     const app_js = fs.readFileSync(path.join(__dirname, '../public/js/app.js'), 'utf8');
     assert.ok(app_js.includes("if (Math.random() < 0.25 && window.ov) (window.requestIdleCallback || setTimeout)(() => ov.loadScript('/js/ov-rum.js'));"));
     const client = fs.readFileSync(path.join(__dirname, '../public/js/ov-rum.js'), 'utf8');
-    assert.ok(client.includes("navigator.sendBeacon('/api/rum'") && !/cookie|localStorage|userAgent/i.test(client.replace(/\/\*[\s\S]*?\*\//g, '')), 'the beacon carries no identifier');
+    assert.ok(client.includes("navigator.sendBeacon('/api/rum'") && !/cookie|localStorage/i.test(client.replace(/\/\*[\s\S]*?\*\//g, '')), 'the beacon carries no identifier');
+    assert.ok(/navigator\.webdriver \|\| \/bot\|crawl\|spider[^/]*headless/.test(client), 'automated browsers (crawlers, headless runs) send nothing');
+    assert.ok(!/userAgent[^)]*sendBeacon|JSON\.stringify\(\{[^}]*userAgent/.test(client), 'the user agent is checked, never sent');
 
     console.log('rum: all checks passed');
 })().catch((e) => { console.error(e); process.exit(1); });
