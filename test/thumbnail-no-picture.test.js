@@ -49,6 +49,28 @@ console.warn = () => {};
     await post('/api/thumbnails/generate/clip/456');
     assert.strictEqual(asked, 2, 'a failed job is remembered too');
 
+    // An audio-only recording (404 media.no_video) is remembered for a day; another 404 for an hour.
+    const realNow = Date.now;
+    const notFound = (code) => async () => {
+        asked++;
+        const err = new Error('no picture');
+        Object.assign(err, { name: 'MediaApiError', status: 404, body: { error: 'no picture', code } });
+        throw err;
+    };
+    media.generateThumbnail = notFound('media.no_video');
+    await post('/api/thumbnails/generate/clip/457');
+    media.generateThumbnail = notFound('media.not_found');
+    await post('/api/thumbnails/generate/clip/458');
+    assert.strictEqual(asked, 4);
+    Date.now = () => realNow() + 2 * 60 * 60 * 1000;   // two hours later
+    media.generateThumbnail = notFound('media.no_video');
+    await post('/api/thumbnails/generate/clip/457');
+    assert.strictEqual(asked, 4, 'audio only: still remembered after two hours');
+    media.generateThumbnail = notFound('media.not_found');
+    await post('/api/thumbnails/generate/clip/458');
+    assert.strictEqual(asked, 5, 'another 404: asked again after an hour');
+    Date.now = realNow;
+
     server.close();
     console.log('thumbnail no-picture: all checks passed');
     process.exit(0);
