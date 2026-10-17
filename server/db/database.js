@@ -394,9 +394,30 @@ const _AGE_NOUN = /^(?:boy|girl|kid|child|teen|teenager|youth)$/i;
 const _LOOKED_AT = new RegExp(`\\b(a|an|the|one)\\s+((?:(?:${_LOOKS})[\\s,]+(?:and\\s+)?)*)(${_PEOPLE})\\b`, 'gi');
 const _LOOKED_AT_BARE = new RegExp(`\\b(?:(?:${_LOOKS})[\\s,]+(?:and\\s+)?)+(${_PEOPLE})\\b`, 'gi');
 const _cap = (m, s) => (/^[A-Z]/.test(m) ? s[0].toUpperCase() + s.slice(1) : s);
+// What someone wears or how their hair and face look ("wearing a black beanie and hoodie", "in a red shirt",
+// "with blond hair and a mustache", "a headset-wearing host") goes; the sentence keeps everything else. Quoted
+// speech ("Heard: "I like your hair"") is what was said and stays word for word.
+const _ART = '(?:(?:a|an|the|his|her|their|some|matching)\\s+)?';
+const _WORN = 't-shirts?|shirts?|tees?|tank tops?|hoodies?|sweatshirts?|sweaters?|jackets?|coats?|vests?|beanies?|baseball caps?|caps?|hats?|helmets?|headsets?|headphones|sunglasses|glasses|outfits?|dress(?:es)?|jerseys?|suits?|robes?|bandanas?|scarf|scarves|masks?|apparel|attire';
+const _FACE = 'beards?|mustaches?|moustaches?|goatees?|stubble|sunglasses|glasses|tattoos?|hair|ponytails?|braids|dreadlocks|piercings?|freckles|makeup|expressions?|beanies?|backward caps?|baseball caps?|hoodies?';
+const _WORN_ANY = `${_WORN}|microphones?|mics?|earbuds|earphones|belts?|gloves|boots|shoes|sneakers|jeans|pants|shorts|necklaces?|chains?|earrings|watch(?:es)?|uniforms?|clothes|clothing|gear|costumes?|wigs?|crowns?|goggles|visors?|lanyards?|tops?`;
+const _WORN_NP = `${_ART}(?:[\\w'-]+\\s+){0,3}?\\b(?:${_WORN_ANY})\\b(?:\\s+(?:on|around|over|across)\\s+(?:his|her|their|the|its)\\s+(?:head|neck|face|forehead|shoulders?|ears?|eyes|chest))?(?:\\s+with\\s+(?:a|an)\\s+(?:[\\w'-]+\\s+){0,2}?(?:zipper|logo|print|pattern|design|graphic|hood|stripes?|collar|text))?`;
+const _WEARING = new RegExp(`,?\\s*(?:who\\s+(?:is\\s+)?|while\\s+|and\\s+)?(?<!-)\\b(?:wearing|wears|dressed in|sporting)\\s+${_WORN_NP}(?:\\s*(?:,|and|or|with|over|under)\\s+${_WORN_NP})*`, 'gi');
+const _IN_WORN = new RegExp(`\\s+in\\s+(?:a|an|the|his|her|their)\\s+(?:[\\w'-]+\\s+){0,3}?\\b(?:${_WORN})\\b(?:\\s+(?:and|or)\\s+${_ART}(?:[\\w'-]+\\s+){0,2}?\\b(?:${_WORN})\\b)*`, 'gi');
+const _WITH_FACE = new RegExp(`\\s+with\\s+${_ART}(?:[\\w'-]+\\s+){0,2}?\\b(?:${_FACE})\\b(?:\\s*(?:,|and|or)\\s+${_ART}(?:[\\w'-]+\\s+){0,2}?\\b(?:${_FACE}|${_WORN})\\b)*`, 'gi');
+function _noClothing(text) {
+    return text.split(/("[^"]*"?|“[^”]*”?)/).map((part, i) => (i % 2 ? part : part
+        .replace(/\b[\w-]+-wearing\s+/gi, '')
+        .replace(_WEARING, '')
+        .replace(_IN_WORN, '')
+        .replace(_WITH_FACE, '')
+        .replace(/\s+([,.;:!?])/g, '$1')
+        .replace(/,(?=[.;:!?])/g, '')
+        .replace(/ {2,}/g, ' '))).join('');
+}
 function _noLooks(text) {
     if (!text || typeof text !== 'string') return text;
-    return text
+    return _noClothing(text)
         // Looks named: the person on camera. Only an age ("a child sits nearby"): someone, who may not be the streamer.
         .replace(_LOOKED_AT, (m, art, looks, noun) => (looks ? _cap(m, 'the streamer') : _AGE_NOUN.test(noun) ? _cap(m, /^the$/i.test(art) ? 'the person' : 'someone') : m))
         .replace(_LOOKED_AT_BARE, (m) => _cap(m, 'streamer'))
@@ -665,7 +686,7 @@ async function cleanupMalformedAiText() {
     } catch { /* */ }
     // Frame notes and overviews that describe how a person looks (stored before the
     // prompts forbade it): the person becomes "the streamer" and the card line follows.
-    const looks = "~* '(shirtless|topless|bare-chested|young|teen|little|bearded|bald|blond|haired|tattooed|muscular|heavyset|older|elderly|middle-aged|skinny|slim|chubby|attractive|pretty|handsome|cute|boy|girl|kid|child|youth)'";
+    const looks = "~* '(shirtless|topless|bare-chested|young|teen|little|bearded|bald|blond|haired|tattooed|muscular|heavyset|older|elderly|middle-aged|skinny|slim|chubby|attractive|pretty|handsome|cute|boy|girl|kid|child|youth)|\\m(wear|dressed|sporting|shirt|t-shirt|tee|tank top|hoodie|sweat|jacket|coat|vest|beanie|cap|hat|helmet|headset|headphones|sunglasses|glasses|outfit|dress|jersey|suit|robe|bandana|scar|mask|attire|apparel|beard|mustache|moustache|goatee|stubble|tattoo|hair|ponytail|braids|dreadlocks|piercing|freckles|makeup|[a-z-]+-wearing)'";
     for (const [table, key, col, short] of [['stream_memories', 'id', 'description', null], ['streams', 'id', 'ai_overview', 'ai_overview_short'],
         ['vod_ai_state', 'vod_id', 'ai_overview', 'ai_overview_short'], ['clip_ai_state', 'clip_id', 'ai_overview', 'ai_overview_short'],
         ['streamer_overviews', 'user_id', 'overview', 'overview_short']]) {
@@ -3529,7 +3550,7 @@ module.exports = {
     setVodAiOverview, setClipAiOverview, setVodTranscript, setClipTranscript, getStreamMemoriesInRange,
     getVodsNeedingOverview, getClipsNeedingOverview, getVodsNeedingTimeline, getVodsNeedingTranscript, getClipsNeedingTranscript, getMediaNeedingAiAnalysis,
     setVodTranscriptStatus, setClipTranscriptStatus, bumpVodTranscriptAttempt, bumpClipTranscriptAttempt,
-    cleanupMalformedAiText, recordAiUsage, getAiCostToday, getAiCostTodayForUser, getAiUsageSummary,
+    cleanupMalformedAiText, noLooks: _noLooks, recordAiUsage, getAiCostToday, getAiCostTodayForUser, getAiUsageSummary,
     getStreamMemoriesByUser, countStreamMemoriesByUser, getStreamTranscriptSegments,
     addTimelineEvents, getTimeline, getTimelineText, getTimelineCoverage, linkTimelineToVod, getTimelineByVod, getTimelineVodId,
     upsertStreamerOverview, getStreamerOverview, getAllStreamerOverviews, getStreamersNeedingOverview,

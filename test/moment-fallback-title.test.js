@@ -24,5 +24,11 @@ assert.strictEqual(fallbackTitle(vod, 2480, 'The Minecraft main menu is displaye
 assert.strictEqual(fallbackTitle({ title: '', username: 'goosely' }, 75, ''), "goosely's stream at 1:15");
 assert.strictEqual(fallbackTitle({}, 0), 'Stream at 0:00');
 assert.ok(fallbackTitle({ title: 'x'.repeat(200) }, 59).length <= 80, 'at most 80 characters');
+// An AI title is kept unless it is about looks.
+const { publicTitle } = require('../server/ai/ai-moments-job');
+assert.strictEqual(publicTitle('Boss Fight Comeback', vod, 60, ''), 'Boss Fight Comeback');
+assert.strictEqual(publicTitle('Red Beanie Moment', vod, 2480, 'A man wearing a red beanie looks up.'), 'Fortnite! at 41:20');
+assert.strictEqual(publicTitle('Headphones Hit a Revelation', { title: 'A little couch surfing before the store.' }, 61, ''), 'A little couch surfing before the store at 1:01');
+assert.strictEqual(publicTitle('', { title: '', username: 'goosely' }, 75, ''), "goosely's stream at 1:15");
 process.stdout.write('moment fallback title: all checks passed\n');
 process.exit(0);

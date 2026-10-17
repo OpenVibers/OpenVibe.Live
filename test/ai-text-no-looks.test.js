@@ -22,6 +22,18 @@ const db = require('../server/db/database');
         ['A man is shirtless and appears to be talking to chat.', 'A man appears to be talking to chat.'],
         ['A person watches TV while a child sits nearby.', 'A person watches TV while someone sits nearby.'],
         ['The girl waves at the camera.', 'The person waves at the camera.'],
+        // Clothing, hair and face go; the rest of the sentence stays.
+        ['The streamer wearing a red beanie speaks to the camera outdoors, seemingly addressing chat.', 'The streamer speaks to the camera outdoors, seemingly addressing chat.'],
+        ['The view is close to the camera while wearing a black beanie and hoodie, with trees around.', 'The view is close to the camera, with trees around.'],
+        ['A man in a gray tank top sits against a plain light background.', 'A man sits against a plain light background.'],
+        ['A man with a long beard and plaid shirt examines a woven item.', 'A man examines a woven item.'],
+        ['A kitchen studio with a headset-wearing host, microphone, and on-screen graphics.', 'A kitchen studio with a host, microphone, and on-screen graphics.'],
+        ['Panelists discuss while wearing headsets and microphones, with a trophy nearby.', 'Panelists discuss, with a trophy nearby.'],
+        ['A man wearing sunglasses on his head looks down at the camera.', 'A man looks down at the camera.'],
+        ['A partial view of a person wearing a gray zip-up jacket with a white zipper, seated indoors.', 'A partial view of a person, seated indoors.'],
+        ['Close-up of a person wearing a yellow vest over a gray knit top, with a backpack visible.', 'Close-up of a person, with a backpack visible.'],
+        ['A Minecraft player in a top-down view builds a house; the streamer reviews new headphones.', 'A Minecraft player in a top-down view builds a house; the streamer reviews new headphones.'],
+        ['The streamer laughs — heard: "Put your headset on. I like your hair."', 'The streamer laughs — heard: "Put your headset on. I like your hair."'],
     ];
     let off = 0;
     for (const [input, want] of cases) {
@@ -38,7 +50,9 @@ const db = require('../server/db/database');
     await db.run('INSERT INTO stream_memories (stream_id, user_id, offset_seconds, description) VALUES (?, ?, ?, ?)', [sid, uid, 9000, 'A shirtless man rests his chin on his hand.']);
     await db.run('UPDATE streams SET ai_overview = ?, ai_overview_short = ? WHERE id = ?', ['A young boy plays Fortnite.', 'A young boy plays Fortnite.', sid]);
     await db.run('INSERT INTO stream_memories (stream_id, user_id, offset_seconds, description) VALUES (?, ?, ?, ?)', [sid, uid, 9060, 'An older version of the game loads.']);
+    await db.run('INSERT INTO stream_memories (stream_id, user_id, offset_seconds, description) VALUES (?, ?, ?, ?)', [sid, uid, 9120, 'A man wearing headphones sits at a desk.']);
     await db.cleanupMalformedAiText();
+    assert.strictEqual((await db.get('SELECT description FROM stream_memories WHERE offset_seconds = 9120')).description, 'A man sits at a desk.');
     assert.strictEqual((await db.get('SELECT description FROM stream_memories WHERE offset_seconds = 9000')).description, 'The streamer rests his chin on his hand.');
     assert.deepStrictEqual(Object.values(await db.get('SELECT ai_overview, ai_overview_short FROM streams WHERE id = ?', [sid])), ['The streamer plays Fortnite.', 'The streamer plays Fortnite.']);
     assert.strictEqual((await db.get('SELECT description FROM stream_memories WHERE offset_seconds = 9060')).description, 'An older version of the game loads.', 'looks words about things stay');
