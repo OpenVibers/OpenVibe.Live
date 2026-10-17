@@ -10,7 +10,7 @@
  * One Billing read serves both, cached five minutes (a failure is cached for a minute and answers null: the board
  * shows the tiles empty rather than a guess).
  */
-const api = require('./billing-client');
+const { api } = require('./billing-client');
 
 const TTL_MS = 5 * 60_000;
 const MISS_MS = 60_000;
