@@ -318,6 +318,9 @@
     .vc-sidebar-header {
         padding: 10px 12px 8px;
     }
+    /* The channel list (at least the Public room) fills in after the page: one row is held for it, so the chat below
+       it does not move down when it lands (a 46-58 px shift on phones, CLS 0.04). */
+    .vc-channel-list { min-height: 58px; }
     .vc-connected-header {
         padding: 8px 10px;
     }
