@@ -133,11 +133,11 @@ async function _checkLiveStream(stream) {
         const end = Math.min(momentOffset + CLIP_POST, Math.max(0, recEdge - 0.5));
         if (end - start < 5) return; // not enough flushed footage around the moment yet
 
-        const title = verdict.title || 'Chat-Hyped Moment';
+        const title = verdict.title ? require('./ai-moments-job').publicTitle(verdict.title, stream, momentOffset, verdict.desc) : 'Chat-Hyped Moment';
         const clip = await media.createClip({
             vod_id: rec.vodId, start_s: start, end_s: end,
             title, user_id: stream.user_id,
-            stream_id: streamId, auto_generated: true, description: verdict.desc || '',
+            stream_id: streamId, auto_generated: true, description: db.noLooks(verdict.desc || ''),
         }).catch((e) => { console.warn(`[AutoClip] Media createClip failed for stream ${streamId}:`, e.message); return null; });
         if (clip) {
             // deduplicated: Media handed back a clip someone already cut of this window. It stays in
@@ -287,7 +287,7 @@ async function clipVodMoment(o) {
         const clip = await media.createClip({
             vod_id: vodId, start_s: start, end_s: start + CLIP_PRE + CLIP_POST,
             title: title || 'Standout Moment', user_id: vod.user_id,
-            stream_id: vod.stream_id || undefined, auto_generated: true, description: desc || '',
+            stream_id: vod.stream_id || undefined, auto_generated: true, description: db.noLooks(desc || ''),
         });
         if (clip) await _logClip({ stream_id: vod.stream_id || null, vod_id: vodId, start_time: start, title: title || 'Standout Moment', clip_id: clip.id, dedup: !!clip.deduplicated || undefined, sig: _sceneSig(desc || title) });
         return clip || null;
