@@ -6,6 +6,9 @@
 (function () {
     'use strict';
     if (!('PerformanceObserver' in window) || !navigator.sendBeacon) return;
+    // Automated browsers are not visitors: crawlers that run scripts, headless test runs (ours included). Checked here
+    // only; the user agent is never sent.
+    if (navigator.webdriver || /bot|crawl|spider|slurp|headless|lighthouse|pagespeed|preview|phantom|puppeteer|playwright/i.test(navigator.userAgent || '')) return;
     const m = { fcp: 0, lcp: 0, cls: 0, inp: 0, tbt: 0, errs: [] };
     const watch = (type, fn, extra) => {
         try { new PerformanceObserver((list) => list.getEntries().forEach(fn)).observe(Object.assign({ type, buffered: true }, extra)); } catch (e) { /* not in this browser */ }
