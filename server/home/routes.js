@@ -273,7 +273,8 @@ router.get('/featured', async (req, res) => {
         let moment = null;
         try {
             const m = await db.getLatestStreamMemory(pick.id);
-            if (m && m.description) moment = { description: m.description, captured_at: m.captured_at || m.created_at || null, thumbnail_url: m.thumbnail_url || null };
+            const text = m && db.publicMemoryText(m.description);
+            if (text) moment = { description: text, captured_at: m.captured_at || m.created_at || null, thumbnail_url: m.thumbnail_url || null };
         } catch { /* */ }
         res.json({ stream, moment, count: live.length, index: idx, next_in_ms: FEATURED_ROTATE_MS - (Date.now() % FEATURED_ROTATE_MS) });
     } catch (err) {

@@ -47,7 +47,7 @@ router.get('/user/:id', async (req, res) => {
                 // for more, and default high enough to read as a real timeline.
                 const memLimit = Math.min(200, Math.max(1, parseInt(req.query.memories, 10) || 40));
                 const mems = (await db.getStreamMemoriesByUser(uid, memLimit) || []).map(m => ({
-                    description: m.description || '',
+                    description: db.publicMemoryText(m.description),
                     created_at: m.created_at,
                     stream_id: m.stream_id,
                     offset_seconds: m.offset_seconds,
