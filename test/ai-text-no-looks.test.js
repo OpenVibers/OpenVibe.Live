@@ -30,6 +30,8 @@ const db = require('../server/db/database');
         ['A kitchen studio with a headset-wearing host, microphone, and on-screen graphics.', 'A kitchen studio with a host, microphone, and on-screen graphics.'],
         ['Panelists discuss while wearing headsets and microphones, with a trophy nearby.', 'Panelists discuss, with a trophy nearby.'],
         ['A man wearing sunglasses on his head looks down at the camera.', 'A man looks down at the camera.'],
+        ['A collage of a man in a white shirt and tie wearing dark sunglasses in the left panel.', 'A collage of a man in the left panel.'],
+        ['A cartoon streaming setup: wearing a headset with a microphone, rugged jacket, backpack with a mat.', 'A cartoon streaming setup: backpack with a mat.'],
         ['A partial view of a person wearing a gray zip-up jacket with a white zipper, seated indoors.', 'A partial view of a person, seated indoors.'],
         ['Close-up of a person wearing a yellow vest over a gray knit top, with a backpack visible.', 'Close-up of a person, with a backpack visible.'],
         ['A Minecraft player in a top-down view builds a house; the streamer reviews new headphones.', 'A Minecraft player in a top-down view builds a house; the streamer reviews new headphones.'],
