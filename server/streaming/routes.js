@@ -1829,6 +1829,17 @@ router.get('/:id', optionalAuth, async (req, res) => {
 });
 
 // ── Start a New Stream (Go Live) ─────────────────────────────
+// One go-live per stream slot at a time. A second request while the first is still being created, or within 15 s of it
+// while that stream is live (a double tap, a retried request), answers with the same stream instead of opening a second
+// one. Two live streams for one slot split the room: on 2026-10-17 viewers' chat and TTS went to one stream while the
+// phone studio sat in the other, and the RobotStreamer relay, started on both, delivered every line twice.
+const GO_LIVE_REPEAT_MS = 15_000;
+const _goLiveInFlight = new Map();   // managed stream id → Promise<{ status, body }>
+function goLiveEndpoint(stream, managedStream) {
+    if (stream.protocol === 'jsmpeg') return jsmpegRelay.createChannel(managedStream.stream_key);
+    if (stream.protocol === 'webrtc') return { roomId: `stream-${stream.id}` };
+    return {};
+}
 router.post('/', requireAuth, async (req, res) => {
     try {
         const managedStreamId = req.body.managed_stream_id ? parseInt(req.body.managed_stream_id) : null;
@@ -1867,71 +1878,90 @@ router.post('/', requireAuth, async (req, res) => {
             return res.status(400).json({ error: 'Invalid stream settings' });
         }
 
-        const channel = await db.ensureChannel(req.user.id);
-
-        // Streamer role promotion deferred — applied on first real feed ingest
-        // (see whip-handler.js, webrtc-sfu producer, jsmpeg relay, rtmp handler)
-
-        // Use managed stream's settings as defaults, allow per-session overrides
-        const streamProtocol = protocol || cleanProtocol(managedStream.protocol) || cleanProtocol(channel.protocol) || 'webrtc';
-        const streamCategory = category || cleanText(managedStream.category, { maxLength: MAX_CATEGORY_LENGTH }) || cleanText(channel.category, { maxLength: MAX_CATEGORY_LENGTH }) || null;   // null → the AI classifies the stream from what it shows
-
-        const result = await db.createStream({
-            user_id: req.user.id,
-            channel_id: channel.id,
-            managed_stream_id: managedStream.id,
-            title: title || cleanText(managedStream.title, { maxLength: MAX_TITLE_LENGTH }) || `${req.user.display_name}'s Stream`,
-            description: description ?? cleanText(managedStream.description, { maxLength: MAX_DESCRIPTION_LENGTH, allowEmpty: true }) ?? '',
-            category: streamCategory,
-            protocol: streamProtocol,
-            is_nsfw: channel.force_nsfw ? 1 : (hasOwn(req.body, 'is_nsfw') ? cleanBooleanFlag(req.body.is_nsfw) : !!channel.is_nsfw),
-        });
-
-        const streamId = result.lastInsertRowid;
-
-        // Initialize heartbeat
-        await db.run('UPDATE streams SET last_heartbeat = ov_now() WHERE id = ?', [streamId]);
-
-        if (tags && tags.length > 0) {
-            await db.run('UPDATE streams SET tags = ? WHERE id = ?', [JSON.stringify(tags), streamId]);
+        // The same slot is going live right now: wait for that request and answer with its stream.
+        if (_goLiveInFlight.has(managedStream.id)) {
+            const first = await _goLiveInFlight.get(managedStream.id);
+            return res.status(first.status === 201 ? 200 : first.status).json({ ...first.body, reused: true });
         }
-
-        // Set call mode if provided — create a stream voice channel
-        if (callMode) {
-            await db.run('UPDATE streams SET call_mode = ? WHERE id = ?', [callMode, streamId]);
-            await callsAuthority.createStreamChannel(streamId, callMode, req.user.id);
+        // It went live moments ago and is still live: the same go-live, asked twice.
+        const recent = await db.get('SELECT * FROM streams WHERE managed_stream_id = ? AND is_live = 1 ORDER BY id DESC LIMIT 1', [managedStream.id]);
+        const recentAt = recent && recent.started_at ? Date.parse(String(recent.started_at).replace(' ', 'T') + (/[zZ]|[+-]\d\d:?\d\d$/.test(String(recent.started_at)) ? '' : 'Z')) : NaN;
+        if (recent && recent.user_id === req.user.id && Date.now() - recentAt < GO_LIVE_REPEAT_MS) {
+            const stream = await db.getStreamById(recent.id);
+            return res.status(200).json({ stream, endpoint: goLiveEndpoint(stream, managedStream), reused: true });
         }
-
-        let endpoint = {};
-        if (streamProtocol === 'jsmpeg') {
-            endpoint = jsmpegRelay.createChannel(managedStream.stream_key);
-        } else if (streamProtocol === 'webrtc') {
-            endpoint = { roomId: `stream-${streamId}` };
+        const creating = createGoLive(req, managedStream, { title, description, category, protocol, tags, callMode });
+        _goLiveInFlight.set(managedStream.id, creating);
+        try {
+            const done = await creating;
+            res.status(done.status).json(done.body);
+        } finally {
+            _goLiveInFlight.delete(managedStream.id);
         }
-
-        await db.run(
-            `INSERT INTO cameras (stream_id, camera_index, label, protocol) VALUES (?, 0, 'Main', ?)`,
-            [streamId, streamProtocol]
-        );
-
-        const stream = await db.getStreamById(streamId);
-        robotStreamerService.startForStream(stream).catch((rsErr) => {
-            console.warn(`[RS] Failed to start integration for stream ${streamId}:`, rsErr.message);
-        });
-        chatRelayService.startForStream(stream).catch((relayErr) => {
-            console.warn(`[ChatRelay] Failed to start relay for stream ${streamId}:`, relayErr.message);
-        });
-        try { require('../integrations/ai-chatbot-service').startForStream(stream); } catch (aiErr) { console.warn('[AI-Bots] start failed:', aiErr.message); }
-
-        // Cross-site on-screen "went live" notification (rate-limited per slot/hour).
-        try { require('./live-events').announceGoLive(stream, req.user); } catch { /* */ }
-
-        res.status(201).json({ stream, endpoint });
     } catch (err) {
         console.error('[Streams] Create error:', err.message);
         res.status(500).json({ error: 'Failed to create stream' });
     }
 });
+
+/** Create the stream row and start its integrations (POST /api/streams). → { status, body } */
+async function createGoLive(req, managedStream, { title, description, category, protocol, tags, callMode }) {
+    const channel = await db.ensureChannel(req.user.id);
+
+    // Streamer role promotion deferred — applied on first real feed ingest
+    // (see whip-handler.js, webrtc-sfu producer, jsmpeg relay, rtmp handler)
+
+    // Use managed stream's settings as defaults, allow per-session overrides
+    const streamProtocol = protocol || cleanProtocol(managedStream.protocol) || cleanProtocol(channel.protocol) || 'webrtc';
+    const streamCategory = category || cleanText(managedStream.category, { maxLength: MAX_CATEGORY_LENGTH }) || cleanText(channel.category, { maxLength: MAX_CATEGORY_LENGTH }) || null;   // null → the AI classifies the stream from what it shows
+
+    const result = await db.createStream({
+        user_id: req.user.id,
+        channel_id: channel.id,
+        managed_stream_id: managedStream.id,
+        title: title || cleanText(managedStream.title, { maxLength: MAX_TITLE_LENGTH }) || `${req.user.display_name}'s Stream`,
+        description: description ?? cleanText(managedStream.description, { maxLength: MAX_DESCRIPTION_LENGTH, allowEmpty: true }) ?? '',
+        category: streamCategory,
+        protocol: streamProtocol,
+        is_nsfw: channel.force_nsfw ? 1 : (hasOwn(req.body, 'is_nsfw') ? cleanBooleanFlag(req.body.is_nsfw) : !!channel.is_nsfw),
+    });
+
+    const streamId = result.lastInsertRowid;
+
+    // Initialize heartbeat
+    await db.run('UPDATE streams SET last_heartbeat = ov_now() WHERE id = ?', [streamId]);
+
+    if (tags && tags.length > 0) {
+        await db.run('UPDATE streams SET tags = ? WHERE id = ?', [JSON.stringify(tags), streamId]);
+    }
+
+    // Set call mode if provided — create a stream voice channel
+    if (callMode) {
+        await db.run('UPDATE streams SET call_mode = ? WHERE id = ?', [callMode, streamId]);
+        await callsAuthority.createStreamChannel(streamId, callMode, req.user.id);
+    }
+
+    const endpoint = goLiveEndpoint({ id: streamId, protocol: streamProtocol }, managedStream);
+
+    await db.run(
+        `INSERT INTO cameras (stream_id, camera_index, label, protocol) VALUES (?, 0, 'Main', ?)`,
+        [streamId, streamProtocol]
+    );
+
+    const stream = await db.getStreamById(streamId);
+    robotStreamerService.startForStream(stream).catch((rsErr) => {
+        console.warn(`[RS] Failed to start integration for stream ${streamId}:`, rsErr.message);
+    });
+    chatRelayService.startForStream(stream).catch((relayErr) => {
+        console.warn(`[ChatRelay] Failed to start relay for stream ${streamId}:`, relayErr.message);
+    });
+    try { require('../integrations/ai-chatbot-service').startForStream(stream); } catch (aiErr) { console.warn('[AI-Bots] start failed:', aiErr.message); }
+
+    // Cross-site on-screen "went live" notification (rate-limited per slot/hour).
+    try { require('./live-events').announceGoLive(stream, req.user); } catch { /* */ }
+
+    return { status: 201, body: { stream, endpoint } };
+}
 
 // ── Update Stream Info ───────────────────────────────────────
 router.put('/:id', requireAuth, async (req, res) => {
