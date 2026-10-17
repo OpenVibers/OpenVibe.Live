@@ -817,6 +817,13 @@ async function loadChannelPage(username, managedStreamRef = null, legacySessionI
             updateCumulativeViewers(liveStreams, rsRestream, restreamLinks, externalViewers);
         } else {
             // ── OFFLINE STATE ──
+            // The stream that just ended leaves nothing running, as navigating away already does: its player kept
+            // asking for that stream's live recording every 20 s (open tabs did so for 12 h after an end, 2026-10-17).
+            if (currentStreamId) {
+                if (typeof destroyPlayer === 'function') { try { destroyPlayer(); } catch { /* ignore */ } }
+                currentStreamId = null;
+                currentStreamData = null;
+            }
             document.getElementById('ch-live-area').style.display = 'none';
             document.getElementById('ch-offline-area').style.display = '';
             _placeBelowFold();
