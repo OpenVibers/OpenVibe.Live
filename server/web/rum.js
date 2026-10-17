@@ -11,6 +11,8 @@
  *   POST /api/rum             the beacon (text/plain JSON from navigator.sendBeacon); always 204
  *   rum.snapshot()            p50/p75/p95 per page kind × device, and the most frequent errors (GET /api/admin/rum)
  *   rum.p75Gauge()            the p75s for /metrics (live_rum_p75{metric,page,device})
+ *   rum.errorsGauge()         the ten most frequent error messages for /metrics (live_rum_errors{message}), so they can
+ *                             be read on the host without a staff session
  */
 const express = require('express');
 
@@ -113,7 +115,11 @@ function createRum({ now = () => Date.now() } = {}) {
         return out;
     }
 
-    return { router, record, snapshot, p75Gauge };
+    function errorsGauge() {
+        return [...errors.entries()].sort((a, b) => b[1] - a[1]).slice(0, 10).map(([message, count]) => ({ labels: { message: message.slice(0, 100) }, value: count }));
+    }
+
+    return { router, record, snapshot, p75Gauge, errorsGauge };
 }
 
 module.exports = { createRum, pageKind, deviceClass };

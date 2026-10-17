@@ -880,6 +880,7 @@ observability.registerDomainGauges(metricsRegistry, {
     outboxStatus: async () => await require('./events/stream-events').counts(),
 });
 metricsRegistry.gauge({ name: 'live_rum_p75', help: 'Real-user p75 per page kind and device class (ms; cls unitless), from the newest beacons', labelNames: ['metric', 'page', 'device'], collect: () => rum.p75Gauge() });
+metricsRegistry.gauge({ name: 'live_rum_errors', help: 'Script errors visitors reported since this process started: the ten most frequent messages', labelNames: ['message'], collect: () => rum.errorsGauge() });
 app.get('/api/admin/rum', requireAuth, permissions.requireAdmin, (req, res) => { res.set('Cache-Control', 'no-store'); res.json(rum.snapshot()); });
 
 // ── Updates / Changelog ──────────────────────────────────────

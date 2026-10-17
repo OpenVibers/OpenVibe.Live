@@ -56,6 +56,7 @@ const { createRum, pageKind, deviceClass } = require('../server/web/rum');
     const g = rum.p75Gauge();
     assert.ok(g.some((x) => x.labels.metric === 'lcp' && x.labels.page === 'home' && x.labels.device === 'phone' && x.value === 8000));
     assert.ok(!g.some((x) => x.labels.page === 'channel'), 'one channel sample is not a p75');
+    assert.deepStrictEqual(rum.errorsGauge().map((x) => [x.labels.message, x.value]), [['TypeError: x is undefined', 1], ['b', 1], ['c', 1]]);
 
     // A flood from one address: 20 a minute, then dropped until the next minute.
     const before = rum.snapshot().pages['clip|phone'];
