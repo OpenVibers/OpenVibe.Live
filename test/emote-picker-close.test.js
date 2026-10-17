@@ -39,7 +39,8 @@ const ctx = {
         getElementById: (id) => els[id] || null,
         querySelector: (sel) => (sel === '#bc-emote-picker .emote-search' ? picker.search : null),
     },
-    window: {}, console, setTimeout, Promise, Map, Set,
+    window: { addEventListener: (type, fn) => { listeners[`window:${type}`] = fn; } }, console, setTimeout, Promise, Map, Set,
+    innerHeight: 800, getComputedStyle: (node) => ({ position: node.fixedSheet ? 'fixed' : 'absolute' }),
     api: async () => { loads++; return { defaults: [{ id: 'd1', code: 'LUL', url: 'https://x/1.png' }] }; },
 };
 vm.createContext(ctx);
@@ -75,6 +76,22 @@ vm.runInContext(`${src}\nthis.toggleEmotePicker = toggleEmotePicker; this.closeE
     ctx.closeEmotePicker();
     assert.strictEqual(picker.style.display, 'none');
     assert.strictEqual(ctx.state().open, false);
+
+    // On a phone the picker is a fixed sheet: it opens just above the message box instead of over it.
+    const row = { getBoundingClientRect: () => ({ top: 600 }) };
+    picker.fixedSheet = true;
+    picker.closest = (sel) => (sel === '.chat-input-area' ? { querySelector: (q) => (q === '.chat-input-row' ? row : null) } : null);
+    ctx.toggleEmotePicker('bc-chat-input');
+    assert.strictEqual(picker.style.bottom, '204px', 'its bottom edge sits 4 px above the message box');
+    assert.strictEqual(picker.style.maxHeight, '400px', 'at most half the screen');
+    row.getBoundingClientRect = () => ({ top: 500 });
+    listeners['window:resize']();
+    assert.strictEqual(picker.style.bottom, '304px', 'and follows the box when the screen changes (the keyboard)');
+    ctx.closeEmotePicker();
+    picker.fixedSheet = false;
+    ctx.toggleEmotePicker('bc-chat-input');
+    assert.strictEqual(picker.style.bottom, '', 'desktop keeps the stylesheet placement');
+    ctx.closeEmotePicker();
 
     const studio = fs.readFileSync(path.join(__dirname, '..', 'public', 'js', 'broadcast-studio.js'), 'utf8');
     assert.match(studio.slice(studio.indexOf('function mount()'), studio.indexOf('function unmount()')), /closeEmotePicker\(\)/, 'the studio closes a picker when it mounts');

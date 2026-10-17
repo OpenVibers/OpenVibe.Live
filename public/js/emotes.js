@@ -297,6 +297,7 @@ function toggleEmotePicker(inputId) {
     _emotePickerTarget = inputId;
     picker.style.display = _emotePickerOpen ? 'flex' : 'none';
     picker.dataset.targetInput = inputId || 'chat-input';
+    if (_emotePickerOpen) _placeEmotePicker(picker);
 
     if (_emotePickerOpen) {
         _emoteMenuMode = 'emotes';
@@ -311,6 +312,28 @@ function toggleEmotePicker(inputId) {
         renderEmotePicker('emotes');
     }
 }
+
+/**
+ * On phones the picker is a fixed sheet (style.css, max-width 768px). Pinned to the bottom it covered the message box and
+ * the buttons under it; it now sits just above the box, so what you type stays in view. Desktop (absolute, above the box
+ * already) and a box that is off-screen keep the stylesheet's placement.
+ */
+function _placeEmotePicker(picker) {
+    picker.style.bottom = ''; picker.style.maxHeight = '';
+    if (getComputedStyle(picker).position !== 'fixed') return;
+    const area = picker.closest('.chat-input-area');
+    const row = area && area.querySelector('.chat-input-row');
+    if (!row) return;
+    const top = row.getBoundingClientRect().top;
+    if (!(top > 120 && top < innerHeight)) return;
+    picker.style.bottom = `${Math.round(innerHeight - top + 4)}px`;
+    picker.style.maxHeight = `${Math.round(Math.min(top - 64, innerHeight * 0.5))}px`;
+}
+window.addEventListener('resize', () => {
+    if (!_emotePickerOpen) return;
+    const { picker } = _getPickerEls(_emotePickerTarget);
+    if (picker) _placeEmotePicker(picker);
+});
 
 function renderEmotePicker(mode) {
     // Accept legacy tab names ('all'/'channel'/…) → treat as the emotes list.
