@@ -77,6 +77,11 @@ function switchDashContentTab(sub, btn) {
 window.switchDashContentTab = switchDashContentTab;
 
 function switchDashTab(tab, btn) {
+    // The tab is in the address (/dashboard/money), so a refresh or a shared link opens it again; Home is /dashboard.
+    if (location.pathname.startsWith('/dashboard')) {
+        const want = tab === 'home' ? '/dashboard' : '/dashboard/' + tab;
+        if (location.pathname !== want) history.replaceState(history.state, '', want + location.search);
+    }
     document.querySelectorAll('#dash-tabs .ch-tab').forEach(b => {
         const on = b === btn || b.dataset.dtab === tab;
         b.classList.toggle('active', on);
@@ -114,7 +119,9 @@ async function loadDashboard() {
     loadDashChannel();
     _dashRelocateCards();
     _dashLoadedTabs.clear();
-    switchDashTab('home', document.querySelector('#dash-tabs .ch-tab[data-dtab="home"]'));
+    const fromUrl = (location.pathname.match(/^\/dashboard\/([a-z]+)/) || [])[1];
+    const tab = fromUrl && document.querySelector(`#dash-tabs .ch-tab[data-dtab="${fromUrl}"]`) ? fromUrl : 'home';
+    switchDashTab(tab, document.querySelector(`#dash-tabs .ch-tab[data-dtab="${tab}"]`));
 }
 
 /* ── Channel Info ──────────────────────────────────────────────── */
