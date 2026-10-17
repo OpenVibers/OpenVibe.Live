@@ -199,6 +199,8 @@
         document.body.append(st.root);
         // The overlay chat replaces the phone chat sheet.
         try { if (typeof _bcMobileChatOpen !== 'undefined' && _bcMobileChatOpen && typeof toggleBroadcastMobileChat === 'function') toggleBroadcastMobileChat(); } catch { /* not open */ }
+        // The studio chat has no emote or GIF buttons: a picker opened before it would have no way to close.
+        try { if (typeof closeEmotePicker === 'function') closeEmotePicker(); if (typeof closeGifPicker === 'function') closeGifPicker(); } catch { /* none open */ }
         const v = $('bc-video-preview');
         if (v) v.play().catch(() => {});
         const msgs = $('bc-chat-messages');
