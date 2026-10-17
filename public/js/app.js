@@ -2382,9 +2382,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Start proactive token refresh timer
     startTokenRefreshTimer();
 
-    // Theme is owned centrally by openvibe.network and applied by the shared OpenVibeThemeLoader
-    // (which syncs from openvibe.network after paint). We no longer read OpenVibe.Live's local
-    // theme store, so the theme chosen at openvibe.network/themes is authoritative here.
+    // The theme is openvibe.network's (the shared OpenVibeThemeLoader); Live keeps no theme of its own.
 
     // Route from current URL instead of always going home — but not in the popout
     // chat window, which drives its own chat UI and has no SPA pages to route to.
@@ -2392,6 +2390,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (!location.pathname.startsWith('/popout')) {
         routeFromURL();
     }
+    // Real-user timings and errors on one page load in four, once idle (js/ov-rum.js, server/web/rum.js).
+    if (Math.random() < 0.25 && window.ov) (window.requestIdleCallback || setTimeout)(() => ov.loadScript('/js/ov-rum.js'));
 });
 
 // Handle browser back/forward — wait for auth to be resolved first

@@ -424,6 +424,10 @@ app.use('/whip', whipHandler.whipCors);
 // Views counted from openvibe.video's watch pages (a beacon from the viewer's browser): its own narrow
 // origin rule and no cookie, so it sits before the credentialed allowlist too.
 app.use('/api/views', require('./media-proxy/view-beacon').createViewBeacon({ rateLimit }));
+// Real-user timings and script errors (server/web/rum.js): a same-origin beacon from public/js/ov-rum.js, kept only as
+// aggregates (no address, account or user agent). Staff read GET /api/admin/rum; /metrics has live_rum_p75.
+const rum = require('./web/rum').createRum();
+app.use('/api/rum', rum.router);
 
 const allowlistedCors = cors({
     origin(origin, callback) {
@@ -875,6 +879,8 @@ observability.registerDomainGauges(metricsRegistry, {
     wsServers: { broadcast: broadcastServer },
     outboxStatus: async () => await require('./events/stream-events').counts(),
 });
+metricsRegistry.gauge({ name: 'live_rum_p75', help: 'Real-user p75 per page kind and device class (ms; cls unitless), from the newest beacons', labelNames: ['metric', 'page', 'device'], collect: () => rum.p75Gauge() });
+app.get('/api/admin/rum', requireAuth, permissions.requireAdmin, (req, res) => { res.set('Cache-Control', 'no-store'); res.json(rum.snapshot()); });
 
 // ── Updates / Changelog ──────────────────────────────────────
 const { execFile } = require('child_process');
