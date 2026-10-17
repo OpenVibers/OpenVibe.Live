@@ -129,6 +129,12 @@ async function check(name, fn) {
         assert.match(mount[0], /index:\s*false/);
     });
 
+    await check('/live-notify.js (loaded by every site at a fixed address) is cached briefly, then revalidated in the background', () => {
+        const src = fs.readFileSync(path.join(__dirname, '../server/index.js'), 'utf8');
+        assert.match(src, /const LIVE_NOTIFY_CACHE = 'public, max-age=300, stale-while-revalidate=86400';/);
+        assert.match(src, /path\.basename\(filePath\) === 'live-notify\.js'\) res\.setHeader\('Cache-Control', LIVE_NOTIFY_CACHE\)/);
+    });
+
     server.close();
     fs.rmSync(base, { recursive: true, force: true });
     if (failures) { console.log(`\n${failures} failure(s)`); process.exit(1); }
