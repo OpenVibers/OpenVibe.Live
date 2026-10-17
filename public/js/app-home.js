@@ -224,6 +224,10 @@ function _baselineDeltaHTML(now, avg, peak, window = '24h') {
             : `Nothing in the last ${window}`;
         return `<span class="hero-stat-delta ${n > 0 ? 'is-up' : 'is-flat'}" title="${esc(tip)}"><b>${n > 0 ? 'first today' : 'quiet'}</b></span>`;
     }
+    // Nobody right now is not a crash: "-100%" in red read as broken on a quiet hour.
+    if (n === 0) {
+        return `<span class="hero-stat-delta is-flat" title="${esc(`Nobody right now · ${fmtAvg(a)} on average over the last ${window}`)}"><b>quiet now</b></span>`;
+    }
     const pct = Math.round(((n - a) / a) * 100);
     const bits = [`${_fmtCount(n)} right now`, `${fmtAvg(a)} on average over the last ${window}`];
     if (Number.isFinite(Number(peak))) bits.push(`peak ${_fmtCount(Math.round(peak))}`);
