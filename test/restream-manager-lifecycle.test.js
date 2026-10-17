@@ -64,6 +64,8 @@ assert.match(fe('tcp://x: Connection refused', 'kick'), /Could not connect to Ki
 assert.match(fe('tcp://x: Connection refused', 'custom'), /Could not connect to the destination/);
 assert.match(fe('Failed to resolve hostname live.example: Name or service not known', 'custom'), /resolve the ingest host/);
 assert.match(fe('gnutls: The TLS connection was non-properly terminated', 'youtube'), /TLS handshake/);
+// What Twitch and Kick answer to a wrong or reset key on rtmps:// (production, 10-16): the key, not TLS.
+assert.match(fe('[tls @ 0x1] Error in the pull function. | [tls @ 0x1] IO error: End of file | [out#0/flv @ 0x2] Error opening output rtmps://live.twitch.tv/app/live…(47) Input/output error | Error opening output file rtmps://live.twitch.tv/app/live…(47) | Error opening output files:', 'twitch'), /^Twitch refused the stream as it started — almost always a wrong or reset stream key/);
 assert.match(fe('av_interleaved_write_frame(): Broken pipe | End of file', 'twitch'), /closed the connection/);
 assert.match(fe('[srt @ 0x1] Wrong password: passphrase', 'custom'), /SRT passphrase/);
 assert.strictEqual(fe('', 'custom'), 'Restream process stopped without a message');
