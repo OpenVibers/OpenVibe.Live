@@ -14,6 +14,8 @@
  *   rum.p75Gauge()            the p75s for /metrics (live_rum_p75{metric,page,device})
  *   rum.errorsGauge()         the ten most frequent error messages for /metrics (live_rum_errors{message}), so they can
  *                             be read on the host without a staff session
+ *   rum.state() / restore()   the reservoirs as numbers, kept across restarts (at this traffic a deploy otherwise reset
+ *                             them before any page had five samples)
  */
 const express = require('express');
 
@@ -121,7 +123,31 @@ function createRum({ now = () => Date.now() } = {}) {
         return [...errors.entries()].sort((a, b) => b[1] - a[1]).slice(0, 10).map(([message, count]) => ({ labels: { message: message.slice(0, 100) }, value: count }));
     }
 
-    return { router, record, snapshot, p75Gauge, errorsGauge };
+    /** The reservoirs and error counts as plain numbers, to survive a restart (server/index.js keeps them in app_state). */
+    function state() {
+        return { v: 1, at: now(), pages: Object.fromEntries(buckets), errors: [...errors] };
+    }
+    /** Put a saved state back under what arrived since boot (a beacon can land before the read). Older than 14 days,
+     *  malformed or out-of-range parts are left out. */
+    function restore(s) {
+        if (!s || s.v !== 1 || typeof s.pages !== 'object' || !(now() - Number(s.at) < 14 * 86400000)) return false;
+        for (const [key, saved] of Object.entries(s.pages)) {
+            if (!/^[a-z]+\|(phone|tablet|desktop)$/.test(key) || !saved || typeof saved.samples !== 'object') continue;
+            const b = buckets.get(key) || { n: 0, samples: Object.fromEntries(Object.keys(METRICS).map((m) => [m, []])) };
+            b.n += Math.max(0, Number(saved.n) || 0);
+            for (const [m, max] of Object.entries(METRICS)) {
+                const old = (Array.isArray(saved.samples[m]) ? saved.samples[m] : []).map(Number).filter((v) => Number.isFinite(v) && v >= 0 && v <= max);
+                b.samples[m] = old.concat(b.samples[m]).slice(-KEEP);
+            }
+            buckets.set(key, b);
+        }
+        for (const [msg, c] of Array.isArray(s.errors) ? s.errors.slice(0, MAX_ERRORS) : []) {
+            if (typeof msg === 'string' && msg && errors.size < MAX_ERRORS) errors.set(msg.slice(0, 140), (errors.get(msg.slice(0, 140)) || 0) + (Number(c) || 0));
+        }
+        return true;
+    }
+
+    return { router, record, snapshot, p75Gauge, errorsGauge, state, restore };
 }
 
 module.exports = { createRum, pageKind, deviceClass };

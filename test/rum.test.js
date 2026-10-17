@@ -76,6 +76,24 @@ const { createRum, pageKind, deviceClass } = require('../server/web/rum');
     assert.ok(rum.snapshot().errors.length <= 25 && rum.snapshot().errors[0].message === 'TypeError: x is undefined');
     server.close();
 
+    // Across a restart: the state is numbers only, and a new process puts it back under what arrived since its boot.
+    const saved = JSON.parse(JSON.stringify(rum.state()));
+    assert.ok(!JSON.stringify(saved).includes('10.0.0.'), 'no address in the saved state');
+    const next = createRum({ now: () => t });
+    next.record({ path: '/', w: 390, lcp: 1234 });                                  // a beacon before the read
+    assert.strictEqual(next.restore(saved), true);
+    const homeNext = next.snapshot().pages['home|phone'];
+    assert.strictEqual(homeNext.beacons, rum.snapshot().pages['home|phone'].beacons + 1);
+    assert.strictEqual(homeNext.lcp.n, 11, 'the saved samples, then the new one');
+    assert.deepStrictEqual(next.p75Gauge().find((x) => x.labels.metric === 'lcp' && x.labels.page === 'home').value, 8000);
+    assert.ok(next.snapshot().errors.some((e) => e.message === 'TypeError: x is undefined'));
+    assert.strictEqual(createRum({ now: () => t + 15 * 86400000 }).restore(saved), false, 'older than 14 days: start empty');
+    const junk = createRum(); junk.restore({ v: 1, at: Date.now(), pages: { 'evil|key': { n: 9, samples: {} }, 'home|phone': { n: 2, samples: { lcp: [100, 'a', -5, 1e9] } } } });
+    assert.deepStrictEqual([Object.keys(junk.snapshot().pages), junk.snapshot().pages['home|phone'].lcp.n], [['home|phone'], 1], 'malformed keys and values are left out');
+    const index = fs.readFileSync(path.join(__dirname, '../server/index.js'), 'utf8');
+    assert.ok(index.includes("app.get('/metrics/rum'") && index.includes('isLoopbackDirect(req)'), 'the host reads the snapshot on loopback only');
+    assert.ok(/if \(!drill\.enabled\) \{\s*db\.getState\('rum_state'\)/.test(index), 'restored at boot, never in a restore drill');
+
     // app.js: every page load, once idle, through the runtime's versioned loader (a quarter of them gave too few
     // samples at this traffic; automated browsers are skipped in the script itself).
     const app_js = fs.readFileSync(path.join(__dirname, '../public/js/app.js'), 'utf8');
