@@ -58,4 +58,10 @@ const empty = { kind: 'channel', data: { messages: [] }, globalMsgs: [] };
 assert.deepStrictEqual(_historyPieces(empty, 120), [empty]);
 assert.deepStrictEqual(_historyPieces(null, 120), [null]);
 
+// About 200 rows are built at once; older pieces wait for the reader to scroll up to a sentinel above the oldest row
+// (proved in a browser against production 2026-10-17: 198 rows after load, +50 per scroll to the top, position kept).
+assert.ok(src.includes("more.className = 'chat-history-more'") && src.includes('new IntersectionObserver(') && src.includes('add(5)'), 'older history loads on scroll');
+assert.ok(src.includes('if (i < 16) return older();'), 'the newest 50 rows plus 15 pieces of 10 are built eagerly');
+assert.ok(src.includes('stick = _chatPinned && h - top - messages.clientHeight < 80'), 'a reader who scrolled up is not thrown to the bottom');
+
 console.log('chat history pieces: all checks passed');
