@@ -134,8 +134,8 @@ contextRouter.get('/users/:id/follows', async (req, res) => {
 });
 
 // Sub-only chat (OpenVibe.Chat): does this person hold an ACTIVE subscription to this streamer's
-// channel? Live's own rule (db.isActiveSubscriber: status active, current period not over; Billing's
-// entitlement under BILLING_AUTHORITY=billing, read fresh here). Network VIP is not a subscription.
+// channel? OpenVibe.Billing's entitlement, read fresh here (db.isActiveSubscriber answers from its short cache).
+// Network VIP is not a subscription.
 // The person by Live user id or by Network subject. Chat caches the answer briefly and treats a
 // failed read as "no" for everyone but the room's moderators.
 contextRouter.get('/subscriber', async (req, res) => {
@@ -147,9 +147,7 @@ contextRouter.get('/subscriber', async (req, res) => {
     }
     if (!userId || !streamerId) return fail(res, 400, 'user_id (or subject) and streamer_id required');
     try {
-        if (process.env.BILLING_AUTHORITY && require('../monetization/money-authority').onBilling()) {
-            await require('../monetization/billing-actions').refreshEntitlement(userId, streamerId).catch(() => {});
-        }
+        await require('../monetization/billing-actions').refreshEntitlement(userId, streamerId).catch(() => {});
         res.json({ subscriber: !!await db.isActiveSubscriber(userId, streamerId), user_id: userId, streamer_id: streamerId });
     } catch (err) {
         fail(res, 500, 'subscription lookup failed');

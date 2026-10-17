@@ -12,7 +12,6 @@ const http = require('http');
 const path = require('path');
 
 process.env.NODE_ENV = 'test';
-delete process.env.BILLING_AUTHORITY;
 const quiet = console.log;
 console.log = () => {};
 console.warn = () => {};
@@ -33,6 +32,8 @@ console.warn = () => {};
     delivery.message = async () => 1;
     delivery.event = async () => {};
 
+    // OpenVibe.Billing moves the Vibes (a stand-in here): the route records the tip under Billing's transaction.
+    require('../server/monetization/billing-actions').donate = async (req, { amount }) => ({ amount, transactionId: 'txn_01DONATION', balance: 1850, goal: null, goalReached: null });
     const auth = require('../server/auth/auth');
     const signIn = async (req) => { const id = Number(req.headers['x-test-user'] || 0); const u = id ? await db.getUserById(id) : null; if (u) req.user = u; return u; };
     auth.requireAuth = (req, res, next) => { signIn(req).then((u) => (u ? next() : res.status(401).json({ error: 'Authentication required' }))).catch(next); };
@@ -49,11 +50,11 @@ console.warn = () => {};
     const tip = (ref) => raw.prepare('SELECT to_user_id, from_user_id, username, stream_id, amount, source FROM channel_tips WHERE ref = ?').get(ref);
     const count = async () => Number((await raw.prepare('SELECT COUNT(*) AS n FROM channel_tips').get()).n);
 
-    // An on-site Vibes donation (Live is the ledger here): one ledger row, one tip named after it.
+    // An on-site Vibes donation (Billing moved it): one tip named after Billing's transaction.
     const d = await donate(2, { streamer_id: 3, stream_id: streamId, amount: 150, message: 'gg' });
     assert.strictEqual(d.status, 200, JSON.stringify(d.json));
-    const txn = await raw.prepare("SELECT id FROM transactions WHERE type = 'donation' ORDER BY id DESC LIMIT 1").get();
-    assert.deepStrictEqual(await tip(`live-txn:${txn.id}`), { to_user_id: 3, from_user_id: 2, username: null, stream_id: streamId, amount: 150, source: 'vibes' });
+    assert.strictEqual(d.json.balance, 1850, "the donor's balance is Billing's");
+    assert.deepStrictEqual(await tip('billing-txn:txn_01DONATION'), { to_user_id: 3, from_user_id: 2, username: null, stream_id: streamId, amount: 150, source: 'vibes' });
 
     // A tip on bob's own PowerChat: no Live account, so the name is kept; the same event twice is one tip.
     const powerchat = require('../server/integrations/powerchat-webhook');
@@ -95,7 +96,7 @@ console.warn = () => {};
     assert.deepStrictEqual(await tip(`live-txn:${ok}`), { to_user_id: 3, from_user_id: 2, username: null, stream_id: null, amount: 70, source: 'vibes' });
     assert.strictEqual(await tip(`live-txn:${failed}`), undefined);
     assert.strictEqual(await tip(`live-txn:${bought}`), undefined);
-    assert.strictEqual(await count(), 5, 'the donation the route already recorded is not copied again');
+    assert.strictEqual(await count(), 5, 'one copy of each completed donation');
 
     server.close();
     quiet('channel tips: all checks passed');

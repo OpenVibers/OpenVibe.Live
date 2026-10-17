@@ -1,8 +1,7 @@
 'use strict';
 /**
- * OpenVibe.Events → Live: what OpenVibe.Billing settled, told to the people it concerns, once Billing is the ledger
- * (BILLING_AUTHORITY=billing). In `live` mode Live's own checkout, webhook and renewal sweeper send all of this, so
- * every event is acknowledged and left alone. Closes items 2 and 5 of Billing's cutover list (docs/live-cutover.md).
+ * OpenVibe.Events → Live: what OpenVibe.Billing (the money ledger) settled, told to the people it concerns: the
+ * notices and celebrations Live's own checkout, webhook and renewal sweeper sent before the cutover of 2026-10-17.
  *
  *   POST /internal/billing-events   Live's subscription to billing.transaction.settled and billing.entitlement.changed
  *                                   (scripts/subscribe-media-events.js --billing), signed with LIVE_EVENTS_SECRET
@@ -21,7 +20,6 @@
  * transaction never notifies.
  */
 const db = require('../db/database');
-const money = require('./money-authority');
 
 const CONSUMER = 'live-billing-notices';
 const EVENT_ID_RE = /^evt_[0-9A-HJKMNP-TV-Z]{26}$/;
@@ -115,7 +113,6 @@ async function apply(ev) {
     if (!ev || !EVENT_ID_RE.test(String(ev.event_id || ''))) return 'ignored:envelope';
     if (ev.source !== 'billing') return 'ignored:source';
     if (ev.event_type !== 'billing.transaction.settled' && ev.event_type !== 'billing.entitlement.changed') return 'ignored:type';
-    if (!money.onBilling()) return 'ignored:live-ledger';
     let after = null;
     const out = await ensureInbox().once(CONSUMER, `billing:${ev.event_id}`, async () => { after = await plan(ev); return after ? 'notify' : 'nothing'; });
     if (out.duplicate) return 'duplicate';

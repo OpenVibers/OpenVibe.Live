@@ -138,33 +138,21 @@ class MediaQueue {
             return;
         }
         if (currency === 'vibes') {
-            // Vibes are money (ADR-012): refused while money writes are frozen, in both modes.
+            // Vibes are money (ADR-012): refused while money writes are frozen.
             await require('../monetization/money-authority').assertWritable();
-            if (require('../monetization/money-authority').onBilling()) {
-                // A paid interaction through OpenVibe.Billing (the requester's credit → the
-                // streamer's payable); the returned charge is linked to the request for refunds.
-                const billingActions = require('../monetization/billing-actions');
-                try {
-                    return await billingActions.chargeMedia({ userId, streamerId, streamId, cost, label, requestId });
-                } catch (e) {
-                    const live = billingActions.toLive(e, { insufficient: `Not enough Vibes — this costs ${cost}.` });
-                    const err = new Error(live ? live.body.error : (e?.message || `Could not charge ${cost} Vibes.`));
-                    // Billing never answered: the request row stays ('unknown') for the staff money
-                    // page, which resolves the billing action keyed live:media_charge:<request id>.
-                    if (e && e.kind === 'unknown') err.outcomeUnknown = true;
-                    throw err;
-                }
-            }
-            // Vibes have no generic spend: paying a streamer for a request IS a donation
-            // to them, so it goes through the same path and shows up in their totals.
+            // A paid interaction through OpenVibe.Billing (the requester's credit → the
+            // streamer's payable); the returned charge is linked to the request for refunds.
+            const billingActions = require('../monetization/billing-actions');
             try {
-                require('../monetization/vibes').donate(userId, streamerId, streamId || null, cost, label);
+                return await billingActions.chargeMedia({ userId, streamerId, streamId, cost, label, requestId });
             } catch (e) {
-                throw new Error(/insufficient/i.test(e?.message || '')
-                    ? `Not enough Vibes — this costs ${cost}.`
-                    : (e?.message || `Could not charge ${cost} Vibes.`));
+                const live = billingActions.toLive(e, { insufficient: `Not enough Vibes — this costs ${cost}.` });
+                const err = new Error(live ? live.body.error : (e?.message || `Could not charge ${cost} Vibes.`));
+                // Billing never answered: the request row stays ('unknown') for the staff money
+                // page, which resolves the billing action keyed live:media_charge:<request id>.
+                if (e && e.kind === 'unknown') err.outcomeUnknown = true;
+                throw err;
             }
-            return;
         }
         // opencoins — network wallet
         const wallet = require('../monetization/wallet-client');
@@ -589,24 +577,11 @@ class MediaQueue {
                     console.warn(`[MediaQueue] refund of request ${request.id} deferred: money writes are frozen`);
                     return 0;
                 }
-                if (money.onBilling()) {
-                    return require('../monetization/billing-actions').refundMedia(request).then(async (n) => {
-                        if (n > 0) await db.updateMediaRequest(requestId, { refunded: 1 });
-                        return n;
-                    });
-                }
-                // The charge was booked as a donation to the streamer, so unwind both sides — atomically,
-                // and only if the streamer still holds the money. Crediting the requester after a failed
-                // deduction minted Vibes: pay, move the balance out (recycle or cash out), then refund.
-                const unwound = await db.getDb().tx(async () => {
-                    if (!await db.deductVibesCashout(request.streamer_id, amount)) return false;
-                    await db.addVibes(request.user_id, amount);
-                    return true;
+                // Billing reverses the charge linked to the request (and only while the streamer still holds it).
+                return require('../monetization/billing-actions').refundMedia(request).then(async (n) => {
+                    if (n > 0) await db.updateMediaRequest(requestId, { refunded: 1 });
+                    return n;
                 });
-                if (!unwound) {
-                    console.warn(`[MediaQueue] refund of request ${request.id} refused: streamer ${request.streamer_id} no longer holds ${amount} Vibes`);
-                    return 0;
-                }
             } else {
                 // Idempotent per request id, so a double-refund is a no-op server-side.
                 require('../monetization/wallet-client')

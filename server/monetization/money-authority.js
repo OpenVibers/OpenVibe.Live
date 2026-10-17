@@ -1,55 +1,21 @@
 'use strict';
 /**
- * Who holds the money, and whether it may move (roadmap Wave 8, ADR-012).
+ * Who holds the money, and whether it may move (ADR-012).
  *
- * BILLING_AUTHORITY is read here and nowhere else:
- *   live     (default) Live's own columns and tables, exactly as before the Billing cutover.
- *   billing  OpenVibe.Billing is the ledger. Live asks it for every money action (billing-client.js,
- *            billing-actions.js) and never writes users.openvibe_bucks_balance /
- *            openvibe_bucks_cashout_balance, transactions, payment_orders or subscriptions — those
- *            become legacy, read-only (the database-level tripwire below enforces it).
- *   anything else is a misconfiguration: every Live money write is refused, never guessed.
+ * OpenVibe.Billing is the money ledger since the cutover of 2026-10-17: Live asks it for every money action
+ * (billing-client.js, billing-actions.js) and keeps no balance, order or subscription of its own. BILLING_AUTHORITY is
+ * no longer read: there is no other mode to switch back to.
  *
- * money_writes_frozen (site setting, owner-only, both modes) is runbook step 3 of the cutover: it
- * refuses every money action a person or an operator starts on Live — checkouts, donations and
- * tips, Vibes-paid media requests and their refunds, cashout requests/approvals/denials, recycling,
- * subscribing, cancelling, and the renewal sweep. Reads keep working. Provider confirmations of
- * checkouts that were started BEFORE the freeze (PowerChat/Stripe/PayPal/CCBill/crypto webhooks,
- * the PayPal return, the PowerChat paid-messages reconciler) still settle in `live` mode: that
- * money has already been taken by the provider, and refusing it would drop a real payment. The
- * runbook waits for them before the final snapshot.
+ * money_writes_frozen (site setting, owner-only) refuses every money action a person or an operator starts on Live:
+ * checkouts, donations and tips, Vibes-paid media requests and their refunds, cashout requests, recycling, subscribing
+ * and cancelling. Reads keep working. Billing has its own freeze for its side.
  */
 
-const MODES = ['live', 'billing'];
-
-/** 'live' | 'billing' | 'invalid' — read on every call so tests and the admin page see the truth. */
-function authority() {
-    const raw = process.env.BILLING_AUTHORITY;
-    if (raw === undefined || String(raw).trim() === '') return 'live';
-    const v = String(raw).trim().toLowerCase();
-    return MODES.includes(v) ? v : 'invalid';
-}
-const onBilling = () => authority() === 'billing';
-
-class LedgerReadOnlyError extends Error {
-    constructor(what, mode) {
-        super(mode === 'billing'
-            ? `Live's money columns are read-only (BILLING_AUTHORITY=billing): ${what} must go through OpenVibe.Billing`
-            : `BILLING_AUTHORITY=${JSON.stringify(process.env.BILLING_AUTHORITY)} is not 'live' or 'billing': ${what} refused`);
-        this.name = 'LedgerReadOnlyError';
-        this.status = 503;
-        this.code = 'ledger_read_only';
-    }
-}
-
-/** Tripwire for database.js: a Live money column/table write outside `live` mode throws. */
-function assertLiveLedger(what) {
-    const mode = authority();
-    if (mode !== 'live') throw new LedgerReadOnlyError(what, mode);
-}
+/** Always 'billing' (the admin page and the client config still show it). */
+const authority = () => 'billing';
 
 // ── Freeze (money_writes_frozen) ─────────────────────────────
-const db = () => require('../db/database');   // lazy: database.js requires this module
+const db = () => require('../db/database');   // lazy: no load cycle with database.js
 
 async function isFrozen() {
     try {
@@ -81,10 +47,6 @@ async function setFrozen(on, { reason = null, by = null } = {}) {
  * `{ error }` bodies plus a stable `code`.
  */
 async function writeRefusal() {
-    const mode = authority();
-    if (mode === 'invalid') {
-        return { status: 503, body: { error: 'Payments are unavailable: the server\'s billing configuration is invalid.', code: 'billing_misconfigured' } };
-    }
     if (await isFrozen()) {
         const st = await freezeState();
         return { status: 503, body: { error: 'Payments, donations and cashouts are paused for maintenance. Nothing was charged — please try again later.', code: 'money_writes_frozen', reason: st.reason || undefined } };
@@ -110,4 +72,4 @@ async function assertWritable() {
     }
 }
 
-module.exports = { authority, onBilling, assertLiveLedger, LedgerReadOnlyError, isFrozen, freezeState, setFrozen, writeRefusal, guardWrite, assertWritable, MODES };
+module.exports = { authority, isFrozen, freezeState, setFrozen, writeRefusal, guardWrite, assertWritable };

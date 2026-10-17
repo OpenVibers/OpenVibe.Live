@@ -1,18 +1,13 @@
 /**
  * OpenVibe.Live — Vibes Engine
  * 
- * Virtual currency: integer "bit"-style Vibes. 100 Bucks = $1.00 streamer cashout.
- * Viewers buy at a premium with volume discounts (priceUsdForBucks) — the platform margin.
- * Features: 
- *   - Buy Vibes (PayPal)
- *   - Donate to streamers
- *   - Donation goals with progress bars
- *   - Escrow cashout with admin approval
- *   - Subscription tiers
+ * Vibes are integer "bit"-style units: 100 = $1.00 of streamer cashout value, bought at a premium with volume
+ * discounts (priceUsdForBucks). OpenVibe.Billing keeps every balance and moves every Vibe since 2026-10-17
+ * (billing-actions.js); what stays here is the arithmetic, the channel's donation goals and its tip leaderboard
+ * (channel_tips).
  */
 const db = require('../db/database');
 const config = require('../config');
-const { assertLiveLedger } = require('./money-authority');
 
 // Vibes are integer "bit"-style units: 100 bucks = $1.00 streamer cashout.
 const CASHOUT_BUCKS_PER_USD = 100;
@@ -58,77 +53,7 @@ function normalizeText(value, maxLen = 300) {
     return text;
 }
 
-function validatePaypalEmail(value) {
-    const email = String(value || '').trim();
-    if (!email) throw new Error('PayPal email required');
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254) {
-        throw new Error('Invalid PayPal email');
-    }
-    return email;
-}
-
 class Vibes {
-    /**
-     * Purchase Vibes
-     * @param {number} userId 
-     * @param {number} amount - Number of Vibes to purchase
-     * @param {string} paypalTxId - PayPal transaction ID
-     */
-    async purchase(userId, amount, paypalTxId) {
-        amount = normalizeBucks(amount);
-        assertLiveLedger('transactions insert');
-        const txId = normalizeText(paypalTxId, 128);
-        const tx = await db.run(`INSERT INTO transactions (from_user_id, to_user_id, amount, type, status, message)
-            VALUES (NULL, ?, ?, 'purchase', 'completed', ?) RETURNING id`, [userId, amount, `Purchased ${amount} Vibes`]);
-
-        // Update PayPal reference
-        if (txId) {
-            await db.run('UPDATE transactions SET paypal_transaction_id = ? WHERE id = ?',
-            [txId, tx.lastInsertRowid]);
-        }
-
-        await db.addVibes(userId, amount);
-        return tx;
-    }
-
-    /**
-     * Donate Vibes to a streamer
-     * @param {number} fromUserId - Donor
-     * @param {number} toUserId - Streamer
-     * @param {number} streamId - Current stream
-     * @param {number} amount - Vibes to donate
-     * @param {string} message - Donation message
-     */
-    async donate(fromUserId, toUserId, streamId, amount, message, goalId = null) {
-        amount = normalizeBucks(amount);
-        assertLiveLedger('transactions insert');
-        message = normalizeText(message, 300);
-
-        // Deduct from donor
-        if (!await db.deductVibes(fromUserId, amount)) {
-            throw new Error('Insufficient Vibes');
-        }
-
-        // Credit the streamer's CASHOUT balance (received bucks are the only cashout-able
-        // ones; their spendable balance is for bucks they bought).
-        await db.addVibesCashout(toUserId, amount);
-
-        // Record transaction
-        const txn = await db.run(`INSERT INTO transactions (from_user_id, to_user_id, stream_id, amount, type, status, message)
-            VALUES (?, ?, ?, ?, 'donation', 'completed', ?) RETURNING id`, [fromUserId, toUserId, streamId || null, amount, message || null]);
-
-        // Apply toward a donation goal (the donor's pick, else the sole active goal).
-        const goalResult = await this.applyDonationToGoal(toUserId, amount, goalId);
-
-        return {
-            success: true,
-            amount,
-            transactionId: txn && txn.lastInsertRowid ? Number(txn.lastInsertRowid) : null,
-            goal: goalResult ? goalResult.goal : null,      // the goal that advanced (for the widget)
-            goalReached: goalResult && goalResult.reached ? goalResult.goal : null,
-        };
-    }
-
     /**
      * Route a donation toward a single goal: the donor's chosen goal if valid+active,
      * otherwise the streamer's sole active goal (if exactly one). Returns
@@ -147,105 +72,6 @@ class Vibes {
         }
         if (!target) return null;
         return await db.addToDonationGoal(target.id, amount);
-    }
-
-    /**
-     * Request cashout (goes to escrow for admin review)
-     */
-    async requestCashout(userId, amount, paypalEmail) {
-        amount = normalizeBucks(amount);
-        assertLiveLedger('transactions insert');
-        paypalEmail = validatePaypalEmail(paypalEmail);
-        const minBucks = config.openvibeBucks.minCashoutBucks;
-        if (amount < minBucks) {
-            throw new Error(`Minimum cashout is ${minBucks.toLocaleString()} Vibes ($${cashoutUsd(minBucks).toFixed(2)})`);
-        }
-
-        // Only the cashout balance (received donations) can be cashed out.
-        if (!await db.deductVibesCashout(userId, amount)) {
-            throw new Error('Insufficient cashout balance — only Vibes sent to you can be cashed out');
-        }
-
-        const tx = await db.run(`INSERT INTO transactions (from_user_id, to_user_id, amount, type, status, message)
-            VALUES (?, NULL, ?, 'cashout', 'escrow', ?) RETURNING id`, [userId, amount, `Cashout to PayPal: ${paypalEmail}`]);
-
-        return {
-            transaction_id: tx.lastInsertRowid,
-            amount,
-            usd_value: cashoutUsd(amount).toFixed(2),
-            status: 'escrow',
-            hold_days: config.openvibeBucks.escrowDays,
-        };
-    }
-
-    /**
-     * Admin: Approve a cashout (release from escrow)
-     */
-    async approveCashout(transactionId) {
-        const tx = await db.get('SELECT * FROM transactions WHERE id = ? AND status = ?',
-            [transactionId, 'escrow']);
-        if (!tx) throw new Error('Transaction not found or not in escrow');
-
-        await db.run('UPDATE transactions SET status = ? WHERE id = ?', ['completed', transactionId]);
-        return tx;
-    }
-
-    /**
-     * Admin: Deny a cashout (refund to user)
-     */
-    async denyCashout(transactionId, reason) {
-        const tx = await db.get('SELECT * FROM transactions WHERE id = ? AND status = ?',
-            [transactionId, 'escrow']);
-        if (!tx) throw new Error('Transaction not found or not in escrow');
-
-        // Refund back to the cashout balance it came from.
-        await db.addVibesCashout(tx.from_user_id, tx.amount);
-        await db.run('UPDATE transactions SET status = ? WHERE id = ?', ['refunded', transactionId]);
-
-        return tx;
-    }
-
-    /**
-     * Recycle: move Vibes from the streamer's cashout balance into their spendable
-     * balance, so they can re-donate / give back to the community instead of cashing out.
-     */
-    async recycleCashout(userId, amount) {
-        amount = normalizeBucks(amount);
-        if (!await db.deductVibesCashout(userId, amount)) {
-            throw new Error('Insufficient cashout balance');
-        }
-        await db.addVibes(userId, amount);
-        await db.createTransaction({
-            from_user_id: userId,
-            to_user_id: userId,
-            amount,
-            type: 'recycle',
-            status: 'completed',
-            message: 'Moved cashout balance to spendable Vibes',
-        });
-        const user = await db.getUserById(userId);
-        return {
-            success: true,
-            amount,
-            balance: user.openvibe_bucks_balance,
-            cashout_balance: user.openvibe_bucks_cashout_balance,
-        };
-    }
-
-    /**
-     * Get user's transaction history
-     */
-    async getHistory(userId, limit = 50) {
-        return await db.all(`
-            SELECT t.*,
-                   fu.username AS from_username, fu.display_name AS from_display,
-                   tu.username AS to_username, tu.display_name AS to_display
-            FROM transactions t
-            LEFT JOIN users fu ON t.from_user_id = fu.id
-            LEFT JOIN users tu ON t.to_user_id = tu.id
-            WHERE t.from_user_id = ? OR t.to_user_id = ?
-            ORDER BY t.created_at DESC LIMIT ?
-        `, [userId, userId, limit]);
     }
 
     /**

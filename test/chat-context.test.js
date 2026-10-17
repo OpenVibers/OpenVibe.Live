@@ -406,21 +406,25 @@ const waitFor = async (pred, what, ms = 3000) => {
         assert.strictEqual((await call('POST', '/internal/chat-effects/channel-emote-sources', { token: WRITE, body: { user_id: streamer, sources: { ffz: true, bttv: false } } })).status, 200);
         assert.strictEqual((await db.getChannelByUserId(streamer)).emote_sources, JSON.stringify({ ffz: true, bttv: false }));
 
-        // 8a. Sub-only chat asks whether someone holds an ACTIVE subscription to the streamer's channel:
-        // by user id or Network subject; a lapsed period or a cancelled row is not one.
+        // 8a. Sub-only chat asks whether someone holds an ACTIVE subscription to the streamer's channel, by user id or
+        // Network subject. OpenVibe.Billing answers (billing-actions.js; a stand-in here): a lapsed or cancelled one is not.
+        const ba = require('../server/monetization/billing-actions');
+        const held = new Set();
+        const refreshed = [];
+        ba.refreshEntitlement = async (u, st) => { refreshed.push(`${u}:${st}`); };
+        ba.isSubscriberCached = (u, st) => held.has(`${u}:${st}`);
         const subOf = (q) => call('GET', `/internal/chat-context/subscriber?${q}`, { token: READ });
         assert.strictEqual((await call('GET', `/internal/chat-context/subscriber?user_id=${viewer}&streamer_id=${streamer}`, { token: WRITE })).status, 403, 'a read capability');
         assert.strictEqual((await subOf(`streamer_id=${streamer}`)).status, 400);
         assert.deepStrictEqual((await subOf(`user_id=${viewer}&streamer_id=${streamer}`)).body, { subscriber: false, user_id: viewer, streamer_id: streamer });
-        await db.upsertSubscription({ subscriber_id: viewer, streamer_id: streamer, status: 'active', current_period_end: new Date(Date.now() + 86400e3).toISOString() });
+        held.add(`${viewer}:${streamer}`);
         assert.strictEqual((await subOf(`user_id=${viewer}&streamer_id=${streamer}`)).body.subscriber, true);
+        assert.ok(refreshed.includes(`${viewer}:${streamer}`), 'read fresh from Billing');
         assert.strictEqual((await subOf(`subject=usr_01J9ZZZZZZZZZZZZZZZZZZZZZZ&streamer_id=${streamer}`)).body.subscriber, true, 'by Network subject');
         assert.strictEqual((await subOf(`subject=usr_01J9UNKNOWNZZZZZZZZZZZZZZZ&streamer_id=${streamer}`)).body.subscriber, false, 'an unknown subject');
         assert.strictEqual((await subOf(`user_id=${viewer}&streamer_id=${mod}`)).body.subscriber, false, 'another channel');
-        await db.upsertSubscription({ subscriber_id: viewer, streamer_id: streamer, status: 'active', current_period_end: new Date(Date.now() - 60e3).toISOString() });
-        assert.strictEqual((await subOf(`user_id=${viewer}&streamer_id=${streamer}`)).body.subscriber, false, 'the paid period is over');
-        await db.upsertSubscription({ subscriber_id: viewer, streamer_id: streamer, status: 'canceled', current_period_end: new Date(Date.now() + 86400e3).toISOString() });
-        assert.strictEqual((await subOf(`user_id=${viewer}&streamer_id=${streamer}`)).body.subscriber, false, 'not active');
+        held.delete(`${viewer}:${streamer}`);
+        assert.strictEqual((await subOf(`user_id=${viewer}&streamer_id=${streamer}`)).body.subscriber, false, 'Billing says it is over');
         // Alert sounds moved to Chat with channel_moderation_settings (roadmap T3): Chat resolves the
         // sound from its own row and plays it on an `alert` event (test/chat-ingress.test.js), so Live's effect is gone.
 

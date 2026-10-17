@@ -170,26 +170,14 @@ async function check(name, fn) {
         assert.strictEqual(r.status, 404, r.text);
     });
 
-    await check('payments: a CCBill sale cannot be pointed at a larger order, and replays credit once', async () => {
+    await check('payments: a provider webhook reaching Live credits nothing and names OpenVibe.Billing', async () => {
+        // Billing receives every payment webhook since the cutover (its own tests cover underpaid and replayed sales).
         await db.setSetting('ccbill_webhook_secret', 'sek');
-        const pay = require('../server/monetization/payments');
-        const big = await db.createPaymentOrder({ user_id: 5, provider: 'ccbill', kind: 'bucks', amount_cents: 10000, bucks: 10000 });
-        const other = await db.createPaymentOrder({ user_id: 5, provider: 'paypal', kind: 'bucks', amount_cents: 100, bucks: 100 });
-        const bal = async () => (await db.getUserById(5)).openvibe_bucks_balance;
-        const start = await bal();
-        const hook = (q) => call('POST', `/api/payments/webhook/ccbill?secret=sek&${new URLSearchParams(q)}`, null, {});
-        await hook({ 'X-order': big.id, eventType: 'NewSaleSuccess', billedInitialPrice: '1.00' });
-        await hook({ 'X-order': big.id, eventType: 'NewSaleSuccess' });
-        await hook({ 'X-order': other.id, eventType: 'NewSaleSuccess', billedInitialPrice: '1.00' });
-        assert.strictEqual(await bal(), start, 'underpaid, unpriced or wrong-provider sale credited');
-        await hook({ 'X-order': big.id, eventType: 'NewSaleSuccess', billedInitialPrice: '100.00' });
-        await hook({ 'X-order': big.id, eventType: 'NewSaleSuccess', billedInitialPrice: '100.00' });
-        assert.strictEqual(await bal(), start + 10000);
-        // A stale copy read before an await (PayPal return vs. webhook) must not credit again.
-        const stale = await db.getPaymentOrderById(other.id);
-        assert.strictEqual(await pay.fulfillBucksOrder(await db.getPaymentOrderById(other.id)), true);
-        assert.strictEqual(await pay.fulfillBucksOrder(stale), false);
-        assert.strictEqual(await bal(), start + 10100);
+        const before = (await db.getUserById(5)).openvibe_bucks_balance;
+        const r = await call('POST', `/api/payments/webhook/ccbill?secret=sek&${new URLSearchParams({ 'X-order': 1, eventType: 'NewSaleSuccess', billedInitialPrice: '100.00' })}`, null, {});
+        assert.strictEqual(r.status, 410, r.text);
+        assert.match(r.json.webhook_url, /\/webhooks\/ccbill$/);
+        assert.strictEqual((await db.getUserById(5)).openvibe_bucks_balance, before);
     });
 
     await check('API tokens: scopes gate writes; money, staff and credential routes refuse tokens', () => {

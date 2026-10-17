@@ -9,8 +9,6 @@ const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
 const { createDb } = require('openvibe-sdk/db');
-// BILLING_AUTHORITY tripwire: Live's money columns/tables are only written in `live` mode.
-const { assertLiveLedger } = require('../monetization/money-authority');
 
 const MIGRATIONS = path.join(__dirname, '..', '..', 'migrations');
 
@@ -2191,166 +2189,13 @@ async function getFollowerIds(streamerId) {
         .map(r => r.follower_id);
 }
 
-// ── Transaction helpers ──────────────────────────────────────
-
-async function createTransaction({ from_user_id, to_user_id, stream_id, amount, type, status, message }) {
-    assertLiveLedger('transactions insert');
-    return await run(
-        `INSERT INTO transactions (from_user_id, to_user_id, stream_id, amount, type, status, message)
-         VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id`,
-        [from_user_id || null, to_user_id || null, stream_id || null, amount, type, status || 'completed', message || null]
-    );
-}
-
-async function addVibes(userId, amount) {
-    assertLiveLedger('openvibe_bucks_balance credit');
-    return await run(`UPDATE users SET openvibe_bucks_balance = openvibe_bucks_balance + ? WHERE id = ?`,
-        [amount, userId]);
-}
-
-async function deductVibes(userId, amount) {
-    assertLiveLedger('openvibe_bucks_balance debit');
-    const user = await getUserById(userId);
-    if (!user || user.openvibe_bucks_balance < amount) return false;
-    await run(`UPDATE users SET openvibe_bucks_balance = openvibe_bucks_balance - ? WHERE id = ?`,
-        [amount, userId]);
-    return true;
-}
-
-// Streamer cashout balance (received donations; the only cashout-able balance).
-async function addVibesCashout(userId, amount) {
-    assertLiveLedger('openvibe_bucks_cashout_balance credit');
-    return await run(`UPDATE users SET openvibe_bucks_cashout_balance = openvibe_bucks_cashout_balance + ? WHERE id = ?`,
-        [amount, userId]);
-}
-async function deductVibesCashout(userId, amount) {
-    assertLiveLedger('openvibe_bucks_cashout_balance debit');
-    const user = await getUserById(userId);
-    if (!user || (user.openvibe_bucks_cashout_balance || 0) < amount) return false;
-    await run(`UPDATE users SET openvibe_bucks_cashout_balance = openvibe_bucks_cashout_balance - ? WHERE id = ?`,
-        [amount, userId]);
-    return true;
-}
-
-// ── Payment orders (idempotent purchase tracking) ────────────
-
-async function createPaymentOrder({ user_id, provider, provider_ref = null, kind = 'bucks', amount_cents = 0, currency = 'usd', bucks = 0, streamer_id = null, status = 'pending' }) {
-    assertLiveLedger('payment_orders insert');
-    const res = await run(
-        `INSERT INTO payment_orders (user_id, provider, provider_ref, kind, amount_cents, currency, bucks, streamer_id, status)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
-        [user_id, provider, provider_ref, kind, amount_cents, currency, bucks, streamer_id, status]
-    );
-    return await get('SELECT * FROM payment_orders WHERE id = ?', [res.lastInsertRowid]);
-}
-
-async function getPaymentOrderById(id) {
-    return await get('SELECT * FROM payment_orders WHERE id = ?', [id]);
-}
-
-async function getPaymentOrderByRef(provider, ref) {
-    if (!ref) return null;
-    return await get('SELECT * FROM payment_orders WHERE provider = ? AND provider_ref = ? ORDER BY id DESC LIMIT 1', [provider, ref]);
-}
-
-// PowerChat checkouts still waiting for their donation.completed webhook — the
-// reconciliation sweep's work list (recent only: an intent lives an hour, and an
-// order nobody paid within days is an abandoned cart, not a missed webhook).
-async function getPendingPowerchatOrders(days = 3) {
-    return await all(`SELECT * FROM payment_orders
-                WHERE provider = 'powerchat' AND status = 'pending'
-                  AND created_at >= datetime('now', ?)
-                ORDER BY id ASC`, [`-${Math.max(1, Math.round(days))} days`]);
-}
-
-async function updatePaymentOrder(id, fields) {
-    assertLiveLedger('payment_orders update');
-    const allowed = new Set(['provider_ref', 'status', 'amount_cents', 'bucks', 'currency', 'streamer_id']);
-    const entries = Object.entries(fields || {}).filter(([k]) => allowed.has(k));
-    if (!entries.length) return await getPaymentOrderById(id);
-    const sets = entries.map(([k]) => `${k} = ?`);
-    sets.push('updated_at = ov_now()');
-    await run(`UPDATE payment_orders SET ${sets.join(', ')} WHERE id = ?`, [...entries.map(([, v]) => v), id]);
-    return await getPaymentOrderById(id);
-}
-
-// ── Subscription helpers ─────────────────────────────────────
-
-async function upsertSubscription({ subscriber_id, streamer_id, tier = 1, provider = null, provider_ref = null, price_cents = 0, currency = 'usd', status = 'active', current_period_end = null, auto_renew = null }) {
-    assertLiveLedger('subscriptions upsert');
-    // Reuse an existing (subscriber,streamer) row if present, else insert.
-    // auto_renew: null = leave as-is on update (0 on insert); 0/1 = set explicitly.
-    const existing = await get('SELECT * FROM subscriptions WHERE subscriber_id = ? AND streamer_id = ?', [subscriber_id, streamer_id]);
-    if (existing) {
-        await run(`UPDATE subscriptions SET tier=?, provider=?, provider_ref=COALESCE(?, provider_ref), price_cents=?, currency=?,
-                status=?, is_active=?, current_period_end=?, auto_renew=COALESCE(?, auto_renew),
-                cancel_at_period_end=0, updated_at=ov_now() WHERE id=?`,
-            [tier, provider, provider_ref, price_cents, currency, status, status === 'active' ? 1 : 0, current_period_end,
-                auto_renew === null ? null : (auto_renew ? 1 : 0), existing.id]);
-        return await get('SELECT * FROM subscriptions WHERE id = ?', [existing.id]);
-    }
-    const res = await run(`INSERT INTO subscriptions (subscriber_id, streamer_id, tier, provider, provider_ref, price_cents, currency, status, is_active, current_period_end, auto_renew)
-                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
-        [subscriber_id, streamer_id, tier, provider, provider_ref, price_cents, currency, status, status === 'active' ? 1 : 0, current_period_end, auto_renew ? 1 : 0]);
-    return await get('SELECT * FROM subscriptions WHERE id = ?', [res.lastInsertRowid]);
-}
-
-// Active subs whose paid period has lapsed — the renewal sweeper's work list.
-async function getSubscriptionsDueRenewal(limit = 50) {
-    return await all(`SELECT * FROM subscriptions
-        WHERE status = 'active' AND current_period_end IS NOT NULL
-          AND datetime(current_period_end) <= ov_now()
-        ORDER BY datetime(current_period_end) ASC LIMIT ?`, [limit]);
-}
-
-async function getSubscriptionByProviderRef(provider, ref) {
-    if (!ref) return null;
-    return await get('SELECT * FROM subscriptions WHERE provider = ? AND provider_ref = ? ORDER BY id DESC LIMIT 1', [provider, ref]);
-}
-
-async function getActiveSubscription(subscriberId, streamerId) {
-    return await get(`SELECT * FROM subscriptions WHERE subscriber_id = ? AND streamer_id = ? AND status = 'active'
-                AND (current_period_end IS NULL OR datetime(current_period_end) > ov_now()) LIMIT 1`,
-        [subscriberId, streamerId]);
-}
-
+// ── Subscriptions (OpenVibe.Billing) ─────────────────────────
 async function isActiveSubscriber(subscriberId, streamerId) {
     if (!subscriberId || !streamerId) return false;
-    // BILLING_AUTHORITY=billing: subscriber perks follow Billing's entitlements (short-lived cache;
-    // legacy subscriptions rows are not consulted).
-    if (process.env.BILLING_AUTHORITY && require('../monetization/money-authority').onBilling()) {
-        return require('../monetization/billing-actions').isSubscriberCached(subscriberId, streamerId);
-    }
-    return !!await getActiveSubscription(subscriberId, streamerId);
+    // Subscriber perks follow OpenVibe.Billing's entitlements (a short-lived cache, billing-actions.js).
+    return require('../monetization/billing-actions').isSubscriberCached(subscriberId, streamerId);
 }
 
-async function getSubscriptionsByStreamer(streamerId) {
-    return await all(`SELECT s.*, u.username AS subscriber_username, u.display_name AS subscriber_display, u.avatar_url AS subscriber_avatar
-                FROM subscriptions s LEFT JOIN users u ON s.subscriber_id = u.id
-                WHERE s.streamer_id = ? AND s.status = 'active' ORDER BY s.started_at DESC`, [streamerId]);
-}
-
-async function getSubscriptionsBySubscriber(subscriberId) {
-    return await all(`SELECT s.*, u.username AS streamer_username, u.display_name AS streamer_display, u.avatar_url AS streamer_avatar
-                FROM subscriptions s LEFT JOIN users u ON s.streamer_id = u.id
-                WHERE s.subscriber_id = ? ORDER BY s.started_at DESC`, [subscriberId]);
-}
-
-async function getActiveSubscriberCount(streamerId) {
-    const r = await get(`SELECT COUNT(*) AS n FROM subscriptions WHERE streamer_id = ? AND status = 'active'
-                   AND (current_period_end IS NULL OR datetime(current_period_end) > ov_now())`, [streamerId]);
-    return r ? r.n : 0;
-}
-
-async function setSubscriptionStatus(id, status, fields = {}) {
-    assertLiveLedger('subscriptions status');
-    const cpe = fields.current_period_end !== undefined ? fields.current_period_end : null;
-    const cape = fields.cancel_at_period_end !== undefined ? (fields.cancel_at_period_end ? 1 : 0) : 0;
-    await run(`UPDATE subscriptions SET status=?, is_active=?, cancel_at_period_end=?,
-            current_period_end=COALESCE(?, current_period_end), updated_at=ov_now() WHERE id=?`,
-        [status, status === 'active' ? 1 : 0, cape, cpe, id]);
-    return await get('SELECT * FROM subscriptions WHERE id = ?', [id]);
-}
 // ── VODs and clips ───────────────────────────────────────────
 // They live in OpenVibe.Media. Live asks for them through server/media-client.js and
 // server/media-proxy/lookups.js; Live's own AI state for them is vod_ai_state / clip_ai_state.
@@ -3705,10 +3550,7 @@ module.exports = {
     getPowerchatConnection, getPowerchatConnectionByUsername, getPowerchatConnectionByPcUserId,
     upsertPowerchatConnection, updatePowerchatTokens, setPowerchatConnectionError,
     deletePowerchatConnection, powerchatDeliveryIsNew, cleanupPowerchatDeliveries,
-    createPaymentOrder, getPaymentOrderById, getPaymentOrderByRef, updatePaymentOrder, getPendingPowerchatOrders,
-    upsertSubscription, getSubscriptionByProviderRef, getActiveSubscription, isActiveSubscriber,
-    getSubscriptionsByStreamer, getSubscriptionsBySubscriber, getActiveSubscriberCount, setSubscriptionStatus,
-    getSubscriptionsDueRenewal,
+    isActiveSubscriber,
     getRestreamDestinationsByManagedStream, getRestreamDestinationsForSlot,
     recordEasterEggSolve, hasSolvedEasterEgg, countEasterEggSolves,
     // Profiles
@@ -3717,8 +3559,6 @@ module.exports = {
     getChannelPoints, addChannelPoints, deductChannelPoints, applyChannelPoints,
     // Follows
     getFollowerCount, isFollowing, getFollowerIds,
-    // Transactions (Vibes)
-    createTransaction, addVibes, deductVibes, addVibesCashout, deductVibesCashout,
     // OpenCoins
     createCoinTransaction, getCoinTransactions,
     // Coin Rewards

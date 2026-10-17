@@ -145,7 +145,6 @@ async function eraseUsers(d, userIds, { now = new Date().toISOString() } = {}) {
     const bump = (o, k, n) => { if (n) o[k] = (o[k] || 0) + n; };
     const cols = await personColumns(d);
     const usersCols = await columnNames(d, 'users');
-    const onBilling = (() => { try { return require('../monetization/money-authority').onBilling(); } catch { return false; } })();
     await d.tx(async () => {
         for (const uid of userIds) {
             for (const [t, list] of cols) {
@@ -164,8 +163,9 @@ async function eraseUsers(d, userIds, { now = new Date().toISOString() } = {}) {
                     bump(erased, t, r.changes);
                 }
             }
-            // A donation's message is the person's words: cleared while Live keeps the ledger (read-only under Billing).
-            if (!onBilling && cols.has('transactions')) {
+            // A donation's message is the person's words: cleared from Live's old ledger (read-only since the Billing
+            // cutover, gone with its contract migration; OpenVibe.Billing holds the money history now).
+            if (cols.has('transactions')) {
                 await d.prepare('UPDATE transactions SET message = NULL WHERE from_user_id = ? AND message IS NOT NULL').run(uid);
             }
             // The tombstone: the kept rows point at nobody; the username is free again.

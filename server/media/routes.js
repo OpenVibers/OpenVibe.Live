@@ -189,10 +189,8 @@ router.post('/quote', optionalAuth, async (req, res) => {
         let balance = null;
         if (req.user && currency === 'points') balance = await db.getChannelPoints(req.user.id, streamerId);
         else if (req.user && currency === 'vibes') {
-            if (require('../monetization/money-authority').onBilling()) {
-                // Billing holds Vibes; unknown (null) when it cannot answer — never the legacy column.
-                try { balance = (await require('../monetization/billing-actions').balance(req.user.id, req.headers)).balance; } catch { balance = null; }
-            } else balance = (await db.getUserById(req.user.id))?.openvibe_bucks_balance ?? null;
+            // Billing holds Vibes; unknown (null) when it cannot answer.
+            try { balance = (await require('../monetization/billing-actions').balance(req.user.id, req.headers)).balance; } catch { balance = null; }
         }
 
         res.json({

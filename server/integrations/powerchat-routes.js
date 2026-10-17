@@ -333,18 +333,6 @@ router.get('/donate-link', optionalAuth, async (req, res) => {
     }
 });
 
-// ── POST /reconcile — admin: backfill missed checkout webhooks from /paid-messages ─
-// The 15-minute sweeper runs this on its own; the route exists so an operator can
-// run it on demand after an outage (or to see the summary) without waiting.
-router.post('/reconcile', requireAdmin, async (req, res) => {
-    try {
-        const summary = await require('./powerchat-reconcile').reconcileOnce();
-        res.json({ ok: true, ...summary });
-    } catch (err) {
-        res.status(500).json({ error: 'Reconcile failed' });
-    }
-});
-
 // ── POST /test-tip — simulate a tip through the LOCAL pipeline (no PowerChat call) ─
 // The most useful test: confirms the streamer's alert sound + chat celebration render.
 router.post('/test-tip', requireAuth, async (req, res) => {
@@ -437,42 +425,12 @@ router.get('/authorize-url', requireAuth, (req, res) => {
     res.json({ url: `${String(config.baseUrl).replace(/\/+$/, '')}/api/powerchat/oauth/start` });
 });
 
-// ── POST /webhook — signed event receiver ────────────────────────────────────
-// No auth middleware: authenticity is the HMAC signature. Ack fast, process async.
-router.post('/webhook', async (req, res) => {
-    // BILLING_AUTHORITY=billing: PowerChat money settles in OpenVibe.Billing, and this receiver
-    // must not process anything. 410 names where the webhook lives now (the PowerChat dashboard
-    // is re-pointed by hand — docs/live-cutover.md in OpenVibe.Billing).
-    if (require('../monetization/money-authority').onBilling()) {
-        return res.status(410).json({
-            error: 'PowerChat webhooks are received by OpenVibe.Billing now.',
-            webhook_url: `${require('../monetization/billing-client').publicUrl()}/webhooks/powerchat`,
-        });
-    }
-    try {
-        const raw = req.rawBody || (req.body ? Buffer.from(JSON.stringify(req.body)) : Buffer.alloc(0));
-        const check = await webhook.verifySignature(raw, req.headers);
-        if (!check.ok) {
-            console.warn('[PowerChat] webhook rejected:', check.reason);
-            return res.status(401).json({ error: 'invalid signature' });
-        }
-        const deliveryId = req.headers['x-powerchat-delivery-id'] || null;
-        const eventType = req.headers['x-powerchat-event-type'] || (req.body && req.body.type) || null;
-
-        // Dedupe at-least-once deliveries.
-        if (deliveryId && !await db.powerchatDeliveryIsNew(deliveryId, eventType)) {
-            return res.status(200).json({ ok: true, deduped: true });
-        }
-
-        // Ack immediately; process off the response path.
-        res.status(200).json({ ok: true });
-        const envelope = req.body && typeof req.body === 'object' ? req.body : (() => { try { return JSON.parse(raw.toString('utf8')); } catch { return null; } })();
-        db.getDb().afterCommit(() => {
-            if (envelope) webhook.processEvent(envelope).catch((e) => console.warn('[PowerChat] webhook process error:', e.message));
-        });
-    } catch (err) {
-        if (!res.headersSent) res.status(500).json({ error: 'webhook error' });
-    }
-});
+// ── POST /webhook — received by OpenVibe.Billing ─────────────────────────────
+// openvibe.live's nginx hands /api/powerchat/webhook to Billing (Live#172; the signature covers the timestamp and the
+// body, not the URL). Should a delivery reach Live anyway, it is told where the webhook lives and nothing is processed.
+router.post('/webhook', (req, res) => res.status(410).json({
+    error: 'PowerChat webhooks are received by OpenVibe.Billing now.',
+    webhook_url: `${require('../monetization/billing-client').publicUrl()}/webhooks/powerchat`,
+}));
 
 module.exports = router;

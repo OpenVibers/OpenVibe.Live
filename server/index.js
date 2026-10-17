@@ -1419,10 +1419,6 @@ async function start() {
         try { require('./integrations/powerchat-platform').startCurrencyEarnFlusher(); } catch (e) { console.warn('[PowerChat] earn flusher not started:', e.message); }
         // Read /chat/history back so a 202-accepted relay that moderation dropped is visible.
         try { require('./integrations/powerchat-platform').startChatVerifier(); } catch (e) { console.warn('[PowerChat] chat verifier not started:', e.message); }
-        // Backfill checkout orders whose donation.completed webhook never arrived (/paid-messages).
-        try { require('./integrations/powerchat-reconcile').startReconciler(); } catch (e) { console.warn('[PowerChat] reconciler not started:', e.message); }
-        // Auto-renew lapsed channel subs (Vibes-balance renewal; Stripe renews natively).
-        try { await require('./monetization/payments').startRenewalSweeper(); } catch (e) { console.warn('[Payments] renewal sweeper not started:', e.message); }
         // 5-minute live-viewer samples → the home hero's 24h sparkline.
         try { await require('./home/routes').startViewerSampler(); } catch (e) { console.warn('[Home] viewer sampler not started:', e.message); }
         try { require('./home/star-job').start(); } catch (e) { console.warn('[Home] star picker not started:', e.message); }
