@@ -978,66 +978,8 @@ router.post('/channel/offline-screen', requireAuth, offlineUpload.single('file')
     }
 });
 
-// ── Weather for Channel (privacy-preserving) ─────────────────
-const weatherCache = new Map(); // key: zip, value: { data, ts }
-const WEATHER_CACHE_TTL = 15 * 60 * 1000; // 15 min
-const GEOCODE_CACHE = new Map();
-
-async function geocodeZip(zip) {
-    if (GEOCODE_CACHE.has(zip)) return GEOCODE_CACHE.get(zip);
-    try {
-        const url = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(zip)}&count=1&language=en&format=json`;
-        const resp = await fetch(url);
-        const json = await resp.json();
-        if (json.results && json.results.length > 0) {
-            const r = json.results[0];
-            const result = { lat: r.latitude, lon: r.longitude, name: r.name, region: r.admin1 || '', country: r.country_code || '' };
-            GEOCODE_CACHE.set(zip, result);
-            return result;
-        }
-    } catch (e) { console.warn('[Weather] Geocode error:', e.message); }
-    // Fallback: try US zip via zip-coordinates API
-    try {
-        const url = `https://api.zippopotam.us/us/${encodeURIComponent(zip)}`;
-        const resp = await fetch(url);
-        if (resp.ok) {
-            const json = await resp.json();
-            const place = json.places?.[0];
-            if (place) {
-                const result = { lat: parseFloat(place.latitude), lon: parseFloat(place.longitude), name: place['place name'], region: place['state abbreviation'] || '', country: 'US' };
-                GEOCODE_CACHE.set(zip, result);
-                return result;
-            }
-        }
-    } catch (e) { /* silent fallback */ }
-    return null;
-}
-
-async function fetchWeather(zip) {
-    const now = Date.now();
-    const cached = weatherCache.get(zip);
-    if (cached && (now - cached.ts) < WEATHER_CACHE_TTL) return cached.data;
-
-    const geo = await geocodeZip(zip);
-    if (!geo) return null;
-
-    try {
-        const url = `https://api.open-meteo.com/v1/forecast?latitude=${geo.lat}&longitude=${geo.lon}`
-            + `&hourly=temperature_2m,apparent_temperature,relative_humidity_2m,precipitation_probability,precipitation,weather_code,wind_speed_10m,wind_gusts_10m,wind_direction_10m,cloud_cover,visibility,uv_index`
-            + `&daily=temperature_2m_max,temperature_2m_min,weather_code,precipitation_sum,precipitation_probability_max,wind_speed_10m_max,sunrise,sunset`
-            + `&current=temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,wind_speed_10m,wind_direction_10m,is_day`
-            + `&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch`
-            + `&timezone=auto&forecast_days=7`;
-        const resp = await fetch(url);
-        const data = await resp.json();
-        const result = { ...data, location: { name: geo.name, region: geo.region, country: geo.country } };
-        weatherCache.set(zip, { data: result, ts: now });
-        return result;
-    } catch (e) {
-        console.warn('[Weather] Fetch error:', e.message);
-        return null;
-    }
-}
+// ── Weather for Channel (privacy-preserving): server/streaming/weather.js ──
+const { fetchWeather } = require('./weather');
 
 // ── Game summary (roadmap WS-M task 2, PF7) ──────────────────
 // The channel owner's public games.progress.summary (level, achievements, playtime) from Network; 204 when none.
