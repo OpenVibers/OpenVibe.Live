@@ -527,7 +527,7 @@ while True:
 </table>
 
 <h3>Buying Vibes &amp; subscriptions &mdash; <code>/api/payments</code></h3>
-<p>Real-money purchases via <strong>Stripe, PayPal, CCBill, or crypto (NOWPayments)</strong>. Off by default (<code>payments_enabled</code>). Every purchase creates an order, then a provider webhook fulfills it once (idempotent).</p>
+<p>Real-money purchases via <strong>Stripe, PayPal, CCBill, crypto (NOWPayments) or PowerChat</strong>. Off by default (<code>payments_enabled</code>). Since 2026-10-17 <strong>OpenVibe.Billing</strong> (<code>billing.openvibe.network</code>) is the ledger: these endpoints create the purchase or subscription there, the provider's webhook settles it there, once, and Live keeps no money record of its own.</p>
 <table class="doc-table" tabindex="0">
 <thead><tr><th>Method</th><th>Path</th><th>Auth</th><th>Notes</th></tr></thead>
 <tbody>
@@ -536,7 +536,7 @@ while True:
 <tr><td>POST</td><td>/api/payments/subscribe</td><td>Yes</td><td>Subscribe to a channel. Body: <code>provider</code> (<code>stripe</code>|<code>bucks</code>), <code>streamer</code></td></tr>
 <tr><td>GET</td><td>/api/payments/subscriptions/mine &middot; /channel/:username</td><td>Yes/Opt</td><td>My subs / am-I-subscribed + count + price</td></tr>
 <tr><td>POST</td><td>/api/payments/subscriptions/:id/cancel</td><td>Yes</td><td>Cancel (Stripe at period end; bucks immediate)</td></tr>
-<tr><td>POST/ALL</td><td>/api/payments/webhook/{stripe,paypal,ccbill,crypto}</td><td>Signed</td><td>Provider webhooks &rarr; fulfill/renew/cancel</td></tr>
+<tr><td>POST/ALL</td><td>/api/payments/webhook/{stripe,paypal,ccbill,crypto}</td><td>No</td><td><code>410 Gone</code> with <code>webhook_url</code>: providers deliver to OpenVibe.Billing (<code>https://billing.openvibe.network/webhooks/{stripe,paypal,ccbill,nowpayments}</code>)</td></tr>
 </tbody>
 </table>
 <p><strong>Packages</strong>: <code>100, 500, 1000, 2500, 5000, 10000, 25000</code> bucks. <strong>Per-buck price tiers</strong>: &ge;25000&rarr;$0.0110, &ge;10000&rarr;$0.0115, &ge;5000&rarr;$0.0120, &ge;2500&rarr;$0.0124, &ge;1000&rarr;$0.0130, &ge;500&rarr;$0.0140, else $0.0150. Streamers keep <code>sub_streamer_share_pct</code> (default 70%) of sub value into their cashout balance.</p>
@@ -823,7 +823,7 @@ https://www.101soundboards.com/sounds/12345 150p 2</code></pre>
 <tr><td>DELETE</td><td>/api/powerchat/oauth/connection</td><td>Disconnect</td></tr>
 <tr><td>GET</td><td>/api/powerchat/tip-link</td><td>Attribution deep link to the streamer's tip page (<code>?ref</code> or <code>?goal_id</code>)</td></tr>
 <tr><td>POST</td><td>/api/powerchat/test-tip &middot; /test-alert</td><td>Fire a simulated tip / overlay test-alert</td></tr>
-<tr><td>POST</td><td>/api/powerchat/webhook</td><td>Signed HMAC receiver (<code>sha256</code> over <code>&lt;ts&gt;.&lt;body&gt;</code>, &le;15-min skew, deduped)</td></tr>
+<tr><td>POST</td><td>/api/powerchat/webhook</td><td>Signed HMAC receiver (<code>sha256</code> over <code>&lt;ts&gt;.&lt;body&gt;</code>, &le;15-min skew, deduped), answered by OpenVibe.Billing since 2026-10-17 (the address is unchanged)</td></tr>
 </tbody>
 </table>
 </div>
