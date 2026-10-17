@@ -1179,7 +1179,7 @@ function showNotFound({ title = 'Page not found', message = 'Nothing lives at th
     if (el) {
         const box = document.createElement('div');
         box.className = 'content-container';
-        box.style.cssText = 'text-align:center;padding:12vh 16px';
+        box.style.cssText = 'text-align:center;padding:12vh 16px;overflow-wrap:anywhere';   // a long @name wraps on a 320px phone
         const h1 = document.createElement('h1');
         h1.textContent = title;
         const p = document.createElement('p');
