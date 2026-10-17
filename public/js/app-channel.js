@@ -877,6 +877,12 @@ async function loadChannelPage(username, managedStreamRef = null, legacySessionI
 
     } catch (e) {
         _channelReady();
+        if (e && e.status === 404) {
+            // Nobody has this name: say so at this address (the server answered it 404 too), not a toast and the home page.
+            currentChannelUsername = null;
+            showNotFound({ title: `No channel called @${username}`, message: 'Nobody streams under this name. The link may be mistyped, or the account was renamed or removed.' });
+            return;
+        }
         console.error('Channel load error:', e);
         toast('Channel not found', 'error');
         navigate('/');

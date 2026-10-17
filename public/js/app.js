@@ -1173,18 +1173,18 @@ function routeFromURL() {
     }
 }
 
-/** The page for an address no route knows: say so, and offer the way back in. */
-function showNotFound() {
+/** The page for an address no route knows (or a channel nobody has): say so, and offer the way back in. */
+function showNotFound({ title = 'Page not found', message = 'Nothing lives at this address. The link may be mistyped, or what it pointed to was removed or made private.' } = {}) {
     const el = document.getElementById('page-not-found');
-    if (el && !el.firstChild) {
+    if (el) {
         const box = document.createElement('div');
         box.className = 'content-container';
         box.style.cssText = 'text-align:center;padding:12vh 16px';
         const h1 = document.createElement('h1');
-        h1.textContent = 'Page not found';
+        h1.textContent = title;
         const p = document.createElement('p');
         p.className = 'page-subtitle';
-        p.textContent = 'Nothing lives at this address. The link may be mistyped, or what it pointed to was removed or made private.';
+        p.textContent = message;
         const links = document.createElement('p');
         links.style.cssText = 'display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-top:20px';
         for (const [href, label, cls] of [['/', 'Home', 'btn btn-primary'], ['/content', 'Content', 'btn btn-outline'], ['/moments', 'AI Moments', 'btn btn-outline'], ['/chat', 'Chat', 'btn btn-outline']]) {
@@ -1194,10 +1194,12 @@ function showNotFound() {
             links.appendChild(a);
         }
         box.append(h1, p, links);
-        el.appendChild(box);
+        el.replaceChildren(box);
     }
+    // A page that found out late (a channel nobody has) is still showing: only this one stays.
+    document.querySelectorAll('.page.active').forEach((pg) => { if (pg !== el) pg.classList.remove('active'); });
     showPage('not-found');
-    setPageTitle('Page not found');
+    setPageTitle(title);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
