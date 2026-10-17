@@ -659,6 +659,9 @@ async function loadChannelPage(username, managedStreamRef = null, legacySessionI
             }
         }
 
+        // The offline screen's "most watched" (its picture is the page's largest paint) is asked for with the channel,
+        // not after it: _fillOfflineExplore takes this answer when it is for the same channel and recent.
+        if (isNewChannel) _popularAhead = { username: String(username).toLowerCase(), at: Date.now(), p: api(`/streams/channel/${encodeURIComponent(username)}/popular`).catch(() => null) };
         const data = await api(`/streams/channel/${username}?vodLimit=${CHANNEL_VODS_PAGE_SIZE}&vodOffset=${channelVodOffset}&clipLimit=${CHANNEL_CLIPS_PAGE_SIZE}&clipOffset=${channelClipOffset}${initialVodExtra}`);
         const ch = data.channel;
         { const page = document.getElementById('page-channel'); if (page) page.classList.add('ch-data'); if (page && !page.classList.contains('ch-ready')) _channelReadyTimer = setTimeout(_channelReady, 2500); }
@@ -3035,12 +3038,18 @@ function _reopenOfflineOverlay() {
     _startOfflineCycler();
 }
 
+let _popularAhead = null;
 async function _fillOfflineExplore(username) {
     if (!username) return;
     _stopOfflineCycler();
     let data;
-    try { data = await api(`/streams/channel/${encodeURIComponent(username)}/popular`); }
-    catch { return; }
+    const ahead = _popularAhead;
+    _popularAhead = null;
+    if (ahead && ahead.username === String(username).toLowerCase() && Date.now() - ahead.at < 30000) data = await ahead.p;
+    if (!data) {
+        try { data = await api(`/streams/channel/${encodeURIComponent(username)}/popular`); }
+        catch { return; }
+    }
     const host = document.getElementById('ch-offline-explore');
     if (!host) return; // navigated away / offline screen re-rendered
     const ranges = data.ranges || {};
@@ -3152,7 +3161,7 @@ function _offlineTopCard(kind, item) {
     const thumbGen = isVod ? `/api/thumbnails/generate/vod/${item.id}` : `/api/thumbnails/generate/clip/${item.id}`;
     return `<a class="off-top-card" href="${href}" onclick="return handleLinkClick(event, '${href}')">
         <div class="off-top-thumb">
-            ${thumbImg(item.thumbnail_url, icon, item.title, thumbGen)}
+            ${thumbImg(item.thumbnail_url, icon, item.title, thumbGen).replace('loading="lazy"', 'fetchpriority="high"')}
             <span class="off-top-rank">#1 ${label}</span>
             ${item.duration_seconds ? `<span class="off-top-dur">${formatDuration(item.duration_seconds)}</span>` : ''}
         </div>
