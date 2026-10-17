@@ -16,7 +16,9 @@
  *   → 200 { ok: true, ref }   404 creator has no Live channel (permanent)   409 not live (retried)
  *
  *   chat_line | paid_message  donation event to the channel room + global, saved as a 'donation'
- *                             chat message (metadata.source 'tips'), the donation alert sound
+ *                             chat message (metadata.source 'tips'), the donation alert sound; a Vibes
+ *                             amount (not a test) advances the channel's donation goal (goal-update,
+ *                             "Goal reached" line and sound, monetization/goal-announce.js)
  *   tts                       a `tts` line in the channel, which Chat reads aloud
  *   media_request             into the media queue at cost 0 — Billing charged it, Tips holds the record
  */
@@ -24,6 +26,7 @@ const express = require('express');
 const db = require('../db/database');
 const delivery = require('../chat/chat-delivery');
 const { guard } = require('../net/service-guard');
+const { announceGoal } = require('../monetization/goal-announce');
 
 const router = express.Router();
 const SUBJECT_RE = /^usr_[0-9A-HJKMNP-TV-Z]{26}$/;
@@ -117,7 +120,17 @@ router.post('/deliveries', guard('live.tips_delivery.write'), express.json({ lim
             // Chat persists the line and shows it in the channel and global chat; Tips' key is the operation's key.
             const chatMessageId = await delivery.message({ ...line, mirror: true, key: `tips:${key}` });
             await require('../monetization/alerts').playAlertSound(userId, streamId, 'donation');
-            return res.json(await remember(key, { ok: true, ref: { chat_message_id: chatMessageId } }));
+            // A settled tip in Vibes counts toward the channel's donation goal, like an on-site donation (a test, or a
+            // tip whose amount the supporter hid, does not). The claim above makes this once per Idempotency-Key.
+            let goal = null;
+            if (!b.test && amount > 0 && /^vibes/i.test(String(i.currency || 'vibes'))) {
+                try {
+                    const goalResult = await require('../monetization/vibes').applyDonationToGoal(userId, amount, null);
+                    await announceGoal({ userId, streamId, goalResult, by: name, key: `tips:${key}:goal` });
+                    if (goalResult) goal = { id: goalResult.goal.id, reached: !!goalResult.reached };
+                } catch (e) { console.warn('[Tips delivery] goal:', e.message); }
+            }
+            return res.json(await remember(key, { ok: true, ref: { chat_message_id: chatMessageId, ...(goal ? { goal } : {}) } }));
         }
         if (b.effect === 'tts') {
             const text = String((b.tts && b.tts.text) || '').slice(0, 1200);

@@ -3,7 +3,8 @@
 // OpenVibe.Tips → Live (roadmap Wave 9): POST /internal/tips/deliveries announces a settled tip in the
 // creator's chat — service token with live.tips_delivery.write, idempotent per delivery id (kept in
 // PostgreSQL, so a restart between deliveries does not repeat one), the creator found by Network
-// subject, no Live balance touched.
+// subject, no Live balance touched. A settled Vibes tip advances the channel's donation goal once (a test or a
+// hidden amount does not), with the goal widget update and the "Goal reached" line.
 
 const assert = require('assert');
 const fs = require('fs');
@@ -45,6 +46,12 @@ const token = (cap, aud = 'openvibe.live') => serviceAuth.signServiceToken({ iss
     delivery.message = async (body) => { sent.push(body); return nextId++; };
     const tts = [];
     delivery.synthesizeAndBroadcastTTS = async (...a) => { tts.push(a); };
+    const events = [];
+    delivery.event = async (target, ev) => { events.push({ target, ev }); };
+    const goalUpdates = () => events.filter((e) => e.ev.type === 'goal-update').map((e) => e.ev.goal.current_amount);
+    const goal = await db.createDonationGoal(501, { title: 'New camera', target_amount: 10000 });
+    const goalId = goal && goal.id ? goal.id : (await d.prepare('SELECT id FROM donation_goals WHERE user_id = 501').get()).id;
+    const goalNow = async () => Number((await d.prepare('SELECT current_amount FROM donation_goals WHERE id = ?').get(goalId)).current_amount);
 
     const app = express();
     app.use('/internal/tips', require('../server/tips/delivery-routes'));
@@ -71,6 +78,9 @@ const token = (cap, aud = 'openvibe.live') => serviceAuth.signServiceToken({ iss
     assert.strictEqual(sent[0].message, 'Viewer tipped 250 Vibes: gg');
     assert.strictEqual(sent[0].metadata.source, 'tips');
     assert.strictEqual(sent[0].metadata.amount, 250);
+    assert.strictEqual(await goalNow(), 250, 'the tip counts toward the goal');
+    assert.deepStrictEqual(goalUpdates(), [250], 'and the goal widget hears it');
+    assert.deepStrictEqual(a.json.ref.goal, { id: goalId, reached: false });
 
     // A retry of the same delivery changes nothing.
     const b = await post(job);
@@ -90,6 +100,7 @@ const token = (cap, aud = 'openvibe.live') => serviceAuth.signServiceToken({ iss
     assert.strictEqual(afterRestart.status, 200);
     assert.deepStrictEqual(afterRestart.json, a.json, 'after a restart the same key answers the first result');
     assert.strictEqual(sent.length, 1, 'and delivers nothing again');
+    assert.strictEqual(await goalNow(), 250, 'nor counts toward the goal again');
 
     // A retry while the first attempt is still running is told to come back; a claim left by a
     // crash (older than two minutes) is taken over.
@@ -129,6 +140,25 @@ const token = (cap, aud = 'openvibe.live') => serviceAuth.signServiceToken({ iss
     assert.strictEqual(h.status, 200);
     assert.strictEqual(sent[sent.length - 1].message, 'Viewer sent a tip: hi');
     assert.strictEqual(sent[sent.length - 1].metadata.amount, null);
+
+    assert.strictEqual(await goalNow(), 500, 'a hidden amount does not move the goal (tint_1 and tint_9 did)');
+
+    // A simulation (test: true) shows the line but leaves the goal alone.
+    assert.strictEqual((await post({ ...job, test: true, interaction: { ...job.interaction, id: 'tint_t' } }, { key: 'tint_t:chat_line' })).status, 200);
+    assert.strictEqual(await goalNow(), 500);
+
+    // Reaching the goal: the widget shows it full, a saved "Goal reached" line in Vibes, the goal sound.
+    const before = sent.length;
+    const r = await post({ ...job, interaction: { ...job.interaction, id: 'tint_r', amount: 9500 } }, { key: 'tint_r:chat_line' });
+    assert.strictEqual(r.status, 200);
+    assert.deepStrictEqual(r.json.ref.goal, { id: goalId, reached: true });
+    assert.strictEqual(goalUpdates().pop(), 10000);
+    const reached = sent.slice(before).find((m) => m.metadata && m.metadata.kind === 'goal-reached');
+    assert.ok(reached, 'a goal-reached line');
+    assert.strictEqual(reached.message, '🎉 Goal reached: New camera (10,000 Vibes)');
+    assert.strictEqual(reached.metadata.by, 'Viewer');
+    assert.strictEqual(reached.key, 'tips:tint_r:chat_line:goal');
+    assert.ok(events.some((e) => e.ev.type === 'alert' && e.ev.kind === 'goal'), 'the goal sound');
 
     // Unknown creator: permanent refusal.
     const u = await post({ ...job, creator: { type: 'user', id: 'usr_01J0000000000000000000000Y' } }, { key: 'tint_2:chat_line' });
