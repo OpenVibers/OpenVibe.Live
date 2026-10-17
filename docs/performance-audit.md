@@ -9,7 +9,7 @@ says so.
 | Tool | What it does |
 |---|---|
 | `scripts/perf/measure-page.js <url> [--runs N] [--phone] [--phone-cpu]` | cold load in headless Chrome over the DevTools protocol, fresh profile and HTTP cache disabled per run; reports medians of transfer, requests, DOM nodes, running animations, FCP/LCP/CLS, long tasks, TBT, script/style/layout time, the LCP element (`lcpEl`) and the element behind the largest layout shift (`clsEl`) |
-| real users (`public/js/ov-rum.js` → `server/web/rum.js`) | one page load in four reports its own TTFB/FCP/LCP/CLS/INP/blocking time and script errors; aggregates per page kind × device class at `GET /api/admin/rum` (staff) and `live_rum_p75` / `live_rum_errors` on `/metrics` |
+| real users (`public/js/ov-rum.js` → `server/web/rum.js`) | every page load (not automated browsers) reports its own TTFB/FCP/LCP/CLS/INP/blocking time and script errors; aggregates per page kind × device class at `GET /api/admin/rum` (staff) and `live_rum_p75` / `live_rum_errors` on `/metrics` |
 | `scripts/perf/ab.js <urlA> <urlB> --runs N` | the same, **interleaved** A,B,A,B… so machine load affects both sides equally |
 | `scripts/perf/trace-page.js <url> [--tasks]` | Chrome trace; attributes style/layout work to the JavaScript that forced it; `--tasks` lists each main-thread task over 100 ms with what ran inside it |
 | `test/browser/smoke.js` | routes × widths, errors, overflow, navigation, duplicate scripts, resource growth over repeated navigation |

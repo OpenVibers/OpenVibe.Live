@@ -6,7 +6,7 @@
  *   - page kinds and device classes; out-of-range or unmeasured values are left out; CLS keeps 3 decimals;
  *   - percentiles in the staff snapshot and the p75 gauge (only once a reservoir has 5 samples);
  *   - error messages are counted (at most 3 per beacon, at most 100 distinct); junk and floods are dropped;
- *   - app.js loads the script on a quarter of page loads, after the page is idle.
+ *   - app.js loads the script on every page load, after the page is idle.
  *
  *   node test/rum.test.js
  */
@@ -76,9 +76,10 @@ const { createRum, pageKind, deviceClass } = require('../server/web/rum');
     assert.ok(rum.snapshot().errors.length <= 25 && rum.snapshot().errors[0].message === 'TypeError: x is undefined');
     server.close();
 
-    // app.js: a quarter of page loads, once idle, through the runtime's versioned loader.
+    // app.js: every page load, once idle, through the runtime's versioned loader (a quarter of them gave too few
+    // samples at this traffic; automated browsers are skipped in the script itself).
     const app_js = fs.readFileSync(path.join(__dirname, '../public/js/app.js'), 'utf8');
-    assert.ok(app_js.includes("if (Math.random() < 0.25 && window.ov) (window.requestIdleCallback || setTimeout)(() => ov.loadScript('/js/ov-rum.js'));"));
+    assert.ok(app_js.includes("if (window.ov) (window.requestIdleCallback || setTimeout)(() => ov.loadScript('/js/ov-rum.js'));"));
     const client = fs.readFileSync(path.join(__dirname, '../public/js/ov-rum.js'), 'utf8');
     assert.ok(client.includes("navigator.sendBeacon('/api/rum'") && !/cookie|localStorage/i.test(client.replace(/\/\*[\s\S]*?\*\//g, '')), 'the beacon carries no identifier');
     assert.ok(/navigator\.webdriver \|\| \/bot\|crawl\|spider[^/]*headless/.test(client), 'automated browsers (crawlers, headless runs) send nothing');

@@ -1,6 +1,6 @@
 /* Real-user measurements (server/web/rum.js): this page load's own timings, the time to a live channel's first
  * picture (stream-player.js sets window.__ovFirstFrameAt) and up to three script errors, sent once when the page is
- * hidden. Loaded by app.js on one page load in four, after the page is idle; nothing identifies the visitor (no
+ * hidden. Loaded by app.js on every page load, after the page is idle; nothing identifies the visitor (no
  * account, no id, no cookie). The observers read buffered entries, so the paints before this script loaded count.
  */
 (function () {
