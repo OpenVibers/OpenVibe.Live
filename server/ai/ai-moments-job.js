@@ -58,7 +58,7 @@ function _deJson(desc) {
 // dangling word ("…Speaking To") and never about how someone looks (owner's rule for public AI text: "A Man With A
 // Beard Is Speaking To" and "A Person In A Bright Yellow High-Visibility Jacket" titled public clips, 2026-10-17).
 // Otherwise the stream's own title and the moment's time ("Fortnite! at 41:20").
-const LOOKS_WORDS = /\b(wearing|wears|dressed|beard(ed)?|mustache|glasses|sunglasses|jacket|hoodie|shirt|shirtless|tank top|t-shirt|beanie|cap|hat|helmet|headset|hair|bald|blonde|expression|face|smil(e|ing)|clothing|outfit|tattoo(ed)?|young|old(er)?|teen(age)?|boy|girl|kid|child|blurred|body|skin)\b/i;
+const LOOKS_WORDS = /\b(wearing|wears|dressed|beard(ed)?|mustache|glasses|sunglasses|jacket|hoodie|sweater|vest|shirt|shirtless|tank top|t-shirt|beanie|cap|hat|helmet|headset|headphones|hair|bald|blonde|expression|face|smil(e|ing)|clothing|outfit|tattoo(ed)?|young|old(er)?|teen(age)?|boy|girl|kid|child|blurred|body|skin)\b/i;
 const DANGLING = /\s+(to|in|with|a|an|of|and|the|on|at|is|are|was|from|for|by|near|while|as|or|into|onto|its|his|her|their)$/i;
 function _captionTitle(desc) {
     let s = _cleanText(desc).split(/[.!?;:]|,\s(?=(?:with|and|as|while|near|showing|likely)\b)/i)[0].trim();
@@ -76,7 +76,7 @@ function _publicTitle(title, vod, offset, desc) {
 function _fallbackTitle(vod, offset, desc) {
     const fromCaption = desc ? _captionTitle(desc) : null;
     if (fromCaption) return fromCaption;
-    const base = _cleanText(vod && vod.title, 60) || (vod && vod.username ? `${vod.username}'s stream` : 'Stream');
+    const base = _cleanText(vod && vod.title, 60).replace(/[.,;:\s]+$/, '') || (vod && vod.username ? `${vod.username}'s stream` : 'Stream');
     return `${base} at ${_mmss(offset)}`.slice(0, 80);
 }
 
