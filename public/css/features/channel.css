@@ -1092,10 +1092,9 @@
    comes, and the page shows what the server sent, all of it. */
 @media (scripting: enabled) {
     #page-channel:not(.ch-ready) .channel-below-fold { display: none; }
-    #page-channel:not(.ch-data) :is(#ch-display-name-offline, #ch-username-offline, #ch-follower-count-offline, #ch-category-badge-offline) {
-        width: fit-content; color: transparent; background: color-mix(in srgb, var(--text-muted) 14%, transparent); border-color: transparent; border-radius: 6px;
-    }
-    #page-channel:not(.ch-data) #ch-avatar-offline { color: transparent; }
+    /* The offline header and screen stay invisible (still laid out) until the data is in: a channel's social links add
+       rows no outline can reserve (four pills are 135 px on a phone), and the header grew under the reader (CLS 0.12). */
+    #page-channel:not(.ch-data) :is(#ch-offline-header, #ch-offline-screen) { visibility: hidden; }
 }
 .ch-analytics-period-btns { display:flex; gap:4px; margin-left:auto; }
 .analytics-stat-cards {
