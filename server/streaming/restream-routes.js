@@ -642,6 +642,19 @@ router.get('/oauth/:platform/start', requireAuth, async (req, res) => {
     }
 });
 
+/**
+ * What a provider's refusal means for the person connecting. A redirect mismatch (Twitch "redirect_mismatch", or a
+ * description saying the redirect URI does not match) is the developer app's redirect list, not anything they did:
+ * the owner tried to connect Twitch four times on 10-16 and saw only "The provided redirect_uri does not match".
+ */
+function oauthErrorText(platform, err, description) {
+    const name = (platformOAuth.PLATFORMS[platform] && platformOAuth.PLATFORMS[platform].name) || String(platform).charAt(0).toUpperCase() + String(platform).slice(1);
+    if (/redirect/i.test(String(err || '')) || /redirect[_ ]?ur[il]/i.test(String(description || ''))) {
+        return `${name} refused the sign-in because this site's address is not on its app's list. In the ${name} developer console, add ${platformOAuth.redirectUri(platform)} as an OAuth redirect URL for the app whose client ID is set in Admin → Integrations, then connect again. Until then, paste the stream key into the destination by hand.`;
+    }
+    return description || err;
+}
+
 // ── GET /oauth/:platform/callback — exchange code, save connection + destination
 router.get('/oauth/:platform/callback', async (req, res) => {
     const { platform } = req.params;
@@ -652,7 +665,7 @@ router.get('/oauth/:platform/callback', async (req, res) => {
         const { code, state, error: oauthErr, error_description } = req.query;
         if (oauthErr) {
             console.warn(`[Restream OAuth] ${platform} provider error: ${oauthErr} — ${error_description || ''} | our redirect_uri=${platformOAuth.redirectUri(platform)}`);
-            return send({ ok: false, platform, error: error_description || oauthErr });
+            return send({ ok: false, platform, error: oauthErrorText(platform, oauthErr, error_description) });
         }
         if (!code || !state) return send({ ok: false, platform, error: 'Missing authorization code' });
 
@@ -749,3 +762,4 @@ router.delete('/oauth/:platform/connection', requireAuth, async (req, res) => {
 });
 
 module.exports = router;
+module.exports.oauthErrorText = oauthErrorText;
