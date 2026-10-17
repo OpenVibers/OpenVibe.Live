@@ -3469,6 +3469,7 @@ function destroyPlayer() {
 function showStreamEnded() {
     _hideReconnectingIndicator();
     _resetPlayerRevealState();
+    destroyDVR();   // an ended stream has no live recording to seek in: stop asking for one
     _setPlayerStatus({
         protocol: playerType || streamRef?.protocol || playerLoadState?.protocol || 'default',
         phase: 'ended',
