@@ -3,7 +3,9 @@
  * Browser smoke suite: real Chrome against a running server.
  *
  *   BASE=http://127.0.0.1:4188 npm run test:browser
- *   BASE=https://openvibe.live node test/browser/smoke.js --routes-only
+ *   BASE=https://openvibe.live CHANNEL=/@goosely node test/browser/smoke.js --routes-only
+ *
+ * CHANNEL is a channel that exists on BASE (default /@admin, which only the test database has).
  *
  * Needs a running site and Chrome (CHROME_BIN or /usr/bin/google-chrome); it is not part of
  * `npm test`. No camera or microphone is used.
@@ -31,6 +33,8 @@ const ROUTES = [
     ['/updates', 'page-updates'], ['/dashboard', null], [process.env.CHANNEL || '/@admin', 'page-channel'],
     // Answered 404 by the server (server/web/page-status.js) with the same shell.
     ['/no-such-page', 'page-not-found'],
+    // A channel nobody has: the not-found page at that address, not the home page (2026-10-17).
+    ['/@no_such_channel_x9', 'page-not-found'],
 ];
 const ONLY_SIGNED = process.argv.includes('--signed-in-only');
 // --a11y (or A11Y=1): axe-core on every route at the widest width; serious and critical WCAG 2.1 A/AA
