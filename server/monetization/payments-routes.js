@@ -239,6 +239,13 @@ router.get('/subscriptions/mine', requireAuth, async (req, res) => {
     res.json({ subscriptions: await db.getSubscriptionsBySubscriber(req.user.id) });
 });
 
+// The channel's memberships on OpenVibe.VIP (tiers) and other ways to support it (OpenVibe.Tips): public, the same
+// for everyone, cached a minute (elsewhere.js).
+router.get('/channel/:username/elsewhere', async (req, res) => {
+    const out = await require('./elsewhere').forChannel(req.params.username);
+    res.set('Cache-Control', 'public, max-age=60').json(out);
+});
+
 // Am I subscribed to this channel? + subscriber count
 router.get('/channel/:username', optionalAuth, async (req, res) => {
     const streamer = await db.getUserByUsername(req.params.username);

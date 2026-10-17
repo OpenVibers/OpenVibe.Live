@@ -129,7 +129,7 @@ async function _initSubscribe() {
     catch { box.innerHTML = '<p class="muted">Subscriptions unavailable.</p>'; return; }
     const priceLine = document.getElementById('sub-price-line');
     if (priceLine) priceLine.textContent = `$${(info.priceUsd || cfg.subPriceUsd || 4.99).toFixed(2)}/month · ${info.subscriberCount || 0} subscriber${info.subscriberCount === 1 ? '' : 's'}`;
-    if (info.subscribed) { box.innerHTML = '<p style="text-align:center;color:#53fc18"><i class="fa-solid fa-circle-check"></i> You’re subscribed!</p>'; return; }
+    if (info.subscribed) { box.innerHTML = '<p style="text-align:center;color:#53fc18"><i class="fa-solid fa-circle-check"></i> You’re subscribed!</p>'; if (typeof _appendTiers === 'function') _appendTiers(box, username); return; }
     const pc = info.powerchat || {};
     const price = Number(info.priceUsd || cfg.subPriceUsd || 4.99);
     const anyPowerchat = !!(pc.direct || pc.site);
@@ -158,6 +158,7 @@ async function _initSubscribe() {
         Auto-renew monthly from my Vibes balance (Vibes/PowerChat)
     </label>`;
     box.innerHTML = html;
+    if (typeof _appendTiers === 'function') _appendTiers(box, username);   // channel-support.js (channel pages)
 }
 
 async function doSubscribe(username, provider) {
@@ -239,7 +240,8 @@ function openvibeBucksDonateModal() {
             <button class="btn btn-lg" onclick="doPowerchatTip()" style="width:100%;background:#8b5cf6;color:#fff;border:none">
                 <i class="fa-solid fa-bolt"></i> Tip real money via PowerChat
             </button>
-        </div>`;
+        </div>
+        <div id="donate-elsewhere"></div>`;
 }
 
 // Donate modal boot: balance-first, but NEVER at the cost of the direct route.
@@ -258,6 +260,7 @@ async function _initDonateModal() {
     ]);
     const box = document.getElementById('donate-powerchat-direct');
     if (box && directAvailable) box.style.display = '';
+    if (typeof _appendSupport === 'function') _appendSupport(document.getElementById('donate-elsewhere'), _channelUsername());   // channel-support.js
     const line = document.getElementById('donate-balance-line');
     if (bal === null) return; // not logged in / balance unavailable — leave the form as-is
     if (line) line.innerHTML = `Your balance: <strong>${bal.toLocaleString()}</strong> Vibes${bal < 1 ? ' — <a href="#" onclick="showModal(\'buy-funds\');return false">buy some</a> to donate Vibes' : ''}`;

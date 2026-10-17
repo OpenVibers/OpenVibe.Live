@@ -108,6 +108,7 @@
       "js": [
         "/js/channel-socials.js",
         "/js/channel-chat-resize.js",
+        "/js/channel-support.js",
         "/js/app-channel.js"
       ],
       "stubs": [
