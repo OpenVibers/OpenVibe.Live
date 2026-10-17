@@ -400,24 +400,36 @@ const _cap = (m, s) => (/^[A-Z]/.test(m) ? s[0].toUpperCase() + s.slice(1) : s);
 const _ART = '(?:(?:a|an|the|his|her|their|some|matching)\\s+)?';
 const _WORN = 't-shirts?|shirts?|tees?|tank tops?|hoodies?|sweatshirts?|sweaters?|jackets?|coats?|vests?|beanies?|baseball caps?|caps?|hats?|helmets?|headsets?|headphones|sunglasses|glasses|outfits?|dress(?:es)?|jerseys?|suits?|robes?|bandanas?|scarf|scarves|masks?|apparel|attire';
 const _FACE = 'beards?|mustaches?|moustaches?|goatees?|stubble|sunglasses|glasses|tattoos?|hair|ponytails?|braids|dreadlocks|piercings?|freckles|makeup|expressions?|beanies?|backward caps?|baseball caps?|hoodies?';
-const _WORN_ANY = `${_WORN}|microphones?|mics?|earbuds|earphones|belts?|gloves|boots|shoes|sneakers|jeans|pants|shorts|necklaces?|chains?|earrings|watch(?:es)?|uniforms?|clothes|clothing|gear|costumes?|wigs?|crowns?|goggles|visors?|lanyards?|tops?`;
-const _WORN_NP = `${_ART}(?:[\\w'-]+\\s+){0,3}?\\b(?:${_WORN_ANY})\\b(?:\\s+(?:on|around|over|across)\\s+(?:his|her|their|the|its)\\s+(?:head|neck|face|forehead|shoulders?|ears?|eyes|chest))?(?:\\s+with\\s+(?:a|an)\\s+(?:[\\w'-]+\\s+){0,2}?(?:zipper|logo|print|pattern|design|graphic|hood|stripes?|collar|text))?`;
+const _WORN_ANY = `${_WORN}|microphones?|mics?|earbuds|earphones|belts?|gloves|boots|shoes|sneakers|jeans|pants|shorts|necklaces?|chains?|earrings|watch(?:es)?|uniforms?|clothes|clothing|gear|costumes?|wigs?|crowns?|goggles|visors?|lanyards?|tops?|neckties?|bow ties?|ties?|headbands?|garments?|turbans?`;
+const _WORN_NP = `${_ART}(?:[\\w'-]+\\s+){0,3}?\\b(?:${_WORN_ANY})\\b(?:\\s+(?:on|around|over|across)\\s+(?:his|her|their|the|its)\\s+(?:head|neck|face|forehead|shoulders?|ears?|eyes|chest))?(?:\\s+with\\s+(?:(?:a|an)\\s+)?(?:[\\w'-]+\\s+){0,2}?(?:zippers?|logos?|prints?|patterns?|designs?|graphics?|hoods?|stripes?|collars?|text|eyes|ears|horns|patch(?:es)?|badges?|stickers?|emblems?|lettering|writing|trim|buttons|accents|embellishments|details|sleeves))?`;
 const _WEARING = new RegExp(`,?\\s*(?:who\\s+(?:is\\s+)?|while\\s+|and\\s+)?(?<!-)\\b(?:wearing|wears|dressed in|sporting)\\s+${_WORN_NP}(?:\\s*(?:,|and|or|with|over|under)\\s+${_WORN_NP})*`, 'gi');
-const _IN_WORN = new RegExp(`\\s+in\\s+(?:a|an|the|his|her|their)\\s+(?:[\\w'-]+\\s+){0,3}?\\b(?:${_WORN})\\b(?:\\s+(?:and|or)\\s+${_ART}(?:[\\w'-]+\\s+){0,2}?\\b(?:${_WORN})\\b)*`, 'gi');
+const _IN_WORN = new RegExp(`\\s+in\\s+(?:(?:a|an|the|his|her|their)\\s+)?(?:[\\w'-]+\\s+){0,3}?\\b(?:${_WORN})\\b(?:\\s+(?:and|or)\\s+${_ART}(?:[\\w'-]+\\s+){0,2}?\\b(?:${_WORN_ANY})\\b)*`, 'gi');
+const _PERSON_WITH_WORN = new RegExp(`\\b((?:${_PEOPLE}|broadcaster|host|guy|gamer|player|viewer|someone|people|men|women|speaker|presenter)\\s+)with\\s+${_ART}(?:[\\w'-]+\\s+){0,3}?\\b(?:${_WORN_ANY}|${_FACE})\\b(?:\\s*(?:,|and|or)\\s+${_ART}(?:[\\w'-]+\\s+){0,2}?\\b(?:${_WORN_ANY}|${_FACE})\\b)*\\s*`, 'gi');
 const _WITH_FACE = new RegExp(`\\s+with\\s+${_ART}(?:[\\w'-]+\\s+){0,2}?\\b(?:${_FACE})\\b(?:\\s*(?:,|and|or)\\s+${_ART}(?:[\\w'-]+\\s+){0,2}?\\b(?:${_FACE}|${_WORN})\\b)*`, 'gi');
+const _WEARS_AND = new RegExp(`(?<!-)\\bwears\\s+${_WORN_NP}(?:\\s*(?:,|and|or|with|over|under)\\s+${_WORN_NP})*\\s+and\\s+(?=\\w)`, 'gi');
+// "…, while the other wears a dusty t-shirt;" goes as a whole clause.
+const _WEARS_CLAUSE = new RegExp(`,?\\s+(?:while|and|as|whereas)\\s+(?:the other|one|another|someone|he|she|they|the streamer|(?:a|the) (?:man|woman|person|guy))\\s+wears\\s+${_WORN_NP}(?:\\s*(?:,|and|or|with|over|under)\\s+${_WORN_NP})*(?=\\s*(?:[;,.!?]|$))`, 'gi');
 function _noClothing(text) {
     return text.split(/("[^"]*"?|“[^”]*”?)/).map((part, i) => (i % 2 ? part : part
         .replace(/\b[\w-]+-wearing\s+/gi, '')
+        .replace(_WEARS_AND, '')
+        .replace(_WEARS_CLAUSE, '')
+        .replace(/\b(?:casually|smartly|neatly|warmly|brightly|formally|well)[\s-]+dressed\s+/gi, '')
+        .replace(_PERSON_WITH_WORN, '$1')
         .replace(_WEARING, '')
         .replace(_IN_WORN, '')
         .replace(_WITH_FACE, '')
         .replace(/\s+([,.;:!?])/g, '$1')
         .replace(/,(?=[.;:!?])/g, '')
+        .replace(/([:;]),/g, '$1')
         .replace(/ {2,}/g, ' '))).join('');
 }
 // Tags shown with public AI items ("red-beanie", "bearded", "man", "tanktop") follow the same rule: a tag naming
 // clothing, hair, face, age or a person by gender is dropped.
 const _LOOKS_TAG = new RegExp(`(?:^|[\\s_-])(?:${_WORN}|${_FACE}|${_LOOKS}|men|women|man|woman|boy|girl|guy|gal|kid|child|teen|teenager|lady|male|female|youth|shirtless|topless|tanktop|selfie)(?=$|[\\s_-])`, 'i');
+// A short AI title that names looks ("Orange Shirt Kitchen Chat") cannot be repaired word by word: it is not used.
+const _LOOKS_WORD = new RegExp(`\\b(?:${_WORN}|${_FACE}|${_LOOKS}|faces?|smil(?:e|ing)|body|skin|men|women|man|woman|boy|girl|guy|kid|child|teen|lady|male|female|shirtless|topless)\\b`, 'i');
+const _hasLooks = (t) => _LOOKS_WORD.test(String(t || ''));
 function _noLooksTags(tags) {
     return (Array.isArray(tags) ? tags : []).filter((t) => typeof t === 'string' && t.trim() && !_LOOKS_TAG.test(t.trim()));
 }
@@ -428,6 +440,8 @@ function _noLooks(text) {
         .replace(_LOOKED_AT, (m, art, looks, noun) => (looks ? _cap(m, 'the streamer') : _AGE_NOUN.test(noun) ? _cap(m, /^the$/i.test(art) ? 'the person' : 'someone') : m))
         .replace(_LOOKED_AT_BARE, (m) => _cap(m, 'streamer'))
         .replace(/\s+(?:is|are)\s+(?:shirtless|topless|bare-chested)\s+and\s+/gi, ' ')
+        .replace(/\b(?:shirtless|topless|bare-chested)\s+and\s+/gi, '')
+        .replace(/\b(one|the other|another),?\s+and\s+(?=\w+ing\b)/gi, '$1 ')
         .replace(/\s+(?:is|are)\s+(?:shirtless|topless|bare-chested)\b/gi, ' is on camera')
         .replace(/\s*,\s*(?:shirtless|topless|bare-chested)\s*,/gi, '')
         .replace(/\b(?:shirtless|topless|bare-chested)\b,?\s*/gi, '');
@@ -967,7 +981,11 @@ async function assembleStreamerAiTimeline(userId, vodIdByStream = null) {
 }
 
 async function setStreamAiTitle(streamId, title) {
-    try { return await run('UPDATE streams SET ai_title = ? WHERE id = ?', [String(title || '').slice(0, 80), streamId]); } catch { return null; }
+    try {
+        // A title about how someone looks is replaced by the stream's own title (stored, so it is not asked again).
+        if (_hasLooks(title)) title = ((await get('SELECT title FROM streams WHERE id = ?', [streamId])) || {}).title || 'Stream';
+        return await run('UPDATE streams SET ai_title = ? WHERE id = ?', [String(title || '').slice(0, 80), streamId]);
+    } catch { return null; }
 }
 // Sessions that have an AI overview but no short AI title yet (for background titling).
 async function getUntitledAiSessions(userId, limit = 20) {
@@ -3556,7 +3574,7 @@ module.exports = {
     setVodAiOverview, setClipAiOverview, setVodTranscript, setClipTranscript, getStreamMemoriesInRange,
     getVodsNeedingOverview, getClipsNeedingOverview, getVodsNeedingTimeline, getVodsNeedingTranscript, getClipsNeedingTranscript, getMediaNeedingAiAnalysis,
     setVodTranscriptStatus, setClipTranscriptStatus, bumpVodTranscriptAttempt, bumpClipTranscriptAttempt,
-    cleanupMalformedAiText, noLooks: _noLooks, noLooksTags: _noLooksTags, recordAiUsage, getAiCostToday, getAiCostTodayForUser, getAiUsageSummary,
+    cleanupMalformedAiText, noLooks: _noLooks, noLooksTags: _noLooksTags, hasLooks: _hasLooks, recordAiUsage, getAiCostToday, getAiCostTodayForUser, getAiUsageSummary,
     getStreamMemoriesByUser, countStreamMemoriesByUser, getStreamTranscriptSegments,
     addTimelineEvents, getTimeline, getTimelineText, getTimelineCoverage, linkTimelineToVod, getTimelineByVod, getTimelineVodId,
     upsertStreamerOverview, getStreamerOverview, getAllStreamerOverviews, getStreamersNeedingOverview,

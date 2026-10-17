@@ -30,6 +30,16 @@ const db = require('../server/db/database');
         ['A kitchen studio with a headset-wearing host, microphone, and on-screen graphics.', 'A kitchen studio with a host, microphone, and on-screen graphics.'],
         ['Panelists discuss while wearing headsets and microphones, with a trophy nearby.', 'Panelists discuss, with a trophy nearby.'],
         ['A man wearing sunglasses on his head looks down at the camera.', 'A man looks down at the camera.'],
+        ['A collage of a man in a white shirt and tie wearing dark sunglasses in the left panel.', 'A collage of a man in the left panel.'],
+        ['Behind him a green mat; he wears a blue jacket and is leaning to the left.', 'Behind him a green mat; he is leaning to the left.'],
+        ['Two men lift weights, one shirtless and sweating.', 'Two men lift weights, one sweating.'],
+        ['Two men stand in an alley, one and drinking from a bottle while the other wears a dusty t-shirt; both look tired.', 'Two men stand in an alley, one drinking from a bottle; both look tired.'],
+        ['A man wearing a green bucket hat with frog-like eyes sits indoors.', 'A man sits indoors.'],
+        ['A man in sunglasses reaches toward the camera inside a car.', 'A man reaches toward the camera inside a car.'],
+        ['A live stream window shows a broadcaster with a headset on the left, a chat panel on the right.', 'A live stream window shows a broadcaster on the left, a chat panel on the right.'],
+        ['A man with a red shirt sits in a room; a desk with a headset and keyboard.', 'A man sits in a room; a desk with a headset and keyboard.'],
+        ['A gamer faces a casually dressed NPC in a grim interior.', 'A gamer faces a NPC in a grim interior.'],
+        ['A cartoon streaming setup: wearing a headset with a microphone, rugged jacket, backpack with a mat.', 'A cartoon streaming setup: backpack with a mat.'],
         ['A partial view of a person wearing a gray zip-up jacket with a white zipper, seated indoors.', 'A partial view of a person, seated indoors.'],
         ['Close-up of a person wearing a yellow vest over a gray knit top, with a backpack visible.', 'Close-up of a person, with a backpack visible.'],
         ['A Minecraft player in a top-down view builds a house; the streamer reviews new headphones.', 'A Minecraft player in a top-down view builds a house; the streamer reviews new headphones.'],
@@ -59,6 +69,17 @@ const db = require('../server/db/database');
 
     // Tags shown with public AI items drop clothing, hair, face, age and gendered people.
     assert.deepStrictEqual(db.noLooksTags(['red-beanie', 'bearded', 'man', 'tanktop', 'hula hoop', 'laptop', 'minecraft', 'outdoors', 'jacket', 'selfie']), ['hula hoop', 'laptop', 'minecraft', 'outdoors']);
+
+    // The chat popover and the profile's AI tab: every AI string in the answer, however nested.
+    const { noLooksDeep } = require('../server/ai/chat-ai-routes')._internals;
+    assert.deepStrictEqual(noLooksDeep({ overview_alltime: 'A shirtless host chats.', n: 3, jokes: ['the streamer wearing a hat dances'], sessions: [{ moments: [{ description: 'A man in a red shirt cooks.' }] }] }),
+        { overview_alltime: 'A host chats.', n: 3, jokes: ['the streamer dances'], sessions: [{ moments: [{ description: 'A man cooks.' }] }] });
+
+    // A session's AI title about looks is not used: the stream's own title is stored instead.
+    await db.setStreamAiTitle(sid, 'Orange Shirt Kitchen Chat');
+    assert.strictEqual((await db.get('SELECT ai_title FROM streams WHERE id = ?', [sid])).ai_title, 't');
+    await db.setStreamAiTitle(sid, 'Minecraft Castle Marathon');
+    assert.strictEqual((await db.get('SELECT ai_title FROM streams WHERE id = ?', [sid])).ai_title, 'Minecraft Castle Marathon');
 
     // The home hero's AI copy: a line about someone's looks is never served, even from a batch stored before.
     const words = ['crouton connoisseurs', 'van-dwelling coders', 'ara007 shirtless thoughts', 'goosely fans', 'late-night tinkerers', 'young gamers'];
