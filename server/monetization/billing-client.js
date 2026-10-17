@@ -191,6 +191,8 @@ const api = {
     /** billing.entitlement.check */
     listSubscriptions: async (q, o) => await request('GET', `/subscriptions?${new URLSearchParams(Object.entries(q).filter(([, v]) => v != null))}`, o),
     entitlement: async (subject, streamer, o) => await request('GET', `/entitlements/${enc(subject)}?streamer=${enc(streamer)}`, o),
+    // A creator's tier prices (contracts 0.201.0): Live sells tier 1, at the creator's price when they set one on VIP.
+    tiers: async (streamer, o) => await request('GET', `/tiers/${enc(streamer)}`, o),
     /** billing.balance.read */
     balance: async (subject, o) => await request('GET', `/balances/${enc(subject)}`, o),
     transactions: async (subject, { limit = 50, cursor } = {}, o) => await request('GET', `/transactions?${new URLSearchParams({ subject, limit: String(limit), ...(cursor ? { cursor } : {}) })}`, o),

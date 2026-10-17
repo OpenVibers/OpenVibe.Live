@@ -243,15 +243,16 @@ router.get('/subscriptions/mine', requireAuth, async (req, res) => {
 router.get('/channel/:username', optionalAuth, async (req, res) => {
     const streamer = await db.getUserByUsername(req.params.username);
     if (!streamer) return res.status(404).json({ error: 'Not found' });
-    let subscribed = false, subscriberCount = null, billingUnavailable = false;
+    let subscribed = false, subscriberCount = null, billingUnavailable = false, billingPriceCents = null;
     if (money.onBilling()) {
-        try { ({ subscribed, subscriberCount } = await billingActions.channelState(streamer, req.user || null)); }
+        try { ({ subscribed, subscriberCount, priceCents: billingPriceCents } = await billingActions.channelState(streamer, req.user || null)); }
         catch { billingUnavailable = true; }
     } else {
         subscribed = req.user ? await db.isActiveSubscriber(req.user.id, streamer.id) : false;
         subscriberCount = await db.getActiveSubscriberCount(streamer.id);
     }
-    const priceUsd = await pay._num('sub_price_usd', 4.99);
+    // Under Billing the price is the creator's tier 1 (VIP tiers), which Billing charges; else the site setting.
+    const priceUsd = billingPriceCents ? billingPriceCents / 100 : await pay._num('sub_price_usd', 4.99);
     let powerchat = { direct: false, site: false };
     try { powerchat = await require('../integrations/powerchat-checkout').subscribeRoutes(streamer.id); } catch { /* */ }
     const feePct = await pay._num('sub_site_route_fee_pct', 10);

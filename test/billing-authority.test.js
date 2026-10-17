@@ -233,6 +233,12 @@ async function check(name, fn) {
         const ch = await call('GET', '/api/payments/channel/bob', 2);
         assert.strictEqual(ch.status, 200, ch.text);
         assert.strictEqual(ch.json.subscribed, true); assert.strictEqual(ch.json.subscriberCount, 1);
+        assert.strictEqual(ch.json.priceUsd, 4.99, 'Billing\'s default tier-1 price');
+        billing.state.tierOne = 300;
+        const priced = await call('GET', '/api/payments/channel/bob', 2);
+        assert.strictEqual(priced.json.priceUsd, 3, 'the creator\'s own tier-1 price (set on VIP), which Billing charges');
+        assert.strictEqual(priced.json.powerchat.siteTotalUsd, 3.3);
+        billing.state.tierOne = 0;
         const mine = await call('GET', '/api/payments/subscriptions/mine', 2);
         assert.strictEqual(mine.json.subscriptions[0].streamer_username, 'bob');
         const sub = billing.subs[0];

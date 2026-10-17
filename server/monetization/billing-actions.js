@@ -405,17 +405,26 @@ async function mySubscriptions(liveUserId) {
 }
 
 /** { subscribed, subscriberCount } for the channel page. */
+/** What Billing charges for Live's subscription (tier 1): the creator's own price when set on VIP, else the default. */
+function tierOnePrice(t) {
+    if (!t) return null;
+    const one = (t.tiers || []).find((x) => Number(x.tier) === 1 && x.status === 'active');
+    const cents = one ? Number(one.price_cents) : Number(t.default_price_cents);
+    return cents > 0 ? cents : null;
+}
+
 async function channelState(streamer, viewer) {
     const to = await viewerOrNull(() => subjectFor(streamer.id, { role: 'recipient' }));
     if (!to) return { subscribed: false, subscriberCount: 0 };
     const me = viewer ? await viewerOrNull(() => subjectFor(viewer.id)) : null;
-    const [ent, list] = await Promise.all([
+    const [ent, list, tiers] = await Promise.all([
         me ? await entitlementOf(me, to) : Promise.resolve(null),
         api.listSubscriptions({ streamer: to, status: 'active' }),
+        api.tiers(to).catch(() => null),
     ]);
     const now = Date.now();
     const count = (list.subscriptions || []).filter((s) => !s.current_period_end || Date.parse(s.current_period_end) > now).length;
-    return { subscribed: !!(ent && ent.active), subscriberCount: count };
+    return { subscribed: !!(ent && ent.active), subscriberCount: count, priceCents: tierOnePrice(tiers) };
 }
 
 async function cancelSubscription(req, { id, streamerId }) {
