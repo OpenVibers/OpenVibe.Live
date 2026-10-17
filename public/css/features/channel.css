@@ -1491,38 +1491,6 @@
 /* Tabs that run past the edge fade out there, so it reads as "scroll for more" (class set by app-channel.js). */
 .ch-tabs.is-clipped { -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 36px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 36px), transparent); }
 
-/* A live channel on a phone held upright, the way phone streaming apps lay it out: the video on top, the chat right
-   under it filling the rest of the screen (its messages scroll inside it, the message box at its foot), and the
-   stream info after the chat. The stream area used to fill the screen while the chat waited behind a button
-   (2026-10-16); docked under the info with `height: auto`, the chat then grew with its history (19,000 px on a busy
-   channel, 2026-10-17) and its message box was a long scroll away. `display: contents` lets the video and the info,
-   children of .stream-main, take their own places around the chat. */
-@media (max-width: 768px) and (orientation: portrait) {
-    #page-channel #ch-live-area .stream-main { display: contents; }
-    #page-channel #ch-live-area .stream-main > * { order: 5; }
-    #page-channel #ch-live-area .stream-main > #video-container { order: 1; }
-    #page-channel #ch-live-area .stream-main > #ch-bot-section { order: 2; }
-    #page-channel #ch-live-area .stream-main > #ch-captions { order: 3; }
-    #page-channel #ch-live-area .stream-layout > .chat-sidebar {
-        order: 4; position: relative; inset: auto; transform: none; transition: none; z-index: auto;
-        flex: none; width: 100%; min-height: 0; max-height: none;
-        /* The screen under the navbar, less a 16:9 video (56.25vw); a tall video leaves the chat its 260 px. */
-        height: max(260px, calc(100dvh - var(--navbar-h) - 56.25vw));
-        border-radius: 0; box-shadow: none; border-top: 1px solid var(--border);
-    }
-    #page-channel #ch-live-area .stream-layout:has(.video-container.is-vertical) > .chat-sidebar { height: max(260px, calc(100dvh - var(--navbar-h) - 75dvh)); }
-    #page-channel #ch-live-area .stream-layout > .chat-sidebar .chat-messages { flex: 1 1 0; min-height: 0; overflow-y: auto; }
-    #page-channel #ch-live-area .stream-layout > .chat-sidebar .mobile-chat-close,
-    #page-channel #ch-live-area .stream-layout > .chat-sidebar > .chat-grip { display: none; }
-    /* Docked, the chat's messages get the room: a slim header, the tools beside nothing else. */
-    #page-channel #ch-live-area .stream-layout > .chat-sidebar .chat-header { padding: 6px 12px; min-height: 0; }
-    #page-channel #ch-live-area .stream-layout > .chat-sidebar .chat-input-area { padding-top: 6px; padding-bottom: calc(6px + env(safe-area-inset-bottom, 0px)); }
-    /* The chat is on screen, so its button goes; the DM bubble steps aside as it does for the open chat sheet
-       (it covered the chat's emoji button). */
-    body:has(#page-channel.active #ch-live-area .stream-layout > .chat-sidebar) .mobile-chat-toggle,
-    body:has(#page-channel.active #ch-live-area .stream-layout > .chat-sidebar) #messenger-toggle { display: none !important; }
-}
-
 /* The donate and subscribe modals: the channel's VIP tiers and other ways to support it (vibes.js _elsewhereBlock). */
 .elsewhere { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); }
 .elsewhere-title { font-weight: 600; font-size: 0.9rem; margin-bottom: 8px; }
