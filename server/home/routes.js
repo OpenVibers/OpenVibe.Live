@@ -607,6 +607,7 @@ module.exports.startViewerSampler = startViewerSampler;
 module.exports.FALLBACK_AUDIENCES = FALLBACK_AUDIENCES;
 module.exports.FALLBACK_QUIPS = FALLBACK_QUIPS;
 module.exports.heroSlogans = heroSlogans;
+module.exports.heroMoments = heroMoments;
 
 // Warm the hero caches once boot has finished (~6s on production). Every deploy restarts the process with empty caches, and
 // the first home page load after it used to wait on every upstream call cold (~2.3s measured right

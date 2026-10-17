@@ -514,7 +514,11 @@ async function _homeMeta() {
         }),
         ...lists,
     ];
-    return { title, description, canonicalPath: '/', image: DEFAULT_OG_IMAGE, ogType: 'website', robots: 'index,follow', jsonLd, snapshot, cacheTtlMs: track.partial ? SHORT_CACHE_MS : undefined };
+    // The hero's first AI-moment frame is the page's largest paint; named here, it is fetched with the HTML and
+    // painted with the first render instead of after app-home.js asks /api/home/hero for it (LCP 2.9 s → ~FCP).
+    let heroImage = null;
+    try { const first = (await require('../home/routes').heroMoments())[0]; heroImage = first && /^https:\/\/[^\s"'()<>\\]+$/.test(first.thumbnail || '') ? first.thumbnail : null; } catch { heroImage = null; }
+    return { title, description, canonicalPath: '/', image: DEFAULT_OG_IMAGE, ogType: 'website', robots: 'index,follow', jsonLd, snapshot, heroImage, cacheTtlMs: track.partial ? SHORT_CACHE_MS : undefined };
 }
 
 /**
@@ -876,6 +880,7 @@ function _headBlock(meta) {
         parts.push(`<meta property="video:duration" content="${meta.video.duration}">`);
     }
     if (meta.snapshot) parts.push(NOJS_STYLE);
+    if (meta.heroImage) parts.push(`<link rel="preload" as="image" href="${esc(meta.heroImage)}" fetchpriority="high">`);
     return '\n' + parts.map(x => '    ' + x).join('\n') + '\n';
 }
 
@@ -929,6 +934,8 @@ function render(meta, urlPath) {
     // never see a flash, and the SPA removes #seo-prerender on boot (see app.js). Not cloaking:
     // it summarises the same content the SPA renders.
     if (meta.snapshot) html = _prerender(html, meta.snapshot + _summary(meta));
+    // The first hero layer shows that frame already (the same background app-home.js gives it).
+    if (meta.heroImage) html = html.replace('<div class="hero-bg-layer"></div>', `<div class="hero-bg-layer active" style="background-image:linear-gradient(rgba(0,0,0,0.5),rgba(0,0,0,0.5)),url(&quot;${esc(meta.heroImage)}&quot;)"></div>`);
     return html;
 }
 

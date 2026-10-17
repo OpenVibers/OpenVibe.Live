@@ -232,6 +232,22 @@ const server = http.createServer(app).listen(0, '127.0.0.1', async () => {
         }
     });
 
+    await check('the home page paints its first hero frame with the HTML (preloaded, on the first layer)', async () => {
+        const pages = require('../server/seo/pages');
+        const frame = 'https://openvibe.media/o/med_01HEROFRAME';
+        await db.setState('home_hero_moments', JSON.stringify({ moments: [{ vodId: 100, offset: 5, title: 'x', thumbnail: frame }] }));
+        const meta = await pages._pageMeta('/');
+        assert.strictEqual(meta.heroImage, frame);
+        const html = pages.render(meta, '/');
+        assert.ok(head(html).includes(`<link rel="preload" as="image" href="${frame}" fetchpriority="high">`), 'preloaded in the head');
+        assert.ok(html.includes(`<div class="hero-bg-layer active" style="background-image:linear-gradient(rgba(0,0,0,0.5),rgba(0,0,0,0.5)),url(&quot;${frame}&quot;)"></div><div class="hero-bg-layer"></div>`), 'the first layer shows it');
+        // A thumbnail that is not a plain https URL is never written into the page.
+        await db.setState('home_hero_moments', JSON.stringify({ moments: [{ vodId: 100, thumbnail: 'https://x.test/a")%3Bbackground:url("//evil' }] }));
+        assert.strictEqual((await pages._pageMeta('/')).heroImage, null);
+        await db.setState('home_hero_moments', '{}');
+        assert.ok(!pages.render(await pages._pageMeta('/'), '/').includes('rel="preload" as="image"'), 'no frame, no preload');
+    });
+
     await check('no other shell page claims the home page as canonical; a slot names its channel', async () => {
         const dash = (await get('/dashboard')).body;
         assert.deepStrictEqual(canonicalsOf(dash), []);
