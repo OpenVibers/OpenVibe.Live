@@ -189,6 +189,9 @@ Phone CPU profile (4× CPU, network unthrottled), production, median of 3:
 | `/@goosely` (offline): TBT | 3.7 s | 1.2 s | chat.js re-rendered the whole scrollback (500 channel + 500 global rows) in one idle callback, 2.7 s; now the newest 50 rows, then 10-row pieces per idle deadline (#207, #209, #210) |
 | `/@goosely`: LCP | 3.3 s | 2.45 s | the offline screen's "#1 VOD" picture was lazy and waited for `/popular` after the channel request; now eager, high priority, fetched with the channel (#216) |
 | openvibe.video watch page: LCP | 3.8 s | 0.88 s | the `<video>` had no poster, so the largest paint waited for the first frame (MediaHub#94) |
+| `/@goosely`: DOM after load | ~1000 chat rows | ~200 rows | older scrollback loads when the reader scrolls up to it (a sentinel and an IntersectionObserver), so every later message lays out a smaller page (#224) |
+| `/@goosely`: CLS | 0.12 | 0 | the offline header showed outlines, then the social links (135 px on a phone) pushed it and the screen down; header and screen now stay invisible until the data (#225) |
+| `/chat` (phone): CLS | 0.04 | 0.024 | the voice channel list filled in above the chat; one row is held for it (#226) |
 
 Server side (host, warm): `/api/streams/channel/:username` 120–150 → 95–120 ms (clipper names and AI overviews in one
 query each instead of one per row, #213); `/api/vods/:id` and `/api/clips/:id` now run their six lookups in parallel
