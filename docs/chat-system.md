@@ -240,6 +240,9 @@ unless the viewer chose otherwise; the rules come from `GET /api/chat/filters/fr
 ## History and rendering
 
 `buildChatMessageEl()` in `public/js/chat.js` renders every surface (page, popout, broadcast desk,
-floating widget). History renders off-screen and swaps in once; the last 200 rows of a room are
-cached in localStorage per user for an instant paint on reload. The view follows new messages
-unless the reader scrolled back (`_watchChatPin`).
+floating widget). History renders off-screen: the newest 50 rows are swapped in at once, then the older
+scrollback (up to 500 channel + 500 global rows) is put above them 10 rows at a time, as many pieces as fit
+in each idle moment (`_historyPieces`), keeping the reader where they are. All of it in one task was a
+2.7 s freeze on a phone-speed CPU (2026-10-17). The last 200 rows of a room are cached in localStorage per
+user for an instant paint on reload (its newest 50 render). The view follows new messages unless the
+reader scrolled back (`_watchChatPin`).

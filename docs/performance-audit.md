@@ -8,9 +8,10 @@ says so.
 
 | Tool | What it does |
 |---|---|
-| `scripts/perf/measure-page.js <url> [--runs N] [--phone] [--phone-cpu]` | cold load in headless Chrome over the DevTools protocol, fresh profile and HTTP cache disabled per run; reports medians of transfer, requests, DOM nodes, running animations, FCP/LCP/CLS, long tasks, TBT, script/style/layout time |
+| `scripts/perf/measure-page.js <url> [--runs N] [--phone] [--phone-cpu]` | cold load in headless Chrome over the DevTools protocol, fresh profile and HTTP cache disabled per run; reports medians of transfer, requests, DOM nodes, running animations, FCP/LCP/CLS, long tasks, TBT, script/style/layout time, the LCP element (`lcpEl`) and the element behind the largest layout shift (`clsEl`) |
+| real users (`public/js/ov-rum.js` → `server/web/rum.js`) | one page load in four reports its own TTFB/FCP/LCP/CLS/INP/blocking time and script errors; aggregates per page kind × device class at `GET /api/admin/rum` (staff) and `live_rum_p75` / `live_rum_errors` on `/metrics` |
 | `scripts/perf/ab.js <urlA> <urlB> --runs N` | the same, **interleaved** A,B,A,B… so machine load affects both sides equally |
-| `scripts/perf/trace-page.js <url>` | Chrome trace; attributes style/layout work to the JavaScript that forced it |
+| `scripts/perf/trace-page.js <url> [--tasks]` | Chrome trace; attributes style/layout work to the JavaScript that forced it; `--tasks` lists each main-thread task over 100 ms with what ran inside it |
 | `test/browser/smoke.js` | routes × widths, errors, overflow, navigation, duplicate scripts, resource growth over repeated navigation |
 
 Profiles: **desktop** 1366×900 unthrottled; **phone** 412×900, 4× CPU, 1.6 Mbps/150 ms;
@@ -177,6 +178,25 @@ placeholder markup, then the data, and then several parts that load on their own
 Same A/B harness (phone profile, worst of two runs): channel 1.31 → 0.012, clip 0.99 → 0.025, VOD 0.43 → 0.004, home
 0.127 → 0.011; at 1366 px channel 0.09 → 0.015, VOD 0.19 → 0.001, home 0.06 → 0.01. First paint unchanged.
 `test/first-paint-stability.test.js` holds the pieces in place.
+
+## Measurement 2026-10-17: largest paints, the channel page's blocking time, real users
+
+Phone CPU profile (4× CPU, network unthrottled), production, median of 3:
+
+| Page | Before | After | What it was |
+|---|---|---|---|
+| home: LCP | 2.94 s | 1.15 s | the hero's AI-moment background (`div.hero-bg-layer`) was set by app-home.js after `/api/home/hero`; the server now preloads it and paints it on the first layer (#206) |
+| `/@goosely` (offline): TBT | 3.7 s | 1.2 s | chat.js re-rendered the whole scrollback (500 channel + 500 global rows) in one idle callback, 2.7 s; now the newest 50 rows, then 10-row pieces per idle deadline (#207, #209, #210) |
+| `/@goosely`: LCP | 3.3 s | 2.45 s | the offline screen's "#1 VOD" picture was lazy and waited for `/popular` after the channel request; now eager, high priority, fetched with the channel (#216) |
+| openvibe.video watch page: LCP | 3.8 s | 0.88 s | the `<video>` had no poster, so the largest paint waited for the first frame (MediaHub#94) |
+
+Server side (host, warm): `/api/streams/channel/:username` 120–150 → 95–120 ms (clipper names and AI overviews in one
+query each instead of one per row, #213); `/api/vods/:id` and `/api/clips/:id` now run their six lookups in parallel
+(23–40 ms, #214). Other OpenVibe sites' homes and inner pages: FCP/LCP 0.5–0.9 s, TBT under 210 ms, no overflow at 320 px.
+
+The throttled-network `--phone` profile still shows the home's first paint at 3.3 s (six render-blocking stylesheets
+share the 1.6 Mbps link with ~30 deferred scripts). Real-user data (#217) is the arbiter now: compare
+`live_rum_p75{page="home",device="phone"}` before restructuring the stylesheets.
 
 ## Budgets
 
