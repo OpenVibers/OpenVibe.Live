@@ -1,6 +1,7 @@
 'use strict';
 /**
- * POST /api/thumbnails/generate/clip/:id when OpenVibe.Media answers with neither a picture nor a job: no picture yet,
+ * POST /api/thumbnails/generate/clip/:id when OpenVibe.Media answers with neither a picture nor a job, or its job fails
+ * (5xx): no picture yet,
  * answered 200 with thumbnail_url null and remembered for a while (Media is not asked again at once), never a 500 in
  * every visitor's console (the browser check of release 35d02c6b found one on /@goosely, clip 455).
  *
@@ -35,6 +36,18 @@ console.warn = () => {};
     const again = await post('/api/thumbnails/generate/clip/455');
     assert.strictEqual(again.status, 200);
     assert.strictEqual(asked, 1, 'remembered: Media is not asked again at once');
+
+    // Media's thumbnail job failing (it answers 500 with its job id): no picture for now, remembered, never the 500.
+    media.generateThumbnail = async () => {
+        asked++;
+        const err = new Error('Failed to generate thumbnail');
+        Object.assign(err, { name: 'MediaApiError', status: 500, body: { error: 'Failed to generate thumbnail', job_id: 'mjob_x' } });
+        throw err;
+    };
+    const failed = await post('/api/thumbnails/generate/clip/456');
+    assert.deepStrictEqual([failed.status, failed.json], [200, { thumbnail_url: null }]);
+    await post('/api/thumbnails/generate/clip/456');
+    assert.strictEqual(asked, 2, 'a failed job is remembered too');
 
     server.close();
     console.log('thumbnail no-picture: all checks passed');

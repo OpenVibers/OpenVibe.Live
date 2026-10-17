@@ -87,8 +87,12 @@ async function generateFor(kind, id, req, res) {
         if (noPictureKnown(key)) return res.json({ thumbnail_url: null });
         let out;
         try { out = await media.generateThumbnail(kind, id); } catch (err) {
-            if (!(err && err.name === 'MediaApiError' && (err.status === 404 || err.status === 429))) throw err;
-            rememberNoPicture(key, err.status === 429 ? MEDIA_BUSY_MS : NO_PICTURE_MS);
+            // Media's job failing (5xx) is Media's to fix, not this visitor's error: no picture for now, asked
+            // again after a while (clip 455's job failed on every /@goosely visit until Media#136, 2026-10-17).
+            const failed = err && err.name === 'MediaApiError' && err.status >= 500;
+            if (!(err && err.name === 'MediaApiError' && (err.status === 404 || err.status === 429 || failed))) throw err;
+            if (failed) console.warn(`[Thumbnails] Media's thumbnail job failed for ${key}: ${err.status}${err.body && err.body.job_id ? ` (${err.body.job_id})` : ''}`);
+            rememberNoPicture(key, err.status === 404 ? NO_PICTURE_MS : MEDIA_BUSY_MS);
             return res.json({ thumbnail_url: null });
         }
         const url = media.publicUrl(out?.url || meta.thumbnail_url);
