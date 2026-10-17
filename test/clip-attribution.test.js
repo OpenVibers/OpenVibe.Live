@@ -168,6 +168,12 @@ async function check(name, fn) {
         assert.ok(r.json.aiClips.every((c) => c.ai_label === 'AI clip' && c.source_streamer_username === 'alice'));
         const clipAsks = asked.filter((q) => 'auto_generated' in q);
         assert.strictEqual(clipAsks.length, 3, 'every clip list says which kind it wants');
+        // Clippers' names and Live's AI overviews are attached (one query each, not one per row).
+        assert.deepStrictEqual([r.json.clips[0].clip_creator_username, r.json.clipsOfStreams[0].clip_creator_display_name], ['alice', 'Bob']);
+        await db.run('INSERT INTO clip_ai_state (clip_id, ai_overview_short, ai_overview) VALUES (?, ?, ?), (?, ?, ?)', [2, 'Short 2', 'Long 2', 3, 'Short 3', 'Long 3']);
+        const withAi = await call('/api/streams/channel/alice');
+        assert.deepStrictEqual(withAi.json.aiClips.map((c) => c.ai_overview_short || null), [null, 'Short 2']);
+        assert.deepStrictEqual([withAi.json.clipsOfStreams[0].ai_overview_short, withAi.json.clipsOfStreams[0].ai_overview], ['Short 3', 'Long 3']);
         honour = false;
         const loose = await call('/api/streams/channel/alice');
         assert.deepStrictEqual(ids(loose.json.clips), [4]);
