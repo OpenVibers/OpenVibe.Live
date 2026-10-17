@@ -197,7 +197,7 @@
                 <!-- Holds its line from the first paint (the countdown fills it with the page's data), so the buttons below do not move. -->
                 <div class="hero-slogan-timer" id="hero-slogan-timer">&nbsp;</div>
                 <div class="hero-cta" data-fx-viewport>
-                    <button style="--i:0" class="hb hb-stream" onclick="currentUser ? navigate('/broadcast') : showModal('register')"><span class="hb-ico"><i class="fa-solid fa-broadcast-tower"></i></span><span class="hb-label">Stream</span><i class="fa-solid fa-chevron-right hb-go" aria-hidden="true"></i></button>
+                    <button style="--i:0" class="hb hb-stream" onclick="currentUser ? navigate('/broadcast') : showModal('register')"><span class="hb-ico"><i class="fa-solid fa-broadcast-tower"></i></span><span class="hb-label">Go live <small>in your browser</small></span><i class="fa-solid fa-chevron-right hb-go" aria-hidden="true"></i></button>
                     <a href="https://openvibe.tools" style="--i:1" class="hb hb-tools"><span class="hb-ico"><i class="fa-solid fa-screwdriver-wrench"></i></span><span class="hb-label">Tools</span><i class="fa-solid fa-chevron-right hb-go" aria-hidden="true"></i></a>
                     <a href="https://openvibe.games" style="--i:2" class="hb hb-game"><span class="hb-ico"><i class="fa-solid fa-gamepad"></i></span><span class="hb-label">Game</span><i class="fa-solid fa-chevron-right hb-go" aria-hidden="true"></i></a>
                     <a href="https://github.com/OpenVibers/OpenVibe.Live" target="_blank" style="--i:3" class="hb hb-github" rel="noopener"><span class="hb-ico"><i class="fa-brands fa-github"></i></span><span class="hb-label">GitHub</span><i class="fa-solid fa-chevron-right hb-go" aria-hidden="true"></i></a>
@@ -211,6 +211,10 @@
                        data-ovtip-foot="<i class=&quot;fa-solid fa-heart&quot;></i> We love what people build here &mdash; come make something"
                        data-ovtip-go="Open the API docs"><span class="hb-ico"><i class="fa-solid fa-wand-magic-sparkles"></i></span><span class="hb-label">Build &amp; Mod <small>API docs</small></span><i class="fa-solid fa-chevron-right hb-go" aria-hidden="true"></i></a>
                 </div>
+                <!-- The headline feature, in the first screen: going live from a browser with no OBS and no follower
+                     minimum is what people search and ask AI assistants for (the checklist further down was seven
+                     phone screens below the fold). -->
+                <p class="hero-golive-note"><span><i class="fa-solid fa-check" aria-hidden="true"></i> No OBS</span><span><i class="fa-solid fa-check" aria-hidden="true"></i> No downloads</span><span><i class="fa-solid fa-check" aria-hidden="true"></i> No follower minimum</span><a href="/docs/go-live-in-your-browser">How it works</a></p>
                 <!-- Signed-in streamers with setup left to do see their next task here, in the row of
                      things to do rather than a screen below (public/js/guides-live.js → setupHeroNextUp). -->
                 <div class="tour-quest-slot hero-quest-slot" id="hero-next-up" data-fx-viewport hidden></div>
