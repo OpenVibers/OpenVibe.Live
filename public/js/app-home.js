@@ -684,8 +684,6 @@ function renderHeroBackground(media, moments) {
     if (!wrap) return;
     const layers = wrap.querySelectorAll('.hero-bg-layer');
     if (layers.length < 2) return;
-    // Prefer the full AI-moment frame set (not the shuffled/sliced collage media), so the
-    // background cycles through all of the day's frames.
     let frames = (moments || []).filter(m => m && m.thumbnail).map(m => m.thumbnail);
     if (!frames.length) frames = (media || []).filter(m => m && m.kind === 'moment' && m.thumbnail).map(m => m.thumbnail);
     if (!frames.length) frames = (media || []).filter(m => m && m.thumbnail && m.kind !== 'paste').map(m => m.thumbnail);
@@ -694,10 +692,12 @@ function renderHeroBackground(media, moments) {
     if (!frames.length) { wrap.style.display = 'none'; return; }
     wrap.style.display = '';
     _heroBgActive = 0;
-    layers[0].style.backgroundImage = `linear-gradient(rgba(0,0,0,0.5), rgba(0,0,0,0.5)), url("${frames[0]}")`;
+    // Unless the server painted this frame (seo/pages.js): set it and restart the Ken Burns drift.
+    if (!(layers[0].style.backgroundImage || '').includes(frames[0])) {
+        layers[0].style.backgroundImage = `linear-gradient(rgba(0,0,0,0.5), rgba(0,0,0,0.5)), url("${frames[0]}")`;
+        layers[0].classList.remove('active'); void layers[0].offsetWidth; layers[0].classList.add('active');
+    } else layers[0].classList.add('active');
     layers[1].classList.remove('active');
-    // Re-trigger the Ken-Burns animation on first paint.
-    layers[0].classList.remove('active'); void layers[0].offsetWidth; layers[0].classList.add('active');
     if (frames.length < 2 || (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches && frames.length < 2)) return;
     let idx = 0;
     _heroBgTimer = setInterval(() => {

@@ -23,7 +23,8 @@ if (!url) { console.error('usage: measure-page.js <url> [--runs N] [--phone] [--
 const OBSERVERS = `(() => {
   window.__ov = { fcp: 0, lcp: 0, cls: 0, longTasks: [], };
   try { new PerformanceObserver(l => { for (const e of l.getEntries()) if (e.name === 'first-contentful-paint') __ov.fcp = e.startTime; }).observe({ type: 'paint', buffered: true }); } catch (e) {}
-  try { new PerformanceObserver(l => { for (const e of l.getEntries()) __ov.lcp = e.startTime; }).observe({ type: 'largest-contentful-paint', buffered: true }); } catch (e) {}
+  const describe = (el) => { if (!el) return ''; const id = el.id ? '#' + el.id : ''; const cls = typeof el.className === 'string' && el.className.trim() ? '.' + el.className.trim().split(/\\s+/).slice(0, 2).join('.') : ''; const txt = (el.textContent || '').trim().slice(0, 40); return el.tagName.toLowerCase() + id + cls + (txt ? ' "' + txt + '"' : ''); };
+  try { new PerformanceObserver(l => { for (const e of l.getEntries()) { __ov.lcp = e.startTime; __ov.lcpEl = describe(e.element) + (e.url ? ' ' + e.url.slice(0, 80) : ''); } }).observe({ type: 'largest-contentful-paint', buffered: true }); } catch (e) {}
   try { new PerformanceObserver(l => { for (const e of l.getEntries()) if (!e.hadRecentInput) __ov.cls += e.value; }).observe({ type: 'layout-shift', buffered: true }); } catch (e) {}
   try { new PerformanceObserver(l => { for (const e of l.getEntries()) __ov.longTasks.push([e.startTime, e.duration]); }).observe({ type: 'longtask', buffered: true }); } catch (e) {}
 })();`;
@@ -50,7 +51,7 @@ async function runOnce() {
     await sleep(SETTLE);
 
     const page = await cdp.evaluate(`(() => ({
-      fcp: Math.round(__ov.fcp), lcp: Math.round(__ov.lcp), cls: +__ov.cls.toFixed(3),
+      fcp: Math.round(__ov.fcp), lcp: Math.round(__ov.lcp), lcpEl: __ov.lcpEl || '', cls: +__ov.cls.toFixed(3),
       longTaskMs: Math.round(__ov.longTasks.reduce((s, t) => s + t[1], 0)),
       tbt: Math.round(__ov.longTasks.filter(t => t[0] > __ov.fcp).reduce((s, t) => s + Math.max(0, t[1] - 50), 0)),
       domNodes: document.getElementsByTagName('*').length,
