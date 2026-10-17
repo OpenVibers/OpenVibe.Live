@@ -54,14 +54,12 @@ function _deJson(desc) {
     }
     return s;
 }
-// A specific title from a description (fallback when AI titling is unavailable) — the first
-// meaningful clause, Title-Cased, so we never fall back to a generic/duplicate stream title.
-function _titleFromDesc(desc) {
-    let s = _cleanText(desc);
-    if (!s) return 'A wild moment';
-    s = s.split(/[.!?;:]|,\s(?=(?:with|and|as|while|near|showing)\b)/i)[0].trim();
-    const out = s.split(' ').filter(Boolean).slice(0, 8).join(' ').replace(/[,\s]+$/, '').replace(/\b\w/g, ch => ch.toUpperCase());
-    return out.slice(0, 70) || 'A wild moment';
+// The title when the AI gives none: the stream's own title and the moment's time ("Fortnite! at 41:20"). The first
+// words of a frame caption were used before, and titled public clips "A Man With A Beard Is Speaking To": cut off
+// mid-sentence, and about how someone looks (owner's rule: public AI text never is; 2026-10-17).
+function _fallbackTitle(vod, offset) {
+    const base = _cleanText(vod && vod.title, 60) || (vod && vod.username ? `${vod.username}'s stream` : 'Stream');
+    return `${base} at ${_mmss(offset)}`.slice(0, 80);
 }
 
 // ── Stage 1: rank VODs by their AI overview ─────────────────────────────────────────────
@@ -182,7 +180,7 @@ async function _findBestMoment(vod, { flavor = 'paste', avoid = [] } = {}) {
                 t = clamp(t);
                 if (!farFromUsed(t)) { console.log(`[AI-Moments] VOD ${vod.vod_id}: pick at ${_mmss(t)} is next to a used moment — trying the objective signals instead`); throw new Error('near used'); }
                 const near = _nearestMemory(ctx.memories, t);
-                const result = { offset: t, title: _cleanTitle(j.title) || _titleFromDesc(j.desc), desc: _cleanText(_deJson(j.desc), 400) || (near && _deJson(near.description)) || '', tags: _memTags(near) };
+                const result = { offset: t, title: _cleanTitle(j.title) || _fallbackTitle(vod, t), desc: _cleanText(_deJson(j.desc), 400) || (near && _deJson(near.description)) || '', tags: _memTags(near) };
                 return _isEmptyScene(result.desc) ? null : result;
             }
         } catch { /* fall through to signal-based pick */ }
@@ -199,7 +197,7 @@ async function _findBestMoment(vod, { flavor = 'paste', avoid = [] } = {}) {
     let offset = clamp(candidates[0].t);
     const near = _nearestMemory(ctx.memories, offset);
     const desc = near ? _deJson(near.description) : '';
-    return _isEmptyScene(desc) ? null : { offset, title: _titleFromDesc(desc), desc, tags: _memTags(near) };
+    return _isEmptyScene(desc) ? null : { offset, title: _fallbackTitle(vod, offset), desc, tags: _memTags(near) };
 }
 // True when a description says the frame is essentially empty — black/dark/loading/blank — so we
 // never turn "nothing" into a clip or paste.
@@ -341,7 +339,7 @@ async function tick(opts = {}) {
             if (sig) thisSigs.add(sig);
             const offset = Math.floor(moment.offset || 0);
             let desc = moment.desc || '';
-            let title = moment.title || _titleFromDesc(desc) || v.title;
+            let title = moment.title || _fallbackTitle(v, offset);
             let tags = moment.tags || [];
 
             const vodPath = `/vod/${v.vod_id}?t=${offset}`;
@@ -374,7 +372,6 @@ async function tick(opts = {}) {
                                 if (vis && vis.description && vis.description.length > 25) {
                                     desc = _cleanText(vis.description, 500);
                                     if (Array.isArray(vis.tags) && vis.tags.length) tags = vis.tags.slice(0, 8);
-                                    if (!moment.title) title = _titleFromDesc(desc);
                                 }
                             } catch { /* keep the moment desc */ }
                         }
@@ -476,7 +473,7 @@ function start() {
     setInterval(() => { tick().catch(() => {}); }, 5 * 60 * 1000);
 }
 
-module.exports = { start, tick, findBestMoment: _findBestMoment, frameTooDark: _frameTooDark, makeSlug: _slug, _internals: { momentPool: _momentPool } };
+module.exports = { start, tick, findBestMoment: _findBestMoment, frameTooDark: _frameTooDark, makeSlug: _slug, _internals: { momentPool: _momentPool, fallbackTitle: _fallbackTitle } };
 
 // CLI: force a one-off regeneration, e.g. a whole-dataset "best of all-time" test run:
 //   node server/ai/ai-moments-job.js --fresh --target=6 --perUser=2
