@@ -60,6 +60,11 @@ const db = require('../server/db/database');
     // Tags shown with public AI items drop clothing, hair, face, age and gendered people.
     assert.deepStrictEqual(db.noLooksTags(['red-beanie', 'bearded', 'man', 'tanktop', 'hula hoop', 'laptop', 'minecraft', 'outdoors', 'jacket', 'selfie']), ['hula hoop', 'laptop', 'minecraft', 'outdoors']);
 
+    // The chat popover and the profile's AI tab: every AI string in the answer, however nested.
+    const { noLooksDeep } = require('../server/ai/chat-ai-routes')._internals;
+    assert.deepStrictEqual(noLooksDeep({ overview_alltime: 'A shirtless host chats.', n: 3, jokes: ['the streamer wearing a hat dances'], sessions: [{ moments: [{ description: 'A man in a red shirt cooks.' }] }] }),
+        { overview_alltime: 'A host chats.', n: 3, jokes: ['the streamer dances'], sessions: [{ moments: [{ description: 'A man cooks.' }] }] });
+
     // The home hero's AI copy: a line about someone's looks is never served, even from a batch stored before.
     const words = ['crouton connoisseurs', 'van-dwelling coders', 'ara007 shirtless thoughts', 'goosely fans', 'late-night tinkerers', 'young gamers'];
     await db.setState('home_hero_slogans', JSON.stringify({ audiences: words, quips: ['chat is cooking', 'a shirtless take', 'goosely did it again', 'rust compiles eventually', 'one more build'], updated_at: Date.now(), v: 4 }));
