@@ -249,16 +249,19 @@ class Vibes {
     }
 
     /**
-     * Get donation leaderboard for a stream
+     * A stream's tip leaderboard from channel_tips (on-site Vibes, PowerChat and OpenVibe.Tips alike). A supporter
+     * without a Live account has from_user_id and username null and their name as display_name.
      */
     async getLeaderboard(streamId, limit = 10) {
+        const { SUPPORTER_KEY } = require('./channel-tips');
         return await db.all(`
-            SELECT from_user_id, u.username, u.display_name, u.avatar_url,
-                   SUM(amount)::bigint as total_donated
-            FROM transactions t
-            JOIN users u ON t.from_user_id = u.id
-            WHERE t.stream_id = ? AND t.type = 'donation' AND t.status = 'completed'
-            GROUP BY from_user_id, u.id
+            SELECT MAX(t.from_user_id) AS from_user_id, MAX(u.username) AS username,
+                   MAX(COALESCE(u.display_name, u.username, t.username)) AS display_name, MAX(u.avatar_url) AS avatar_url,
+                   SUM(t.amount)::bigint AS total_donated
+            FROM channel_tips t
+            LEFT JOIN users u ON t.from_user_id = u.id
+            WHERE t.stream_id = ? AND t.amount IS NOT NULL
+            GROUP BY ${SUPPORTER_KEY}
             ORDER BY total_donated DESC
             LIMIT ?
         `, [streamId, limit]);

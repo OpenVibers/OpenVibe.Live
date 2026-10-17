@@ -17,6 +17,7 @@ const openvibeBucks = require('./vibes');
 const db = require('../db/database');
 const delivery = require('../chat/chat-delivery');
 const { publicGoal, announceGoal } = require('./goal-announce');
+const channelTips = require('./channel-tips');
 // BILLING_AUTHORITY=billing: every money action below goes to OpenVibe.Billing instead of Live's
 // columns (billing-actions.js); money_writes_frozen refuses them in both modes.
 const money = require('./money-authority');
@@ -77,6 +78,12 @@ router.post('/donate', requireAuth, money.guardWrite, async (req, res) => {
             : await openvibeBucks.donate(req.user.id, streamer_id, stream_id, amount, message, goal_id || null);
         // A request the browser repeated with the same Idempotency-Key: already celebrated.
         if (result.replayed) return res.json({ success: true, amount: result.amount, balance: result.balance, goal_reached: false });
+
+        // The channel's tip history (leaderboard, recap, home stats), whichever ledger moved the Vibes.
+        await channelTips.record({
+            toUserId: streamer_id, fromUserId: req.user.id, streamId: stream_id || null, amount: result.amount, source: 'vibes',
+            ref: result.transactionId ? `${money.onBilling() ? 'billing-txn' : 'live-txn'}:${result.transactionId}` : `vibes:${require('crypto').randomUUID()}`,
+        });
 
         const alerts = require('./alerts');
         const donorUser = await db.getUserById(req.user.id);

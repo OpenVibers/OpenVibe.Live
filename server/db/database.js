@@ -1319,12 +1319,12 @@ async function getHomePulse() {
             WHERE g.is_active = 1 AND g.target_amount > 0
             ORDER BY (CAST(g.current_amount AS REAL) / g.target_amount) DESC, g.current_amount DESC LIMIT 3`), []),
         latestTip: await safe(async () => await get(`SELECT t.amount, t.created_at,
-                fu.username AS from_username, fu.display_name AS from_display,
+                fu.username AS from_username, COALESCE(fu.display_name, t.username) AS from_display,
                 tu.username AS to_username, tu.display_name AS to_display
-            FROM transactions t
+            FROM channel_tips t
             LEFT JOIN users fu ON fu.id = t.from_user_id
             JOIN users tu ON tu.id = t.to_user_id
-            WHERE t.type = 'donation' ORDER BY t.id DESC LIMIT 1`), null),
+            WHERE t.amount IS NOT NULL ORDER BY t.id DESC LIMIT 1`), null),
         newestFollow: await safe(async () => await get(`SELECT f.created_at,
                 fu.username AS follower_username, fu.display_name AS follower_display,
                 su.username AS streamer_username, su.display_name AS streamer_display
@@ -1333,10 +1333,11 @@ async function getHomePulse() {
             JOIN users su ON su.id = f.streamer_id
             ORDER BY f.id DESC LIMIT 1`), null),
         // This week's leaders.
-        topSupporters: await safe(async () => await all(`SELECT u.username, u.display_name, u.avatar_url, SUM(t.amount)::float8 AS total
-            FROM transactions t JOIN users u ON u.id = t.from_user_id
-            WHERE t.type = 'donation' AND t.created_at >= datetime('now', '-7 days')
-            GROUP BY u.id ORDER BY total DESC LIMIT 3`), []),
+        topSupporters: await safe(async () => await all(`SELECT MAX(u.username) AS username, MAX(COALESCE(u.display_name, u.username, t.username)) AS display_name,
+                MAX(u.avatar_url) AS avatar_url, SUM(t.amount)::float8 AS total
+            FROM channel_tips t LEFT JOIN users u ON u.id = t.from_user_id
+            WHERE t.amount IS NOT NULL AND t.created_at >= datetime('now', '-7 days')
+            GROUP BY ${TIP_SUPPORTER_T} ORDER BY total DESC LIMIT 3`), []),
         topEarners: await safe(async () => await all(`SELECT u.username, u.display_name, u.avatar_url, SUM(c.amount)::float8 AS total
             FROM coin_transactions c JOIN users u ON u.id = c.user_id
             WHERE c.amount > 0 AND c.created_at >= datetime('now', '-7 days')
@@ -1369,6 +1370,9 @@ async function vibesStatsSince() {
 // One registry entry per metric: the table, its timestamp column, what to aggregate and
 // an optional WHERE. `days` buckets are computed in SQL (the day of datetime(ts)); missing days are
 // filled with 0 so charts never skip a day.
+// One supporter in channel_tips, with or without a Live account (PowerChat and OpenVibe.Tips supporters have a name only).
+const TIP_SUPPORTER = "COALESCE(from_user_id::text, 'n:' || lower(COALESCE(username, '')))";
+const TIP_SUPPORTER_T = "COALESCE(t.from_user_id::text, 'n:' || lower(COALESCE(t.username, '')))";
 const HOME_SERIES = {
     users:       { table: 'users',             ts: 'created_at',  agg: 'COUNT(*)',              where: 'COALESCE(is_banned, 0) = 0' },
     anons:       { table: 'anon_ip_mappings',  ts: 'created_at',  agg: 'COUNT(*)' },
@@ -1382,8 +1386,9 @@ const HOME_SERIES = {
     // vods, clips, hours and pastes are OpenVibe.Media's series (home/routes.js MEDIA_SERIES).
     hoursWatched:{ table: 'watch_time',        ts: 'created_at',  agg: 'COALESCE(SUM(minutes_watched)::float8, 0) / 60.0' },
     aiMoments:   { table: 'stream_memories',   ts: 'created_at',  agg: 'COUNT(*)' },
-    vibes:       { table: 'transactions',      ts: 'created_at',  agg: 'COALESCE(SUM(amount)::float8, 0)', where: "type = 'donation'", vibesReset: true },
-    supporters:  { table: 'transactions',      ts: 'created_at',  agg: 'COUNT(DISTINCT from_user_id)', where: "type = 'donation' AND from_user_id IS NOT NULL", vibesReset: true },
+    // Tips from channel_tips (every rail: on-site Vibes, PowerChat, OpenVibe.Tips), not the money ledger.
+    vibes:       { table: 'channel_tips',      ts: 'created_at',  agg: 'COALESCE(SUM(amount)::float8, 0)', vibesReset: true },
+    supporters:  { table: 'channel_tips',      ts: 'created_at',  agg: `COUNT(DISTINCT ${TIP_SUPPORTER})`, vibesReset: true },
     vibesBought: { table: 'payment_orders',    ts: 'updated_at',  agg: 'COALESCE(SUM(bucks)::float8, 0)', where: "kind = 'bucks' AND status = 'credited'" },
     subs:        { table: 'subscriptions',     ts: 'created_at',  agg: 'COUNT(*)' },
     points:      { table: 'coin_transactions', ts: 'created_at',  agg: 'COALESCE(SUM(amount)::float8, 0)', where: 'amount > 0' },
@@ -1523,8 +1528,8 @@ async function _computeHomeStats() {
         viewersNow: await c(`SELECT COALESCE(SUM(viewer_count)::float8, 0) AS count FROM streams WHERE is_live = 1`),
         // Community time actually spent watching (watch-time heartbeats → hours).
         hoursWatched: Math.round(await c(`SELECT COALESCE(SUM(minutes_watched)::float8, 0) AS count FROM watch_time`) / 60),
-        // Vibes tipped between people (donation ledger; bit-style, 100 = $1).
-        vibesTipped: await c(`SELECT COALESCE(SUM(amount)::float8, 0) AS count FROM transactions WHERE type = 'donation' AND created_at >= ?`, [vibesSince]),
+        // Vibes tipped to channels (channel_tips: on-site, PowerChat and OpenVibe.Tips; bit-style, 100 = $1).
+        vibesTipped: await c(`SELECT COALESCE(SUM(amount)::float8, 0) AS count FROM channel_tips WHERE created_at >= ?`, [vibesSince]),
         // Live channel subscriptions.
         activeSubs: await c(`SELECT COUNT(*) AS count FROM subscriptions WHERE status = 'active' AND (current_period_end IS NULL OR datetime(current_period_end) > ov_now())`),
         // Channel points earned by viewers across every channel (watch/chat/follow bonuses).
@@ -1533,8 +1538,8 @@ async function _computeHomeStats() {
         pointsSpent: await c(`SELECT COALESCE(-SUM(amount)::float8, 0) AS count FROM coin_transactions WHERE amount < 0`),
         // Reward redemptions that stuck (not rejected / refunded).
         redemptions: await c(`SELECT COUNT(*) AS count FROM coin_redemptions WHERE status NOT IN ('rejected', 'refunded')`),
-        // Distinct people who have tipped Vibes to someone.
-        supporters: await c(`SELECT COUNT(DISTINCT from_user_id) AS count FROM transactions WHERE type = 'donation' AND from_user_id IS NOT NULL AND created_at >= ?`, [vibesSince]),
+        // Distinct people who have tipped someone.
+        supporters: await c(`SELECT COUNT(DISTINCT ${TIP_SUPPORTER}) AS count FROM channel_tips WHERE created_at >= ?`, [vibesSince]),
         // Vibes bought with real money (credited purchase orders, any provider).
         vibesBought: await c(`SELECT COALESCE(SUM(bucks)::float8, 0) AS count FROM payment_orders WHERE kind = 'bucks' AND status = 'credited'`),
         // Donation goals: currently running + ever reached.
@@ -1602,10 +1607,10 @@ async function _computeHomeStats() {
             goals: await winCount('donation_goals', 'created_at'),
             // Distinct people who tipped in each window — a headcount, like streamers.
             supporters: await (async () => {
-                const q = async (a, b) => await c(`SELECT COUNT(DISTINCT from_user_id) AS count FROM transactions WHERE type = 'donation' AND from_user_id IS NOT NULL AND created_at >= datetime('now', ?)${b ? " AND created_at < datetime('now', ?)" : ''}`, b ? [a, b] : [a]);
+                const q = async (a, b) => await c(`SELECT COUNT(DISTINCT ${TIP_SUPPORTER}) AS count FROM channel_tips WHERE created_at >= datetime('now', ?)${b ? " AND created_at < datetime('now', ?)" : ''}`, b ? [a, b] : [a]);
                 return { d: await q('-1 day'), w: await q('-7 days'), m: await q('-30 days'), pw: await q('-14 days', '-7 days') };
             })(),
-            vibes: await winSum('transactions', 'amount', 'created_at', `type = 'donation' AND created_at >= '${vibesSince}'`),
+            vibes: await winSum('channel_tips', 'amount', 'created_at', `created_at >= '${vibesSince}'`),
             points: await winSum('coin_transactions', 'amount', 'created_at', 'amount > 0'),
             pointsSpent: await winSum('coin_transactions', '-amount', 'created_at', 'amount < 0'),
             redemptions: await winCount('coin_redemptions', 'created_at', "status NOT IN ('rejected', 'refunded')"),

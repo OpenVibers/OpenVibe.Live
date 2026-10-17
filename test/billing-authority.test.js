@@ -131,6 +131,10 @@ async function check(name, fn) {
         assert.strictEqual(billing.payable[SID.bob], 150);
         const row = await raw.prepare("SELECT * FROM billing_actions WHERE idempotency_key = ?").get(c[0].key);
         assert.strictEqual(row.status, 'done'); assert.match(row.billing_ref, /^txn_/);
+        // The channel's tip history keeps counting after the cutover (leaderboard, recap, home stats), named after
+        // Billing's transaction; Live's ledger stays untouched.
+        assert.deepStrictEqual(await raw.prepare('SELECT to_user_id, from_user_id, stream_id, amount, source FROM channel_tips WHERE ref = ?').get(`billing-txn:${row.billing_ref}`),
+            { to_user_id: 3, from_user_id: 2, stream_id: streamB, amount: 150, source: 'vibes' });
         // The chat celebration is OpenVibe.Chat's now: Live sends it the line through the delivery
         // seam and keeps no copy (test/tips-delivery.test.js covers the payload).
     });
