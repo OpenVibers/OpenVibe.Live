@@ -2323,13 +2323,9 @@ function _renderHistoryPayload(p) {
 let _fcwHydratedAt = 0, _fcwHydrating = false, _fcwRefreshedAt = 0, _fcwSendRetries = 0;
 const _FCW_PAGE = '/chat/global/history?limit=500';
 /**
- * Bring the widget up to date. Three shapes, picked by what the widget already holds:
- *   empty            → cached copy first (instant paint), then a delta from the cache's cursor;
- *   rows + cursor    → delta: only ids newer than the newest row we have (cheap PK scan);
- *   gap too large    → the server says `complete:false`: wipe and take a fresh page.
- * Runs on every open, on (re)connect, on tab focus and on coming back online — the old
- * "hydrated less than 10 minutes ago" guard is what left stale rows on screen after the SPA
- * router tore the socket down. A short throttle collapses the triggers that fire together.
+ * Bring the widget up to date: empty → the cached copy, then a delta from its cursor; rows → a delta (ids newer than
+ * the newest row); a gap too large (`complete:false`) → a fresh page. On every open, (re)connect, tab focus and coming
+ * back online (a 10-minute guard left stale rows after the router tore the socket down); a short throttle merges them.
  */
 async function hydrateWidgetOnly({ reason = 'open' } = {}) {
     const container = document.getElementById('fcw-messages');
@@ -2446,15 +2442,32 @@ async function hydrateActiveChatHistory(streamId, { clear = false } = {}) {
         const late = _chatLiveDuringHydrate;
         _chatLiveDuringHydrate = [];
         late.forEach((m) => addChatMessage(m));
-        const older = (i) => i < pieces.length && _idle((dl) => {
-            if (gen !== _chatHydrateGen || getChatEl().messages !== messages) return;
-            const top = messages.scrollTop, h = messages.scrollHeight;
-            do messages.prepend(..._renderHistoryOffscreen(getChatEl(), () => _renderHistoryPayload(pieces[i++]), false).childNodes);
-            while (i < pieces.length && dl && dl.timeRemaining() > 20);
-            messages.scrollTop = _chatPinned ? messages.scrollHeight : top + messages.scrollHeight - h;
-            older(i);
+        // About 200 rows in idle moments; the rest as the reader scrolls up to them (a sentinel above the oldest row),
+        // so a visit does not build ~1000 rows a phone then has to lay out on every new message.
+        let i = 1, more = null, io = null;
+        const stale = () => gen !== _chatHydrateGen || getChatEl().messages !== messages;
+        const add = (max, dl) => {
+            const top = messages.scrollTop, h = messages.scrollHeight, stick = _chatPinned && h - top - messages.clientHeight < 80;
+            let n = 0;
+            do {
+                const rows = _renderHistoryOffscreen(getChatEl(), () => _renderHistoryPayload(pieces[i++]), false).childNodes;
+                if (more) more.after(...rows); else messages.prepend(...rows);
+            } while (i < pieces.length && ++n < max && (!dl || dl.timeRemaining() > 20));
+            messages.scrollTop = stick ? messages.scrollHeight : top + messages.scrollHeight - h;
+            if (i >= pieces.length && more) { io.disconnect(); more.remove(); more = null; }
+        };
+        const older = () => i < pieces.length && _idle((dl) => {
+            if (stale()) return;
+            add(Infinity, dl);
+            if (i < 16) return older();
+            if (i >= pieces.length || !window.IntersectionObserver) return i < pieces.length && older();
+            more = document.createElement('div');
+            more.className = 'chat-history-more';
+            messages.prepend(more);
+            io = new IntersectionObserver((es) => { if (stale()) io.disconnect(); else if (es.some((e) => e.isIntersecting)) add(5); }, { root: messages, rootMargin: '400px 0px 0px 0px' });
+            io.observe(more);
         });
-        older(1);
+        older();
     } else {
         messages.querySelector(':scope > .chat-loading-history')?.remove();
     }
@@ -5962,29 +5975,15 @@ let _chatUnreadCount = 0;
 let _loadingHistory = false;
 
 /**
- * Is the reader following the live edge?
- *
- * This used to be measured inside scrollChat(), which every caller runs AFTER appending the new
- * message — so scrollHeight already counted the message being announced, and the distance from
- * the bottom was inflated by that message's own height. Anything taller than 100px (a wrapped
- * multi-line message, a reply header, a clip card, a GIF card, a goal-reached card) therefore
- * classified a reader sitting exactly at the bottom as "scrolled up", and chat silently stopped
- * following with an unread badge they never asked for. That is the single most-felt bug in a
- * live-streaming product.
- *
- * Appending content does not fire a scroll event, so tracking the state from the scroll listener
- * instead means the value scrollChat() reads is the one from before the append — the thing it
- * actually wanted — with no need to pass anything through six call sites.
+ * Is the reader following the live edge? Kept by the scroll listener, not measured in scrollChat() after a message
+ * was appended: that message's own height made a reader at the bottom look "scrolled up", and chat stopped following
+ * (the most-felt bug in live chat). An append fires no scroll event, so this is the value from before it.
  */
 let _chatPinned = true;
 /**
- * Follow the conversation unless the reader has scrolled back — and only the READER unpins it.
- *
- * Unpinning used to be "more than 100px from the bottom", so anything that grew the content without
- * a scroll (an avatar or emote finishing loading, a translation line, a clip card) unpinned chat on
- * its own: new messages stopped following, and the next history refill "jumped". Now a scroll away
- * from the bottom only counts when a wheel, touch, key or scrollbar drag started it; any other
- * growth while pinned is followed (image loads, container resizes such as the mobile keyboard).
+ * Follow the conversation unless the READER scrolled back: a scroll away from the bottom unpins only when a wheel,
+ * touch, key or scrollbar drag started it, so content that grows by itself (images, translations, the mobile
+ * keyboard) is followed instead of unpinning chat.
  */
 function _watchChatPin(container) {
     if (!container || container._ovPinWatch) return;
