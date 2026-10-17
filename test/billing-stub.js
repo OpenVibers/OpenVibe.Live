@@ -49,7 +49,7 @@ async function startNetwork() {
 }
 
 const CAP = [
-    ['POST', /^\/intents$/, 'billing.intent.create'], ['GET', /^\/intents\/[^/]+$/, 'billing.intent.create'], ['POST', /^\/intents\/[^/]+\/capture$/, 'billing.intent.create'],
+    ['POST', /^\/intents$/, 'billing.intent.create'], ['GET', /^\/intents\/[^/]+$/, 'billing.intent.create'], ['GET', /^\/tiers\/[^/]+$/, 'billing.intent.create'], ['POST', /^\/intents\/[^/]+\/capture$/, 'billing.intent.create'],
     ['POST', /^\/transfers$/, 'billing.transfer.create'], ['POST', /^\/transfers\/[^/]+\/refund$/, 'billing.transfer.create'],
     ['POST', /^\/recycle$/, 'billing.cashout.request'], ['POST', /^\/cashouts$/, 'billing.cashout.request'],
     ['POST', /^\/subscriptions$/, 'billing.subscription.manage'], ['POST', /^\/subscriptions\/[^/]+\/cancel$/, 'billing.subscription.manage'],
@@ -147,6 +147,10 @@ async function startBilling({ network }) {
         if (method === 'GET' && (m = path.match(/^\/entitlements\/([^/]+)$/))) {
             const s = subs.find((x) => x.subscriber.id === m[1] && x.streamer.id === q.get('streamer') && x.status === 'active' && Date.parse(x.current_period_end) > Date.now());
             return send(res, 200, { subject: { type: 'user', id: m[1] }, streamer: { type: 'user', id: q.get('streamer') }, active: !!s, expires_at: s ? s.current_period_end : null });
+        }
+        if (method === 'GET' && (m = path.match(/^\/tiers\/([^/]+)$/))) {
+            // A creator's tier prices (contracts 0.201.0): state.tierOne sets every creator's tier-1 price.
+            return send(res, 200, { streamer: { type: 'user', id: m[1] }, tiers: state.tierOne ? [{ tier: 1, price_cents: state.tierOne, status: 'active' }] : [], default_price_cents: 499, min_price_cents: 100, max_price_cents: 50000, max_tiers: 10 });
         }
         if (method === 'GET' && (m = path.match(/^\/balances\/([^/]+)$/))) {
             return send(res, 200, { subject: { type: 'user', id: m[1] }, currency: 'vibes-bits', credit: bal(credit, m[1]), payable: bal(payable, m[1]), pending_payouts: 0, payable_value_cents: bal(payable, m[1]), bits_per_usd: 100 });
