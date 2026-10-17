@@ -302,34 +302,40 @@ router.get('/channel/:username', optionalAuth, async (req, res) => {
             clipsOfStreams = _rows(cor, 'clips').filter((c) => !isAi(c)); clipsOfTotal = cor?.total ?? clipsOfStreams.length;
             aiClips = _rows(air, 'clips').filter(isAi); aiClipsTotal = air?.total ?? aiClips.length;
             // Media only stores our numeric user ids — resolve clip creator names
-            // locally so cards don't render "by Unknown".
-            const nameClip = async (c) => {
-                if (c && c.user_id != null) {
-                    const u = await db.getUserById(c.user_id);
-                    if (u) { c.clip_creator_username = u.username; c.clip_creator_display_name = u.display_name; }
-                }
-                return c;
-            };
-            for (const c of clips) await nameClip(c);
-            for (const c of clipsOfStreams) await nameClip(c);
+            // locally so cards don't render "by Unknown". One query for every clipper (it was one per clip, in turn).
+            const inList = (ids) => ids.map(() => '?').join(',');
+            const clipperIds = [...new Set([...clips, ...clipsOfStreams].map((c) => c && c.user_id).filter((v) => v != null).map(Number).filter(Number.isFinite))];
+            if (clipperIds.length) {
+                try {
+                    const byId = new Map((await db.all(`SELECT id, username, display_name FROM users WHERE id IN (${inList(clipperIds)})`, clipperIds) || []).map((u) => [Number(u.id), u]));
+                    for (const c of [...clips, ...clipsOfStreams]) {
+                        const u = c && byId.get(Number(c.user_id));
+                        if (u) { c.clip_creator_username = u.username; c.clip_creator_display_name = u.display_name; }
+                    }
+                } catch { /* names are best-effort */ }
+            }
             // An AI clip has no clipper: it is "from <streamer>'s stream".
             for (const c of aiClips) { c.ai_label = 'AI clip'; c.source_streamer_username = channel.username; c.source_streamer_display_name = channel.display_name || channel.username; }
             // AI overviews are Live-owned (vod_ai_state / clip_ai_state). Attach the
             // full text too — the card expander swaps the short teaser for it.
+            // One query per list (it was one per row, in turn: about 80 round trips for a full channel page).
             const aiShort = async (rows, table, col) => {
-                for (const r of rows) {
-                    if (!r || r.id == null || (r.ai_overview_short && r.ai_overview)) continue;
-                    try {
-                        const s = await db.get(`SELECT ai_overview_short, ai_overview FROM ${table} WHERE ${col} = ?`, [r.id]);
-                        if (s && s.ai_overview_short && !r.ai_overview_short) r.ai_overview_short = s.ai_overview_short;
-                        if (s && s.ai_overview && !r.ai_overview) r.ai_overview = s.ai_overview;
-                    } catch { /* best-effort */ }
-                }
+                const need = rows.filter((r) => r && r.id != null && !(r.ai_overview_short && r.ai_overview));
+                const ids = [...new Set(need.map((r) => Number(r.id)).filter(Number.isFinite))];
+                if (!ids.length) return;
+                try {
+                    const byId = new Map((await db.all(`SELECT ${col} AS id, ai_overview_short, ai_overview FROM ${table} WHERE ${col} IN (${inList(ids)})`, ids) || []).map((x) => [Number(x.id), x]));
+                    for (const r of need) {
+                        const x = byId.get(Number(r.id));
+                        if (x && x.ai_overview_short && !r.ai_overview_short) r.ai_overview_short = x.ai_overview_short;
+                        if (x && x.ai_overview && !r.ai_overview) r.ai_overview = x.ai_overview;
+                    }
+                } catch { /* best-effort */ }
             };
-            await aiShort(vods, 'vod_ai_state', 'vod_id');
-            await aiShort(clips, 'clip_ai_state', 'clip_id');
-            await aiShort(clipsOfStreams, 'clip_ai_state', 'clip_id');
-            await aiShort(aiClips, 'clip_ai_state', 'clip_id');
+            await Promise.all([
+                aiShort(vods, 'vod_ai_state', 'vod_id'), aiShort(clips, 'clip_ai_state', 'clip_id'),
+                aiShort(clipsOfStreams, 'clip_ai_state', 'clip_id'), aiShort(aiClips, 'clip_ai_state', 'clip_id'),
+            ]);
         }
         // Follows are Network's (ADR-030): its count, and the viewer's follow as Network last answered it.
         const networkFollows = require('../social/network-follows');
