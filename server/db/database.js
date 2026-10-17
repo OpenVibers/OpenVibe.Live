@@ -1484,12 +1484,19 @@ async function getReadingSeries(metric, days = 7) {
     };
 }
 
+// Once there is a snapshot, nobody waits for the next one: an expired snapshot is answered at once and recomputed
+// behind the answer, one recompute for everyone (the dozens of windowed COUNTs made whoever came after each expiry
+// wait ~1 s: the home hero's p95 on 2026-10-17). Only the very first call waits.
+let _homeStatsRefresh = null;
 async function getHomeStats() {
-    const now = Date.now();
-    if (_homeStatsCache && (now - _homeStatsCacheAt) < _HOME_STATS_TTL) return _homeStatsCache;
-    _homeStatsCache = await _computeHomeStats();
-    _homeStatsCacheAt = now;
-    return _homeStatsCache;
+    if (_homeStatsCache && (Date.now() - _homeStatsCacheAt) < _HOME_STATS_TTL) return _homeStatsCache;
+    if (!_homeStatsRefresh) {
+        _homeStatsRefresh = _computeHomeStats()
+            .then((stats) => { _homeStatsCache = stats; _homeStatsCacheAt = Date.now(); return stats; })
+            .finally(() => { _homeStatsRefresh = null; });
+    }
+    if (_homeStatsCache) { _homeStatsRefresh.catch((e) => console.warn('[Home] stats refresh failed:', e.message)); return _homeStatsCache; }
+    return await _homeStatsRefresh;
 }
 
 async function _computeHomeStats() {
