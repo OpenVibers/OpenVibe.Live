@@ -16,14 +16,12 @@ const LOOKS = /\b(shirtless|topless|bare-?chested|naked|nude|cleavage|bikini|und
 const CRUDE = /\b(testic\w*|dick|cock|penis|vagina|puss(y|ies)|boobs?|tits|titties|ass(hole)?s?|butthole|cum|horny|sexy?|porn\w*|nsfw|fuck\w*|shit\w*|piss\w*|bitch\w*|cunt|wank\w*|poop\w*|fart\w*|turds?)\b/i;
 // A keyboard mash taken for a name ("qeqweqwe watchers").
 const MASH = /(qwe|ewq|asdf|sdfg|zxcv|qeqw)/i;
-// Jokes about how few people watch a channel ("goosely's loyal 3 viewers").
-const VIEWER_COUNT = /\b\d+\s+(loyal\s+)?(viewers?|watchers?|fans?|followers?)\b/i;
 
-const RULES = [NO_FREE, LOOKS, CRUDE, MASH, VIEWER_COUNT];
+const RULES = [NO_FREE, LOOKS, CRUDE, MASH];
 
 function publicOk(text) {
     const s = String(text == null ? '' : text);
     return !RULES.some((re) => re.test(s));
 }
 
-module.exports = { publicOk, NO_FREE, LOOKS, CRUDE, MASH, VIEWER_COUNT };
+module.exports = { publicOk, NO_FREE, LOOKS, CRUDE, MASH };

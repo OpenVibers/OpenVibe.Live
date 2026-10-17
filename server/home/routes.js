@@ -134,7 +134,7 @@ function _cleanAudience(raw) {
         .trim();
 }
 
-// What the hero may say: server/ai/hero-copy.js (no "free", nothing about looks or crude, no viewer-count jokes).
+// What the hero may say: server/ai/hero-copy.js (no "free", nothing about looks, nothing crude, no keyboard-mash names).
 const { publicOk } = require('../ai/hero-copy');
 
 async function heroSlogans() {

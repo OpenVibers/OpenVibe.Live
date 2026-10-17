@@ -35,7 +35,7 @@ function _stripAudiencePrefix(s) {
         .trim();
 }
 const _BAD_AUDIENCE = /\b(live\s*-?\s*)?stream(ing|s)?\b|\blivestream/i;
-// What the hero may say (no "free", nothing about looks, nothing crude, no keyboard-mash names, no viewer-count jokes).
+// What the hero may say (no "free", nothing about looks, nothing crude, no keyboard-mash names).
 const { publicOk } = require('./hero-copy');
 function _cleanList(arr, maxLen, max) {
     if (!Array.isArray(arr)) return [];
