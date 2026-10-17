@@ -1485,3 +1485,24 @@
 
 /* Tabs that run past the edge fade out there, so it reads as "scroll for more" (class set by app-channel.js). */
 .ch-tabs.is-clipped { -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 36px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 36px), transparent); }
+
+/* A live channel on a phone held upright: the chat sits under the stream info and fills the screen below the video,
+   the way phone streaming apps do. The stream area was sized to the whole screen while the chat waited behind a
+   button, which left about a third of the screen empty (seen 2026-10-16). */
+@media (max-width: 768px) and (orientation: portrait) {
+    #page-channel #ch-live-area .stream-main { flex: none; overflow: visible; }
+    #page-channel #ch-live-area .stream-layout > .chat-sidebar {
+        position: relative; inset: auto; transform: none; transition: none; z-index: auto;
+        flex: 1 1 auto; width: 100%; height: auto; min-height: 220px; max-height: none;
+        border-radius: 0; box-shadow: none; border-top: 1px solid var(--border);
+    }
+    #page-channel #ch-live-area .stream-layout > .chat-sidebar .mobile-chat-close,
+    #page-channel #ch-live-area .stream-layout > .chat-sidebar > .chat-grip { display: none; }
+    /* Docked, the chat's messages get the room: a slim header, the tools beside nothing else. */
+    #page-channel #ch-live-area .stream-layout > .chat-sidebar .chat-header { padding: 6px 12px; min-height: 0; }
+    #page-channel #ch-live-area .stream-layout > .chat-sidebar .chat-input-area { padding-top: 6px; padding-bottom: calc(6px + env(safe-area-inset-bottom, 0px)); }
+    /* The chat is on screen, so its button goes; the DM bubble steps aside as it does for the open chat sheet
+       (it covered the chat's emoji button). */
+    body:has(#page-channel.active #ch-live-area .stream-layout > .chat-sidebar) .mobile-chat-toggle,
+    body:has(#page-channel.active #ch-live-area .stream-layout > .chat-sidebar) #messenger-toggle { display: none !important; }
+}
