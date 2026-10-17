@@ -193,6 +193,8 @@ const api = {
     entitlement: async (subject, streamer, o) => await request('GET', `/entitlements/${enc(subject)}?streamer=${enc(streamer)}`, o),
     // A creator's tier prices (contracts 0.201.0): Live sells tier 1, at the creator's price when they set one on VIP.
     tiers: async (streamer, o) => await request('GET', `/tiers/${enc(streamer)}`, o),
+    // Network-wide money counts with no person in them, for the home (billing.stats.read, contracts 0.203.0).
+    stats: async (days = 30, o) => await request('GET', `/stats?days=${enc(days)}`, o),
     /** billing.balance.read */
     balance: async (subject, o) => await request('GET', `/balances/${enc(subject)}`, o),
     transactions: async (subject, { limit = 50, cursor } = {}, o) => await request('GET', `/transactions?${new URLSearchParams({ subject, limit: String(limit), ...(cursor ? { cursor } : {}) })}`, o),

@@ -1387,8 +1387,7 @@ const HOME_SERIES = {
     // Tips from channel_tips (every rail: on-site Vibes, PowerChat, OpenVibe.Tips), not the money ledger.
     vibes:       { table: 'channel_tips',      ts: 'created_at',  agg: 'COALESCE(SUM(amount)::float8, 0)', vibesReset: true },
     supporters:  { table: 'channel_tips',      ts: 'created_at',  agg: `COUNT(DISTINCT ${TIP_SUPPORTER})`, vibesReset: true },
-    vibesBought: { table: 'payment_orders',    ts: 'updated_at',  agg: 'COALESCE(SUM(bucks)::float8, 0)', where: "kind = 'bucks' AND status = 'credited'" },
-    subs:        { table: 'subscriptions',     ts: 'created_at',  agg: 'COUNT(*)' },
+    // vibesBought and subs are OpenVibe.Billing's series (home/routes.js, monetization/billing-stats.js).
     points:      { table: 'coin_transactions', ts: 'created_at',  agg: 'COALESCE(SUM(amount)::float8, 0)', where: 'amount > 0' },
     pointsSpent: { table: 'coin_transactions', ts: 'created_at',  agg: 'COALESCE(-SUM(amount)::float8, 0)', where: 'amount < 0' },
     redemptions: { table: 'coin_redemptions',  ts: 'created_at',  agg: 'COUNT(*)',              where: "status NOT IN ('rejected', 'refunded')" },
@@ -1528,8 +1527,8 @@ async function _computeHomeStats() {
         hoursWatched: Math.round(await c(`SELECT COALESCE(SUM(minutes_watched)::float8, 0) AS count FROM watch_time`) / 60),
         // Vibes tipped to channels (channel_tips: on-site, PowerChat and OpenVibe.Tips; bit-style, 100 = $1).
         vibesTipped: await c(`SELECT COALESCE(SUM(amount)::float8, 0) AS count FROM channel_tips WHERE created_at >= ?`, [vibesSince]),
-        // Live channel subscriptions.
-        activeSubs: await c(`SELECT COUNT(*) AS count FROM subscriptions WHERE status = 'active' AND (current_period_end IS NULL OR datetime(current_period_end) > ov_now())`),
+        // Channel subscriptions and Vibes bought are OpenVibe.Billing's (home/routes.js fills them; null until it answers).
+        activeSubs: null,
         // Channel points earned by viewers across every channel (watch/chat/follow bonuses).
         pointsEarned: await c(`SELECT COALESCE(SUM(amount)::float8, 0) AS count FROM coin_transactions WHERE amount > 0`),
         // …and spent back on channel rewards.
@@ -1538,8 +1537,7 @@ async function _computeHomeStats() {
         redemptions: await c(`SELECT COUNT(*) AS count FROM coin_redemptions WHERE status NOT IN ('rejected', 'refunded')`),
         // Distinct people who have tipped someone.
         supporters: await c(`SELECT COUNT(DISTINCT ${TIP_SUPPORTER}) AS count FROM channel_tips WHERE created_at >= ?`, [vibesSince]),
-        // Vibes bought with real money (credited purchase orders, any provider).
-        vibesBought: await c(`SELECT COALESCE(SUM(bucks)::float8, 0) AS count FROM payment_orders WHERE kind = 'bucks' AND status = 'credited'`),
+        vibesBought: null,
         // Donation goals: currently running + ever reached.
         goalsActive: await c(`SELECT COUNT(*) AS count FROM donation_goals WHERE is_active = 1`),
         goalsReached: await c(`SELECT COUNT(*) AS count FROM donation_goals WHERE reached_at IS NOT NULL OR current_amount >= target_amount`),
@@ -1612,8 +1610,8 @@ async function _computeHomeStats() {
             points: await winSum('coin_transactions', 'amount', 'created_at', 'amount > 0'),
             pointsSpent: await winSum('coin_transactions', '-amount', 'created_at', 'amount < 0'),
             redemptions: await winCount('coin_redemptions', 'created_at', "status NOT IN ('rejected', 'refunded')"),
-            vibesBought: await winSum('payment_orders', 'bucks', 'updated_at', "kind = 'bucks' AND status = 'credited'"),
-            subs: await winCount('subscriptions', 'created_at'),
+            vibesBought: null,
+            subs: null,
             follows: await winCount('follows', 'created_at'),
         },
     };
@@ -2153,7 +2151,7 @@ async function countEasterEggSolves(eggDate) {
 
 async function getUserProfile(userId) {
     const user = await get(`SELECT id, username, display_name, avatar_url, profile_color, role,
-                      openvibe_bucks_balance, created_at, last_seen
+                      created_at, last_seen
                       FROM users WHERE id = ?`, [userId]);
     if (!user) return null;
     // The user's chat total is OpenVibe.Chat's; a synchronous peek answers the last good count, else

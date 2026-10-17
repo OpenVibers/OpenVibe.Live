@@ -127,7 +127,7 @@ router.get('/users', async (req, res) => {
 
         // No email here: the OpenVibe account keeps it (Network's admin finds people by address), and Live
         // no longer reads users.email (WS-B task 2). Staff find people by username or display name.
-        let sql = `SELECT u.id, u.username, u.display_name, u.role, u.openvibe_bucks_balance,
+        let sql = `SELECT u.id, u.username, u.display_name, u.role,
                     u.is_banned, u.ban_reason, u.created_at, u.last_seen,
                     COALESCE(c.force_vod_recording_disabled, 0) AS force_vod_recording_disabled
                     FROM users u
