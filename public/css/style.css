@@ -4187,6 +4187,12 @@ a.pulse-card:hover { border-color: var(--accent); transform: translateY(-2px); }
 .emote-tab-btn.active {
     color: var(--accent); border-bottom-color: var(--accent);
 }
+.emote-picker-close {
+    flex: 0 0 auto; min-width: 44px; padding: 5px 12px; background: transparent; border: none;
+    border-bottom: 2px solid transparent; color: var(--text-muted); font-size: 1rem; cursor: pointer;
+}
+.emote-picker-close:hover, .emote-picker-close:focus-visible { color: var(--text-primary); }
+.gif-picker-close { float: right; min-width: 36px; padding: 2px 8px; }
 
 .emote-picker-grid {
     display: grid;

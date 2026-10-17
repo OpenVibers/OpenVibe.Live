@@ -65,6 +65,7 @@ function _getGifPicker() {
     picker.style.display = 'none';
     picker.innerHTML = `
         <div class="gif-picker-header">
+            <button class="emote-picker-close gif-picker-close" type="button" onclick="closeGifPicker()" aria-label="Close GIFs" title="Close"><i class="fa-solid fa-xmark"></i></button>
             <div class="gif-picker-provider-row"></div>
             <input type="text" class="gif-search" placeholder="Search GIFs..." oninput="onGifSearch(this.value)">
         </div>
@@ -79,11 +80,14 @@ function _getGifPicker() {
     // rebuild used to add another pair of document listeners.
     if (!_gifDocListeners) {
         _gifDocListeners = true;
-        document.addEventListener('click', (event) => {
+        // pointerdown, not click: a phone sends no click for a tap on plain text (chat lines). The GIF buttons toggle it
+        // themselves, so a tap on one is left to them.
+        document.addEventListener('pointerdown', (event) => {
             if (!_gifPickerOpen || !_gifPickerEl) return;
-            if (_gifPickerEl.contains(event.target)) return;
+            const t = event.target;
+            if (_gifPickerEl.contains(t) || (t && t.closest && t.closest('.gif-btn'))) return;
             closeGifPicker();
-        });
+        }, true);
         document.addEventListener('keydown', (event) => {
             if (event.key === 'Escape' && _gifPickerOpen) closeGifPicker();
         });

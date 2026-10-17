@@ -277,7 +277,8 @@ function _buildEmoteMenuTabs(picker) {
     if (!tabs) return;
     tabs.innerHTML = `
         <button class="emote-tab-btn ${_emoteMenuMode === 'emotes' ? 'active' : ''}" data-tab="emotes" onclick="renderEmotePicker('emotes')"><i class="fa-solid fa-face-smile"></i> Emotes</button>
-        <button class="emote-tab-btn ${_emoteMenuMode === 'gif' ? 'active' : ''}" data-tab="gif" onclick="renderEmotePicker('gif')"><i class="fa-solid fa-film"></i> GIF</button>`;
+        <button class="emote-tab-btn ${_emoteMenuMode === 'gif' ? 'active' : ''}" data-tab="gif" onclick="renderEmotePicker('gif')"><i class="fa-solid fa-film"></i> GIF</button>
+        <button class="emote-picker-close" type="button" onclick="closeEmotePicker()" aria-label="Close emotes" title="Close"><i class="fa-solid fa-xmark"></i></button>`;
     const searchEl = picker.querySelector('.emote-search');
     if (searchEl) searchEl.placeholder = 'Search emotes or GIFs…';
 }
@@ -302,6 +303,8 @@ function toggleEmotePicker(inputId) {
         _buildEmoteMenuTabs(picker);
         // Lazy-load this channel's sound commands the first time the menu opens for it.
         const _sid = (typeof chatStreamId !== 'undefined') ? chatStreamId : 0;
+        // A chat whose page never loaded the emotes (the broadcast studio, an offline channel): load them now.
+        if (!emotesLoaded && typeof loadEmotes === 'function') Promise.resolve(loadEmotes(_sid)).then(_refreshOpenEmotePicker).catch(() => {});
         if (typeof loadChannelSounds === 'function' && _soundsLoadContext !== String(_sid || 0)) {
             loadChannelSounds(_sid).then(_refreshOpenEmotePicker);
         }
@@ -338,7 +341,7 @@ function renderEmotePicker(mode) {
         if (cat.key === 'channel') { html += soundsHtml; soundsInserted = true; }
     }
     if (!soundsInserted) html += soundsHtml;
-    grid.innerHTML = html || '<div class="emote-picker-empty">No emotes found</div>';
+    grid.innerHTML = html || `<div class="emote-picker-empty">${emotesLoaded || query ? 'No emotes found' : 'Loading emotes…'}</div>`;
 }
 
 /** Render the "Channel Sounds" section: click a tile to send its !command. */
@@ -577,14 +580,20 @@ async function deleteDashEmote(id) {
     } catch (e) { toast(e.message, 'error'); }
 }
 
-/* ── Close picker on outside click ────────────────────────────── */
-document.addEventListener('click', (e) => {
-    if (!_emotePickerOpen) return;
-    if (e.target.closest('.emote-picker') || e.target.closest('.emote-picker-btn')) return;
+/* ── Closing the picker ───────────────────────────────────────── */
+/** Close every emote picker (main / broadcast / offline / global): its ×, a tap outside it, Escape, the phone studio. */
+function closeEmotePicker() {
     _emotePickerOpen = false;
-    // Close all four pickers (main / broadcast / offline / global).
     ['emote-picker', 'bc-emote-picker', 'oc-emote-picker', 'gc-emote-picker'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.style.display = 'none';
     });
-});
+}
+// pointerdown, not click: a phone sends no click for a tap on plain text (chat lines), so the picker stayed open there.
+document.addEventListener('pointerdown', (e) => {
+    if (!_emotePickerOpen) return;
+    const t = e.target && e.target.closest ? e.target : null;
+    if (t && (t.closest('.emote-picker') || t.closest('.emote-picker-btn'))) return;
+    closeEmotePicker();
+}, true);
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && _emotePickerOpen) closeEmotePicker(); });
