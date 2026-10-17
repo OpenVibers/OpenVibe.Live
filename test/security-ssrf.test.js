@@ -379,7 +379,8 @@ async function check(name, fn) {
             'server/kiosk/routes.js': 'OpenVibe.Tools (configured) and DuckDuckGo favicons; the user URL via egress.fetchText',
             'server/media/media-queue.js': 'YouTube oEmbed (fixed host); user links checked by egress, yt-dlp through the egress proxy',
             'server/streaming/restream-manager.js': 'Twitch / Kick / YouTube APIs (fixed hosts)',
-            'server/streaming/routes.js': 'weather APIs (fixed hosts) and the local RTMP server',
+            'server/streaming/routes.js': 'the local RTMP server',
+            'server/streaming/weather.js': 'Open-Meteo forecast/geocoding and zippopotam.us (fixed hosts; the zip is URL-encoded into the query)',
         };
         const root = path.join(__dirname, '..');
         const found = [];
