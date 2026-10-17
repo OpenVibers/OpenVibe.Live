@@ -119,6 +119,10 @@ router.post('/deliveries', guard('live.tips_delivery.write'), express.json({ lim
             };
             // Chat persists the line and shows it in the channel and global chat; Tips' key is the operation's key.
             const chatMessageId = await delivery.message({ ...line, mirror: true, key: `tips:${key}` });
+            if (!b.test) {
+                const supporterId = await channelUserId(b.supporter && b.supporter.subject);
+                await require('../monetization/channel-tips').record({ toUserId: userId, fromUserId: supporterId, username: name, streamId, amount, source: 'tips', ref: `tips:${key}` });
+            }
             await require('../monetization/alerts').playAlertSound(userId, streamId, 'donation');
             // A settled tip in Vibes counts toward the channel's donation goal, like an on-site donation (a test, or a
             // tip whose amount the supporter hid, does not). The claim above makes this once per Idempotency-Key.

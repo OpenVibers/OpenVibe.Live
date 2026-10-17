@@ -53,9 +53,12 @@ async function gather(streamId) {
     const micLines = await safe(async () => await db.all(`SELECT text, quality, kind, aimed_at, sec, vod_id FROM arena_mic_moments WHERE stream_id = ? ORDER BY quality DESC, said_at ASC LIMIT 4`, [streamId]), []);
 
     // Money + love.
-    const tips = await safe(async () => await db.get(`SELECT COUNT(*) AS n, COALESCE(SUM(amount), 0)::bigint AS total FROM transactions WHERE type = 'donation' AND COALESCE(status, 'completed') NOT IN ('failed', 'refunded', 'pending') AND ((stream_id = ?) OR (to_user_id = ? AND created_at BETWEEN ? AND ?))`, [streamId, stream.user_id, start, end]), { n: 0, total: 0 });
-    const topTipper = await safe(async () => await db.get(`SELECT u.username, u.display_name, SUM(t.amount)::bigint AS total FROM transactions t JOIN users u ON u.id = t.from_user_id
-        WHERE t.type = 'donation' AND ((t.stream_id = ?) OR (t.to_user_id = ? AND t.created_at BETWEEN ? AND ?)) GROUP BY t.from_user_id, u.id ORDER BY total DESC LIMIT 1`, [streamId, stream.user_id, start, end]), null);
+    // Tips from channel_tips: on-site Vibes, PowerChat and OpenVibe.Tips (a hidden amount counts as a tip, adds nothing).
+    const { SUPPORTER_KEY } = require('../monetization/channel-tips');
+    const tips = await safe(async () => await db.get(`SELECT COUNT(*) AS n, COALESCE(SUM(amount), 0)::bigint AS total FROM channel_tips WHERE (stream_id = ?) OR (to_user_id = ? AND created_at BETWEEN ? AND ?)`, [streamId, stream.user_id, start, end]), { n: 0, total: 0 });
+    const topTipper = await safe(async () => await db.get(`SELECT MAX(u.username) AS username, MAX(COALESCE(u.display_name, u.username, t.username)) AS display_name, SUM(t.amount)::bigint AS total
+        FROM channel_tips t LEFT JOIN users u ON u.id = t.from_user_id
+        WHERE t.amount IS NOT NULL AND ((t.stream_id = ?) OR (t.to_user_id = ? AND t.created_at BETWEEN ? AND ?)) GROUP BY ${SUPPORTER_KEY} ORDER BY total DESC LIMIT 1`, [streamId, stream.user_id, start, end]), null);
     const follows = await safe(async () => (await db.get(`SELECT COUNT(*) AS n FROM follows WHERE streamer_id = ? AND created_at BETWEEN ? AND ?`, [stream.user_id, start, end])).n, 0);
     const followersNow = await safe(async () => await db.getFollowerCount(stream.user_id), null);
 

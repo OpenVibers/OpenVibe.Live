@@ -81,6 +81,8 @@ const token = (cap, aud = 'openvibe.live') => serviceAuth.signServiceToken({ iss
     assert.strictEqual(await goalNow(), 250, 'the tip counts toward the goal');
     assert.deepStrictEqual(goalUpdates(), [250], 'and the goal widget hears it');
     assert.deepStrictEqual(a.json.ref.goal, { id: goalId, reached: false });
+    assert.deepStrictEqual(await d.prepare("SELECT to_user_id, from_user_id, username, amount, source FROM channel_tips WHERE ref = 'tips:tint_1:chat_line'").get(),
+        { to_user_id: 501, from_user_id: null, username: 'Viewer', amount: 250, source: 'tips' }, "the channel's tip history has it");
 
     // A retry of the same delivery changes nothing.
     const b = await post(job);
@@ -101,6 +103,7 @@ const token = (cap, aud = 'openvibe.live') => serviceAuth.signServiceToken({ iss
     assert.deepStrictEqual(afterRestart.json, a.json, 'after a restart the same key answers the first result');
     assert.strictEqual(sent.length, 1, 'and delivers nothing again');
     assert.strictEqual(await goalNow(), 250, 'nor counts toward the goal again');
+    assert.strictEqual((await d.prepare("SELECT COUNT(*) AS n FROM channel_tips WHERE ref = 'tips:tint_1:chat_line'").get()).n, 1);
 
     // A retry while the first attempt is still running is told to come back; a claim left by a
     // crash (older than two minutes) is taken over.
@@ -146,6 +149,7 @@ const token = (cap, aud = 'openvibe.live') => serviceAuth.signServiceToken({ iss
     // A simulation (test: true) shows the line but leaves the goal alone.
     assert.strictEqual((await post({ ...job, test: true, interaction: { ...job.interaction, id: 'tint_t' } }, { key: 'tint_t:chat_line' })).status, 200);
     assert.strictEqual(await goalNow(), 500);
+    assert.strictEqual((await d.prepare("SELECT COUNT(*) AS n FROM channel_tips WHERE ref = 'tips:tint_t:chat_line'").get()).n, 0, 'nor the tip history');
 
     // Reaching the goal: the widget shows it full, a saved "Goal reached" line in Vibes, the goal sound.
     const before = sent.length;

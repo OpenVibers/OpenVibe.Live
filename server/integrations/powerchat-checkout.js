@@ -399,7 +399,7 @@ async function _creditSiteRoutedDonation(streamerUserId, donorUserId, data) {
         });
     } catch { /* ledger best-effort */ }
     // Same celebration pipeline a direct-connected streamer gets from their own webhook.
-    try { await require('./powerchat-webhook').creditDonationPipeline(streamerUserId, data); } catch (e) { console.warn('[PowerChat] pcdon pipeline:', e.message); }
+    try { await require('./powerchat-webhook').creditDonationPipeline(streamerUserId, data, { fromUserId: donorUserId || null }); } catch (e) { console.warn('[PowerChat] pcdon pipeline:', e.message); }
     console.log(`[PowerChat] site-routed donation: ${_usd(usdCents)} → ${usdCents} cashout Vibes for streamer ${streamerUserId}`);
 }
 

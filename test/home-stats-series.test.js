@@ -58,9 +58,10 @@ assert.strictEqual((await db.get("SELECT COUNT(*) AS n FROM viewer_samples WHERE
 console.log('✅ reading series are bucketed, null-filled and retained for 400 days');
 
 // ── vibes: test money before the reset never counts ──
-await db.run("INSERT INTO transactions (from_user_id, to_user_id, amount, type, status, created_at) VALUES (?, ?, 500, 'donation', 'completed', datetime('now', '-10 days'))", [a, b]);
-await db.run("INSERT INTO transactions (from_user_id, to_user_id, amount, type, status, created_at) VALUES (?, ?, 200, 'donation', 'completed', datetime('now', '-2 days'))", [b, a]);
-await db.run("INSERT INTO transactions (from_user_id, to_user_id, amount, type, status, created_at) VALUES (?, ?, 50, 'donation', 'completed', datetime('now', '-1 hours'))", [b, a]);
+// The counters read channel_tips (every tip a channel received, on any rail), not the money ledger.
+await db.run("INSERT INTO channel_tips (from_user_id, to_user_id, amount, source, ref, created_at) VALUES (?, ?, 500, 'vibes', 'live-txn:1', datetime('now', '-10 days'))", [a, b]);
+await db.run("INSERT INTO channel_tips (from_user_id, to_user_id, amount, source, ref, created_at) VALUES (?, ?, 200, 'vibes', 'live-txn:2', datetime('now', '-2 days'))", [b, a]);
+await db.run("INSERT INTO channel_tips (from_user_id, to_user_id, amount, source, ref, created_at) VALUES (?, ?, 50, 'vibes', 'live-txn:3', datetime('now', '-1 hours'))", [b, a]);
 
 let stats = await db.getHomeStats();
 assert.strictEqual(stats.vibesTipped, 750, 'no reset → everything counts');

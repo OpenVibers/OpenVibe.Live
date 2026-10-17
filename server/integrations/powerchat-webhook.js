@@ -87,7 +87,7 @@ async function _chatLine({ line, mirror = false, key }) {
     return await delivery.message({ ...line, mirror, key });
 }
 
-async function _handleDonation(userId, data) {
+async function _handleDonation(userId, data, { fromUserId = null } = {}) {
     const alerts = require('../monetization/alerts');
     const openvibeBucks = require('../monetization/vibes');
 
@@ -109,6 +109,10 @@ async function _handleDonation(userId, data) {
 
     // 1) Donation chat event — persisted to channel history (and mirrored to global chat).
     const eventKey = data.eventId ? `powerchat:${data.eventId}` : undefined;
+    // The channel's tip history (leaderboard, recap, home stats); site-routed tips name the donor's account.
+    await require('../monetization/channel-tips').record({
+        toUserId: userId, fromUserId, username: donor, streamId, amount, source: 'powerchat', ref: eventKey || `powerchat:${crypto.randomUUID()}`,
+    });
     try {
         await _chatLine({
             mirror: true, key: eventKey,
