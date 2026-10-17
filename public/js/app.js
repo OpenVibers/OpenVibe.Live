@@ -219,10 +219,12 @@ function authHeaders() {
 }
 
 async function api(path, opts = {}) {
+    // Caller headers add to the defaults (spreading opts after them used to replace the lot, auth included).
+    const { headers, body, _retried, ...init } = opts;
     const res = await fetch(`${API}/api${path}`, {
-        headers: { 'Content-Type': 'application/json', ...authHeaders(), ...opts.headers },
-        ...opts,
-        body: opts.body ? (typeof opts.body === 'string' ? opts.body : JSON.stringify(opts.body)) : undefined,
+        ...init,
+        headers: { 'Content-Type': 'application/json', ...authHeaders(), ...headers },
+        body: body ? (typeof body === 'string' ? body : JSON.stringify(body)) : undefined,
     });
 
     // Auto-refresh on 401 (expired JWT) — try once

@@ -226,7 +226,7 @@ function openvibeBucksDonateModal() {
         </div>
 
         <div class="muted" id="donate-balance-line" style="font-size:0.82rem;margin:2px 0 6px"></div>
-        <button class="btn btn-primary btn-lg" onclick="doDonate()" style="width:100%;margin-top:4px">
+        <button class="btn btn-primary btn-lg" id="modal-donate-send" onclick="doDonate()" style="width:100%;margin-top:4px">
             <i class="fa-solid fa-coins"></i> Donate Vibes
         </button>
         <button class="btn btn-outline" onclick="showModal('buy-funds')" style="width:100%;margin-top:8px">
@@ -346,16 +346,36 @@ async function doDonate() {
     const goalId = goalSel && goalSel.value ? parseInt(goalSel.value, 10) : null;
 
     if (!amount || amount < 1) return toast('Enter a valid amount', 'error');
+    if (_donateInFlight) return;
 
+    const body = { streamer_id: streamerId, stream_id: (typeof currentStreamId !== 'undefined' ? currentStreamId : null) || null, amount: Math.round(amount), message, goal_id: goalId };
+    // One Idempotency-Key per donation: a second click while it is on its way does nothing, and trying the
+    // same donation again after an unanswered request reuses the key, so the server sends it at most once.
+    const sig = JSON.stringify(body);
+    if (!_donateAttempt || _donateAttempt.sig !== sig) _donateAttempt = { sig, key: _newRequestKey() };
+    const btn = document.getElementById('modal-donate-send');
+    _donateInFlight = true;
+    if (btn) btn.disabled = true;
     try {
-        await api('/funds/donate', {
-            method: 'POST',
-            body: { streamer_id: streamerId, stream_id: (typeof currentStreamId !== 'undefined' ? currentStreamId : null) || null, amount: Math.round(amount), message, goal_id: goalId }
-        });
+        await api('/funds/donate', { method: 'POST', headers: { 'Idempotency-Key': _donateAttempt.key }, body });
+        _donateAttempt = null;
         toast(`Donated ${Math.round(amount).toLocaleString()} Vibes!`, 'success');
         loadBalance();
         closeModal();
-    } catch (e) { toast(e.message || 'Donation failed', 'error'); }
+    } catch (e) {
+        // A refusal (no Vibes, bad amount) ends this attempt; no answer, or a 5xx, may have sent it: keep the key.
+        if (e && e.status >= 400 && e.status < 500) _donateAttempt = null;
+        toast(e.message || 'Donation failed', 'error');
+    } finally {
+        _donateInFlight = false;
+        if (btn) btn.disabled = false;
+    }
+}
+let _donateInFlight = false;
+let _donateAttempt = null;
+function _newRequestKey() {
+    if (window.crypto && typeof crypto.randomUUID === 'function') return `donate-${crypto.randomUUID()}`;
+    return `donate-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}${Math.random().toString(36).slice(2)}`;
 }
 
 /**
