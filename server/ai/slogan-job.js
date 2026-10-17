@@ -35,15 +35,14 @@ function _stripAudiencePrefix(s) {
         .trim();
 }
 const _BAD_AUDIENCE = /\b(live\s*-?\s*)?stream(ing|s)?\b|\blivestream/i;
-const _NO_FREE = /\b(free|no[- ]cost)\b|\$\s?0\b/i;
-// Copy about a real person never mentions their looks or age ("ara007 shirtless thoughts" made the hero once).
-const _LOOKS = /\b(shirtless|topless|bare-?chested|naked|nude|cleavage|bikini|underwear|teen(age)?|young|kids?|child(ren)?|boys?|girls?)\b/i;
+// What the hero may say (no "free", nothing about looks, nothing crude, no keyboard-mash names, no viewer-count jokes).
+const { publicOk } = require('./hero-copy');
 function _cleanList(arr, maxLen, max) {
     if (!Array.isArray(arr)) return [];
     const seen = new Set(); const out = [];
     for (const raw of arr) {
         let s = String(raw == null ? '' : raw).trim().replace(/^["'‘’“”\-•\s]+|["'‘’“”\s]+$/g, '').replace(/[.,;:]+$/, '');
-        if (!s || s.length > maxLen || _LOOKS.test(s)) continue;
+        if (!s || s.length > maxLen || !publicOk(s)) continue;
         const k = s.toLowerCase();
         if (seen.has(k)) continue;
         seen.add(k); out.push(s);
@@ -53,7 +52,7 @@ function _cleanList(arr, maxLen, max) {
 }
 function _topUp(fresh, old, cap) {
     const seen = new Set(fresh.map(s => s.toLowerCase())); const out = fresh.slice();
-    for (const s of (old || [])) { const v = String(s || '').trim(); if (!v || _LOOKS.test(v)) continue; const k = v.toLowerCase(); if (seen.has(k)) continue; seen.add(k); out.push(v); if (out.length >= cap) break; }
+    for (const s of (old || [])) { const v = String(s || '').trim(); if (!v || !publicOk(v)) continue; const k = v.toLowerCase(); if (seen.has(k)) continue; seen.add(k); out.push(v); if (out.length >= cap) break; }
     return out.slice(0, cap);
 }
 const SLOGAN_FORMAT = 4; // bump to force a one-time regen after a prompt/format change (4: no copy about looks)
@@ -125,15 +124,13 @@ async function tick() {
         }, { meter: { kind: 'hero_slogans', role: 'legacy' } });
         if (!parsed) return;
         let audiences = _cleanList((parsed.audiences || []).map(_stripAudiencePrefix).filter(a => a && !_BAD_AUDIENCE.test(a) && !/^for\b/i.test(a)), 60, TARGET);
-        // The owner's rule: no "free"/"$0" copy anywhere, whatever the model writes.
-        audiences = audiences.filter(a => !_NO_FREE.test(a));
-        let quips = _cleanList((parsed.quips || []).filter(q => !_NO_FREE.test(String(q))), 110, TARGET);
+        let quips = _cleanList(parsed.quips || [], 110, TARGET);
         if (audiences.length < 6 && quips.length < 6) return; // bad batch — keep yesterday's
 
         // Fresh daily batch; top up from the previous batch only if the model returned few.
         const old = await _loadPool();
         audiences = _topUp(audiences, old.audiences.map(_stripAudiencePrefix).filter(a => a && !_BAD_AUDIENCE.test(a)), TARGET);
-        quips = _topUp(quips, old.quips.filter(q => !_NO_FREE.test(String(q))), TARGET);
+        quips = _topUp(quips, old.quips, TARGET);
         await db.setState('home_hero_slogans', JSON.stringify({ v: SLOGAN_FORMAT, audiences, quips, updated_at: Date.now() }));
         console.log(`[Slogans] Fresh daily batch: ${audiences.length} words, ${quips.length} slogans (from full AI context)`);
     } catch (e) {
