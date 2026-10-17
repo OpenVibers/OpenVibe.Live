@@ -877,7 +877,9 @@ observability.registerDomainGauges(metricsRegistry, {
 
 // ── Updates / Changelog ──────────────────────────────────────
 const { execFile } = require('child_process');
-const REPO_DIR = path.resolve(__dirname, '..');
+// Through the `current` link in the release layout (OV_APP_ROOT, as the static files): a static-only release does not
+// restart this process, and __dirname is still the release it booted from (the list stopped at that release's commit).
+const REPO_DIR = process.env.OV_APP_ROOT || path.resolve(__dirname, '..');
 
 /**
  * GET /api/updates — recent commit history for the updates page.
