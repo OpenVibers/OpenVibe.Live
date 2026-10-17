@@ -127,7 +127,7 @@ async function tick() {
                     if (!r || !r.description) continue;
                     await require('../pastes-client').setPasteAi(p.slug, {
                         ai_summary: db.noLooks(r.description),
-                        ai_tags: JSON.stringify(r.tags || []),
+                        ai_tags: JSON.stringify(db.noLooksTags(r.tags || [])),
                     }).catch((e) => console.warn('[AI backfill] paste ai write:', e.message));
                     console.log(`[AI backfill] paste ${p.slug} summarized`);
                 }
