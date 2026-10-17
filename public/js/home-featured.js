@@ -116,6 +116,9 @@
     function render(d) {
         const s = d.stream;
         const m = d.moment;
+        // The note alone: the raw speech-to-text after " — heard:" is the AI's context, not something to show (it can be
+        // 500 characters of another language; the server strips it too, server/db/database.js publicMemoryText).
+        const now = m && m.description ? String(m.description).replace(/\s+—\s+heard:[\s\S]*$/, '').trim() : '';
         const chan = typeof channelPath === 'function' ? channelPath(s.username, s.managed_stream_slug || s.managed_stream_id || null) : `/@${s.username}`;
         const viewers = Number(s.total_viewer_count || s.viewer_count || 0);
         const up = (typeof formatUptime === 'function' && s.started_at) ? formatUptime(s.started_at) : '';
@@ -138,7 +141,7 @@
                         ${s.category ? `<span class="hf-tag"${s.ai_category && s.ai_category === s.category ? ' title="Category inferred by OpenVibe&#39;s AI from the stream"' : ''}>${escText(s.category)}${s.ai_category && s.ai_category === s.category ? '<span class="cat-inferred"> · inferred</span>' : ''}</span>` : ''}
                         ${up ? `<span class="muted"><i class="fa-solid fa-clock"></i> ${escText(up)}</span>` : ''}
                     </a>
-                    ${m && m.description ? `<div class="hf-now"><div class="hf-now-head"><i class="fa-solid fa-wand-magic-sparkles"></i> Right now <span>${m.captured_at ? escText(typeof timeAgo === 'function' ? timeAgo(m.captured_at) : '') : ''}</span></div>${escText(m.description)}</div>` : ''}
+                    ${now ? `<div class="hf-now"><div class="hf-now-head"><i class="fa-solid fa-wand-magic-sparkles"></i> Right now <span>${m.captured_at ? escText(typeof timeAgo === 'function' ? timeAgo(m.captured_at) : '') : ''}</span></div>${escText(now)}</div>` : ''}
                     ${s.ai_overview_short || s.ai_overview ? `<div class="hf-overview">${escText(s.ai_overview_short || s.ai_overview)}</div>` : ''}
                     <div class="hf-actions">
                         <a class="hf-watch" href="${escText(chan)}" onclick="return handleLinkClick(event, '${escText(chan)}')"><i class="fa-solid fa-play"></i> Watch &amp; chat</a>
