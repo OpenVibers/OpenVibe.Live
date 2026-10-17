@@ -2390,8 +2390,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (!location.pathname.startsWith('/popout')) {
         routeFromURL();
     }
-    // Real-user timings and errors on one page load in four, once idle (js/ov-rum.js, server/web/rum.js).
-    if (Math.random() < 0.25 && window.ov) (window.requestIdleCallback || setTimeout)(() => ov.loadScript('/js/ov-rum.js'));
+    // Real-user timings and errors, once idle (js/ov-rum.js, server/web/rum.js).
+    if (window.ov) (window.requestIdleCallback || setTimeout)(() => ov.loadScript('/js/ov-rum.js'));
 });
 
 // Handle browser back/forward — wait for auth to be resolved first

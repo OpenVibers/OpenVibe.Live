@@ -3,7 +3,7 @@
  * Real-user measurements: how fast pages are on visitors' own devices, and the script errors they hit. Synthetic
  * checks (scripts/perf, the browser smoke) run on one emulated phone; this is what people actually get.
  *
- * public/js/ov-rum.js runs on one page load in four, after the page is idle, and sends one beacon when the page is
+ * public/js/ov-rum.js runs on every page load (not in automated browsers), after the page is idle, and sends one beacon when the page is
  * hidden: the path, the viewport width, and its own timings (TTFB, FCP, LCP, CLS, INP, blocking time, and the time to a
  * live channel's first picture) plus at most
  * three error messages. Nothing about the visitor is kept: no IP, no account, no user agent. Each beacon becomes
