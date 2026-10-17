@@ -40,7 +40,7 @@ assert.ok(chJs.includes('return _fillOfflineExplore(ch && ch.username);') && chJ
 assert.ok(chCss.includes('#page-channel:not(.ch-ready) .channel-below-fold { display: none; }'), 'tabs out of the layout until ready');
 assert.ok(chCss.includes('#page-channel.page:not(.ch-ready) { min-height: 100vh; }'), 'the page keeps a full viewport until ready (beats "#page-channel.page { min-height: 0 }")');
 assert.ok(chCss.indexOf('#page-channel.page:not(.ch-ready)') > chCss.indexOf('#page-channel.page { min-height: 0; }'), '…after the rule it overrides');
-assert.ok(/#page-channel:not\(\.ch-data\) :is\(#ch-display-name-offline/.test(chCss), 'placeholder words are outlines until the data');
+assert.ok(chCss.includes('#page-channel:not(.ch-data) :is(#ch-offline-header, #ch-offline-screen) { visibility: hidden; }'), 'the offline header and screen are invisible (still laid out) until the data: social links add rows no outline can reserve');
 ok('the channel holds its tabs and height until its data and offline blocks are in');
 
 // ── VOD and clip pages ──
@@ -80,7 +80,7 @@ const scriptingBlock = (css, rule) => {
     const open = css.lastIndexOf('@media (scripting: enabled) {', at);
     return at > 0 && open !== -1 && css.slice(open, at).split('}').length - 1 < css.slice(open, at).split('{').length - 1;
 };
-for (const rule of ['#page-channel:not(.ch-ready) .channel-below-fold { display: none; }', '#page-channel:not(.ch-data) #ch-avatar-offline', '#page-channel.page:not(.ch-ready) { min-height: 100vh; }']) {
+for (const rule of ['#page-channel:not(.ch-ready) .channel-below-fold { display: none; }', '#page-channel:not(.ch-data) :is(#ch-offline-header, #ch-offline-screen)', '#page-channel.page:not(.ch-ready) { min-height: 100vh; }']) {
     assert.ok(scriptingBlock(chCss, rule), `channel.css: "${rule}" only with scripting`);
 }
 for (const rule of ['#page-vod-player:not(.mp-ready)', '#page-clip-player:not(.mp-ready) #clp-comments', ':is(#page-vod-player, #page-clip-player):not(.mp-data) :is(#vp-avatar']) {

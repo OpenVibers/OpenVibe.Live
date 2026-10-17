@@ -618,8 +618,8 @@ function _watchTabsClip() {
     upd();
 }
 
-// A direct visit paints the channel's markup before its data. Until the data (ch-data) channel.css outlines the
-// header's placeholder words; until the first render, and offline until the "Most watched" block and the discover
+// A direct visit paints the channel's markup before its data. Until the data (ch-data) channel.css keeps the offline
+// header and screen invisible but laid out (a channel's social links add rows nothing can reserve); until the first render, and offline until the "Most watched" block and the discover
 // board that land above the tabs (ch-ready), it keeps the tabs out of the layout and the page at full height, so the
 // data arriving pushes nothing on screen down. Never longer than 2.5 s after the data.
 let _channelReadyTimer = null;
