@@ -110,63 +110,6 @@ async function doPurchase(provider) {
     } catch (e) { toast(e.message || 'Purchase failed', 'error'); }
 }
 
-/* ── The channel on OpenVibe.VIP and OpenVibe.Tips ─────────── */
-// Memberships (VIP tiers) and other ways to support (Tips), from /api/payments/channel/:username/elsewhere. Built as
-// DOM nodes: the names and links come from other services.
-const _elsewhereCache = new Map();
-function _elsewhere(username) {
-    const key = String(username || '').toLowerCase();
-    if (!key) return Promise.resolve(null);
-    if (!_elsewhereCache.has(key)) _elsewhereCache.set(key, api(`/payments/channel/${encodeURIComponent(key)}/elsewhere`).catch(() => null));
-    return _elsewhereCache.get(key);
-}
-function _channelUsername() {
-    if (typeof currentStreamData !== 'undefined' && currentStreamData && currentStreamData.username) return currentStreamData.username;
-    const m = /^\/@([^/?#]+)/.exec(location.pathname);
-    return m ? decodeURIComponent(m[1]) : null;
-}
-function _elsewhereBlock(title, items, note) {
-    const wrap = document.createElement('div');
-    wrap.className = 'elsewhere';
-    const h = document.createElement('div');
-    h.className = 'elsewhere-title';
-    h.textContent = title;
-    const ul = document.createElement('ul');
-    ul.className = 'elsewhere-list';
-    for (const it of items) {
-        const li = document.createElement('li');
-        const a = document.createElement('a');
-        a.href = it.url;
-        a.target = '_blank';
-        a.rel = it.rel || 'noopener';
-        a.className = 'btn btn-outline';
-        a.textContent = it.label;
-        li.appendChild(a);
-        ul.appendChild(li);
-    }
-    wrap.append(h, ul);
-    if (note) { const p = document.createElement('div'); p.className = 'muted elsewhere-note'; p.textContent = note; wrap.appendChild(p); }
-    return wrap;
-}
-// Live's Subscribe sells tier 1; a creator's higher tiers are joined on openvibe.vip with the same account.
-async function _appendTiers(box, username) {
-    const d = await _elsewhere(username);
-    const plans = d && d.memberships ? d.memberships.plans.filter((p) => p.tier > 1) : [];
-    if (!plans.length || !box || !box.isConnected) return;
-    box.appendChild(_elsewhereBlock('More tiers on OpenVibe.VIP', plans.map((p) => ({
-        url: p.join_url, label: p.price_cents ? `${p.name} · $${(p.price_cents / 100).toFixed(2)}/mo` : p.name,
-    })), 'Each tier has its own perks. You join on openvibe.vip with this account; one tier at a time.'));
-}
-async function _appendSupport(box, username) {
-    const d = await _elsewhere(username);
-    if (!d || !box || !box.isConnected) return;
-    const items = [];
-    if (d.tips_url) items.push({ url: d.tips_url, label: 'OpenVibe.Tips: paid messages, TTS and sounds' });
-    for (const l of d.support_links || []) items.push({ url: l.url, label: l.label, rel: 'nofollow noopener ugc' });
-    if (!items.length) return;
-    box.appendChild(_elsewhereBlock('Other ways to support', items, d.support_links ? 'Ko-fi, PayPal and the like are paid outside OpenVibe, not in Vibes.' : ''));
-}
-
 /* ── Channel subscriptions ─────────────────────────────────── */
 function openvibeSubscribeModal(username) {
     return `
@@ -186,7 +129,7 @@ async function _initSubscribe() {
     catch { box.innerHTML = '<p class="muted">Subscriptions unavailable.</p>'; return; }
     const priceLine = document.getElementById('sub-price-line');
     if (priceLine) priceLine.textContent = `$${(info.priceUsd || cfg.subPriceUsd || 4.99).toFixed(2)}/month · ${info.subscriberCount || 0} subscriber${info.subscriberCount === 1 ? '' : 's'}`;
-    if (info.subscribed) { box.innerHTML = '<p style="text-align:center;color:#53fc18"><i class="fa-solid fa-circle-check"></i> You’re subscribed!</p>'; _appendTiers(box, username); return; }
+    if (info.subscribed) { box.innerHTML = '<p style="text-align:center;color:#53fc18"><i class="fa-solid fa-circle-check"></i> You’re subscribed!</p>'; if (typeof _appendTiers === 'function') _appendTiers(box, username); return; }
     const pc = info.powerchat || {};
     const price = Number(info.priceUsd || cfg.subPriceUsd || 4.99);
     const anyPowerchat = !!(pc.direct || pc.site);
@@ -215,7 +158,7 @@ async function _initSubscribe() {
         Auto-renew monthly from my Vibes balance (Vibes/PowerChat)
     </label>`;
     box.innerHTML = html;
-    _appendTiers(box, username);
+    if (typeof _appendTiers === 'function') _appendTiers(box, username);   // channel-support.js (channel pages)
 }
 
 async function doSubscribe(username, provider) {
@@ -317,7 +260,7 @@ async function _initDonateModal() {
     ]);
     const box = document.getElementById('donate-powerchat-direct');
     if (box && directAvailable) box.style.display = '';
-    _appendSupport(document.getElementById('donate-elsewhere'), _channelUsername());
+    if (typeof _appendSupport === 'function') _appendSupport(document.getElementById('donate-elsewhere'), _channelUsername());   // channel-support.js
     const line = document.getElementById('donate-balance-line');
     if (bal === null) return; // not logged in / balance unavailable — leave the form as-is
     if (line) line.innerHTML = `Your balance: <strong>${bal.toLocaleString()}</strong> Vibes${bal < 1 ? ' — <a href="#" onclick="showModal(\'buy-funds\');return false">buy some</a> to donate Vibes' : ''}`;
