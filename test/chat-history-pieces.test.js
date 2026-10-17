@@ -47,6 +47,7 @@ assert.ok(pieces[0].data.messages.some((m) => m.id === 'c299') && pieces[0].glob
 assert.deepStrictEqual([pieces[0].kind, pieces[0].data.channel, pieces[0].data.liveSlots], ['channel', 'goosely', [1]]);
 
 // A bigger first piece (what fits on screen), then small ones.
+assert.deepStrictEqual(_historyPieces(payload, 10, 50).map(rows), [50, ...Array(50).fill(10)], '550 rows: 50, then 50 × 10');
 assert.deepStrictEqual(_historyPieces(payload, 25, 120).map(rows), [120, ...Array(17).fill(25), 5], '550 rows: 120, then 17 × 25, then 5');
 
 // The global room has no second feed; a small payload is one piece; an empty one is itself.

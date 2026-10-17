@@ -2408,7 +2408,7 @@ async function hydrateActiveChatHistory(streamId, { clear = false } = {}) {
         const cached = _chatCacheRead(room);
         if (cached) {
             _chatPinned = true;
-            _swapChatHistory(messages, _renderHistoryOffscreen(chatEl, () => _renderHistoryPayload(_historyPieces(cached, 120)[0])));
+            _swapChatHistory(messages, _renderHistoryOffscreen(chatEl, () => _renderHistoryPayload(_historyPieces(cached, 50)[0])));
             messages.dataset.room = room;
         } else if (clear || roomChanged) {
             messages.innerHTML = '<div class="chat-loading-history"><i class="fa-solid fa-spinner fa-spin"></i> Loading history…</div>';
@@ -2435,9 +2435,10 @@ async function hydrateActiveChatHistory(streamId, { clear = false } = {}) {
     if (now.messages !== messages) return;  // the page changed under us
 
     if (payload) {
-        // The newest 120 rows first; older scrollback goes above them 25 rows at a time, as many as fit in each
-        // idle moment (all 1000 rows at once was a 2.7 s task on a phone), keeping the reader where they are.
-        const pieces = _historyPieces(payload, 25, 120);
+        // The newest 50 rows first (more than a chat pane shows); older scrollback goes above them 10 rows at a
+        // time, as many as fit in each idle moment, so no task blocks a phone (all 1000 rows at once took 2.7 s;
+        // 25 rows were still ~75 ms), keeping the reader where they are.
+        const pieces = _historyPieces(payload, 10, 50);
         _swapChatHistory(messages, _renderHistoryOffscreen(now, () => _renderHistoryPayload(pieces[0])));
         messages.dataset.room = room;
         _chatCacheWrite(room, payload);
@@ -2449,7 +2450,7 @@ async function hydrateActiveChatHistory(streamId, { clear = false } = {}) {
             if (gen !== _chatHydrateGen || getChatEl().messages !== messages) return;
             const top = messages.scrollTop, h = messages.scrollHeight;
             do messages.prepend(..._renderHistoryOffscreen(getChatEl(), () => _renderHistoryPayload(pieces[i++]), false).childNodes);
-            while (i < pieces.length && dl && dl.timeRemaining() > 15);
+            while (i < pieces.length && dl && dl.timeRemaining() > 20);
             messages.scrollTop = _chatPinned ? messages.scrollHeight : top + messages.scrollHeight - h;
             older(i);
         });
