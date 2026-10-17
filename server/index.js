@@ -639,7 +639,14 @@ app.use((req, res, next) => {
 });
 // index: false — "/" must reach sendDocument (the SPA fallback), never the raw index.html with its
 // unfilled route markers and unversioned asset URLs (a request without Accept: text/html skips SEO).
-app.use(express.static(assets.PUBLIC_DIR, { index: false, setHeaders: (res, filePath) => { if (filePath.endsWith('.html')) noCacheHeaders(res); } }));
+// /live-notify.js is loaded at this fixed address by other OpenVibe sites on every page view (~980 full downloads in
+// three hours on 2026-10-17 at the default max-age=0): five minutes fresh, then served stale while it revalidates, so
+// a change still reaches every site within minutes.
+const LIVE_NOTIFY_CACHE = 'public, max-age=300, stale-while-revalidate=86400';
+app.use(express.static(assets.PUBLIC_DIR, { index: false, setHeaders: (res, filePath) => {
+    if (filePath.endsWith('.html')) noCacheHeaders(res);
+    else if (path.basename(filePath) === 'live-notify.js') res.setHeader('Cache-Control', LIVE_NOTIFY_CACHE);
+} }));
 
 // Ensure data directories exist (all under the data directory, server/paths.js). VOD/clip/paste/
 // thumbnail files live in OpenVibe.Media now; what remains is Live-local state (live thumbs, emotes,
