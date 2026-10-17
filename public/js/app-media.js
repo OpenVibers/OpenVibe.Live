@@ -318,7 +318,7 @@ async function loadVodPlayer(vodId, seekTo) {
         { const _a = document.getElementById('vp-avatar'); if (_a) _a.innerHTML = _avatarInner(v.avatar_url, v.username); }
         document.getElementById('vp-date').textContent = formatDateTime(v.created_at);
         document.getElementById('vp-duration').textContent = formatDuration(v.duration_seconds || v.duration);
-        document.getElementById('vp-views').textContent = `${v.view_count || 0} views${v.unique_views != null ? ` · ${v.unique_views} unique` : ''}`;
+        document.getElementById('vp-views').textContent = `${v.view_count || 0} view${(v.view_count || 0) === 1 ? '' : 's'}${v.unique_views != null ? ` · ${v.unique_views} unique` : ''}`;
         _showVideoLink('vp-video-link', 'vod', v);
         document.getElementById('vp-description').textContent = v.description || '';
         _renderMediaAiOverview('vp-description', v.ai_overview);
@@ -1068,7 +1068,7 @@ async function loadClipPlayer(clipId) {
 
         // View count
         const clpViews = document.getElementById('clp-views');
-        if (clpViews) clpViews.textContent = `${cl.view_count || 0} views${cl.unique_views != null ? ` · ${cl.unique_views} unique` : ''}`;
+        if (clpViews) clpViews.textContent = `${cl.view_count || 0} view${(cl.view_count || 0) === 1 ? '' : 's'}${cl.unique_views != null ? ` · ${cl.unique_views} unique` : ''}`;
         _showVideoLink('clp-video-link', 'clip', cl);
 
         // Protocol badge

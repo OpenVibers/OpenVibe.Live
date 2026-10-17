@@ -32,8 +32,12 @@
 .cc-stat i { color: var(--accent); font-size: 0.72rem; align-self: center; }
 .cc-stat b { font-weight: 800; color: var(--text-primary); }
 .cc-stat small { color: var(--text-muted); font-size: 0.72rem; }
-.cc-recap { display: inline-flex; align-items: center; gap: 8px; font-size: 0.84rem; color: var(--text-secondary); text-decoration: none; padding: 6px 10px; border-radius: 10px; background: color-mix(in srgb, #fbbf24 8%, var(--bg-tertiary)); border: 1px solid color-mix(in srgb, #fbbf24 30%, var(--border)); }
+/* One line of text that wraps (the grade badge sits at its start): as a flex row the badge, the bold label and the
+   headline were three columns, and on a phone "After-show report:" wrapped onto three lines. */
+.cc-recap { display: inline-block; line-height: 1.5; font-size: 0.84rem; color: var(--text-secondary); text-decoration: none; padding: 6px 10px; border-radius: 10px; background: color-mix(in srgb, #fbbf24 8%, var(--bg-tertiary)); border: 1px solid color-mix(in srgb, #fbbf24 30%, var(--border)); }
 .cc-recap b { color: var(--text-primary); }
+.cc-recap .cc-grade { width: 24px; height: 24px; margin-right: 6px; vertical-align: middle; }
+.cc-recap > i { margin-right: 4px; }
 .cc-recap:hover { border-color: #fbbf24; }
 .cc-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 2px; }
 .cc-more { margin-top: 14px; padding-top: 12px; border-top: 1px dashed var(--border); }
