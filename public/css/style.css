@@ -1211,6 +1211,13 @@ body.ov-nav-overlay .navbar.ovnav-top {
     font-size: 0.82rem;
     line-height: 1.4;
 }
+.hero-golive-note {
+    display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 4px 14px;
+    margin: 18px auto 0; font-size: 0.86rem; color: var(--text-secondary);
+}
+.hero-golive-note span { display: inline-flex; align-items: center; gap: 6px; }
+.hero-golive-note i { color: var(--success, #22c55e); font-size: 0.78rem; }
+.hero-golive-note a { color: var(--accent-light); font-weight: 600; }
 .hero-philosophy-btn {
     display: inline-flex;
     align-items: center;
