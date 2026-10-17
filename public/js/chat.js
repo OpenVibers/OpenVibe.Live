@@ -2241,19 +2241,10 @@ function setupFullscreenChatOverlay() {
 }
 
 /**
- * History, without the jumps.
- *
- * It used to clear the container (the reader was thrown to the top), then append up to 500 rows
- * one at a time, scrolling and measuring after each — hundreds of forced layouts — and on /chat it
- * did all of that twice. Now:
- *
- *   1. The last copy of this room from localStorage paints at once (a reload shows the conversation
- *      immediately, not a spinner).
- *   2. The fresh history is fetched and rendered into a detached element, then swapped in with one
- *      DOM operation that keeps the reader where they were (at the bottom, or the same distance from it).
- *   3. Anything that arrived live while the fetch was in flight is re-added if history did not have it.
- *
- * A newer hydrate (room switch) makes an older one give up (generation check).
+ * History without jumps: (1) this room's last local copy paints at once; (2) the fetched history renders
+ * into a detached element and is swapped in with one DOM operation, the reader kept where they were, older
+ * rows added above a piece at a time; (3) rows that arrived live during the fetch are re-added. A newer
+ * hydrate (room switch) makes an older one give up (generation check).
  */
 let _chatStaging = null;
 let _chatHydrating = false;
@@ -2261,7 +2252,7 @@ let _chatLiveDuringHydrate = [];
 let _chatHydrateGen = 0;
 
 let _fcwHistoryBuffer = null;
-function _renderHistoryOffscreen(chatEl, fill) {
+function _renderHistoryOffscreen(chatEl, fill, widget = true) {
     const staging = document.createElement('div');
     _chatStaging = { ...chatEl, messages: staging };
     _fcwHistoryBuffer = [];
@@ -2270,20 +2261,25 @@ function _renderHistoryOffscreen(chatEl, fill) {
     try { fill(); } finally { _chatStaging = null; _loadingHistory = prevLoading; }
     // The floating widget gets the same history, once, in the background (it is hidden on most
     // pages; mirroring 500 rows into it one by one cost as much as rendering the main chat).
-    const forWidget = _fcwHistoryBuffer.slice(-200);
+    const forWidget = widget ? _fcwHistoryBuffer.slice(-200) : [];
     _fcwHistoryBuffer = null;
     if (forWidget.length) _idle(() => { const prev = _loadingHistory; _loadingHistory = true; try { forWidget.forEach((m) => _fcwAddMessage(m)); } finally { _loadingHistory = prev; } });
     return staging;
 }
 const _idle = (fn) => (window.requestIdleCallback ? requestIdleCallback(fn, { timeout: 1200 }) : setTimeout(fn, 60));
 
-/** The newest `n` rows of a payload: what fits on screen, rendered first. */
-function _historyTail(p, n) {
-    if (!p || !p.data) return p;
-    const t = (a) => (Array.isArray(a) && a.length > n ? a.slice(-n) : a);
-    return { ...p, data: { ...p.data, messages: t(p.data.messages) }, globalMsgs: t(p.globalMsgs) };
+/** A payload as pieces of `n` rows in time order (as the renderer merges them), newest piece first. */
+function _historyPieces(p, n) {
+    if (!p || !p.data) return [p];
+    const t = (m) => { const d = Date.parse(String(m.timestamp || '').replace(' ', 'T')); return isNaN(d) ? 0 : d; };
+    const all = (p.data.messages || []).map((m) => [m, 0]).concat((p.globalMsgs || []).map((m) => [m, 1])).sort((a, b) => t(a[0]) - t(b[0]));
+    const out = [];
+    for (let end = all.length; end > 0; end -= n) {
+        const part = all.slice(Math.max(0, end - n), end);
+        out.push({ ...p, data: { ...p.data, messages: part.filter((x) => !x[1]).map((x) => x[0]) }, globalMsgs: part.filter((x) => x[1]).map((x) => x[0]) });
+    }
+    return out.length ? out : [p];
 }
-const _payloadSize = (p) => ((p && p.data && p.data.messages) ? p.data.messages.length : 0) + ((p && p.globalMsgs) ? p.globalMsgs.length : 0);
 
 function _swapChatHistory(container, staging) {
     const pinned = _chatPinned || !container.children.length;
@@ -2412,7 +2408,7 @@ async function hydrateActiveChatHistory(streamId, { clear = false } = {}) {
         const cached = _chatCacheRead(room);
         if (cached) {
             _chatPinned = true;
-            _swapChatHistory(messages, _renderHistoryOffscreen(chatEl, () => _renderHistoryPayload(cached)));
+            _swapChatHistory(messages, _renderHistoryOffscreen(chatEl, () => _renderHistoryPayload(_historyPieces(cached, 120)[0])));
             messages.dataset.room = room;
         } else if (clear || roomChanged) {
             messages.innerHTML = '<div class="chat-loading-history"><i class="fa-solid fa-spinner fa-spin"></i> Loading history…</div>';
@@ -2439,26 +2435,25 @@ async function hydrateActiveChatHistory(streamId, { clear = false } = {}) {
     if (now.messages !== messages) return;  // the page changed under us
 
     if (payload) {
-        // What fits on screen first; the rest of the scrollback follows when the browser is idle.
-        const TAIL = 120;
-        const big = _payloadSize(payload) > TAIL + 40;
-        _swapChatHistory(messages, _renderHistoryOffscreen(now, () => _renderHistoryPayload(big ? _historyTail(payload, TAIL) : payload)));
+        // The newest 120 rows first; older scrollback is put above them a piece per idle moment (all 1000 rows
+        // in one go was a 2.7 s task on a phone), keeping the reader where they are.
+        const pieces = _historyPieces(payload, 120);
+        _swapChatHistory(messages, _renderHistoryOffscreen(now, () => _renderHistoryPayload(pieces[0])));
         messages.dataset.room = room;
         _chatCacheWrite(room, payload);
         // 3. Live messages that raced the fetch.
         const late = _chatLiveDuringHydrate;
         _chatLiveDuringHydrate = [];
         late.forEach((m) => addChatMessage(m));
-        if (big) {
-            _idle(() => {
-                if (gen !== _chatHydrateGen || getChatEl().messages !== messages) return;
-                const liveTail = [...messages.querySelectorAll(':scope > .chat-msg-new')];
-                _swapChatHistory(messages, _renderHistoryOffscreen(getChatEl(), () => _renderHistoryPayload(payload)));
-                // Rows that arrived live after the first paint stay.
-                liveTail.forEach((el) => { if (!el.dataset.msgId || !messages.querySelector(`[data-msg-id="${CSS.escape(el.dataset.msgId)}"]`)) messages.appendChild(el); });
-                if (_chatPinned) messages.scrollTop = messages.scrollHeight;
-            });
-        }
+        const older = (i) => i < pieces.length && _idle(() => {
+            if (gen !== _chatHydrateGen || getChatEl().messages !== messages) return;
+            const rows = _renderHistoryOffscreen(getChatEl(), () => _renderHistoryPayload(pieces[i]), false);
+            const top = messages.scrollTop, h = messages.scrollHeight;
+            messages.prepend(...rows.childNodes);
+            messages.scrollTop = _chatPinned ? messages.scrollHeight : top + messages.scrollHeight - h;
+            older(i + 1);
+        });
+        older(1);
     } else {
         messages.querySelector(':scope > .chat-loading-history')?.remove();
     }
