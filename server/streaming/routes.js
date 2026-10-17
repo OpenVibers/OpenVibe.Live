@@ -580,17 +580,23 @@ router.get('/channel/:username', optionalAuth, async (req, res) => {
 });
 
 // ── Most-popular recent VOD + clip (offline-screen "explore" cards) ──
+// One answer per channel for a minute, its three Media reads in parallel: they ran one after another on every view
+// of an offline channel (p95 0.77 s, 2026-10-17). The answer is the same for every visitor (no auth on this route).
+const POPULAR_TTL_MS = 60 * 1000;
+const _popularCache = new Map();   // user id → { at, data }
 router.get('/channel/:username/popular', async (req, res) => {
     try {
         const user = await db.getUserByUsername(req.params.username);
         if (!user) return res.status(404).json({ error: 'Not found' });
-        let vods = [], clips = [];
+        const hit = _popularCache.get(user.id);
+        if (hit && Date.now() - hit.at < POPULAR_TTL_MS) return res.json(hit.data);
         const media = require('../media-client');
-        try { const r = await media.listVods({ user_id: user.id, order: 'views', limit: 12 }); vods = r?.vods || (Array.isArray(r) ? r : []); } catch { /* */ }
-        try { const r = await media.listClips({ channel_user_id: user.id, order: 'views', limit: 12 }); clips = r?.clips || (Array.isArray(r) ? r : []); } catch { /* */ }
-        let ranges = null;
-        try { ranges = await require('../media-proxy/lookups').topContentRanges(user); } catch { /* */ }
-        res.json({
+        const [vods, clips, ranges] = await Promise.all([
+            media.listVods({ user_id: user.id, order: 'views', limit: 12 }).then((r) => r?.vods || (Array.isArray(r) ? r : [])).catch(() => []),
+            media.listClips({ channel_user_id: user.id, order: 'views', limit: 12 }).then((r) => r?.clips || (Array.isArray(r) ? r : [])).catch(() => []),
+            Promise.resolve().then(() => require('../media-proxy/lookups').topContentRanges(user)).catch(() => null),
+        ]);
+        const data = {
             // Singular kept for back-compat; arrays let the offline screen fill the space.
             vod: vods[0] || null,
             clip: clips[0] || null,
@@ -598,7 +604,10 @@ router.get('/channel/:username/popular', async (req, res) => {
             clips,
             // Top VOD + clip per time window (week/month/all) for the compact offline cycler.
             ranges,
-        });
+        };
+        if (_popularCache.size >= 500) _popularCache.clear();
+        _popularCache.set(user.id, { at: Date.now(), data });
+        res.json(data);
     } catch (err) {
         res.status(500).json({ error: 'Failed to get popular content' });
     }
