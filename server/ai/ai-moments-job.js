@@ -433,7 +433,7 @@ async function tick(opts = {}) {
                     slug, user_id: v.user_id,
                     title: title.slice(0, 80), content, language: 'text', visibility: 'public',
                     stream_id: v.stream_id, metadata,
-                    ai_summary: desc, ai_tags: JSON.stringify(tags.length ? tags : []),
+                    ai_summary: desc, ai_tags: JSON.stringify(db.noLooksTags(tags)),
                     screenshot: {
                         buffer: fs.readFileSync(screenshotPath),
                         filename: path.basename(screenshotPath),
