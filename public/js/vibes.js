@@ -253,7 +253,7 @@ function openvibeBucksDonateModal() {
 async function _initDonateModal() {
     const streamerId = _donateStreamerId();
     const [bal, directAvailable] = await Promise.all([
-        api('/funds/balance').then(d => Math.round(d.balance || 0)).catch(() => null),
+        currentUser ? api('/funds/balance').then(d => Math.round(d.balance || 0)).catch(() => null) : null,
         streamerId
             ? api(`/powerchat/donate-link?streamer_id=${streamerId}`).then(d => !!(d && d.mode === 'direct')).catch(() => false)
             : Promise.resolve(false),
