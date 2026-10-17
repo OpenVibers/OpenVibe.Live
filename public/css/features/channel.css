@@ -1070,6 +1070,12 @@
     padding: 14px clamp(12px, 2vw, 20px); background: var(--bg-card); border-bottom: 1px solid var(--border);
 }
 .ch-avatar-lg { width: 64px; height: 64px; font-size: 1.6rem; }
+/* The offline header's picture (its size is .ch-avatar-lg's): a circle like the live bar's, the letter on the accent. */
+.ch-offline-header .ch-avatar {
+    border-radius: 50%; overflow: hidden; flex-shrink: 0;
+    background: var(--primary, var(--accent)); color: var(--bg-main, #000);
+    display: flex; align-items: center; justify-content: center; font-weight: 700;
+}
 .ch-offline-header .ch-username { margin-bottom: 2px; }
 .ch-offline-header .ch-description:empty { display: none; }
 .ch-offline-header .ch-actions { display: flex; gap: 6px; margin-left: auto; }
@@ -1127,7 +1133,7 @@
     #page-channel .stream-layout { height: auto; }
 }
 .ch-info-bar .ch-avatar { width: 52px; height: 52px; overflow: hidden; cursor: pointer; }
-.ch-info-bar .ch-avatar img { width: 100%; height: 100%; object-fit: cover; border-radius: 50%; display: block; }
+.ch-info-bar .ch-avatar img, .ch-offline-header .ch-avatar img { width: 100%; height: 100%; object-fit: cover; border-radius: 50%; display: block; }
 .ch-info-bar-top h2 a:hover { text-decoration: underline !important; }
 .ch-stream-title { font-size: 1.02rem; color: var(--text); white-space: normal; margin-top: 4px; }
 .ch-stream-description { font-size: 0.9rem; }

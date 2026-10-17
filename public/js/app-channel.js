@@ -158,6 +158,22 @@ async function renderChannelVodsSection(username, liveStreams, vods, meta = {}) 
 
 // Can the current user manage a channel's content (its owner, or any admin)?
 // OpenVibe staff badge for a user (admin/owner -> Staff · Admin, mod -> Staff · Mod).
+// The streamer's picture in a channel header (the live info bar and the offline header), or the first letter of the
+// name when there is none or it fails to load. `path` makes it a link (the live bar); the offline header has none.
+function _fillChannelAvatar(el, ch, path) {
+    if (!el) return;
+    const letter = ((ch.username || '?')[0] || '?').toUpperCase();
+    el.textContent = letter;
+    if (ch.avatar_url) {
+        const img = document.createElement('img');
+        img.alt = '';
+        img.onerror = () => { el.textContent = letter; };
+        img.src = ch.avatar_url;
+        el.replaceChildren(img);
+    }
+    if (path) { el.style.cursor = 'pointer'; el.onclick = () => navigate(path); }
+}
+
 function _staffBadge(role, isOwner) {
     if (role === 'admin' || isOwner) return '<span class="staff-badge staff-badge-admin" data-tip="Staff - Admin"><i class="fa-solid fa-shield-halved"></i></span>';
     if (role === 'global_mod') return '<span class="staff-badge staff-badge-mod" data-tip="Staff - Mod"><i class="fa-solid fa-shield"></i></span>';
@@ -732,14 +748,7 @@ async function loadChannelPage(username, managedStreamRef = null, legacySessionI
             // Populate streamer info bar (below video). Avatar image (letter fallback)
             // + display name both link to the channel; the @handle is dropped.
             const _chPath = channelPath(ch.username);
-            const _chAvatar = document.getElementById('ch-avatar');
-            if (_chAvatar) {
-                _chAvatar.innerHTML = ch.avatar_url
-                    ? `<img src="${esc(ch.avatar_url)}" alt="" onerror="this.style.display='none';this.parentNode.textContent='${((ch.username || '?')[0] || '?').toUpperCase()}'">`
-                    : ((ch.username || '?')[0] || '?').toUpperCase();
-                _chAvatar.style.cursor = 'pointer';
-                _chAvatar.onclick = () => navigate(_chPath);
-            }
+            _fillChannelAvatar(document.getElementById('ch-avatar'), ch, _chPath);
             const _chName = document.getElementById('ch-display-name');
             if (_chName) {
                 // Name only — the h2 clips with ellipsis, so the staff badge lives in
@@ -810,7 +819,7 @@ async function loadChannelPage(username, managedStreamRef = null, legacySessionI
             _placeBelowFold();
 
             // Populate offline header
-            document.getElementById('ch-avatar-offline').textContent = (ch.username || '?')[0].toUpperCase();
+            _fillChannelAvatar(document.getElementById('ch-avatar-offline'), ch);
             document.getElementById('ch-display-name-offline').innerHTML = `${esc(ch.display_name || ch.username)} ${_staffBadge(ch.role, ch.is_owner)}`;
             _activeChannelIsOwnerRank = !!ch.is_owner;
             document.getElementById('ch-username-offline').textContent = '@' + ch.username;
