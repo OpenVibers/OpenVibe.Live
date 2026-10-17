@@ -446,3 +446,15 @@ async function doCashout() {
         closeModal();
     } catch (e) { toast(e.message || 'Cashout failed', 'error'); }
 }
+
+// Every other OpenVibe site's account menu links its Vibes chip here (openvibe-shared 4.3: openvibe.live/#vibes): open
+// the Vibes window once, then drop the hash so a reload or a shared link does not open it again.
+(function openVibesFromLink() {
+    if (location.hash !== '#vibes') return;
+    const open = () => {
+        try { history.replaceState(history.state, '', location.pathname + location.search); } catch { /* keep the hash */ }
+        showModal('buy-funds');
+    };
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', open, { once: true });
+    else setTimeout(open, 0);
+})();
