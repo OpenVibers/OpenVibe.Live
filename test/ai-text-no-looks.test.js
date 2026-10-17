@@ -65,6 +65,12 @@ const db = require('../server/db/database');
     assert.deepStrictEqual(noLooksDeep({ overview_alltime: 'A shirtless host chats.', n: 3, jokes: ['the streamer wearing a hat dances'], sessions: [{ moments: [{ description: 'A man in a red shirt cooks.' }] }] }),
         { overview_alltime: 'A host chats.', n: 3, jokes: ['the streamer dances'], sessions: [{ moments: [{ description: 'A man cooks.' }] }] });
 
+    // A session's AI title about looks is not used: the stream's own title is stored instead.
+    await db.setStreamAiTitle(sid, 'Orange Shirt Kitchen Chat');
+    assert.strictEqual((await db.get('SELECT ai_title FROM streams WHERE id = ?', [sid])).ai_title, 't');
+    await db.setStreamAiTitle(sid, 'Minecraft Castle Marathon');
+    assert.strictEqual((await db.get('SELECT ai_title FROM streams WHERE id = ?', [sid])).ai_title, 'Minecraft Castle Marathon');
+
     // The home hero's AI copy: a line about someone's looks is never served, even from a batch stored before.
     const words = ['crouton connoisseurs', 'van-dwelling coders', 'ara007 shirtless thoughts', 'goosely fans', 'late-night tinkerers', 'young gamers'];
     await db.setState('home_hero_slogans', JSON.stringify({ audiences: words, quips: ['chat is cooking', 'a shirtless take', 'goosely did it again', 'rust compiles eventually', 'one more build'], updated_at: Date.now(), v: 4 }));

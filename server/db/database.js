@@ -418,6 +418,9 @@ function _noClothing(text) {
 // Tags shown with public AI items ("red-beanie", "bearded", "man", "tanktop") follow the same rule: a tag naming
 // clothing, hair, face, age or a person by gender is dropped.
 const _LOOKS_TAG = new RegExp(`(?:^|[\\s_-])(?:${_WORN}|${_FACE}|${_LOOKS}|men|women|man|woman|boy|girl|guy|gal|kid|child|teen|teenager|lady|male|female|youth|shirtless|topless|tanktop|selfie)(?=$|[\\s_-])`, 'i');
+// A short AI title that names looks ("Orange Shirt Kitchen Chat") cannot be repaired word by word: it is not used.
+const _LOOKS_WORD = new RegExp(`\\b(?:${_WORN}|${_FACE}|${_LOOKS}|faces?|smil(?:e|ing)|body|skin|men|women|man|woman|boy|girl|guy|kid|child|teen|lady|male|female|shirtless|topless)\\b`, 'i');
+const _hasLooks = (t) => _LOOKS_WORD.test(String(t || ''));
 function _noLooksTags(tags) {
     return (Array.isArray(tags) ? tags : []).filter((t) => typeof t === 'string' && t.trim() && !_LOOKS_TAG.test(t.trim()));
 }
@@ -967,7 +970,11 @@ async function assembleStreamerAiTimeline(userId, vodIdByStream = null) {
 }
 
 async function setStreamAiTitle(streamId, title) {
-    try { return await run('UPDATE streams SET ai_title = ? WHERE id = ?', [String(title || '').slice(0, 80), streamId]); } catch { return null; }
+    try {
+        // A title about how someone looks is replaced by the stream's own title (stored, so it is not asked again).
+        if (_hasLooks(title)) title = ((await get('SELECT title FROM streams WHERE id = ?', [streamId])) || {}).title || 'Stream';
+        return await run('UPDATE streams SET ai_title = ? WHERE id = ?', [String(title || '').slice(0, 80), streamId]);
+    } catch { return null; }
 }
 // Sessions that have an AI overview but no short AI title yet (for background titling).
 async function getUntitledAiSessions(userId, limit = 20) {
@@ -3556,7 +3563,7 @@ module.exports = {
     setVodAiOverview, setClipAiOverview, setVodTranscript, setClipTranscript, getStreamMemoriesInRange,
     getVodsNeedingOverview, getClipsNeedingOverview, getVodsNeedingTimeline, getVodsNeedingTranscript, getClipsNeedingTranscript, getMediaNeedingAiAnalysis,
     setVodTranscriptStatus, setClipTranscriptStatus, bumpVodTranscriptAttempt, bumpClipTranscriptAttempt,
-    cleanupMalformedAiText, noLooks: _noLooks, noLooksTags: _noLooksTags, recordAiUsage, getAiCostToday, getAiCostTodayForUser, getAiUsageSummary,
+    cleanupMalformedAiText, noLooks: _noLooks, noLooksTags: _noLooksTags, hasLooks: _hasLooks, recordAiUsage, getAiCostToday, getAiCostTodayForUser, getAiUsageSummary,
     getStreamMemoriesByUser, countStreamMemoriesByUser, getStreamTranscriptSegments,
     addTimelineEvents, getTimeline, getTimelineText, getTimelineCoverage, linkTimelineToVod, getTimelineByVod, getTimelineVodId,
     upsertStreamerOverview, getStreamerOverview, getAllStreamerOverviews, getStreamersNeedingOverview,
