@@ -1,6 +1,6 @@
 'use strict';
 /**
- * BILLING_AUTHORITY=billing (roadmap Wave 8, ADR-012): every Live money action goes to
+ * OpenVibe.Billing is the ledger (since the cutover of 2026-10-17; ADR-012): every Live money action goes to
  * OpenVibe.Billing with Live's service token (audience openvibe.billing), the one capability that
  * route needs, a deterministic Idempotency-Key and canonical subjects — and Live's own money
  * columns and tables (users.openvibe_bucks_*, transactions, payment_orders, subscriptions) are
@@ -15,7 +15,6 @@ const http = require('http');
 const { startNetwork, startBilling } = require('./billing-stub');
 
 process.env.NODE_ENV = 'test';
-process.env.BILLING_AUTHORITY = 'billing';
 process.env.OV_OAUTH_CLIENT_ID = 'live';
 process.env.OV_OAUTH_CLIENT_SECRET = 'live-secret';
 process.env.OV_BILLING_TIMEOUT_MS = '1500';
@@ -104,7 +103,7 @@ async function check(name, fn) {
 
     billing.fund(SID.ann, 3000);
 
-    await check('the switch is read in one place and says billing', async () => {
+    await check('Billing is the authority, and the client config says so', async () => {
         const money = require('../server/monetization/money-authority');
         assert.strictEqual(money.authority(), 'billing');
         const cfg = await call('GET', '/api/payments/config');
@@ -369,8 +368,6 @@ async function check(name, fn) {
             const r = await call('POST', `/api/payments/webhook/${p}`, null, {});
             assert.strictEqual(r.status, 410, p); assert.strictEqual(r.json.webhook_url, `https://billing.openvibe.network/webhooks/${name}`);
         }
-        const rec = await require('../server/integrations/powerchat-reconcile').reconcileOnce();
-        assert.strictEqual(rec.skipped, 'billing_authority');
     });
 
     await check('a missing Network grant fails clearly (misconfigured), nothing moves', async () => {
@@ -416,12 +413,10 @@ async function check(name, fn) {
         assert.strictEqual(st.json.authority, "billing"); assert.strictEqual(st.json.billing.reachable, false, JSON.stringify(st.json));
     });
 
-    await check('the tripwire: Live\'s money columns cannot be written under billing', async () => {
-        await assert.rejects(db.addVibes(2, 5), /read-only/);
-        await assert.rejects(db.addVibesCashout(3, 5), /read-only/);
-        await assert.rejects(db.createPaymentOrder({ user_id: 2, provider: 'powerchat' }), /read-only/);
-        await assert.rejects(db.upsertSubscription({ subscriber_id: 2, streamer_id: 3 }), /read-only/);
-        await assert.rejects(db.createTransaction({ to_user_id: 2, amount: 1, type: 'purchase' }), /read-only/);
+    await check('Live has no way left to write its old money columns and tables', async () => {
+        for (const fn of ['addVibes', 'deductVibes', 'addVibesCashout', 'deductVibesCashout', 'createPaymentOrder', 'updatePaymentOrder', 'upsertSubscription', 'setSubscriptionStatus', 'createTransaction']) {
+            assert.strictEqual(db[fn], undefined, `database.js still has ${fn}`);
+        }
     });
 
     await check('legacy balances are not shown as live (admin stats, admin user list)', async () => {

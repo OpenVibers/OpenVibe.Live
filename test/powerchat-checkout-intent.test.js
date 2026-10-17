@@ -110,16 +110,16 @@ const mint = (opts) => checkout.mintCheckoutLink('alex', 'pcsub:42', { purpose: 
     r = await mint({ amountCents: 10 });
     assert.ok(!('amount_cents' in api.calls.at(-1).query));
 
-    // ── builders: subscription persists route + renew flag and returns expiry ──
+    // ── builders for OpenVibe.Billing's intents: the checkout_ref rides as the ref, the label names what is bought ──
     api.script.push({ body: { data: { url: 'https://tunnel.example/alex/tip?app_intent=TOK5', expiresAt: '2026-08-27T12:00:00.000Z' } } });
-    const sub = await checkout.buildSubscribeLink(orders.get(42), 1, { autoRenew: 1, route: 'direct' });
+    const sub = await checkout.buildBillingSubscribeLink({ checkout_ref: 'pcsub:pi_SUB', amount_cents: 499, route: 'direct', auto_renew: 1 }, 1);
     assert.strictEqual(sub.mode, 'direct'); assert.strictEqual(sub.minted, true); assert.strictEqual(sub.expiresAt, '2026-08-27T12:00:00.000Z');
-    assert.strictEqual(orders.get(42).provider_ref, 'direct:renew');
-    assert.strictEqual(api.calls.at(-1).query.ref, 'pcsub:42');
+    assert.strictEqual(api.calls.at(-1).query.ref, 'pcsub:pi_SUB');
     assert.strictEqual(api.calls.at(-1).query.item_name, 'goosely — 1 month subscription (auto-renew)');
     api.script.push({ body: { data: { url: 'https://tunnel.example/alex/tip?app_intent=TOK6' } } });
-    const buy = await checkout.buildPurchaseLink(orders.get(41));
+    const buy = await checkout.buildBillingPurchaseLink({ checkout_ref: 'pcorder:pi_BUY', bits: 500, amount_cents: 500 });
     assert.strictEqual(buy.mode, 'site'); assert.strictEqual(buy.minted, true);
+    assert.strictEqual(api.calls.at(-1).query.ref, 'pcorder:pi_BUY');
     assert.strictEqual(api.calls.at(-1).query.item_name, '500 Vibes');
     assert.strictEqual(api.calls.at(-1).query.purpose, 'vibes');
 

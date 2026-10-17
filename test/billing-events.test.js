@@ -11,7 +11,6 @@ const assert = require('assert');
 const crypto = require('crypto');
 
 process.env.NODE_ENV = 'test';
-delete process.env.BILLING_AUTHORITY;
 process.env.LIVE_EVENTS_SECRET = crypto.randomBytes(32).toString('hex');
 const quiet = console.log;
 console.log = () => {};
@@ -62,14 +61,9 @@ const SID = { ann: 'usr_01JAB2C3D4E5F6G7H8J9K0MNA1', bob: 'usr_01JAB2C3D4E5F6G7H
         subscription: { id: `sub_${ulid()}`, status: 'expired', auto_renew: 1, cancel_at_period_end: 0, provider: null }, reason, ...extra,
     });
 
-    // Live is the ledger: its own checkout and sweeper notify, so Billing's events change nothing.
     const purchase = settled('purchase', { metadata: { bits: 500, paid_cents: 500 } });
-    assert.strictEqual(await post(purchase), 204);
-    assert.strictEqual(await events.apply(purchase), 'ignored:live-ledger');
-    assert.deepStrictEqual(sent, []);
-
-    process.env.BILLING_AUTHORITY = 'billing';
     assert.strictEqual(await post(purchase, 'x'.repeat(64)), 401, 'a delivery signed with another secret is refused');
+    assert.deepStrictEqual(sent, []);
     assert.strictEqual(await post(purchase), 204);
     assert.deepStrictEqual(sent.map((n) => [n.user_id, n.title, n.message]), [[2, 'Vibes credited 🎉', '500 Vibes were added to your balance ($5.00).']]);
     assert.strictEqual(await post(purchase), 204);

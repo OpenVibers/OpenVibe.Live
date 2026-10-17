@@ -644,11 +644,8 @@ async function sanitizeUser(user, publicOnly = false) {
         capabilities: await permissions.getCapabilities(user),
     };
     if (!publicOnly) {
-        // Balances are real money (Vibes) and the user's own business, like the key. No email: the OpenVibe
-        // account keeps it (openvibe.network/my) and Live does not read users.email (WS-B task 2).
-        // Under BILLING_AUTHORITY=billing the column is a frozen legacy copy (ADR-012 rule 8: never
-        // shown as live); the balance comes from /api/funds/balance.
-        if (!require('../monetization/money-authority').onBilling()) safe.openvibe_bucks_balance = user.openvibe_bucks_balance;
+        // No email: the OpenVibe account keeps it (openvibe.network/my) and Live does not read users.email (WS-B
+        // task 2). The Vibes balance comes from /api/funds/balance (OpenVibe.Billing); Live's old column is never shown.
         // Kept as null for one release: the previous release's pages expect the field in /api/auth/me (test/n-1.test.js).
         // OpenCoins come from /api/coins/balance (the Network wallet); the frozen column is never read. Goes with the column.
         safe.openvibe_coins_balance = null;

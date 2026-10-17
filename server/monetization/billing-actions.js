@@ -1,9 +1,8 @@
 'use strict';
 /**
- * Live's money actions when BILLING_AUTHORITY=billing (roadmap Wave 8, ADR-012).
+ * Live's money actions, all on OpenVibe.Billing, the money ledger since the cutover of 2026-10-17 (ADR-012).
  *
- * Each function is the Billing-backed twin of what vibes.js / payments-routes.js do against Live's
- * own columns, returning the SAME response shapes so the routes and the SPA do not change:
+ * Each function answers in the response shapes Live's routes and the SPA had before the cutover:
  *
  *   checkout (Buy Vibes)       → POST /intents {kind: purchase}           billing.intent.create
  *   PayPal return              → POST /intents/:id/capture                billing.intent.create

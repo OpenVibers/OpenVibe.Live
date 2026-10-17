@@ -31,6 +31,10 @@ const CHAT_PATHS = /^\/(api\/(chat|dm|tts|emotes|channels)(\/|$)|api\/sounds(\/|
 // now answer 404, and every one of them was already wrapped to fail quietly (the controls panel, the dashboard's
 // controls and ONVIF cards, the broadcast profile pickers), so they are not this release's to answer either.
 const RETIRED_PATHS = /^\/api\/(controls|onvif)(\/|$)/;
+// Vibes balances and history are OpenVibe.Billing's (the money ledger since 2026-10-17). The harness runs in drill mode,
+// where every other service looks down, so this release answers them 503 "unavailable"; the recorded N-1 answered from
+// Live's old columns. In production both releases read them from Billing.
+const BILLING_READS = /^\/api\/funds\/(balance|history)$/;
 
 function freePort() {
     return new Promise((resolve) => { const s = net.createServer().listen(0, '127.0.0.1', () => { const p = s.address().port; s.close(() => resolve(p)); }); });
@@ -80,7 +84,7 @@ module.exports = {
         { name: 'navigator.sendBeacon', method: 'POST' },
     ],
     strip: ['API', 'location.origin', 'window.location.origin'],
-    keep: (pathname) => !CHAT_PATHS.test(pathname) && !RETIRED_PATHS.test(pathname),
+    keep: (pathname) => !CHAT_PATHS.test(pathname) && !RETIRED_PATHS.test(pathname) && !BILLING_READS.test(pathname),
     /** Pages an open tab may hold: the shell (its scripts, styles and links) and a server-rendered channel. */
     crawl: ['/', '/@n1star'],
     origins: ['https://openvibe.live'],

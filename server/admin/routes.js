@@ -13,7 +13,7 @@
  * GET    /api/admin/bans                   - List all bans
  * GET    /api/admin/vpn-queue              - VPN approval queue
  * PUT    /api/admin/vpn-queue/:id          - Approve/deny VPN
- * GET    /api/admin/money                  - Money authority (BILLING_AUTHORITY), freeze state, Billing health
+ * GET    /api/admin/money                  - Money authority (OpenVibe.Billing), freeze state, Billing health
  * POST   /api/admin/money/freeze           - Owner: freeze/unfreeze Live money writes { on, reason }
  * POST   /api/admin/money/actions/:id/resolve - Owner: re-send a Billing action whose outcome is unknown
  * GET    /api/admin/settings               - Get all site settings
@@ -88,16 +88,8 @@ router.get('/stats', async (req, res) => {
                 total: (await db.get('SELECT COUNT(*) as c FROM streams')).c,
                 totalViewers: (await db.get('SELECT COALESCE(SUM(viewer_count), 0)::bigint as c FROM streams WHERE is_live = 1')).c,
             },
-            // Under BILLING_AUTHORITY=billing these tables are frozen legacy copies: the numbers live
-            // in OpenVibe.Billing (reconciliation report), so none are shown as current here.
-            openvibeBucks: money.onBilling() ? {
-                authority: 'billing', totalCirculating: null, totalTransactions: null, pendingCashouts: null, totalDonated: null,
-            } : {
-                totalCirculating: (await db.get('SELECT COALESCE(SUM(openvibe_bucks_balance), 0) as c FROM users')).c,
-                totalTransactions: (await db.get('SELECT COUNT(*) as c FROM transactions')).c,
-                pendingCashouts: (await db.get("SELECT COUNT(*) as c FROM transactions WHERE type = 'cashout' AND status = 'escrow'")).c,
-                totalDonated: (await db.get("SELECT COALESCE(SUM(amount), 0)::bigint as c FROM transactions WHERE type = 'donation'")).c,
-            },
+            // OpenVibe.Billing keeps the money (its staff console and reconciliation report have the numbers).
+            openvibeBucks: { authority: 'billing', totalCirculating: null, totalTransactions: null, pendingCashouts: null, totalDonated: null },
             vods: {
                 total: vodCounts.total,
                 public: vodCounts.public,
@@ -157,7 +149,7 @@ router.get('/users', async (req, res) => {
 
         const users = await db.all(sql, params);
         const total = (await db.get(countSql, countParams)).c;
-        if (money.onBilling()) for (const u of users) u.openvibe_bucks_balance = null;   // legacy column; Billing holds Vibes
+        for (const u of users) u.openvibe_bucks_balance = null;   // Live's old column; Billing holds Vibes
 
         res.json({ users, total });
     } catch (err) {
@@ -490,11 +482,9 @@ router.put('/vpn-queue/:id', async (req, res) => {
 // ── Money: who holds it, the freeze, and Billing health (roadmap Wave 8) ──────
 // Every admin can see the state; only the owner can freeze/unfreeze or resolve an action.
 router.get('/money', async (req, res) => {
-    const out = { authority: money.authority(), billing_authority_env: process.env.BILLING_AUTHORITY || null, ...await money.freezeState() };
-    if (money.onBilling()) {
-        try { out.billing = await require('../monetization/billing-actions').adminStatus(); }
-        catch (err) { out.billing = { error: err.message }; }
-    }
+    const out = { authority: money.authority(), ...await money.freezeState() };
+    try { out.billing = await require('../monetization/billing-actions').adminStatus(); }
+    catch (err) { out.billing = { error: err.message }; }
     res.json(out);
 });
 router.post('/money/freeze', permissions.requireOwner, async (req, res) => {
@@ -504,7 +494,6 @@ router.post('/money/freeze', permissions.requireOwner, async (req, res) => {
     res.json({ authority: money.authority(), ...state });
 });
 router.post('/money/actions/:id/resolve', permissions.requireOwner, async (req, res) => {
-    if (!money.onBilling()) return res.status(409).json({ error: 'Only used when BILLING_AUTHORITY=billing' });
     const billingActions = require('../monetization/billing-actions');
     try {
         const r = await billingActions.resolveAction(parseInt(req.params.id, 10));

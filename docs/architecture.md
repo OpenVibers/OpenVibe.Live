@@ -233,10 +233,10 @@ through the SDK inbox (`idempotency_receipts`):
 | `billing.transaction.settled`, `billing.entitlement.changed` | `/internal/billing-events` | `LIVE_EVENTS_SECRET` | `scripts/subscribe-media-events.js --billing` |
 | `tips.interaction.ready` | `/internal/tips-events` | `LIVE_EVENTS_SECRET` | `scripts/subscribe-media-events.js --tips` |
 
-Billing's events act only under `BILLING_AUTHORITY=billing` ([server/monetization/billing-events.js](../server/monetization/billing-events.js)):
-"Vibes credited" to a buyer, "Subscribed!" for a provider-paid subscription (with the sub alert on the streamer's
-PowerChat overlay when PowerChat paid), the channel's celebration for a site-routed PowerChat tip, and the
-subscription notices Live's renewal sweeper sent in `live` mode (could not auto-renew, renewal failed, ended).
+Billing's events ([server/monetization/billing-events.js](../server/monetization/billing-events.js)): "Vibes credited"
+to a buyer, "Subscribed!" for a provider-paid subscription (with the sub alert on the streamer's PowerChat overlay when
+PowerChat paid), the channel's celebration for a site-routed PowerChat tip, and the subscription notices (could not
+auto-renew, renewal failed, ended).
 
 OpenVibe.Tips posts its own chat lines to OpenVibe.Chat, so a tip it settled (from openvibe.tips, or on a streamer's own
 PowerChat through Billing) reaches Live only as `tips.interaction.ready` ([server/tips/tips-events.js](../server/tips/tips-events.js)):
