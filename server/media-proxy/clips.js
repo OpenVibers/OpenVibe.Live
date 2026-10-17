@@ -232,20 +232,25 @@ router.get('/:id', optionalAuth, async (req, res) => {
         }
         if (!clip || !await access.canView(req.user, clip)) return clipNotFound(res);
         if (access.isPrivate(clip)) res.set('Cache-Control', cache.htmlHeaders({ private: true }));
-        await withUserFields(clip);
+        // Independent lookups, run together (one after another before, Community's comment count included).
+        const ip = req.headers['cf-connecting-ip'] || req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.ip || 'unknown';
+        const [, inserted, stream, st, comments] = await Promise.all([
+            withUserFields(clip),
+            // Unique-view tracking (content_views stays in live.db).
+            db.run('INSERT INTO content_views (content_type, content_id, ip) VALUES (?, ?, ?) ON CONFLICT DO NOTHING', ['clip', clip.id, ip]).catch(() => null),
+            clip.stream_id ? db.getStreamById(clip.stream_id).catch(() => null) : null,
+            db.getClipAiState(clip.id).catch(() => null),
+            commentCount('clip', clip.id, clip.title, req.ip).catch(() => null),   // null when Community is unreachable
+        ]);
 
-        // Unique-view tracking (content_views stays in live.db).
         try {
-            const ip = req.headers['cf-connecting-ip'] || req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.ip || 'unknown';
-            const inserted = await db.run('INSERT INTO content_views (content_type, content_id, ip) VALUES (?, ?, ?) ON CONFLICT DO NOTHING', ['clip', clip.id, ip]);
-            if (inserted.changes > 0) {
+            if (inserted && inserted.changes > 0) {
                 const count = await db.get('SELECT COUNT(*) as c FROM content_views WHERE content_type = ? AND content_id = ?', ['clip', clip.id]);
                 clip.view_count = Math.max(Number(clip.view_count) || 0, count.c);
             }
         } catch { /* */ }
 
         if (clip.stream_id) {
-            const stream = await db.getStreamById(clip.stream_id);
             if (stream) {
                 clip.stream_started_at = stream.started_at;
                 clip.stream_ended_at = stream.ended_at;
@@ -261,7 +266,6 @@ router.get('/:id', optionalAuth, async (req, res) => {
 
         // Overlay Live-owned AI state (overview + transcript live in clip_ai_state).
         try {
-            const st = await db.getClipAiState(clip.id);
             if (st) {
                 if (st.ai_overview_short) { clip.ai_overview_short = st.ai_overview_short; clip.ai_overview = st.ai_overview || clip.ai_overview || st.ai_overview_short; }
                 if (st.ai_transcript_json) {
@@ -272,7 +276,7 @@ router.get('/:id', optionalAuth, async (req, res) => {
             }
         } catch { /* */ }
 
-        clip.comment_count = await commentCount('clip', clip.id, clip.title, req.ip);   // null when Community is unreachable
+        clip.comment_count = comments;
         clip.can_delete = await canActorDeleteClip(req.user, clip);
         clip.can_edit = await canActorModerateClip(req.user, clip);
 

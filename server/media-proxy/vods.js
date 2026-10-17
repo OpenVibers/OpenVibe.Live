@@ -479,11 +479,21 @@ router.get('/:id', optionalAuth, async (req, res) => {
         const vod = await loadVisibleVod(req, res, req.params.id);
         if (!vod) return;
         if (access.isPrivate(vod)) res.set('Cache-Control', cache.htmlHeaders({ private: true }));
-        await withUserFields(vod);
+        // The lookups below do not depend on each other: they run together (they ran one after another, Media's clip
+        // list and Community's comment count included).
+        const ip = requesterIp(req);
+        const [, stream, st, co, inserted, comments] = await Promise.all([
+            withUserFields(vod),
+            vod.stream_id ? db.getStreamById(vod.stream_id).catch(() => null) : null,
+            db.getVodAiState(vod.id).catch(() => null),
+            media.listClips(vod.stream_id ? { stream_id: vod.stream_id } : { vod_id: vod.id }).catch(() => null),
+            // Unique-view tracking stays local (content_views is a Live table).
+            db.run('INSERT INTO content_views (content_type, content_id, ip) VALUES (?, ?, ?) ON CONFLICT DO NOTHING', ['vod', vod.id, ip]).catch(() => null),
+            commentCount('vod', vod.id, vod.title, req.ip).catch(() => null),   // null when Community is unreachable
+        ]);
 
         // Enrich with local stream details for chat replay.
         if (vod.stream_id) {
-            const stream = await db.getStreamById(vod.stream_id);
             if (stream) {
                 vod.stream_started_at = stream.started_at;
                 vod.stream_ended_at = stream.ended_at;
@@ -496,7 +506,6 @@ router.get('/:id', optionalAuth, async (req, res) => {
 
         // Overlay Live-owned AI state (overview + transcript live in vod_ai_state).
         try {
-            const st = await db.getVodAiState(vod.id);
             if (st) {
                 if (st.ai_overview_short) { vod.ai_overview_short = st.ai_overview_short; vod.ai_overview = st.ai_overview || vod.ai_overview || st.ai_overview_short; }
                 if (st.ai_transcript_json) {
@@ -507,24 +516,15 @@ router.get('/:id', optionalAuth, async (req, res) => {
             }
         } catch { /* */ }
 
-        let clips = [];
+        const clips = co?.clips || (Array.isArray(co) ? co : []);
         try {
-            const q = vod.stream_id ? { stream_id: vod.stream_id } : { vod_id: vod.id };
-            const co = await media.listClips(q);
-            clips = co?.clips || (Array.isArray(co) ? co : []);
-        } catch { /* */ }
-
-        // Unique-view tracking stays local (content_views is a Live table).
-        try {
-            const ip = requesterIp(req);
-            const inserted = await db.run('INSERT INTO content_views (content_type, content_id, ip) VALUES (?, ?, ?) ON CONFLICT DO NOTHING', ['vod', vod.id, ip]);
-            if (inserted.changes > 0) {
+            if (inserted && inserted.changes > 0) {
                 const count = await db.get('SELECT COUNT(*) as c FROM content_views WHERE content_type = ? AND content_id = ?', ['vod', vod.id]);
                 vod.view_count = Math.max(Number(vod.view_count) || 0, count.c);
             }
         } catch { /* */ }
 
-        vod.comment_count = await commentCount('vod', vod.id, vod.title, req.ip);   // null when Community is unreachable
+        vod.comment_count = comments;
         res.json({ vod, clips });
     } catch {
         res.status(500).json({ error: 'Failed to get VOD' });
