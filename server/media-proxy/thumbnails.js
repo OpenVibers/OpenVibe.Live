@@ -95,7 +95,12 @@ async function generateFor(kind, id, req, res) {
         if (url) return res.json({ thumbnail_url: url });
         // Media is still working on it (202 with its job): no picture yet, nothing failed.
         if (out && out.job) return res.status(202).json({ thumbnail_url: null });
-        res.status(500).json({ error: 'Failed to generate thumbnail' });
+        // Media answered with neither a picture nor a job (a recording it cannot draw a frame from yet): no picture,
+        // which is not this visitor's error. Asked again after a while, never a 500 in every visitor's console
+        // (the browser check of release 35d02c6b, 2026-10-17, clip 455 on /@goosely).
+        console.warn(`[Thumbnails] Media gave no thumbnail and no job for ${key}`);
+        rememberNoPicture(key, MEDIA_BUSY_MS);
+        res.json({ thumbnail_url: null });
     } catch (err) {
         if (err && err.name === 'MediaApiError' && err.status) return res.status(err.status).json(err.body || { error: err.message });
         res.status(502).json({ error: 'Media service unavailable' });
