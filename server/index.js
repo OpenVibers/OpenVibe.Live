@@ -679,6 +679,9 @@ app.post('/internal/network-events', require('./auth/network-events').handler);
 // OpenVibe.Billing's settlements and subscription changes, told to the people they concern once Billing is the
 // ledger (server/monetization/billing-events.js; LIVE_EVENTS_SECRET, before /internal like the others).
 app.post('/internal/billing-events', require('./monetization/billing-events').handler);
+// OpenVibe.Tips' settled tips → the channel's donation goal and tip history (server/tips/tips-events.js; Tips posts
+// its own chat lines to OpenVibe.Chat).
+app.post('/internal/tips-events', require('./tips/tips-events').handler);
 // OpenVibe.Events → Live: OpenRestream session lifecycle mirrored into `streams` (signed delivery,
 // OPENRE_EVENTS_SECRET; server/openre/mirror.js). Also before /internal (no X-Internal-Key).
 app.post('/internal/openre-events', require('./openre/mirror').webhookHandler);
