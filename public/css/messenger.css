@@ -626,7 +626,8 @@
         border-radius: 0;
     }
     .messenger-toggle {
-        bottom: 12px;
+        /* 20px like the Global chat button: its "DM" label hangs 16px below, and at 12px it ended off-screen. */
+        bottom: 20px;
         left: 12px;
         width: 46px;
         height: 46px;
