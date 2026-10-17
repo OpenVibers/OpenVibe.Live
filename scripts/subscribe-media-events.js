@@ -19,6 +19,8 @@
  *   sudo node /opt/openvibe.live/current/scripts/subscribe-media-events.js --billing  # Billing's
  *        billing.transaction.settled and billing.entitlement.changed → /internal/billing-events
  *        (server/monetization/billing-events.js: notices once Billing is the ledger; LIVE_EVENTS_SECRET as for --network)
+ *   sudo node /opt/openvibe.live/current/scripts/subscribe-media-events.js --tips  # OpenVibe.Tips'
+ *        tips.interaction.ready → /internal/tips-events (server/tips/tips-events.js: goals and tip history)
  *
  *   [--live-env /etc/openvibe/live.env] [--endpoint http://127.0.0.1:3000/internal/media-events]
  *
@@ -38,6 +40,8 @@ const NETWORK_TOPICS = ['network.user.token_valid_after', 'network.user.updated'
 const NETWORK_ENDPOINT = 'http://127.0.0.1:3000/internal/network-events';
 const BILLING_TOPICS = ['billing.transaction.settled', 'billing.entitlement.changed'];
 const BILLING_ENDPOINT = 'http://127.0.0.1:3000/internal/billing-events';
+const TIPS_TOPICS = ['tips.interaction.ready'];
+const TIPS_ENDPOINT = 'http://127.0.0.1:3000/internal/tips-events';
 const DEFAULT_LIVE_ENV = '/etc/openvibe/live.env';
 
 function parseArgs(argv) {
@@ -51,9 +55,10 @@ function parseArgs(argv) {
         else if (a === '--endpoint') o.endpoint = argv[++i];
         else if (a === '--network') o.topics = NETWORK_TOPICS;
         else if (a === '--billing') o.topics = BILLING_TOPICS;
+        else if (a === '--tips') o.topics = TIPS_TOPICS;
         else throw new Error(`unknown argument ${a}`);
     }
-    if (o.endpoint === null) o.endpoint = o.topics === NETWORK_TOPICS ? NETWORK_ENDPOINT : o.topics === BILLING_TOPICS ? BILLING_ENDPOINT : DEFAULT_ENDPOINT;
+    if (o.endpoint === null) o.endpoint = o.topics === NETWORK_TOPICS ? NETWORK_ENDPOINT : o.topics === BILLING_TOPICS ? BILLING_ENDPOINT : o.topics === TIPS_TOPICS ? TIPS_ENDPOINT : DEFAULT_ENDPOINT;
     if (!o.liveEnv || !o.endpoint) throw new Error('--live-env and --endpoint need a value');
     return o;
 }
@@ -90,7 +95,7 @@ async function liveToken({ env, fetchImpl }) {
 async function run({ action = 'create', endpoint = DEFAULT_ENDPOINT, topics = TOPICS, env, fetchImpl = globalThis.fetch, log = console.log }) {
     const events = String(env.EVENTS_URL || 'http://127.0.0.1:4300').replace(/\/+$/, '');
     // Network events are verified with LIVE_EVENTS_SECRET when set (server/auth/network-events.js).
-    const liveSecret = topics === NETWORK_TOPICS || topics === BILLING_TOPICS;
+    const liveSecret = topics === NETWORK_TOPICS || topics === BILLING_TOPICS || topics === TIPS_TOPICS;
     const secret = (liveSecret && env.LIVE_EVENTS_SECRET) || env.MEDIA_EVENTS_SECRET || '';
     if (!env.OV_OAUTH_CLIENT_SECRET) throw new Error('OV_OAUTH_CLIENT_SECRET is not set in the Live env file');
     if (action === 'create' && secret.length < 32) throw new Error('MEDIA_EVENTS_SECRET must be set in the Live env file first (32+ characters: openssl rand -hex 32)');
@@ -152,4 +157,4 @@ if (require.main === module) {
     run({ action: o.action, endpoint: o.endpoint, topics: o.topics, env }).then(() => process.exit(0), (err) => { console.error(`subscribe-media-events: ${err.message}`); process.exit(1); });
 }
 
-module.exports = { run, parseArgs, TOPICS, DEFAULT_ENDPOINT, NETWORK_TOPICS, NETWORK_ENDPOINT, BILLING_TOPICS, BILLING_ENDPOINT };
+module.exports = { run, parseArgs, TOPICS, DEFAULT_ENDPOINT, NETWORK_TOPICS, NETWORK_ENDPOINT, BILLING_TOPICS, BILLING_ENDPOINT, TIPS_TOPICS, TIPS_ENDPOINT };
