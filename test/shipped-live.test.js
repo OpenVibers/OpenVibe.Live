@@ -33,5 +33,9 @@ for (const list of ['FALLBACK_QUIPS', 'FALLBACK_AUDIENCES']) {
 assert.ok(!NO_FREE.test(/tagline: '([^']*)'/.exec(read('public/js/footer-live.js'))[1]), 'footer tagline');
 const slogan = read('server/ai/slogan-job.js');
 assert.ok(!slogan.includes('Free & Open'), 'the slogan prompt does not ask for "free"');
-assert.ok(/filter\(q => !_NO_FREE\.test/.test(slogan) && routes.includes('!NO_FREE.test(String(q))'), 'generated and stored slogans are filtered');
+// Generated (slogan job) and served (hero route) copy both pass server/ai/hero-copy.js, which refuses "free".
+const heroCopy = require('../server/ai/hero-copy');
+assert.ok(!heroCopy.publicOk('Free streaming for everyone') && !heroCopy.publicOk('$0 forever'), 'hero copy refuses "free"');
+assert.ok(slogan.includes("require('./hero-copy')") && /publicOk\(s\)/.test(slogan), 'generated slogans are filtered');
+assert.ok(routes.includes("require('../ai/hero-copy')") && routes.includes('publicOk(q)') && routes.includes('publicOk(a)'), 'stored slogans are filtered when served');
 console.log('shipped-live: all checks passed');

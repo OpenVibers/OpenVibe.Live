@@ -134,9 +134,8 @@ function _cleanAudience(raw) {
         .trim();
 }
 
-const NO_FREE = /\b(free|no[- ]cost)\b|\$\s?0\b/i;
-// Nor copy about a real person's looks or age ("ara007 shirtless thoughts" was served once).
-const LOOKS = /\b(shirtless|topless|bare-?chested|naked|nude|cleavage|bikini|underwear|teen(age)?|young|kids?|child(ren)?|boys?|girls?)\b/i;
+// What the hero may say: server/ai/hero-copy.js (no "free", nothing about looks, nothing crude, no keyboard-mash names).
+const { publicOk } = require('../ai/hero-copy');
 
 async function heroSlogans() {
     let s = null;
@@ -144,9 +143,9 @@ async function heroSlogans() {
         s = await db.getState('home_hero_slogans');
         if (typeof s === 'string') s = JSON.parse(s);
     } catch { s = null; }
-    // No "free"/"$0" copy (the owner's rule) and none about looks, even in a batch stored before the slogan job filtered it.
-    const aiAud = (s && Array.isArray(s.audiences)) ? s.audiences.map(_cleanAudience).filter(a => a && a.length <= 60 && !NO_FREE.test(a) && !LOOKS.test(a)) : [];
-    const aiQuips = (s && Array.isArray(s.quips)) ? s.quips.filter(q => q && String(q).length <= 120 && !NO_FREE.test(String(q)) && !LOOKS.test(String(q))) : [];
+    // The hero-copy rules again here, so a batch stored before a rule existed is cleaned when it is served.
+    const aiAud = (s && Array.isArray(s.audiences)) ? s.audiences.map(_cleanAudience).filter(a => a && a.length <= 60 && publicOk(a)) : [];
+    const aiQuips = (s && Array.isArray(s.quips)) ? s.quips.filter(q => q && String(q).length <= 120 && publicOk(q)) : [];
     const hasAi = aiAud.length >= 4 || aiQuips.length >= 4;
     const updatedAt = (s && Number(s.updated_at)) || 0;
     // The slogan job regenerates every 12h; next_at is when the current batch is due to refresh.
