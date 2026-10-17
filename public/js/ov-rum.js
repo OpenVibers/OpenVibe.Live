@@ -1,7 +1,7 @@
-/* Real-user measurements (server/web/rum.js): this page load's own timings and up to three script errors, sent once
- * when the page is hidden. Loaded by app.js on one page load in four, after the page is idle; nothing identifies
- * the visitor (no account, no id, no cookie). The observers read buffered entries, so the paints before this
- * script loaded still count.
+/* Real-user measurements (server/web/rum.js): this page load's own timings, the time to a live channel's first
+ * picture (stream-player.js sets window.__ovFirstFrameAt) and up to three script errors, sent once when the page is
+ * hidden. Loaded by app.js on one page load in four, after the page is idle; nothing identifies the visitor (no
+ * account, no id, no cookie). The observers read buffered entries, so the paints before this script loaded count.
  */
 (function () {
     'use strict';
@@ -31,8 +31,10 @@
         sent = true;
         const nav = performance.getEntriesByType && performance.getEntriesByType('navigation')[0];
         const r = (v) => Math.round(v);
+        let path = location.pathname;   // the page these timings are for: the one loaded, not where the SPA went since
+        try { if (nav) path = new URL(nav.name).pathname; } catch (e) { /* keep */ }
         navigator.sendBeacon('/api/rum', JSON.stringify({
-            path: location.pathname, w: innerWidth, ttfb: nav ? r(nav.responseStart) : 0,
+            path, w: innerWidth, ttfb: nav ? r(nav.responseStart) : 0, ttff: r(window.__ovFirstFrameAt || 0),
             fcp: r(m.fcp), lcp: r(m.lcp), cls: Math.round(m.cls * 1000) / 1000, inp: r(m.inp), tbt: r(m.tbt), errs: m.errs,
         }));
     };

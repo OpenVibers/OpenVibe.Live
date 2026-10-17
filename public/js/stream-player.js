@@ -593,6 +593,10 @@ function _hidePlayerPlaceholder(surface = (playerType === 'jsmpeg' ? 'canvas' : 
         playerLoadState.isSlow = false;
         _pushPlayerDiagnostic('phase.live', 'Playback is rendering live media');
     }
+    // Real-user measurements (js/ov-rum.js): when the first live picture showed, for a channel opened directly.
+    if (window.__ovFirstFrameAt == null) {
+        try { const nav = performance.getEntriesByType('navigation')[0]; if (nav && new URL(nav.name).pathname === location.pathname) window.__ovFirstFrameAt = Math.round(performance.now()); } catch { /* */ }
+    }
 }
 
 function _isVideoPlaybackLive(video) {

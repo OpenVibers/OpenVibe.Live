@@ -4,7 +4,8 @@
  * checks (scripts/perf, the browser smoke) run on one emulated phone; this is what people actually get.
  *
  * public/js/ov-rum.js runs on one page load in four, after the page is idle, and sends one beacon when the page is
- * hidden: the path, the viewport width, and its own timings (TTFB, FCP, LCP, CLS, INP, blocking time) plus at most
+ * hidden: the path, the viewport width, and its own timings (TTFB, FCP, LCP, CLS, INP, blocking time, and the time to a
+ * live channel's first picture) plus at most
  * three error messages. Nothing about the visitor is kept: no IP, no account, no user agent. Each beacon becomes
  * numbers in a reservoir per page kind and device class, and errors are counted by message.
  *
@@ -16,7 +17,8 @@
  */
 const express = require('express');
 
-const METRICS = { ttfb: 60000, fcp: 60000, lcp: 60000, inp: 60000, tbt: 120000, cls: 10 };
+// ttff: a live channel's first picture (stream-player.js), from navigation; 0 when no live picture showed.
+const METRICS = { ttfb: 60000, fcp: 60000, lcp: 60000, inp: 60000, tbt: 120000, cls: 10, ttff: 120000 };
 const KEEP = 400;            // samples per reservoir (the newest)
 const MAX_ERRORS = 100;      // distinct error messages kept
 const PER_MINUTE = 20;       // beacons per address per minute (held in memory for that minute only)
