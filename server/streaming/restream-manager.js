@@ -151,6 +151,8 @@ class RestreamManager extends EventEmitter {
         super();
         /** @type {Map<string, RestreamSession>} key: `${streamId}:${destId}` */
         this.sessions = new Map();
+        /** @type {Map<string, Promise>} key → the start running for it (startRestream is one at a time per key) */
+        this._starting = new Map();
         this._sfuListenerBound = false;
         /** @type {Map<number, { count: number|null, fetchedAt: number }>} destId → cached viewer count */
         this._viewerCountCache = new Map();
@@ -265,6 +267,25 @@ class RestreamManager extends EventEmitter {
      */
     async startRestream(streamId, destination, streamInfo) {
         const key = this._key(streamId, destination.id);
+        // One start per stream and destination at a time. Going live runs autoStartForStream and resumeForStream
+        // together (WHIP resumes too), and each awaits the database before its session exists, so both used to pass
+        // the "already active" check below and spawn two FFmpeg pushing the same stream key; the platform then
+        // refuses one and the other, and the restream looks broken. A second caller now waits for the first start.
+        const running = this._starting.get(key);
+        if (running) {
+            console.log(`[Restream] Start already in progress: ${key}`);
+            return running;
+        }
+        const start = this._startRestream(key, streamId, destination, streamInfo);
+        this._starting.set(key, start);
+        try {
+            return await start;
+        } finally {
+            if (this._starting.get(key) === start) this._starting.delete(key);
+        }
+    }
+
+    async _startRestream(key, streamId, destination, streamInfo) {
 
         // Already running for this exact stream+dest?
         if (this.sessions.has(key)) {
