@@ -676,6 +676,9 @@ app.use('/data/arena', express.static(paths.dir('ARENA_IMAGE_PATH', 'arena'), {
 app.post('/internal/media-events', require('./media-proxy/media-events').handler);
 // Network identity events (signed out everywhere, password changed, banned): Live refuses older tokens.
 app.post('/internal/network-events', require('./auth/network-events').handler);
+// OpenVibe.Billing's settlements and subscription changes, told to the people they concern once Billing is the
+// ledger (server/monetization/billing-events.js; LIVE_EVENTS_SECRET, before /internal like the others).
+app.post('/internal/billing-events', require('./monetization/billing-events').handler);
 // OpenVibe.Events → Live: OpenRestream session lifecycle mirrored into `streams` (signed delivery,
 // OPENRE_EVENTS_SECRET; server/openre/mirror.js). Also before /internal (no X-Internal-Key).
 app.post('/internal/openre-events', require('./openre/mirror').webhookHandler);

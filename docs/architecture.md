@@ -229,6 +229,13 @@ through the SDK inbox (`idempotency_receipts`):
 |---|---|---|---|
 | `openre.session.*` | `/internal/openre-events` | `OPENRE_EVENTS_SECRET` | OpenRestream's `scripts/subscribe-live-events.js` |
 | `media.vod.*`, `media.clip.*`, `media.storage.*` | `/internal/media-events` | `MEDIA_EVENTS_SECRET` | `scripts/subscribe-media-events.js` |
+| `network.user.*`, `network.follow.*`, `network.subject.merged`, `network.account.*` | `/internal/network-events` | `LIVE_EVENTS_SECRET` | `scripts/subscribe-media-events.js --network` |
+| `billing.transaction.settled`, `billing.entitlement.changed` | `/internal/billing-events` | `LIVE_EVENTS_SECRET` | `scripts/subscribe-media-events.js --billing` |
+
+Billing's events act only under `BILLING_AUTHORITY=billing` ([server/monetization/billing-events.js](../server/monetization/billing-events.js)):
+"Vibes credited" to a buyer, "Subscribed!" for a provider-paid subscription (with the sub alert on the streamer's
+PowerChat overlay when PowerChat paid), the channel's celebration for a site-routed PowerChat tip, and the
+subscription notices Live's renewal sweeper sent in `live` mode (could not auto-renew, renewal failed, ended).
 
 #### Media outcomes over Events
 

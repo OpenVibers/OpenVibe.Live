@@ -16,6 +16,10 @@
  *        network.user.token_valid_after and network.user.updated → /internal/network-events (server/auth/network-events.js;
  *        signed with LIVE_EVENTS_SECRET when set, else MEDIA_EVENTS_SECRET); combines with the flags above
  *
+ *   sudo node /opt/openvibe.live/current/scripts/subscribe-media-events.js --billing  # Billing's
+ *        billing.transaction.settled and billing.entitlement.changed → /internal/billing-events
+ *        (server/monetization/billing-events.js: notices once Billing is the ledger; LIVE_EVENTS_SECRET as for --network)
+ *
  *   [--live-env /etc/openvibe/live.env] [--endpoint http://127.0.0.1:3000/internal/media-events]
  *
  * Env names used (from the Live env file): OV_OAUTH_CLIENT_ID (default live), OV_OAUTH_CLIENT_SECRET,
@@ -32,6 +36,8 @@ const TOPICS = ['media.vod.*', 'media.clip.*', 'media.storage.*'];
 const DEFAULT_ENDPOINT = 'http://127.0.0.1:3000/internal/media-events';
 const NETWORK_TOPICS = ['network.user.token_valid_after', 'network.user.updated', 'network.follow.created', 'network.follow.deleted', 'network.subject.merged', 'network.account.export_requested', 'network.account.deleted'];
 const NETWORK_ENDPOINT = 'http://127.0.0.1:3000/internal/network-events';
+const BILLING_TOPICS = ['billing.transaction.settled', 'billing.entitlement.changed'];
+const BILLING_ENDPOINT = 'http://127.0.0.1:3000/internal/billing-events';
 const DEFAULT_LIVE_ENV = '/etc/openvibe/live.env';
 
 function parseArgs(argv) {
@@ -44,9 +50,10 @@ function parseArgs(argv) {
         else if (a === '--live-env') o.liveEnv = argv[++i];
         else if (a === '--endpoint') o.endpoint = argv[++i];
         else if (a === '--network') o.topics = NETWORK_TOPICS;
+        else if (a === '--billing') o.topics = BILLING_TOPICS;
         else throw new Error(`unknown argument ${a}`);
     }
-    if (o.endpoint === null) o.endpoint = o.topics === NETWORK_TOPICS ? NETWORK_ENDPOINT : DEFAULT_ENDPOINT;
+    if (o.endpoint === null) o.endpoint = o.topics === NETWORK_TOPICS ? NETWORK_ENDPOINT : o.topics === BILLING_TOPICS ? BILLING_ENDPOINT : DEFAULT_ENDPOINT;
     if (!o.liveEnv || !o.endpoint) throw new Error('--live-env and --endpoint need a value');
     return o;
 }
@@ -83,7 +90,8 @@ async function liveToken({ env, fetchImpl }) {
 async function run({ action = 'create', endpoint = DEFAULT_ENDPOINT, topics = TOPICS, env, fetchImpl = globalThis.fetch, log = console.log }) {
     const events = String(env.EVENTS_URL || 'http://127.0.0.1:4300').replace(/\/+$/, '');
     // Network events are verified with LIVE_EVENTS_SECRET when set (server/auth/network-events.js).
-    const secret = (topics === NETWORK_TOPICS && env.LIVE_EVENTS_SECRET) || env.MEDIA_EVENTS_SECRET || '';
+    const liveSecret = topics === NETWORK_TOPICS || topics === BILLING_TOPICS;
+    const secret = (liveSecret && env.LIVE_EVENTS_SECRET) || env.MEDIA_EVENTS_SECRET || '';
     if (!env.OV_OAUTH_CLIENT_SECRET) throw new Error('OV_OAUTH_CLIENT_SECRET is not set in the Live env file');
     if (action === 'create' && secret.length < 32) throw new Error('MEDIA_EVENTS_SECRET must be set in the Live env file first (32+ characters: openssl rand -hex 32)');
 
@@ -131,7 +139,7 @@ async function run({ action = 'create', endpoint = DEFAULT_ENDPOINT, topics = TO
             continue;
         }
         if (!r.ok) throw new Error(`Events answered ${r.status} for ${topic}: ${b.code || ''} ${b.detail || ''}`.trim());
-        log(`subscribed: ${b.id} (${topic} → ${endpoint}), signed with Live's ${topics === NETWORK_TOPICS && env.LIVE_EVENTS_SECRET ? 'LIVE' : 'MEDIA'}_EVENTS_SECRET`);
+        log(`subscribed: ${b.id} (${topic} → ${endpoint}), signed with Live's ${liveSecret && env.LIVE_EVENTS_SECRET ? 'LIVE' : 'MEDIA'}_EVENTS_SECRET`);
         out.push({ topic, subscription_id: b.id, existed: false, created: true });
     }
     return { action, subscriptions: out };
@@ -144,4 +152,4 @@ if (require.main === module) {
     run({ action: o.action, endpoint: o.endpoint, topics: o.topics, env }).then(() => process.exit(0), (err) => { console.error(`subscribe-media-events: ${err.message}`); process.exit(1); });
 }
 
-module.exports = { run, parseArgs, TOPICS, DEFAULT_ENDPOINT, NETWORK_TOPICS, NETWORK_ENDPOINT };
+module.exports = { run, parseArgs, TOPICS, DEFAULT_ENDPOINT, NETWORK_TOPICS, NETWORK_ENDPOINT, BILLING_TOPICS, BILLING_ENDPOINT };
