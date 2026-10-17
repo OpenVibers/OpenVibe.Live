@@ -17,6 +17,7 @@ const crypto = require('crypto');
 const db = require('../db/database');
 const delivery = require('../chat/chat-delivery');
 const powerchatOAuth = require('./powerchat-oauth');
+const { publicGoal, announceGoal } = require('../monetization/goal-announce');
 
 const MAX_SKEW_MS = 15 * 60 * 1000;
 
@@ -48,17 +49,6 @@ async function verifySignature(rawBody, headers) {
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
-function publicGoal(g) {
-    if (!g) return null;
-    return {
-        id: g.id, user_id: g.user_id, title: g.title,
-        target_amount: g.target_amount, current_amount: g.current_amount,
-        is_active: g.is_active, reached_at: g.reached_at || null,
-        image_url: g.image_url || null, media_type: g.media_type || null,
-        sort_order: g.sort_order || 0,
-    };
-}
-
 // Resolve the OpenVibe.Live user who owns the PowerChat account this event is for.
 async function _resolveStreamerUserId(streamer) {
     if (!streamer) return null;
@@ -135,24 +125,7 @@ async function _handleDonation(userId, data) {
     try { await alerts.playAlertSound(userId, streamId, 'donation'); } catch { /* */ }
 
     // 3) Goal progress + 4) goal reached.
-    if (goalResult && goalResult.goal) {
-        await delivery.event({ kind: 'channel', id: userId, stream: streamId }, { type: 'goal-update', goal: publicGoal(goalResult.goal) });
-    }
-    if (goalResult && goalResult.reached) {
-        const g = goalResult.goal;
-        try {
-            await _chatLine({
-                key: eventKey && `${eventKey}:goal`,
-                line: {
-                    stream_id: streamId, channel_user_id: userId, user_id: null, username: 'Donation Goal',
-                    message: `🎉 Goal reached: ${g.title} (${Number(g.target_amount || 0).toLocaleString()} HB)`,
-                    message_type: 'donation',
-                    metadata: { kind: 'goal-reached', goal_id: g.id, title: g.title, target: g.target_amount, image: g.image_url || null, media_type: g.media_type || null, by: donor },
-                },
-            });
-        } catch { /* */ }
-        try { await alerts.playAlertSound(userId, streamId, 'goal'); } catch { /* */ }
-    }
+    try { await announceGoal({ userId, streamId, goalResult, by: donor, key: eventKey && `${eventKey}:goal` }); } catch { /* */ }
 
     console.log(`[PowerChat] Donation: ${amount} bucks to user ${userId} from ${donor}${goalResult && goalResult.reached ? ' (goal reached!)' : ''}`);
 }

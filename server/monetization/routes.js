@@ -16,12 +16,13 @@ const { requireOwner } = require('../auth/permissions');
 const openvibeBucks = require('./vibes');
 const db = require('../db/database');
 const delivery = require('../chat/chat-delivery');
+const { publicGoal, announceGoal } = require('./goal-announce');
 // BILLING_AUTHORITY=billing: every money action below goes to OpenVibe.Billing instead of Live's
 // columns (billing-actions.js); money_writes_frozen refuses them in both modes.
 const money = require('./money-authority');
 const billingActions = require('./billing-actions');
 const cashoutsInBilling = (res) => res.status(409).json({
-    error: 'Cashouts are decided in OpenVibe.Billing now: approving or denying a payout needs its operator API (billing.cashout.manage) and the PayPal payout reference.',
+    error: 'Cashouts are decided in OpenVibe.Billing now: approve or deny them in its staff console at https://billing.openvibe.network/cashouts (approving needs the PayPal payout reference).',
     code: 'cashouts_in_billing',
 });
 
@@ -47,17 +48,6 @@ router.post('/purchase', (req, res) => {
 });
 
 // Serialize a goal for the client (no private fields to leak).
-function publicGoal(g) {
-    if (!g) return null;
-    return {
-        id: g.id, user_id: g.user_id, title: g.title,
-        target_amount: g.target_amount, current_amount: g.current_amount,
-        is_active: g.is_active, reached_at: g.reached_at || null,
-        image_url: g.image_url || null, media_type: g.media_type || null,
-        sort_order: g.sort_order || 0,
-    };
-}
-
 // ── Donate to Streamer ───────────────────────────────────────
 router.post('/donate', requireAuth, money.guardWrite, async (req, res) => {
     try {
@@ -120,24 +110,12 @@ router.post('/donate', requireAuth, money.guardWrite, async (req, res) => {
             });
         } catch { /* non-critical */ }
 
-        // 3) Live goal progress → widget.
-        if (result.goal) {
-            await delivery.event({ kind: 'channel', id: streamer_id, stream: stream_id || null }, { type: 'goal-update', goal: publicGoal(result.goal) });
-        }
-
-        // 4) Goal reached → flashy animated chat event (persisted) + goal sound.
-        if (result.goalReached) {
-            const g = result.goalReached;
-            const goalLine = {
-                stream_id: stream_id || null, channel_user_id: streamer_id, user_id: null,
-                username: 'Donation Goal',
-                message: `🎉 Goal reached: ${g.title} (${(g.target_amount || 0).toLocaleString()} Vibes)`,
-                message_type: 'donation',
-                metadata: { kind: 'goal-reached', goal_id: g.id, title: g.title, target: g.target_amount, image: g.image_url || null, media_type: g.media_type || null, by: donor },
-            };
-            delivery.message({ ...goalLine, key: result.transactionId ? `goal:${result.transactionId}` : undefined });
-            await alerts.playAlertSound(streamer_id, stream_id, 'goal');
-        }
+        // 3) Live goal progress → widget, 4) goal reached → a saved "Goal reached" line + the goal sound.
+        await announceGoal({
+            userId: streamer_id, streamId: stream_id || null, by: donor,
+            goalResult: result.goal ? { goal: result.goal, reached: !!result.goalReached } : null,
+            key: result.transactionId ? `goal:${result.transactionId}` : undefined,
+        });
 
         const balance = money.onBilling() ? result.balance : (await db.getUserById(req.user.id)).openvibe_bucks_balance;
         res.json({ success: true, amount: result.amount, balance, goal_reached: !!result.goalReached });
