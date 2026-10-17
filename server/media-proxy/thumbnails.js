@@ -61,6 +61,9 @@ router.post('/live/:streamId', requireAuth, upload.single('thumbnail'), async (r
 // 429 used to reach every visitor's console (the browser check of release 977747d7, 2026-10-12).
 const NO_PICTURE_MS = 60 * 60 * 1000;
 const MEDIA_BUSY_MS = 5 * 60 * 1000;
+// An audio-only recording (Media's 404 media.no_video) will never have a picture: asked again once a day, not hourly
+// (VODs 5703, 5725 and 5770 cost Media a job an hour each on 2026-10-17).
+const NO_VIDEO_MS = 24 * 60 * 60 * 1000;
 const noPicture = new Map();   // `${kind}:${id}` → until (ms), oldest first
 function noPictureKnown(key) {
     const until = noPicture.get(key);
@@ -92,7 +95,8 @@ async function generateFor(kind, id, req, res) {
             const failed = err && err.name === 'MediaApiError' && err.status >= 500;
             if (!(err && err.name === 'MediaApiError' && (err.status === 404 || err.status === 429 || failed))) throw err;
             if (failed) console.warn(`[Thumbnails] Media's thumbnail job failed for ${key}: ${err.status}${err.body && err.body.job_id ? ` (${err.body.job_id})` : ''}`);
-            rememberNoPicture(key, err.status === 404 ? NO_PICTURE_MS : MEDIA_BUSY_MS);
+            const noVideo = err.status === 404 && err.body && err.body.code === 'media.no_video';
+            rememberNoPicture(key, noVideo ? NO_VIDEO_MS : err.status === 404 ? NO_PICTURE_MS : MEDIA_BUSY_MS);
             return res.json({ thumbnail_url: null });
         }
         const url = media.publicUrl(out?.url || meta.thumbnail_url);
