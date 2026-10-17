@@ -665,7 +665,14 @@ function _extractDescFromMaybeJson(text) {
     if (dm) { try { return JSON.parse(`"${dm[1]}"`); } catch { return dm[1]; } }
     return text;
 }
-async function cleanupMalformedAiText() {
+// The looks repair below scans ~20k rows with a regex (~0.8 s of database time on every boot). New rows are scrubbed when
+// written, so the scan only needs to run again when the scrub rules change: this hash of their source says when.
+let _looksRulesVersion = null;
+function looksRulesVersion() {
+    if (!_looksRulesVersion) _looksRulesVersion = require('crypto').createHash('sha1').update([_noLooks, _noClothing, _LOOKS, _PEOPLE, _WORN, _WORN_ANY, _FACE].map(String).join('|')).digest('hex').slice(0, 12);
+    return _looksRulesVersion;
+}
+async function cleanupMalformedAiText({ force = false } = {}) {
     // Only Live-owned tables — the moved vods/clips/pastes tables are frozen for
     // the OpenVibe.Media migration and must never be written.
     const jobs = [
@@ -706,10 +713,13 @@ async function cleanupMalformedAiText() {
     } catch { /* */ }
     // Frame notes and overviews that describe how a person looks (stored before the
     // prompts forbade it): the person becomes "the streamer" and the card line follows.
+    let looksDone = false;
+    try { looksDone = !force && (await getState('ai_looks_repair_rules')) === looksRulesVersion(); } catch { looksDone = false; }
     const looks = "~* '(shirtless|topless|bare-chested|young|teen|little|bearded|bald|blond|haired|tattooed|muscular|heavyset|older|elderly|middle-aged|skinny|slim|chubby|attractive|pretty|handsome|cute|boy|girl|kid|child|youth)|\\m(wear|dressed|sporting|shirt|t-shirt|tee|tank top|hoodie|sweat|jacket|coat|vest|beanie|cap|hat|helmet|headset|headphones|sunglasses|glasses|outfit|dress|jersey|suit|robe|bandana|scar|mask|attire|apparel|beard|mustache|moustache|goatee|stubble|tattoo|hair|ponytail|braids|dreadlocks|piercing|freckles|makeup|[a-z-]+-wearing)'";
     for (const [table, key, col, short] of [['stream_memories', 'id', 'description', null], ['streams', 'id', 'ai_overview', 'ai_overview_short'],
         ['vod_ai_state', 'vod_id', 'ai_overview', 'ai_overview_short'], ['clip_ai_state', 'clip_id', 'ai_overview', 'ai_overview_short'],
         ['streamer_overviews', 'user_id', 'overview', 'overview_short']]) {
+        if (looksDone) break;
         try {
             const rows = await all(`SELECT ${key} AS k, ${col} AS v FROM ${table} WHERE ${col} ${looks}`);
             for (const r of rows) {
@@ -719,8 +729,10 @@ async function cleanupMalformedAiText() {
                 else await run(`UPDATE ${table} SET ${col} = ? WHERE ${key} = ?`, [clean, r.k]);
                 fixed++;
             }
-        } catch (e) { console.warn(`[AI] looks repair (${table}):`, e.message); }
+        } catch (e) { console.warn(`[AI] looks repair (${table}):`, e.message); looksDone = null; }
     }
+    // Recorded only after a clean pass, so a failed table is tried again at the next boot.
+    if (looksDone === false) { try { await setState('ai_looks_repair_rules', looksRulesVersion()); } catch { /* next boot tries again */ } }
     if (fixed) console.log(`[AI] Cleaned ${fixed} malformed JSON AI text value(s)`);
     return fixed;
 }

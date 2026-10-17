@@ -61,8 +61,15 @@ const db = require('../server/db/database');
     await db.run('UPDATE streams SET ai_overview = ?, ai_overview_short = ? WHERE id = ?', ['A young boy plays Fortnite.', 'A young boy plays Fortnite.', sid]);
     await db.run('INSERT INTO stream_memories (stream_id, user_id, offset_seconds, description) VALUES (?, ?, ?, ?)', [sid, uid, 9060, 'An older version of the game loads.']);
     await db.run('INSERT INTO stream_memories (stream_id, user_id, offset_seconds, description) VALUES (?, ?, ?, ?)', [sid, uid, 9120, 'A man wearing headphones sits at a desk.']);
-    await db.cleanupMalformedAiText();
+    await db.cleanupMalformedAiText({ force: true });
     assert.strictEqual((await db.get('SELECT description FROM stream_memories WHERE offset_seconds = 9120')).description, 'A man sits at a desk.');
+    // The scan runs once per version of the rules: the next boot skips it (rows are scrubbed when written).
+    await db.run('INSERT INTO stream_memories (stream_id, user_id, offset_seconds, description) VALUES (?, ?, ?, ?)', [sid, uid, 9180, 'A man wearing a hat waves.']);
+    await db.cleanupMalformedAiText();
+    assert.strictEqual((await db.get('SELECT description FROM stream_memories WHERE offset_seconds = 9180')).description, 'A man wearing a hat waves.', 'skipped: the rules have not changed');
+    await db.setState('ai_looks_repair_rules', 'an older rule set');
+    await db.cleanupMalformedAiText();
+    assert.strictEqual((await db.get('SELECT description FROM stream_memories WHERE offset_seconds = 9180')).description, 'A man waves.', 'new rules: scanned again');
     assert.strictEqual((await db.get('SELECT description FROM stream_memories WHERE offset_seconds = 9000')).description, 'The streamer rests his chin on his hand.');
     assert.deepStrictEqual(Object.values(await db.get('SELECT ai_overview, ai_overview_short FROM streams WHERE id = ?', [sid])), ['The streamer plays Fortnite.', 'The streamer plays Fortnite.']);
     assert.strictEqual((await db.get('SELECT description FROM stream_memories WHERE offset_seconds = 9060')).description, 'An older version of the game loads.', 'looks words about things stay');
