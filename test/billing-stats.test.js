@@ -9,7 +9,7 @@
 const assert = require('assert');
 
 (async () => {
-    const api = require('../server/monetization/billing-client');
+    const { api } = require('../server/monetization/billing-client');   // the module's api object, as billing-stats.js uses it
     let calls = 0;
     let fail = false;
     const days = Array.from({ length: 90 }, (_, i) => ({ day: new Date(Date.now() - (89 - i) * 86400000).toISOString().slice(0, 10), value: i === 89 ? 500 : (i === 88 ? 250 : 0) }));
