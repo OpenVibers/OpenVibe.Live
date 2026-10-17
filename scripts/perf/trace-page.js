@@ -3,7 +3,7 @@
 // Where does main-thread time go during a page load? Records a Chrome trace and attributes style
 // recalculation, layout and script time to the JavaScript function that triggered them.
 //
-//   node scripts/perf/trace-page.js <url> [--phone-cpu] [--settle 8000] [--top 25]
+//   node scripts/perf/trace-page.js <url> [--phone-cpu] [--settle 8000] [--top 25] [--tasks]
 const { launch, emulatePhone, sleep } = require('./cdp');
 
 const args = process.argv.slice(2);
@@ -52,4 +52,30 @@ const TOP = flag('--top', 25);
     console.log('totals (ms):', Object.fromEntries(Object.entries(byKind).map(([k, v]) => [k, Math.round(v)])));
     console.log(`top ${TOP} triggers:`);
     [...byCaller.entries()].sort((a, b) => b[1] - a[1]).slice(0, TOP).forEach(([k, v]) => console.log(`  ${String(Math.round(v)).padStart(6)}ms  ${k}`));
+
+    // --tasks: each main-thread task over 100 ms, with what ran inside it (which task is the long one, not just totals).
+    if (args.includes('--tasks')) {
+        // The page's main thread: the one that ran the most layout and script (other renderers exist).
+        const busy = new Map();
+        for (const e of events) if (e.ph === 'X' && (e.name === 'Layout' || e.name === 'FunctionCall')) busy.set(`${e.pid}/${e.tid}`, (busy.get(`${e.pid}/${e.tid}`) || 0) + 1);
+        const [mp, mt] = ([...busy.entries()].sort((x, y) => y[1] - x[1])[0] || ['0/0'])[0].split('/').map(Number);
+        const main = { pid: mp, tid: mt };
+        const nav = events.find((e) => e.name === 'navigationStart' || e.name === 'TracingStartedInBrowser') || events[0];
+        const onMain = (e) => main && e.pid === main.pid && e.tid === main.tid;
+        const tasks = events.filter((e) => e.ph === 'X' && e.name === 'RunTask' && onMain(e) && e.dur > 100000).sort((x, y) => x.ts - y.ts);
+        console.log(`main-thread tasks over 100 ms: ${tasks.length}`);
+        for (const t of tasks) {
+            const inside = new Map();
+            for (const e of events) {
+                if (e.ph !== 'X' || !onMain(e) || e.ts < t.ts || e.ts >= t.ts + t.dur || !e.dur || e === t) continue;
+                let key = null;
+                if ((e.name === 'FunctionCall' || e.name === 'EvaluateScript') && e.args && e.args.data) key = `script ${String(e.args.data.url || '').split('/').pop().split('?')[0]} ${e.args.data.functionName || ''}:${e.args.data.lineNumber || ''}`;
+                else if (e.name === 'UpdateLayoutTree' || e.name === 'Layout') { const st = (e.args && e.args.beginData && e.args.beginData.stackTrace) || []; key = `${e.name === 'Layout' ? 'layout' : 'style'} ${frameName(st[0])}`; }
+                else if (e.name === 'ParseHTML' || e.name === 'Paint' || e.name === 'TimerFire' || e.name === 'FireAnimationFrame') key = e.name;
+                if (key) inside.set(key, (inside.get(key) || 0) + e.dur / 1000);
+            }
+            const top = [...inside.entries()].sort((x, y) => y[1] - x[1]).slice(0, 4).map(([k, v]) => `${Math.round(v)}ms ${k}`).join(' · ');
+            console.log(`  @${Math.round((t.ts - nav.ts) / 1000)}ms ${Math.round(t.dur / 1000)}ms: ${top}`);
+        }
+    }
 })().catch((e) => { console.error(e); process.exit(1); });
