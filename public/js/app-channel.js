@@ -3349,6 +3349,7 @@ async function openStream(streamId) {
         loadStreamGoals(streamId);
         startUptime(s.started_at);
     } catch (e) {
+        if (e && e.status === 404) return showNotFound({ title: 'This stream is not here', message: 'It ended long ago or the link is mistyped. Live channels are at /@name.' });
         toast('Stream not found', 'error');
         navigate('/');
     }

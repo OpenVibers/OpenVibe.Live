@@ -553,6 +553,8 @@ async function loadVodPlayer(vodId, seekTo) {
         Promise.allSettled(blocks).then(() => _mediaReady('page-vod-player'));
     } catch (e) {
         _mediaReady('page-vod-player');
+        // Gone or private (the server answered this address 404 too): say so here, not a toast and the VOD list.
+        if (e && e.status === 404) return showNotFound({ title: 'This video is not here', message: 'It was deleted, made private, or the link is mistyped.' });
         console.error('Failed to load VOD player', e);
         toast('Failed to load video: ' + (e.message || 'not found'), 'error');
         navigate('/vods');
@@ -1242,6 +1244,7 @@ async function loadClipPlayer(clipId) {
         Promise.allSettled(blocks).then(() => _mediaReady('page-clip-player'));
     } catch (e) {
         _mediaReady('page-clip-player');
+        if (e && e.status === 404) return showNotFound({ title: 'This clip is not here', message: 'It was deleted, made private, or the link is mistyped.' });
         toast('Clip not found', 'error');
         navigate('/clips');
     }
