@@ -7,8 +7,8 @@
  *
  *   rage_quit      a stream over in under 15 min from someone who usually goes 45+
  *   viewer_crash   viewers halve within 20 min (from 3+)          viewer_spike   viewers double within 20 min (to 4+)
- *   chat_explosion chat 3x the stream's usual rate (15+ in 5 min) meltdown / tears   3+ yells, screams, shouts or sobs
- *                  heard within 2 min (the sound timeline), with what they said around it
+ *   chat_explosion chat 3x the stream's usual rate (15+ in 5 min) meltdown   3+ yells, screams or shouts heard within
+ *                  2 min (the sound timeline) AND a heated line of the streamer's own said around them, quoted
  *   marathon       8+ hours live                                  ghost_town     an hour or more to 0-1 viewers, no chat
  *   the_return     live again after 14+ days away                 title_drama    a title that is a cry for help
  *   peak_record    a new personal viewer peak (3+)
@@ -17,7 +17,8 @@
  *
  * A story is written at once from a template (grounded, already spicy) and rewritten by OpenVibe.AI's
  * live.arena.drama in the desk's voice (headline, blurb, alert 1-5) when AI is on, at most AI_PER_HOUR an hour; the
- * template's plain account (`what`) goes with the facts so the model knows what the event means.
+ * template's plain account (`what`) goes with the facts so the model knows what the event means. A rewrite that
+ * misspells a name, or accuses someone of more than the template does (a threat, an attack…), is dropped.
  * Each story moves two scores: cow_points (the Lolcow Index: rage quits, crashes, meltdowns, L's) and clout_points
  * (the Clout Rankings: spikes, records, marathons, W's). Streamers in arena_opt_outs get no stories.
  *
@@ -38,7 +39,11 @@ const AI_PER_HOUR = 20;
 const WINDOW_MS = 3 * 3600 * 1000;
 const REACTIONS = ['fire', 'skull', 'clown', 'w', 'l'];
 const RAGE_SOUNDS = new Set(['Yell', 'Screaming', 'Shout', 'Bellow', 'Battle cry', 'Groan', 'Wail, moan']);
-const TEAR_SOUNDS = new Set(['Crying, sobbing', 'Whimper']);
+// The streamer's own heated words. The sound timeline hears a game's or a match's crowd as screams and groans too, so
+// a meltdown needs one of these said beside the noise ("We are going to get the control." was a soccer stream's
+// meltdown and "Thank you, thank you." a League stream's tears, 2026-10-18). No tears stories: crying from a speaker
+// is not the streamer crying.
+const RAGE_LINE = /\b(fuck\w*|shit\w*|bullshit|wtf|what the (?:fuck|hell|heck)|god ?damn\w*|i can'?t (?:take|do) (?:this|it)|i'?m (?:so )?done|i swear|rigged|kill me|are you (?:kidding|serious)|hate (?:this|my life|it))\b/i;
 const TITLE_DRAMA = /\b(quit(?:ting)?|i'?m done|done with|last stream|retir(?:e|ing|ed)|drama|exposed|expos(?:e|ing)|banned|apolog(?:y|ize|ise)|beef|rigged|scam(?:med)?|cancel+ed|rant|meltdown|crash(?:ing)? out|rage|tilted|hate (?:this|my)|worst (?:day|stream))\b/i;
 
 const toMs = (s) => { if (!s) return NaN; const t = String(s); return Date.parse(t.includes('T') ? t : `${t.replace(' ', 'T')}Z`); };
@@ -65,7 +70,6 @@ const T = {
     viewer_spike: (n, f) => [`📈 ${n} IS BLOWING UP: ${f.from} → ${f.to} viewers`, `${n} went from ${f.from} to ${f.to} viewers in ${f.minutes} minutes. Something is happening.`, 2, 0, 9],
     chat_explosion: (n, f) => [`💬 ${n}'S CHAT GOES FERAL: ${f.messages_5m} messages in 5 minutes`, `${n}'s chat usually runs at ${f.usual_5m} messages every 5 minutes. It just hit ${f.messages_5m}.`, 2, 0, 7],
     meltdown: (n, f) => [`😤 ${n} LOSES IT ON STREAM`, `${f.count} yells, screams and shouts in ${f.seconds} seconds on ${n}'s stream.`, 3, 12, 2],
-    tears: (n, f) => [`😭 ${n} IN TEARS ON STREAM?`, `Crying was heard ${f.count} times in ${f.seconds} seconds on ${n}'s stream.`, 3, 14, 0],
     marathon: (n, f) => [`⏰ ${n} HAS BEEN LIVE FOR ${f.hours} HOURS. TOUCH GRASS?`, `${n} started at ${f.started} UTC and has not stopped.`, 2, 3, 6],
     ghost_town: (n, f) => [`👻 ${n} STREAMED ${f.minutes} MINUTES TO AN EMPTY ROOM`, `Peak: ${f.peak} viewer${f.peak === 1 ? '' : 's'}. Chat messages: ${f.messages}.`, 1, 7, 0],
     the_return: (n, f) => [`👀 ${n} IS BACK after ${f.days_away} days`, `${n}'s last stream was ${f.days_away} days ago. They are live again${f.title ? `: "${f.title}"` : ''}.`, 2, 0, 6],
@@ -128,6 +132,14 @@ async function announce(id) {
     return true;
 }
 
+// Words that accuse a real person of something. An AI line may use one only when the template already does: the
+// desk rewrote a beef built on a game's voice lines as "iZoR_One DECLARES DEATH THREATS ON STREAM" (2026-10-18).
+const ACCUSING = /\b(threat\w*|death|deadly|kill\w*|murder\w*|abus\w*|assault\w*|attack\w*|violen\w*|harass\w*|stalk\w*|racis\w*|nazi\w*|crim(?:e|es|inal\w*)|illegal\w*|weapon\w*|groom\w*|predator\w*|pedo\w*|doxx?\w*|rap(?:e|es|ed|ist\w*)|scam\w*|fraud\w*|cheat\w*|steal\w*|stole\w*)\b/gi;
+function addsAccusation(text, template) {
+    const have = new Set((String(template || '').match(ACCUSING) || []).map((w) => w.toLowerCase()));
+    return (String(text || '').match(ACCUSING) || []).some((w) => !have.has(w.toLowerCase()));
+}
+
 async function rewrite(id, payload, userId) {
     if (!aiBudgetLeft() || !await arena().aiOn()) return;
     _aiCalls.push(Date.now());
@@ -138,6 +150,8 @@ async function rewrite(id, payload, userId) {
     // every name it was given, exactly (case aside).
     const names = [payload.streamer, payload.other].filter(Boolean).map((n) => String(n).toLowerCase());
     if (!names.every((n) => String(out.headline).toLowerCase().includes(n))) return;
+    const row = await db.get('SELECT headline, blurb FROM arena_drama WHERE id = ?', [id]);
+    if (addsAccusation(`${out.headline} ${out.blurb}`, row && `${row.headline} ${row.blurb}`)) return;
     await db.run('UPDATE arena_drama SET headline = ?, blurb = ?, alert = ?, ai = 1 WHERE id = ?', [String(out.headline).slice(0, 160), String(out.blurb).slice(0, 480), Math.min(5, Math.max(1, Number(out.alert) || 1)), id]);
 }
 
@@ -215,12 +229,12 @@ async function detectSnapshots(streams, since) {
     return out;
 }
 
-/** Meltdowns and tears: 3+ rage (or crying) sounds within 2 minutes, with the longest line said around them. */
+/** Meltdowns: 3+ rage sounds within 2 minutes, and a heated line of the streamer's own around them (the quote). */
 async function detectSounds(streams, sinceTxt) {
     const out = [];
     for (const s of streams) {
         const sounds = await db.all(`SELECT label, start_sec, vod_id FROM stream_timeline_events WHERE stream_id = ? AND kind = 'sound' AND created_at >= ? ORDER BY start_sec`, [s.id, sinceTxt]);
-        for (const [kind, set] of [['meltdown', RAGE_SOUNDS], ['tears', TEAR_SOUNDS]]) {
+        for (const [kind, set] of [['meltdown', RAGE_SOUNDS]]) {
             const hits = sounds.filter((x) => set.has(x.label));
             let best = null;
             for (let i = 0; i < hits.length; i++) {
@@ -231,7 +245,8 @@ async function detectSounds(streams, sinceTxt) {
             }
             if (!best) continue;
             const lines = await db.all(`SELECT text, start_sec FROM stream_timeline_events WHERE stream_id = ? AND kind = 'speech' AND start_sec BETWEEN ? AND ? ORDER BY start_sec`, [s.id, best.from.start_sec - 20, best.to.start_sec + 20]);
-            const quote = pickQuote(lines, best.from.start_sec, best.to.start_sec);
+            const quote = pickQuote(lines.filter((l) => RAGE_LINE.test(String(l.text || ''))), best.from.start_sec, best.to.start_sec);
+            if (!quote) continue;
             const counts = {};
             for (const h of hits.slice(hits.indexOf(best.from), hits.indexOf(best.to) + 1)) counts[h.label] = (counts[h.label] || 0) + 1;
             out.push({ kind, userId: s.user_id, streamId: s.id, vodId: best.from.vod_id || null, sec: best.from.start_sec, dedupeKey: `${kind}:${s.id}:${Math.floor(best.from.start_sec / 600)}`,
@@ -299,11 +314,17 @@ async function detect({ now = Date.now() } = {}) {
     } finally { _busy = false; }
 }
 
+async function liveDuring(userId, sinceTxt) {
+    if (!sinceTxt) return false;
+    return !!await db.get('SELECT 1 FROM streams WHERE user_id = ? AND (is_live = 1 OR ended_at >= ?) LIMIT 1', [userId, String(sinceTxt).replace('T', ' ').slice(0, 19)]);
+}
+
 /** beef.js reports: 'open' (a called out b), 'win' (winner, loser), 'forfeit' (the one who ducked, the caller). */
 async function beefStory(kind, beef, ctx = {}) {
     if (kind === 'open') return await createStory({ kind: 'beef_open', userId: beef.a_user_id, otherUserId: beef.b_user_id, dedupeKey: `beef_open:${beef.id}`, facts: { about: ctx.about || null }, quote: ctx.opening_line || null, happenedAt: Date.now() });
     if (kind === 'win' && ctx.winnerId && ctx.loserId) return await createStory({ kind: 'beef_win', userId: ctx.winnerId, otherUserId: ctx.loserId, dedupeKey: `beef_win:${beef.id}`, facts: { score_winner: ctx.scoreWinner, score_loser: ctx.scoreLoser, upset: !!ctx.upset }, happenedAt: Date.now() });
-    if (kind === 'forfeit' && ctx.loserId && ctx.winnerId) return await createStory({ kind: 'beef_forfeit', userId: ctx.loserId, otherUserId: ctx.winnerId, dedupeKey: `beef_forfeit:${beef.id}`, facts: {}, happenedAt: Date.now() });
+    // "Ducked" only when they were live while on the clock: someone who never streamed in that time never heard it.
+    if (kind === 'forfeit' && ctx.loserId && ctx.winnerId && await liveDuring(ctx.loserId, beef.opened_at)) return await createStory({ kind: 'beef_forfeit', userId: ctx.loserId, otherUserId: ctx.winnerId, dedupeKey: `beef_forfeit:${beef.id}`, facts: {}, happenedAt: Date.now() });
     return null;
 }
 
@@ -442,4 +463,4 @@ async function setOptOut(userId, out) {
 
 async function hide(id) { await db.run("UPDATE arena_drama SET status = 'hidden' WHERE id = ?", [Number(id)]); }
 
-module.exports = { detect, beefStory, createStory, announce, feed, story, react, lolcowIndex, cloutRankings, rapSheet, setOptOut, optedOut, hide, REACTIONS, TEMPLATES: T, _test: { detectStreams, detectSnapshots, detectSounds, detectDaily, weekStart, toMs, fmt, pickQuote } };
+module.exports = { detect, beefStory, createStory, announce, feed, story, react, lolcowIndex, cloutRankings, rapSheet, setOptOut, optedOut, hide, REACTIONS, TEMPLATES: T, addsAccusation, _test: { detectStreams, detectSnapshots, detectSounds, detectDaily, weekStart, toMs, fmt, pickQuote } };

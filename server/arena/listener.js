@@ -4,15 +4,14 @@
  * Every TICK_MS, for every LIVE fighter whose stream is being transcribed, read the new speech
  * lines. Everything the Arena is comes from here; chat, votes and submissions do not exist.
  *
- *   name-drop → a line that names another fighter (however the transcriber spelled it — see
- *               names.js) LOCKS the ears on that fighter. Everything said while locked goes to
+ *   name-drop → a line that says another fighter's whole name, as it is spelled (names.js
+ *               wholeOnly: no sound-alikes, no pieces of a handle) LOCKS the ears on that fighter. Everything said while locked goes to
  *               the BEEF JUDGE with the earlier context; a judged hit → beef.recordHit() (opens
  *               the beef, scores it, puts the other side on the clock). See beef.js.
  *   free talk → everything said while NOT locked pools for the MIC JUDGE: is this shit talk at
- *               all (roast, rant, callout, brag, disrespect)? Who is it aimed at? If the judge's
- *               `aimed_at` resolves to a roster fighter, it is a callout and feeds a beef like a
- *               name-drop would; otherwise it lands in the shit-talk feed as a `trash` moment
- *               and pays Trash Level XP (mic.js).
+ *               all (roast, rant, callout, brag, disrespect)? Who is it aimed at ("chat", "the
+ *               mods"; a fighter the judge guesses at is dropped, since nobody named them)? It
+ *               lands in the shit-talk feed as a `trash` moment and pays Trash Level XP (mic.js).
  *
  * Bounded: at most one judge call per stream per JUDGE_MIN_INTERVAL_MS; nothing happens for
  * streams nobody is talking on; the behaviour filter voids chunks before any model call.
@@ -29,7 +28,6 @@ const TICK_MS = 15 * 1000;
 const JUDGE_MIN_WORDS = 20;
 const JUDGE_MIN_INTERVAL_MS = 30 * 1000;
 const MIC_MIN_QUALITY = 6;          // free talk must be at least this good to land in the feed (bangers only)
-const CALLOUT_MIN_QUALITY = 6;      // …and this good for an aimed_at name to open a beef
 const MIN_LINE_WORDS = 6;           // a quotable line is a complete thought, not a fragment
 const BUFFER_MAX_CHARS = 1400;
 
@@ -61,8 +59,11 @@ async function aliases(roster) {
     _aliasCache = { at: Date.now(), list };
     return list;
 }
-async function mentionsIn(text, speakerId, roster) { return names.findMentions(text, await aliases(roster), { excludeUserId: speakerId }).map(m => m.userId); }
-async function mentionsDetailed(text, speakerId, roster) { return names.findMentions(text, await aliases(roster), { excludeUserId: speakerId }); }
+// Only a whole name said as it is spelled names someone: a beef is a public claim that one streamer went at another.
+// Sound-alikes and pieces made "Minions" (a game's voice line) into mnss22741 and "fix it" into finditfixit, and 38 of
+// the first 51 beefs had no name said at all (2026-10-18).
+async function mentionsIn(text, speakerId, roster) { return (await mentionsDetailed(text, speakerId, roster)).map(m => m.userId); }
+async function mentionsDetailed(text, speakerId, roster) { return names.findMentions(text, await aliases(roster), { excludeUserId: speakerId, wholeOnly: true }); }
 
 // ── Judges ───────────────────────────────────────────────────
 
@@ -196,6 +197,16 @@ async function judgeFocus(stream, roster, st, events, { reason }) {
     return true;
 }
 
+/**
+ * The judge's "aimed at" for free talk, which named no fighter (a whole name said sends the line to the beef judge):
+ * "chat" or "the mods" stays; a guess that is a fighter is dropped, because nobody named them.
+ */
+async function aimedAtUnnamed(aimedAt, speakerId, roster) {
+    if (!aimedAt) return null;
+    const guessed = names.findMentions(aimedAt, await aliases(roster), { excludeUserId: speakerId });
+    return guessed.length ? null : aimedAt;
+}
+
 /** Free talk (not locked on anyone): is it shit talk at all, and at whom? */
 async function judgeFreeTalk(stream, roster, st, events) {
     const lines = st.mic.lines; st.mic.lines = [];
@@ -206,15 +217,8 @@ async function judgeFreeTalk(stream, roster, st, events) {
     if (!j.is_trash_talk || j.quality < MIC_MIN_QUALITY) { events.push({ kind: 'mic_miss', streamId: stream.id, speakerId: stream.user_id, about: j.about }); return; }
     const ref = lineRefFor(lines, j.best_line);
     if (await mic().isDuplicate(stream.user_id, j.best_line)) { events.push({ kind: 'mic_dupe', streamId: stream.id, speakerId: stream.user_id }); return; }
-    // "aimed_at" that resolves to a roster fighter = a callout → it feeds a beef exactly like a name-drop.
-    const target = j.aimed_at ? (await mentionsDetailed(j.aimed_at, stream.user_id, roster))[0] : null;
-    if (target && j.quality >= CALLOUT_MIN_QUALITY) {
-        const res = await beef().recordHit(stream.user_id, target.userId, { quality: j.quality, best_line: j.best_line, about: j.about, announcer: j.announcer, vod_id: ref.vod_id, sec: ref.sec, stream_id: stream.id });
-        st.lastMicJudgement.target_id = target.userId; st.lastMicJudgement.opened = res?.opened;
-        events.push({ kind: 'beef_hit', streamId: stream.id, speakerId: stream.user_id, targetId: target.userId, opened: res?.opened, quality: j.quality, line: j.best_line, named: false, callout: true });
-        return;
-    }
-    const m = await mic().addMoment({ userId: stream.user_id, streamId: stream.id, vodId: ref.vod_id, sec: ref.sec, kind: 'trash', aimedAt: j.aimed_at || null, text: j.best_line || text.slice(0, 220), about: j.about, quality: j.quality, announcer: j.announcer });
+    const aimedAt = await aimedAtUnnamed(j.aimed_at, stream.user_id, roster);
+    const m = await mic().addMoment({ userId: stream.user_id, streamId: stream.id, vodId: ref.vod_id, sec: ref.sec, kind: 'trash', aimedAt, text: j.best_line || text.slice(0, 220), about: j.about, quality: j.quality, announcer: j.announcer });
     if (m) events.push({ kind: 'mic_hit', streamId: stream.id, speakerId: stream.user_id, quality: j.quality, line: j.best_line, aimedAt: j.aimed_at, momentId: m.id });
 }
 
@@ -297,4 +301,4 @@ function start() {
 }
 function stop() { if (_timer) { clearInterval(_timer); _timer = null; } }
 
-module.exports = { start, stop, tick, consoleState, TICK_MS, JUDGE_MIN_WORDS, JUDGE_MIN_INTERVAL_MS, MIC_MIN_QUALITY, CALLOUT_MIN_QUALITY, MIN_LINE_WORDS, cleanLine, FOCUS_TAIL_MS, FOCUS_EXTEND_MS, FOCUS_MAX_MS, SPICY, _mentionsIn: mentionsIn, _mentionsDetailed: mentionsDetailed, _aliases: aliases, _heuristicBeef: heuristicBeef, _heuristicMic: heuristicMic, _judgeBeef: judgeBeef, _judgeMic: judgeMic, _state: state };
+module.exports = { start, stop, tick, consoleState, TICK_MS, JUDGE_MIN_WORDS, JUDGE_MIN_INTERVAL_MS, MIC_MIN_QUALITY, MIN_LINE_WORDS, cleanLine, FOCUS_TAIL_MS, FOCUS_EXTEND_MS, FOCUS_MAX_MS, SPICY, _mentionsIn: mentionsIn, _mentionsDetailed: mentionsDetailed, _aimedAtUnnamed: aimedAtUnnamed, _aliases: aliases, _heuristicBeef: heuristicBeef, _heuristicMic: heuristicMic, _judgeBeef: judgeBeef, _judgeMic: judgeMic, _state: state };

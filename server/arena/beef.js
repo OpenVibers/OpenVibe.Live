@@ -42,7 +42,10 @@ async function headlineFor(kind, ctx) {
         // The headline rules are OpenVibe.AI's versioned template live.arena.headline (WS-O task 2).
         const event = kind === 'open' || kind === 'forfeit' ? kind : 'score';   // a draw or a points win is a score
         const out = await require('../ai/ai-service').structured('live.arena.headline', { kind: event, ...ctx }, { meter: { kind: 'arena_headline', role: 'chat', source: 'arena' } });
-        return out && out.headline ? String(out.headline).slice(0, 120) : null;
+        if (!out || !out.headline) return null;
+        // No accusation the plain headline does not make (drama.js addsAccusation; a quote never licenses one).
+        if (require('./drama').addsAccusation(out.headline, templateHeadline(event, { ...ctx, line: null }))) return null;
+        return String(out.headline).slice(0, 120);
     } catch { return null; }
 }
 function templateHeadline(kind, ctx) {
@@ -163,7 +166,7 @@ async function rivalry(u1, u2) {
 }
 
 async function rivalriesFor(userId, limit = 5) {
-    const opps = await db.all(`SELECT CASE WHEN a_user_id = ? THEN b_user_id ELSE a_user_id END AS opp, COUNT(*) AS n FROM arena_beefs WHERE (a_user_id = ? OR b_user_id = ?) GROUP BY 1 HAVING COUNT(*) >= 2 ORDER BY n DESC LIMIT ?`, [userId, userId, userId, limit]);
+    const opps = await db.all(`SELECT CASE WHEN a_user_id = ? THEN b_user_id ELSE a_user_id END AS opp, COUNT(*) AS n FROM arena_beefs WHERE (a_user_id = ? OR b_user_id = ?) AND status <> 'void' GROUP BY 1 HAVING COUNT(*) >= 2 ORDER BY n DESC LIMIT ?`, [userId, userId, userId, limit]);
     const b = mic();
     const roster = await arena().loadRoster();
     return (await Promise.all(opps.map(async o => { const r = await rivalry(userId, o.opp); return { opponent: await b.fighterBrief(o.opp, roster), fights: r.fights + (await openBeefBetween(userId, o.opp) ? 1 : 0), wins: r.wins_1, losses: r.wins_2, open: !!await openBeefBetween(userId, o.opp), receipts: r.receipts.slice(0, 2) }; })));
@@ -198,7 +201,7 @@ async function recordFor(userId) {
     const r = await db.get(`SELECT COUNT(*) FILTER (WHERE winner_user_id = ?) AS wins,
                              COUNT(*) FILTER (WHERE status = 'resolved' AND winner_user_id IS NOT NULL AND winner_user_id != ?) AS losses,
                              COUNT(*) FILTER (WHERE status = 'resolved' AND winner_user_id IS NULL) AS draws
-                      FROM arena_beefs WHERE a_user_id = ? OR b_user_id = ?`, [userId, userId, userId, userId]) || {};
+                      FROM arena_beefs WHERE (a_user_id = ? OR b_user_id = ?) AND status <> 'void'`, [userId, userId, userId, userId]) || {};
     return { wins: r.wins || 0, losses: r.losses || 0, draws: r.draws || 0 };
 }
 
@@ -237,13 +240,14 @@ async function list({ limitResolved = 12 } = {}) {
 }
 
 async function get(id) {
-    const b = await db.get('SELECT * FROM arena_beefs WHERE id = ?', [id]);
+    // 'void': a beef nobody started (no name said; voided 2026-10-18) is not shown.
+    const b = await db.get("SELECT * FROM arena_beefs WHERE id = ? AND status <> 'void'", [id]);
     return b ? await beefView(b, await arena().loadRoster()) : null;
 }
 
 async function forUser(userId, limit = 8) {
     const roster = await arena().loadRoster();
-    return (await Promise.all((await db.all(`SELECT * FROM arena_beefs WHERE a_user_id = ? OR b_user_id = ? ORDER BY CASE WHEN status = 'open' THEN 0 ELSE 1 END, COALESCE(resolved_at, opened_at) DESC LIMIT ?`, [userId, userId, limit])).map(async b => await beefView(b, roster))));
+    return (await Promise.all((await db.all(`SELECT * FROM arena_beefs WHERE (a_user_id = ? OR b_user_id = ?) AND status <> 'void' ORDER BY CASE WHEN status = 'open' THEN 0 ELSE 1 END, COALESCE(resolved_at, opened_at) DESC LIMIT ?`, [userId, userId, limit])).map(async b => await beefView(b, roster))));
 }
 
 module.exports = {

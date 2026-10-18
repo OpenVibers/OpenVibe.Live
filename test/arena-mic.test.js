@@ -1,7 +1,8 @@
 'use strict';
 
 // Arena v3 (Battle Cam) — pure mic. The roster is whoever has been heard, ratings come from the
-// transcripts + the mic ledger, beefs open from name-drops AND from the mic judge's "aimed_at",
+// transcripts + the mic ledger, beefs open only when a fighter's whole name is said (never from the
+// mic judge's guess at "aimed_at", a nickname or a sound-alike),
 // free-standing shit talk lands in the feed and pays Trash Level XP, and chat can only hype.
 // Runs end-to-end on a temp DB with no AI configured (heuristic judges, template headlines).
 
@@ -136,6 +137,25 @@ console.log('✅ roster + ratings are pure mic');
         await listener.tick();
     }
     assert.strictEqual((await listener.consoleState(u3)).focus, null, 'moved on → lock dropped');
+    // A piece of a name or a sound-alike names nobody: no lock, no beef (a League stream's "Minions" locked onto
+    // mnss22741 and opened three beefs of game voice lines, 2026-10-18).
+    await db.run(`UPDATE streams SET started_at = datetime('now', '-1100 seconds') WHERE id = ?`, [liveId]);
+    await db.addTimelineEvents([{ stream_id: liveId, user_id: u3, vod_id: null, kind: 'speech', start_sec: 1086, end_sec: 1092, text: 'Grizzly? Grizzly is trash, washed, a fraud, scared of the smoke, I would cook that grizly bare in a second, bet!', label: null, confidence: 0.9 }]);
+    listener._state.get(liveId).lastJudgeAt = 0;
+    ev = await listener.tick();
+    assert.ok(!ev.some(e => e.kind === 'focus' || e.kind === 'beef_hit'), `a nickname or a misspelling locks nothing: ${JSON.stringify(ev)}`);
+    assert.strictEqual((await listener.consoleState(u3)).focus, null);
+    assert.strictEqual((await beef.openBeefsFor(u3)).length, 1, 'still the one beef a whole name opened');
+    assert.strictEqual(await listener._aimedAtUnnamed('grizzly bear', u3, await arena.loadRoster()), null, "the judge's guess at a fighter is dropped");
+    assert.strictEqual(await listener._aimedAtUnnamed('chat', u3, await arena.loadRoster()), 'chat');
+    const names = require('../server/arena/names');
+    const fake = { order: [41, 55], byId: { 41: { user: { username: 'mnss22741', display_name: 'mnss22741' } }, 55: { user: { username: 'finditfixit', display_name: 'finditfixit' } } } };
+    const entries = names.rosterEntries(fake, (id) => (id === 55 ? ['fix it'] : []));
+    const whole = (t) => names.findMentions(t, entries, { wholeOnly: true }).map(m => m.userId).sort((a, b) => a - b);
+    assert.deepStrictEqual(whole('Minions has been.'), [], 'a sound-alike is nobody');
+    assert.deepStrictEqual(whole("This is lame. We have to fix it."), [], 'a nickname that is a phrase is nobody');
+    assert.deepStrictEqual(whole('mnss 22741 is mid and finditfixit too'), [41, 55], 'whole names, however spaced');
+    assert.deepStrictEqual(names.findMentions('Minions has been.', entries).map(m => m.how), ['phonetic'], 'the loose matcher still exists for other uses');
     console.log('✅ listener: free talk → feed + XP; name-drop → lock → beef; lets go when they move on');
 
     // ── Persona fallback + fighter card are mic-shaped ──

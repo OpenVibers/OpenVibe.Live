@@ -29,7 +29,7 @@ const db = require('../server/db/database');
             [live ? 1 : 0, ago(startMin), live ? null : ago(endMin), live ? null : (startMin - endMin) * 60, peak, title, id]);
         return id;
     };
-    const rager = await mk('rager'), crasher = await mk('crasher'), screamer = await mk('screamer'), ghost = await mk('ghost'), returner = await mk('returner'), viewer = await mk('viewer');
+    const rager = await mk('rager'), crasher = await mk('crasher'), screamer = await mk('screamer'), ghost = await mk('ghost'), returner = await mk('returner'), viewer = await mk('viewer'), fan = await mk('fan');
 
     // rager: four long streams before, then six minutes and a title that says it all.
     for (let d = 4; d >= 1; d--) await stream(rager, { startMin: d * 1440 + 120, endMin: d * 1440, peak: 2 });
@@ -44,6 +44,14 @@ const db = require('../server/db/database');
         { stream_id: ss, user_id: screamer, vod_id: null, kind: 'sound', start_sec: 130, end_sec: 131, text: null, label: 'Screaming', confidence: 0.8 },
         { stream_id: ss, user_id: screamer, vod_id: null, kind: 'sound', start_sec: 160, end_sec: 161, text: null, label: 'Shout', confidence: 0.8 },
         { stream_id: ss, user_id: screamer, vod_id: null, kind: 'speech', start_sec: 140, end_sec: 145, text: 'I swear this game is rigged against me every single time', label: null, confidence: 0.9 },
+    ]);
+    // fan: a match on stream; the crowd's screams and groans and "crying", and nothing heated said by the streamer.
+    const fs2 = await stream(fan, { startMin: 20, peak: 1 });
+    await db.addTimelineEvents([
+        ...[100, 120, 140].map((t) => ({ stream_id: fs2, user_id: fan, vod_id: null, kind: 'sound', start_sec: t, end_sec: t + 1, text: null, label: 'Screaming', confidence: 0.8 })),
+        ...[200, 210, 220].map((t) => ({ stream_id: fs2, user_id: fan, vod_id: null, kind: 'sound', start_sec: t, end_sec: t + 1, text: null, label: 'Crying, sobbing', confidence: 0.8 })),
+        { stream_id: fs2, user_id: fan, vod_id: null, kind: 'speech', start_sec: 125, end_sec: 130, text: 'We are going to get the control of this game now!', label: null, confidence: 0.9 },
+        { stream_id: fs2, user_id: fan, vod_id: null, kind: 'speech', start_sec: 205, end_sec: 210, text: 'Thank you, thank you, thank you all.', label: null, confidence: 0.9 },
     ]);
     // ghost: 90 minutes, nobody watching, nobody typing.
     await stream(ghost, { startMin: 150, endMin: 60, peak: 0 });
@@ -71,6 +79,8 @@ const db = require('../server/db/database');
     const md = await db.get("SELECT * FROM arena_drama WHERE kind = 'meltdown'");
     assert.strictEqual(md.quote, 'I swear this game is rigged against me every single time');
     assert.deepStrictEqual(JSON.parse(md.facts_json), { count: 3, seconds: 60, sounds: { Yell: 1, Screaming: 1, Shout: 1 } });
+    assert.ok(!kinds.includes(`meltdown:${fan}`), 'crowd noise with nothing heated said is no meltdown');
+    assert.ok(!kinds.some((k) => k.startsWith('tears:')), 'no tears stories');
     const crash = JSON.parse((await db.get("SELECT facts_json FROM arena_drama WHERE kind = 'viewer_crash'")).facts_json);
     assert.deepStrictEqual([crash.from, crash.to], [8, 2]);
 
@@ -111,6 +121,10 @@ const db = require('../server/db/database');
     const b = await drama.story(beefId);
     assert.deepStrictEqual([b.kind, b.user.username, b.other.username, b.headline], ['beef_open', 'crasher', 'screamer', '🥩 BEEF: crasher vs screamer']);
 
+    // "Ducked": only someone who was live while on the clock (crasher is live; ghost has not streamed since).
+    assert.strictEqual(await drama.beefStory('forfeit', { id: 993, opened_at: ago(10) }, { loserId: ghost, winnerId: crasher }), null, 'never live on the clock: no story');
+    assert.ok(await drama.beefStory('forfeit', { id: 994, opened_at: ago(10) }, { loserId: crasher, winnerId: screamer }));
+
     // Opting out hides the old stories and stops new ones.
     await drama.setOptOut(rager, true);
     assert.ok(!(await drama.feed({ limit: 50 })).some((s) => s.user.id === rager));
@@ -131,6 +145,16 @@ const db = require('../server/db/database');
     const g2 = await drama.createStory({ kind: 'ghost_town', userId: ghost, dedupeKey: 'ai:2', facts: { minutes: 90, peak: 0, messages: 0 }, happenedAt: NOW });
     await new Promise((r) => setTimeout(r, 50));
     assert.deepStrictEqual(await db.get('SELECT headline, ai FROM arena_drama WHERE id = ?', [g2]), { headline: '👻 ghost STREAMED 90 MINUTES TO AN EMPTY ROOM', ai: 0 }, 'a misspelled name keeps the template');
+
+    // An accusation the template does not make keeps the template (a beef of game voice lines became "DECLARES DEATH
+    // THREATS", 2026-10-18); one the template already makes may stay.
+    answer = { headline: '🚨 ghost THREATENS AN EMPTY ROOM', blurb: 'Peak 0.', alert: 3 };
+    const g3 = await drama.createStory({ kind: 'ghost_town', userId: ghost, dedupeKey: 'ai:3', facts: { minutes: 90, peak: 0, messages: 0 }, happenedAt: NOW });
+    await new Promise((r) => setTimeout(r, 50));
+    assert.strictEqual((await db.get('SELECT ai FROM arena_drama WHERE id = ?', [g3])).ai, 0, 'an added accusation keeps the template');
+    assert.strictEqual(drama.addsAccusation('🚨 A DECLARES DEATH THREATS', '🥩 BEEF: A vs B. A came for B on mic: I kill for this crown'), true);
+    assert.strictEqual(drama.addsAccusation('🚨 A KILLS IT AGAIN', 'A came for B on mic: I kill for this crown'), true, 'another form of the word is another word');
+    assert.strictEqual(drama.addsAccusation('🚨 RAGE QUIT after 6 minutes', 'rager RAGE QUIT? Stream over after 6 minutes'), false);
 
     // The meltdown quote: the heated line near the shouting beats a longer mundane one.
     const { pickQuote } = drama._test;
