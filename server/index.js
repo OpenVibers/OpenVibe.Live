@@ -187,6 +187,7 @@ const stopper = gracefulStop({
         // No new background runs from here on (the jobs helper's loops); and end SSE streams so
         // the drain can actually complete instead of always hitting the deadline.
         () => { require('./utils/jobs').stopAll(); },
+        async () => { if (!drill.enabled) await db.setState('rum_state', JSON.stringify(rum.state())).catch(() => {}); },
         () => { require('./streaming/live-events').closeAll(); },
     ],
     beforeDrain: async () => {
@@ -882,6 +883,16 @@ observability.registerDomainGauges(metricsRegistry, {
 metricsRegistry.gauge({ name: 'live_rum_p75', help: 'Real-user p75 per page kind and device class (ms; cls unitless), from the newest beacons', labelNames: ['metric', 'page', 'device'], collect: () => rum.p75Gauge() });
 metricsRegistry.gauge({ name: 'live_rum_errors', help: 'Script errors visitors reported since this process started: the ten most frequent messages', labelNames: ['message'], collect: () => rum.errorsGauge() });
 app.get('/api/admin/rum', requireAuth, permissions.requireAdmin, (req, res) => { res.set('Cache-Control', 'no-store'); res.json(rum.snapshot()); });
+// The same snapshot for the host, direct loopback only like /metrics (nginx refuses /metrics* from outside).
+app.get('/metrics/rum', (req, res) => {
+    if (!require('openvibe-shared/metrics').isLoopbackDirect(req)) return res.status(404).json({ error: 'Not found' });
+    res.set('Cache-Control', 'no-store'); res.json(rum.snapshot());
+});
+// The reservoirs survive restarts: app_state rum_state (numbers only), saved every 5 minutes and at shutdown.
+if (!drill.enabled) {
+    db.getState('rum_state').then((raw) => { try { rum.restore(JSON.parse(raw || 'null')); } catch { /* start empty */ } }).catch(() => {});
+    require('./utils/jobs').every('rum-save', 5 * 60_000, () => db.setState('rum_state', JSON.stringify(rum.state())));
+}
 
 // ── Updates / Changelog ──────────────────────────────────────
 const { execFile } = require('child_process');
