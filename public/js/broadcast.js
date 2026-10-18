@@ -4619,8 +4619,11 @@ async function _switchActiveCamera(cameraId) {
     const devices = await _enumerateBroadcastVideoInputs({ ensureLabels: false });
     const chosenDevice = devices.find(d => d.deviceId === cameraId) || null;
     const facingHint = _getCameraFacingHint(chosenDevice) || oldSettings.facingMode || 'user';
-    const trackWidth = oldSettings.width || 1280;
-    const trackHeight = oldSettings.height || 720;
+    // Ask in the camera's own (landscape) terms, as going live did. A phone held upright reports its track
+    // turned (720×1280); asking the next camera for that made Chrome crop a tall slice of its landscape picture
+    // and turn it sideways: a zoomed strip across the middle of the screen after every flip (owner, 2026-10-17).
+    const trackWidth = Math.max(oldSettings.width || 0, oldSettings.height || 0) || 1280;
+    const trackHeight = Math.min(oldSettings.width || 0, oldSettings.height || 0) || 720;
     const trackFrameRate = oldSettings.frameRate || getBroadcastFrameRate();
 
     const candidateConstraints = cameraId && cameraId !== 'default'
@@ -4633,6 +4636,12 @@ async function _switchActiveCamera(cameraId) {
             { video: { facingMode: { ideal: facingHint }, width: { ideal: trackWidth }, height: { ideal: trackHeight }, frameRate: { ideal: trackFrameRate } } },
             { video: true },
         ];
+
+    // A browser recording ends when its stream's tracks change (MediaRecorder stops with an error): close the
+    // segment first and start the next one after the switch, as the screen share toggle does.
+    const streamId = broadcastState.activeStreamId;
+    const recording = !!(ss.vodRecorder && ss.vodRecorder.state !== 'inactive');
+    if (recording) await uploadVodRecording(streamId, { finalizeStream: false });
 
     ss._suppressRecovery = true; // prevent track.ended from triggering recovery
     const suppressTimeout = setTimeout(() => { ss._suppressRecovery = false; }, 15000);
@@ -4661,6 +4670,7 @@ async function _switchActiveCamera(cameraId) {
         clearTimeout(suppressTimeout);
         ss._suppressRecovery = false;
         attachLocalStreamRecoveryHandlers(broadcastState.activeStreamId);
+        if (recording) startVodRecording(streamId);
         const appliedDeviceId = newTrack.getSettings?.().deviceId || cameraId || 'default';
         // Warn if browser gave us a different camera than requested
         if (cameraId && cameraId !== 'default' && appliedDeviceId && appliedDeviceId !== cameraId) {
@@ -4684,6 +4694,7 @@ async function _switchActiveCamera(cameraId) {
         clearTimeout(suppressTimeout);
         ss._suppressRecovery = false;
         attachLocalStreamRecoveryHandlers(broadcastState.activeStreamId);
+        if (recording) startVodRecording(streamId);
         throw err;
     }
 }
