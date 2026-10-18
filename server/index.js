@@ -599,8 +599,12 @@ console.log(`[Server] /shared: serving ${SHARED_BROWSER_FILES.length} browser fi
         if (hashed) res.setHeader('CDN-Cache-Control', cache.IMMUTABLE);
         res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
         res.sendFile(filePath, (err) => {
+            // A listed file that cannot be read is this server's fault, and passing: never a cacheable answer
+            // (its headers above said immutable; Cloudflare kept a 404 navbar through a deploy on 2026-10-17).
             if (err && !res.headersSent) {
-                res.status(404).type('text/plain').send('Not found');
+                res.removeHeader('CDN-Cache-Control');
+                res.setHeader('Cache-Control', 'no-store');
+                res.status(503).type('text/plain').send('Unavailable');
             }
         });
     });

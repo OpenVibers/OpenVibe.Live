@@ -12,12 +12,21 @@
  * (LIVE_DRILL, see ./drill.js) those are ignored: the drill loads the production env file, whose
  * values point at production's directories. Only DATA_DIR counts there.
  */
+const fs = require('fs');
 const path = require('path');
 const drill = require('./drill');
 
-/** The data directory (absolute). */
+let real = { from: null, dir: null };
+/**
+ * The data directory (absolute, links resolved). In production ./data is a release's link to the shared data
+ * folder, and a release folder can be removed while the process still runs from it (2026-10-17: thumbnails
+ * and AI frames failed with ENOENT for 2.5 hours), so every path is built on the link's target.
+ */
 function dataDir() {
-    return path.resolve(process.env.DATA_DIR || './data');
+    const want = path.resolve(process.env.DATA_DIR || './data');
+    if (real.from === want) return real.dir;
+    try { real = { from: want, dir: fs.realpathSync(want) }; } catch { return want; /* not made yet */ }
+    return real.dir;
 }
 
 /** A path under the data directory. */
