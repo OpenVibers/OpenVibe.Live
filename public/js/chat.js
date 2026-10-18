@@ -2787,6 +2787,7 @@ function initChat(streamId, channelUserId = null) {
  */
 let _chatConnDropAt = 0;
 let _chatServerUpdating = false;
+let _chatUpdatingTimer = 0;
 function _chatConnState(state, detail) {
     const { messages: container } = getChatEl();
     if (container) {
@@ -3428,10 +3429,14 @@ function handleChatMessage(msg) {
             addSystemMessage('Message blocked by this streamer\'s Anti-Slur Nudge setting.');
             break;
         case 'server_restart':
-            // A deploy is restarting the server. No reload needed: the socket reconnects on its own
-            // (with a short random delay, so everyone does not arrive at once) and history refills.
+            // A deploy is restarting the chat server. No reload needed: if the socket drops it reconnects
+            // on its own (with a short random delay, so everyone does not arrive at once), and only then
+            // does the reader see "updating". A restart that never drops this socket says nothing: the
+            // notice used to show "updating" at once and clear it only on a reconnect, so it stuck when
+            // the socket stayed up (owner's popout, 2026-10-18).
             _chatServerUpdating = true;
-            _chatConnState('updating');
+            clearTimeout(_chatUpdatingTimer);
+            _chatUpdatingTimer = setTimeout(() => { _chatServerUpdating = false; }, 60000);
             break;
         case 'update': {
             // Deploy notice: one rolling card per run of deploys, replaced in place by id (never duplicated).

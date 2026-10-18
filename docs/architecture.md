@@ -138,8 +138,9 @@ Client WS → OpenVibe.Chat (127.0.0.1:4400; nginx routes /ws/chat, /api/chat/, 
 Live runs no chat WebSocket server or chat REST routes: it delivers to Chat's typed ingress through
 `server/chat/chat-delivery.js` (producer pushes, moderation, cache hints) and reads Chat's snapshot for
 presence. The room is derived from the stream the client joined; offline channel chat applies the
-channel's bans and chat rules. Reconnects are jittered; a `server_restart` notice shows "OpenVibe is
-updating" and refills history on reconnect. See [chat-system.md](chat-system.md).
+channel's bans and chat rules. Reconnects are jittered; Chat's `server_restart` notice makes the next reconnect quick and,
+if the socket then drops, shows "OpenVibe is updating" until it is back (history refills on reconnect). Live sends
+no such notice: its restarts do not touch chat sockets. See [chat-system.md](chat-system.md).
 
 ## Server runtime
 
