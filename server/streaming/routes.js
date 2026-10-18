@@ -1193,6 +1193,10 @@ router.get('/recently-online', async (req, res) => {
         for (const s of streamers) {
             try {
                 const parsed = JSON.parse(s.managed_streams_json || '[]');
+                // A stream that never had a slot is listed as the channel itself, so someone who streamed is never
+                // "No streams" (Dreezy's first browser stream had no slot, 2026-10-18).
+                const loose = s.loose_stream_json ? JSON.parse(s.loose_stream_json) : null;
+                if (loose) parsed.push({ managed_stream_id: null, slug: null, title: loose.title || null, protocol: null, last_live_at: loose.last_live_at || null, vod_thumbnail: null });
                 // Sort by most recently live first; put null last
                 s.managed_streams = parsed.sort((a, b) => {
                     if (!a.last_live_at && !b.last_live_at) return 0;
@@ -1202,6 +1206,7 @@ router.get('/recently-online', async (req, res) => {
                 });
             } catch { s.managed_streams = []; }
             delete s.managed_streams_json;
+            delete s.loose_stream_json;
         }
         // VOD rows (and their thumbnails) live in OpenVibe.Media — the local SQL
         // can't join them, so batch-resolve the latest thumb per managed stream.
@@ -1232,7 +1237,8 @@ router.get('/recently-online', async (req, res) => {
                     if (!mine.length) continue;
                     s.live = { started_at: mine[0].started_at, viewer_count: mine.reduce((n, l) => n + (Number(l.viewer_count) || 0), 0), title: mine[0].title || null };
                     for (const ms of (s.managed_streams || [])) {
-                        const l = mine.find(x => x.managed_stream_id != null && Number(x.managed_stream_id) === Number(ms.managed_stream_id));
+                        const l = mine.find(x => (ms.managed_stream_id == null ? x.managed_stream_id == null
+                            : x.managed_stream_id != null && Number(x.managed_stream_id) === Number(ms.managed_stream_id)));
                         if (l) { ms.is_live = true; ms.live_started_at = l.started_at; if (l.thumbnail_url) ms.live_thumbnail = l.thumbnail_url; }
                     }
                     // The live slot leads the card's list.

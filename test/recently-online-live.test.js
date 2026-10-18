@@ -17,7 +17,7 @@ const db = require('../server/db/database');
 (async () => {
     await db.initDb();
     const mk = async (username) => { await db.createUser({ username, email: `${username}@x`, password_hash: 'x', display_name: username, stream_key: username.padEnd(32, '0') }); const id = (await db.get('SELECT id FROM users WHERE username = ?', [username])).id; await db.ensureChannel(id); return id; };
-    const izor = await mk('izor'), quiet1 = await mk('quietone');
+    const izor = await mk('izor'), quiet1 = await mk('quietone'), first = await mk('firsttimer'), loose = await mk('dreezy');
     const slot = async (uid, slug) => Number((await db.run('INSERT INTO managed_streams (user_id, slug, title, protocol, stream_key, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ov_now(), ov_now()) RETURNING id', [uid, slug, `${slug} title`, 'webrtc', `${slug}-key-${uid}`])).lastInsertRowid);
     const ranked = await slot(izor, 'ranked'), chill = await slot(izor, 'chill'), q = await slot(quiet1, 'main');
     const stream = async (uid, ms, { live = false, startedAgo, endedAgo = null, viewers = 0 }) => await db.run(
@@ -28,6 +28,9 @@ const db = require('../server/db/database');
     await stream(izor, ranked, { startedAgo: 2000, endedAgo: 1900 });
     await stream(izor, ranked, { live: true, startedAgo: 120, viewers: 7 });
     await stream(quiet1, q, { startedAgo: 600, endedAgo: 500 });
+    // A first stream, live now and on no slot; and a streamer whose only (ended) stream never had a slot.
+    await stream(first, null, { live: true, startedAgo: 3, viewers: 1 });
+    await stream(loose, null, { startedAgo: 300, endedAgo: 298 });
 
     const app = express();
     app.use('/api/streams', require('../server/streaming/routes'));
@@ -43,6 +46,14 @@ const db = require('../server/db/database');
         assert.deepStrictEqual(iz.managed_streams.map((m) => [m.slug, !!m.is_live]), [['ranked', true], ['chill', false]], 'the live slot first');
         assert.strictEqual(iz.managed_streams[0].live_thumbnail, 'https://openvibe.media/live/frame.jpg');
         assert.ok(!qu.live && !qu.managed_streams.some((m) => m.is_live), 'an offline streamer is not live');
+        // Live on a first stream is listed (it used to wait for the stream to end), its slot-less stream live.
+        const ft = body.streamers.find((s) => s.username === 'firsttimer');
+        assert.ok(ft && ft.live, 'a first-timer live now is listed, live');
+        assert.deepStrictEqual(ft.managed_streams.map((m) => [m.slug, !!m.is_live]), [[null, true]]);
+        // A slot-less stream is the channel's entry, never "No streams".
+        const dz = body.streamers.find((s) => s.username === 'dreezy');
+        assert.deepStrictEqual(dz.managed_streams.map((m) => [m.slug, m.title, !!m.last_live_at]), [[null, 'old', true]]);
+        assert.strictEqual(body.total, 4);
         console.log('recently-online live: all checks passed');
     } finally { server.close(); }
     process.exit(0);
