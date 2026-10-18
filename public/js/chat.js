@@ -788,23 +788,40 @@ function isBroadcastingLiveForTTS() {
 // ── Own-channel TTS: one speaking tab per device ─────────────────────────────
 // "TTS On My Channel When Live" must play in exactly ONE tab per browser no matter
 // how many chats/popouts the streamer has open — otherwise every tab speaks every
-// message on top of each other. The first tab takes a Web Lock and becomes the
-// speaker; the rest stand by and take over automatically when it closes. Browsers
-// without the Web Locks API keep the old every-tab behavior.
-let _ownTtsLeader = !(typeof navigator !== 'undefined' && 'locks' in navigator);
-(function _startOwnTtsLeadership() {
-    if (_ownTtsLeader) return;
-    try {
-        // Queued (not ifAvailable) request = proper leader election: every tab waits
-        // in line, and the INSTANT the speaking tab closes, the browser grants the
-        // lock to the next one — TTS recovers by itself with no polling gap.
-        navigator.locks.request('openvibe-own-channel-tts', () => {
-            _ownTtsLeader = true;
-            return new Promise(() => { }); // hold until this tab closes
-        }).catch(() => { _ownTtsLeader = true; }); // lock machinery failed → don't go silent
-    } catch { _ownTtsLeader = true; }
-})();
-function isOwnChannelTtsSpeaker() { return _ownTtsLeader; }
+// message on top of each other. A tab showing the streamer's OWN channel chat (or
+// their live broadcast page) takes a Web Lock and becomes the speaker; the rest stand
+// by and take over automatically when it closes or moves to another channel. Only
+// those tabs compete: every tab used to ask at load, so a home-page or other-channel
+// tab opened first held the lock for good and the streamer's own popout never spoke
+// (owner, 2026-10-18). Browsers without the Web Locks API keep every-tab behavior.
+const _ownTtsLocks = typeof navigator !== 'undefined' && 'locks' in navigator;
+let _ownTtsLeader = !_ownTtsLocks;
+let _ownTtsRelease = null;   // ends this tab's held (or queued) lock request
+function _syncOwnTtsLeadership() {
+    if (!_ownTtsLocks) return;
+    const wanted = _isOwnChannelChat() || isBroadcastingLiveForTTS();
+    if (wanted && !_ownTtsRelease) {
+        let release;
+        const held = new Promise((resolve) => { release = resolve; });
+        _ownTtsRelease = release;
+        try {
+            // Queued (not ifAvailable) request = proper leader election: the INSTANT the
+            // speaking tab closes or leaves, the browser grants the lock to the next one.
+            navigator.locks.request('openvibe-own-channel-tts', () => {
+                if (_ownTtsRelease !== release) return undefined;   // left before it was granted
+                _ownTtsLeader = true;
+                return held;
+            }).catch(() => { _ownTtsLeader = true; }); // lock machinery failed → don't go silent
+        } catch { _ownTtsLeader = true; }
+    } else if (!wanted && _ownTtsRelease) {
+        const release = _ownTtsRelease;
+        _ownTtsRelease = null;
+        _ownTtsLeader = false;
+        release();
+    }
+}
+function isOwnChannelTtsSpeaker() { _syncOwnTtsLeadership(); return _ownTtsLeader; }
+window.addEventListener('openvibe-auth-changed', () => { try { _syncOwnTtsLeadership(); } catch { /* */ } });
 
 // Is the ACTIVE chat surface the logged-in user's OWN channel? Works on every
 // surface — channel page, offline chat, popout — unlike isStreaming(), which only
@@ -2579,6 +2596,7 @@ function _chatInputIdForTarget(targetId) {
 function initChat(streamId, channelUserId = null) {
     const prevChannelUserId = chatChannelUserId;
     chatChannelUserId = channelUserId || null;
+    _syncOwnTtsLeadership();
     const nextTargetId = getChatRenderTargetId();
 
     // Same CHANNEL, different surface — a live stream ended (stream id → null) or the
@@ -2934,6 +2952,7 @@ function destroyChat(forceClose = false) {
     }
     // The channel scope belongs to the page that set it; a later global fetch must not inherit it.
     chatChannelUserId = null;
+    _syncOwnTtsLeadership();
     chatRenderTargetId = null;
     clearFullscreenChatMessages();
     _fullscreenChatRecent = [];
@@ -3217,6 +3236,7 @@ function handleChatMessage(msg) {
                 name: String(msg.username || ''),
                 core: msg.core_username || null,
             };
+            _syncOwnTtsLeadership();   // signed in by now: an own-channel surface joins the speaker election
             _updateTranslateHint(msg.channel_language);
             // A surface rejoin (live↔offline swap on the same socket) re-issues this
             // confirmation — skip the duplicate "Chatting as" notice, but still run
