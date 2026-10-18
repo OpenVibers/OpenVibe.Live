@@ -14,6 +14,12 @@
  *               clock and you ducked — forfeit.
  *   end       → a beef also hard-ends MAX_BEEF_HOURS after it opened: higher score
  *               wins, equal is a draw. Records (W–L) come from here.
+ *   pending   → a beef is public only once both sides have named each other. One streamer naming
+ *               another opens it `pending`: the named person is told privately, and nothing shows on
+ *               the Arena, in ARENA ALERT or in chat. Their answer on their own stream (a judged hit
+ *               naming the caller) makes it `open`. Unanswered, it ends `expired`: no forfeit, no
+ *               story, no record. One-sided matches were friendly greetings ("Maticus, our only viewer")
+ *               and transcripts ("the Adam family"), 2026-10-18.
  */
 'use strict';
 
@@ -56,6 +62,14 @@ function templateHeadline(kind, ctx) {
 }
 function sqlDate(ms) { return new Date(ms).toISOString().replace('T', ' ').slice(0, 19); }
 
+// What everyone sees: a beef both sides are in, or one that ended. Pending, expired and void ones are no one's business.
+const PUBLIC = "status IN ('open', 'resolved')";
+
+/** The beef in play between two fighters, pending or open (recordHit's own view). */
+async function activeBeefBetween(u1, u2) {
+    return await db.get(`SELECT * FROM arena_beefs WHERE status IN ('pending', 'open') AND ((a_user_id = ? AND b_user_id = ?) OR (a_user_id = ? AND b_user_id = ?))`, [u1, u2, u2, u1]) || null;
+}
+
 async function openBeefBetween(u1, u2) {
     return await db.get(`SELECT * FROM arena_beefs WHERE status = 'open' AND ((a_user_id = ? AND b_user_id = ?) OR (a_user_id = ? AND b_user_id = ?))`, [u1, u2, u2, u1]) || null;
 }
@@ -79,36 +93,44 @@ function pushFeed(beef, event) {
  */
 async function recordHit(speakerId, targetId, hit) {
     if (speakerId === targetId) return null;
-    let beef = await openBeefBetween(speakerId, targetId);
+    let beef = await activeBeefBetween(speakerId, targetId);
     let opened = false;
     if (!beef) {
         const endsAt = sqlDate(Date.now() + MAX_BEEF_HOURS * 3600 * 1000);
         const history = await rivalry(speakerId, targetId);
-        await db.run(`INSERT INTO arena_beefs (a_user_id, b_user_id, on_clock, clock_until, ends_at, feed_json, opener_line, rematch, bounty_topic_id, headline) VALUES (?, ?, 'b', ?, ?, '[]', ?, ?, NULL, ?)`,
+        await db.run(`INSERT INTO arena_beefs (a_user_id, b_user_id, status, on_clock, clock_until, ends_at, feed_json, opener_line, rematch, bounty_topic_id, headline) VALUES (?, ?, 'pending', 'b', ?, ?, '[]', ?, ?, NULL, ?)`,
             [speakerId, targetId, await clockFor(targetId), endsAt, String(hit.best_line || '').slice(0, 220), history.fights > 0 ? 1 : 0, templateHeadline('open', { a: await nameOf(speakerId), b: await nameOf(targetId), line: hit.best_line, rematch: history.fights > 0 })]);
-        beef = await openBeefBetween(speakerId, targetId);
+        beef = await activeBeefBetween(speakerId, targetId);
         opened = true;
-        await mic().addXp(speakerId, XP_BEEF_OPEN, 'beef_open', beef.id);
-        console.log(`[Arena] beef #${beef.id} opened: user ${speakerId} → user ${targetId}${history.fights ? ' (rematch)' : ''}`);
-        try { require('./notify').arenaNotify(targetId, { type: 'beef_open', title: `${await nameOf(speakerId)} has words for you${history.fights ? ' — rematch' : ''}`, message: `${hit.best_line ? `“${String(hit.best_line).slice(0, 120)}” — ` : ''}answer on your own stream within ${await isLive(targetId) ? `${RESPONSE_LIVE_MIN} min` : `${RESPONSE_OFFLINE_HOURS} h`} or forfeit.`, icon: '🥊', url: `/arena/beef/${beef.id}`, key: `open:${beef.id}`, senderId: speakerId, senderName: await nameOf(speakerId) }); } catch { /* */ }
-        const id = beef.id;
-        require('./drama').beefStory('open', { id, a_user_id: speakerId, b_user_id: targetId }, { about: hit.about, opening_line: hit.best_line }).catch(() => {});
-        headlineFor('open', { a: await nameOf(speakerId), b: await nameOf(targetId), opening_line: hit.best_line, about: hit.about, rematch: history.fights > 0, record_between: history }).then(async h => { if (h) await db.run('UPDATE arena_beefs SET headline = ? WHERE id = ?', [h, id]); }).catch(() => {});
+        console.log(`[Arena] beef #${beef.id} pending: user ${speakerId} named user ${targetId}${history.fights ? ' (rematch)' : ''}`);
+        // Told privately: it becomes a beef only if they name the caller back on their own stream.
+        try { require('./notify').arenaNotify(targetId, { type: 'beef_open', title: `${await nameOf(speakerId)} said your name on stream`, message: `${hit.best_line ? `“${String(hit.best_line).slice(0, 120)}” — ` : ''}say theirs back on your own stream within ${await isLive(targetId) ? `${RESPONSE_LIVE_MIN} min` : `${RESPONSE_OFFLINE_HOURS} h`} to start a beef.`, icon: '🥊', url: '/arena', key: `open:${beef.id}`, senderId: speakerId, senderName: await nameOf(speakerId) }); } catch { /* */ }
     }
     const side = beef.a_user_id === speakerId ? 'a' : 'b';
     const other = side === 'a' ? 'b' : 'a';
     const otherId = side === 'a' ? beef.b_user_id : beef.a_user_id;
     const quality = Math.max(0, Math.min(10, Number(hit.quality) || 0));
     const firstResponse = side === 'b' && !beef.responded;
+    const pending = beef.status === 'pending';
+    // The named person answered: the beef is on, and public from here.
+    const goesOpen = pending && firstResponse;
     const feed = pushFeed(beef, { kind: opened ? 'open' : (firstResponse ? 'respond' : 'hit'), side, text: String(hit.best_line || '').slice(0, 220), quality, about: hit.about || null, announcer: hit.announcer || null, vod_id: hit.vod_id || null, sec: hit.sec ?? null });
     await db.run(`UPDATE arena_beefs SET score_${side} = score_${side} + ?, hits_${side} = hits_${side} + 1, last_${side}_at = ov_now(), responded = CASE WHEN ? THEN 1 ELSE responded END,
-            on_clock = ?, clock_until = ?, feed_json = ? WHERE id = ?`,
-        [quality, side === 'b' ? 1 : 0, other, await clockFor(otherId), feed, beef.id]);
+            status = CASE WHEN ? THEN 'open' ELSE status END, on_clock = ?, clock_until = ?, feed_json = ? WHERE id = ?`,
+        [quality, side === 'b' ? 1 : 0, goesOpen ? 1 : 0, other, await clockFor(otherId), feed, beef.id]);
+    if (pending && !goesOpen) return { beef: await db.get('SELECT * FROM arena_beefs WHERE id = ?', [beef.id]), opened, pending: true, side, first_response: false };
+    if (goesOpen) {
+        console.log(`[Arena] beef #${beef.id} on: user ${speakerId} answered user ${otherId}`);
+        const aName = await nameOf(beef.a_user_id), bName = await nameOf(beef.b_user_id);
+        await mic().addXp(beef.a_user_id, XP_BEEF_OPEN, 'beef_open', beef.id);
+        require('./drama').beefStory('open', { id: beef.id, a_user_id: beef.a_user_id, b_user_id: beef.b_user_id }, { about: hit.about, opening_line: beef.opener_line }).catch(() => {});
+        headlineFor('open', { a: aName, b: bName, opening_line: beef.opener_line, about: hit.about, rematch: !!beef.rematch, record_between: await rivalry(beef.a_user_id, beef.b_user_id) }).then(async h => { if (h) await db.run('UPDATE arena_beefs SET headline = ? WHERE id = ?', [h, beef.id]); }).catch(() => {});
+    }
     await mic().addXp(speakerId, quality * XP_BEEF_HIT, 'beef_hit', beef.id, { beefHit: true, line: hit.best_line, lineScore: quality, lineVodId: hit.vod_id, lineSec: hit.sec });
     // The hit is also a line in the shit-talk feed (VOD-linked, with who it was aimed at).
     try { await mic().addMoment({ userId: speakerId, streamId: hit.stream_id || null, vodId: hit.vod_id || null, sec: hit.sec ?? null, kind: 'beef_hit', targetUserId: targetId, beefId: beef.id, aimedAt: await nameOf(targetId), text: hit.best_line || hit.about || '', about: hit.about || null, quality, announcer: hit.announcer || null }); } catch { /* */ }
-    if (!opened) { try { require('./notify').arenaNotify(otherId, { type: firstResponse ? 'beef_answered' : 'beef_hit', title: `${await nameOf(speakerId)} ${firstResponse ? 'answered' : 'hit back'} (${quality}/10)`, message: `${hit.best_line ? `“${String(hit.best_line).slice(0, 120)}” — ` : ''}you're on the clock now.`, icon: '🔥', url: `/arena/beef/${beef.id}`, key: `hit:${beef.id}:${beef.hits_a + beef.hits_b}`, senderId: speakerId, senderName: await nameOf(speakerId) }); } catch { /* */ } }
-    return { beef: await db.get('SELECT * FROM arena_beefs WHERE id = ?', [beef.id]), opened, side, first_response: firstResponse };
+    { try { require('./notify').arenaNotify(otherId, { type: firstResponse ? 'beef_answered' : 'beef_hit', title: `${await nameOf(speakerId)} ${firstResponse ? 'answered' : 'hit back'} (${quality}/10)`, message: `${hit.best_line ? `“${String(hit.best_line).slice(0, 120)}” — ` : ''}you're on the clock now.`, icon: '🔥', url: `/arena/beef/${beef.id}`, key: `hit:${beef.id}:${beef.hits_a + beef.hits_b}`, senderId: speakerId, senderName: await nameOf(speakerId) }); } catch { /* */ } }
+    return { beef: await db.get('SELECT * FROM arena_beefs WHERE id = ?', [beef.id]), opened: goesOpen, side, first_response: firstResponse };
 }
 
 async function hype(beefId, side, voterKey) {
@@ -166,7 +188,7 @@ async function rivalry(u1, u2) {
 }
 
 async function rivalriesFor(userId, limit = 5) {
-    const opps = await db.all(`SELECT CASE WHEN a_user_id = ? THEN b_user_id ELSE a_user_id END AS opp, COUNT(*) AS n FROM arena_beefs WHERE (a_user_id = ? OR b_user_id = ?) AND status <> 'void' GROUP BY 1 HAVING COUNT(*) >= 2 ORDER BY n DESC LIMIT ?`, [userId, userId, userId, limit]);
+    const opps = await db.all(`SELECT CASE WHEN a_user_id = ? THEN b_user_id ELSE a_user_id END AS opp, COUNT(*) AS n FROM arena_beefs WHERE (a_user_id = ? OR b_user_id = ?) AND ${PUBLIC} GROUP BY 1 HAVING COUNT(*) >= 2 ORDER BY n DESC LIMIT ?`, [userId, userId, userId, limit]);
     const b = mic();
     const roster = await arena().loadRoster();
     return (await Promise.all(opps.map(async o => { const r = await rivalry(userId, o.opp); return { opponent: await b.fighterBrief(o.opp, roster), fights: r.fights + (await openBeefBetween(userId, o.opp) ? 1 : 0), wins: r.wins_1, losses: r.wins_2, open: !!await openBeefBetween(userId, o.opp), receipts: r.receipts.slice(0, 2) }; })));
@@ -175,6 +197,11 @@ async function rivalriesFor(userId, limit = 5) {
 /** Ticker: enforce clocks and hard ends; tighten an offline clock when the target goes live. */
 async function tick() {
     const now = Date.now();
+    // A callout nobody answered in time ends quietly: no forfeit, no story, no record.
+    for (const beef of await db.all(`SELECT id, clock_until, ends_at FROM arena_beefs WHERE status = 'pending'`)) {
+        const until = beef.clock_until ? Date.parse(beef.clock_until + 'Z') : 0;
+        if (until <= now || (beef.ends_at && Date.parse(beef.ends_at + 'Z') <= now)) await db.run("UPDATE arena_beefs SET status = 'expired', on_clock = NULL, clock_until = NULL WHERE id = ? AND status = 'pending'", [beef.id]);
+    }
     for (const beef of await db.all(`SELECT * FROM arena_beefs WHERE status = 'open'`)) {
         const t = totals(beef);
         if (beef.ends_at && Date.parse(beef.ends_at + 'Z') <= now) {
@@ -201,7 +228,7 @@ async function recordFor(userId) {
     const r = await db.get(`SELECT COUNT(*) FILTER (WHERE winner_user_id = ?) AS wins,
                              COUNT(*) FILTER (WHERE status = 'resolved' AND winner_user_id IS NOT NULL AND winner_user_id != ?) AS losses,
                              COUNT(*) FILTER (WHERE status = 'resolved' AND winner_user_id IS NULL) AS draws
-                      FROM arena_beefs WHERE (a_user_id = ? OR b_user_id = ?) AND status <> 'void'`, [userId, userId, userId, userId]) || {};
+                      FROM arena_beefs WHERE (a_user_id = ? OR b_user_id = ?) AND ${PUBLIC}`, [userId, userId, userId, userId]) || {};
     return { wins: r.wins || 0, losses: r.losses || 0, draws: r.draws || 0 };
 }
 
@@ -240,14 +267,14 @@ async function list({ limitResolved = 12 } = {}) {
 }
 
 async function get(id) {
-    // 'void': a beef nobody started (no name said; voided 2026-10-18) is not shown.
-    const b = await db.get("SELECT * FROM arena_beefs WHERE id = ? AND status <> 'void'", [id]);
+    // Only a beef both sides are in, or one that ended (void, pending and expired ones are not shown).
+    const b = await db.get(`SELECT * FROM arena_beefs WHERE id = ? AND ${PUBLIC}`, [id]);
     return b ? await beefView(b, await arena().loadRoster()) : null;
 }
 
 async function forUser(userId, limit = 8) {
     const roster = await arena().loadRoster();
-    return (await Promise.all((await db.all(`SELECT * FROM arena_beefs WHERE (a_user_id = ? OR b_user_id = ?) AND status <> 'void' ORDER BY CASE WHEN status = 'open' THEN 0 ELSE 1 END, COALESCE(resolved_at, opened_at) DESC LIMIT ?`, [userId, userId, limit])).map(async b => await beefView(b, roster))));
+    return (await Promise.all((await db.all(`SELECT * FROM arena_beefs WHERE (a_user_id = ? OR b_user_id = ?) AND ${PUBLIC} ORDER BY CASE WHEN status = 'open' THEN 0 ELSE 1 END, COALESCE(resolved_at, opened_at) DESC LIMIT ?`, [userId, userId, limit])).map(async b => await beefView(b, roster))));
 }
 
 module.exports = {
