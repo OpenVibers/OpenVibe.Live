@@ -30,8 +30,8 @@ assert.match(call, /deadlineExitCode: 1/);
 assert.match(call, /beforeDrain:/);
 assert.ok(at > source.indexOf('const server = http.createServer(app);'), 'the stopper is created after the server exists');
 const stopAt = call.indexOf('stop: [');
-assert.ok(stopAt > 0 && call.indexOf('_bootComplete = false', stopAt) < call.indexOf("require('./chat/chat-delivery')", stopAt),
-    'readiness flips before anything else stops');
+const firstStep = call.slice(stopAt, call.indexOf('\n        },', stopAt));
+assert.ok(stopAt > 0 && firstStep.includes('_bootComplete = false'), 'readiness flips before anything else stops (the first stop step)');
 
 const fn = source.slice(source.indexOf('function shutdown('), source.indexOf("process.on('SIGTERM', shutdown)"));
 assert.match(fn, /if \(drill\.enabled\) \{/, 'the drill branch is still there');

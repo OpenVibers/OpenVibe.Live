@@ -163,16 +163,6 @@ const stopper = gracefulStop({
             // gating on /api/ready should see that before the socket actually closes.
             _bootComplete = false;
         },
-        async () => {
-            // Notify all chat clients before closing connections
-            try {
-                await require('./chat/chat-delivery').event({ kind: 'all' }, {
-                    type: 'server_restart',
-                    message: '⚙️ Chat server restarting — you will be reconnected automatically.',
-                    timestamp: new Date().toISOString(),
-                });
-            } catch { /* non-critical */ }
-        },
         // Kill any in-flight whisper/ffmpeg transcription children so they don't orphan
         // (and so their temp files get cleaned by the close handlers). The interrupted VOD
         // is left in 'processing' → re-queued to 'pending' on next boot (crash recovery).
