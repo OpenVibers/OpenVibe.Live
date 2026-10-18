@@ -23,7 +23,7 @@ const BUDGETS = {
     htmlBrotliKB: 30,
     jsFiles: 26,             // measured 23 (incl. route scripts for "/")
     jsRawKB: 1150,           // measured ~1000
-    jsBrotliKB: 262,         // measured 260.1 (2026-10-09: the shared navbar grew with My Profile and the OpenRestream brand)
+    jsBrotliKB: 263,         // measured 262.5 (2026-10-17: openvibe-shared 4.4.0, every site in the launcher); 260.1 on 10-09 (My Profile, OpenRestream brand)
     cssRawKB: 270,           // measured ~243 since the first-paint subset (style.core.css) replaced style.css (~717 before)
     cssBrotliKB: 55,         // measured ~47.5 (was ~130)
 };
