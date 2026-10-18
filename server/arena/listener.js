@@ -5,9 +5,10 @@
  * lines. Everything the Arena is comes from here; chat, votes and submissions do not exist.
  *
  *   name-drop → a line that says another fighter's whole name, as it is spelled (names.js
- *               wholeOnly: no sound-alikes, no pieces of a handle) LOCKS the ears on that fighter. Everything said while locked goes to
- *               the BEEF JUDGE with the earlier context; a judged hit → beef.recordHit() (opens
- *               the beef, scores it, puts the other side on the clock). See beef.js.
+ *               wholeOnly: no sound-alikes, no pieces of a handle) LOCKS the ears on that fighter.
+ *               Everything said while locked goes to the BEEF JUDGE with the earlier context; a
+ *               judged hit in lines that say the name → beef.recordHit() (opens the beef, scores
+ *               it, puts the other side on the clock); unnamed lines are context only. See beef.js.
  *   free talk → everything said while NOT locked pools for the MIC JUDGE: is this shit talk at
  *               all (roast, rant, callout, brag, disrespect)? Who is it aimed at ("chat", "the
  *               mods"; a fighter the judge guesses at is dropped, since nobody named them)? It
@@ -174,7 +175,9 @@ async function judgeFocus(stream, roster, st, events, { reason }) {
     const j = await judgeBeef(stream.user_id, f.targetId, text, roster, { context: f.context, named, how: f.how });
     const now = Date.now();
     const minQ = f.hits > 0 ? 3 : (f.how === 'exact' ? 3 : 5);
-    if (j.aimed_at_target && j.quality >= minQ) {
+    // A hit needs the target's name in the lines judged: what follows a name-drop is context, never a hit by itself
+    // (a League stream's voice lines after one transcribed "Adam" scored a 107–0 beef, 2026-10-18).
+    if (j.aimed_at_target && j.quality >= minQ && named) {
         const ref = lineRefFor(lines, j.best_line);
         const res = await beef().recordHit(stream.user_id, f.targetId, { quality: j.quality, best_line: j.best_line, about: j.about, announcer: j.announcer, vod_id: ref.vod_id, sec: ref.sec, stream_id: stream.id });
         f.hits++; f.misses = 0; f.lockUntil = Math.min(now + FOCUS_EXTEND_MS, f.namedAt + FOCUS_MAX_MS);

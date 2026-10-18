@@ -129,7 +129,14 @@ console.log('✅ roster + ratings are pure mic');
     assert.ok((await listener.consoleState(u3)).focus && (await listener.consoleState(u3)).focus.target_id === u2, 'locked on grizzly');
     assert.strictEqual((await beef.openBeefsFor(u3)).length, 1);
     assert.strictEqual((await arena.liveFighters())[0].ears.focus.target_id, u2, 'live cam shows the lock');
-    // Drop the lock (two off-target chunks), then a callout WITHOUT the name in the speech but with the judge's aimed_at.
+    // Unnamed trash while locked is context, never a hit (a League stream's voice lines after one transcribed "Adam"
+    // scored a 107–0 beef, 2026-10-18).
+    await db.run(`UPDATE streams SET started_at = datetime('now', '-760 seconds') WHERE id = ?`, [liveId]);
+    await db.addTimelineEvents([{ stream_id: liveId, user_id: u3, vod_id: null, kind: 'speech', start_sec: 746, end_sec: 752, text: 'He is trash, washed, a fraud, scared of the smoke, nobody watches that garbage stream, I would cook him, bet!', label: null, confidence: 0.9 }]);
+    listener._state.get(liveId).lastJudgeAt = 0;
+    ev = await listener.tick();
+    assert.ok(!ev.some(e => e.kind === 'beef_hit'), `unnamed lines never score: ${JSON.stringify(ev)}`);
+    // Drop the lock (two off-target chunks).
     for (let k = 0; k < 2; k++) {
         await db.run(`UPDATE streams SET started_at = datetime('now', ?) WHERE id = ?`, [`-${800 + k * 100} seconds`, liveId]);
         await db.addTimelineEvents([{ stream_id: liveId, user_id: u3, vod_id: null, kind: 'speech', start_sec: 786 + k * 100, end_sec: 792 + k * 100, text: 'Okay chat back to the game, we need to farm this boss and then do the quest line for the sword upgrade, let me check the map real quick.', label: null, confidence: 0.9 }]);
