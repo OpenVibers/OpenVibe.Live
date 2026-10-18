@@ -71,6 +71,13 @@ console.warn = () => {};
     assert.strictEqual(asked, 5, 'another 404: asked again after an hour');
     Date.now = realNow;
 
+    // A VOD still recording: no Media job (it fails on a file still being written), a quiet empty answer.
+    media.getVod = async (id) => ({ id: Number(id), user_id: 1, visibility: 'public', thumbnail_url: null, is_recording: 1 });
+    let jobs = 0;
+    media.generateThumbnail = async () => { jobs++; return {}; };
+    const live = await post('/api/thumbnails/generate/vod/5833');
+    assert.deepStrictEqual([live.status, live.json, jobs], [200, { thumbnail_url: null }, 0], 'a recording VOD asks Media for nothing');
+
     server.close();
     console.log('thumbnail no-picture: all checks passed');
     process.exit(0);
