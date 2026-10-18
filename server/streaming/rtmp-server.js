@@ -11,6 +11,24 @@ const db = require('../db/database');
 const recorder = require('./recorder');
 
 const RTMP_HEARTBEAT_INTERVAL_MS = 30000; // Refresh live stream timestamp while RTMP session is active
+const RECORD_WAIT_VIDEO_MS = 20000;        // how long the recording waits for the publisher's first video
+
+/**
+ * Wait until the publishing session has sent video (node-media-server sets videoCodec on its first video packet).
+ * Media's ffmpeg maps only the streams it sees in its first seconds, and an OBS whose encoder starts late sends audio
+ * first: 8 of iZoR_One's 13 recordings (2026-10-08..18) were audio only while the stream had a picture. Resolves
+ * 'video', 'timeout' (an audio-only stream still records) or 'gone' (the publisher left).
+ */
+async function waitForVideo(nms, sessionId, { timeoutMs = RECORD_WAIT_VIDEO_MS, stepMs = 250 } = {}) {
+    const until = Date.now() + timeoutMs;
+    for (;;) {
+        const session = nms.getSession(sessionId);
+        if (!session) return 'gone';
+        if (session.videoCodec) return 'video';
+        if (Date.now() >= until) return 'timeout';
+        await new Promise((resolve) => setTimeout(resolve, stepMs));
+    }
+}
 
 let NodeMediaServer;
 try {
@@ -197,13 +215,18 @@ class RTMPServer extends EventEmitter {
             // Followers hear it from Network (live.stream.started via Events); the page banner comes from live-events.
             try { require('./live-events').announceGoLive(stream || { id: streamId }, resolvedUser); } catch { /* */ }
 
-            // Start server-side VOD recording via FFmpeg
-            // Small delay to let NMS fully register the RTMP stream before FFmpeg pulls it
+            // Start server-side VOD recording via FFmpeg: 2 s for NMS to register the stream, then once the first
+            // video has arrived (waitForVideo), so Media's ffmpeg sees the picture as well as the sound.
             setTimeout(async () => {
-                const mode = await db.resolveStreamRecordingMode(await db.getStreamById(streamId));
-                if (mode !== 'none') {
-                    recorder.startRecording(streamId, 'rtmp', { streamKey }, { mode });
-                }
+                try {
+                    const seen = await waitForVideo(this.nms, id);
+                    if (seen === 'gone') return;
+                    if (seen === 'timeout') console.log(`[RTMP] No video from stream ${streamId} after ${RECORD_WAIT_VIDEO_MS / 1000} s: recording what it sends`);
+                    const mode = await db.resolveStreamRecordingMode(await db.getStreamById(streamId));
+                    if (mode !== 'none') {
+                        recorder.startRecording(streamId, 'rtmp', { streamKey }, { mode });
+                    }
+                } catch (e) { console.warn(`[RTMP] recording start for stream ${streamId} failed: ${e.message}`); }
             }, 2000);
         });
 
