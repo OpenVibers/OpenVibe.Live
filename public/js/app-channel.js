@@ -713,6 +713,7 @@ async function loadChannelPage(username, managedStreamRef = null, legacySessionI
         _resetChannelTabs(ch);
         _applyChannelTabMeta(data);
         _applyBotEmbed(data.bot_embed);
+        _offerBotBind(username);
         _applyChannelHashTab(); // deep-link: #ai-timeline / #about / #videos … opens that tab
         // Reveal the Media Request tab if the streamer has it enabled (non-blocking).
         _initMediaRequestTab(username);
@@ -2263,6 +2264,20 @@ function _applyBotEmbed(botEmbed) {
     if (!(botEmbed && botEmbed.url) || !window.ov) return;
     const gen = ov.gen();
     ov.load('botEmbed').then(() => { if (ov.isCurrent(gen)) show(); }, (e) => console.warn('[BotEmbed] load failed', e));
+}
+
+// A robot approved on openvibe.bot/link sends its owner here with ?bind_robot=rob_… ("Use it in my OpenVibe.Live chat",
+// OpenVibe.Bot server/claims.js). On their own channel they confirm, and its chat commands drive that robot
+// (public/js/bot-bind.js, feature "botBind", loaded only then).
+function _offerBotBind(username) {
+    if (!/[?&]bind_robot=/.test(location.search) || !window.ov) return;
+    if (!(currentUser && username && currentUser.username === username)) return;
+    const gen = ov.gen();
+    ov.load('botBind').then(() => {
+        if (!ov.isCurrent(gen) || typeof BotBind === 'undefined') return;
+        const robotId = BotBind.robotFrom(location.search);
+        if (robotId) BotBind.offer({ username, robotId, api, toast, onBound: _applyBotEmbed });
+    }, (e) => console.warn('[BotBind] load failed', e));
 }
 
 // Apply per-channel tab metadata from the channel response: count badges on the

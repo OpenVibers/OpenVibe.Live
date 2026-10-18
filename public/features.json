@@ -155,6 +155,11 @@
         "/js/bot-embed.js"
       ]
     },
+    "botBind": {
+      "js": [
+        "/js/bot-bind.js"
+      ]
+    },
     "homeTour": {
       "js": [
         "/js/home-tour.js"
