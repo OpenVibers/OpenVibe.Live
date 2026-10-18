@@ -87,7 +87,7 @@ function startTrackKeepalive(streamId) {
     const ss = getStreamState(streamId);
     if (!ss?.localStream) return;
     stopTrackKeepalive(streamId);
-    const videoTrack = ss.localStream.getVideoTracks()[0];
+    let videoTrack = ss.localStream.getVideoTracks()[0];
     if (!videoTrack || typeof ImageCapture === 'undefined') return;
     let capture;
     try { capture = new ImageCapture(videoTrack); } catch { return; }
@@ -102,6 +102,16 @@ function startTrackKeepalive(streamId) {
         if (!current?.localStream || current.localStream !== streamRef) {
             stopTrackKeepalive(streamId);
             return;
+        }
+        // A camera switch replaces the video track inside the same stream: watch the new one. Watching the
+        // stopped one made every flip on a phone look like a dead camera 8 s later, and the recovery that
+        // followed restarted the whole stream (owner, 2026-10-17).
+        const nowTrack = streamRef.getVideoTracks()[0];
+        if (nowTrack && nowTrack !== videoTrack) {
+            videoTrack = nowTrack;
+            try { capture = new ImageCapture(nowTrack); } catch { capture = null; }
+            lastSuccessfulFrame = Date.now();
+            watchdogTriggered = false;
         }
 
         // If recovery is already in progress or suppressed, just keep ticking
@@ -134,6 +144,7 @@ function startTrackKeepalive(streamId) {
             return;
         }
 
+        if (!capture) return;
         capture.grabFrame()
             .then(bmp => {
                 bmp.close();
