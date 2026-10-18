@@ -196,32 +196,38 @@
                 <p class="hero-quip visible" id="hero-quip">No investors. No suits. Just vibes.</p>
                 <!-- Holds its line from the first paint (the countdown fills it with the page's data), so the buttons below do not move. -->
                 <div class="hero-slogan-timer" id="hero-slogan-timer">&nbsp;</div>
+                <!-- One primary action and its promise, then the other destinations (owner, 2026-10-18: "whole area is kinda
+                     messy and spacing is weird"; six equal buttons wrapped 5 + 1 with the no-OBS line floating between
+                     rows). The headline feature stays in the first screen: going live from a browser with no OBS and
+                     no follower minimum is what people search and ask AI assistants for. -->
                 <div class="hero-cta" data-fx-viewport>
-                    <button style="--i:0" class="hb hb-stream" onclick="currentUser ? navigate('/broadcast') : showModal('register')"><span class="hb-ico"><i class="fa-solid fa-broadcast-tower"></i></span><span class="hb-label">Go live <small>in your browser</small></span><i class="fa-solid fa-chevron-right hb-go" aria-hidden="true"></i></button>
-                    <a href="https://openvibe.tools" style="--i:1" class="hb hb-tools"><span class="hb-ico"><i class="fa-solid fa-screwdriver-wrench"></i></span><span class="hb-label">Tools</span><i class="fa-solid fa-chevron-right hb-go" aria-hidden="true"></i></a>
-                    <a href="https://openvibe.games" style="--i:2" class="hb hb-game"><span class="hb-ico"><i class="fa-solid fa-gamepad"></i></span><span class="hb-label">Game</span><i class="fa-solid fa-chevron-right hb-go" aria-hidden="true"></i></a>
-                    <a href="https://github.com/OpenVibers/OpenVibe.Live" target="_blank" style="--i:3" class="hb hb-github" rel="noopener"><span class="hb-ico"><i class="fa-brands fa-github"></i></span><span class="hb-label">GitHub</span><i class="fa-solid fa-chevron-right hb-go" aria-hidden="true"></i></a>
-                    <a href="https://discord.gg/M6MuRUaeJj" target="_blank" style="--i:4" class="hb hb-discord" rel="noopener noreferrer"><span class="hb-ico"><i class="fa-brands fa-discord"></i></span><span class="hb-label">Discord</span><i class="fa-solid fa-chevron-right hb-go" aria-hidden="true"></i></a>
-                    <a href="/documentation" onclick="return handleLinkClick(event, '/documentation')" style="--i:5" class="hb hb-vibe"
-                       data-ovtip-title="Mod it, bot it, build on it"
-                       data-ovtip-icon="fa-wand-magic-sparkles"
-                       data-ovtip-accent="#f472b6"
-                       data-ovtip-place="top"
-                       data-ovtip="Chat, streams, clips, overlays, robots, sound commands, whole games &mdash; every feature here has an <b>open API</b>, and the entire site is <b>open source</b>. <em>You do not need to know how to code.</em> Point an AI at these docs, describe the thing you want, and it writes it for you."
-                       data-ovtip-foot="<i class=&quot;fa-solid fa-heart&quot;></i> We love what people build here &mdash; come make something"
-                       data-ovtip-go="Open the API docs"><span class="hb-ico"><i class="fa-solid fa-wand-magic-sparkles"></i></span><span class="hb-label">Build &amp; Mod <small>API docs</small></span><i class="fa-solid fa-chevron-right hb-go" aria-hidden="true"></i></a>
+                    <div class="hero-primary">
+                        <button style="--i:0" class="hb hb-stream" onclick="currentUser ? navigate('/broadcast') : showModal('register')"><span class="hb-ico"><i class="fa-solid fa-broadcast-tower"></i></span><span class="hb-label">Go live <small>in your browser</small></span><i class="fa-solid fa-chevron-right hb-go" aria-hidden="true"></i></button>
+                        <p class="hero-golive-note"><span><i class="fa-solid fa-check" aria-hidden="true"></i> No OBS</span><span><i class="fa-solid fa-check" aria-hidden="true"></i> No downloads</span><span><i class="fa-solid fa-check" aria-hidden="true"></i> No follower minimum</span><a href="/docs/go-live-in-your-browser">How it works <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></a></p>
+                    </div>
+                    <nav class="hero-links" aria-label="More from OpenVibe">
+                        <a href="https://openvibe.tools" style="--i:1" class="hb hb-tools"><span class="hb-ico"><i class="fa-solid fa-screwdriver-wrench"></i></span><span class="hb-label">Tools</span><i class="fa-solid fa-chevron-right hb-go" aria-hidden="true"></i></a>
+                        <a href="https://openvibe.games" style="--i:2" class="hb hb-game"><span class="hb-ico"><i class="fa-solid fa-gamepad"></i></span><span class="hb-label">Game</span><i class="fa-solid fa-chevron-right hb-go" aria-hidden="true"></i></a>
+                        <a href="/documentation" onclick="return handleLinkClick(event, '/documentation')" style="--i:3" class="hb hb-vibe"
+                           data-ovtip-title="Mod it, bot it, build on it"
+                           data-ovtip-icon="fa-wand-magic-sparkles"
+                           data-ovtip-accent="#f472b6"
+                           data-ovtip-place="top"
+                           data-ovtip="Chat, streams, clips, overlays, robots, sound commands, whole games &mdash; every feature here has an <b>open API</b>, and the entire site is <b>open source</b>. <em>You do not need to know how to code.</em> Point an AI at these docs, describe the thing you want, and it writes it for you."
+                           data-ovtip-foot="<i class=&quot;fa-solid fa-heart&quot;></i> We love what people build here &mdash; come make something"
+                           data-ovtip-go="Open the API docs"><span class="hb-ico"><i class="fa-solid fa-wand-magic-sparkles"></i></span><span class="hb-label">Build <span class="hb-amp">&amp; Mod</span> <small>API docs</small></span><i class="fa-solid fa-chevron-right hb-go" aria-hidden="true"></i></a>
+                        <a href="https://github.com/OpenVibers/OpenVibe.Live" target="_blank" style="--i:4" class="hb hb-github" rel="noopener"><span class="hb-ico"><i class="fa-brands fa-github"></i></span><span class="hb-label">GitHub</span><i class="fa-solid fa-chevron-right hb-go" aria-hidden="true"></i></a>
+                        <a href="https://discord.gg/M6MuRUaeJj" target="_blank" style="--i:5" class="hb hb-discord" rel="noopener noreferrer"><span class="hb-ico"><i class="fa-brands fa-discord"></i></span><span class="hb-label">Discord</span><i class="fa-solid fa-chevron-right hb-go" aria-hidden="true"></i></a>
+                    </nav>
                 </div>
-                <!-- The headline feature, in the first screen: going live from a browser with no OBS and no follower
-                     minimum is what people search and ask AI assistants for (the checklist further down was seven
-                     phone screens below the fold). -->
-                <p class="hero-golive-note"><span><i class="fa-solid fa-check" aria-hidden="true"></i> No OBS</span><span><i class="fa-solid fa-check" aria-hidden="true"></i> No downloads</span><span><i class="fa-solid fa-check" aria-hidden="true"></i> No follower minimum</span><a href="/docs/go-live-in-your-browser">How it works</a></p>
                 <!-- Signed-in streamers with setup left to do see their next task here, in the row of
                      things to do rather than a screen below (public/js/guides-live.js → setupHeroNextUp). -->
                 <div class="tour-quest-slot hero-quest-slot" id="hero-next-up" data-fx-viewport hidden></div>
                 <div class="hero-philosophy-links">
                 <a href="#home-cta-banner" class="hero-philosophy-btn" onclick="event.preventDefault();openHomeAbout();">
-                    <i class="fa-solid fa-book-open"></i> What Is This? (Philosophy)
+                    <i class="fa-solid fa-book-open"></i> What is OpenVibe?
                 </a>
+                <span class="hero-philosophy-sep" aria-hidden="true">&bull;</span>
                 <span class="hero-legal"><a href="/tos" class="hero-philosophy-link" onclick="return handleLinkClick(event, '/tos')">Terms</a>
                 <span aria-hidden="true">&bull;</span>
                 <a href="/privacy" class="hero-philosophy-link" onclick="return handleLinkClick(event, '/privacy')">Privacy</a>

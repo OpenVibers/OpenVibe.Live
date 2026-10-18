@@ -17,26 +17,32 @@
    These need to read as *pressable* at a glance on a phone, so they carry a raised surface,
    a top highlight, a real shadow and a press state — plus a slow staggered sheen that sweeps
    the row so the eye catches that they are interactive without anything shouting. */
-/* Six buttons may only lay out as 6×1, 3×2 or 2×3 — the divisors of six. auto-fit chose however
-   many max-content columns happened to fit, which is how the row came out as four and then two.
-   The column count is picked explicitly per width, and every column is the same width. */
-/* Equal columns cut labels short ("GitH…", "Disc…") whenever the row was narrower than six full
-   labels. The row now sizes to its content and wraps: a button is never narrower than its own
-   label, and the row centres whatever fits per line. */
+/* One primary action, its promise right under it, then the other destinations as a smaller row (owner,
+   2026-10-18: "whole area is kinda messy and spacing is weird"). Six equal buttons used to wrap 5 + 1 with
+   "Build & Mod" alone on a second row and the no-OBS line floating between the rows. */
 #page-home .hero-cta {
-    display: flex; flex-wrap: wrap; justify-content: center; align-items: stretch;
-    gap: clamp(8px, 1.4vw, 12px); margin-inline: auto;
-    width: 100%; max-width: min(1180px, 96vw);
+    display: flex; flex-direction: column; align-items: center; gap: 22px;
+    width: 100%; max-width: min(760px, 96vw); margin-inline: auto;
 }
-/* Six across only when the hero column is genuinely wide enough for full labels. The hero content
-   is capped well under the viewport, so a viewport breakpoint alone gave 133px buttons at 1280px
-   with every label cut to an ellipsis. */
-#page-home .hero-cta > .hb { flex: 0 1 auto; width: auto; min-width: max-content; }
-#page-home .hero-cta .hb-label { white-space: nowrap; }
-/* The "API docs" aside only fits beside "Build & Mod" when the buttons are wide; everywhere else it
-   is what pushes the label into an ellipsis. The tooltip still says it. */
-#page-home .hero-cta .hb-label small { display: none; }
-@media (min-width: 1500px) { #page-home .hero-cta .hb-label small { display: inline; } }
+#page-home .hero-primary { display: flex; flex-direction: column; align-items: center; gap: 12px; width: 100%; }
+#page-home .hero-primary .hb-stream {
+    width: auto; min-width: min(330px, 100%); min-height: 56px; gap: 12px; justify-content: center;
+    padding: 7px 28px 7px 8px; font-size: 1.06rem;
+}
+#page-home .hero-primary .hb-stream .hb-ico { width: 40px; height: 40px; font-size: 1rem; }
+#page-home .hero-primary .hb-label { flex: 0 0 auto; white-space: nowrap; }
+#page-home .hero-primary .hb-label small { margin-left: 4px; font-size: 0.74rem; font-weight: 600; opacity: 0.82; }
+#page-home .hero-golive-note { margin: 0; gap: 6px 18px; font-size: 0.86rem; }
+#page-home .hero-golive-note a { display: inline-flex; align-items: center; gap: 6px; }
+#page-home .hero-golive-note a i { color: inherit; font-size: 0.7rem; transition: transform 0.2s; }
+#page-home .hero-golive-note a:hover i, #page-home .hero-golive-note a:focus-visible i { transform: translateX(3px); }
+/* The rest: sized to their labels on one centred row (it fits from tablets up). */
+#page-home .hero-links { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; width: 100%; }
+#page-home .hero-links > .hb { flex: 0 0 auto; width: auto; min-height: 42px; gap: 8px; padding: 5px 17px 5px 5px; font-size: 0.9rem; }
+#page-home .hero-links .hb-ico { width: 30px; height: 30px; font-size: 0.8rem; }
+#page-home .hero-links .hb-label { white-space: nowrap; }
+/* The tooltip says "API docs"; beside "Build & Mod" it only crowded the row. */
+#page-home .hero-links .hb-label small { display: none; }
 .hb {
     --c: var(--accent); position: relative; display: inline-flex; align-items: center; gap: 10px;
     padding: clamp(6px, 1.2vw, 8px) clamp(14px, 2.4vw, 20px) clamp(6px, 1.2vw, 8px) 6px;
@@ -116,14 +122,20 @@
 .hb-stream .hb-ico { background: rgba(255,255,255,0.16); border-color: rgba(255,255,255,0.32); color: #fff; }
 .hb-stream:hover .hb-ico, .hb-stream:focus-visible .hb-ico { background: #fff; color: color-mix(in srgb, var(--accent) 70%, #000); }
 .hb-tools { --c: #2dd4bf; } .hb-game { --c: #4ade80; } .hb-github { --c: #e5e7eb; } .hb-discord { --c: #5865f2; } .hb-vibe { --c: #f472b6; }
-/* Narrow phones: two tidy columns instead of a ragged wrap. Landscape keeps a single row. */
+/* Phones: Go live full width, and the five others as a dock (icon over a short label, every tile the same
+   width) instead of a 2 + 2 + 1 wrap. Landscape keeps the single row. */
 @media (max-width: 560px) {
-    #page-home .hero-cta { max-width: 420px; }
-    /* Two per line on a phone, still never narrower than the label. */
-    #page-home .hero-cta > .hb { flex: 1 1 calc(50% - 12px); justify-content: flex-start; }
-    .hb { font-size: 0.86rem; padding-right: 12px; }
-    /* The "API docs" note is what would push "Build & Mod" to an ellipsis at two columns. */
-    .hb-label small { display: none; }
+    #page-home .hero-cta { gap: 18px; max-width: 420px; }
+    #page-home .hero-primary .hb-stream { width: 100%; min-height: 54px; }
+    #page-home .hero-golive-note { gap: 4px 12px; font-size: 0.8rem; }
+    #page-home .hero-links { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; }
+    #page-home .hero-links > .hb {
+        flex-direction: column; justify-content: center; gap: 5px; min-height: 66px; padding: 8px 4px;
+        border-radius: 16px; font-size: 0.72rem; letter-spacing: 0;
+    }
+    #page-home .hero-links .hb-ico { width: 30px; height: 30px; }
+    #page-home .hero-links .hb-label { flex: 0 0 auto; text-align: center; }
+    #page-home .hero-links .hb-amp, #page-home .hero-links .hb-go { display: none; }
 }
 /* A landscape phone is wide but short: three across keeps it to two rows, never a ragged wrap. */
 @media (max-width: 900px) and (orientation: landscape) and (max-height: 500px) {
@@ -224,7 +236,9 @@
 .hb-vibe:hover { box-shadow: 0 6px 20px color-mix(in srgb, var(--c) 32%, transparent), 0 0 0 1px color-mix(in srgb, var(--c) 55%, transparent); }
 #page-home .hero-cta .hb-vibe, #page-home .hero-cta .hb-vibe .hb-ico::after { animation-play-state: paused; }
 #page-home .hero-cta.fx-live .hb-vibe, #page-home .hero-cta.fx-live .hb-vibe .hb-ico::after { animation-play-state: running; }
-@media (max-width: 520px) { .hb-label small { display: none; } }
+@media (max-width: 520px) { .hb-label small { display: none; } #page-home .hero-primary .hb-label small { display: inline; } }
+/* The very narrowest phones: Go live alone, so the label never squeezes. */
+@media (max-width: 340px) { #page-home .hero-primary .hb-label small { display: none; } }
 @media (prefers-reduced-motion: reduce) { .hb-vibe, .hb-vibe .hb-ico::after { animation: none !important; } }
 
 /* Touch devices get no hover, so the one button on the row that has something extra to say needs
