@@ -1196,7 +1196,7 @@ router.get('/recently-online', async (req, res) => {
                 // A stream that never had a slot is listed as the channel itself, so someone who streamed is never
                 // "No streams" (Dreezy's first browser stream had no slot, 2026-10-18).
                 const loose = s.loose_stream_json ? JSON.parse(s.loose_stream_json) : null;
-                if (loose) parsed.push({ managed_stream_id: null, slug: null, title: loose.title || null, protocol: null, last_live_at: loose.last_live_at || null, vod_thumbnail: null });
+                if (loose) parsed.push({ managed_stream_id: null, stream_id: loose.stream_id || null, slug: null, title: loose.title || null, protocol: null, last_live_at: loose.last_live_at || null, vod_thumbnail: null });
                 // Sort by most recently live first; put null last
                 s.managed_streams = parsed.sort((a, b) => {
                     if (!a.last_live_at && !b.last_live_at) return 0;
@@ -1225,6 +1225,17 @@ router.get('/recently-online', async (req, res) => {
             }
         } catch (err) {
             console.warn('[Streaming] recently-online thumb enrichment failed:', err.message);
+        }
+        // A slot-less entry's picture is its own stream's public recording (Media answers by stream id).
+        try {
+            const loose = streamers.flatMap(s => (s.managed_streams || []).filter(ms => ms.managed_stream_id == null && ms.stream_id && !ms.vod_thumbnail));
+            if (loose.length) {
+                const media = require('../media-client');
+                const vods = await require('../media-proxy/lookups').publicVodsForStreams(loose.map(ms => ms.stream_id), { budgetMs: 3000 });
+                loose.forEach((ms) => { const v = vods.get(Number(ms.stream_id)); if (v && v.thumbnail_url) ms.vod_thumbnail = media.publicUrl(v.thumbnail_url); });
+            }
+        } catch (err) {
+            console.warn('[Streaming] recently-online slot-less thumbnails failed:', err.message);
         }
         // Who on this page is live right now: the card says so (and which slot), instead of "last online 22h ago".
         try {

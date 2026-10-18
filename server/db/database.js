@@ -1308,7 +1308,7 @@ async function getRecentlyOnlineStreamers(limit = 20, offset = 0) {
                ) AS managed_streams_json,
                -- The latest stream that never had a slot (the route lists it as the channel itself).
                (
-                   SELECT json_build_object('title', s3.title, 'last_live_at', s3.ended_at)::text
+                   SELECT json_build_object('stream_id', s3.id, 'title', s3.title, 'last_live_at', s3.ended_at)::text
                    FROM streams s3
                    WHERE s3.user_id = u.id AND s3.managed_stream_id IS NULL AND (s3.ended_at IS NOT NULL OR s3.is_live = 1)
                    ORDER BY s3.id DESC LIMIT 1

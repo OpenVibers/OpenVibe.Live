@@ -32,6 +32,8 @@ const db = require('../server/db/database');
     await stream(first, null, { live: true, startedAgo: 3, viewers: 1 });
     await stream(loose, null, { startedAgo: 300, endedAgo: 298 });
 
+    // Media's answer for a slot-less stream's public recording (lookups asks Media by stream id).
+    require('../server/media-proxy/lookups').publicVodsForStreams = async (ids) => new Map(ids.map((id) => [Number(id), { id: 9, thumbnail_url: '/t/dreezy-part-2.jpg' }]));
     const app = express();
     app.use('/api/streams', require('../server/streaming/routes'));
     const server = await new Promise((r) => { const s = http.createServer(app).listen(0, '127.0.0.1', () => r(s)); });
@@ -53,6 +55,7 @@ const db = require('../server/db/database');
         // A slot-less stream is the channel's entry, never "No streams".
         const dz = body.streamers.find((s) => s.username === 'dreezy');
         assert.deepStrictEqual(dz.managed_streams.map((m) => [m.slug, m.title, !!m.last_live_at]), [[null, 'old', true]]);
+        assert.ok(String(dz.managed_streams[0].vod_thumbnail).endsWith('/t/dreezy-part-2.jpg'), "with its recording's picture");
         assert.strictEqual(body.total, 4);
         console.log('recently-online live: all checks passed');
     } finally { server.close(); }
