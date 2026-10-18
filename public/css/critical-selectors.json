@@ -250,6 +250,7 @@
   ".hero-golive-note span",
   ".hero-golive-note i",
   ".hero-golive-note a",
+  ".hero-golive-note a i",
   ".hero-philosophy-btn",
   ".hero-quip.visible",
   ".hero-rotate-wrap",

@@ -2643,6 +2643,7 @@ function initChat(streamId, channelUserId = null) {
     if (_bgBroadcastWs && _bgBroadcastWs.readyState === WebSocket.OPEN && _bgBroadcastStreamId === streamId) {
         refreshVibeWidgetFeed().catch(() => { });
         destroyChat(); // close any existing foreground chat
+        chatChannelUserId = channelUserId || null; // destroyChat() clears the old page's channel; this is the new page's
         chatWs = _bgBroadcastWs;
         chatStreamId = _bgBroadcastStreamId;
         chatRenderTargetId = nextTargetId;
@@ -2672,6 +2673,10 @@ function initChat(streamId, channelUserId = null) {
     }
 
     destroyChat();
+    // destroyChat() clears the old page's channel scope. Without setting it again every fresh socket joined with no
+    // channel, and a streamer's own channel page took their chat for someone else's, so their own messages were never
+    // read aloud there while everyone else's were (owner, 2026-10-17; since 2026-09-19).
+    chatChannelUserId = channelUserId || null;
     chatStreamId = streamId;
     chatRenderTargetId = nextTargetId;
     refreshVibeWidgetFeed().catch(() => { });
@@ -3239,9 +3244,9 @@ function handleChatMessage(msg) {
                             if (typeof currentUser !== 'undefined' && currentUser) {
                                 // Token was actually valid (race condition) — reconnect chat
                                 console.log('[Chat] Re-auth succeeded, reconnecting chat');
-                                const sid = chatStreamId;
+                                const sid = chatStreamId, ch = chatChannelUserId;
                                 destroyChat();
-                                if (sid) initChat(sid);
+                                if (sid || ch) initChat(sid || null, ch);
                             } else {
                                 // Token truly expired — clear it and update UI
                                 addSystemMessage('Session expired. Please log in again.');
@@ -7580,9 +7585,9 @@ window.addEventListener('openvibe-auth-changed', (e) => {
             chatWs._authToken = token;
         } else {
             // Signed out, or a different account: a connection's identity is never swapped in place.
-            const sid = chatStreamId;
+            const sid = chatStreamId, ch = chatChannelUserId;
             destroyChat(true);
-            initChat(sid || null);
+            initChat(sid || null, ch);
         }
     }
 
