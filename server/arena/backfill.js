@@ -97,8 +97,8 @@ async function backfillFighter(uid, roster, budget) {
             const j = await L._judgeMic(uid, text);
             if (j.is_trash_talk && j.quality >= L.MIC_MIN_QUALITY && !await mic().isDuplicate(uid, j.best_line)) {
                 const r = ref(j.best_line);
-                const target = j.aimed_at ? (await L._mentionsDetailed(j.aimed_at, uid, roster))[0] : null;
-                if (await mic().addMoment({ userId: uid, streamId: c.stream_id, vodId: r.vod_id, sec: r.sec, kind: target ? 'callout' : 'trash', targetUserId: target ? target.userId : null, aimedAt: target ? await mic().nameOf(target.userId) : (j.aimed_at || null), text: j.best_line || text.slice(0, 220), about: j.about, quality: j.quality, announcer: j.announcer, saidAt: saidAtFor(c, r.sec) })) moments++;
+                // Nobody was named (that went to the beef judge above): a fighter the judge guesses at is never published.
+                if (await mic().addMoment({ userId: uid, streamId: c.stream_id, vodId: r.vod_id, sec: r.sec, kind: 'trash', aimedAt: await L._aimedAtUnnamed(j.aimed_at, uid, roster), text: j.best_line || text.slice(0, 220), about: j.about, quality: j.quality, announcer: j.announcer, saidAt: saidAtFor(c, r.sec) })) moments++;
             }
         } catch (e) { console.warn(`[Arena] backfill judge (user ${uid}):`, e.message); }
     }

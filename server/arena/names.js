@@ -109,14 +109,29 @@ function variantRegex(v) {
     return new RegExp(`(?:^|[^a-z0-9])@?${parts.join('[\\s\\-_.]*')}(?:'?s)?(?![a-z0-9])`, 'i');
 }
 
-/** Build an alias entry: { userId, name, words, re, key } for each variant of each name. */
-function aliasEntries(userId, names) {
-    const seen = new Set();
+/** Every letter of a name, in the spellings it can be said in whole ("finditfixit", "mnss22741", "maticus" for M4ticus). */
+function wholeLetters(name) {
+    const raw = clean(name);
+    const base = splitHandle(raw);
+    return new Set([base, base.map(deleet), splitHandle(raw.replace(/[0134578@$!|]/g, c => LEET[c] || c))].map(ws => ws.join('')).filter(Boolean));
+}
+
+/**
+ * Build an alias entry: { userId, name, words, re, key, whole } for each variant of each name. `whole` is a variant
+ * that says the entire name, not a piece of it: "find it fix it" is finditfixit, "fix it" is not; "mnss 22741" is
+ * mnss22741, "mnss" is not. `{ whole: false }` marks every entry as a piece (nicknames, persona names).
+ */
+function aliasEntries(userId, names, { whole = true } = {}) {
+    const seen = new Map();
     const out = [];
     for (const n of names.filter(Boolean)) {
+        const full = whole ? wholeLetters(n) : new Set();
         for (const v of variants(n)) {
-            if (seen.has(v)) continue; seen.add(v);
-            out.push({ userId, name: v, words: v.split(' '), re: variantRegex(v), key: phonetic(v), letters: v.replace(/\s+/g, '') });
+            const letters = v.replace(/\s+/g, '');
+            if (seen.has(v)) { if (full.has(letters)) seen.get(v).whole = true; continue; }
+            const e = { userId, name: v, words: v.split(' '), re: variantRegex(v), key: phonetic(v), letters, whole: full.has(letters) };
+            seen.set(v, e);
+            out.push(e);
         }
     }
     return out;
@@ -124,12 +139,14 @@ function aliasEntries(userId, names) {
 
 /**
  * Which alias entries occur in `text`. Returns [{ userId, name, how: 'exact'|'fuzzy'|'phonetic', hit }].
- * `excludeUserId` = the speaker (never mentions themselves).
+ * `excludeUserId` = the speaker (never mentions themselves). `wholeOnly`: only a whole name said as it is spelled
+ * (no pieces, no sound-alikes): what a public claim that someone named someone needs.
  */
-function findMentions(text, entries, { excludeUserId = null, fuzzy = true } = {}) {
+function findMentions(text, entries, { excludeUserId = null, fuzzy = true, wholeOnly = false } = {}) {
     const found = new Map(); // userId → best hit
     const raw = String(text || '');
     if (raw.length < 3) return [];
+    if (wholeOnly) { entries = entries.filter(e => e.whole); fuzzy = false; }
     const consider = (e, how, hit) => { if (e.userId === excludeUserId) return; const cur = found.get(e.userId); if (!cur || cur.rank < (how === 'exact' ? 3 : how === 'fuzzy' ? 2 : 1)) found.set(e.userId, { userId: e.userId, name: e.name, how, hit, rank: how === 'exact' ? 3 : how === 'fuzzy' ? 2 : 1 }); };
     // 1) exact / loose separators
     for (const e of entries) { const m = raw.match(e.re); if (m) consider(e, 'exact', m[0].trim()); }
@@ -174,10 +191,11 @@ function rosterEntries(roster, extra = null) {
     const list = [];
     for (const id of roster.order) {
         const u = roster.byId[id].user;
-        const names = [u.username, u.display_name, ...(extra ? (extra(id) || []) : [])];
+        const own = aliasEntries(id, [u.username, u.display_name]);
+        const nick = [...(extra ? (extra(id) || []) : [])];
         const first = splitHandle(u.username)[0];
-        if (first && firsts.get(first) === 1 && !variants(u.username).includes(first)) names.push(first);
-        list.push(...aliasEntries(id, names));
+        if (first && firsts.get(first) === 1 && !variants(u.username).includes(first)) nick.push(first);
+        list.push(...own, ...aliasEntries(id, nick, { whole: false }).filter(e => !own.some(o => o.name === e.name)));
     }
     return list.sort((a, b) => b.name.length - a.name.length);
 }
