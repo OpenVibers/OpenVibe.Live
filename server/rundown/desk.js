@@ -35,6 +35,7 @@ const CALLS_PER_TICK = 4;
 const CALLS_PER_HOUR = 40;
 const KNOWN_TOPICS = 50;
 const MIN_SCORE = 3;            // a 1-2 is filler ("heading out for coffee", a garbled stretch): not kept
+const PER_STREAM_TOPIC = 2;     // a stream keeps its best 2 takes on one topic (and 2 with no topic): more is play-by-play
 const ANNOUNCE_PER_HOUR = 3;
 const ANNOUNCE_WITHIN_H = 6;
 
@@ -235,11 +236,21 @@ async function keepSegments(stream, stretch, segments, user, others = []) {
         }).filter(Boolean).slice(0, 2);
         const at = sqlTime(startedMs + (Number(s.start) || 0) * 1000);
         const topic = await topicFor(clean(s.topic, 120), s.kind, at);
+        // One League night came back as a take per stretch under one topic. Past PER_STREAM_TOPIC, a better take replaces
+        // the stream's weakest on that topic, and anything else goes.
+        const score = Math.min(5, Math.max(1, Number(s.score) || 1));
+        const mine = await db.all(`SELECT id, score FROM rundown_segments WHERE stream_id = ? AND ${topic ? 'topic_id = ?' : 'topic_id IS NULL'} ORDER BY score, id`,
+            topic ? [stream.id, topic.id] : [stream.id]);
+        if (mine.length >= PER_STREAM_TOPIC) {
+            if (score <= Number(mine[0].score)) continue;
+            await db.run("DELETE FROM rundown_reactions WHERE item_type = 'segment' AND item_id = ?", [mine[0].id]);
+            await db.run('DELETE FROM rundown_segments WHERE id = ?', [mine[0].id]);
+        }
         const vod = (span.find((l) => l.vod_id) || stretch.lines.find((l) => l.vod_id) || {}).vod_id || null;
         await db.run(`INSERT INTO rundown_segments (stream_id, user_id, topic_id, start_sec, end_sec, title, what, take, quip, score, quotes_json, mentions, vod_id, said_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [stream.id, user.id, topic ? topic.id : null, Number(s.start) || 0, Number(s.end) || Number(s.start) || 0, title, what, take, quip,
-            Math.min(5, Math.max(1, Number(s.score) || 1)), JSON.stringify(quotes), await mentionsIn(spanText, user.id), vod, at]);
+            score, JSON.stringify(quotes), await mentionsIn(spanText, user.id), vod, at]);
         if (topic) await recountTopic(topic.id);
         kept++;
     }

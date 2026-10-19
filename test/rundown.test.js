@@ -24,6 +24,7 @@ const read = require('../server/rundown/read');
 assert.ok(filters.gameLine('You have slain an enemy.'), 'the League announcer');
 assert.ok(filters.gameLine('Victory!') && filters.gameLine('An enemy has been slain') && filters.gameLine('Welcome to Summoner\'s Rift'));
 assert.ok(!filters.gameLine('I got first blood on that guy and chat lost it'), 'a sentence about the game is the streamer');
+assert.ok(filters.gameLine("I've been slain.") && filters.gameLine('The first blood!'), 'the announcer as speech-to-text hears it');
 const src = 'This is why having the internet inside of a refrigerator is a bad idea.\nThe hackers got in with the date as the password.';
 assert.strictEqual(filters.verifiedQuote('“having the internet inside of a refrigerator is a bad idea”', src), 'having the internet inside of a refrigerator is a bad idea');
 assert.strictEqual(filters.verifiedQuote('internet fridges are a terrible idea', src), null, 'a paraphrase is not a quote');
@@ -39,6 +40,8 @@ assert.ok(filters.sameTopic('League ranked matchmaking', 'Ranked matchmaking in 
 assert.ok(!filters.sameTopic('League ranked matchmaking', 'Moving apartments'));
 ['chat', 'Games', 'life', 'Just chatting', 'the stream', 'x'].forEach((t) => assert.ok(filters.vagueTopic(t), `vague: ${t}`));
 assert.ok(!filters.vagueTopic('League ranked matchmaking') && !filters.vagueTopic('Halloween'));
+['Frustration and chaos in the match', 'Talking with chat and teammates', 'Commands, builds and mid-game criticism', 'Mid-game rage'].forEach((t) => assert.ok(filters.vagueTopic(t), `a mood or the play: ${t}`));
+['Briar in League', 'Theme park rides', 'Boxing fight night', 'Minecraft base building', 'League autofill'].forEach((t) => assert.ok(!filters.vagueTopic(t), `a subject: ${t}`));
 console.log('✅ filters: game lines, verbatim quotes, accusations, topics');
 
 // ── People and streams ──
@@ -291,6 +294,33 @@ console.log('✅ API: front page, topic, reactions as a signed-out reader; old /
     assert.ok(p && p.read_to_sec > 0, 'refused three times: the stretch is skipped');
     answers['live.rundown.segment'] = refuse;
     console.log('✅ limits: lines per stretch, refused stretches skipped after three tries');
+}
+
+// ── Play-by-play: a stream keeps its best 2 takes on a topic (and 2 with no topic) ──
+{
+    const gamer = await mk('leaguenight');
+    const sl = await stream(gamer, { startedAgoMin: 500, endedAgoMin: 420, title: 'Ranked' });
+    await speak(sl, gamer, filler(60, 'Autofill again'));
+    const prev = answers['live.rundown.segment'];
+    const seg = (start, topic, title, score) => ({ start, end: start + 5, topic, kind: 'games', title, what: `leaguenight on ${title}.`, take: null, quip: null, score, quotes: [] });
+    answers['live.rundown.segment'] = (input) => input.streamer !== 'leaguenight' ? prev(input) : { others: [], segments: [
+        seg(0, 'League autofill', 'Autofill A', 3), seg(10, 'League autofill', 'Autofill B', 4), seg(20, 'League autofill', 'Autofill C', 3), seg(30, 'League autofill', 'Autofill D', 5),
+    ] };
+    desk._test.reset();
+    await desk.tick();
+    const titles = async (cond) => (await db.all(`SELECT title FROM rundown_segments WHERE stream_id = ? AND ${cond} ORDER BY title`, [sl])).map((r) => r.title);
+    assert.deepStrictEqual(await titles('topic_id IS NOT NULL'), ['Autofill B', 'Autofill D'], 'the best two takes on a topic stay');
+    assert.strictEqual(Number((await db.get("SELECT takes FROM rundown_topics WHERE slug = 'league-autofill'")).takes), 2, 'the topic counts what stayed');
+    await db.run('DELETE FROM rundown_progress WHERE stream_id = ?', [sl]);
+    answers['live.rundown.segment'] = (input) => input.streamer !== 'leaguenight' ? prev(input) : { others: [], segments: [
+        seg(40, 'Frustration and chaos in the match', 'Rage A', 3), seg(50, 'Mid-game rage', 'Rage B', 3), seg(60, 'Talking with chat and teammates', 'Rage C', 4),
+    ] };
+    desk._test.reset();
+    await desk.tick();
+    assert.deepStrictEqual(await titles('topic_id IS NULL'), ['Rage B', 'Rage C'], 'a mood is no topic, and 2 such takes a stream at most');
+    assert.ok(!await db.get("SELECT 1 FROM rundown_topics WHERE slug LIKE 'frustration%' OR slug LIKE 'talking-with%'"));
+    answers['live.rundown.segment'] = prev;
+    console.log('✅ play-by-play: 2 takes a stream on a topic, moods are no topic');
 }
 
 console.log('rundown: ok');
