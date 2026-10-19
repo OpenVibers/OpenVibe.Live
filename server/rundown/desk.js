@@ -39,6 +39,7 @@ const ANNOUNCE_WITHIN_H = 6;
 
 let _calls = [];
 let _fails = new Map();          // stream id → { at: read_to_sec, n }
+let _repeated = { at: 0, set: new Set() };
 let _announced = [];
 let _busy = false;
 let _job = null;
@@ -135,16 +136,30 @@ async function setProgress(streamId, readTo, done = 0) {
         ON CONFLICT (stream_id) DO UPDATE SET read_to_sec = GREATEST(rundown_progress.read_to_sec, excluded.read_to_sec), done = excluded.done, updated_at = ov_now()`, [streamId, readTo, done]);
 }
 
-/** The next stretch: speech lines after read_to_sec, game lines out, at most MAX_WORDS. */
+/**
+ * Lines heard word for word on 3+ different streams in 30 days: a game's voice lines ("Wanna see a trick?", "An ally has
+ * been slain."), speech-to-text's hallucinations on silence ("Thanks for watching, and I'll see you in the next video.",
+ * "ご視聴ありがとうございました") and stock filler. None is anyone's take, so none reaches the AI or can be quoted.
+ */
+async function repeatedLines() {
+    if (Date.now() - _repeated.at < 3600_000) return _repeated.set;
+    const rows = await db.all(`SELECT text FROM stream_timeline_events WHERE kind = 'speech' AND created_at >= ? AND length(text) >= 8
+        GROUP BY text HAVING COUNT(DISTINCT stream_id) >= 3`, [daysAgo(30)]);
+    _repeated = { at: Date.now(), set: new Set(rows.map((r) => filters.norm(r.text))) };
+    return _repeated.set;
+}
+
+/** The next stretch: speech lines after read_to_sec, game and repeated lines out, at most MAX_WORDS. */
 async function nextStretch(stream) {
     const rows = await db.all(`SELECT start_sec, text, vod_id FROM stream_timeline_events
         WHERE stream_id = ? AND kind = 'speech' AND start_sec > ? ORDER BY start_sec ASC LIMIT 800`, [stream.id, stream.read_to_sec]);
+    const repeated = await repeatedLines();
     const lines = [];
     let n = 0, lastSec = Number(stream.read_to_sec);
     for (const r of rows) {
         const text = String(r.text || '').replace(/\s+/g, ' ').trim();
         const w = words(text);
-        if (text && !filters.gameLine(text)) {
+        if (text && !filters.gameLine(text) && !repeated.has(filters.norm(text))) {
             if ((n + w > MAX_WORDS || lines.length >= MAX_LINES) && lines.length) break;
             lines.push({ t: Math.round(Number(r.start_sec) * 10) / 10, text: text.slice(0, 1000), vod_id: r.vod_id });
             n += w;
@@ -326,4 +341,4 @@ function start() {
 }
 function stop() { if (typeof _job === 'function') _job(); _job = null; }
 
-module.exports = { start, stop, tick, readStretch, writeEpisode, refreshTopic, keepSegments, topicFor, nextStretch, ready, optedOut, MAX_LINES, _test: { reset() { _calls = []; _announced = []; _fails = new Map(); _people = { at: 0, entries: [] }; } } };
+module.exports = { start, stop, tick, readStretch, writeEpisode, refreshTopic, keepSegments, topicFor, nextStretch, ready, optedOut, MAX_LINES, _test: { reset() { _calls = []; _announced = []; _fails = new Map(); _repeated = { at: 0, set: new Set() }; _people = { at: 0, entries: [] }; } } };
