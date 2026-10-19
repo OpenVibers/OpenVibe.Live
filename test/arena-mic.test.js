@@ -71,13 +71,17 @@ console.log('✅ roster + ratings are pure mic');
 
     // ── Beefs: a hit logs into the feed too; clocks flip; forfeit; KILLS ──
     const h1 = await beef.recordHit(u1, u2, { quality: 7, best_line: 'Grizzly streams to 12 people and 9 are his alts', about: 'alts', announcer: 'Nova swings first!', stream_id: s1, vod_id: 501, sec: 90 });
-    assert.strictEqual(h1.opened, true); assert.strictEqual(h1.beef.on_clock, 'b');
+    assert.strictEqual(h1.opened, true); assert.strictEqual(h1.pending, true); assert.strictEqual(h1.beef.on_clock, 'b');
     assert.ok(!('bounty' in h1), 'bounties are gone');
+    // One-sided, it is nobody's business yet: no public moment, no XP, no beef page, no open beef (2026-10-18).
+    assert.ok(!(await mic.feed({ limit: 5 })).some((m) => m.beef_id === h1.beef.id), 'a pending callout is not in the feed');
+    assert.strictEqual(await beef.get(h1.beef.id), null, 'nor on its own page');
+    assert.strictEqual((await beef.openBeefsFor(u1)).length, 0);
+    const h2 = await beef.recordHit(u2, u1, { quality: 9, best_line: 'Nova needed a bit to get views, I just exist', about: 'clout', stream_id: s2, vod_id: 502, sec: 40 });
+    assert.strictEqual(h2.first_response, true); assert.strictEqual(h2.opened, true, 'the answer opens it'); assert.strictEqual(h2.beef.status, 'open'); assert.strictEqual(h2.beef.on_clock, 'a');
     const fm = (await mic.feed({ limit: 1 }))[0];
-    assert.strictEqual(fm.kind, 'beef_hit'); assert.strictEqual(fm.target.user.id, u2); assert.strictEqual(fm.beef_id, h1.beef.id); assert.strictEqual(fm.sec, 90);
-    assert.strictEqual((await mic.levelView(u1)).beef_hits, 1);
-    const h2 = await beef.recordHit(u2, u1, { quality: 9, best_line: 'Nova needed a bit to get views, I just exist', about: 'clout' });
-    assert.strictEqual(h2.first_response, true); assert.strictEqual(h2.beef.on_clock, 'a');
+    assert.strictEqual(fm.kind, 'beef_hit'); assert.strictEqual(fm.target.user.id, u1); assert.strictEqual(fm.beef_id, h1.beef.id); assert.strictEqual(fm.sec, 40);
+    assert.strictEqual((await mic.levelView(u2)).beef_hits, 1);
     assert.deepStrictEqual(await beef.hype(h1.beef.id, 'a', 'anon:x'), { added: true, hypers: 1, crowd: 1 });
     await assert.rejects(beef.hype(h1.beef.id, 'a', `user:${u1}`), /yourself/);
     await db.run(`UPDATE arena_beefs SET clock_until = datetime('now', '-1 minute') WHERE id = ?`, [h1.beef.id]);
@@ -127,7 +131,8 @@ console.log('✅ roster + ratings are pure mic');
     ev = await listener.tick();
     assert.ok(ev.some(e => e.kind === 'beef_hit' && e.targetId === u2 && e.opened), `name-drop opened the beef: ${JSON.stringify(ev)}`);
     assert.ok((await listener.consoleState(u3)).focus && (await listener.consoleState(u3)).focus.target_id === u2, 'locked on grizzly');
-    assert.strictEqual((await beef.openBeefsFor(u3)).length, 1);
+    assert.strictEqual((await beef.openBeefsFor(u3)).length, 0, 'one-sided: pending, not open');
+    assert.strictEqual(await db.get("SELECT status FROM arena_beefs WHERE a_user_id = ? AND b_user_id = ?", [u3, u2]).then((r) => r && r.status), 'pending');
     assert.strictEqual((await arena.liveFighters())[0].ears.focus.target_id, u2, 'live cam shows the lock');
     // Unnamed trash while locked is context, never a hit (a League stream's voice lines after one transcribed "Adam"
     // scored a 107–0 beef, 2026-10-18).
@@ -152,7 +157,17 @@ console.log('✅ roster + ratings are pure mic');
     ev = await listener.tick();
     assert.ok(!ev.some(e => e.kind === 'focus' || e.kind === 'beef_hit'), `a nickname or a misspelling locks nothing: ${JSON.stringify(ev)}`);
     assert.strictEqual((await listener.consoleState(u3)).focus, null);
-    assert.strictEqual((await beef.openBeefsFor(u3)).length, 1, 'still the one beef a whole name opened');
+    assert.strictEqual(await db.get("SELECT COUNT(*) AS n FROM arena_beefs WHERE a_user_id = ? AND status = 'pending'", [u3]).then((r) => Number(r.n)), 1, 'still the one callout a whole name started');
+    // Grizzly answers, naming her on his own stream: now it is a beef, and public.
+    const answer = await beef.recordHit(u2, u3, { quality: 6, best_line: 'pixelqueen talks big for someone who streams to her cat', about: 'answer' });
+    assert.strictEqual(answer.opened, true);
+    assert.strictEqual((await beef.openBeefsFor(u3)).length, 1);
+    // An unanswered callout ends quietly: no forfeit, no record, no story.
+    const lone = await beef.recordHit(u1, u3, { quality: 8, best_line: 'pixelqueen could not win a race against a parked car', about: 'race' });
+    await db.run("UPDATE arena_beefs SET clock_until = datetime('now', '-1 minute') WHERE id = ?", [lone.beef.id]);
+    await beef.tick();
+    assert.strictEqual((await db.get('SELECT status, winner_user_id FROM arena_beefs WHERE id = ?', [lone.beef.id])).status, 'expired');
+    assert.deepStrictEqual(await beef.recordFor(u1), { wins: 0, losses: 1, draws: 0 }, 'the expired callout counts for nobody (the loss is the forfeit above)');
     assert.strictEqual(await listener._aimedAtUnnamed('grizzly bear', u3, await arena.loadRoster()), null, "the judge's guess at a fighter is dropped");
     assert.strictEqual(await listener._aimedAtUnnamed('chat', u3, await arena.loadRoster()), 'chat');
     const names = require('../server/arena/names');
