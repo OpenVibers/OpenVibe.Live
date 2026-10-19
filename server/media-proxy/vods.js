@@ -785,7 +785,7 @@ async function _notifyStreamerOfClip(streamId, clipper, title, clipId) {
             type: 'CLIP_CREATED',
             title: 'New Clip',
             message: `${clipper.display_name || clipper.username} clipped your stream${title ? `: ${title}` : ''}`,
-            url: `https://openvibe.live/clip/${clipId || ''}`,
+            url: require('../web/video-url').videoUrl('clip', clipId) || 'https://openvibe.video/',
             ...actorInfo(clipper),
         });
     } catch { /* non-critical */ }

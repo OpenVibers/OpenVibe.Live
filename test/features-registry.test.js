@@ -74,7 +74,7 @@ ok(`${reg.routes.length} routes reference known features`);
 // Server rendering.
 const assets = require('../server/web/assets');
 const doc = assets.document('index.html').html;
-const cases = [['/', ['/js/app-home.js', '/css/features/home.css'], null], ['/broadcast', ['/js/broadcast.js', '/css/features/broadcast.css'], 'broadcast'], ['/@someone', ['/js/app-channel.js', '/js/stream-player.js'], 'channel'], ['/vod/12', ['/js/app-media.js'], 'vod-player'], ['/documentation', ['/js/app-docs.js'], 'documentation']];
+const cases = [['/', ['/js/app-home.js', '/css/features/home.css'], null], ['/broadcast', ['/js/broadcast.js', '/css/features/broadcast.css'], 'broadcast'], ['/@someone', ['/js/app-channel.js', '/js/stream-player.js'], 'channel'], ['/documentation', ['/js/app-docs.js'], 'documentation']];
 for (const [url, expectAssets, frag] of cases) {
     const html = assets.renderRoute(doc, url);
     for (const a of expectAssets) assert.ok(html.includes(a.endsWith('.css') ? `<link rel="stylesheet" href="${a}?v=` : `<script src="${a}?v=`), `${url} should include ${a}`);

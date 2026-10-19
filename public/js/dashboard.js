@@ -379,7 +379,7 @@ async function loadDashVods() {
                         ${!v.is_public
                             ? `<button class="btn btn-small btn-success" onclick="publishVod('${v.id}')"><i class="fa-solid fa-eye"></i> Publish</button>`
                             : `<button class="btn btn-small btn-outline" onclick="unpublishVod('${v.id}')"><i class="fa-solid fa-eye-slash"></i> Private</button>`}
-                        <button class="btn btn-small" onclick="navigate('/vod/${v.id}')"><i class="fa-solid fa-play"></i></button>
+                        <button class="btn btn-small" onclick="location.href=videoHref('vod', '${v.id}')" title="Watch on OpenVibe.Video"><i class="fa-solid fa-play"></i></button>
                         <button class="btn btn-small btn-danger" onclick="deleteVod('${v.id}')"><i class="fa-solid fa-trash"></i></button>
                     </div>
                 </div>
@@ -503,7 +503,7 @@ async function loadDashMyClips() {
                         ${!cl.is_public
                             ? `<button class="btn btn-small btn-success" onclick="dashToggleClipVisibility(${cl.id}, true, 'mine')"><i class="fa-solid fa-eye"></i> Publish</button>`
                             : `<button class="btn btn-small btn-outline" onclick="dashToggleClipVisibility(${cl.id}, false, 'mine')"><i class="fa-solid fa-eye-slash"></i> Unlist</button>`}
-                        <button class="btn btn-small" onclick="navigate('/clip/${cl.id}')"><i class="fa-solid fa-play"></i></button>
+                        <button class="btn btn-small" onclick="location.href=videoHref('clip', '${cl.id}')" title="Watch on OpenVibe.Video"><i class="fa-solid fa-play"></i></button>
                         ${cl.can_delete ? `<button class="btn btn-small btn-danger" onclick="dashDeleteClip(${cl.id}, 'mine')"><i class="fa-solid fa-trash"></i></button>` : ''}
                     </div>
                 </div>
@@ -546,7 +546,7 @@ async function loadDashStreamClips() {
                         ${!cl.is_public
                             ? `<button class="btn btn-small btn-success" onclick="dashToggleClipVisibility(${cl.id}, true)"><i class="fa-solid fa-eye"></i> Publish</button>`
                             : `<button class="btn btn-small btn-outline" onclick="dashToggleClipVisibility(${cl.id}, false)"><i class="fa-solid fa-eye-slash"></i> Unlist</button>`}
-                        <button class="btn btn-small" onclick="navigate('/clip/${cl.id}')"><i class="fa-solid fa-play"></i></button>
+                        <button class="btn btn-small" onclick="location.href=videoHref('clip', '${cl.id}')" title="Watch on OpenVibe.Video"><i class="fa-solid fa-play"></i></button>
                         <button class="btn btn-small btn-danger" onclick="dashDeleteClip(${cl.id}, 'stream')"><i class="fa-solid fa-trash"></i></button>
                     </div>
                 </div>
@@ -605,7 +605,7 @@ async function loadDashAiClips() {
                         ${!cl.is_public
                             ? `<button class="btn btn-small btn-success" onclick="dashToggleClipVisibility(${Number(cl.id)}, true, 'ai')"><i class="fa-solid fa-eye"></i> Publish</button>`
                             : `<button class="btn btn-small btn-outline" onclick="dashToggleClipVisibility(${Number(cl.id)}, false, 'ai')"><i class="fa-solid fa-eye-slash"></i> Unlist</button>`}
-                        <button class="btn btn-small" onclick="navigate('/clip/${Number(cl.id)}')"><i class="fa-solid fa-play"></i></button>
+                        <button class="btn btn-small" onclick="location.href=videoHref('clip', ${Number(cl.id)})" title="Watch on OpenVibe.Video"><i class="fa-solid fa-play"></i></button>
                         <button class="btn btn-small btn-danger" onclick="dashDeleteClip(${Number(cl.id)}, 'ai')"><i class="fa-solid fa-trash"></i></button>
                     </div>
                 </div>

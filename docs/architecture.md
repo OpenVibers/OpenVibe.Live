@@ -42,7 +42,7 @@ The SPA is plain JavaScript with no build step. What loads is decided per route:
 public/index.html        shell: navbar, home page, empty <section id="page-*"> shells, core scripts
 public/features.json     registry: feature → fragment, stylesheets, scripts, dependencies, stubs, idle prefetch
                          routes: URL pattern → features
-public/fragments/*.html  page markup for channel, VOD/clip players, dashboard, broadcast, chat, documentation, content, moments
+public/fragments/*.html  page markup for channel, dashboard, broadcast, chat, documentation, content, moments (VOD and clip pages are OpenVibe.Video's)
 public/css/features/*.css rules used only by one feature (split out of style.css / broadcast.css / i18n-star.css)
 public/js/ov-loader.js   configures /shared/web-runtime.js (openvibe-shared): ov.load(feature), ov.route(path), ov.prefetch(),
                          route generations, scopes, stubs, transactional asset groups, ov.diagnostics()/ov.leaks()

@@ -29,7 +29,7 @@ function _aaAvatar(u, size = 40) {
 }
 function _aaSirens(n) { return `<span class="aa-sirens" aria-label="alert level ${n} of 5">${'🚨'.repeat(Math.max(1, Math.min(5, n)))}</span>`; }
 function _aaWatch(s) {
-    if (s.vod_id) return _aA(`/vod/${s.vod_id}?t=${Math.max(0, Math.floor(s.sec || 0))}`, '<i class="fa-solid fa-play"></i> Watch it happen', 'aa-watch');
+    if (s.vod_id) return _aA(videoHref('vod', s.vod_id, Math.max(0, Math.floor(s.sec || 0))), '<i class="fa-solid fa-play"></i> Watch it happen', 'aa-watch');
     if (s.user && s.kind !== 'fell_off') return _aA(_aChannelLink(s.user), '<i class="fa-solid fa-tower-broadcast"></i> Their channel', 'aa-watch');
     return '';
 }

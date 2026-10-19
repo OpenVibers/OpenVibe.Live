@@ -4,7 +4,7 @@
  *
  * Recording, storage and cutting are OpenVibe.Media's; this pins Live's side of it: the recorder's
  * calls into Media for every ingest type, the live-VOD endpoints the VOD page polls, the playback URL
- * it builds, and the page's tail/finalise/seek wiring (public/js/app-media.js).
+ * it builds (the watch page itself is OpenVibe.Video's).
  *
  * The fix it came with: /api/vods/:id/live-info reported `seekable: false` for every recording,
  * because it only trusted a `seekable` field Media's rows do not have. The VOD page refreshes its
@@ -228,23 +228,6 @@ async function check(name, fn) {
         await until(() => calls.some((c) => c[0] === 'ingestRtmp' && c[2].endsWith('/settled01')), 'the ingest');
         recorder.onVodSettled(recorder.getActiveRecording(sid).vodId);
         assert.ok(!recorder.isRecording(sid));
-    });
-
-    await check('the VOD page wires tail, finalise and seek to those endpoints', async () => {
-        const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'js', 'app-media.js'), 'utf8');
-        const player = src.slice(src.indexOf('async function loadVodPlayer('), src.indexOf('// Navigate to streamer on click'));
-        assert.match(player, /const fileUrl = `\/api\/vods\/\$\{Number\(v\.id\)\}\/file`;/, 'playback is by the VOD\'s id, never a file name (C-75)');
-        assert.match(player, /video\.src = `\$\{fileUrl\}\?t=\$\{Date\.now\(\)\}`/, 'and through Live\'s redirect, cache-busted');
-        assert.ok(!/api\/vods\/file\//.test(src), 'no player asks for a file by name');
-        assert.match(player, /api\(`\/vods\/\$\{v\.id\}\/live-info`\)/, 'a recording is polled through live-info');
-        assert.match(player, /if \(!info\.isRecording\) \{[\s\S]{0,400}loadVodPlayer\(v\.id\);/, 'finalisation reloads it as a finished VOD');
-        assert.match(player, /if \(info\.seekable\) \{[\s\S]{0,1400}video\.currentTime = Math\.min\(currentTime, dur\);/, 'the tail refresh keeps the viewer\'s position');
-        assert.match(player, /if \(dur > 2\) video\.currentTime = dur - 1;/, '"Jump to live" goes to the newest second');
-        assert.match(player, /video\.dataset\.serverDuration = \(serverDur > 0 && !v\.is_recording\) \? String\(serverDur\) : '';/, 'the probed duration is trusted only once finished');
-        assert.match(player, /if \(seekTo && seekTo > 0\) \{\s*target = seekTo;/, 'a ?t= deep link seeks the finished VOD');
-        assert.match(src, /if \(vd > 0 && sd > 0\) return \(vd > sd \* 1\.5\) \? sd : vd;/, 'an inflated container duration is clamped to the probed one');
-        const appSrc = fs.readFileSync(path.join(__dirname, '..', 'public', 'js', 'app.js'), 'utf8');
-        assert.match(appSrc, /loadVodPlayer\(segments\[1\], Number\.isFinite\(_t\) && _t > 0 \? _t : null\)/, '/vod/:id?t= reaches the player');
     });
 
     server.close();

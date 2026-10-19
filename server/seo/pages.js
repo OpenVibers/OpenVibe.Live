@@ -5,7 +5,8 @@
  *
  * The app is a client-rendered SPA (server/index.js serves public/index.html for every route),
  * so crawlers/AI scrapers see an empty shell. This middleware intercepts the HTML routes we
- * care about (home, vods/clips/pastes lists, and vod/clip/paste detail pages), and rewrites the
+ * care about (home, the vods/clips/pastes lists, channels and recaps; VODs, clips and pastes themselves are on
+ * openvibe.video and openvibe.community, linked there), and rewrites the
  * <head> with route-specific machine-readable metadata + drops a <noscript> content snapshot so
  * no-JS scrapers get real content. Everything is cached so it adds ~no per-request DB cost.
  *
@@ -68,7 +69,7 @@ const _feedPage = async (feed, page = 1) => await _cached(`feed:${feed}:${page}`
 const _feedList = async (feed) => (await _feedPage(feed, 1)).items;
 const { isPrivate } = require('../media-proxy/access');
 const pageStatus = require('../web/page-status');
-const { videoUrl } = require('../web/video-url');
+const { videoUrl, VIDEO_BASE } = require('../web/video-url');
 
 // ── One item (VOD, clip, paste) ──
 // Fetched at most once at a time per id and kept a minute (a missing id 30 s, a failure not at
@@ -139,22 +140,6 @@ async function _listWithin(key, fn, track) {
 }
 const _pub = (row) => row && !isPrivate(row) && Number(row.is_public) !== 0 && row.is_public !== false;
 
-// Overlay the Live-owned AI state (vod_ai_state/clip_ai_state) onto a Media row so
-// descriptions/transcripts keep enriching the crawlable snapshot.
-async function _overlayAiState(row, kind) {
-    try {
-        const st = kind === 'clip' ? await db.getClipAiState(row.id) : await db.getVodAiState(row.id);
-        if (!st) return;
-        if (st.ai_overview_short) {
-            row.ai_overview_short = row.ai_overview_short || st.ai_overview_short;
-            row.ai_overview = row.ai_overview || st.ai_overview || st.ai_overview_short;
-        }
-        if (st.ai_transcript_json && !row.ai_transcript) {
-            try { row.ai_transcript = JSON.parse(st.ai_transcript_json).map(s => s.text).join(' ').trim(); } catch { /* */ }
-        }
-    } catch { /* */ }
-}
-
 // Pastes live on openvibe.community: /p/<slug> is a redirect there (server/web/paste-handover.js,
 // mounted before this middleware), and every paste link Live renders, here and in the SPA (which
 // reads the base from the ov-pastes-base meta on every shell), points straight at Community, the
@@ -162,6 +147,9 @@ async function _overlayAiState(row, kind) {
 const PASTES_BASE = (process.env.OV_COMMUNITY_URL || 'https://openvibe.community').replace(/\/$/, '');
 const PASTES_META = `<meta name="ov-pastes-base" content="${esc(PASTES_BASE)}">`;
 const pasteHref = (slug) => `${PASTES_BASE}/p/${encodeURIComponent(slug)}`;
+// Recordings and clips live on openvibe.video: the SPA reads the base from the ov-video-base meta on every shell
+// (public/js/app.js videoHref) and /vod/<id>, /clip/<id> 301 there (server/web/video-handover.js).
+const VIDEO_META = `<meta name="ov-video-base" content="${esc(VIDEO_BASE)}">`;
 
 const SITE_NAME = 'OpenVibe.Live';
 const DEFAULT_OG_IMAGE = '/og-image.png';
@@ -207,16 +195,15 @@ async function _pageMeta(routePath, { page = 1 } = {}) {
     // Home
     if (p === '/') return await _homeMeta();
     // List pages (content sourced from OpenVibe.Media, canonical URLs stay on openvibe.live)
-    if (p === '/vods') return await _listMeta('vods', 'VODs', 'Browse recorded live streams (VODs) on OpenVibe.Live — auto-recorded broadcasts with AI overviews and searchable transcripts.', async () => (await _vodList(30) || []).map(v => ({ url: `/vod/${v.id}`, name: v.title || 'VOD', by: v.display_name || v.username, meta: _fmtDur(v.duration_seconds || v.duration), desc: v.ai_overview_short })));
-    if (p === '/clips') return await _listMeta('clips', 'Clips', 'Watch the best clips from OpenVibe.Live live streams — the moments viewers clipped.', async () => (await _clipList(30) || []).map(c => ({ url: `/clip/${c.id}`, name: c.title || 'Clip', by: c.display_name || c.username || c.streamer_username, meta: _fmtDur(c.duration_seconds || c.duration), desc: c.ai_overview_short })));
+    if (p === '/vods') return await _listMeta('vods', 'VODs', 'Browse recorded live streams (VODs) on OpenVibe.Live — auto-recorded broadcasts with AI overviews and searchable transcripts.', async () => (await _vodList(30) || []).map(v => ({ url: videoUrl('vod', v.id), name: v.title || 'VOD', by: v.display_name || v.username, meta: _fmtDur(v.duration_seconds || v.duration), desc: v.ai_overview_short })));
+    if (p === '/clips') return await _listMeta('clips', 'Clips', 'Watch the best clips from OpenVibe.Live live streams — the moments viewers clipped.', async () => (await _clipList(30) || []).map(c => ({ url: videoUrl('clip', c.id), name: c.title || 'Clip', by: c.display_name || c.username || c.streamer_username, meta: _fmtDur(c.duration_seconds || c.duration), desc: c.ai_overview_short })));
     if (p === '/content') return await _listMeta('content', 'Content', 'VODs, clips and pastes made by the people of OpenVibe.Live — recorded streams, the moments viewers clipped, and the code, notes and screenshots they shared.', async () => await _feedPage('content', page), { page });
     if (p === '/moments') return await _listMeta('moments', 'AI Moments', 'AI-made highlights from OpenVibe.Live streams: auto-clips of the moments chat erupted, standout frames the AI picked, and AI-written after-show recaps. Everything listed here is AI-generated.', async () => await _feedPage('moments', page), { page });
     if (p === '/pastes') return await _listMeta('pastes', 'Pastes', 'Code, text and screenshot pastes shared on OpenVibe.Live — a Pastebin built into the streaming network, with AI summaries.', async () => (await _pasteList(30) || []).map(x => ({ url: pasteHref(x.slug), name: x.title || 'Paste', by: x.username || 'anon', meta: x.type === 'screenshot' ? 'image' : (x.language || 'text'), desc: x.ai_summary })));
 
     // Detail pages
     let m;
-    if ((m = p.match(/^\/vod\/(\d+)$/))) return await _vodMeta(parseInt(m[1], 10));
-    if ((m = p.match(/^\/clip\/(\d+)$/))) return await _clipMeta(parseInt(m[1], 10));
+    // /vod/<id> and /clip/<id> 301 to OpenVibe.Video before this runs (server/web/video-handover.js).
     if ((m = p.match(/^\/p\/([A-Za-z0-9_-]+)$/))) return await _pasteMeta(m[1]);
     if ((m = p.match(CHANNEL_PATH_RE))) return await _channelMeta(m[1], page);
     if ((m = p.match(/^\/recap\/(\d+)$/))) return await _recapMeta(parseInt(m[1], 10));
@@ -303,7 +290,7 @@ async function _channelMeta(username, page = 1) {
     if (vods.length) {
         ld.push({
             '@context': 'https://schema.org', '@type': 'ItemList', name: `${name}'s videos${page > 1 ? `, page ${page}` : ''}`,
-            itemListElement: vods.map((v, i) => ({ '@type': 'ListItem', position: offset + i + 1, url: abs(`/vod/${Number(v.id)}`), name: clean(v.title || 'Stream recording', 110) })),
+            itemListElement: vods.map((v, i) => ({ '@type': 'ListItem', position: offset + i + 1, url: videoUrl('vod', v.id), name: clean(v.title || 'Stream recording', 110) })),
         });
     }
     ld.push(_breadcrumb([{ name: 'Home', url: '/' }, { name, url: basePath }, ...(page > 1 ? [{ name: `Videos, page ${page}`, url: canonicalPath }] : [])]));
@@ -319,13 +306,13 @@ async function _channelMeta(username, page = 1) {
         body += `<section><h2>AI overview</h2><p class="ai-disclosure">Written by OpenVibe's AI from ${esc(name)}'s past streams.</p><p>${esc(clean(ov.overview, 1200))}</p></section>`;
     }
     body += _itemSection(page > 1 ? `Videos, page ${page}` : 'Videos', vods.map((v) => ({
-        url: `/vod/${Number(v.id)}`, name: v.title || 'Stream recording',
+        url: videoUrl('vod', v.id), name: v.title || 'Stream recording',
         meta: [_fmtDur(v.duration_seconds ?? v.duration), _day(v.created_at)].filter(Boolean).join(' · '),
     })), vods.length || page > 1 ? null : (track.partial ? null : 'No videos yet.'));
     if (vods.length || page > 1) body += _pager(basePath, page, pages, vods.length === CHANNEL_PAGE_SIZE, 'videos');
-    if (clips.length) body += _itemSection('Clips', (await Promise.all(clips.map(async (c) => ({ url: `/clip/${Number(c.id)}`, name: c.title || 'Clip', meta: [await _clipperOf(c) ? `clipped by ${await _clipperOf(c)}` : null, _fmtDur(c.duration_seconds ?? c.duration)].filter(Boolean).join(' · ') })))));
+    if (clips.length) body += _itemSection('Clips', (await Promise.all(clips.map(async (c) => ({ url: videoUrl('clip', c.id), name: c.title || 'Clip', meta: [await _clipperOf(c) ? `clipped by ${await _clipperOf(c)}` : null, _fmtDur(c.duration_seconds ?? c.duration)].filter(Boolean).join(' · ') })))));
     if (aiClips.length) {
-        body += _itemSection('AI Moments', aiClips.map((c) => ({ url: `/clip/${Number(c.id)}`, name: c.title || 'AI clip', meta: ['AI clip', _fmtDur(c.duration_seconds ?? c.duration)].filter(Boolean).join(' · ') })),
+        body += _itemSection('AI Moments', aiClips.map((c) => ({ url: videoUrl('clip', c.id), name: c.title || 'AI clip', meta: ['AI clip', _fmtDur(c.duration_seconds ?? c.duration)].filter(Boolean).join(' · ') })),
             null, `<p class="ai-disclosure">Clips OpenVibe's AI cut from ${esc(name)}'s streams when chat reacted. No one clipped these.</p>`);
     }
     body += `<p><a href="${esc(abs(basePath))}">Visit ${esc(name)}'s channel</a> on ${SITE_NAME}.</p></article>`;
@@ -496,8 +483,8 @@ async function _homeMeta() {
     const ownerName = async (row, id) => row.display_name || row.username || _nameOf(await _channelOwner(id));
 
     const liveItems = live.map(s => ({ url: `/@${s.username}`, name: s.title || `${s.display_name || s.username} live`, by: s.display_name || s.username, meta: s.category || 'live' }));
-    const vodItems = (await Promise.all(vods.map(async v => ({ url: `/vod/${v.id}`, name: v.title || 'VOD', by: await ownerName(v, v.user_id), meta: _fmtDur(v.duration_seconds || v.duration), desc: v.ai_overview_short }))));
-    const clipItems = (await Promise.all(clips.map(async c => ({ url: `/clip/${c.id}`, name: c.title || 'Clip', by: await ownerName(c, c.user_id), meta: _fmtDur(c.duration_seconds || c.duration) }))));
+    const vodItems = (await Promise.all(vods.map(async v => ({ url: videoUrl('vod', v.id), name: v.title || 'VOD', by: await ownerName(v, v.user_id), meta: _fmtDur(v.duration_seconds || v.duration), desc: v.ai_overview_short }))));
+    const clipItems = (await Promise.all(clips.map(async c => ({ url: videoUrl('clip', c.id), name: c.title || 'Clip', by: await ownerName(c, c.user_id), meta: _fmtDur(c.duration_seconds || c.duration) }))));
     const pasteItems = pastes.map(x => ({ url: pasteHref(x.slug), name: x.title || 'Paste', by: x.username || 'anon', meta: x.type === 'screenshot' ? 'image' : (x.language || 'text') }));
 
     const statLine = stats ? `<p>${SITE_NAME} hosts ${stats.streamers || 0} streamers, ${stats.vods || 0} VODs, ${stats.clips || 0} clips, ${stats.pastes || 0} pastes and ${stats.chatMessages || 0} chat messages.</p>` : '';
@@ -614,7 +601,7 @@ async function _channelOwner(userId) {
 const _nameOf = (u) => (u ? (u.display_name || u.username) : null);
 
 /**
- * `/vod/<id>?t=<s>` for the moment an item came from, or null when the VOD is unknown, gone or
+ * The recording at the moment an item came from (its OpenVibe.Video page), or null when the VOD is unknown, gone or
  * not public (a canonical must never point at a page that answers 404 to the crawler).
  */
 async function _sourceMoment(vodId, seconds) {
@@ -624,146 +611,6 @@ async function _sourceMoment(vodId, seconds) {
     const t = Math.max(0, Math.floor(Number(seconds) || 0));
     // The moment on the recording's canonical page, OpenVibe.Video (web/video-url.js).
     return { path: videoUrl('vod', vodId, t), vod: v };
-}
-
-async function _vodMeta(id) {
-    const v = await _vodGet(id);
-    // Private: fall through exactly like an unknown id. This HTML is cached per id and shared by
-    // every visitor, so it never carries a private VOD's title, overview or transcript.
-    if (!v || isPrivate(v)) return null;
-    if (v.duration_seconds == null && v.duration != null) v.duration_seconds = v.duration;
-    await _overlayAiState(v, 'vod');
-    const indexable = Number(v.is_public) === 1 && (!v.visibility || v.visibility === 'public');
-    const owner = await _channelOwner(v.user_id);
-    const author = v.display_name || v.username || _nameOf(owner);
-    const title = clean(v.title || `${author ? author + "'s " : ''}stream VOD`, 80);
-    const desc = clean(v.ai_overview_short || v.ai_overview || v.description || `Recorded live stream${author ? ' by ' + author : ''} on ${SITE_NAME}.`, 200);
-    const image = v.thumbnail_url ? media.publicUrl(v.thumbnail_url) : media.thumbUrl(`vod-${id}`);
-    const canonicalPath = `/vod/${id}`;
-
-    // The clips of this VOD: people's, then the AI's. Every one is also a moment of this video
-    // (schema.org Clip in hasPart), so the source carries its moments (roadmap 33.8).
-    const track = { partial: false };
-    const cr = await _listWithin(`vc:${id}`, async () => await media.listClips({ vod_id: id, limit: 30 }, { timeoutMs: 5000 }), track);
-    const all = ((cr && cr.clips) || []).filter((c) => _pub(c) && (!c.status || c.status === 'ready'));
-    const people = all.filter((c) => !isAiClip(c));
-    const ai = all.filter(isAiClip);
-    const at = (c) => Math.max(0, Math.floor(Number(c.start_time) || 0));
-    const parts = all.filter((c) => Number.isFinite(Number(c.start_time))).slice(0, 20).map((c) => ({
-        '@type': 'Clip', name: clean(c.title || (isAiClip(c) ? 'AI clip' : 'Clip'), 110),
-        startOffset: at(c), endOffset: Number.isFinite(Number(c.end_time)) ? Math.max(at(c) + 1, Math.ceil(Number(c.end_time))) : undefined,
-        url: abs(`/vod/${id}?t=${at(c)}`),
-    }));
-    const vo = {
-        ...seo.jsonLd.video({
-            name: title, url: abs(canonicalPath), description: desc, thumbnailUrl: [image],
-            uploadDate: isoDate(v.created_at) || undefined, duration: iso8601Duration(v.duration_seconds),
-            contentUrl: abs(canonicalPath), embedUrl: abs(canonicalPath),
-        }),
-        interactionStatistic: { '@type': 'InteractionCounter', interactionType: 'https://schema.org/WatchAction', userInteractionCount: Number(v.view_count) || 0 },
-        author: _authorLd(author), publisher: { '@type': 'Organization', name: SITE_NAME, url: baseUrl() },
-        hasPart: parts.length ? parts : undefined,
-    };
-    const moment = (c) => `/vod/${id}?t=${at(c)}`;
-    let extraHtml = owner ? `<p class="source"><a href="${esc(abs(`/@${owner.username}`))}">${esc(author || owner.username)}'s channel</a></p>` : '';
-    extraHtml += _itemSection('Clips from this stream', (await Promise.all(people.map(async (c) => ({ url: `/clip/${Number(c.id)}`, name: c.title || 'Clip', meta: [await _clipperOf(c) ? `clipped by ${await _clipperOf(c)}` : null, `at ${_fmtDur(at(c)) || '0:00'}`].filter(Boolean).join(' · ') })))));
-    if (ai.length) {
-        extraHtml += _itemSection('AI Moments from this stream', ai.map((c) => ({ url: `/clip/${Number(c.id)}`, name: c.title || 'AI clip', meta: `AI clip · at ${_fmtDur(at(c)) || '0:00'}` })),
-            null, '<p class="ai-disclosure">Cut automatically by OpenVibe\'s auto-clip workflow. No one clipped these.</p>');
-        extraHtml += `<p>${ai.slice(0, 6).map((c) => `<a href="${esc(abs(moment(c)))}">Jump to ${esc(_fmtDur(at(c)) || '0:00')}</a>`).join(' · ')}</p>`;
-    }
-    const snapshot = _detailSnapshot({
-        title, byline: author ? `Streamed by ${author}` : null, desc, extraHtml,
-        overview: v.ai_overview, transcript: v.ai_transcript, canonicalPath, watchLabel: 'Watch this VOD',
-    });
-    return {
-        title: `${title}${author ? ' — ' + author : ''} | ${SITE_NAME}`, description: desc,
-        // A public, finished recording's canonical page is on OpenVibe.Video; this page stays its og:url.
-        ...(indexable && !v.is_recording ? { canonicalPath: videoUrl('vod', id), ogUrlPath: canonicalPath } : { canonicalPath }),
-        image, ogType: 'video.other', robots: indexable ? 'index,follow' : 'noindex,follow',
-        video: { duration: Math.floor(Number(v.duration_seconds) || 0) },
-        jsonLd: [vo, _breadcrumb([{ name: 'Home', url: '/' }, ...(owner ? [{ name: author || owner.username, url: `/@${owner.username}` }] : [{ name: 'VODs', url: '/vods' }]), { name: title, url: canonicalPath }])],
-        snapshot,
-        cacheTtlMs: track.partial ? SHORT_CACHE_MS : undefined,
-    };
-}
-
-async function _clipMeta(id) {
-    const c = await _clipGet(id);
-    if (!c || isPrivate(c)) return null;   // private: same as unknown (see _vodMeta)
-    if (c.duration_seconds == null && c.duration != null) c.duration_seconds = c.duration;
-    await _overlayAiState(c, 'clip');
-    if (isAiClip(c)) return await _aiClipMeta(c, id);
-    const indexable = Number(c.is_public) === 1 && (!c.visibility || c.visibility === 'public');
-    // Media stores ids only: the clipper's name comes from Live's accounts.
-    const creator = c.display_name || c.username || _nameOf(await _channelOwner(c.user_id));
-    const title = clean(c.title || 'Clip', 80);
-    const desc = clean(c.ai_overview_short || c.ai_overview || c.description || `A clip from a live stream on ${SITE_NAME}${creator ? ', clipped by ' + creator : ''}.`, 200);
-    const image = c.thumbnail_url ? media.publicUrl(c.thumbnail_url) : media.thumbUrl(`clip-${id}`);
-    const canonicalPath = `/clip/${id}`;
-    const vo = {
-        ...seo.jsonLd.video({
-            name: title, url: abs(canonicalPath), description: desc, thumbnailUrl: [image],
-            uploadDate: isoDate(c.created_at) || undefined, duration: iso8601Duration(c.duration_seconds),
-            contentUrl: abs(canonicalPath), embedUrl: abs(canonicalPath),
-        }),
-        interactionStatistic: { '@type': 'InteractionCounter', interactionType: 'https://schema.org/WatchAction', userInteractionCount: Number(c.view_count) || 0 },
-        author: _authorLd(creator), publisher: { '@type': 'Organization', name: SITE_NAME, url: baseUrl() },
-    };
-    const channel = await _channelOwner(c.channel_user_id);
-    const source = await _sourceMoment(c.vod_id, c.start_time);
-    const sourceHtml = (source || channel) ? `<p class="source">${source ? `<a href="${esc(abs(source.path))}">Watch it in the full stream</a>` : ''}${source && channel ? ' · ' : ''}${channel ? `<a href="${esc(abs(`/@${channel.username}`))}">${esc(_nameOf(channel))}'s channel</a>` : ''}</p>` : '';
-    const snapshot = _detailSnapshot({
-        title, byline: creator ? `Clipped by ${creator}${channel && channel.id !== Number(c.user_id) ? ` from ${_nameOf(channel)}'s stream` : ''}` : null, desc,
-        extraHtml: sourceHtml,
-        overview: c.ai_overview, transcript: c.ai_transcript, canonicalPath, watchLabel: 'Watch this clip',
-    });
-    return {
-        title: `${title} — clip | ${SITE_NAME}`, description: desc,
-        ...(indexable ? { canonicalPath: videoUrl('clip', id), ogUrlPath: canonicalPath } : { canonicalPath }),
-        image, ogType: 'video.other', robots: indexable ? 'index,follow' : 'noindex,follow',
-        video: { duration: Math.floor(Number(c.duration_seconds) || 0) },
-        jsonLd: [vo, _breadcrumb([{ name: 'Home', url: '/' }, ...(channel ? [{ name: _nameOf(channel), url: `/@${channel.username}` }] : [{ name: 'Clips', url: '/clips' }]), { name: title, url: canonicalPath }])],
-        snapshot,
-    };
-}
-
-/** An auto-clip: "AI clip · from <streamer>'s stream", canonical to the VOD at the moment. */
-async function _aiClipMeta(c, id) {
-    const owner = await _channelOwner(c.channel_user_id != null ? c.channel_user_id : c.user_id);
-    const streamer = _nameOf(owner);
-    const from = streamer ? `${streamer}'s stream` : 'a live stream';
-    const title = clean(c.title || 'AI clip', 80);
-    const source = await _sourceMoment(c.vod_id, c.start_time);
-    const desc = clean(`AI-generated clip from ${from} on ${SITE_NAME}. ${c.ai_overview_short || c.ai_overview || c.description || ''}`, 200);
-    const image = c.thumbnail_url ? media.publicUrl(c.thumbnail_url) : media.thumbUrl(`clip-${id}`);
-    const selfPath = `/clip/${id}`;
-    const vo = {
-        ...seo.jsonLd.video({
-            name: title, url: abs(selfPath), description: desc, thumbnailUrl: [image],
-            uploadDate: isoDate(c.created_at) || undefined, duration: iso8601Duration(c.duration_seconds),
-            contentUrl: abs(selfPath), embedUrl: abs(selfPath),
-        }),
-        // No author or creator: a workflow cut this, not a person.
-        keywords: AI_KEYWORDS,
-        isBasedOn: source ? abs(source.path) : undefined,
-        publisher: { '@type': 'Organization', name: SITE_NAME, url: baseUrl() },
-    };
-    const sourceLink = source
-        ? `<p class="source"><a href="${esc(abs(source.path))}">Watch this moment in the full stream</a>${owner ? ` · <a href="${esc(abs(`/@${owner.username}`))}">${esc(streamer)}'s channel</a>` : ''}</p>`
-        : (owner ? `<p class="source"><a href="${esc(abs(`/@${owner.username}`))}">${esc(streamer)}'s channel</a></p>` : '');
-    const snapshot = _detailSnapshot({
-        title, byline: `AI clip · from ${from}`, desc,
-        extraHtml: `<p class="ai-disclosure">Cut automatically by OpenVibe's auto-clip workflow when chat reacted. No person clipped it.</p>${sourceLink}`,
-        overview: c.ai_overview, transcript: c.ai_transcript, canonicalPath: selfPath, watchLabel: 'Watch this AI clip',
-    });
-    return {
-        title: `${title} — AI clip from ${from} | ${SITE_NAME}`, description: desc,
-        canonicalPath: source ? source.path : selfPath, ogUrlPath: selfPath, image, ogType: 'video.other', robots: AI_ROBOTS,
-        video: { duration: Math.floor(Number(c.duration_seconds) || 0) },
-        jsonLd: [vo, _breadcrumb([{ name: 'Home', url: '/' }, { name: 'AI Moments', url: '/moments' }, { name: title, url: selfPath }])],
-        snapshot,
-    };
 }
 
 async function _pasteMeta(slug) {
@@ -906,7 +753,7 @@ function _headBlock(meta) {
     });
     // og:url is the page itself: a shared AI clip previews as that clip, while its canonical names the source.
     if (meta.ogUrlPath) tags = tags.replace(`<meta property="og:url" content="${esc(canonical)}">`, `<meta property="og:url" content="${esc(abs(meta.ogUrlPath))}">`);
-    const parts = [PASTES_META, ...tags.split('\n')];
+    const parts = [PASTES_META, VIDEO_META, ...tags.split('\n')];
     if (meta.video && meta.video.duration) {
         parts.push(`<meta property="og:video:duration" content="${meta.video.duration}">`);
         parts.push(`<meta property="video:duration" content="${meta.video.duration}">`);
@@ -983,7 +830,7 @@ async function shellHtml(urlPath, status) {
     let html = _base();
     if (!html) return null;
     const p = String(urlPath || '/');
-    html = assets.renderRoute(html, p).replace(/<\/head>/i, `${PASTES_META}</head>`);
+    html = assets.renderRoute(html, p).replace(/<\/head>/i, `${PASTES_META}${VIDEO_META}</head>`);
     if (p === '/' && status !== 404) return html;
     const headEnd = html.search(/<\/head>/i);
     if (headEnd === -1) return html;

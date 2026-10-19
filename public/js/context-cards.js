@@ -1,132 +1,31 @@
 /**
  * context-cards.js — the connective tissue between clips, VODs, streams and channels.
  *
- *   renderClipSourceCard(clip)        clip page: the stream this clip came from as a rich card —
- *                                     VOD thumbnail with the clip's window marked on a timeline,
- *                                     timestamp badge, the stream's activity numbers, the
- *                                     after-show report, and the other clips cut from it.
- *   renderVodContextStrip(vodId)      VOD page: activity strip (chat lines, chatters, peak/avg
- *                                     viewers, mic moments, sound commands, follows, tips,
- *                                     loudest chatters) + after-show report link.
  *   renderOfflineDiscover(username)   offline channel screen: a discover board — live now,
  *                                     hot clips, fresh reports, the star of the day, streamers
  *                                     like this one — so an empty channel still sends people
  *                                     somewhere good.
  *
- * All three read the same two endpoints: GET /api/vods/:id/context and GET /api/home/discover.
+ * It reads GET /api/home/discover. (The clip page's source card and the VOD page's activity strip went with those
+ * pages to OpenVibe.Video, which reads GET /api/vods/:id/context for them.)
  */
 (function () {
     'use strict';
     const n = (v) => Number(v || 0).toLocaleString();
     const dur = (sec) => { sec = Math.max(0, Math.round(sec || 0)); const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s = sec % 60; return h ? `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}` : `${m}:${String(s).padStart(2, '0')}`; };
     const durWords = (sec) => { sec = Math.max(0, Math.round(sec || 0)); const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60); return h ? `${h}h ${m}m` : `${m}m`; };
-    const go = (href) => `href="${esc(href)}" onclick="return handleLinkClick(event, '${esc(href)}')"`;
+    // Inside Live the SPA navigates; a recording or clip opens on openvibe.video (a plain link).
+    const go = (href) => (/^https?:\/\//.test(href) ? `href="${esc(href)}"` : `href="${esc(href)}" onclick="return handleLinkClick(event, '${esc(href)}')"`);
     const ago = (ts) => { try { return timeAgo(ts); } catch { return ''; } };
     const GRADE = { S: '#fbbf24', A: '#a78bfa', B: '#38bdf8', C: '#94a3b8' };
     const av = (u, size) => `<span class="cc-avatar" style="width:${size}px;height:${size}px;${u && u.profile_color ? `background:${esc(u.profile_color)}` : ''}">${u && u.avatar_url ? `<img src="${esc(u.avatar_url)}" alt="" loading="lazy">` : esc(String((u && (u.display_name || u.username)) || '?').charAt(0).toUpperCase())}</span>`;
-    const statPills = (st) => {
-        if (!st) return '';
-        const items = [
-            ['fa-eye', n(st.peak_viewers), 'peak'],
-            st.avg_viewers != null ? ['fa-chart-line', n(st.avg_viewers), 'avg'] : null,
-            ['fa-comments', n(st.chat_messages), 'chat lines'],
-            ['fa-users', n(st.chatters), 'chatters'],
-            st.mic_moments ? ['fa-microphone-lines', n(st.mic_moments), 'mic moments'] : null,
-            st.sound_commands ? ['fa-volume-high', n(st.sound_commands), 'sounds'] : null,
-            st.follows_gained ? ['fa-heart', `+${n(st.follows_gained)}`, 'follows'] : null,
-            st.tips && st.tips.n ? ['fa-coins', n(st.tips.t), `in ${st.tips.n} tip${st.tips.n === 1 ? '' : 's'}`] : null,
-        ].filter(Boolean);
-        return `<div class="cc-stats">${items.map(([i, v, l]) => `<span class="cc-stat"><i class="fa-solid ${i}"></i><b>${v}</b><small>${esc(l)}</small></span>`).join('')}</div>`;
-    };
-    const clipTile = (c, opts = {}) => `<a class="cc-clip" ${go(`/clip/${c.id}`)} title="${esc(c.title || 'Clip')}">
+    const clipTile = (c, opts = {}) => `<a class="cc-clip" ${go(videoHref('clip', c.id))} title="${esc(c.title || 'Clip')}">
         ${c.thumbnail_url ? `<img src="${esc(c.thumbnail_url)}" alt="" loading="lazy">` : '<span class="cc-clip-ph"><i class="fa-solid fa-scissors"></i></span>'}
         <span class="cc-clip-dur">${dur(c.duration_seconds)}</span>
         ${opts.at && c.start_time != null ? `<span class="cc-clip-at"><i class="fa-regular fa-clock"></i> ${dur(c.start_time)}</span>` : ''}
         <span class="cc-clip-title">${esc(c.title || 'Clip')}</span>
         <span class="cc-clip-meta">${c.view_count ? `<i class="fa-solid fa-eye"></i> ${n(c.view_count)} · ` : ''}${c.display_name || c.by ? esc(c.display_name || c.by) : ''}${c.created_at ? ` · ${esc(ago(c.created_at))}` : ''}</span>
     </a>`;
-
-    async function fetchContext(vodId) {
-        if (!vodId) return null;
-        try { return await api(`/vods/${encodeURIComponent(vodId)}/context`); } catch { return null; }
-    }
-
-    // ── Clip page: "From this stream" card ─────────────────────
-    window.renderClipSourceCard = async function (clip) {
-        const host = document.getElementById('clp-stream-source');
-        if (!host || !clip) return;
-        if (clip.vod_visible === false) return;                // source VOD gone or hidden: no context to ask for
-        const ctx = await fetchContext(clip.vod_id);
-        if (!ctx || !ctx.vod) return;                          // keep the plain text fallback
-        const total = Math.max(1, ctx.vod.duration_seconds || 0);
-        const start = Math.max(0, Number(clip.start_time) || 0), end = Math.min(total, Math.max(start + 1, Number(clip.end_time) || start + (clip.duration_seconds || 0)));
-        const left = Math.min(100, start / total * 100), width = Math.max(0.8, (end - start) / total * 100);
-        const canWatch = clip.vod_available !== false && ctx.vod.visibility !== 'private';
-        const vodHref = `/vod/${ctx.vod.id}?t=${Math.floor(start)}`;
-        const s = ctx.stream || {}, st = ctx.stats;
-        const others = (ctx.clips || []).filter(c => c.id !== clip.id).slice(0, 6);
-        const rc = ctx.recap;
-        host.classList.add('cc-host');
-        host.innerHTML = `
-            <div class="cc-card">
-                <div class="cc-kicker"><i class="fa-solid fa-tower-broadcast"></i> From this stream</div>
-                <div class="cc-main">
-                    <a class="cc-thumb" ${canWatch ? go(vodHref) : 'href="#" onclick="return false"'} title="${canWatch ? 'Watch this moment in the full VOD' : 'VOD unavailable'}">
-                        ${ctx.vod.thumbnail_url ? `<img src="${esc(ctx.vod.thumbnail_url)}" alt="" loading="lazy">` : '<span class="cc-clip-ph"><i class="fa-solid fa-video"></i></span>'}
-                        <span class="cc-thumb-dur">${dur(total)}</span>
-                        <span class="cc-thumb-play"><i class="fa-solid fa-play"></i></span>
-                        <span class="cc-timeline" aria-hidden="true"><i style="left:${left.toFixed(2)}%;width:${width.toFixed(2)}%"></i></span>
-                    </a>
-                    <div class="cc-body">
-                        <div class="cc-title-row">
-                            <a class="cc-title" ${canWatch ? go(`/vod/${ctx.vod.id}`) : 'href="#" onclick="return false"'}>${esc(s.title || ctx.vod.title || 'Stream')}</a>
-                            ${rc ? `<a class="cc-grade" ${go(`/recap/${rc.stream_id}`)} title="${esc(rc.headline || 'After-show report')}" style="--g:${GRADE[rc.grade] || GRADE.B}">${esc(rc.grade)}</a>` : ''}
-                        </div>
-                        <div class="cc-sub">
-                            ${ctx.streamer ? `${av(ctx.streamer, 20)} <a class="cc-name" ${go(`/@${ctx.streamer.username}`)}>${esc(ctx.streamer.display_name)}</a>` : ''}
-                            ${s.started_at ? `<span>· ${esc(new Date(String(s.started_at).replace(' ', 'T') + 'Z').toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }))}</span>` : ''}
-                            ${s.category ? `<span>· ${esc(s.category)}</span>` : ''}
-                            ${ctx.vod.view_count ? `<span>· <i class="fa-solid fa-eye"></i> ${n(ctx.vod.view_count)} VOD views</span>` : ''}
-                        </div>
-                        <div class="cc-when">
-                            <span class="cc-badge"><i class="fa-regular fa-clock"></i> ${dur(start)} → ${dur(end)}</span>
-                            <span class="cc-when-text">${Math.round(start / total * 100)}% into a ${durWords(total)} stream</span>
-                        </div>
-                        ${statPills(st)}
-                        ${rc && rc.headline ? `<a class="cc-recap" ${go(`/recap/${rc.stream_id}`)}><i class="fa-solid fa-clipboard-list"></i> <b>After-show report:</b> ${esc(rc.headline)}</a>` : ''}
-                        <div class="cc-actions">
-                            ${canWatch ? `<a class="btn btn-primary btn-sm" ${go(vodHref)}><i class="fa-solid fa-forward"></i> Watch this moment in the VOD</a>` : '<span class="muted" style="font-size:0.8rem"><i class="fa-solid fa-eye-slash"></i> The full VOD is no longer available</span>'}
-                            ${ctx.streamer ? `<a class="btn btn-outline btn-sm" ${go(`/@${ctx.streamer.username}`)}><i class="fa-solid fa-user"></i> Channel</a>` : ''}
-                        </div>
-                    </div>
-                </div>
-                ${others.length ? `<div class="cc-more"><div class="cc-more-head"><i class="fa-solid fa-scissors"></i> More clips from this stream <span class="muted">(${others.length})</span></div><div class="cc-clips">${others.map(c => clipTile(c, { at: true })).join('')}</div></div>` : ''}
-            </div>`;
-        host.style.display = '';
-    };
-
-    // ── VOD page: activity strip ────────────────────────────────
-    window.renderVodContextStrip = async function (vodId) {
-        const anchor = document.getElementById('vp-stream-source');
-        if (!anchor) return;
-        let host = document.getElementById('vp-context');
-        if (!host) { host = document.createElement('div'); host.id = 'vp-context'; host.className = 'cc-host'; anchor.insertAdjacentElement('afterend', host); }
-        host.innerHTML = '';
-        const ctx = await fetchContext(vodId);
-        if (!ctx || !ctx.stats) { host.style.display = 'none'; return; }
-        const st = ctx.stats, rc = ctx.recap;
-        const top = (st.top_chatters || []).slice(0, 3);
-        host.innerHTML = `
-            <div class="cc-card cc-strip">
-                <div class="cc-kicker"><i class="fa-solid fa-bolt"></i> The room during this stream ${ctx.stream && ctx.stream.is_live ? '<span class="cc-live">LIVE · numbers so far</span>' : ''}</div>
-                ${statPills(st)}
-                <div class="cc-strip-foot">
-                    ${top.length ? `<span class="cc-top"><i class="fa-solid fa-ranking-star"></i> Loudest: ${top.map((t, i) => `${['🥇', '🥈', '🥉'][i]} <a ${go(`/@${t.username}`)}>${esc(t.display_name || t.username)}</a> <small>${n(t.n)}</small>`).join(' ')}</span>` : ''}
-                    ${rc ? `<a class="cc-recap" ${go(`/recap/${rc.stream_id}`)}><span class="cc-grade" style="--g:${GRADE[rc.grade] || GRADE.B}">${esc(rc.grade)}</span> <b>After-show report:</b> ${esc(rc.headline || '')}</a>` : ''}
-                </div>
-            </div>`;
-        host.style.display = '';
-    };
 
     // ── Offline channel: discover board ─────────────────────────
     window.renderOfflineDiscover = async function (username, mountEl) {

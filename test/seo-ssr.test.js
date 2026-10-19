@@ -6,11 +6,11 @@
  * It used to render only when Accept named text/html, so a crawler or tool sending *\/* got the home
  * page's title and canonical for /@finditfixit. Checked here, with the SEO middleware and the real
  * SPA fallback mounted as server/index.js mounts them (Media stubbed in-process, temp database):
- *   - /@user (a channel row or just an account), /vod/:id and /clip/:id answer the same page for
- *     every Accept header and user agent, with their own head and body;
+ *   - /@user (a channel row or just an account) answers the same page for every Accept header and
+ *     user agent, with its own head and body (its videos and clips link OpenVibe.Video, where /vod/:id
+ *     and /clip/:id 301);
  *   - a channel's videos page with ?page=N links (rel prev/next), each page self-canonical, and a
  *     page past the end noindex with the canonical on page 1;
- *   - a VOD lists its clips, people's then the AI's, and carries them as schema.org Clip parts;
  *   - a 404 is noindex with no canonical and no home metadata; no other shell page claims the home
  *     page as its canonical;
  *   - without JavaScript the body is shown (and the empty app shell hidden); with it, the route
@@ -80,6 +80,7 @@ const express = require('express');
 const seo = require('../server/seo');
 const pageStatus = require('../server/web/page-status');
 const app = express();
+require('../server/web/video-handover').register(app);   // before SEO, as server/index.js mounts it
 seo.register(app);
 app.get('*', pageStatus.spaFallback(async (res, urlPath) => {
     const html = await seo.shellHtml(urlPath, res.statusCode);
@@ -94,7 +95,7 @@ function get(p, headers = {}) {
         const req = http.request(base + p, { method: 'GET', headers }, (res) => {
             let body = '';
             res.on('data', (c) => { body += c; });
-            res.on('end', () => resolve({ status: res.statusCode, body, cache: res.headers['cache-control'] || '' }));
+            res.on('end', () => resolve({ status: res.statusCode, body, cache: res.headers['cache-control'] || '', headers: res.headers }));
         });
         req.on('error', reject);
         req.end();
@@ -153,8 +154,8 @@ const server = http.createServer(app).listen(0, '127.0.0.1', async () => {
         const b = bodyOf((await get('/@alice')).body);
         assert.ok(b.includes('<h1>Alice (@alice)</h1>'), b.slice(0, 300));
         assert.ok(b.includes('I stream woodworking.'));
-        for (let id = 100; id < 112; id++) assert.ok(b.includes(`https://openvibe.live/vod/${id}"`), `VOD ${id} listed`);
-        assert.ok(!b.includes('/vod/112"'), 'page 1 holds 12 videos');
+        for (let id = 100; id < 112; id++) assert.ok(b.includes(`https://openvibe.video/v/${id}"`), `VOD ${id} listed (on OpenVibe.Video)`);
+        assert.ok(!b.includes('/v/112"'), 'page 1 holds 12 videos');
         assert.ok(b.includes('Build night 100</a> — 1:00:00 · '), 'an hour-long video reads 1:00:00');
         assert.ok(!b.includes('SECRET VOD'), 'no private VOD');
         assert.ok(b.includes('<a rel="next" href="https://openvibe.live/@alice?page=2">Older videos</a>'), 'next page link');
@@ -172,12 +173,12 @@ const server = http.createServer(app).listen(0, '127.0.0.1', async () => {
         assert.deepStrictEqual(canonicalsOf(p2), ['https://openvibe.live/@alice?page=2']);
         assert.ok(/page 2/.test(titleOf(p2)), titleOf(p2));
         const b2 = bodyOf(p2);
-        assert.ok(b2.includes('/vod/112"') && b2.includes('/vod/123"') && !b2.includes('/vod/111"'));
+        assert.ok(b2.includes('/v/112"') && b2.includes('/v/123"') && !b2.includes('/v/111"'));
         assert.ok(b2.includes('<a rel="prev" href="https://openvibe.live/@alice">Newer videos</a>'));
         assert.ok(b2.includes('<a rel="next" href="https://openvibe.live/@alice?page=3">'));
         assert.ok(!b2.includes('<h2>AI Moments</h2>'), 'clips are on page 1 only');
         const b3 = bodyOf((await get('/@alice?page=3')).body);
-        assert.ok(b3.includes('/vod/129"') && !b3.includes('rel="next"'), 'the last page has no next link');
+        assert.ok(b3.includes('/v/129"') && !b3.includes('rel="next"'), 'the last page has no next link');
         const past = (await get('/@alice?page=9')).body;
         assert.deepStrictEqual(robotsOf(past), ['noindex,follow']);
         assert.deepStrictEqual(canonicalsOf(past), ['https://openvibe.live/@alice']);
@@ -198,7 +199,7 @@ const server = http.createServer(app).listen(0, '127.0.0.1', async () => {
     });
 
     await check('a 404 is noindex, with no canonical and none of the home page\'s metadata', async () => {
-        for (const p of ['/@nobody', '/vod/999', '/clip/999', '/no-such-page', `/vod/199`]) {
+        for (const p of ['/@nobody', '/vod/abc', '/clip/x1', '/no-such-page']) {
             for (const c of CLIENTS.slice(0, 3)) {
                 const r = await get(p, c.headers);
                 assert.strictEqual(r.status, 404, `${p} ${c.name}`);
@@ -257,43 +258,13 @@ const server = http.createServer(app).listen(0, '127.0.0.1', async () => {
         assert.deepStrictEqual(canonicalsOf(home), ['https://openvibe.live/']);
     });
 
-    await check('/vod/100: its own head and a body with people\'s clips, then the AI\'s, as Clip parts', async () => {
-        for (const c of CLIENTS) {
-            const r = await get('/vod/100', c.headers);
-            assert.strictEqual(r.status, 200, c.name);
-            assert.match(r.cache, /^public, max-age=\d+, must-revalidate$/, c.name);
-            assert.deepStrictEqual(canonicalsOf(r.body), ['https://openvibe.video/v/100'], `${c.name}: the canonical page is on OpenVibe.Video`);
-            assert.ok(/^Build night 100 — Alice \| OpenVibe\.Live$/.test(titleOf(r.body)), titleOf(r.body));
+    await check('/vod/:id and /clip/:id answer a 301 to OpenVibe.Video for every client, the moment kept', async () => {
+        for (const c of CLIENTS.slice(0, 3)) {
+            const v = await get('/vod/100?t=125', c.headers);
+            assert.deepStrictEqual([v.status, v.headers.location], [301, 'https://openvibe.video/v/100?t=125'], c.name);
+            const k = await get('/clip/200', c.headers);
+            assert.deepStrictEqual([k.status, k.headers.location], [301, 'https://openvibe.video/c/200'], c.name);
         }
-        const r = await get('/vod/100?t=125');
-        assert.deepStrictEqual(canonicalsOf(r.body), ['https://openvibe.video/v/100'], 'a timestamp link is the same page');
-        const vo = ldOf(r.body).find((n) => n['@type'] === 'VideoObject');
-        assert.deepStrictEqual(vo.author, { '@type': 'Person', name: 'Alice' });
-        assert.deepStrictEqual(vo.hasPart.map((x) => [x['@type'], x.startOffset, x.url]), [
-            ['Clip', 61, 'https://openvibe.live/vod/100?t=61'],
-            ['Clip', 125, 'https://openvibe.live/vod/100?t=125'],
-        ]);
-        const crumbs = ldOf(r.body).find((n) => n['@type'] === 'BreadcrumbList').itemListElement.map((i) => i.name);
-        assert.deepStrictEqual(crumbs, ['Home', 'Alice', 'Build night 100']);
-        const b = bodyOf(r.body);
-        assert.ok(b.includes('Streamed by Alice') && b.includes('https://openvibe.live/@alice'));
-        const people = b.indexOf('<h2>Clips from this stream</h2>'), ai = b.indexOf('<h2>AI Moments from this stream</h2>');
-        assert.ok(people > 0 && ai > people);
-        assert.ok(b.slice(people, ai).includes('clipped by Bob'));
-        assert.ok(b.slice(ai).includes('AI clip · at 2:05'));
-    });
-
-    await check('/clip/200: its own head and a body linking the moment in the full stream', async () => {
-        for (const c of CLIENTS) {
-            const r = await get('/clip/200', c.headers);
-            assert.strictEqual(r.status, 200, c.name);
-            assert.match(r.cache, /^public, max-age=\d+, must-revalidate$/, c.name);
-            assert.deepStrictEqual(canonicalsOf(r.body), ['https://openvibe.video/c/200'], `${c.name}: the canonical page is on OpenVibe.Video`);
-            assert.deepStrictEqual(robotsOf(r.body), ['index,follow'], c.name);
-        }
-        const b = bodyOf((await get('/clip/200')).body);
-        assert.ok(b.includes("Clipped by Bob from Alice&#39;s stream"), b.slice(0, 300));
-        assert.ok(b.includes('https://openvibe.video/v/100?t=61'), 'the moment, on OpenVibe.Video');
     });
 
     await check('without JavaScript the body shows (with the site links) and the empty app shell is hidden', async () => {
