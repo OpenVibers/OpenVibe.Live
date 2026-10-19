@@ -3,7 +3,8 @@
  * What The Rundown's pages read (server/rundown/routes.js, docs/rundown.md). Rows come out through allow-listed shapes:
  * a person is { id, username, display_name, avatar_url, profile_color }, never a users row.
  *
- *   home({ before, viewer })        on air now, the latest (episodes and the best segments), trending topics, who's been talking
+ *   home({ viewer })                on air now, the lead take, stream by stream, trending topics, who's been talking
+ *   streamsFeed({ before, viewer }) stream by stream: each recent stream with its episode and its best takes, newest first
  *   topics({ sort, kind })          every topic
  *   topic(slug)                     one topic and every take on it
  *   episode(streamId)               one stream written up, with its segments and the streamer's other episodes
@@ -14,6 +15,8 @@ const db = require('../db/database');
 
 const REACTIONS = ['fire', 'lol', 'dead', 'cap', 'facts'];
 const FEED_MIN_SCORE = 4;       // the front page: a take scored 4 or 5, a crossover or an episode
+const STREAM_TAKES = 3;         // stream by stream: a stream's best takes on the front page (the episode page has them all)
+const STREAMS_PAGE = 8;
 const parseJson = (s, d) => { try { return JSON.parse(s); } catch { return d; } };
 const daysAgo = (n) => new Date(Date.now() - n * 86400000).toISOString().slice(0, 19).replace('T', ' ');
 
@@ -122,11 +125,61 @@ async function latest({ before = null, limit = 30, viewer = null } = {}) {
     return { items, next: items.length >= limit && last ? (last.said_at || last.aired_at) : null };
 }
 
-async function home({ before = null, viewer = null } = {}) {
-    const [air, feed, topics, talk] = await Promise.all([before ? [] : onAir(), latest({ before, viewer }), before ? [] : trending(), before ? [] : voices()]);
-    const counts = before ? null : await db.get(`SELECT (SELECT COUNT(*) FROM rundown_topics WHERE status = 'live') AS topics,
+/** The lead: the best take of the last day (else the week), a quoted one first. */
+async function lead({ viewer = null } = {}) {
+    for (const days of [1, 7]) {
+        const rows = await db.all(`SELECT ${SEGMENT_COLS} FROM rundown_segments WHERE status = 'live' AND said_at >= ? AND score >= ?
+            ORDER BY score DESC, (quotes_json <> '[]') DESC, said_at DESC LIMIT 1`, [daysAgo(days), FEED_MIN_SCORE]);
+        if (rows.length) return (await segmentsOut(rows, viewer))[0];
+    }
+    return null;
+}
+
+/**
+ * Stream by stream: the streams the desk wrote about, newest first, each with its episode (when it has ended and been
+ * written up) and its best STREAM_TAKES takes in the order they were said. `skip` leaves out the lead take. Paged by the
+ * time of a stream's latest take.
+ */
+async function streamsFeed({ before = null, limit = STREAMS_PAGE, viewer = null, skip = null } = {}) {
+    const cut = before ? String(before).slice(0, 19) : '9999-12-31 00:00:00';
+    const groups = await db.all(`SELECT stream_id, MAX(said_at) AS last_at, COUNT(*) AS takes FROM rundown_segments WHERE status = 'live'
+        GROUP BY stream_id HAVING MAX(said_at) < ? ORDER BY MAX(said_at) DESC LIMIT ?`, [cut, limit]);
+    const ids = groups.map((g) => Number(g.stream_id));
+    if (!ids.length) return { streams: [], next: null };
+    const segs = await db.all(`SELECT ${SEGMENT_COLS} FROM rundown_segments WHERE status = 'live' AND stream_id = ANY(?)
+        ORDER BY score DESC, cardinality(mentions) DESC, (quotes_json <> '[]') DESC, start_sec ASC`, [ids]);
+    const best = new Map();
+    for (const s of segs) {
+        const l = best.get(Number(s.stream_id)) || [];
+        if (l.length < STREAM_TAKES && Number(s.id) !== Number(skip)) l.push(s);
+        best.set(Number(s.stream_id), l);
+    }
+    const chosen = [...best.values()].flat().sort((a, b) => Number(a.start_sec) - Number(b.start_sec));
+    const takes = new Map();
+    for (const t of await segmentsOut(chosen, viewer)) { const l = takes.get(t.stream_id) || []; l.push(t); takes.set(t.stream_id, l); }
+    const eps = new Map((await episodesOut(await db.all(`SELECT ${EPISODE_COLS} FROM rundown_episodes WHERE status = 'live' AND stream_id = ANY(?)`, [ids]), viewer))
+        .map((e) => [e.stream_id, { title: e.title, logline: e.logline, minutes: e.minutes, aired_at: e.aired_at, topics: e.topics, reactions: e.reactions, my_reaction: e.my_reaction }]));
+    const streams = new Map((await db.all('SELECT id, user_id, title, is_live, started_at, ended_at, duration_seconds FROM streams WHERE id = ANY(?)', [ids])).map((s) => [Number(s.id), s]));
+    const ppl = await people([...streams.values()].map((s) => s.user_id));
+    const out = groups.map((g) => {
+        const s = streams.get(Number(g.stream_id));
+        if (!s) return null;
+        return { stream_id: Number(g.stream_id), user: ppl.get(Number(s.user_id)) || null, title: s.title || null, live: !!Number(s.is_live), started_at: s.started_at,
+            minutes: s.duration_seconds ? Math.round(Number(s.duration_seconds) / 60) : null, last_at: g.last_at, takes_total: Number(g.takes),
+            episode: eps.get(Number(g.stream_id)) || null, takes: takes.get(Number(g.stream_id)) || [] };
+    }).filter((x) => x && x.user && x.takes.length);
+    return { streams: out, next: groups.length >= limit ? groups[groups.length - 1].last_at : null };
+}
+
+async function home({ viewer = null } = {}) {
+    const top = await lead({ viewer });
+    const [air, feed, topics, talk, old] = await Promise.all([onAir(), streamsFeed({ viewer, skip: top ? top.id : null }), trending(), voices(),
+        // The previous release's front page reads latest and next; they go once no open tab runs it.
+        latest({ viewer })]);
+    const counts = await db.get(`SELECT (SELECT COUNT(*) FROM rundown_topics WHERE status = 'live') AS topics,
         (SELECT COUNT(*) FROM rundown_episodes WHERE status = 'live') AS episodes, (SELECT COUNT(*) FROM rundown_segments WHERE status = 'live') AS takes`);
-    return { on_air: air, latest: feed.items, next: feed.next, trending: topics, voices: talk, counts: counts ? { topics: Number(counts.topics), episodes: Number(counts.episodes), takes: Number(counts.takes) } : null };
+    return { on_air: air, lead: top, streams: feed.streams, streams_next: feed.next, trending: topics, voices: talk, latest: old.items, next: old.next,
+        counts: { topics: Number(counts.topics), episodes: Number(counts.episodes), takes: Number(counts.takes) } };
 }
 
 const KINDS = ['news', 'games', 'tech', 'life', 'music', 'sports', 'money', 'internet', 'chat', 'other'];
@@ -218,4 +271,4 @@ async function setOptOut(userId, out) {
     return { opted_out: !!out };
 }
 
-module.exports = { home, latest, topics, topic, episode, streamer, react, hide, optedOut, setOptOut, trending, voices, onAir, REACTIONS, KINDS, person };
+module.exports = { home, latest, lead, streamsFeed, topics, topic, episode, streamer, react, hide, optedOut, setOptOut, trending, voices, onAir, REACTIONS, KINDS, person };

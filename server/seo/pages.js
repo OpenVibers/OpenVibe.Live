@@ -357,7 +357,7 @@ async function _rundownMeta(p) {
         let home = null;
         try { home = await read.home({}); } catch { home = null; }
         const topics = (home && home.trending || []).map((t) => t.title);
-        const eps = (home && home.latest || []).filter((x) => x.type === 'episode');
+        const eps = (home && home.streams || []).filter((x) => x.episode).map((x) => ({ title: x.episode.title, stream_id: x.stream_id }));
         const title = 'The Rundown — What Streamers Talked About';
         const desc = clean(`Topics, takes and episodes from OpenVibe.Live streams, in the streamers' own words.${topics.length ? ` Trending: ${topics.slice(0, 4).join(', ')}.` : ''}`, 200);
         return { ...base, title: `${title} | ${SITE_NAME}`, description: desc, canonicalPath: '/rundown', robots: 'index,follow',

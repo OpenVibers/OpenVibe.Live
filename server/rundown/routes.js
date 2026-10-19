@@ -39,6 +39,9 @@ const fresh = (res) => res.set('Cache-Control', 'no-store');
 router.get('/', optionalAuth, async (req, res) => {
     try { fresh(res); res.json(await read.home({ viewer: await voterKey(req) })); } catch (err) { fail(res, err, 'The Rundown is unavailable'); }
 });
+router.get('/streams', optionalAuth, async (req, res) => {
+    try { fresh(res); res.json(await read.streamsFeed({ before: req.query.before ? String(req.query.before) : null, viewer: await voterKey(req) })); } catch (err) { fail(res, err, 'Failed to load the streams'); }
+});
 router.get('/latest', optionalAuth, async (req, res) => {
     try { fresh(res); res.json(await read.latest({ before: req.query.before ? String(req.query.before) : null, viewer: await voterKey(req) })); } catch (err) { fail(res, err, 'Failed to load the latest'); }
 });

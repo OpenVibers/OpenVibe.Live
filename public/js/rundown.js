@@ -2,7 +2,7 @@
  * OpenVibe.Live — The Rundown: what streamers talked about, written up (server/rundown/, docs/rundown.md).
  *
  * Routes (loadRundownPage(segments) from app.js):
- *   /rundown                 the front page: on air now, the latest episodes and takes, trending topics, who's been talking
+ *   /rundown                 the front page: on air now, the top take, stream by stream, trending topics, who's been talking
  *   /rundown/topics          every topic
  *   /rundown/t/<slug>        one topic and every take on it
  *   /rundown/e/<streamId>    one stream written up as an episode
@@ -117,7 +117,53 @@ function _rdEpisodeCard(e, { user = true } = {}) {
         <div class="rd-card-foot">${_rdReactions('episode', e.stream_id, e.reactions, e.my_reaction)}${_rdA(href, 'Read the episode <i class="fa-solid fa-arrow-right" aria-hidden="true"></i>', 'rd-read')}</div>
     </article>`;
 }
-function _rdItem(x) { return x.type === 'episode' ? _rdEpisodeCard(x) : _rdTake(x); }
+// The front page's top take: the quote leads, set large.
+function _rdLead(s) {
+    const q = (s.quotes || [])[0];
+    return `<article class="rd-lead" id="rd-take-${s.id}">
+        <div class="rd-card-top"><span class="rd-kicker">Top take</span>${_rdTopicChip(s.topic)}</div>
+        ${q ? `<blockquote class="rd-lead-quote"><p>“${_rdEsc(q.text)}”</p>${q.en ? `<p class="rd-quote-en">${_rdEsc(q.en)}</p>` : ''}</blockquote>` : ''}
+        <h3 class="rd-lead-title">${_rdEsc(s.title)}</h3>
+        <p class="rd-lead-by">${_rdAv(s.user, 28)} ${_rdUser(s.user)} <time datetime="${_rdEsc(s.said_at)}">${_rdEsc(_rdAgo(s.said_at))}</time>${q ? ` ${_rdSpeakBtn(q.text, s.user)}` : ''}</p>
+        <p class="rd-what">${_rdEsc(s.what)}</p>
+        ${s.quip ? `<p class="rd-quip"><span class="rd-desk">The desk</span> ${_rdEsc(s.quip)}</p>` : ''}
+        <div class="rd-card-foot">${_rdReactions('segment', s.id, s.reactions, s.my_reaction)}${_rdWatch(s.vod_id, q ? q.sec : s.sec)}</div>
+    </article>`;
+}
+// One take inside a stream's block: on a timeline by when it was said, its quote (else what they talked about) and the quip.
+function _rdBrief(s) {
+    const q = (s.quotes || [])[0];
+    const mentions = (s.mentions || []).map(_rdUser).join(', ');
+    const stamp = `<span class="rd-stamp">${_rdStamp(s.sec)}</span>`;
+    return `<article class="rd-brief" id="rd-take-${s.id}">
+        <div class="rd-brief-when">${s.vod_id ? _rdA(videoHref('vod', s.vod_id, s.sec), `<i class="fa-solid fa-play" aria-hidden="true"></i>${stamp}`, 'rd-brief-play', `Watch from ${_rdStamp(s.sec)}`) : stamp}</div>
+        <div class="rd-brief-body">
+            ${s.topic ? `<div class="rd-brief-chip">${_rdTopicChip(s.topic)}</div>` : ''}
+            <h4 class="rd-brief-title">${_rdEsc(s.title)}</h4>
+            ${q ? `<p class="rd-brief-quote">“${_rdEsc(q.text)}” ${_rdSpeakBtn(q.text, s.user)}</p>${q.en ? `<p class="rd-quote-en">${_rdEsc(q.en)}</p>` : ''}` : `<p class="rd-brief-what">${_rdEsc(s.what)}</p>`}
+            ${s.quip ? `<p class="rd-quip"><span class="rd-desk">The desk</span> ${_rdEsc(s.quip)}</p>` : ''}
+            ${mentions ? `<p class="rd-cross"><i class="fa-solid fa-arrows-left-right" aria-hidden="true"></i> Brought up ${mentions}</p>` : ''}
+            ${_rdReactions('segment', s.id, s.reactions, s.my_reaction)}
+        </div>
+    </article>`;
+}
+// A stream on the front page: its episode (or, live, what it is so far) and its best takes.
+function _rdIssue(g) {
+    const href = `/rundown/e/${g.stream_id}`;
+    const e = g.episode;
+    const title = (e && e.title) || g.title || `${_rdName(g.user)}'s stream`;
+    const when = g.live ? '<span class="rd-live-tag">Live now</span>' : `<time datetime="${_rdEsc(g.started_at)}">${_rdEsc(_rdDay(g.started_at))}</time>${g.minutes ? ` · ${_rdLength(g.minutes)}` : ''}`;
+    const more = g.takes_total - g.takes.length;
+    return `<section class="rd-issue${g.live ? ' is-live' : ''}" aria-labelledby="rd-issue-${g.stream_id}">
+        <header class="rd-issue-head">${_rdAv(g.user, 44)}<div class="rd-issue-id">
+            <p class="rd-issue-meta">${_rdUser(g.user)} · ${when}</p>
+            <h3 class="rd-h3" id="rd-issue-${g.stream_id}">${_rdA(href, _rdEsc(title))}</h3>
+            ${e && e.logline ? `<p class="rd-logline">${_rdEsc(e.logline)}</p>` : ''}
+        </div></header>
+        <div class="rd-briefs">${g.takes.map(_rdBrief).join('')}</div>
+        <footer class="rd-issue-foot">${more > 0 ? `<span>${more} more take${more === 1 ? '' : 's'}</span>` : '<span></span>'}${_rdA(href, `${e ? 'Read the episode' : g.live ? 'Everything so far' : 'Everything they said'} <i class="fa-solid fa-arrow-right" aria-hidden="true"></i>`, 'rd-read')}</footer>
+    </section>`;
+}
 
 // ── The front page ───────────────────────────────────────────
 function _rdMast(counts, active = 'latest') {
@@ -159,14 +205,17 @@ function _rdAbout() {
 }
 async function _rdHome(root) {
     const d = await api('/rundown');
-    _rdNext = d.next;
-    const feed = d.latest || [];
+    _rdNext = d.streams_next;
+    const feed = d.streams || [];
     root.innerHTML = `${_rdMast(d.counts, 'latest')}${_rdOnAir(d.on_air || [])}
         <div class="rd-grid">
-            <section class="rd-main" aria-labelledby="rd-latest-h"><h2 id="rd-latest-h" class="rd-h2">The latest</h2>
-                <div id="rd-feed">${feed.length ? feed.map(_rdItem).join('') : _rdEmpty('fa-newspaper', 'The desk is reading this week\'s streams. The first takes and episodes show up here within minutes.')}</div>
-                ${_rdNext ? '<button type="button" class="btn btn-secondary rd-loadmore" data-rd-more="1">More</button>' : ''}
-            </section>
+            <div class="rd-main">
+                ${d.lead ? _rdLead(d.lead) : ''}
+                <section aria-labelledby="rd-latest-h"><h2 id="rd-latest-h" class="rd-h2">Stream by stream</h2>
+                    <div id="rd-feed">${feed.length ? feed.map(_rdIssue).join('') : _rdEmpty('fa-newspaper', 'The desk is reading this week\'s streams. The first takes and episodes show up here within minutes.')}</div>
+                    ${_rdNext ? '<button type="button" class="btn btn-secondary rd-loadmore" data-rd-more="1">More streams</button>' : ''}
+                </section>
+            </div>
             <aside class="rd-side">${_rdTrending(d.trending || [])}${_rdVoices(d.voices || [])}${_rdAbout()}</aside>
         </div>`;
     document.title = 'The Rundown · OpenVibe.Live';
@@ -175,9 +224,9 @@ async function _rdMore(btn) {
     if (!_rdNext) return;
     btn.disabled = true;
     try {
-        const d = await api(`/rundown/latest?before=${encodeURIComponent(_rdNext)}`);
+        const d = await api(`/rundown/streams?before=${encodeURIComponent(_rdNext)}`);
         _rdNext = d.next;
-        document.getElementById('rd-feed')?.insertAdjacentHTML('beforeend', (d.items || []).map(_rdItem).join(''));
+        document.getElementById('rd-feed')?.insertAdjacentHTML('beforeend', (d.streams || []).map(_rdIssue).join(''));
         if (!_rdNext) btn.remove(); else btn.disabled = false;
     } catch { btn.disabled = false; }
 }
