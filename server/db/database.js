@@ -1286,9 +1286,11 @@ async function isManagedStreamSlugTaken(userId, slug, excludeId = null) {
 async function getRecentlyOnlineStreamers(limit = 20, offset = 0) {
     // Use a correlated subquery to aggregate managed streams per user — avoids session-row
     // duplication that occurred when LEFT JOIN managed_streams was used in the outer query.
+    // Someone live right now is in it too (the route marks their card live), first stream or not: a first-timer
+    // used to be missing until their stream ended, while everyone else live was listed (owner, 2026-10-18).
     return await all(`
         SELECT u.id AS user_id, u.username, u.display_name, u.avatar_url, u.profile_color,
-               MAX(s.ended_at) AS last_online_at,
+               MAX(CASE WHEN s.is_live = 1 THEN ov_now() ELSE s.ended_at END) AS last_online_at,
                o.overview AS ai_overview, o.overview_short AS ai_overview_short,
                (
                    SELECT json_agg(json_build_object(
@@ -1302,12 +1304,19 @@ async function getRecentlyOnlineStreamers(limit = 20, offset = 0) {
                    ))::text
                    FROM managed_streams ms2
                    WHERE ms2.user_id = u.id
-                     AND EXISTS (SELECT 1 FROM streams sx WHERE sx.managed_stream_id = ms2.id AND sx.ended_at IS NOT NULL)
-               ) AS managed_streams_json
+                     AND EXISTS (SELECT 1 FROM streams sx WHERE sx.managed_stream_id = ms2.id AND (sx.ended_at IS NOT NULL OR sx.is_live = 1))
+               ) AS managed_streams_json,
+               -- The latest stream that never had a slot (the route lists it as the channel itself).
+               (
+                   SELECT json_build_object('stream_id', s3.id, 'title', s3.title, 'last_live_at', s3.ended_at)::text
+                   FROM streams s3
+                   WHERE s3.user_id = u.id AND s3.managed_stream_id IS NULL AND (s3.ended_at IS NOT NULL OR s3.is_live = 1)
+                   ORDER BY s3.id DESC LIMIT 1
+               ) AS loose_stream_json
         FROM streams s
         JOIN users u ON s.user_id = u.id
         LEFT JOIN streamer_overviews o ON o.user_id = u.id
-        WHERE s.is_live = 0 AND s.ended_at IS NOT NULL
+        WHERE (s.is_live = 0 AND s.ended_at IS NOT NULL) OR s.is_live = 1
         GROUP BY u.id, o.overview, o.overview_short
         ORDER BY last_online_at DESC
         LIMIT ? OFFSET ?
@@ -1318,7 +1327,7 @@ async function countRecentlyOnlineStreamers() {
     return (await get(`
         SELECT COUNT(DISTINCT user_id) AS count
         FROM streams
-        WHERE is_live = 0 AND ended_at IS NOT NULL
+        WHERE (is_live = 0 AND ended_at IS NOT NULL) OR is_live = 1
     `))?.count || 0;
 }
 
