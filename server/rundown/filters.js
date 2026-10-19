@@ -98,6 +98,17 @@ function privateDetail(text) {
     return PRIVATE.some((re) => re.test(t));
 }
 
+// A topic name that names no subject: a kind ("chat", "games", "life"…) or a word for streaming itself. The model filed 35
+// segments under "chat", "games" and "life" once the first of them was in the known topics it is asked to reuse.
+const VAGUE = new Set(['news', 'games', 'game', 'tech', 'life', 'music', 'sports', 'money', 'internet', 'chat', 'other', 'gaming', 'gameplay',
+    'chatting', 'just chatting', 'stream', 'streaming', 'the stream', 'stream talk', 'misc', 'general', 'random', 'stuff', 'irl', 'talk', 'conversation',
+    'banter', 'reactions', 'updates', 'life update', 'nothing']);
+/** Is this topic name too vague to be a topic? */
+function vagueTopic(title) {
+    const t = norm(title);
+    return !t || VAGUE.has(t) || t.length < 4;
+}
+
 function slugify(title) {
     return norm(title).replace(/ /g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '').slice(0, 80).replace(/-$/, '');
 }
@@ -113,4 +124,4 @@ function sameTopic(a, b) {
     return both / (x.size + y.size - both) >= 0.6;
 }
 
-module.exports = { gameLine, verifiedQuote, addsAccusation, privateDetail, slugify, sameTopic, norm, lineLang, GAME_LINES };
+module.exports = { gameLine, verifiedQuote, addsAccusation, privateDetail, vagueTopic, slugify, sameTopic, norm, lineLang, GAME_LINES };

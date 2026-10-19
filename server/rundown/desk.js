@@ -96,12 +96,13 @@ async function mentionsIn(text, speakerId) {
 
 // ── Topics ───────────────────────────────────────────────────
 async function knownTopics() {
-    return (await db.all("SELECT title FROM rundown_topics WHERE status = 'live' AND last_seen_at >= ? ORDER BY last_seen_at DESC LIMIT ?", [daysAgo(30), KNOWN_TOPICS])).map((r) => r.title);
+    return (await db.all("SELECT title FROM rundown_topics WHERE status = 'live' AND last_seen_at >= ? ORDER BY last_seen_at DESC LIMIT ?", [daysAgo(30), KNOWN_TOPICS * 2]))
+        .map((r) => r.title).filter((t) => !filters.vagueTopic(t)).slice(0, KNOWN_TOPICS);
 }
 /** The topic for a name: the same slug, else a recent topic with most of the same key words, else a new one. */
 async function topicFor(title, kind, at) {
     const slug = filters.slugify(title);
-    if (!slug) return null;
+    if (!slug || filters.vagueTopic(title)) return null;   // a segment with no real subject keeps no topic
     let row = await db.get('SELECT id, title FROM rundown_topics WHERE slug = ?', [slug]);
     if (!row) {
         const recent = await db.all('SELECT id, title FROM rundown_topics WHERE last_seen_at >= ? ORDER BY last_seen_at DESC LIMIT 300', [daysAgo(60)]);
