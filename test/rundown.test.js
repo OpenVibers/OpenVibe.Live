@@ -195,6 +195,26 @@ try {
 } finally { server.close(); }
 console.log('✅ API: front page, topic, reactions as a signed-out reader; old /arena links');
 
+// ── Limits: a stretch is at most MAX_LINES lines; a stretch the AI keeps refusing is skipped after three tries ──
+{
+    const greek = await mk('greekline');
+    const sg = await stream(greek, { startedAgoMin: 400, endedAgoMin: 300, title: 'Short lines' });
+    await speak(sg, greek, Array.from({ length: 500 }, (_, i) => `Έλα ${i} τώρα`));
+    const refuse = answers['live.rundown.segment'];
+    answers['live.rundown.segment'] = () => null;
+    const seen = () => calls.filter((c) => c.workflow === 'live.rundown.segment' && c.input.streamer === 'greekline');
+    await desk.tick();
+    assert.ok(seen().length === 1 && seen()[0].input.lines.length <= desk.MAX_LINES, `at most ${desk.MAX_LINES} lines: ${seen()[0] && seen()[0].input.lines.length}`);
+    assert.ok(!await db.get('SELECT 1 FROM rundown_progress WHERE stream_id = ?', [sg]), 'a refused stretch is tried again');
+    await desk.tick();
+    await desk.tick();
+    assert.strictEqual(seen().length, 3);
+    const p = await db.get('SELECT read_to_sec FROM rundown_progress WHERE stream_id = ?', [sg]);
+    assert.ok(p && p.read_to_sec > 0, 'refused three times: the stretch is skipped');
+    answers['live.rundown.segment'] = refuse;
+    console.log('✅ limits: lines per stretch, refused stretches skipped after three tries');
+}
+
 console.log('rundown: ok');
 process.exit(0);
 })().catch((err) => { console.error(err); process.exit(1); });
