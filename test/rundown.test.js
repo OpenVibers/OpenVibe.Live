@@ -211,6 +211,40 @@ console.log('✅ API: front page, topic, reactions as a signed-out reader; old /
     console.log('✅ lines heard on three streams never reach the AI');
 }
 
+// ── A streamer's own languages; lines the AI says are not the streamer ──
+{
+    const gr = await mk('greekgamer');
+    const old = await stream(gr, { startedAgoMin: 20 * 1440, endedAgoMin: 20 * 1440 - 60 });
+    await speak(old, gr, [...Array.from({ length: 60 }, (_, i) => `Λοιπόν παιδιά πάμε ${i} τώρα`), ...Array.from({ length: 30 }, (_, i) => `bro push mid lane what are you doing ${i}`)]);
+    const sg = await stream(gr, { startedAgoMin: 300, endedAgoMin: 200, title: 'Ranked' });
+    await speak(sg, gr, [
+        'Hoje eu acordei e essa bichinha estava assim no meu bode.',
+        'Kneel before me or bleed out.',
+        'No one can find the queen!',
+        'bro this team is so bad I want to cry right now',
+        ...Array.from({ length: 30 }, (_, i) => `Λοιπόν παιδιά πάμε για καφέ ${i} και μετά παίζουμε`),
+    ]);
+    const prev = answers['live.rundown.segment'];
+    answers['live.rundown.segment'] = (input) => input.streamer !== 'greekgamer' ? prev(input) : {
+        others: input.lines.filter((l) => /queen|Kneel/.test(l.text)).map((l) => l.t),
+        segments: [
+            { start: 10, end: 20, topic: 'Queen roleplay', kind: 'games', title: 'greekgamer plays a queen', what: 'greekgamer did a queen bit.', take: null, quip: 'Long live.', score: 4, quotes: [{ t: 20, text: 'No one can find the queen!', en: null }] },
+            { start: 30, end: 400, topic: 'Bad teammates', kind: 'games', title: 'greekgamer and the team', what: 'greekgamer complained about the team.', take: 'The team is bad.', quip: 'Classic.', score: 4, quotes: [{ t: 20, text: 'No one can find the queen!', en: null }, { t: 30, text: 'this team is so bad I want to cry', en: null }] },
+        ],
+    };
+    desk._test.reset();
+    await desk.tick();
+    const c = calls.filter((x) => x.workflow === 'live.rundown.segment' && x.input.streamer === 'greekgamer');
+    assert.strictEqual(c.length, 1);
+    assert.ok(!c[0].input.lines.some((l) => /Hoje eu acordei/.test(l.text)), 'a Portuguese clip on a Greek and English stream never reaches the AI');
+    assert.ok(c[0].input.lines.some((l) => /Λοιπόν/.test(l.text)) && c[0].input.lines.some((l) => /team is so bad/.test(l.text)), 'their Greek and English stay');
+    const kept = await db.all('SELECT title, quotes_json FROM rundown_segments WHERE stream_id = ? ORDER BY start_sec', [sg]);
+    assert.deepStrictEqual(kept.map((k) => k.title), ['greekgamer and the team'], 'a segment built on the game\'s lines is dropped');
+    assert.deepStrictEqual(JSON.parse(kept[0].quotes_json).map((q) => q.text), ['this team is so bad I want to cry'], 'a quote from a line that is not theirs is dropped');
+    answers['live.rundown.segment'] = prev;
+    console.log('✅ own languages and the AI\'s speaker labels');
+}
+
 // ── Limits: a stretch is at most MAX_LINES lines; a stretch the AI keeps refusing is skipped after three tries ──
 {
     const greek = await mk('greekline');
