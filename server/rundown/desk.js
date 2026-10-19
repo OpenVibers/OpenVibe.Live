@@ -287,7 +287,13 @@ async function readStretch(stream, user) {
 // ── Episodes ─────────────────────────────────────────────────
 async function writeEpisode(stream, user) {
     const segs = await db.all("SELECT id, start_sec, title, what, take, quotes_json, vod_id, topic_id FROM rundown_segments WHERE stream_id = ? AND status = 'live' ORDER BY start_sec ASC LIMIT 40", [stream.id]);
-    if (!segs.length) { await setProgress(stream.id, stream.read_to_sec, 1); return { called: false }; }
+    if (!segs.length) {
+        // Read again (after a desk fix) and nothing was kept: the old write-up goes too (one staff took down stays down).
+        await db.run("DELETE FROM rundown_reactions WHERE item_type = 'episode' AND item_id = ? AND EXISTS (SELECT 1 FROM rundown_episodes WHERE stream_id = ? AND status = 'live')", [stream.id, stream.id]);
+        await db.run("DELETE FROM rundown_episodes WHERE stream_id = ? AND status = 'live'", [stream.id]);
+        await setProgress(stream.id, stream.read_to_sec, 1);
+        return { called: false };
+    }
     const topics = new Map((await db.all('SELECT id, title FROM rundown_topics WHERE id = ANY(?)', [[...new Set(segs.map((s) => s.topic_id).filter(Boolean))]])).map((t) => [t.id, t.title]));
     let chat = null;
     const minutes = Math.max(0, Math.round((Number(stream.duration_seconds) || ((toMs(stream.ended_at) || Date.now()) - (toMs(stream.started_at) || Date.now())) / 1000) / 60));
@@ -303,12 +309,13 @@ async function writeEpisode(stream, user) {
     if (!title || filters.addsAccusation(`${out.title} ${out.logline || ''}`, source) || filters.privateDetail(`${out.title} ${out.logline || ''}`)) { await setProgress(stream.id, stream.read_to_sec, 1); return { called: true, failed: true }; }
     const chapters = (out.chapters || []).map((c) => segs[c.index] ? { sec: Math.round(Number(segs[c.index].start_sec)), title: clean(c.title, 60), segment_id: segs[c.index].id } : null).filter((c) => c && c.title);
     const vod = (segs.find((s) => s.vod_id) || {}).vod_id || null;
+    const rewrite = !!await db.get('SELECT 1 FROM rundown_episodes WHERE stream_id = ?', [stream.id]);
     await db.run(`INSERT INTO rundown_episodes (stream_id, user_id, title, logline, recap, chapters_json, vod_id, minutes, aired_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (stream_id) DO UPDATE SET title = excluded.title, logline = excluded.logline, recap = excluded.recap,
         chapters_json = excluded.chapters_json, vod_id = excluded.vod_id, minutes = excluded.minutes`,
     [stream.id, user.id, title, clean(out.logline, 220), recap ? recap.replace(/ ¶ /g, '\n\n') : null, JSON.stringify(chapters), vod, minutes, stream.started_at || sqlTime(Date.now())]);
     await setProgress(stream.id, stream.read_to_sec, 1);
-    await announce(stream, user, title).catch(() => {});
+    if (!rewrite) await announce(stream, user, title).catch(() => {});   // written again (a re-read): announced once already
     return { called: true, episode: true };
 }
 
