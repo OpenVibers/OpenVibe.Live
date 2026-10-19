@@ -39,6 +39,14 @@ for (const t of ['First blood was mine', 'This is my favourite ride', 'Supermark
 assert.ok(filters.sameTopic('League ranked matchmaking', 'Ranked matchmaking in League'));
 assert.ok(!filters.sameTopic('League ranked matchmaking', 'Moving apartments'));
 ['chat', 'Games', 'life', 'Just chatting', 'the stream', 'x'].forEach((t) => assert.ok(filters.vagueTopic(t), `vague: ${t}`));
+{
+    const heard = filters.chatHeard([{ at: 150, text: 'WTF this site is so cool' }, { at: 400, text: 'lol' }, { at: 10, text: 'first time here, hello everyone' }]);
+    assert.strictEqual(heard.length, 2, 'a message under three words never counts');
+    assert.ok(filters.readAloud('WTF this site is so cool.', 158, heard), 'the TTS reading a chat message is not the streamer');
+    assert.ok(filters.readAloud('Viewer says WTF, this site is so cool', 200, heard), 'with the name read first');
+    assert.ok(!filters.readAloud('WTF this site is so cool.', 400, heard), 'long after the message: the streamer said it');
+    assert.ok(!filters.readAloud('this site is great honestly', 158, heard), 'a reply in other words is the streamer');
+}
 assert.ok(!filters.vagueTopic('League ranked matchmaking') && !filters.vagueTopic('Halloween'));
 ['Frustration and chaos in the match', 'Talking with chat and teammates', 'Commands, builds and mid-game criticism', 'Mid-game rage'].forEach((t) => assert.ok(filters.vagueTopic(t), `a mood or the play: ${t}`));
 ['Briar in League', 'Theme park rides', 'Boxing fight night', 'Minecraft base building', 'League autofill'].forEach((t) => assert.ok(!filters.vagueTopic(t), `a subject: ${t}`));
@@ -325,6 +333,25 @@ console.log('✅ API: front page, topic, reactions as a signed-out reader; old /
     assert.ok(!await db.get('SELECT 1 FROM rundown_episodes WHERE stream_id = ?', [sq]), 'read again with nothing kept: the old write-up goes');
     assert.ok(!await db.get("SELECT 1 FROM rundown_reactions WHERE item_type = 'episode' AND item_id = ?", [sq]), 'and its reactions');
     console.log('✅ a re-read never announces twice and leaves no stale episode');
+}
+
+// ── Chat read aloud by TTS never reaches the AI ──
+{
+    const tts = await mk('ttsstreamer');
+    const st = await stream(tts, { startedAgoMin: 600, endedAgoMin: 560, title: 'Chatting' });
+    await speak(st, tts, ['we are going to the store later to get some snacks for the stream', 'WTF this site is so cool.', ...filler(30, 'Snack talk')]);
+    const started = Date.parse((await db.get('SELECT started_at FROM streams WHERE id = ?', [st])).started_at.replace(' ', 'T') + 'Z');
+    const chat = require('../server/chat/chat-client');
+    const prevRead = chat.readMessages;
+    chat.readMessages = async (q) => (Number(q.stream_id) === st && !q.after_id ? { messages: [{ id: 7, message: 'WTF this site is so cool', message_type: 'chat', timestamp: new Date(started + 5000).toISOString().replace('T', ' ').slice(0, 19) }] } : { messages: [] });
+    desk._test.reset();
+    await desk.tick();
+    const sent = calls.filter((c) => c.workflow === 'live.rundown.segment' && c.input.streamer === 'ttsstreamer');
+    assert.strictEqual(sent.length, 1);
+    assert.ok(!sent[0].input.lines.some((l) => /site is so cool/.test(l.text)), 'the message the TTS read is not in what the AI reads');
+    assert.ok(sent[0].input.lines.some((l) => /snacks for the stream/.test(l.text)), 'the streamer\'s own words are');
+    chat.readMessages = prevRead;
+    console.log('✅ chat read aloud by TTS is left out');
 }
 
 // ── Play-by-play: a stream keeps its best 2 takes on a topic (and 2 with no topic) ──

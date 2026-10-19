@@ -132,4 +132,28 @@ function sameTopic(a, b) {
     return both / (x.size + y.size - both) >= 0.6;
 }
 
-module.exports = { gameLine, verifiedQuote, addsAccusation, privateDetail, vagueTopic, slugify, sameTopic, norm, lineLang, GAME_LINES };
+// A chat message the stream's TTS read aloud is heard by speech-to-text and lands in the transcript as if the streamer
+// said it ("WTF this site is so cool." on goosely's stream, 2026-10-19). A line that holds most of the words of a chat
+// message sent shortly before it is the message, not the streamer.
+const READ_ALOUD_BEFORE = 120;   // TTS queues: a message can be read up to two minutes after it was sent
+const READ_ALOUD_AFTER = 5;      // speech-to-text times are a little early at times
+const tokens = (t) => norm(t).split(' ').filter(Boolean);
+/** Messages as [{ at: seconds into the stream, words: Set }] for readAloud(); messages under 3 words never count. */
+function chatHeard(messages) {
+    return (messages || []).map((m) => ({ at: Number(m.at), words: new Set(tokens(m.text)) })).filter((m) => Number.isFinite(m.at) && m.words.size >= 3);
+}
+/** Is this speech line (at `t` seconds) a chat message read aloud? `heard` from chatHeard(). */
+function readAloud(text, t, heard) {
+    if (!heard || !heard.length) return false;
+    const line = new Set(tokens(text));
+    if (line.size < 3) return false;
+    for (const m of heard) {
+        if (m.at > t + READ_ALOUD_AFTER || m.at < t - READ_ALOUD_BEFORE) continue;
+        let both = 0;
+        for (const w of m.words) if (line.has(w)) both++;
+        if (both / m.words.size >= 0.7) return true;
+    }
+    return false;
+}
+
+module.exports = { gameLine, verifiedQuote, addsAccusation, privateDetail, vagueTopic, slugify, sameTopic, norm, lineLang, chatHeard, readAloud, GAME_LINES };
