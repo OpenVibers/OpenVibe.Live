@@ -310,6 +310,23 @@ console.log('✅ API: front page, topic, reactions as a signed-out reader; old /
     console.log('✅ limits: lines per stretch, refused stretches skipped after three tries');
 }
 
+// ── A re-read: the episode is written again but not announced again; a stream left with nothing has no episode ──
+{
+    const st1 = { ...await db.get('SELECT * FROM streams WHERE id = ?', [s1]), read_to_sec: (await db.get('SELECT read_to_sec FROM rundown_progress WHERE stream_id = ?', [s1])).read_to_sec };
+    const was = announced.length;
+    await desk.writeEpisode(st1, await db.get('SELECT id, username, display_name FROM users WHERE id = ?', [goose]));
+    assert.ok(await db.get('SELECT 1 FROM rundown_episodes WHERE stream_id = ?', [s1]));
+    assert.strictEqual(announced.length, was, 'written again: not announced again');
+    const quiet = await mk('quietone');
+    const sq = await stream(quiet, { startedAgoMin: 900, endedAgoMin: 800, title: 'Quiet' });
+    await db.run("INSERT INTO rundown_episodes (stream_id, user_id, title, recap, chapters_json, aired_at) VALUES (?, ?, 'Old write-up', 'x', '[]', ov_now())", [sq, quiet]);
+    await db.run("INSERT INTO rundown_reactions (item_type, item_id, voter, reaction) VALUES ('episode', ?, 'anon:q', 'lol')", [sq]);
+    await desk.writeEpisode({ ...await db.get('SELECT * FROM streams WHERE id = ?', [sq]), read_to_sec: 0 }, await db.get('SELECT id, username, display_name FROM users WHERE id = ?', [quiet]));
+    assert.ok(!await db.get('SELECT 1 FROM rundown_episodes WHERE stream_id = ?', [sq]), 'read again with nothing kept: the old write-up goes');
+    assert.ok(!await db.get("SELECT 1 FROM rundown_reactions WHERE item_type = 'episode' AND item_id = ?", [sq]), 'and its reactions');
+    console.log('✅ a re-read never announces twice and leaves no stale episode');
+}
+
 // ── Play-by-play: a stream keeps its best 2 takes on a topic (and 2 with no topic) ──
 {
     const gamer = await mk('leaguenight');
