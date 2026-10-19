@@ -909,7 +909,7 @@ router.post('/tts-voice/preview', permissions.requireGlobalMod, async (req, res)
             voice: req.body?.voice, pitch: req.body?.pitch, speed: req.body?.speed, gap: req.body?.gap,
         });
         if (!result?.audio) return res.status(503).json({ error: 'TTS unavailable (espeak-ng not installed?)' });
-        let url = null; try { const stashed = require('../arena/voice').stash(result.audio, result.mimeType); if (stashed) url = `/api/tts/audio/${stashed.file}`; } catch { /* */ }
+        let url = null; try { const stashed = require('../rundown/voice').stash(result.audio, result.mimeType); if (stashed) url = `/api/tts/audio/${stashed.file}`; } catch { /* */ }
         res.json({ audio: result.audio, mimeType: result.mimeType || 'audio/wav', url });
     } catch (err) {
         console.error('[Mod] tts-voice preview error:', err.message);

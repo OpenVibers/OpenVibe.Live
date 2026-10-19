@@ -1,11 +1,11 @@
 'use strict';
-// Arena voice: one synthesis per (voice, text), cached on disk; equipped cosmetic voice wins; limits.
+// The Rundown's voice (server/rundown/voice.js, was the Arena's): one synthesis per (voice, text), cached on disk; equipped cosmetic voice wins; limits.
 const assert = require('assert');
 const fs = require('fs'); const os = require('os'); const path = require('path');
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ov-voice-'));
 process.env.TTS_CACHE_PATH = path.join(tmp, 'tts-cache');
 const db = require('../server/db/database');
-const voice = require('../server/arena/voice');
+const voice = require('../server/rundown/voice');
 let calls = [];
 voice._setSynth(async (v, text, username) => { calls.push({ sig: v.sig, text, username }); return { audio: Buffer.from(`AUDIO:${text}`).toString('base64'), mimeType: 'audio/mpeg', engine: 'espeak-ng', voiceId: 'auto:gary' }; });
 
@@ -38,16 +38,14 @@ voice._setSynth(async (v, text, username) => { calls.push({ sig: v.sig, text, us
     console.log('✅ voice: per-IP limits');
 
     // HTTP: streams the file with a week of caching; announcer works without a user.
-    const express = require('express'); const app = express(); app.use('/api/arena', require('../server/arena/routes'));
+    const express = require('express'); const app = express(); app.use('/api/rundown', require('../server/rundown/routes'));
     const srv = await new Promise(r => { const s = app.listen(0, () => r(s)); });
     await db.setSetting('arena_voice_daily_max', '100');
-    const res = await fetch(`http://127.0.0.1:${srv.address().port}/api/arena/voice/goosely?t=${encodeURIComponent('you think your chat is loud?')}`);
+    const res = await fetch(`http://127.0.0.1:${srv.address().port}/api/rundown/voice/goosely?t=${encodeURIComponent('you think your chat is loud?')}`);
     assert.strictEqual(res.status, 200); assert.strictEqual(res.headers.get('content-type'), 'audio/mpeg'); assert.ok(/max-age=604800/.test(res.headers.get('cache-control'))); assert.strictEqual(res.headers.get('x-cache'), 'HIT');
     assert.strictEqual((await res.text()), 'AUDIO:you think your chat is loud?');
-    const res2 = await fetch(`http://127.0.0.1:${srv.address().port}/api/arena/voice/announcer?t=${encodeURIComponent('GRIZZLY ANSWERS')}`);
-    assert.strictEqual(res2.status, 200); assert.strictEqual(res2.headers.get('x-cache'), 'MISS');
-    assert.strictEqual((await fetch(`http://127.0.0.1:${srv.address().port}/api/arena/voice/nobody?t=hi`)).status, 404);
-    assert.strictEqual((await fetch(`http://127.0.0.1:${srv.address().port}/api/arena/voice/goosely?t=`)).status, 400);
+    assert.strictEqual((await fetch(`http://127.0.0.1:${srv.address().port}/api/rundown/voice/nobody?t=hi`)).status, 404);
+    assert.strictEqual((await fetch(`http://127.0.0.1:${srv.address().port}/api/rundown/voice/goosely?t=`)).status, 400);
     srv.close();
     console.log('✅ voice: HTTP streaming + caching headers');
 
@@ -64,6 +62,6 @@ voice._setSynth(async (v, text, username) => { calls.push({ sig: v.sig, text, us
     const line = await voice.speak({ user, text: 'you think your chat is loud?' });
     assert.ok(voice.cachedByName(path.basename(line.path)), 'a spoken line is served from the clip cache');
     console.log('✅ one-off clip stash + arena voice cache');
-    console.log('\n✅ All Arena voice tests passed');
+    console.log('\n✅ All Rundown voice tests passed');
     process.exit(0);
 })().catch(err => { console.error(err); process.exit(1); });

@@ -40,7 +40,7 @@ async function handle(chat, ws, client, cmd, parts) {
             const target = parts[1] ? await db.get('SELECT id, username, display_name FROM users WHERE lower(username) = lower(?)', [String(parts[1]).replace(/^@/, '')])
                 : (stream ? await db.get('SELECT id, username, display_name FROM users WHERE id = ?', [stream.user_id]) : null);
             if (!target) return reply(parts[1] ? `Nobody called ${String(parts[1]).slice(0, 30)} here.` : `What streamers talked about, written up → ${base()}/rundown`);
-            const read = require('../rundown/read');
+            const read = require('./read');
             const page = await read.streamer(target.username);
             const name = target.display_name || target.username;
             if (!page || page.opted_out) return reply(`${name} keeps themselves out of The Rundown.`);

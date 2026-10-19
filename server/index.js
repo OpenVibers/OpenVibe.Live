@@ -670,12 +670,6 @@ app.use('/data/ai-moments', express.static(paths.dir('AI_MOMENTS_PATH', 'ai-mome
     maxAge: '30d', immutable: true, index: false, dotfiles: 'deny',
 }));
 
-// Arena portraits (AI-generated fighting-game character art, see server/arena)
-app.use('/data/arena', express.static(paths.dir('ARENA_IMAGE_PATH', 'arena'), {
-    maxAge: '7d', immutable: true, index: false, dotfiles: 'deny',
-    setHeaders: (res) => res.setHeader('Content-Type', 'image/png'),
-}));
-
 // OpenVibe.Media → Live outcomes (vod.ready / clip.ready …): the OpenVibe.Events delivery of
 // media.vod.* / media.clip.* / media.storage.* (MEDIA_EVENTS_SECRET), applied once per outcome
 // (server/media-proxy/outcomes.js). Mounted BEFORE the /internal router because it authenticates
@@ -771,7 +765,6 @@ app.use('/api/vods', searchMedia.afterChange('vod'), vodRoutes);
 app.use('/api/clips', searchMedia.afterChange('clip'), clipRoutes);
 app.use('/api/chat-ai', require('./ai/chat-ai-routes'));
 app.use('/api/easter-egg', require('./ai/easter-egg-routes'));
-app.use('/api/arena', require('./arena/routes'));            // the old Arena's reads, until its code is removed (docs/rundown.md)
 app.use('/api/rundown', require('./rundown/routes'));        // what streamers talked about, written up (docs/rundown.md)
 app.use('/api/recap', require('./recap/routes'));            // after-show reports (docs/recap.md)
 app.use('/api/social', require('./social/routes').router);   // channel social links and their previews (server/social/)

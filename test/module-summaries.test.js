@@ -82,11 +82,10 @@ const ANN = 'usr_01JAB2C3D4E5F6G7H8J9K0MNPA';
     assert.strictEqual(await live.scan({ now: now + 5 * 60000 }), 0, 'the next scan starts where this one ended');
     assert.strictEqual(await live.refresh({ now: now + DAY }), 1, 'the daily refresh visits everyone with recent streams or followers');
 
-    // ── live.loyalty (contracts 0.56.0, WS-K task 9): channel points and the Arena level, private ──
+    // ── live.loyalty (contracts 0.56.0, WS-K task 9): channel points, private (the Arena's level went with the Arena) ──
     await d.prepare("INSERT INTO channel_points (user_id, streamer_id, balance, updated_at) VALUES (3, 1, 300, ?), (3, 2, 50, ?), (3, 3, 0, ?)").run(at(DAY), at(DAY), at(DAY));
-    await d.prepare('INSERT INTO arena_trash_levels (user_id, xp, level) VALUES (3, 450, 3)').run();
-    assert.deepStrictEqual(await live.loyaltyOf(3), { channel_points_total: 350, channels: [{ channel: 'ann', points: 300 }, { channel: 'bob', points: 50 }], arena_level: 3, arena_xp: 450 });
-    assert.strictEqual(await live.loyaltyOf(2), null, 'no points and no Arena: nothing');
+    assert.deepStrictEqual(await live.loyaltyOf(3), { channel_points_total: 350, channels: [{ channel: 'ann', points: 300 }, { channel: 'bob', points: 50 }] });
+    assert.strictEqual(await live.loyaltyOf(2), null, 'no points: nothing');
     const before = puts.length;
     assert.deepStrictEqual(await live.push(3, { now }), ['live.loyalty'], 'a viewer with points gets only the loyalty record');
     const loyal = puts[before];
@@ -101,7 +100,6 @@ const ANN = 'usr_01JAB2C3D4E5F6G7H8J9K0MNPA';
     assert.strictEqual(puts[puts.length - 1].data.channel_points_total, 360);
     // The scan picks up changed points; points gone after a write leave zeros, not a stale record.
     await d.prepare('UPDATE channel_points SET balance = 0, updated_at = ? WHERE user_id = 3').run(at(-10 * 60000)); // after the previous scan's window
-    await d.prepare('DELETE FROM arena_trash_levels WHERE user_id = 3').run();
     assert.deepStrictEqual(await live.loyaltyOf(3), { channel_points_total: 0, channels: [] });
     assert.ok((await live.scan({ now: now + 45 * 60000 })) >= 1, 'the scan finds the changed points');
     assert.strictEqual(puts[puts.length - 1].data.channel_points_total, 0);

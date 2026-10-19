@@ -17,7 +17,7 @@
  * is in the transcript word for word; a headline, account or take that uses an accusing word the transcript never used
  * drops the segment (a quip, only the quip); every text passes db.noLooks(). Streamers in arena_opt_outs (the Arena's
  * opt-out, kept for the Rundown) are never read. A streamer named in a segment is named by their whole username or
- * display name in the segment's own lines (server/arena/names.js, wholeOnly), never a sound-alike.
+ * display name in the segment's own lines (server/rundown/names.js, wholeOnly), never a sound-alike.
  */
 const db = require('../db/database');
 const filters = require('./filters');
@@ -78,20 +78,20 @@ const clean = (t, n) => {
 // ── Who can be named ─────────────────────────────────────────
 let _people = { at: 0, entries: [] };
 /**
- * Name entries for every streamer who streamed in the last 60 days. Only a whole name counts (server/arena/names.js),
+ * Name entries for every streamer who streamed in the last 60 days. Only a whole name counts (server/rundown/names.js),
  * and never a name that is an everyday word or shorter than 5 letters: "you rubes" names nobody.
  */
 async function nameEntries() {
     if (Date.now() - _people.at < 10 * 60 * 1000) return _people.entries;
     const rows = await db.all('SELECT u.id, u.username, u.display_name FROM users u WHERE u.id IN (SELECT DISTINCT user_id FROM streams WHERE started_at >= ?)', [daysAgo(60)]);
-    const names = require('../arena/names');
+    const names = require('./names');
     const roster = { order: rows.map((r) => r.id), byId: Object.fromEntries(rows.map((r) => [r.id, { user: r }])) };
     const entries = names.rosterEntries(roster).filter((e) => e.whole && String(e.name).replace(/[^a-z0-9]/gi, '').length >= 5 && !names.COMMON.has(String(e.name).toLowerCase()));
     _people = { at: Date.now(), entries };
     return _people.entries;
 }
 async function mentionsIn(text, speakerId) {
-    const found = require('../arena/names').findMentions(text, await nameEntries(), { excludeUserId: speakerId, wholeOnly: true });
+    const found = require('./names').findMentions(text, await nameEntries(), { excludeUserId: speakerId, wholeOnly: true });
     return [...new Set(found.map((m) => Number(m.userId)).filter(Boolean))];
 }
 
