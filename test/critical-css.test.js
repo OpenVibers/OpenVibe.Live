@@ -58,7 +58,7 @@ ok(`the subset of the real style.css is ${(100 * core.bytes / core.from).toFixed
 // ── The shell ──
 const doc = assets.document('index.html').html;
 const blockingLinks = (html) => [...html.matchAll(/<link rel="stylesheet" href="([^"]+)"(?![^>]*media="print")[^>]*>/g)].map((m) => m[1]).filter((h) => !/noscript/.test(h));
-for (const url of ['/', '/content', '/vods', '/clips', '/chat', '/search?q=x', '/@someone', '/vod/12', '/clip/7', '/arena']) {
+for (const url of ['/', '/content', '/vods', '/clips', '/chat', '/search?q=x', '/@someone', '/vod/12', '/clip/7', '/rundown']) {
     const html = assets.renderRoute(doc, url);
     const head = html.slice(0, html.indexOf('</head>'));
     assert.ok(head.includes(`<link rel="stylesheet" href="/css/style.core.css?v=${core.hash}" data-ov-first-paint>`), `${url}: the subset blocks the first paint`);

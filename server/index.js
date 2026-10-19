@@ -770,7 +770,8 @@ app.use('/api/vods', searchMedia.afterChange('vod'), vodRoutes);
 app.use('/api/clips', searchMedia.afterChange('clip'), clipRoutes);
 app.use('/api/chat-ai', require('./ai/chat-ai-routes'));
 app.use('/api/easter-egg', require('./ai/easter-egg-routes'));
-app.use('/api/arena', require('./arena/routes'));            // streamer vs streamer (docs/arena.md)
+app.use('/api/arena', require('./arena/routes'));            // the old Arena's reads, until its code is removed (docs/rundown.md)
+app.use('/api/rundown', require('./rundown/routes'));        // what streamers talked about, written up (docs/rundown.md)
 app.use('/api/recap', require('./recap/routes'));            // after-show reports (docs/recap.md)
 app.use('/api/social', require('./social/routes').router);   // channel social links and their previews (server/social/)
 app.get('/embed/x-timeline', require('./social/routes').xTimelinePage);
@@ -1009,6 +1010,9 @@ app.get('/media/:username', (req, res) => {
 // DM notifications sent before 2026-09-23 linked to /dm/<conversation id>, a page Live never had;
 // the messenger opens the thread from /?dm=<id> now.
 app.get(/^\/dm\/(\d{1,12})\/?$/, (req, res) => res.redirect(302, `/?dm=${req.params[0]}`));
+// The Arena became The Rundown (2026-10-19): a fighter's page is the streamer's Rundown page; every other Arena page
+// (drama stories, beefs, the ears) is gone, so it lands on the Rundown.
+app.get(/^\/arena(?:\/.*)?$/, (req, res) => res.redirect(301, require('./rundown/routes').arenaRedirect(req.path)));
 
 // ── Legal Pages ───────────────────────────────────────────────
 app.get('/dmca', (req, res) => {
@@ -1418,7 +1422,8 @@ async function start() {
         try { require('./ai/ai-moments-job').start(); } catch (e) { console.warn('[AI] moments job not started:', e.message); }
         try { require('./ai/auto-clip-job').start(); } catch (e) { console.warn('[AI] auto-clip job not started:', e.message); }
         try { require('./ai/easter-egg-job').start(); } catch (e) { console.warn('[AI] easter-egg job not started:', e.message); }
-        try { require('./arena/arena-job').start(); } catch (e) { console.warn('[Arena] job not started:', e.message); }
+        // The Rundown's desk replaced the Arena's jobs (the drama desk, the beef listener and judges, 2026-10-19).
+        try { require('./rundown/desk').start(); } catch (e) { console.warn('[Rundown] desk not started:', e.message); }
         try { require('./recap/recap').start(); } catch (e) { console.warn('[Recap] job not started:', e.message); }
         // Continuous audio → stream_timeline_events. Gated behind ai_timeline_enabled
         // (default off), so starting it is a no-op until switched on in admin.

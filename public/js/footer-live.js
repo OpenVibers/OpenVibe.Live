@@ -11,7 +11,7 @@
  */
 (function () {
     'use strict';
-    const COMPACT_PAGES = ['channel', 'vod-player', 'clip-player', 'broadcast', 'chat', 'arena', 'recap'];
+    const COMPACT_PAGES = ['channel', 'vod-player', 'clip-player', 'broadcast', 'chat', 'rundown', 'recap'];
     const LINKS = [
         {
             heading: 'Watch',
@@ -19,7 +19,7 @@
                 { name: 'Live streams', url: '/', onclick: "return handleLinkClick(event, '/')" },
                 { name: 'VODs, clips & pastes', url: '/content', onclick: "return handleLinkClick(event, '/content')" },
                 { name: 'AI Moments', url: '/moments', onclick: "return handleLinkClick(event, '/moments')" },
-                { name: 'The Arena', url: '/arena', onclick: "return handleLinkClick(event, '/arena')" },
+                { name: 'The Rundown', url: '/rundown', onclick: "return handleLinkClick(event, '/rundown')" },
                 { name: 'Global chat', url: '/chat', onclick: "return handleLinkClick(event, '/chat')" },
             ],
         },

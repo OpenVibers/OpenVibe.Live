@@ -52,7 +52,7 @@ function isStaffUser(user = currentUser) {
 }
 
 // Reserved paths (not usernames)
-const RESERVED = new Set(['content', 'moments', 'search', 'vods', 'clips', 'vod', 'clip', 'dashboard', 'settings', 'broadcast', 'admin', 'themes', 'game', 'canvas', 'chat', 'api', 'ws', 'media', 'pastes', 'p', 'updates', 'dmca', 'tos', 'terms', 'arena', 'recap']);
+const RESERVED = new Set(['content', 'moments', 'search', 'vods', 'clips', 'vod', 'clip', 'dashboard', 'settings', 'broadcast', 'admin', 'themes', 'game', 'canvas', 'chat', 'api', 'ws', 'media', 'pastes', 'p', 'updates', 'dmca', 'tos', 'terms', 'arena', 'rundown', 'recap']);
 const CHANNEL_USERNAME_RE = /^[a-zA-Z0-9_]{3,24}$/;
 
 function normalizeChannelUsername(username) {
@@ -581,7 +581,7 @@ function _ssoHint() {
 // What the signed-in account watches/opens here shows up in its network-wide History and the
 // "Recently used" rows of the shared navbar on every other site. Recorded after the route
 // rendered and its title settled; never for guests, and only for the pages worth remembering.
-const _HISTORY_PAGES = { channel: 'stream', 'vod-player': 'vod', 'clip-player': 'clip', 'paste-viewer': 'paste', pastes: null, arena: 'page' };
+const _HISTORY_PAGES = { channel: 'stream', 'vod-player': 'vod', 'clip-player': 'clip', 'paste-viewer': 'paste', pastes: null, rundown: 'page' };
 let _historyTimer = null;
 function _recordHistory(pageId) {
     const type = _HISTORY_PAGES[pageId];
@@ -879,7 +879,7 @@ function dashNav(event) {
  * which go through popstate → routeFromURL() and never touch navigate() — left everything
  * running: the chat WebSocket still bound to the previous channel, the coin heartbeat still
  * crediting watch time on a page with nothing playing, the canvas socket and its timer, the
- * global AI poll, the arena and AI-viewer loops, and the broadcast desk's five polls. Every Back
+ * global AI poll, the AI-viewer loops, and the broadcast desk's five polls. Every Back
  * press added another set. Now both paths go through here.
  */
 function teardownRoute(nextPath) {
@@ -924,7 +924,6 @@ function teardownRoute(nextPath) {
     if (typeof _goalCycleTimer !== 'undefined' && _goalCycleTimer) { clearInterval(_goalCycleTimer); _goalCycleTimer = null; }
     // A Back press with the clip creator open left its key handler, drag handlers and preview loop.
     try { const cm = document.getElementById('vp-clip-modal'); if (cm && cm.style.display && cm.style.display !== 'none') stop('closeClipCreator'); } catch { /* */ }
-    stop('_aStopTimers');
     stop('stopAiViewerActivity');
     stop('stopPlayerStatsPoll');
     // The broadcast desk's polls only matter while you are on it. Leaving them running elsewhere
@@ -1126,8 +1125,10 @@ function routeFromURL() {
         showPage('recap');
         whenRouteReady('recap', () => { if (typeof loadRecapPage === 'function') loadRecapPage(segments[1]); });
     } else if (segments[0] === 'arena') {
-        showPage('arena');
-        whenRouteReady('arena', () => { if (typeof loadArenaPage === 'function') loadArenaPage(segments); });
+        location.replace(location.pathname);   // the server sends it on to The Rundown
+    } else if (segments[0] === 'rundown') {
+        showPage('rundown');
+        whenRouteReady('rundown', () => { if (typeof loadRundownPage === 'function') loadRundownPage(segments); });
     } else if (segments[0] === 'updates') {
         showPage('updates');
         loadUpdatesPage();
@@ -1295,7 +1296,7 @@ function showPage(page) {
     document.body.style.overflow = '';
 
     // Highlight nav link
-    const pageToNav = { home: 'home', content: 'content', moments: 'moments', search: 'search', broadcast: 'broadcast', dashboard: 'dashboard', admin: 'admin', chat: 'chat', 'paste-viewer': 'content', arena: 'arena' };
+    const pageToNav = { home: 'home', content: 'content', moments: 'moments', search: 'search', broadcast: 'broadcast', dashboard: 'dashboard', admin: 'admin', chat: 'chat', 'paste-viewer': 'content', rundown: 'rundown' };
     const navPage = pageToNav[page];
     if (navPage) {
         const link = document.querySelector(`.nav-link[data-page="${navPage}"]`);

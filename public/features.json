@@ -245,16 +245,7 @@
         "regenerateDashStreamKey"
       ]
     },
-    "arena": {
-      "css": [
-        "/css/features/arena.css",
-        "/css/features/arena-alert.css"
-      ],
-      "js": [
-        "/js/arena.js",
-        "/js/arena-alert.js"
-      ]
-    },
+    "rundown": {"css": ["/css/features/rundown.css"], "js": ["/js/rundown.js"]},
     "recap": {
       "css": [
         "/css/recap.css"
@@ -376,12 +367,7 @@
         "recap"
       ]
     },
-    {
-      "path": "^/arena",
-      "features": [
-        "arena"
-      ]
-    },
+    {"path": "^/rundown", "features": ["rundown"]}, {"path": "^/arena", "features": ["rundown"]},
     {
       "path": "^/documentation",
       "features": [

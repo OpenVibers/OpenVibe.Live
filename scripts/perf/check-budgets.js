@@ -29,7 +29,7 @@ const BUDGETS = {
 };
 // Code that must never be part of the home page's first load.
 const FORBIDDEN_ON_HOME = ['/js/broadcast.js', '/js/broadcast-workspace.js', '/js/dashboard.js', '/js/call.js', '/js/voice-channels.js',
-    '/js/stream-player.js', '/js/app-channel.js', '/js/arena.js', '/js/pastes.js', '/css/features/broadcast.css', '/css/features/channel.css'];
+    '/js/stream-player.js', '/js/app-channel.js', '/js/rundown.js', '/js/pastes.js', '/css/features/broadcast.css', '/css/features/channel.css'];
 
 // perf-budget's measure() fetches from a running server; this script stays offline, so it reads
 // what the server would render for "/" and hands check() the same measurement shape.

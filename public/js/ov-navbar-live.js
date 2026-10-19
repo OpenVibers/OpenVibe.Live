@@ -25,7 +25,7 @@
             { id: 'moments', page: 'moments', label: 'Moments', href: '/moments', icon: 'fa-wand-magic-sparkles' },
             { id: 'search', page: 'search', label: 'Search', href: '/search', icon: 'fa-magnifying-glass' },
             { id: 'chat', page: 'chat', label: 'Chat', href: '/chat', icon: 'fa-comments' },
-            { id: 'arena', page: 'arena', label: 'Arena', href: '/arena', icon: 'fa-hand-fist' },
+            { id: 'rundown', page: 'rundown', label: 'Rundown', href: '/rundown', icon: 'fa-newspaper' },
             { id: 'broadcast', page: 'broadcast', elId: 'nav-broadcast', label: 'Go Live', href: '/broadcast', icon: 'fa-tower-broadcast', dot: false, dotId: 'nav-live-dot',
                 onClick: (e) => call('goLiveNav', e),
                 children: user ? [{ id: 'dashboard', label: 'Dashboard', href: '/dashboard', icon: 'fa-gauge-high', onClick: (e) => call('dashNav', e) }] : [] },

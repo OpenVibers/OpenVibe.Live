@@ -29,7 +29,7 @@ const ROUTES = [
     ['/', 'page-home'], ['/content', 'page-content'], ['/moments', 'page-moments'], ['/search?q=minecraft', 'page-search'],
     // The old list pages are the Content feed with a filter.
     ['/vods', 'page-content'], ['/clips', 'page-content'], ['/pastes', 'page-content'],
-    ['/chat', 'page-chat'], ['/arena', 'page-arena'], ['/broadcast', 'page-broadcast'], ['/documentation', 'page-documentation'],
+    ['/chat', 'page-chat'], ['/rundown', 'page-rundown'], ['/broadcast', 'page-broadcast'], ['/documentation', 'page-documentation'],
     ['/updates', 'page-updates'], ['/dashboard', null], [process.env.CHANNEL || '/@admin', 'page-channel'],
     // Answered 404 by the server (server/web/page-status.js) with the same shell.
     ['/no-such-page', 'page-not-found'],
