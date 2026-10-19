@@ -9,6 +9,8 @@
  *   verifiedQuote(q, text)  a quote is kept only when it is in the transcript the AI read, word for word, and is no game line
  *   addsAccusation(t, src)  an AI line may use an accusing word (threat, attack, scam…) only when the transcript did
  *   slugify / sameTopic     topic identity
+ *   lineLang(text)          a line's language, roughly (desk.js keeps a streamer's own languages, so a clip in Portuguese
+ *                           playing on a Greek streamer's stream is never theirs)
  */
 
 // Announcer and system lines of the games streamed here (League of Legends, Counter-Strike, Valorant), as speech-to-text
@@ -31,6 +33,31 @@ const GAME_LINES = [
 function gameLine(text) {
     const t = String(text || '').trim();
     return !!t && GAME_LINES.some((re) => re.test(t));
+}
+
+// A line's language, roughly: by script (Greek, Cyrillic, Japanese, Chinese, Korean, Arabic), else by common words among
+// English, Portuguese, Spanish, French, German and Italian; null when a line is too short to tell.
+const STOPWORDS = {
+    en: ['the', 'and', 'you', 'that', 'is', 'it', 'what', 'i', 'to', 'this', 'are', 'my', 'so', 'bro', 'yeah', 'just', 'like', 'gonna', 'chat', 'guys', 'okay', 'oh', 'no'],
+    pt: ['eu', 'você', 'voce', 'que', 'não', 'nao', 'essa', 'esse', 'isso', 'muito', 'está', 'esta', 'meu', 'minha', 'então', 'também', 'nenhum', 'foi', 'uma', 'com', 'para', 'tudo'],
+    es: ['que', 'el', 'la', 'los', 'las', 'pero', 'muy', 'está', 'esto', 'eso', 'yo', 'tú', 'qué', 'por', 'con', 'una', 'para', 'como', 'bueno', 'vamos'],
+    fr: ['le', 'la', 'les', 'est', 'je', 'tu', 'pas', 'que', 'une', 'des', 'et', 'ça', "c'est", 'mais', 'avec', 'pour', 'oui', 'non'],
+    de: ['der', 'die', 'das', 'und', 'ist', 'ich', 'nicht', 'du', 'ein', 'eine', 'zu', 'mit', 'auch', 'was', 'ja', 'nein'],
+    it: ['che', 'il', 'non', 'è', 'per', 'una', 'sono', 'questo', 'ma', 'come', 'anche', 'perché', 'molto', 'io'],
+};
+function lineLang(text) {
+    const t = String(text || '');
+    if (/[Ͱ-Ͽἀ-῿]/.test(t)) return 'el';
+    if (/[Ѐ-ӿ]/.test(t)) return 'ru';
+    if (/[぀-ヿ]/.test(t)) return 'ja';
+    if (/[一-鿿]/.test(t)) return 'zh';
+    if (/[가-힯]/.test(t)) return 'ko';
+    if (/[؀-ۿ]/.test(t)) return 'ar';
+    const ws = t.toLowerCase().normalize('NFC').split(/[^\p{L}']+/u).filter(Boolean);
+    if (ws.length < 3) return null;
+    let best = null, bestN = 0;
+    for (const [k, list] of Object.entries(STOPWORDS)) { const n = ws.filter((w) => list.includes(w)).length; if (n > bestN) { best = k; bestN = n; } }
+    return best;
 }
 
 const norm = (s) => String(s || '').toLowerCase().normalize('NFKD').replace(/[̀-ͯ]/g, '').replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
@@ -68,4 +95,4 @@ function sameTopic(a, b) {
     return both / (x.size + y.size - both) >= 0.6;
 }
 
-module.exports = { gameLine, verifiedQuote, addsAccusation, slugify, sameTopic, norm, GAME_LINES };
+module.exports = { gameLine, verifiedQuote, addsAccusation, slugify, sameTopic, norm, lineLang, GAME_LINES };

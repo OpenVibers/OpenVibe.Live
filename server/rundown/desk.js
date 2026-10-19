@@ -40,6 +40,8 @@ const ANNOUNCE_WITHIN_H = 6;
 let _calls = [];
 let _fails = new Map();          // stream id → { at: read_to_sec, n }
 let _repeated = { at: 0, set: new Set() };
+let _langs = new Map();          // user id → { at, set } of the languages they speak
+const OWN_LANGUAGE_SHARE = 0.1;  // a language is theirs at 10% of their lines or more
 let _announced = [];
 let _busy = false;
 let _job = null;
@@ -149,17 +151,40 @@ async function repeatedLines() {
     return _repeated.set;
 }
 
-/** The next stretch: speech lines after read_to_sec, game and repeated lines out, at most MAX_WORDS. */
+/**
+ * The languages a streamer speaks: those in 10% or more of their lines over 30 days (their top one always). A line in
+ * any other language is something playing on their stream (iZoR_One speaks Greek and English; a Portuguese clip in the
+ * background was written up as their story, 2026-10-19). null when there are too few lines to tell.
+ */
+async function ownLanguages(userId) {
+    const c = _langs.get(userId);
+    if (c && Date.now() - c.at < 6 * 3600_000) return c.set;
+    const rows = await db.all("SELECT text FROM stream_timeline_events WHERE user_id = ? AND kind = 'speech' AND created_at >= ? ORDER BY id DESC LIMIT 4000", [userId, daysAgo(30)]);
+    const counts = new Map();
+    let total = 0;
+    for (const r of rows) { const l = filters.lineLang(r.text); if (l) { counts.set(l, (counts.get(l) || 0) + 1); total++; } }
+    let set = null;
+    if (total >= 50) {
+        const ranked = [...counts.entries()].sort((a, b) => b[1] - a[1]);
+        set = new Set(ranked.filter(([, n], i) => i === 0 || n / total >= OWN_LANGUAGE_SHARE).map(([l]) => l));
+    }
+    _langs.set(userId, { at: Date.now(), set });
+    return set;
+}
+
+/** The next stretch: speech lines after read_to_sec; game lines, repeated lines and lines in a language the streamer does not speak out; at most MAX_WORDS. */
 async function nextStretch(stream) {
     const rows = await db.all(`SELECT start_sec, text, vod_id FROM stream_timeline_events
         WHERE stream_id = ? AND kind = 'speech' AND start_sec > ? ORDER BY start_sec ASC LIMIT 800`, [stream.id, stream.read_to_sec]);
     const repeated = await repeatedLines();
+    const langs = await ownLanguages(stream.user_id);
+    const theirs = (text) => { if (!langs) return true; const l = filters.lineLang(text); return !l || langs.has(l); };
     const lines = [];
     let n = 0, lastSec = Number(stream.read_to_sec);
     for (const r of rows) {
         const text = String(r.text || '').replace(/\s+/g, ' ').trim();
         const w = words(text);
-        if (text && !filters.gameLine(text) && !repeated.has(filters.norm(text))) {
+        if (text && !filters.gameLine(text) && !repeated.has(filters.norm(text)) && theirs(text)) {
             if ((n + w > MAX_WORDS || lines.length >= MAX_LINES) && lines.length) break;
             lines.push({ t: Math.round(Number(r.start_sec) * 10) / 10, text: text.slice(0, 1000), vod_id: r.vod_id });
             n += w;
@@ -177,9 +202,16 @@ function ready(stream, stretch) {
     return stretch.words >= MAX_WORDS * 0.9 || stretch.words >= READ_WORDS || (span >= READ_SPAN_SEC && stretch.words >= MIN_WORDS);
 }
 
-/** Store the AI's segments for one stretch. Returns the number kept. */
-async function keepSegments(stream, stretch, segments, user) {
-    const source = stretch.lines.map((l) => l.text).join('\n');
+/**
+ * Store the AI's segments for one stretch. Returns the number kept. `others` are the times of the lines the AI decided
+ * were not the streamer (a game character, a video, other people): a quote from one goes, and a segment whose lines are
+ * mostly theirs goes too.
+ */
+async function keepSegments(stream, stretch, segments, user, others = []) {
+    const notTheirs = new Set((others || []).map((t) => Math.round(Number(t) * 10)));
+    const isOther = (l) => notTheirs.has(Math.round(Number(l.t) * 10));
+    const own = stretch.lines.filter((l) => !isOther(l));
+    const source = own.map((l) => l.text).join('\n');
     const startedMs = toMs(stream.started_at) || Date.now();
     let kept = 0;
     for (const s of segments || []) {
@@ -190,7 +222,8 @@ async function keepSegments(stream, stretch, segments, user) {
         if (filters.addsAccusation(`${title} ${what} ${take || ''}`, source)) continue;
         if (quip && filters.addsAccusation(quip, source)) quip = null;
         const span = stretch.lines.filter((l) => l.t >= Number(s.start) - 1 && l.t <= Number(s.end) + 1);
-        const spanText = (span.length ? span : stretch.lines).map((l) => l.text).join('\n');
+        if (span.length && span.filter(isOther).length / span.length > 0.6) continue;
+        const spanText = (span.length ? span.filter((l) => !isOther(l)) : own).map((l) => l.text).join('\n');
         const quotes = (s.quotes || []).map((q) => {
             const text = filters.verifiedQuote(q.text, source);
             return text ? { text, sec: Number(q.t) || Number(s.start) || 0, en: q.en ? clean(q.en, 400) : null } : null;
@@ -230,7 +263,7 @@ async function readStretch(stream, user) {
         return { called: true, failed: true };
     }
     _fails.delete(stream.id);
-    const kept = await keepSegments(stream, stretch, out.segments, user);
+    const kept = await keepSegments(stream, stretch, out.segments, user, out.others);
     await setProgress(stream.id, stretch.lastSec);
     return { called: true, kept };
 }
@@ -341,4 +374,4 @@ function start() {
 }
 function stop() { if (typeof _job === 'function') _job(); _job = null; }
 
-module.exports = { start, stop, tick, readStretch, writeEpisode, refreshTopic, keepSegments, topicFor, nextStretch, ready, optedOut, MAX_LINES, _test: { reset() { _calls = []; _announced = []; _fails = new Map(); _repeated = { at: 0, set: new Set() }; _people = { at: 0, entries: [] }; } } };
+module.exports = { start, stop, tick, readStretch, writeEpisode, refreshTopic, keepSegments, topicFor, nextStretch, ready, optedOut, MAX_LINES, _test: { reset() { _calls = []; _announced = []; _fails = new Map(); _repeated = { at: 0, set: new Set() }; _langs = new Map(); _people = { at: 0, entries: [] }; } } };
