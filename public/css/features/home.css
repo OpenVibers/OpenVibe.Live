@@ -262,7 +262,8 @@ body.egg-rainbow { animation: eggRainbow 2.6s linear; }
 .digest-recap { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; margin-left: -4px; border-radius: 999px; border: 1px solid var(--border); background: var(--bg-tertiary); color: var(--text-muted); font-size: 0.78rem; text-decoration: none; align-self: center; }
 .digest-recap:hover { color: var(--accent); border-color: var(--accent); }
 .digest-hot { display: grid; gap: 6px; margin-top: 12px; padding-top: 10px; border-top: 1px dashed color-mix(in srgb, var(--accent) 30%, var(--border)); }
-.digest-hot-line { font-size: 0.84rem; color: var(--text-secondary); font-style: italic; line-height: 1.4; }
+.digest-hot-line { display: block; font-size: 0.84rem; color: var(--text-secondary); font-style: italic; line-height: 1.4; text-decoration: none; }
+.digest-hot-line:hover b { text-decoration: underline; }
 @media (max-width: 640px) { .digest-extra { white-space: normal; } }
 .streamer-group-goal { display: flex; align-items: center; gap: 8px; margin: 6px 5px 2px; font-size: 0.76rem; }
 .streamer-group-goal .goal-bar { flex: 1; }

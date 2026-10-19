@@ -460,7 +460,7 @@ if (!require('../drill').enabled) setTimeout(_refreshLatestUpdate, 1500).unref?.
 // ── "While you were away" / "Lately on OpenVibe" digest — for everyone ────────
 // ?since=<ISO> (the client remembers its own last visit; anonymous / first visit → last 48h).
 // Site-wide activity since then: who's live, who streamed (followed channels first for signed-in
-// users), the numbers, and the hottest Arena mic lines.
+// users), the numbers, and the best Rundown takes.
 const { requireAuth, optionalAuth } = require('../auth/auth');
 router.get('/digest', optionalAuth, async (req, res) => {
     try {
@@ -501,12 +501,15 @@ router.get('/digest', optionalAuth, async (req, res) => {
             chat_lines: await (async () => { try { const s = await require('../chat/chat-reads').windowStatsPeek({ since: sinceMs }); return s ? s.messages : 0; } catch { return 0; } })(),
             new_follows: Number((await one('SELECT COUNT(*) AS n FROM follows WHERE created_at >= ?', [sinceSql]) || {}).n || 0),
             new_members: Number((await one('SELECT COUNT(*) AS n FROM users WHERE created_at >= ?', [sinceSql]) || {}).n || 0),
-            mic_moments: Number((await one('SELECT COUNT(*) AS n FROM arena_mic_moments WHERE said_at >= ?', [sinceSql]) || {}).n || 0),
+            takes: Number((await one("SELECT COUNT(*) AS n FROM rundown_segments WHERE status = 'live' AND said_at >= ?", [sinceSql]) || {}).n || 0),
         };
+        // The best Rundown takes since then (server/rundown): the quote when there is one, else the headline.
         let hot = [];
         try {
-            hot = (await db.all(`SELECT m.text, m.quality, m.said_at, m.aimed_at, u.username, u.display_name FROM arena_mic_moments m JOIN users u ON u.id = m.user_id
-                WHERE m.said_at >= ? AND m.quality >= 7 ORDER BY m.quality DESC, m.said_at DESC LIMIT 3`, [sinceSql]) || []);
+            hot = (await db.all(`SELECT s.title, s.quotes_json, s.said_at, t.title AS topic, t.slug, u.username, u.display_name FROM rundown_segments s
+                JOIN users u ON u.id = s.user_id LEFT JOIN rundown_topics t ON t.id = s.topic_id
+                WHERE s.status = 'live' AND s.said_at >= ? AND s.score >= 4 AND COALESCE(u.is_banned, 0) = 0 ORDER BY s.score DESC, s.said_at DESC LIMIT 3`, [sinceSql]) || [])
+                .map((r) => { let q = null; try { q = JSON.parse(r.quotes_json || '[]')[0] || null; } catch { q = null; } return { text: q ? q.text : r.title, quoted: !!q, topic: r.topic || null, slug: r.slug || null, said_at: r.said_at, username: r.username, display_name: r.display_name }; });
         } catch { hot = []; }
         res.set('Cache-Control', uid ? 'private, max-age=30' : 'public, max-age=60');
         res.json({ since, signed_in: !!uid, liveNow, streamed, stats, hot });

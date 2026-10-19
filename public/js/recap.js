@@ -1,7 +1,7 @@
 /**
  * recap.js — the after-show report page (/recap/:streamId).
  * Renders what /api/recap/:id returns: grade + headline + AI summary, stat tiles, the viewer
- * curve with chat bars, moment of the night + mic lines, top chatters, clips, the VOD, share.
+ * curve with chat bars, moment of the night + the Rundown's takes, top chatters, clips, the VOD, share.
  */
 (function () {
     'use strict';
@@ -39,6 +39,7 @@
 
     function render(root, data, id) {
         const r = data.recap, w = r.write || {}, s = r.stream, u = r.streamer;
+        const takes = r.takes || [];   // a recap written before the Rundown has none
         const g = GRADE[w.grade] || GRADE.B;
         const path = `/@${u.username}`;
         const owner = window.currentUser && (currentUser.id === u.id || currentUser.role === 'admin');
@@ -51,13 +52,13 @@
             r.love.tips ? ['fa-coins', n(r.love.tips_total), `in ${r.love.tips} tip${r.love.tips === 1 ? '' : 's'}`] : null,
             r.clips.length ? ['fa-scissors', n(r.clips.length), 'clips'] : null,
             r.chat.sounds ? ['fa-volume-high', n(r.chat.sounds), 'sound commands'] : null,
-            r.mic.length ? ['fa-microphone-lines', n(r.mic.length), 'mic moments'] : null,
+            takes.length ? ['fa-newspaper', n(takes.length), takes.length === 1 ? 'Rundown take' : 'Rundown takes'] : null,
         ].filter(Boolean).map(([i, v, l]) => `<div class="recap-tile"><i class="fa-solid ${i}"></i><b>${v}</b><span>${esc(l)}</span></div>`).join('');
         const medals = ['🥇', '🥈', '🥉', '4', '5'];
         const topN = r.chat.top[0] ? r.chat.top[0].n : 1;
         const chatters = r.chat.top.length ? `<div class="recap-card"><h3><i class="fa-solid fa-ranking-star"></i> Loudest in chat</h3><ol class="recap-chatters">${r.chat.top.map((c, i) => `<li><span class="recap-medal">${medals[i]}</span>${av(c, 26)}<a class="recap-chatter-name" ${go(`/@${c.username}`)}>${esc(c.display_name || c.username)}</a><span class="recap-chatter-bar"><i style="width:${Math.max(6, Math.round(c.n / topN * 100))}%"></i></span><span class="recap-chatter-n">${n(c.n)}</span></li>`).join('')}</ol>${r.chat.busiest_at ? `<div class="recap-fine">Busiest stretch: ${esc(when(r.chat.busiest_at))} (${n(r.chat.busiest_n)} lines in 5 min)</div>` : ''}</div>` : '';
-        const micLine = (m) => { const href = m.vod_id ? videoHref('vod', m.vod_id, Math.max(0, Math.round(m.sec || 0))) : null; const inner = `“${esc(m.text)}”${m.aimed_at ? ` <span class="muted">at ${esc(m.aimed_at)}</span>` : ''}<span class="recap-mic-q">${m.quality}/10</span>`; return href ? `<a class="recap-mic" ${go(href)}><i class="fa-solid fa-play"></i> ${inner}</a>` : `<div class="recap-mic">${inner}</div>`; };
-        const moment = (w.moment || r.mic.length) ? `<div class="recap-card recap-moment"><h3><i class="fa-solid fa-fire"></i> Moment of the night</h3>${w.moment ? `<p class="recap-moment-text">${esc(w.moment)}</p>` : ''}${r.mic.length ? `<div class="recap-mics">${r.mic.map(micLine).join('')}</div>` : ''}</div>` : '';
+        const takeLine = (t) => { const href = t.vod_id ? videoHref('vod', t.vod_id, Math.max(0, Math.round(t.sec || 0))) : null; const inner = `${t.text ? `“${esc(t.text)}”` : esc(t.title)}${t.topic ? ` <span class="muted">· ${esc(t.topic)}</span>` : ''}`; return href ? `<a class="recap-mic" ${go(href)}><i class="fa-solid fa-play"></i> ${inner}</a>` : `<div class="recap-mic">${inner}</div>`; };
+        const moment = (w.moment || takes.length) ? `<div class="recap-card recap-moment"><h3><i class="fa-solid fa-fire"></i> Moment of the night</h3>${w.moment ? `<p class="recap-moment-text">${esc(w.moment)}</p>` : ''}${takes.length ? `<div class="recap-mics">${takes.map(takeLine).join('')}</div><div class="recap-fine"><a ${go(`/rundown/e/${s.id}`)}>The Rundown's episode</a></div>` : ''}</div>` : '';
         const clips = r.clips.length ? `<div class="recap-section"><h3><i class="fa-solid fa-scissors"></i> Clips from this stream</h3><div class="recap-clips">${r.clips.map(c => `<a class="recap-clip" ${go(videoHref('clip', c.id))}>${c.thumbnail_url ? `<img src="${esc(c.thumbnail_url)}" alt="" loading="lazy">` : '<span class="recap-clip-ph"><i class="fa-solid fa-scissors"></i></span>'}<span class="recap-clip-dur">${dur(c.duration_seconds)}</span><span class="recap-clip-title">${esc(c.title)}</span>${c.view_count ? `<span class="recap-clip-views"><i class="fa-solid fa-eye"></i> ${n(c.view_count)}</span>` : ''}</a>`).join('')}</div></div>` : '';
         const vod = r.vod ? `<a class="recap-vod" ${go(videoHref('vod', r.vod.id))}>${r.vod.thumbnail_url ? `<img src="${esc(r.vod.thumbnail_url)}" alt="" loading="lazy">` : ''}<span class="recap-vod-body"><b><i class="fa-solid fa-play"></i> Watch the VOD</b><span>${dur(r.vod.duration_seconds)} · the whole stream, with the transcript and AI moments</span></span></a>` : '';
         const more = (data.more || []).length ? `<div class="recap-section"><h3><i class="fa-solid fa-clock-rotate-left"></i> More nights from ${esc(u.display_name)}</h3><div class="recap-more">${data.more.map(m => `<a class="recap-more-item" ${go(`/recap/${m.stream_id}`)}><span class="recap-grade-mini" style="--g:${(GRADE[m.grade] || GRADE.B).color}">${esc(m.grade)}</span><span class="recap-more-title">${esc(m.headline || m.title)}</span><span class="recap-more-meta">${esc(timeAgo(m.ended_at))} · ${dur(m.duration_seconds)} · peak ${n(m.peak_viewers)}</span></a>`).join('')}</div></div>` : '';

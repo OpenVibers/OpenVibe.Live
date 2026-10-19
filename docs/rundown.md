@@ -89,7 +89,7 @@ Migration `0010_rundown.sql`:
 - `rundown_progress`: how far the desk has read each stream.
 - `rundown_reactions`: readers' reactions.
 
-The Arena's tables are no longer written; their code goes in a later change.
+The Arena's tables are no longer written. Its pages, styles and readers are gone (the recap, the home digest, the star pick and the VOD stats read The Rundown); its server code and `/api/arena` go once no open tab of an earlier release calls them, and its tables after that.
 
 ## Chat
 

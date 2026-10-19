@@ -61,7 +61,7 @@ const last = (wf) => runs.filter((r) => r.workflow === wf).pop();
 
         // The star: only a real, eligible candidate.
         const star = require('../server/home/star-job');
-        const cands = [{ id: 1, username: 'ann', display_name: 'Ann', sessions: 3, hours: 5, peak_viewers: 2, avg_peak: 1, chat_lines: 10, new_followers: 1, mic_moments: 0, followers: 4, last_live_at: '2026-09-27', overview: 'codes   rust', language: 'en', category: 'desktop' },
+        const cands = [{ id: 1, username: 'ann', display_name: 'Ann', sessions: 3, hours: 5, peak_viewers: 2, avg_peak: 1, chat_lines: 10, new_followers: 1, takes: 0, followers: 4, last_live_at: '2026-09-27', overview: 'codes   rust', language: 'en', category: 'desktop' },
             { id: 2, username: 'bob', display_name: 'Bob', sessions: 1, hours: 1 }];
         answers['live.home.star'] = { username: 'ANN', headline: 'Rust all night', reason: 'You showed up five hours this week.' };
         const pick = await star._aiPick(cands, new Set(['bob']), 'bob');
