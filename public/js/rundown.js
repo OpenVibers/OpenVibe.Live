@@ -51,7 +51,7 @@ function _rdTopicChip(t, extra = '') {
     const [label, color] = RD_KIND[t.kind] || RD_KIND.other;
     return _rdA(`/rundown/t/${encodeURIComponent(t.slug)}`, `${_rdEsc(t.title)}${extra}`, 'rd-chip', `${label}: ${t.title}`).replace('class="rd-chip"', `class="rd-chip" style="--rd-k:${color}"`);
 }
-function _rdWatch(vodId, sec, label = 'Watch') { return vodId ? _rdA(`/vod/${vodId}?t=${Math.max(0, Math.floor(sec || 0))}`, `<i class="fa-solid fa-play" aria-hidden="true"></i> ${_rdEsc(label)}${sec ? ` <span class="rd-stamp">${_rdStamp(sec)}</span>` : ''}`, 'rd-watch') : ''; }
+function _rdWatch(vodId, sec, label = 'Watch') { return vodId ? _rdA(videoHref('vod', vodId, Math.max(0, Math.floor(sec || 0))), `<i class="fa-solid fa-play" aria-hidden="true"></i> ${_rdEsc(label)}${sec ? ` <span class="rd-stamp">${_rdStamp(sec)}</span>` : ''}`, 'rd-watch') : ''; }
 function _rdParas(text) { return String(text || '').split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean).map((p) => `<p>${_rdEsc(p)}</p>`).join(''); }
 function _rdMe() { return (typeof currentUser !== 'undefined' && currentUser) ? currentUser : null; }
 function _rdEmpty(icon, text, action = '') { return `<div class="rd-empty"><i class="fa-solid ${icon}" aria-hidden="true"></i><p>${text}</p>${action}</div>`; }
@@ -110,7 +110,7 @@ function _rdEpisodeCard(e, { user = true } = {}) {
                 <h3 class="rd-h3 rd-ep-title">${_rdA(href, _rdEsc(e.title))}</h3>
                 ${user ? `<p class="rd-by">${_rdUser(e.user)}</p>` : ''}
                 ${e.logline ? `<p class="rd-logline">${_rdEsc(e.logline)}</p>` : ''}
-                ${chapters.length ? `<ol class="rd-chapters">${chapters.map((c) => `<li>${e.vod_id ? _rdA(`/vod/${e.vod_id}?t=${c.sec}`, `<span class="rd-stamp">${_rdStamp(c.sec)}</span>`) : `<span class="rd-stamp">${_rdStamp(c.sec)}</span>`} ${_rdEsc(c.title)}</li>`).join('')}</ol>` : ''}
+                ${chapters.length ? `<ol class="rd-chapters">${chapters.map((c) => `<li>${e.vod_id ? _rdA(videoHref('vod', e.vod_id, c.sec), `<span class="rd-stamp">${_rdStamp(c.sec)}</span>`) : `<span class="rd-stamp">${_rdStamp(c.sec)}</span>`} ${_rdEsc(c.title)}</li>`).join('')}</ol>` : ''}
                 ${(e.topics || []).length ? `<div class="rd-chips">${e.topics.slice(0, 5).map((t) => _rdTopicChip(t)).join('')}</div>` : ''}
             </div>
         </div>
@@ -233,7 +233,7 @@ async function _rdEpisode(root, id) {
             <p class="rd-actions">${e ? _rdWatch(e.vod_id, 0, 'Watch the stream') : ''}${s.is_live && u ? _rdA(_rdChannelHref(u), '<i class="fa-solid fa-tower-broadcast" aria-hidden="true"></i> Watch live', 'rd-watch') : ''}</p>
         </header>
         ${e && e.recap ? `<div class="rd-recap">${_rdParas(e.recap)}</div>` : (s.is_live ? '<p class="rd-quiet">The episode is written when the stream ends. Here is what the desk has heard so far.</p>' : '')}
-        ${e && e.chapters.length ? `<section aria-labelledby="rd-ch-h"><h2 id="rd-ch-h" class="rd-h2">Chapters</h2><ol class="rd-chapters rd-chapters-big">${e.chapters.map((c) => `<li>${e.vod_id ? _rdA(`/vod/${e.vod_id}?t=${c.sec}`, `<span class="rd-stamp">${_rdStamp(c.sec)}</span>`) : `<span class="rd-stamp">${_rdStamp(c.sec)}</span>`} ${c.segment_id ? `<a href="#rd-take-${c.segment_id}">${_rdEsc(c.title)}</a>` : _rdEsc(c.title)}</li>`).join('')}</ol></section>` : ''}
+        ${e && e.chapters.length ? `<section aria-labelledby="rd-ch-h"><h2 id="rd-ch-h" class="rd-h2">Chapters</h2><ol class="rd-chapters rd-chapters-big">${e.chapters.map((c) => `<li>${e.vod_id ? _rdA(videoHref('vod', e.vod_id, c.sec), `<span class="rd-stamp">${_rdStamp(c.sec)}</span>`) : `<span class="rd-stamp">${_rdStamp(c.sec)}</span>`} ${c.segment_id ? `<a href="#rd-take-${c.segment_id}">${_rdEsc(c.title)}</a>` : _rdEsc(c.title)}</li>`).join('')}</ol></section>` : ''}
         ${e ? `<div class="rd-card-foot rd-ep-react">${_rdReactions('episode', e.stream_id, e.reactions, e.my_reaction)}</div>` : ''}
         <h2 class="rd-h2">What they talked about</h2>
         ${(d.segments || []).map((x) => _rdTake(x, { user: false })).join('') || _rdEmpty('fa-microphone-lines', 'Nothing written up from this stream.')}
