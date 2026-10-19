@@ -46,7 +46,8 @@ Speech-to-text hears a stream's whole audio track. On 2026-10-18 the Arena's "qu
 
 - `/rundown`, the front page:
   - the masthead (date, counts) and the "On air now" strip, showing who is live and what they are talking about;
-  - **The latest:** episodes and the best takes (score 4 and up, or naming someone), newest first;
+  - **Top take:** the best take of the last day (else the week), its quote set large;
+  - **Stream by stream:** each stream the desk wrote about, newest first, with its episode title and logline (or, live, a Live now tag) and its 3 best takes on a timeline: the moment's timestamp (▶ to the VOD), the topic, the headline, the quote (else what they talked about), the desk's quip and reactions. "Read the episode" opens the rest. 8 streams a page (`/api/rundown/streams?before=`);
   - **Trending topics** this week (most streamers, then most takes);
   - **Who's been talking:** each streamer with their top topics, and how the desk works.
 - `/rundown/topics` lists every topic, by most recent or most talked about, with a filter by kind.
@@ -66,8 +67,9 @@ Speech-to-text hears a stream's whole audio track. On 2026-10-18 the Arena's "qu
 
 | Method | Path | Notes |
 |---|---|---|
-| GET | `/` | `on_air`, `latest` (+ `next`), `trending`, `voices`, `counts` |
-| GET | `/latest?before=` | the next page of the latest |
+| GET | `/` | `on_air`, `lead`, `streams` (+ `streams_next`), `trending`, `voices`, `counts`; `latest` (+ `next`) for the previous release's open tabs |
+| GET | `/streams?before=` | the next page of stream by stream |
+| GET | `/latest?before=` | the previous release's feed (episodes and takes scored 4 and up, newest first) |
 | GET | `/topics?sort=recent\|most&kind=` | every topic |
 | GET | `/t/:slug` | `topic`, `takes`, `related` |
 | GET | `/e/:streamId` | `episode`, `stream`, `segments`, `more` |
