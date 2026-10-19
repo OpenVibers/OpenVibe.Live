@@ -21,7 +21,8 @@ const GAME_LINES = [
     /^(?:an? )?(?:enemy|ally) (?:has been slain|double kill|triple kill|quadra kill|penta kill)\.?$/i,
     /\byou have (?:slain an? enemy|been slain)\b/i,
     /\b(?:an )?(?:enemy|ally) has been slain\b/i,
-    /^(?:first blood|double kill|triple kill|quadra kill|penta ?kill|killing spree|rampage|unstoppable|dominating|godlike|legendary|ace|shut ?down|victory|defeat)[.!]?$/i,
+    /^(?:i'?ve|i have|you'?ve) been slain[.!]?$/i,
+    /^(?:the )?(?:first blood|double kill|triple kill|quadra kill|penta ?kill|killing spree|rampage|unstoppable|dominating|godlike|legendary|ace|shut ?down|victory|defeat)[.!]?$/i,
     /\bwelcome to summoner'?s rift\b/i,
     /\b(?:thirty seconds until minions spawn|minions have spawned)\b/i,
     /\b(?:your|the enemy|our) team has (?:destroyed|taken|slain) (?:a |an |the )?(?:turret|inhibitor|dragon|baron|herald|nexus)\b/i,
@@ -103,10 +104,17 @@ function privateDetail(text) {
 const VAGUE = new Set(['news', 'games', 'game', 'tech', 'life', 'music', 'sports', 'money', 'internet', 'chat', 'other', 'gaming', 'gameplay',
     'chatting', 'just chatting', 'stream', 'streaming', 'the stream', 'stream talk', 'misc', 'general', 'random', 'stuff', 'irl', 'talk', 'conversation',
     'banter', 'reactions', 'updates', 'life update', 'nothing']);
-/** Is this topic name too vague to be a topic? */
+// Words for a mood, the play or the stream, not a subject. A topic made only of them ("Frustration and chaos in the
+// match", "Talking with chat and teammates") gathered a night of play-by-play from every game: 106 and 84 takes.
+const GENERIC = new Set(['frustration', 'frustrated', 'chaos', 'chaotic', 'rage', 'raging', 'tilt', 'tilted', 'salt', 'salty', 'vent',
+    'venting', 'rant', 'rants', 'ranting', 'reaction', 'reactions', 'reacting', 'hype', 'mood', 'vibes', 'energy', 'moment', 'moments',
+    'highlights', 'talking', 'chatting', 'chat', 'teammates', 'team', 'match', 'matches', 'game', 'games', 'gaming', 'gameplay', 'round',
+    'rounds', 'play', 'plays', 'stream', 'streaming', 'streamer', 'viewers', 'mid', 'calls', 'commands', 'builds', 'criticism', 'banter',
+    'jokes', 'stuff', 'things', 'life', 'random', 'night', 'session', 'fun', 'drama', 'confusion', 'mistakes']);
+/** Is this topic name too vague to be a topic? A kind, a word for streaming, or only words for a mood or the play. */
 function vagueTopic(title) {
     const t = norm(title);
-    return !t || VAGUE.has(t) || t.length < 4;
+    return !t || VAGUE.has(t) || t.length < 4 || [...keyWords(title)].every((w) => GENERIC.has(w));
 }
 
 function slugify(title) {
