@@ -28,6 +28,8 @@ const READ_SPAN_SEC = 10 * 60;
 const MIN_WORDS = 150;
 const TAIL_WORDS = 120;
 const MAX_WORDS = 2400;
+const MAX_LINES = 380;          // the workflow takes at most 400 lines (Greek and other short-line speech hit it first)
+const MAX_FAILS = 3;            // a stretch the AI refused this often is skipped, not retried every tick
 const BACKFILL_DAYS = 7;
 const CALLS_PER_TICK = 4;
 const CALLS_PER_HOUR = 40;
@@ -36,6 +38,7 @@ const ANNOUNCE_PER_HOUR = 3;
 const ANNOUNCE_WITHIN_H = 6;
 
 let _calls = [];
+let _fails = new Map();          // stream id → { at: read_to_sec, n }
 let _announced = [];
 let _busy = false;
 let _job = null;
@@ -142,7 +145,7 @@ async function nextStretch(stream) {
         const text = String(r.text || '').replace(/\s+/g, ' ').trim();
         const w = words(text);
         if (text && !filters.gameLine(text)) {
-            if (n + w > MAX_WORDS && lines.length) break;
+            if ((n + w > MAX_WORDS || lines.length >= MAX_LINES) && lines.length) break;
             lines.push({ t: Math.round(Number(r.start_sec) * 10) / 10, text: text.slice(0, 1000), vod_id: r.vod_id });
             n += w;
         }
@@ -203,7 +206,15 @@ async function readStretch(stream, user) {
         streamer: user.display_name || user.username, title: String(stream.title || '').slice(0, 200), category: String(stream.category || '').slice(0, 80),
         topics: await knownTopics(), earlier: earlier.slice(0, 800), lines: stretch.lines.map(({ t, text }) => ({ t, text })),
     }, user.id);
-    if (!out || !Array.isArray(out.segments)) return { called: true, failed: true };
+    if (!out || !Array.isArray(out.segments)) {
+        // Refused or failed: try again next tick, but a stretch that keeps failing is skipped rather than retried forever.
+        const f = _fails.get(stream.id);
+        const n = f && f.at === stream.read_to_sec ? f.n + 1 : 1;
+        _fails.set(stream.id, { at: stream.read_to_sec, n });
+        if (n >= MAX_FAILS) { _fails.delete(stream.id); await setProgress(stream.id, stretch.lastSec); console.warn(`[Rundown] stream ${stream.id}: skipped a stretch the AI refused ${n} times`); }
+        return { called: true, failed: true };
+    }
+    _fails.delete(stream.id);
     const kept = await keepSegments(stream, stretch, out.segments, user);
     await setProgress(stream.id, stretch.lastSec);
     return { called: true, kept };
@@ -315,4 +326,4 @@ function start() {
 }
 function stop() { if (typeof _job === 'function') _job(); _job = null; }
 
-module.exports = { start, stop, tick, readStretch, writeEpisode, refreshTopic, keepSegments, topicFor, nextStretch, ready, optedOut, _test: { reset() { _calls = []; _announced = []; _people = { at: 0, entries: [] }; } } };
+module.exports = { start, stop, tick, readStretch, writeEpisode, refreshTopic, keepSegments, topicFor, nextStretch, ready, optedOut, MAX_LINES, _test: { reset() { _calls = []; _announced = []; _fails = new Map(); _people = { at: 0, entries: [] }; } } };
