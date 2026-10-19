@@ -176,10 +176,43 @@ async function ownLanguages(userId) {
 }
 
 /** The next stretch: speech lines after read_to_sec; game lines, repeated lines and lines in a language the streamer does not speak out; at most MAX_WORDS. */
+/**
+ * The stream's chat messages, as seconds into the stream, for filters.readAloud(): a message the streamer's TTS read out
+ * is in the transcript too. Read from OpenVibe.Chat a page at a time (oldest first) and kept per stream; no Chat, no
+ * filtering.
+ */
+let _chat = new Map();             // stream id → { afterId, heard, at }
+const CHAT_PAGE = 500;
+async function streamChat(stream) {
+    const started = toMs(stream.started_at);
+    if (!started) return [];
+    const hit = _chat.get(stream.id) || { afterId: 0, heard: [], at: 0 };
+    if (Date.now() - hit.at > 60_000) {
+        try {
+            const chat = require('../chat/chat-client');
+            for (let page = 0; page < 6; page++) {
+                const out = await chat.readMessages({ stream_id: stream.id, after_id: hit.afterId, limit: CHAT_PAGE });
+                const rows = (out && out.messages) || [];
+                for (const m of rows) {
+                    hit.afterId = Math.max(hit.afterId, Number(m.id) || 0);
+                    const at = toMs(m.timestamp);
+                    if (at && (m.message_type || 'chat') === 'chat') hit.heard.push(...filters.chatHeard([{ at: (at - started) / 1000, text: m.message }]));
+                }
+                if (rows.length < CHAT_PAGE) break;
+            }
+            hit.at = Date.now();
+        } catch { /* Chat unreachable: read without it */ }
+        _chat.set(stream.id, hit);
+        if (_chat.size > 64) _chat.delete(_chat.keys().next().value);
+    }
+    return hit.heard;
+}
+
 async function nextStretch(stream) {
     const rows = await db.all(`SELECT start_sec, text, vod_id FROM stream_timeline_events
         WHERE stream_id = ? AND kind = 'speech' AND start_sec > ? ORDER BY start_sec ASC LIMIT 800`, [stream.id, stream.read_to_sec]);
     const repeated = await repeatedLines();
+    const heard = rows.length ? await streamChat(stream) : [];
     const langs = await ownLanguages(stream.user_id);
     const theirs = (text) => { if (!langs) return true; const l = filters.lineLang(text); return !l || langs.has(l); };
     const lines = [];
@@ -187,7 +220,7 @@ async function nextStretch(stream) {
     for (const r of rows) {
         const text = String(r.text || '').replace(/\s+/g, ' ').trim();
         const w = words(text);
-        if (text && !filters.gameLine(text) && !repeated.has(filters.norm(text)) && theirs(text)) {
+        if (text && !filters.gameLine(text) && !repeated.has(filters.norm(text)) && theirs(text) && !filters.readAloud(text, Number(r.start_sec), heard)) {
             if ((n + w > MAX_WORDS || lines.length >= MAX_LINES) && lines.length) break;
             lines.push({ t: Math.round(Number(r.start_sec) * 10) / 10, text: text.slice(0, 1000), vod_id: r.vod_id });
             n += w;
@@ -397,4 +430,4 @@ function start() {
 }
 function stop() { if (typeof _job === 'function') _job(); _job = null; }
 
-module.exports = { start, stop, tick, readStretch, writeEpisode, refreshTopic, keepSegments, topicFor, nextStretch, ready, optedOut, MAX_LINES, _test: { reset() { _calls = []; _announced = []; _fails = new Map(); _repeated = { at: 0, set: new Set() }; _langs = new Map(); _people = { at: 0, entries: [] }; } } };
+module.exports = { start, stop, tick, readStretch, writeEpisode, refreshTopic, keepSegments, topicFor, nextStretch, ready, optedOut, MAX_LINES, _test: { reset() { _calls = []; _announced = []; _fails = new Map(); _repeated = { at: 0, set: new Set() }; _langs = new Map(); _people = { at: 0, entries: [] }; _chat = new Map(); } } };
