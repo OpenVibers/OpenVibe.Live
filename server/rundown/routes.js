@@ -11,7 +11,7 @@
  *   POST /react {type, id, reaction}     one per reader per item (fire, lol, dead, cap, facts); the same again takes it back
  *   POST /hide {type, id}       staff: take a segment, episode or topic down
  *   GET|PUT /opt-out {out}      signed in: keep yourself out of the Rundown (or come back)
- *   GET  /voice/:user?t=        a line in that streamer's chat voice (server/arena/voice.js)
+ *   GET  /voice/:user?t=        a line in that streamer's chat voice (server/rundown/voice.js)
  */
 const crypto = require('crypto');
 const express = require('express');
@@ -78,7 +78,7 @@ router.put('/opt-out', requireAuth, async (req, res) => {
 });
 router.get('/voice/:user', optionalAuth, async (req, res) => {
     try {
-        const voice = require('../arena/voice');
+        const voice = require('./voice');
         if (!voice.allow(req.ip, !!req.user)) return res.status(429).json({ error: 'Slow down — too many voice requests' });
         const text = voice.cleanText(req.query.t || '');
         if (text.length < 2) return res.status(400).json({ error: 'Nothing to say' });

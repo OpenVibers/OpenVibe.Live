@@ -96,7 +96,6 @@ async function check(name, fn) {
     const translate = require('../server/i18n/translate');
     const recap = require('../server/recap/recap');
     const budget = require('../server/ai/viewers/budget');
-    const arena = require('../server/arena/arena-service');
     const media = require('../server/media-client');
     media.listVods = async () => ({ vods: [] });
     media.listClips = async () => ({ clips: [] });
@@ -156,8 +155,6 @@ async function check(name, fn) {
             const r = await recap.buildRecap(sid);
             assert.ok(r && r.write && r.write.headline, 'the template report still ships');
             assert.strictEqual(r.ai, false);
-            assert.strictEqual(arena.imageGenAvailable(), false);
-            assert.strictEqual(await arena.generateImage(40), null, 'no portrait is drawn');
             if (label === 'AI_SERVICE=off') {
                 // A streamer's key in OpenVibe.AI is not used either while the service is off.
                 assert.strictEqual(await llm.complete({ role: 'chat', user: 'hi', provider: { credentialSubject: SUBJECT } }), null);

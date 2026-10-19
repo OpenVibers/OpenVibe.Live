@@ -240,7 +240,7 @@ contextRouter.get('/anon-first-seen', async (req, res) => {
 
 contextRouter.get('/tts-audio/:file', (req, res) => {
     try {
-        const hit = require('../arena/voice').cachedByName(req.params.file);
+        const hit = require('../rundown/voice').cachedByName(req.params.file);
         if (!hit) return fail(res, 404, 'No such clip');
         res.set({ 'Content-Type': hit.mimeType });
         require('stream').pipeline(require('fs').createReadStream(hit.path), res, () => {});   // closes the file when the listener leaves
@@ -450,7 +450,7 @@ effectsRouter.post('/arena-command', async (req, res) => {
         track: (p) => { work = p; },
     };
     let handled = false;
-    try { handled = await require('../arena/arena-chat').handle(shim, null, client, String(req.body.cmd || ''), Array.isArray(req.body.parts) ? req.body.parts : []); } catch (e) { console.warn('[Arena] chat command:', e.message); }
+    try { handled = await require('../rundown/chat-commands').handle(shim, null, client, String(req.body.cmd || ''), Array.isArray(req.body.parts) ? req.body.parts : []); } catch (e) { console.warn('[Arena] chat command:', e.message); }
     if (work) { try { await work; } catch { /* the command answers its own errors */ } }
     res.json(replies.length ? { handled: !!handled, replies } : { handled: !!handled });
 });

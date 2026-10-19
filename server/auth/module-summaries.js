@@ -5,7 +5,7 @@
  *   live.profile  channel_url, followers, is_streamer, last_live_at (public), stream_minutes_30d
  *   live.stats    streams_30d, stream_minutes_30d, peak_viewers_30d (public), avg_viewers_30d,
  *                 new_followers_30d, computed_at
- *   live.loyalty  channel_points_total, channels (top ten by points), arena_level, arena_xp,
+ *   live.loyalty  channel_points_total, channels (top ten by points) (the Arena's level and XP went with the Arena),
  *                 computed_at; private (contracts 0.56.0, WS-K task 9). Loyalty, never money.
  *
  * Summaries only: streams and follows stay Live's truth. Written with Live's service token (grants
@@ -72,7 +72,7 @@ async function summarize(userId, { now = Date.now() } = {}) {
 
 const LOYALTY_MIN_INTERVAL_MS = 30 * 60 * 1000; // points move while people watch: at most one write per half hour
 
-/** live.loyalty for one account: channel points (top ten channels) and the Arena level, or null when
+/** live.loyalty for one account: channel points (top ten channels), or null when
  *  there is nothing to say. Once a record was written, an account whose points are gone gets zeros. */
 async function loyaltyOf(userId) {
     const d = db.getDb();
@@ -80,15 +80,11 @@ async function loyaltyOf(userId) {
         WHERE cp.user_id = ? AND cp.balance > 0 ORDER BY cp.balance DESC, u.username LIMIT 10`).all(userId))
         .map((r) => ({ channel: String(r.channel).slice(0, 64), points: r.points }));
     const total = (await d.prepare('SELECT COALESCE(SUM(balance), 0)::bigint AS n FROM channel_points WHERE user_id = ? AND balance > 0').get(userId)).n;
-    let arena = null;
-    try { arena = await d.prepare('SELECT xp, level FROM arena_trash_levels WHERE user_id = ?').get(userId) || null; } catch { /* the arena tables do not exist yet */ }
-    if (!total && !arena) {
+    if (!total) {
         const had = await d.prepare("SELECT 1 FROM module_summary_pushes WHERE user_id = ? AND namespace = 'live.loyalty'").get(userId);
         return had ? { channel_points_total: 0, channels: [] } : null;
     }
-    const out = { channel_points_total: total, channels };
-    if (arena) { out.arena_level = Math.max(1, Number(arena.level) || 1); out.arena_xp = Math.max(0, Number(arena.xp) || 0); }
-    return out;
+    return { channel_points_total: total, channels };
 }
 
 function client() {
@@ -138,9 +134,6 @@ async function push(userId, { modules = client(), now = Date.now(), force = fals
     return written;
 }
 
-const tableExists = async (name) => Boolean(await db.getDb().prepare("SELECT 1 FROM information_schema.tables WHERE table_schema = current_schema() AND table_name = ?").get(name));
-const arenaLog = async () => await tableExists('arena_xp_log');
-const arenaLevels = async () => await tableExists('arena_trash_levels');
 
 let lastScan = null;
 /** People whose stream ended, or who gained a follower, since the previous scan. */
@@ -151,8 +144,7 @@ async function scan({ modules = client(), now = Date.now() } = {}) {
     const ids = (await db.getDb().prepare(`SELECT user_id AS id FROM streams WHERE ended_at >= ? AND ended_at < ?
         UNION SELECT streamer_id AS id FROM follows WHERE created_at >= ? AND created_at < ?
         UNION SELECT user_id AS id FROM streams WHERE started_at >= ? AND started_at < ?
-        UNION SELECT user_id AS id FROM channel_points WHERE updated_at >= ? AND updated_at < ?${await arenaLog() ? `
-        UNION SELECT user_id AS id FROM arena_xp_log WHERE created_at >= ? AND created_at < ?` : ''}`).all(...Array(await arenaLog() ? 5 : 4).fill([from, to]).flat())).map((r) => r.id);
+        UNION SELECT user_id AS id FROM channel_points WHERE updated_at >= ? AND updated_at < ?`).all(...Array(4).fill([from, to]).flat())).map((r) => r.id);
     for (const id of ids) await push(id, { modules, now });
     lastScan = to;
     stats.lastScanAt = new Date(now).toISOString();
@@ -166,8 +158,7 @@ async function refresh({ modules = client(), now = Date.now() } = {}) {
     const ids = (await db.getDb().prepare(`SELECT DISTINCT user_id AS id FROM streams WHERE started_at >= ?
         UNION SELECT DISTINCT streamer_id AS id FROM follows
         UNION SELECT DISTINCT user_id AS id FROM channel_points WHERE balance > 0
-        UNION SELECT user_id AS id FROM module_summary_pushes WHERE namespace = 'live.loyalty'${await arenaLevels() ? `
-        UNION SELECT user_id AS id FROM arena_trash_levels` : ''}`).all(since)).map((r) => r.id);
+        UNION SELECT user_id AS id FROM module_summary_pushes WHERE namespace = 'live.loyalty'`).all(since)).map((r) => r.id);
     for (const id of ids) await push(id, { modules, now, force: true });
     return ids.length;
 }
