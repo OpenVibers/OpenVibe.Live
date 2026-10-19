@@ -88,6 +88,12 @@ async function generateFor(kind, id, req, res) {
         if (!canManage && !isPublic) return res.status(403).json({ error: `Not your ${kind}` });
         const key = `${kind}:${Number(id)}`;
         if (noPictureKnown(key)) return res.json({ thumbnail_url: null });
+        // A recording still being written has no finished file to draw from: Media's job fails (a 500 every 5 minutes
+        // for VOD 5833 while it recorded, 2026-10-18). No picture yet; Media makes one when the recording finalizes.
+        if (kind === 'vod' && (meta.is_recording || meta.status === 'recording')) {
+            rememberNoPicture(key, MEDIA_BUSY_MS);
+            return res.json({ thumbnail_url: null });
+        }
         let out;
         try { out = await media.generateThumbnail(kind, id); } catch (err) {
             // Media's job failing (5xx) is Media's to fix, not this visitor's error: no picture for now, asked
