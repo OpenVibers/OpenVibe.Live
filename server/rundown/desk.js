@@ -34,6 +34,7 @@ const BACKFILL_DAYS = 7;
 const CALLS_PER_TICK = 4;
 const CALLS_PER_HOUR = 40;
 const KNOWN_TOPICS = 50;
+const MIN_SCORE = 3;            // a 1-2 is filler ("heading out for coffee", a garbled stretch): not kept
 const ANNOUNCE_PER_HOUR = 3;
 const ANNOUNCE_WITHIN_H = 6;
 
@@ -217,7 +218,7 @@ async function keepSegments(stream, stretch, segments, user, others = []) {
     for (const s of segments || []) {
         const title = clean(s.title, 90), what = clean(s.what, 500), take = clean(s.take, 300);
         let quip = clean(s.quip, 220);
-        if (!title || !what || !s.topic) continue;
+        if (!title || !what || !s.topic || (Number(s.score) || 1) < MIN_SCORE) continue;
         // An accusation the transcript never made is the desk's invention: the segment goes (its quip alone, the quip).
         if (filters.addsAccusation(`${title} ${what} ${take || ''}`, source)) continue;
         // A detail that places someone (a time zone, a school, an address…) drops the segment; in a quip, the quip.

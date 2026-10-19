@@ -19,7 +19,7 @@
    - a **topic**, concrete ("Supermarket fridges hacked in France", never "news"), and its kind (news, games, tech, life, music, sports, money, internet, chat, other);
    - a **headline**, **what** they talked about and **their take**;
    - the desk's **quip**, a dry late-night-host line about the take or the situation;
-   - a 1–5 **score**;
+   - a 1–5 **score** (a 1 or 2 is filler and isn't kept);
    - up to two **quotes**, copied word for word, with an English translation when they spoke another language.
 3. **Topics.** A segment joins the topic with the same slug, else a recent topic whose key words mostly match, else a new topic. A topic with new takes (2 or more in all) gets its page rewritten by `live.rundown.topic`: a headline, plus a summary of who said what and where they agree or clash.
 4. **Episodes.** When an ended stream is read to the end, `live.rundown.episode` writes it up from its segments: title, logline, a recap in 2–3 short paragraphs and chapters (VOD timestamps). A stream with no segments gets no episode.
@@ -46,7 +46,7 @@ Speech-to-text hears a stream's whole audio track. On 2026-10-18 the Arena's "qu
 
 - `/rundown`, the front page:
   - the masthead (date, counts) and the "On air now" strip, showing who is live and what they are talking about;
-  - **The latest:** episodes and the best takes (score 3 and up, or naming someone), newest first;
+  - **The latest:** episodes and the best takes (score 4 and up, or naming someone), newest first;
   - **Trending topics** this week (most streamers, then most takes);
   - **Who's been talking:** each streamer with their top topics, and how the desk works.
 - `/rundown/topics` lists every topic, by most recent or most talked about, with a filter by kind.
