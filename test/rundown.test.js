@@ -37,6 +37,8 @@ for (const t of ['back around eight mountain time', 'famous because of the schoo
 for (const t of ['First blood was mine', 'This is my favourite ride', 'Supermarket fridges hacked in France']) assert.ok(!filters.privateDetail(t), `not private: ${t}`);
 assert.ok(filters.sameTopic('League ranked matchmaking', 'Ranked matchmaking in League'));
 assert.ok(!filters.sameTopic('League ranked matchmaking', 'Moving apartments'));
+['chat', 'Games', 'life', 'Just chatting', 'the stream', 'x'].forEach((t) => assert.ok(filters.vagueTopic(t), `vague: ${t}`));
+assert.ok(!filters.vagueTopic('League ranked matchmaking') && !filters.vagueTopic('Halloween'));
 console.log('✅ filters: game lines, verbatim quotes, accusations, topics');
 
 // ── People and streams ──
@@ -257,12 +259,13 @@ console.log('✅ API: front page, topic, reactions as a signed-out reader; old /
     const prev = answers['live.rundown.segment'];
     answers['live.rundown.segment'] = (input) => input.streamer !== 'teenstreamer' ? prev(input) : { others: [], segments: [
         { start: 0, end: 5, topic: 'Streaming later tonight', kind: 'chat', title: 'Back at eight mountain time', what: 'teenstreamer will stream again around eight mountain time.', take: null, quip: 'x', score: 3, quotes: [] },
-        { start: 5, end: 300, topic: 'Theme park rides', kind: 'life', title: 'The best ride in the park', what: 'teenstreamer loved a ride.', take: 'This ride is the best.', quip: 'See you after school.', score: 3,
+        { start: 5, end: 300, topic: 'chat', kind: 'life', title: 'The best ride in the park', what: 'teenstreamer loved a ride.', take: 'This ride is the best.', quip: 'See you after school.', score: 3,
             quotes: [{ t: 0, text: 'I might live again later around eight mountain time', en: null }, { t: 10, text: 'this ride is honestly the best ride in the whole park', en: null }] },
     ] };
     desk._test.reset();
     await desk.tick();
     const kept = await db.all('SELECT title, quip, quotes_json FROM rundown_segments WHERE stream_id = ?', [st]);
+    assert.ok(!await db.get("SELECT 1 FROM rundown_topics WHERE slug = 'chat'"), 'a vague topic is never made');
     assert.deepStrictEqual(kept.map((k) => k.title), ['The best ride in the park'], 'a segment naming a time zone is dropped');
     assert.strictEqual(kept[0].quip, null, 'a quip about school is dropped');
     assert.deepStrictEqual(JSON.parse(kept[0].quotes_json).map((q) => q.text), ['this ride is honestly the best ride in the whole park'], 'a quote with a time zone is dropped');
