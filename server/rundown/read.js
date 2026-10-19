@@ -13,7 +13,7 @@
 const db = require('../db/database');
 
 const REACTIONS = ['fire', 'lol', 'dead', 'cap', 'facts'];
-const FEED_MIN_SCORE = 3;
+const FEED_MIN_SCORE = 4;       // the front page: a take scored 4 or 5, a crossover or an episode
 const parseJson = (s, d) => { try { return JSON.parse(s); } catch { return d; } };
 const daysAgo = (n) => new Date(Date.now() - n * 86400000).toISOString().slice(0, 19).replace('T', ' ');
 

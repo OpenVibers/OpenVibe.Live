@@ -75,7 +75,8 @@ const answers = {
         { start: 0, end: 40, topic: 'Supermarket fridges hacked in France', kind: 'tech', title: 'French fridges get hacked', what: 'goosely read about supermarket fridges in France getting hacked.', take: 'Putting the internet in a fridge is a bad idea.',
             quip: 'Somewhere a fridge is reading this.', score: 4, quotes: [{ t: 20, text: 'having the internet inside of a refrigerator is a bad idea', en: null }, { t: 20, text: 'fridges deserve rights', en: null }, { t: 10, text: 'You have slain an enemy', en: null }] },
         { start: 40, end: 60, topic: 'Fridge security', kind: 'tech', title: 'goosely threatens fridge makers', what: 'An invented threat.', take: null, quip: 'x', score: 3, quotes: [] },
-        { start: 60, end: 240, topic: 'League ranked matchmaking', kind: 'games', title: 'Ranked is pain', what: 'goosely talked about ranked.', take: null, quip: 'goosely attacked the ladder.', score: 2, quotes: [] },
+        { start: 60, end: 240, topic: 'League ranked matchmaking', kind: 'games', title: 'Ranked is pain', what: 'goosely talked about ranked.', take: null, quip: 'goosely attacked the ladder.', score: 3, quotes: [] },
+        { start: 240, end: 250, topic: 'Coffee', kind: 'life', title: 'Filler bit', what: 'goosely got a coffee.', take: null, quip: 'x', score: 2, quotes: [] },
     ] : [
         { start: 0, end: 100, topic: 'Supermarket fridges hacked in France', kind: 'tech', title: 'iZoR_One weighs in on the fridge hack', what: 'iZoR_One also talked about the hacked fridges.', take: 'Fridges should stay dumb.', quip: 'A rare unity.', score: 3, quotes: [] },
     ] }),
@@ -137,7 +138,8 @@ console.log('✅ desk: live streams wait for talk; topics gather streamers and g
 const home = await read.home({ viewer: 'anon:t' });
 assert.ok(home.latest.some((x) => x.type === 'episode' && x.title === 'The Fridge Files'), 'the episode is in the latest');
 assert.ok(home.latest.some((x) => x.type === 'segment' && x.title === 'French fridges get hacked'), 'a score-4 take is in the latest');
-assert.ok(!home.latest.some((x) => x.title === 'Ranked is pain'), 'a score-2 take without a name is not on the front page');
+assert.ok(!await db.get("SELECT 1 FROM rundown_segments WHERE title = 'Filler bit'"), 'a score-2 segment is filler: not kept');
+assert.ok(!home.latest.some((x) => x.title === 'Ranked is pain'), 'a score-3 take without a name is not on the front page');
 assert.strictEqual(home.trending[0].slug, 'supermarket-fridges-hacked-in-france');
 assert.strictEqual(home.trending[0].streamers, 2);
 assert.deepStrictEqual(Object.keys(home.latest[0].user).sort(), ['avatar_url', 'display_name', 'id', 'profile_color', 'username'], 'a person is five fields, never a users row');
