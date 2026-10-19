@@ -300,7 +300,7 @@ function activePage(html, names, reg) {
  * links the subset as the blocking stylesheet and the full style.css right after it, without blocking. Every other
  * route (the dashboard, settings, the broadcast desk, admin…) keeps style.css blocking, exactly as before.
  */
-const FIRST_PAINT_ROUTES = /^\/(?:$|content|vods|clips|moments|arena|chat|pastes|search)(?:[/?#]|$)|^\/@[A-Za-z0-9_]+\/?$|^\/(?:vod|clip)\/\d+\/?$/;
+const FIRST_PAINT_ROUTES = /^\/(?:$|content|vods|clips|moments|rundown|chat|pastes|search)(?:[/?#]|$)|^\/@[A-Za-z0-9_]+\/?$|^\/(?:vod|clip)\/\d+\/?$/;
 const STYLE_LINK = /<link rel="stylesheet" href="(\/css\/style\.css\?v=[A-Za-z0-9_.-]+)">/;
 function firstPaintCss(html, urlPath) {
     const p = String(urlPath || '/').split(/[?#]/)[0] || '/';

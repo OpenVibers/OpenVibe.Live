@@ -220,7 +220,7 @@ async function _pageMeta(routePath, { page = 1 } = {}) {
     if ((m = p.match(/^\/p\/([A-Za-z0-9_-]+)$/))) return await _pasteMeta(m[1]);
     if ((m = p.match(CHANNEL_PATH_RE))) return await _channelMeta(m[1], page);
     if ((m = p.match(/^\/recap\/(\d+)$/))) return await _recapMeta(parseInt(m[1], 10));
-    if (p === '/arena') return await _arenaMeta();
+    if (p === '/rundown' || p.startsWith('/rundown/')) return await _rundownMeta(p);
     // Search results (public/js/app-search.js) are never indexed; the page itself is findable.
     if (p === '/search') return { title: `Search | ${SITE_NAME}`, description: 'Search channels, VODs and clips on OpenVibe.Live.', canonicalPath: '/search', ogType: 'website', robots: 'noindex,follow', jsonLd: [] };
     // The global chat room: its own title and canonical (the shell left it with neither; browser check, WS-Q task 3).
@@ -358,31 +358,63 @@ const _day = (dt) => { const d = isoDate(dt); return d ? d.slice(0, 10) : null; 
 /** A person's clip's clipper, from Live's accounts (Media rows carry ids only). */
 async function _clipperOf(c) { return c.display_name || c.username || _nameOf(await _channelOwner(c.user_id)); }
 
-// The Arena: a real content page (mic-judged trash talk), so give it real metadata.
-async function _arenaMeta() {
-    let fighters = [], moments = [];
-    try { fighters = (await require('../arena/arena-service').loadRoster() || {}).order || []; } catch { fighters = []; }
-    try { moments = await require('../arena/mic').feed({ limit: 10 }) || []; } catch { moments = []; }
-    const nameOf = async (id) => { try { return await require('../arena/mic').nameOf(id); } catch { return null; } };
-    const names = (await Promise.all(fighters.slice(0, 8).map(nameOf))).filter(Boolean);
-    const title = 'The Arena — Mic-Judged Trash Talk Between Streamers';
-    const desc = clean(`Every callout streamers make on mic, judged and ranked. ${names.length ? 'Fighters right now: ' + names.slice(0, 5).join(', ') + '. ' : ''}Chat can hype a beef but never write one.`, 200);
-    const items = moments.slice(0, 10).map((mo) => ({ name: clean(mo.text || 'Mic moment', 110) }));
-    const snapshot = _detailSnapshot({
-        title: 'The Arena', byline: names.length ? `Fighters: ${names.join(', ')}` : null,
-        desc, overview: moments.slice(0, 8).map(mo => mo.text).filter(Boolean).join(' · ') || null,
-        transcript: null, canonicalPath: '/arena', watchLabel: 'Open the Arena',
-    });
-    return {
-        title: `${title} | ${SITE_NAME}`, description: desc, canonicalPath: '/arena',
-        image: DEFAULT_OG_IMAGE, ogType: 'website', robots: 'index,follow',
-        jsonLd: [
-            seo.jsonLd.webPage({ type: 'CollectionPage', name: title, url: abs('/arena'), description: desc }),
-            ...(items.length ? [seo.jsonLd.itemList('Latest mic moments', items)] : []),
-            _breadcrumb([{ name: 'Home', url: '/' }, { name: 'The Arena', url: '/arena' }]),
-        ],
-        snapshot,
-    };
+// The Rundown (server/rundown/): what streamers talked about, written up by the desk. The front page and the topic index
+// are collection pages people browse, so they are indexed; a topic, an episode and a streamer's page are AI-written text
+// about real people, so they are noindex,follow, like the AI recap and the Wiki's AI pages until a person reviews them.
+async function _rundownMeta(p) {
+    const read = require('../rundown/read');
+    const crumbs = [{ name: 'Home', url: '/' }, { name: 'The Rundown', url: '/rundown' }];
+    const base = { image: DEFAULT_OG_IMAGE, ogType: 'website' };
+    let m;
+    if (p === '/rundown') {
+        let home = null;
+        try { home = await read.home({}); } catch { home = null; }
+        const topics = (home && home.trending || []).map((t) => t.title);
+        const eps = (home && home.latest || []).filter((x) => x.type === 'episode');
+        const title = 'The Rundown — What Streamers Talked About';
+        const desc = clean(`Topics, takes and episodes from OpenVibe.Live streams, in the streamers' own words.${topics.length ? ` Trending: ${topics.slice(0, 4).join(', ')}.` : ''}`, 200);
+        return { ...base, title: `${title} | ${SITE_NAME}`, description: desc, canonicalPath: '/rundown', robots: 'index,follow',
+            jsonLd: [seo.jsonLd.webPage({ type: 'CollectionPage', name: title, url: abs('/rundown'), description: desc }),
+                ...(eps.length ? [seo.jsonLd.itemList('Latest episodes', eps.slice(0, 10).map((e) => ({ name: clean(e.title, 110), url: abs(`/rundown/e/${e.stream_id}`) })))] : []),
+                _breadcrumb(crumbs)],
+            snapshot: _detailSnapshot({ title: 'The Rundown', byline: topics.length ? `Trending: ${topics.slice(0, 6).join(', ')}` : null, desc, overview: eps.slice(0, 6).map((e) => e.title).join(' · ') || null, transcript: null, canonicalPath: '/rundown', watchLabel: 'Open The Rundown' }) };
+    }
+    if (p === '/rundown/topics') {
+        let list = [];
+        try { list = (await read.topics({})).topics; } catch { list = []; }
+        const desc = clean(`Every topic streamers on OpenVibe.Live talked about, with each streamer's take.${list.length ? ` Lately: ${list.slice(0, 5).map((t) => t.title).join(', ')}.` : ''}`, 200);
+        return { ...base, title: `Topics — The Rundown | ${SITE_NAME}`, description: desc, canonicalPath: '/rundown/topics', robots: 'index,follow',
+            jsonLd: [seo.jsonLd.webPage({ type: 'CollectionPage', name: 'Topics', url: abs('/rundown/topics'), description: desc }), _breadcrumb([...crumbs, { name: 'Topics', url: '/rundown/topics' }])] };
+    }
+    if ((m = p.match(/^\/rundown\/t\/([a-z0-9-]{1,80})$/))) {
+        let d = null;
+        try { d = await read.topic(m[1]); } catch { d = null; }
+        if (!d) return null;
+        const t = d.topic;
+        const desc = clean(t.summary || t.headline || `${t.streamers} streamer${t.streamers === 1 ? '' : 's'} on ${t.title}.`, 200);
+        return { ...base, title: `${clean(t.title, 80)} — The Rundown | ${SITE_NAME}`, description: desc, canonicalPath: `/rundown/t/${t.slug}`, robots: 'noindex,follow',
+            jsonLd: [_breadcrumb([...crumbs, { name: 'Topics', url: '/rundown/topics' }, { name: t.title, url: `/rundown/t/${t.slug}` }])] };
+    }
+    if ((m = p.match(/^\/rundown\/e\/(\d{1,12})$/))) {
+        let d = null;
+        try { d = await read.episode(m[1]); } catch { d = null; }
+        if (!d) return null;
+        const who = d.stream.user ? (d.stream.user.display_name || d.stream.user.username) : 'A streamer';
+        const title = d.episode ? d.episode.title : `${who}'s stream`;
+        const desc = clean((d.episode && (d.episode.logline || d.episode.recap)) || `What ${who} talked about on stream.`, 200);
+        return { ...base, title: `${clean(title, 80)} — ${clean(who, 40)} | The Rundown`, description: desc, canonicalPath: `/rundown/e/${d.stream.id}`, robots: 'noindex,follow',
+            jsonLd: [_breadcrumb([...crumbs, { name: title, url: `/rundown/e/${d.stream.id}` }])] };
+    }
+    if ((m = p.match(/^\/rundown\/([A-Za-z0-9_.-]{1,64})$/))) {
+        let d = null;
+        try { d = await read.streamer(m[1]); } catch { d = null; }
+        if (!d) return null;
+        const who = d.user.display_name || d.user.username;
+        const desc = clean(d.opted_out ? `${who} keeps themselves out of The Rundown.` : `What ${who} talks about on stream: ${d.topics.slice(0, 5).map((t) => t.title).join(', ') || 'episodes and takes'}.`, 200);
+        return { ...base, title: `${clean(who, 40)} — The Rundown | ${SITE_NAME}`, description: desc, canonicalPath: `/rundown/${encodeURIComponent(d.user.username)}`, robots: 'noindex,follow',
+            jsonLd: [_breadcrumb([...crumbs, { name: who, url: `/rundown/${encodeURIComponent(d.user.username)}` }])] };
+    }
+    return null;
 }
 
 // After-show report: /recap/:streamId
@@ -991,7 +1023,7 @@ function _cacheSet(key, html, ttl = CACHE_TTL_MS) {
     _cache.set(key, { html, at: Date.now(), ttl });
 }
 
-const SEO_ROUTE_RE = /^\/(?:$|content$|moments$|vods$|clips$|pastes$|arena$|chat$|search$|vod\/\d+$|clip\/\d+$|recap\/\d+$|p\/[A-Za-z0-9_-]+$|@[A-Za-z0-9_]{3,24}$)/;
+const SEO_ROUTE_RE = /^\/(?:$|content$|moments$|vods$|clips$|pastes$|rundown(?:\/(?:topics|t\/[a-z0-9-]{1,80}|e\/\d{1,12}|[A-Za-z0-9_.-]{1,64}))?$|chat$|search$|vod\/\d+$|clip\/\d+$|recap\/\d+$|p\/[A-Za-z0-9_-]+$|@[A-Za-z0-9_]{3,24}$)/;
 
 /** ?page=N on a channel page (its video list); 1 everywhere else and for anything that is not a number. */
 function _pageParam(p, query) {

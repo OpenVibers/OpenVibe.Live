@@ -31,7 +31,7 @@ function pageKind(path) {
     if (/^\/@[^/]+\/?$/.test(p)) return 'channel';
     if (/^\/vod\//.test(p)) return 'vod';
     if (/^\/clip\//.test(p)) return 'clip';
-    if (/^\/(chat|broadcast|dashboard|moments|content|arena|search)(\/|$)/.test(p)) return p.split('/')[1];
+    if (/^\/(chat|broadcast|dashboard|moments|content|rundown|search)(\/|$)/.test(p)) return p.split('/')[1];
     return 'other';
 }
 const deviceClass = (w) => (w > 0 && w < 600 ? 'phone' : w > 0 && w < 1024 ? 'tablet' : 'desktop');

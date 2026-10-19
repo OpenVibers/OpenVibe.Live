@@ -202,11 +202,14 @@ console.log('✅ roster + ratings are pure mic');
     assert.strictEqual(await run({ user: { id: viewer, username: 'viewer' }, streamId: liveId, ip: '1.1.1.1' }, '!topic anything'), false, '!topic no longer exists');
     assert.strictEqual(await run({ anonId: 'b1', streamId: liveId }, '!bounty nova'), false, '!bounty no longer exists');
     assert.strictEqual(await run({ anonId: 'b2', streamId: liveId }, '!board'), false, '!board no longer exists');
+    // The Arena became The Rundown (2026-10-19): !hype and !beef point there, !arena answers with the streamer's Rundown.
     await run({ user: { id: viewer, username: 'viewer', display_name: 'Viewer' }, streamId: liveId, ip: '1.1.1.1' }, '!hype');
-    assert.ok(sent.pop().includes('Hyped'), 'hype goes to the streamer\'s open beef');
+    assert.match(sent.pop(), /Beefs are gone.*\/rundown$/);
     await run({ anonId: 'zz', streamId: liveId }, '!beef');
-    assert.ok(sent.pop().includes('on the clock'));
-    console.log('✅ chat: !hype / !beef only');
+    assert.match(sent.pop(), /Beefs are gone/);
+    await run({ anonId: 'zy', streamId: liveId }, '!arena');
+    assert.match(sent.pop(), /rundown/i);
+    console.log('✅ chat: !hype / !beef point to The Rundown');
 
     // ── Backfill: past speech on ended streams gets judged into the feed (heuristic judges, no AI) ──
     const backfill = require('../server/arena/backfill');

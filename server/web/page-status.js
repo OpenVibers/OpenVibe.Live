@@ -17,7 +17,7 @@
  *   /search                                             Live's channels, VODs and clips through OpenVibe.Search
  *   /vods /clips /pastes /updates /documentation        exact path (the first three are /content filtered)
  *   /settings /admin /themes                            exact path (the client redirects them)
- *   /dashboard/… /broadcast/… /chat/… /arena/…          any depth: these pages route sub-paths themselves
+ *   /dashboard/… /broadcast/… /chat/… /rundown/…        any depth: these pages route sub-paths themselves (/arena/… redirects)
  *   /@user  /@user/<slot>                               a user that exists; a renamed one's old name
  *                                                       answers 301 → /@current (never a bare /name)
  *   /vod/:id  /clip/:id                                 a Media item this visitor may see — a private
@@ -44,7 +44,7 @@ const NOT_FOUND = 404;
 // Pages that exist only at their exact path.
 const EXACT = new Set(['content', 'moments', 'vods', 'clips', 'pastes', 'updates', 'documentation', 'settings', 'admin', 'themes', 'search']);
 // Pages that route their own sub-paths (dashboard tabs, broadcast slots, chat rooms, arena fighters).
-const PREFIX = new Set(['dashboard', 'broadcast', 'chat', 'arena']);
+const PREFIX = new Set(['dashboard', 'broadcast', 'chat', 'arena', 'rundown']);
 
 // The client's channel-name rule (CHANNEL_USERNAME_RE in public/js/app.js); anything else it
 // never treats as a channel.

@@ -69,7 +69,7 @@ The media subsystem lives in **OpenVibe.Media**:
 - Channels and streams: go-live, stream keys, managed streams, heartbeats, channel pages (`/@username`), offline screens, panels and goals.
 - The watch experience: the SPA in `public/`, the chat surface and its effects (TTS, sounds, emotes, overlays), anonymous chat identities.
 - Streamer tools: the dashboard, restreaming (via OpenRestream for managed ingest), song requests (watch party), AI viewers (the context Live builds; the runs are OpenVibe.AI's).
-- Channel points, Vibes tipping flows (OpenVibe.Billing keeps the ledger since 2026-10-17), moderation of Live's own surfaces, the Arena (ARENA ALERT: the drama desk on streamer activity, the Lolcow Index and Clout Rankings, beefs from the mic; docs/arena.md) and after-show recaps. Live transcripts come from NVIDIA Parakeet TDT on the server (whisper for other languages).
+- Channel points, Vibes tipping flows (OpenVibe.Billing keeps the ledger since 2026-10-17), moderation of Live's own surfaces, The Rundown (what streamers talked about, written up from their speech: topics, takes in their own words and every stream as an episode; docs/rundown.md, replacing the Arena on 2026-10-19) and after-show recaps. Live transcripts come from NVIDIA Parakeet TDT on the server (whisper for other languages).
 - Live-local state: PostgreSQL `ov_live` (users' Live profiles, streams, channel state, AI state for Media-hosted recordings in `vod_ai_state` / `clip_ai_state`, request analytics).
 
 ## Does not own

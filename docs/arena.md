@@ -1,3 +1,5 @@
+> **The Arena is gone (2026-10-19).** It became [The Rundown](rundown.md): what streamers talked about, written up — no beefs, ratings, Lolcow Index or Clout Rankings. Its jobs are off and `/arena` redirects to `/rundown`; this page describes the old code until it is removed.
+
 # Arena — ARENA ALERT (v4, 2026-10-16)
 
 The **Arena** tab (`/arena`) is the site's drama desk and competitive board, in the owner's words "drama alert type competitive shit … based on streamer activity". It replaced the mic-only Battle Cam home (v3, 2026-09-10): the mic still feeds it (beefs, the judged lines), and now so does everything else streamers measurably do.

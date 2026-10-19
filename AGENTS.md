@@ -81,7 +81,7 @@ Every file below is also served on the site at `/docs/<name>` (rendered by `serv
 - [docs/broadcasting.md](docs/broadcasting.md) — Streaming protocols (WebRTC/RTMP/JSMPEG/WHIP)
 - [docs/go-live-in-your-browser.md](docs/go-live-in-your-browser.md) — Going live from a browser with no OBS and no follower minimum (the headline feature: keep it on the home page, in /llms.txt and in search metadata)
 - [docs/whip.md](docs/whip.md) — WHIP ingest API reference (auth forms, CORS, browser-only publishing, error codes)
-- [docs/arena.md](docs/arena.md) — Arena tab (streamer vs streamer): ratings, AI personas, gated portrait generation, battles, votes
+- [docs/rundown.md](docs/rundown.md) — The Rundown (`/rundown`, was the Arena): what streamers talked about, written up from their speech — topics, takes, episodes, crossovers
 - [docs/chat-system.md](docs/chat-system.md) — Chat features and moderation
 - [docs/api-tokens.md](docs/api-tokens.md) — Bot/integration token system
 - [docs/vods-and-clips.md](docs/vods-and-clips.md) — VOD/clip pipeline (pre-split; storage/cutting now in OpenVibe.Media)

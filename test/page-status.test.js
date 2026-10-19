@@ -136,7 +136,7 @@ async function main() {
     await check('every real route answers 200', () => expectAll([
         '/', '/content', '/content/', '/moments', '/vods', '/vods/', '/clips', '/pastes', '/updates', '/documentation', '/settings', '/admin', '/themes', '/search',
         '/dashboard', '/dashboard/anything', '/broadcast', '/broadcast/slot-2', '/chat', '/chat/voice/lobby',
-        '/arena', '/arena/beef/4', '/arena/alice',
+        '/arena', '/arena/beef/4', '/arena/alice', '/rundown', '/rundown/topics', '/rundown/t/fridges', '/rundown/e/12', '/rundown/alice',
         '/@alice', '/@Alice', '/@alice/', '/@alice/main', '/@bob',
         '/vod/100', '/vod/103', '/clip/200', '/p/abc123',
         `/recap/${streamA}`, `/stream/${streamA}`,
