@@ -8,6 +8,7 @@
  *   gameLine(text)          a line a game says, never a streamer's own words (also dropped before the AI reads them)
  *   verifiedQuote(q, text)  a quote is kept only when it is in the transcript the AI read, word for word, and is no game line
  *   addsAccusation(t, src)  an AI line may use an accusing word (threat, attack, scam…) only when the transcript did
+ *   privateDetail(text)     a time zone, school, street address, phone number or email: never kept
  *   slugify / sameTopic     topic identity
  *   lineLang(text)          a line's language, roughly (desk.js keeps a streamer's own languages, so a clip in Portuguese
  *                           playing on a Greek streamer's stream is never theirs)
@@ -80,6 +81,23 @@ function addsAccusation(text, source) {
     return (String(text || '').match(ACCUSING) || []).some((w) => !have.has(root(w)));
 }
 
+// Details that place a person (the prompts forbid them; this is the check after): a time zone, school, a street address,
+// a phone number or an email address. A teen streamer's theme-park stream was written up with "around eight mountain
+// time" and school details on the first night (2026-10-19).
+const PRIVATE = [
+    /\b(?:mountain|pacific|eastern|central|atlantic|alaska|hawaii)\s+(?:standard\s+|daylight\s+)?time\b/i,
+    /\b(?:[ECMP][SD]T|AKST|HST)\b/,
+    /\b(?:my|our|at|his|her|their|the|to|from|after)\s+(?:high\s+|middle\s+|elementary\s+)?school\b|\bschool\s+(?:newspaper|bus|trip|kids)\b|\bclassmates?\b|\bhomeroom\b|\bmy\s+teacher\b/i,
+    /\b\d{1,5}\s+(?:[A-Z][a-z]+\s+){1,3}(?:Street|St|Avenue|Ave|Road|Rd|Boulevard|Blvd|Lane|Ln|Drive|Dr|Court|Ct|Way)\b/,
+    /(?:\+?\d[\s().-]?){10,}/,
+    /\b[\w.+-]+@[\w-]+\.[\w.-]+\b/,
+];
+/** Does `text` name a time zone, a school, a street address, a phone number or an email address? */
+function privateDetail(text) {
+    const t = String(text || '');
+    return PRIVATE.some((re) => re.test(t));
+}
+
 function slugify(title) {
     return norm(title).replace(/ /g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '').slice(0, 80).replace(/-$/, '');
 }
@@ -95,4 +113,4 @@ function sameTopic(a, b) {
     return both / (x.size + y.size - both) >= 0.6;
 }
 
-module.exports = { gameLine, verifiedQuote, addsAccusation, slugify, sameTopic, norm, lineLang, GAME_LINES };
+module.exports = { gameLine, verifiedQuote, addsAccusation, privateDetail, slugify, sameTopic, norm, lineLang, GAME_LINES };

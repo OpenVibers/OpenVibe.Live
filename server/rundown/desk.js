@@ -220,13 +220,16 @@ async function keepSegments(stream, stretch, segments, user, others = []) {
         if (!title || !what || !s.topic) continue;
         // An accusation the transcript never made is the desk's invention: the segment goes (its quip alone, the quip).
         if (filters.addsAccusation(`${title} ${what} ${take || ''}`, source)) continue;
-        if (quip && filters.addsAccusation(quip, source)) quip = null;
+        // A detail that places someone (a time zone, a school, an address…) drops the segment; in a quip, the quip.
+        if (filters.privateDetail(`${s.topic} ${title} ${what} ${take || ''}`)) continue;
+        if (quip && (filters.addsAccusation(quip, source) || filters.privateDetail(quip))) quip = null;
         const span = stretch.lines.filter((l) => l.t >= Number(s.start) - 1 && l.t <= Number(s.end) + 1);
         if (span.length && span.filter(isOther).length / span.length > 0.6) continue;
         const spanText = (span.length ? span.filter((l) => !isOther(l)) : own).map((l) => l.text).join('\n');
         const quotes = (s.quotes || []).map((q) => {
             const text = filters.verifiedQuote(q.text, source);
-            return text ? { text, sec: Number(q.t) || Number(s.start) || 0, en: q.en ? clean(q.en, 400) : null } : null;
+            if (!text || filters.privateDetail(text) || (q.en && filters.privateDetail(q.en))) return null;
+            return { text, sec: Number(q.t) || Number(s.start) || 0, en: q.en ? clean(q.en, 400) : null };
         }).filter(Boolean).slice(0, 2);
         const at = sqlTime(startedMs + (Number(s.start) || 0) * 1000);
         const topic = await topicFor(clean(s.topic, 120), s.kind, at);
@@ -282,9 +285,9 @@ async function writeEpisode(stream, user) {
     }, user.id);
     if (!out || !out.title || !out.recap) return { called: true, failed: true };
     const source = segs.map((s) => `${s.title} ${s.what} ${s.take || ''} ${parseJson(s.quotes_json, []).map((q) => q.text).join(' ')}`).join('\n');
-    const recap = filters.addsAccusation(out.recap, source) ? null : clean(out.recap.replace(/\n\s*\n/g, ' ¶ '), 1400);
+    const recap = filters.addsAccusation(out.recap, source) || filters.privateDetail(out.recap) ? null : clean(out.recap.replace(/\n\s*\n/g, ' ¶ '), 1400);
     const title = clean(out.title, 80);
-    if (!title || filters.addsAccusation(`${out.title} ${out.logline || ''}`, source)) { await setProgress(stream.id, stream.read_to_sec, 1); return { called: true, failed: true }; }
+    if (!title || filters.addsAccusation(`${out.title} ${out.logline || ''}`, source) || filters.privateDetail(`${out.title} ${out.logline || ''}`)) { await setProgress(stream.id, stream.read_to_sec, 1); return { called: true, failed: true }; }
     const chapters = (out.chapters || []).map((c) => segs[c.index] ? { sec: Math.round(Number(segs[c.index].start_sec)), title: clean(c.title, 60), segment_id: segs[c.index].id } : null).filter((c) => c && c.title);
     const vod = (segs.find((s) => s.vod_id) || {}).vod_id || null;
     await db.run(`INSERT INTO rundown_episodes (stream_id, user_id, title, logline, recap, chapters_json, vod_id, minutes, aired_at)
@@ -320,7 +323,7 @@ async function refreshTopic(topicId) {
     if (!takes.length) return { called: false };
     const out = await ai('live.rundown.topic', { topic: topic.title, takes: takes.map((t) => ({ streamer: t.display_name || t.username, when: String(t.said_at).slice(0, 10), what: t.what, take: t.take || null, quote: (parseJson(t.quotes_json, [])[0] || {}).text || null })) }, null);
     const source = takes.map((t) => `${t.what} ${t.take || ''} ${parseJson(t.quotes_json, []).map((q) => q.text).join(' ')}`).join('\n');
-    if (!out || !out.summary || filters.addsAccusation(`${out.headline || ''} ${out.summary}`, source)) {
+    if (!out || !out.summary || filters.addsAccusation(`${out.headline || ''} ${out.summary}`, source) || filters.privateDetail(`${out.headline || ''} ${out.summary}`)) {
         await db.run('UPDATE rundown_topics SET summary_takes = ?, summary_at = ov_now() WHERE id = ?', [takes.length, topicId]);
         return { called: true, failed: true };
     }
