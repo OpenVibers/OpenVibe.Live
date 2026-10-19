@@ -195,6 +195,22 @@ try {
 } finally { server.close(); }
 console.log('✅ API: front page, topic, reactions as a signed-out reader; old /arena links');
 
+// ── Lines heard on 3+ streams (voice lines, hallucinations on silence) never reach the AI ──
+{
+    const echo = await mk('echoes');
+    const ghost = 'Thanks for watching, and I\'ll see you in the next video.';
+    for (let i = 0; i < 3; i++) { const old = await stream(echo, { startedAgoMin: 30 * 1440 + i, endedAgoMin: 30 * 1440 - 60 }); await speak(old, echo, [ghost]); }
+    const fresh = await mk('freshone');
+    const sf = await stream(fresh, { startedAgoMin: 200, endedAgoMin: 100, title: 'Fresh' });
+    await speak(sf, fresh, [ghost, ...filler(25, 'My own words')]);
+    desk._test.reset();
+    await desk.tick();
+    const c = calls.filter((x) => x.workflow === 'live.rundown.segment' && x.input.streamer === 'freshone');
+    assert.strictEqual(c.length, 1);
+    assert.ok(!c[0].input.lines.some((l) => /next video/.test(l.text)) && c[0].input.lines.some((l) => /My own words/.test(l.text)), 'the repeated line is out, their own words are in');
+    console.log('✅ lines heard on three streams never reach the AI');
+}
+
 // ── Limits: a stretch is at most MAX_LINES lines; a stretch the AI keeps refusing is skipped after three tries ──
 {
     const greek = await mk('greekline');

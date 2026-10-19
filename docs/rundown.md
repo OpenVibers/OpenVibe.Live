@@ -31,7 +31,7 @@ The first deploy reads back the last 7 days, newest streams first. At most 4 AI 
 
 Speech-to-text hears a stream's whole audio track. On 2026-10-18 the Arena's "quote of the day" was League of Legends' announcer ("You have slain an enemy"), credited to a streamer. The desk's rules (`server/rundown/filters.js` and the prompts in OpenVibe.AI):
 
-- **Game lines** (League, Counter-Strike and Valorant announcer and system lines) never reach the AI and are never a quote. The prompt tells the AI that announcers, characters, lyrics, ads, video narration and articles read aloud are never the streamer; a reaction to them is the take.
+- **Game lines** (League, Counter-Strike and Valorant announcer and system lines) never reach the AI and are never a quote. Neither does a line heard word for word on 3 or more different streams in 30 days: a game's voice lines ("Wanna see a trick?"), speech-to-text's hallucinations on silence ("Thanks for watching, and I'll see you in the next video.") and stock filler. The prompt tells the AI that announcers, characters, lyrics, ads, video narration and articles read aloud are never the streamer; a reaction to them is the take.
 - **A quote** is kept only when it is in the transcript the AI read, word for word.
 - **No invented accusations.** A headline, account or take that uses an accusing word (threat, attack, scam, hacked…) the transcript never used drops the whole segment; in a quip, only the quip goes. Episodes and topic pages follow the same rule.
 - **No looks, ever.** Every text passes `db.noLooks()`, and the prompts forbid jokes about looks, body, clothing, age, race, religion, sexuality, gender or disability, sexual content about anyone, threats and self-harm jokes. Swearing is fine.
