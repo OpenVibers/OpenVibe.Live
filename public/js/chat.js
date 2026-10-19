@@ -4976,13 +4976,6 @@ function showChatContextMenu(event) {
     } else {
         loadContextMenuProfile(menu, coreUsername, userId, isAnon);
     }
-    // Arena yap level (accounts, anons and relayed chatters all have one once they've hit a subject).
-    try {
-        let yapKey = null;
-        if (isRelay) { const m = String(username || '').match(/^\[([A-Za-z]+)\]\s+(.+)$/); const plat = String(sourcePlatform || (m && m[1]) || '').toLowerCase().replace(/^yt$/, 'youtube').replace(/^robotstreamer$/, 'rs'); if (m && plat) yapKey = `relay:${plat}:${m[2].trim().toLowerCase()}`; }
-        else if (isAnon) { const m = String(coreUsername || username || '').match(/^anon(\d+)$/i); if (m) yapKey = `anon:${m[1]}`; }
-        else if (userId) yapKey = `user:${userId}`;
-    } catch { /* optional */ }
 
     // Clicks inside the menu shouldn't dismiss it (needed for rename submenu toggle etc.)
     menu.addEventListener('click', (e) => e.stopPropagation());

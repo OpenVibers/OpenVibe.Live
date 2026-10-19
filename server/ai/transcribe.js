@@ -1,6 +1,6 @@
 /**
  * transcribe.js — free, LOCAL speech-to-text (no API, runs on the server CPU). Used for
- * live-stream memories, the live timeline (which the Arena listens to) and VOD/clip transcripts.
+ * live-stream memories, the live timeline (which The Rundown reads) and VOD/clip transcripts.
  *
  * Two engines, both from the whisper.cpp tree (ggml):
  *   - NVIDIA Parakeet TDT 0.6B v3 (`parakeet-cli`), for English and 24 other European languages.
@@ -243,7 +243,7 @@ function _joinSegments(segments) {
 // word ("▁For"). A sentence ends at . ? or !, at a pause of 1.5 s, or after 20 s, so each timeline row stays a
 // line someone said, deep-linkable by its start.
 const TOKEN_LINE = /t0=\s*(-?\d+)\s+t1=\s*(-?\d+)\s+word_start=(true|false)\s+"(.*)"\s*$/;
-// Fillers Parakeet writes out ("uh", "um") carry nothing for a reader or the Arena's quotes.
+// Fillers Parakeet writes out ("uh", "um") carry nothing for a reader or The Rundown's quotes.
 const FILLER_RE = /(^|[\s,])(?:uh+|um+|uhm|erm|mm+)(?=[\s,.!?]|$)[,]?/gi;
 function parseParakeet(stderr, offsetSec = 0) {
     const out = [];

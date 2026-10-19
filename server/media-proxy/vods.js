@@ -442,7 +442,7 @@ router.get('/:id/context', optionalAuth, async (req, res) => {
                 chat_messages: Number(chatStats.messages) || 0, chatters: Number(chatStats.chatters) || 0,
                 peak_viewers: Number(stream.peak_viewers) || 0, avg_viewers: avg.k ? Number(avg.a) : null,
                 sound_commands: Number(chatStats.sounds) || 0,
-                mic_moments: await safe(async () => (await db.get('SELECT COUNT(*) AS n FROM arena_mic_moments WHERE stream_id = ?', [stream.id])).n, 0),
+                rundown_takes: await safe(async () => Number((await db.get("SELECT COUNT(*) AS n FROM rundown_segments WHERE stream_id = ? AND status = 'live'", [stream.id])).n), 0),
                 follows_gained: await safe(async () => (await db.get('SELECT COUNT(*) AS n FROM follows WHERE streamer_id = ? AND created_at BETWEEN ? AND ?', [stream.user_id, start, end])).n, 0),
                 tips: await safe(async () => await db.get('SELECT COUNT(*) AS n, COALESCE(SUM(amount), 0)::bigint AS t FROM channel_tips WHERE stream_id = ? OR (to_user_id = ? AND created_at BETWEEN ? AND ?)', [stream.id, stream.user_id, start, end]), { n: 0, t: 0 }),
                 top_chatters: topChatters,

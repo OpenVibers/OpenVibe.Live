@@ -7,7 +7,7 @@ Every stream that ran at least 8 minutes gets a report a couple of minutes after
   kind `stream_recap`) from the real numbers; template copy when AI is off or the call fails.
 - **Numbers** — peak/avg viewers (from `viewer_snapshots`), chat lines and unique chatters, top 5
   chatters (the host excluded), busiest 5-minute window, sound commands, new follows during the
-  stream, tips (`transactions` type donation), Arena mic moments, clips + the VOD (from Media).
+  stream, tips (`transactions` type donation), The Rundown's best takes on the stream (server/rundown), clips + the VOD (from Media).
 - **The room, minute by minute** — viewer curve with chat bars, peak marker.
 - Announced in the channel's chat room when it lands. Stored in `stream_recaps` (one JSON row per
   stream). Owner/admin can rebuild it (`POST /api/recap/:id/regenerate`).

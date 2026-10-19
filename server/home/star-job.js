@@ -3,7 +3,7 @@
  *
  * Candidates are streamers who went live in the last CANDIDATE_DAYS days (not banned). Each one
  * gets real stats — sessions, hours, peak/avg viewers, chat lines in their streams, new followers,
- * Arena mic moments, language, what they stream (AI overview) — and the shared LLM picks who gets
+ * Rundown takes, language, what they stream (AI overview) — and the shared LLM picks who gets
  * the red carpet today and writes a one-line reason. Recent stars are excluded so it rotates
  * instead of parking on one person. With AI off (or a bad answer) a plain score picks instead.
  *
@@ -41,7 +41,7 @@ async function candidates() {
                MAX(s.started_at) AS last_live_at,
                (SELECT COUNT(*) FROM follows f WHERE f.streamer_id = u.id AND f.created_at >= datetime('now', ?)) AS new_followers,
                (SELECT COUNT(*) FROM follows f WHERE f.streamer_id = u.id) AS followers,
-               (SELECT COUNT(*) FROM arena_mic_moments m WHERE m.user_id = u.id AND m.said_at >= datetime('now', ?)) AS mic_moments,
+               (SELECT COUNT(*) FROM rundown_segments r WHERE r.user_id = u.id AND r.status = 'live' AND r.said_at >= datetime('now', ?)) AS takes,
                (SELECT COALESCE(so.overview_short, so.overview) FROM streamer_overviews so WHERE so.user_id = u.id) AS overview,
                (SELECT ch.ai_category FROM channels ch WHERE ch.user_id = u.id) AS category
         FROM users u JOIN streams s ON s.user_id = u.id
@@ -57,7 +57,7 @@ async function candidates() {
     let i18n = null; try { i18n = require('../i18n/translate'); } catch { i18n = null; }
     for (const r of rows) {
         r.language = i18n ? (() => { try { return i18n.channelLanguage(r.id); } catch { return 'en'; } })() : 'en';
-        r.score = Number(r.hours || 0) * 1.0 + Number(r.peak_viewers || 0) * 2 + Number(r.chat_lines || 0) / 40 + Number(r.new_followers || 0) * 3 + Number(r.mic_moments || 0) * 1.5 + Math.min(Number(r.sessions || 0), 10) * 0.5;
+        r.score = Number(r.hours || 0) * 1.0 + Number(r.peak_viewers || 0) * 2 + Number(r.chat_lines || 0) / 40 + Number(r.new_followers || 0) * 3 + Number(r.takes || 0) * 1.5 + Math.min(Number(r.sessions || 0), 10) * 0.5;
     }
     return rows;
 }
@@ -73,7 +73,7 @@ async function aiPick(cands, exclude, previous) {
     if (!llm || !llm.isEnabled() || !llm.withinBudget()) return null;
     const list = cands.filter(c => !exclude.has(c.username.toLowerCase())).slice(0, 25).map(c => ({
         username: c.username, name: c.display_name || c.username, language: c.language, category: c.category || null,
-        last_14d: { sessions: c.sessions, hours: c.hours, peak_viewers: c.peak_viewers, avg_peak_viewers: c.avg_peak, chat_lines: c.chat_lines, new_followers: c.new_followers, arena_mic_moments: c.mic_moments },
+        last_14d: { sessions: c.sessions, hours: c.hours, peak_viewers: c.peak_viewers, avg_peak_viewers: c.avg_peak, chat_lines: c.chat_lines, new_followers: c.new_followers, rundown_takes: c.takes },
         followers: c.followers, last_live: c.last_live_at,
         about: String(c.overview || c.bio || '').replace(/\s+/g, ' ').slice(0, 220) || null,
     }));

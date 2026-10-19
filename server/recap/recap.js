@@ -1,7 +1,7 @@
 /**
  * recap.js — the after-show report. Every stream that ran long enough gets a recap page
  * (/recap/<streamId>) a few minutes after it ends: the viewer curve, chat numbers and top
- * chatters, the best Arena mic lines, clips, tips and follows gained, the VOD — and an AI
+ * chatters, the stream's best Rundown takes, clips, tips and follows gained, the VOD — and an AI
  * headline + summary written from all of it (template copy when AI is off).
  *
  *   buildRecap(streamId)     gather + (optionally) AI → { …recap } and store it
@@ -49,8 +49,12 @@ async function gather(streamId) {
         .slice(0, 5);
     const busiest = curve.length ? curve.reduce((best, p) => (Number(p.c) > Number(best.c) ? p : best), curve[0]) : null;
 
-    // Arena mic lines said on this stream.
-    const micLines = await safe(async () => await db.all(`SELECT text, quality, kind, aimed_at, sec, vod_id FROM arena_mic_moments WHERE stream_id = ? ORDER BY quality DESC, said_at ASC LIMIT 4`, [streamId]), []);
+    // The Rundown's best takes on this stream (server/rundown), each with its quote when it has one.
+    const takes = await safe(async () => (await db.all(`SELECT s.title, s.quotes_json, s.start_sec, s.vod_id, t.title AS topic, t.slug FROM rundown_segments s
+        LEFT JOIN rundown_topics t ON t.id = s.topic_id WHERE s.stream_id = ? AND s.status = 'live' ORDER BY s.score DESC, s.start_sec ASC LIMIT 4`, [streamId])).map((s) => {
+        let q = null; try { q = JSON.parse(s.quotes_json || '[]')[0] || null; } catch { q = null; }
+        return { title: s.title, text: q ? q.text : null, en: q ? q.en || null : null, sec: q ? Number(q.sec) || 0 : Number(s.start_sec) || 0, vod_id: s.vod_id || null, topic: s.topic || null, slug: s.slug || null };
+    }), []);
 
     // Money + love.
     // Tips from channel_tips: on-site Vibes, PowerChat and OpenVibe.Tips (a hidden amount counts as a tip, adds nothing).
@@ -90,7 +94,8 @@ async function gather(streamId) {
         streamer: { id: user.id, username: user.username, display_name: user.display_name || user.username, avatar_url: user.avatar_url || null, profile_color: user.profile_color || null },
         viewers: { avg: viewersAvg, peak_at: peakAt ? peakAt.t : null, curve: curve.map(p => [p.t, Number(p.v) || 0, Number(p.c) || 0]) },
         chat: { messages: Number(chat.messages) || 0, chatters: Number(chat.chatters) || 0, top: topChatters.map(r => ({ username: r.username, display_name: r.display_name || r.username, avatar_url: r.avatar_url || null, profile_color: r.profile_color || null, n: Number(r.count) })), busiest_at: busiest && Number(busiest.c) > 0 ? busiest.t : null, busiest_n: busiest ? Number(busiest.c) : 0, sounds: Number(chat.sounds) || 0 },
-        mic: micLines.map(m => ({ text: m.text, quality: m.quality, kind: m.kind, aimed_at: m.aimed_at || null, sec: m.sec, vod_id: m.vod_id || null })),
+        takes,
+        mic: [],   // the Arena's mic lines are gone; an open tab of the previous release still reads mic.length
         love: { tips: Number(tips.n) || 0, tips_total: Number(tips.total) || 0, top_tipper: topTipper ? { username: topTipper.username, display_name: topTipper.display_name || topTipper.username, total: Number(topTipper.total) } : null, follows, followers_now: followersNow },
         speech: { lines: speech.length, sample: speechSample },
         vod, clips,
@@ -109,7 +114,7 @@ function templateWriteup(g) {
         headline: `${name} went ${fmtDur(s.duration_seconds)} on "${String(s.title).slice(0, 40)}"`,
         summary: bits.join(' ').slice(0, 420),
         moment: g.clips[0] ? `Clip: ${g.clips[0].title}` : (g.chat.busiest_n >= 10 ? `Chat hit ${g.chat.busiest_n} lines in five minutes.` : ''),
-        tags: [s.category || 'stream', g.chat.messages >= 100 ? 'chatty' : 'chill', g.mic.length ? 'mic on fire' : 'good vibes'],
+        tags: [s.category || 'stream', g.chat.messages >= 100 ? 'chatty' : 'chill', g.takes.length ? 'on the Rundown' : 'good vibes'],
         grade,
     };
 }
@@ -120,7 +125,7 @@ async function aiWriteup(g) {
     const facts = {
         streamer: g.streamer.display_name, title: g.stream.title, category: g.stream.category, duration: fmtDur(g.stream.duration_seconds),
         viewers: { peak: g.stream.peak_viewers, avg: g.viewers.avg }, chat: { messages: g.chat.messages, chatters: g.chat.chatters, top: g.chat.top.map(t => `${t.display_name} (${t.n})`), sound_commands: g.chat.sounds },
-        mic_lines: g.mic.map(m => m.text), clips: g.clips.map(c => c.title), tips: g.love.tips_total ? `${g.love.tips} tips, ${g.love.tips_total} total` : 'none', new_follows: g.love.follows,
+        best_lines: g.takes.map(t => t.text || t.title), clips: g.clips.map(c => c.title), tips: g.love.tips_total ? `${g.love.tips} tips, ${g.love.tips_total} total` : 'none', new_follows: g.love.follows,
         what_was_said: g.speech.sample || '(no transcript)',
     };
     // The prompt lives in OpenVibe.AI (workflow live.stream.recap).

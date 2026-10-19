@@ -1359,9 +1359,9 @@ async function loadHomeDigest() {
         st.chat_lines ? `<span class="digest-stat"><i class="fa-solid fa-comments"></i> <b>${n(st.chat_lines)}</b> chat line${st.chat_lines === 1 ? '' : 's'}</span>` : '',
         st.new_follows ? `<span class="digest-stat"><i class="fa-solid fa-heart"></i> <b>${n(st.new_follows)}</b> new follow${st.new_follows === 1 ? '' : 's'}</span>` : '',
         st.new_members ? `<span class="digest-stat"><i class="fa-solid fa-user-plus"></i> <b>${n(st.new_members)}</b> joined</span>` : '',
-        st.mic_moments ? `<span class="digest-stat"><i class="fa-solid fa-microphone-lines"></i> <b>${n(st.mic_moments)}</b> Arena mic moment${st.mic_moments === 1 ? '' : 's'}</span>` : '',
+        st.takes ? `<span class="digest-stat"><i class="fa-solid fa-newspaper"></i> <b>${n(st.takes)}</b> Rundown take${st.takes === 1 ? '' : 's'}</span>` : '',
     ].filter(Boolean).join('');
-    const hot = (d.hot || []).map(h => `<div class="digest-hot-line"><i class="fa-solid fa-microphone-lines"></i> “${esc(String(h.text || '').slice(0, 140))}” <b>— ${esc(h.display_name || h.username)}</b>${h.aimed_at ? ` <span class="muted">at ${esc(h.aimed_at)}</span>` : ''}</div>`).join('');
+    const hot = (d.hot || []).map(h => { const href = h.slug ? `/rundown/t/${h.slug}` : `/rundown/${h.username}`; const t = esc(String(h.text || '').slice(0, 140)); return `<a class="digest-hot-line" href="${esc(href)}" onclick="return handleLinkClick(event, '${esc(href)}')"><i class="fa-solid fa-quote-left"></i> ${h.quoted ? `“${t}”` : t} <b>— ${esc(h.display_name || h.username)}</b></a>`; }).join('');
     const sinceLabel = d.since ? (away ? `since your last visit · ${esc(timeAgo(d.since))}` : `last ${Math.max(1, Math.round((Date.now() - Date.parse(d.since)) / 3600000))}h`) : '';
     box.innerHTML = `
         <div class="digest-head">
