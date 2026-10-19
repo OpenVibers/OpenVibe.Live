@@ -1,32 +1,32 @@
 {
  "service": "live",
- "release": "81dc337dc7ae261ccc498f5894241f1f0e9cc52f",
- "recorded_at": "2026-10-08T18:28:45.009Z",
+ "release": "f0fed5be6d1b25cfcabb1a3f3e2db347dfea88fb",
+ "recorded_at": "2026-10-19T23:30:31.918Z",
  "note": "N-1 fixture: written by `npm run n-1:record`, replayed by test/n-1.test.js",
  "manifest": {
   "service": "live",
-  "release": "81dc337dc7ae",
-  "released_at": "2026-10-08T17:34:39.000Z",
-  "booted_at": "2026-10-08T18:28:40.404Z",
-  "contracts_version": "0.112.0",
+  "release": "f0fed5be6d1b",
+  "released_at": "2026-10-19T18:39:28.000Z",
+  "booted_at": "2026-10-19T23:30:27.637Z",
+  "contracts_version": "0.203.0",
   "packages": {
-   "openvibe-shared": "2.13.3",
-   "openvibe-sdk": "0.35.1"
+   "openvibe-shared": "4.4.0",
+   "openvibe-sdk": "0.50.1"
   },
   "min_client_release": null,
   "mixed_version_window_hours": 24,
   "components": {
    "styles": {
     "kind": "style",
-    "version": "835d7a90863a"
+    "version": "77a2bdaee060"
    },
    "shell": {
     "kind": "script",
-    "version": "2fb9f8dc218c"
+    "version": "4ff89f6a092a"
    },
    "server": {
     "kind": "server",
-    "version": "6175874d3913"
+    "version": "73e6552a2862"
    }
   },
   "assets": {
@@ -41,39 +41,34 @@
     "integrity": "sha384-+UNgBYuMRLHmTl0hBPmZI+91u+ud0yHLElwmd/4UrYgHoLHIYVElOwsOQ4G8UdWB"
    },
    "/css/context-cards.css": {
-    "url": "/css/context-cards.css?v=f2468014839c",
+    "url": "/css/context-cards.css?v=07823a1b5eb5",
     "component": "styles",
-    "integrity": "sha384-1onIAYDdYHytODnOQ1NtrwgWw4IEBgCclvW5Fy+Rvvfc4Pq+63uuCdAdNnU9SgKu"
+    "integrity": "sha384-Di4RzkxhOu9xj1RMyoQdPFeAbJQHuaU6pg8/bxcxaJI4YG9T9hX9lytrqcrulDN/"
    },
    "/css/cosmetics.css": {
-    "url": "/css/cosmetics.css?v=73e2adf188e1",
+    "url": "/css/cosmetics.css?v=5d33ae6cb97b",
     "component": "styles",
-    "integrity": "sha384-JY2WKT34BDXzoB746LvRQn1fo28LK2El8c6SFRFaS3K9Pe+PAUXFz0zvkw7qdie9"
-   },
-   "/css/features/arena.css": {
-    "url": "/css/features/arena.css?v=6993aaa22df5",
-    "component": "styles",
-    "integrity": "sha384-EVAZL6dcfj1jLiFB5BWHcV+Iv0dTz8V5oDaJDoQROVMAV2EGMKS+tfK7Sh+rQDq/"
+    "integrity": "sha384-MaYWbMCigFzwPGNlDtRg1XnF0Ak6FFOa5hqfe1wmfuRSUtqukbcqDOelKvO1RqH2"
    },
    "/css/features/broadcast.css": {
-    "url": "/css/features/broadcast.css?v=84d5e7bcf87a",
+    "url": "/css/features/broadcast.css?v=c27820784531",
     "component": "styles",
-    "integrity": "sha384-bBBAa4R6vi7XZrg0pVl3y/RTieFRKBzfqN7N8S2f24xJp0kxufeX13Mlm/3EW9uE"
+    "integrity": "sha384-RHi7esMaA13XfUINvU/2iDobTP+ntLrei0C0C/u03zXUAN/0fKVM3Lkg0BZXnUY4"
    },
    "/css/features/channel.css": {
-    "url": "/css/features/channel.css?v=63269f14afd5",
+    "url": "/css/features/channel.css?v=f41f8d4b31d8",
     "component": "styles",
-    "integrity": "sha384-jS8cgLWimI0gjaN/MtfZywtJ1U05pcGFtitrSjyRaPVxJgrWFT4s50I3KLb7R+04"
+    "integrity": "sha384-Lu0yUHFrYfSOV0Eu2ChVrPC5NGCWHqKojTlpZdW22N1NHqeoj145OSHfZkgEIJNx"
    },
    "/css/features/chatpage.css": {
-    "url": "/css/features/chatpage.css?v=c5c63e94503f",
+    "url": "/css/features/chatpage.css?v=1b2ebcebcbca",
     "component": "styles",
-    "integrity": "sha384-2CnY63wmfX6sJ3AgpNab5FRmu8HOKt2HZs3T2SLP+ghsZzmKLbtL0vsu6HgegwSQ"
+    "integrity": "sha384-TdtKvLlB6yr2QMBBD5EAYebE40Y3xXvOkr9Min86pR/jqRNTfQVXxuqqois5soM+"
    },
    "/css/features/content.css": {
-    "url": "/css/features/content.css?v=95d237faf73a",
+    "url": "/css/features/content.css?v=ec113a44dd7a",
     "component": "styles",
-    "integrity": "sha384-iAF+LsoCNaMS6BM2YUZu95mDl8+jgtko6D++4d70Hs0d8xH8UceNDPINIfISe3uT"
+    "integrity": "sha384-mm5kmkmu8IXqBCHEke9GTvb1FO1Oncn77FhTR124WDryVYQSw3d3JDKr5UVlgqE6"
    },
    "/css/features/dashboard.css": {
     "url": "/css/features/dashboard.css?v=90998f175a26",
@@ -91,29 +86,29 @@
     "integrity": "sha384-qxjHx5W7yoUfDcK9M8DcVBKQX2YcR+sHHeGwpKNYrg6zM9tjKFsrcXfB4FvHcuUC"
    },
    "/css/features/home.css": {
-    "url": "/css/features/home.css?v=1da8ab368854",
+    "url": "/css/features/home.css?v=faa8fa066557",
     "component": "styles",
-    "integrity": "sha384-BcVmXyr+pzzoReBggf3M/VzsHepfNVJG9ImV8+IbOx7EcPPNOixHFwzk2mRZ2e0/"
+    "integrity": "sha384-jc4nJLKlKXq0lKUUQPKdiR0pxiqd4E57o6O/BRMQLVGPPrWDYaG4OIxnn5uayOmi"
    },
-   "/css/features/media.css": {
-    "url": "/css/features/media.css?v=dea567ff26e8",
+   "/css/features/rundown.css": {
+    "url": "/css/features/rundown.css?v=05f1d8c7b95c",
     "component": "styles",
-    "integrity": "sha384-5fg7EMKpaBjMyM4mYM/iM+HPpZnUUaCd1FmVEcauKoN9QWfbFWVhNIhrb2oA5RiK"
+    "integrity": "sha384-dFsbWdy82ur5QrZ5M8TeJzcgYwMD6FdkLXub1odJKKlSWZuFHiGxDSRpTAYUNZpr"
    },
    "/css/features/search.css": {
-    "url": "/css/features/search.css?v=59f2f133271c",
+    "url": "/css/features/search.css?v=9ddd7160c54c",
     "component": "styles",
-    "integrity": "sha384-RJYUmnxzvBcKyiQ5i2JiaKeDt7n04ZxD5fi5T1PT66PR0Yawvd0FsvFuTdBY8djz"
+    "integrity": "sha384-vBjTPlCMue0BX3XhCDjqRgbDgk+Rcmn2jUiBqfUYQXG+iH3VQ+GAvww3kICowLG8"
    },
    "/css/features/stats.css": {
-    "url": "/css/features/stats.css?v=7676bfc9ec0d",
+    "url": "/css/features/stats.css?v=0a1c1c6e4799",
     "component": "styles",
-    "integrity": "sha384-BO+i8mr3s9siQE0a/XSNd+MvZfi8GDyhIjQFf+9zC5CUXx5DvmoY71wRT0jUr42X"
+    "integrity": "sha384-tiqr/ezmfQZcqEoCOfoC49n9LBNfeEbY7pCmRNS26+C5+OB3vw3vCv6hBhRsPC/m"
    },
    "/css/home-fx.css": {
-    "url": "/css/home-fx.css?v=8f135af68e76",
+    "url": "/css/home-fx.css?v=e663894c29e3",
     "component": "styles",
-    "integrity": "sha384-nQYM/f49re/MHydZjlV6hNxCLoyuxQzovB+ui4pxQVAho58GRcwfrsC8ruxcmq4Y"
+    "integrity": "sha384-U8Kz03V5TkIF/hK5+EHWbMVu0usivPRna4gmXlTtX3AElTtjbkDrivAYyINJJ81J"
    },
    "/css/home-tour.css": {
     "url": "/css/home-tour.css?v=3f1293159aff",
@@ -121,9 +116,9 @@
     "integrity": "sha384-amhdltUcvPHMlKbKgAysH1oVa5LXmXYvie7lrfnBB7+hnqpcSiFHfLUDcwnSznho"
    },
    "/css/i18n-star.css": {
-    "url": "/css/i18n-star.css?v=365567ee3c2e",
+    "url": "/css/i18n-star.css?v=c5b0b2261c10",
     "component": "styles",
-    "integrity": "sha384-ywRuEe6z23e3VtwROEu2yNUbrnajlBMv5M3vyZjZ1hfe1Dli6pGYLa8uu3z71Mo0"
+    "integrity": "sha384-reKMOVv9o0oQvhVOJLVJ2LIdqIAzmJK+8zknG6bitXFH6FYKLqHIXiFmyJgonCw5"
    },
    "/css/media-player.css": {
     "url": "/css/media-player.css?v=7b7fdf4b15e5",
@@ -131,24 +126,24 @@
     "integrity": "sha384-OsZjCMedAayAH/g66rIZS8/cND69xI8/Qx1ci04sfY8gbrncRjXT0WCDg/d+BYg9"
    },
    "/css/messenger.css": {
-    "url": "/css/messenger.css?v=8d3312c1f857",
+    "url": "/css/messenger.css?v=b546de06782d",
     "component": "styles",
-    "integrity": "sha384-2+sE2r3ITTgGbYnYQ2TD5atavSwm9i2LyvxGPkKYYRn07kizleHqQYAYrrZVW5cr"
+    "integrity": "sha384-Gum2h1hkiOCHYGzL51Vkg18dykFocQYUKV5nj+em30urSOUV7DTkH0/qBZuRofIS"
    },
    "/css/ov-guide.css": {
-    "url": "/css/ov-guide.css?v=5eb601c01a03",
+    "url": "/css/ov-guide.css?v=51e7b691671e",
     "component": "styles",
-    "integrity": "sha384-06D5yA90IAi0imrONhtPHVkzAe00RqUQM0w96tT5EUXx1lwLjn6P2f0UTruHZCss"
+    "integrity": "sha384-NgjftNH1wYEitNkPJWxk+J1rSLOeFiLzrujIouib3JjKTS0Z4Zv9HC8e4/IuI1IJ"
    },
    "/css/recap.css": {
-    "url": "/css/recap.css?v=3da2cd3feae6",
+    "url": "/css/recap.css?v=cda4dc52e8a4",
     "component": "styles",
-    "integrity": "sha384-iVDuJckwXLQPfhSFXjJKmyIIXM+XbRccOWefcHh1vChYrlfwFWAgWXinI4iihWor"
+    "integrity": "sha384-nnjFlUlLlwwU2ATKsy4JqdwUBltQRQrNx0U1rDfBnsCrWAlj2r91DGgH2GgXQZpZ"
    },
    "/css/style.css": {
-    "url": "/css/style.css?v=57784f84656e",
+    "url": "/css/style.css?v=a417682204dd",
     "component": "styles",
-    "integrity": "sha384-2pazK2Qkcku6o4h6cZfkVZ8BiU3xw4wzvR0bVbXr7teT/+VuJoub8kY8OKTSkaBb"
+    "integrity": "sha384-qbBXlMdrglg4suN/qZtHyXjWNnPemV+vfe/yACjNZ9YhL1bfPUaM7RvwIwz1wWhF"
    },
    "/css/vendor/fontawesome-6.5.1.min.css": {
     "url": "/css/vendor/fontawesome-6.5.1.min.css?v=d6c948f648fd",
@@ -466,388 +461,6 @@
   },
   {
    "method": "GET",
-   "path": "/api/arena/beefs",
-   "auth": "anon",
-   "status": 200,
-   "kind": "json",
-   "reads": {
-    "open": "array",
-    "resolved": "array"
-   },
-   "from": [
-    "public/js/arena.js"
-   ]
-  },
-  {
-   "method": "GET",
-   "path": "/api/arena/beefs",
-   "auth": "user",
-   "status": 200,
-   "kind": "json",
-   "reads": {
-    "open": "array",
-    "resolved": "array"
-   },
-   "from": [
-    "public/js/arena.js"
-   ]
-  },
-  {
-   "method": "GET",
-   "path": "/api/arena/beefs/1",
-   "auth": "anon",
-   "status": 404,
-   "kind": "json",
-   "from": [
-    "public/js/arena.js"
-   ]
-  },
-  {
-   "method": "GET",
-   "path": "/api/arena/beefs/1",
-   "auth": "user",
-   "status": 404,
-   "kind": "json",
-   "from": [
-    "public/js/arena.js"
-   ]
-  },
-  {
-   "method": "GET",
-   "path": "/api/arena/console/n1star",
-   "auth": "anon",
-   "status": 200,
-   "kind": "json",
-   "reads": {
-    "fighter": "object",
-    "fighter.user": "object",
-    "fighter.user.id": "number",
-    "fighter.user.username": "string",
-    "fighter.user.display_name": "string",
-    "fighter.user.avatar_url": "null",
-    "fighter.user.profile_color": "string",
-    "fighter.user.bio": "string",
-    "fighter.fighter_name": "string",
-    "fighter.rank": "null",
-    "fighter.image_url": "null",
-    "fighter.live": "boolean",
-    "fighter.level": "number",
-    "on_roster": "boolean",
-    "live": "boolean",
-    "stream": "object",
-    "stream.id": "number",
-    "stream.title": "string",
-    "stream.started_at": "string",
-    "stream.viewer_count": "number",
-    "transcribed": "boolean",
-    "listener": "object",
-    "listener.listening": "boolean",
-    "level": "object",
-    "level.level": "number",
-    "level.xp": "number",
-    "level.xp_into_level": "number",
-    "level.xp_per_level": "number",
-    "level.mic_moments": "number",
-    "level.beef_hits": "number",
-    "level.recent_xp": "number",
-    "level.best_line": "null",
-    "mic": "object",
-    "mic.moments": "number",
-    "mic.beef_hits": "number",
-    "mic.bangers": "number",
-    "mic.avg_quality": "number",
-    "mic.targeted": "number",
-    "mic.answered": "number",
-    "mic.wins": "number",
-    "mic.losses": "number",
-    "mic.speech_minutes": "number",
-    "open_beefs": "array",
-    "hot_mic": "array",
-    "recent_moments": "array"
-   },
-   "from": [
-    "public/js/arena.js"
-   ]
-  },
-  {
-   "method": "GET",
-   "path": "/api/arena/console/n1star",
-   "auth": "user",
-   "status": 200,
-   "kind": "json",
-   "reads": {
-    "fighter": "object",
-    "fighter.user": "object",
-    "fighter.user.id": "number",
-    "fighter.user.username": "string",
-    "fighter.user.display_name": "string",
-    "fighter.user.avatar_url": "null",
-    "fighter.user.profile_color": "string",
-    "fighter.user.bio": "string",
-    "fighter.fighter_name": "string",
-    "fighter.rank": "null",
-    "fighter.image_url": "null",
-    "fighter.live": "boolean",
-    "fighter.level": "number",
-    "on_roster": "boolean",
-    "live": "boolean",
-    "stream": "object",
-    "stream.id": "number",
-    "stream.title": "string",
-    "stream.started_at": "string",
-    "stream.viewer_count": "number",
-    "transcribed": "boolean",
-    "listener": "object",
-    "listener.listening": "boolean",
-    "level": "object",
-    "level.level": "number",
-    "level.xp": "number",
-    "level.xp_into_level": "number",
-    "level.xp_per_level": "number",
-    "level.mic_moments": "number",
-    "level.beef_hits": "number",
-    "level.recent_xp": "number",
-    "level.best_line": "null",
-    "mic": "object",
-    "mic.moments": "number",
-    "mic.beef_hits": "number",
-    "mic.bangers": "number",
-    "mic.avg_quality": "number",
-    "mic.targeted": "number",
-    "mic.answered": "number",
-    "mic.wins": "number",
-    "mic.losses": "number",
-    "mic.speech_minutes": "number",
-    "open_beefs": "array",
-    "hot_mic": "array",
-    "recent_moments": "array"
-   },
-   "from": [
-    "public/js/arena.js"
-   ]
-  },
-  {
-   "method": "GET",
-   "path": "/api/arena/feed?limit=40",
-   "auth": "anon",
-   "status": 200,
-   "kind": "json",
-   "reads": {
-    "feed": "array",
-    "ai": "boolean"
-   },
-   "from": [
-    "public/js/arena.js"
-   ]
-  },
-  {
-   "method": "GET",
-   "path": "/api/arena/feed?limit=40",
-   "auth": "user",
-   "status": 200,
-   "kind": "json",
-   "reads": {
-    "feed": "array",
-    "ai": "boolean"
-   },
-   "from": [
-    "public/js/arena.js"
-   ]
-  },
-  {
-   "method": "GET",
-   "path": "/api/arena/fighters",
-   "auth": "anon",
-   "status": 200,
-   "kind": "json",
-   "reads": {
-    "fighters": "array",
-    "ai": "boolean",
-    "stats": "array",
-    "stats[]": "string",
-    "stat_meta": "object",
-    "stat_meta.heat": "object",
-    "stat_meta.heat.label": "string",
-    "stat_meta.heat.desc": "string",
-    "stat_meta.aim": "object",
-    "stat_meta.aim.label": "string",
-    "stat_meta.aim.desc": "string",
-    "stat_meta.kills": "object",
-    "stat_meta.kills.label": "string",
-    "stat_meta.kills.desc": "string",
-    "stat_meta.mouth": "object",
-    "stat_meta.mouth.label": "string",
-    "stat_meta.mouth.desc": "string",
-    "stat_meta.clapback": "object",
-    "stat_meta.clapback.label": "string",
-    "stat_meta.clapback.desc": "string",
-    "stat_meta.stamina": "object",
-    "stat_meta.stamina.label": "string",
-    "stat_meta.stamina.desc": "string",
-    "stat_meta.pace": "object",
-    "stat_meta.pace.label": "string",
-    "stat_meta.pace.desc": "string"
-   },
-   "from": [
-    "public/js/arena.js"
-   ]
-  },
-  {
-   "method": "GET",
-   "path": "/api/arena/fighters",
-   "auth": "user",
-   "status": 200,
-   "kind": "json",
-   "reads": {
-    "fighters": "array",
-    "ai": "boolean",
-    "stats": "array",
-    "stats[]": "string",
-    "stat_meta": "object",
-    "stat_meta.heat": "object",
-    "stat_meta.heat.label": "string",
-    "stat_meta.heat.desc": "string",
-    "stat_meta.aim": "object",
-    "stat_meta.aim.label": "string",
-    "stat_meta.aim.desc": "string",
-    "stat_meta.kills": "object",
-    "stat_meta.kills.label": "string",
-    "stat_meta.kills.desc": "string",
-    "stat_meta.mouth": "object",
-    "stat_meta.mouth.label": "string",
-    "stat_meta.mouth.desc": "string",
-    "stat_meta.clapback": "object",
-    "stat_meta.clapback.label": "string",
-    "stat_meta.clapback.desc": "string",
-    "stat_meta.stamina": "object",
-    "stat_meta.stamina.label": "string",
-    "stat_meta.stamina.desc": "string",
-    "stat_meta.pace": "object",
-    "stat_meta.pace.label": "string",
-    "stat_meta.pace.desc": "string"
-   },
-   "from": [
-    "public/js/arena.js"
-   ]
-  },
-  {
-   "method": "GET",
-   "path": "/api/arena/fighters/n1star",
-   "auth": "anon",
-   "status": 200,
-   "kind": "json",
-   "reads": {
-    "user": "object",
-    "user.id": "number",
-    "user.username": "string",
-    "user.display_name": "string",
-    "user.avatar_url": "null",
-    "user.profile_color": "string",
-    "user.bio": "string",
-    "not_on_roster": "boolean",
-    "reason": "string"
-   },
-   "from": [
-    "public/js/arena.js"
-   ]
-  },
-  {
-   "method": "GET",
-   "path": "/api/arena/fighters/n1star",
-   "auth": "user",
-   "status": 200,
-   "kind": "json",
-   "reads": {
-    "user": "object",
-    "user.id": "number",
-    "user.username": "string",
-    "user.display_name": "string",
-    "user.avatar_url": "null",
-    "user.profile_color": "string",
-    "user.bio": "string",
-    "not_on_roster": "boolean",
-    "reason": "string"
-   },
-   "from": [
-    "public/js/arena.js"
-   ]
-  },
-  {
-   "method": "GET",
-   "path": "/api/arena/fighters/n1star/stat/1",
-   "auth": "anon",
-   "status": 404,
-   "kind": "json",
-   "from": [
-    "public/js/arena.js"
-   ]
-  },
-  {
-   "method": "GET",
-   "path": "/api/arena/fighters/n1star/stat/1",
-   "auth": "user",
-   "status": 404,
-   "kind": "json",
-   "from": [
-    "public/js/arena.js"
-   ]
-  },
-  {
-   "method": "GET",
-   "path": "/api/arena/live",
-   "auth": "anon",
-   "status": 200,
-   "kind": "json",
-   "reads": {
-    "live": "array"
-   },
-   "from": [
-    "public/js/arena.js"
-   ]
-  },
-  {
-   "method": "GET",
-   "path": "/api/arena/live",
-   "auth": "user",
-   "status": 200,
-   "kind": "json",
-   "reads": {
-    "live": "array"
-   },
-   "from": [
-    "public/js/arena.js"
-   ]
-  },
-  {
-   "method": "GET",
-   "path": "/api/arena/me",
-   "auth": "anon",
-   "status": 401,
-   "kind": "json",
-   "from": [
-    "public/js/arena.js"
-   ]
-  },
-  {
-   "method": "GET",
-   "path": "/api/arena/me",
-   "auth": "user",
-   "status": 200,
-   "kind": "json",
-   "reads": {
-    "on_roster": "boolean",
-    "fighter": "null",
-    "beefs": "array",
-    "on_clock": "array",
-    "moments": "array",
-    "live": "boolean"
-   },
-   "from": [
-    "public/js/arena.js"
-   ]
-  },
-  {
-   "method": "GET",
    "path": "/api/auth/avatar/history",
    "auth": "anon",
    "status": 401,
@@ -936,7 +549,6 @@
     "user.capabilities.can_manage_channels": "boolean",
     "user.capabilities.view_ip_info": "boolean",
     "user.capabilities.is_owner": "boolean",
-    "user.openvibe_coins_balance": "number",
     "user.stream_key": "string",
     "capabilities": "object",
     "capabilities.admin_panel": "boolean",
@@ -1321,7 +933,6 @@
    "status": 502,
    "kind": "json",
    "from": [
-    "public/js/app-media.js",
     "public/js/stream-player.js"
    ]
   },
@@ -1332,7 +943,6 @@
    "status": 502,
    "kind": "json",
    "from": [
-    "public/js/app-media.js",
     "public/js/stream-player.js"
    ]
   },
@@ -1394,7 +1004,7 @@
    "status": 200,
    "kind": "json",
    "reads": {
-    "balance": "number"
+    "balance": "null"
    },
    "from": [
     "public/js/app.js",
@@ -1520,235 +1130,6 @@
    },
    "from": [
     "public/js/opencoins.js"
-   ]
-  },
-  {
-   "method": "GET",
-   "path": "/api/comments/1/1",
-   "auth": "anon",
-   "status": 400,
-   "kind": "json",
-   "from": [
-    "public/js/app-media.js"
-   ]
-  },
-  {
-   "method": "GET",
-   "path": "/api/comments/1/1",
-   "auth": "user",
-   "status": 400,
-   "kind": "json",
-   "from": [
-    "public/js/app-media.js"
-   ]
-  },
-  {
-   "method": "GET",
-   "path": "/api/controls/configs",
-   "auth": "anon",
-   "status": 401,
-   "kind": "json",
-   "from": [
-    "public/js/broadcast-workspace.js",
-    "public/js/broadcast.js",
-    "public/js/dashboard.js"
-   ]
-  },
-  {
-   "method": "GET",
-   "path": "/api/controls/configs",
-   "auth": "user",
-   "status": 200,
-   "kind": "json",
-   "reads": {
-    "configs": "array"
-   },
-   "from": [
-    "public/js/broadcast-workspace.js",
-    "public/js/broadcast.js",
-    "public/js/dashboard.js"
-   ]
-  },
-  {
-   "method": "GET",
-   "path": "/api/controls/configs/1",
-   "auth": "anon",
-   "status": 401,
-   "kind": "json",
-   "from": [
-    "public/js/dashboard.js"
-   ]
-  },
-  {
-   "method": "GET",
-   "path": "/api/controls/configs/1",
-   "auth": "user",
-   "status": 404,
-   "kind": "json",
-   "from": [
-    "public/js/dashboard.js"
-   ]
-  },
-  {
-   "method": "GET",
-   "path": "/api/controls/configs/1/bridge-script?type=generic",
-   "auth": "anon",
-   "status": 401,
-   "kind": "json",
-   "from": [
-    "public/js/dashboard.js"
-   ]
-  },
-  {
-   "method": "GET",
-   "path": "/api/controls/configs/1/bridge-script?type=generic",
-   "auth": "user",
-   "status": 404,
-   "kind": "json",
-   "from": [
-    "public/js/dashboard.js"
-   ]
-  },
-  {
-   "method": "GET",
-   "path": "/api/controls/presets",
-   "auth": "anon",
-   "status": 200,
-   "kind": "json",
-   "reads": {
-    "controls": "array",
-    "settings": "object"
-   },
-   "from": [
-    "public/js/dashboard.js"
-   ]
-  },
-  {
-   "method": "GET",
-   "path": "/api/controls/presets",
-   "auth": "user",
-   "status": 200,
-   "kind": "json",
-   "reads": {
-    "controls": "array",
-    "settings": "object"
-   },
-   "from": [
-    "public/js/dashboard.js"
-   ]
-  },
-  {
-   "method": "GET",
-   "path": "/api/controls/settings/channel",
-   "auth": "anon",
-   "status": 401,
-   "kind": "json",
-   "from": [
-    "public/js/broadcast.js",
-    "public/js/dashboard.js"
-   ]
-  },
-  {
-   "method": "GET",
-   "path": "/api/controls/settings/channel",
-   "auth": "user",
-   "status": 200,
-   "kind": "json",
-   "reads": {
-    "control_mode": "string",
-    "anon_controls_enabled": "boolean",
-    "control_rate_limit_ms": "number",
-    "video_click_enabled": "boolean",
-    "video_click_rate_limit_ms": "number",
-    "active_control_config_id": "null"
-   },
-   "from": [
-    "public/js/broadcast.js",
-    "public/js/dashboard.js"
-   ]
-  },
-  {
-   "method": "GET",
-   "path": "/api/controls/whitelist",
-   "auth": "anon",
-   "status": 401,
-   "kind": "json",
-   "from": [
-    "public/js/dashboard.js"
-   ]
-  },
-  {
-   "method": "GET",
-   "path": "/api/controls/whitelist",
-   "auth": "user",
-   "status": 200,
-   "kind": "json",
-   "reads": {
-    "whitelist": "array"
-   },
-   "from": [
-    "public/js/dashboard.js"
-   ]
-  },
-  {
-   "method": "GET",
-   "path": "/api/controls/1",
-   "auth": "anon",
-   "status": 200,
-   "kind": "json",
-   "reads": {
-    "controls": "array",
-    "settings": "object",
-    "settings.video_click_enabled": "boolean",
-    "settings.control_mode": "string",
-    "settings.anon_controls_enabled": "boolean",
-    "settings.control_rate_limit_ms": "number",
-    "settings.video_click_rate_limit_ms": "number"
-   },
-   "from": [
-    "public/js/controls.js"
-   ]
-  },
-  {
-   "method": "GET",
-   "path": "/api/controls/1",
-   "auth": "user",
-   "status": 200,
-   "kind": "json",
-   "reads": {
-    "controls": "array",
-    "settings": "object",
-    "settings.video_click_enabled": "boolean",
-    "settings.control_mode": "string",
-    "settings.anon_controls_enabled": "boolean",
-    "settings.control_rate_limit_ms": "number",
-    "settings.video_click_rate_limit_ms": "number"
-   },
-   "from": [
-    "public/js/controls.js"
-   ]
-  },
-  {
-   "method": "GET",
-   "path": "/api/controls/1/config",
-   "auth": "anon",
-   "status": 401,
-   "kind": "json",
-   "from": [
-    "public/js/broadcast.js"
-   ]
-  },
-  {
-   "method": "GET",
-   "path": "/api/controls/1/config",
-   "auth": "user",
-   "status": 200,
-   "kind": "json",
-   "reads": {
-    "control_config_id": "null"
-   },
-   "from": [
-    "public/js/broadcast.js"
    ]
   },
   {
@@ -1911,34 +1292,6 @@
   },
   {
    "method": "GET",
-   "path": "/api/funds/balance",
-   "auth": "anon",
-   "status": 401,
-   "kind": "json",
-   "from": [
-    "public/js/app.js",
-    "public/js/dashboard.js",
-    "public/js/vibes.js"
-   ]
-  },
-  {
-   "method": "GET",
-   "path": "/api/funds/balance",
-   "auth": "user",
-   "status": 200,
-   "kind": "json",
-   "reads": {
-    "balance": "number",
-    "cashout_balance": "number"
-   },
-   "from": [
-    "public/js/app.js",
-    "public/js/dashboard.js",
-    "public/js/vibes.js"
-   ]
-  },
-  {
-   "method": "GET",
    "path": "/api/funds/goals/manage/mine",
    "auth": "anon",
    "status": 401,
@@ -1984,29 +1337,6 @@
    },
    "from": [
     "public/js/app-channel.js"
-   ]
-  },
-  {
-   "method": "GET",
-   "path": "/api/funds/history?limit=100",
-   "auth": "anon",
-   "status": 401,
-   "kind": "json",
-   "from": [
-    "public/js/dashboard.js"
-   ]
-  },
-  {
-   "method": "GET",
-   "path": "/api/funds/history?limit=100",
-   "auth": "user",
-   "status": 200,
-   "kind": "json",
-   "reads": {
-    "transactions": "array"
-   },
-   "from": [
-    "public/js/dashboard.js"
    ]
   },
   {
@@ -2020,12 +1350,12 @@
     "stats.viewersNow": "number",
     "stats.hoursWatched": "number",
     "stats.vibesTipped": "number",
-    "stats.activeSubs": "number",
+    "stats.activeSubs": "null",
     "stats.pointsEarned": "number",
     "stats.pointsSpent": "number",
     "stats.redemptions": "number",
     "stats.supporters": "number",
-    "stats.vibesBought": "number",
+    "stats.vibesBought": "null",
     "stats.goalsActive": "number",
     "stats.goalsReached": "number",
     "stats.vods": "null",
@@ -2116,16 +1446,8 @@
     "stats.recent.redemptions.w": "number",
     "stats.recent.redemptions.m": "number",
     "stats.recent.redemptions.pw": "number",
-    "stats.recent.vibesBought": "object",
-    "stats.recent.vibesBought.d": "number",
-    "stats.recent.vibesBought.w": "number",
-    "stats.recent.vibesBought.m": "number",
-    "stats.recent.vibesBought.pw": "number",
-    "stats.recent.subs": "object",
-    "stats.recent.subs.d": "number",
-    "stats.recent.subs.w": "number",
-    "stats.recent.subs.m": "number",
-    "stats.recent.subs.pw": "number",
+    "stats.recent.vibesBought": "null",
+    "stats.recent.subs": "null",
     "stats.recent.follows": "object",
     "stats.recent.follows.d": "number",
     "stats.recent.follows.w": "number",
@@ -2169,12 +1491,12 @@
     "stats.viewersNow": "number",
     "stats.hoursWatched": "number",
     "stats.vibesTipped": "number",
-    "stats.activeSubs": "number",
+    "stats.activeSubs": "null",
     "stats.pointsEarned": "number",
     "stats.pointsSpent": "number",
     "stats.redemptions": "number",
     "stats.supporters": "number",
-    "stats.vibesBought": "number",
+    "stats.vibesBought": "null",
     "stats.goalsActive": "number",
     "stats.goalsReached": "number",
     "stats.vods": "null",
@@ -2265,16 +1587,8 @@
     "stats.recent.redemptions.w": "number",
     "stats.recent.redemptions.m": "number",
     "stats.recent.redemptions.pw": "number",
-    "stats.recent.vibesBought": "object",
-    "stats.recent.vibesBought.d": "number",
-    "stats.recent.vibesBought.w": "number",
-    "stats.recent.vibesBought.m": "number",
-    "stats.recent.vibesBought.pw": "number",
-    "stats.recent.subs": "object",
-    "stats.recent.subs.d": "number",
-    "stats.recent.subs.w": "number",
-    "stats.recent.subs.m": "number",
-    "stats.recent.subs.pw": "number",
+    "stats.recent.vibesBought": "null",
+    "stats.recent.subs": "null",
     "stats.recent.follows": "object",
     "stats.recent.follows.d": "number",
     "stats.recent.follows.w": "number",
@@ -2556,7 +1870,6 @@
     "live_stream.duration_seconds": "number",
     "live_stream.created_at": "string",
     "live_stream.call_mode": "null",
-    "live_stream.control_config_id": "null",
     "live_stream.managed_stream_id": "number",
     "live_stream.ai_overview": "null",
     "live_stream.ai_overview_short": "null",
@@ -2634,7 +1947,6 @@
     "live_stream.duration_seconds": "number",
     "live_stream.created_at": "string",
     "live_stream.call_mode": "null",
-    "live_stream.control_config_id": "null",
     "live_stream.managed_stream_id": "number",
     "live_stream.ai_overview": "null",
     "live_stream.ai_overview_short": "null",
@@ -2829,73 +2141,6 @@
   },
   {
    "method": "GET",
-   "path": "/api/onvif/cameras",
-   "auth": "anon",
-   "status": 401,
-   "kind": "json",
-   "from": [
-    "public/js/onvif-dashboard.js"
-   ]
-  },
-  {
-   "method": "GET",
-   "path": "/api/onvif/cameras",
-   "auth": "user",
-   "status": 200,
-   "kind": "json",
-   "reads": {
-    "cameras": "array"
-   },
-   "from": [
-    "public/js/onvif-dashboard.js"
-   ]
-  },
-  {
-   "method": "GET",
-   "path": "/api/onvif/cameras/1",
-   "auth": "anon",
-   "status": 401,
-   "kind": "json",
-   "from": [
-    "public/js/controls.js",
-    "public/js/onvif-dashboard.js"
-   ]
-  },
-  {
-   "method": "GET",
-   "path": "/api/onvif/cameras/1",
-   "auth": "user",
-   "status": 404,
-   "kind": "json",
-   "from": [
-    "public/js/controls.js",
-    "public/js/onvif-dashboard.js"
-   ]
-  },
-  {
-   "method": "GET",
-   "path": "/api/onvif/cameras/1/presets",
-   "auth": "anon",
-   "status": 401,
-   "kind": "json",
-   "from": [
-    "public/js/controls.js",
-    "public/js/onvif-dashboard.js"
-   ]
-  },
-  {
-   "method": "GET",
-   "path": "/api/onvif/cameras/1/presets",
-   "auth": "user",
-   "status": 404,
-   "kind": "json",
-   "from": [
-    "public/js/controls.js",
-    "public/js/onvif-dashboard.js"
-   ]
-  },
-  {
-   "method": "GET",
    "path": "/api/pastes/by-user/n1star?limit=30",
    "auth": "anon",
    "status": 200,
@@ -3032,6 +2277,36 @@
    "kind": "json",
    "from": [
     "public/js/app-home.js"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/payments/channel/1/elsewhere",
+   "auth": "anon",
+   "status": 200,
+   "kind": "json",
+   "reads": {
+    "memberships": "null",
+    "support_links": "null",
+    "tips_url": "null"
+   },
+   "from": [
+    "public/js/channel-support.js"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/payments/channel/1/elsewhere",
+   "auth": "user",
+   "status": 200,
+   "kind": "json",
+   "reads": {
+    "memberships": "null",
+    "support_links": "null",
+    "tips_url": "null"
+   },
+   "from": [
+    "public/js/channel-support.js"
    ]
   },
   {
@@ -3378,6 +2653,216 @@
   },
   {
    "method": "GET",
+   "path": "/api/rundown",
+   "auth": "anon",
+   "status": 200,
+   "kind": "json",
+   "reads": {
+    "on_air": "array",
+    "on_air[]": "object",
+    "on_air[].stream_id": "number",
+    "on_air[].user": "object",
+    "on_air[].user.id": "number",
+    "on_air[].user.username": "string",
+    "on_air[].user.display_name": "string",
+    "on_air[].user.avatar_url": "null",
+    "on_air[].user.profile_color": "string",
+    "on_air[].stream_title": "string",
+    "on_air[].talking_about": "null",
+    "on_air[].topic": "null",
+    "lead": "null",
+    "streams": "array",
+    "streams_next": "null",
+    "trending": "array",
+    "voices": "array",
+    "latest": "array",
+    "next": "null",
+    "counts": "object",
+    "counts.topics": "number",
+    "counts.episodes": "number",
+    "counts.takes": "number"
+   },
+   "from": [
+    "public/js/rundown.js"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/rundown",
+   "auth": "user",
+   "status": 200,
+   "kind": "json",
+   "reads": {
+    "on_air": "array",
+    "on_air[]": "object",
+    "on_air[].stream_id": "number",
+    "on_air[].user": "object",
+    "on_air[].user.id": "number",
+    "on_air[].user.username": "string",
+    "on_air[].user.display_name": "string",
+    "on_air[].user.avatar_url": "null",
+    "on_air[].user.profile_color": "string",
+    "on_air[].stream_title": "string",
+    "on_air[].talking_about": "null",
+    "on_air[].topic": "null",
+    "lead": "null",
+    "streams": "array",
+    "streams_next": "null",
+    "trending": "array",
+    "voices": "array",
+    "latest": "array",
+    "next": "null",
+    "counts": "object",
+    "counts.topics": "number",
+    "counts.episodes": "number",
+    "counts.takes": "number"
+   },
+   "from": [
+    "public/js/rundown.js"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/rundown/e/1",
+   "auth": "anon",
+   "status": 404,
+   "kind": "json",
+   "from": [
+    "public/js/rundown.js"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/rundown/e/1",
+   "auth": "user",
+   "status": 404,
+   "kind": "json",
+   "from": [
+    "public/js/rundown.js"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/rundown/s/n1star",
+   "auth": "anon",
+   "status": 200,
+   "kind": "json",
+   "reads": {
+    "user": "object",
+    "user.id": "number",
+    "user.username": "string",
+    "user.display_name": "string",
+    "user.avatar_url": "null",
+    "user.profile_color": "string",
+    "opted_out": "boolean",
+    "episodes": "array",
+    "topics": "array",
+    "lines": "array",
+    "crossovers": "array"
+   },
+   "from": [
+    "public/js/rundown.js"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/rundown/s/n1star",
+   "auth": "user",
+   "status": 200,
+   "kind": "json",
+   "reads": {
+    "user": "object",
+    "user.id": "number",
+    "user.username": "string",
+    "user.display_name": "string",
+    "user.avatar_url": "null",
+    "user.profile_color": "string",
+    "opted_out": "boolean",
+    "episodes": "array",
+    "topics": "array",
+    "lines": "array",
+    "crossovers": "array"
+   },
+   "from": [
+    "public/js/rundown.js"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/rundown/streams?before=",
+   "auth": "anon",
+   "status": 200,
+   "kind": "json",
+   "reads": {
+    "streams": "array",
+    "next": "null"
+   },
+   "from": [
+    "public/js/rundown.js"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/rundown/streams?before=",
+   "auth": "user",
+   "status": 200,
+   "kind": "json",
+   "reads": {
+    "streams": "array",
+    "next": "null"
+   },
+   "from": [
+    "public/js/rundown.js"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/rundown/t/n1star",
+   "auth": "anon",
+   "status": 404,
+   "kind": "json",
+   "from": [
+    "public/js/rundown.js"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/rundown/t/n1star",
+   "auth": "user",
+   "status": 404,
+   "kind": "json",
+   "from": [
+    "public/js/rundown.js"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/rundown/topics?sort=&kind=${kind}",
+   "auth": "anon",
+   "status": 200,
+   "kind": "json",
+   "reads": {
+    "topics": "array"
+   },
+   "from": [
+    "public/js/rundown.js"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/rundown/topics?sort=&kind=${kind}",
+   "auth": "user",
+   "status": 200,
+   "kind": "json",
+   "reads": {
+    "topics": "array"
+   },
+   "from": [
+    "public/js/rundown.js"
+   ]
+  },
+  {
+   "method": "GET",
    "path": "/api/search/suggest",
    "auth": "anon",
    "status": 200,
@@ -3516,7 +3001,6 @@
     "streams[].duration_seconds": "number",
     "streams[].created_at": "string",
     "streams[].call_mode": "null",
-    "streams[].control_config_id": "null",
     "streams[].managed_stream_id": "number",
     "streams[].ai_overview": "null",
     "streams[].ai_overview_short": "null",
@@ -3546,12 +3030,6 @@
     "streams[].channel.updated_at": "string",
     "streams[].channel.weather_detail": "string",
     "streams[].channel.weather_show_location": "number",
-    "streams[].channel.control_mode": "string",
-    "streams[].channel.anon_controls_enabled": "number",
-    "streams[].channel.control_rate_limit_ms": "number",
-    "streams[].channel.active_control_config_id": "null",
-    "streams[].channel.video_click_enabled": "number",
-    "streams[].channel.video_click_rate_limit_ms": "number",
     "streams[].channel.offline_screen_type": "string",
     "streams[].channel.offline_screen_url": "null",
     "streams[].channel.offline_html": "null",
@@ -3597,7 +3075,6 @@
     "streams[].duration_seconds": "number",
     "streams[].created_at": "string",
     "streams[].call_mode": "null",
-    "streams[].control_config_id": "null",
     "streams[].managed_stream_id": "number",
     "streams[].ai_overview": "null",
     "streams[].ai_overview_short": "null",
@@ -3627,12 +3104,6 @@
     "streams[].channel.updated_at": "string",
     "streams[].channel.weather_detail": "string",
     "streams[].channel.weather_show_location": "number",
-    "streams[].channel.control_mode": "string",
-    "streams[].channel.anon_controls_enabled": "number",
-    "streams[].channel.control_rate_limit_ms": "number",
-    "streams[].channel.active_control_config_id": "null",
-    "streams[].channel.video_click_enabled": "number",
-    "streams[].channel.video_click_rate_limit_ms": "number",
     "streams[].channel.offline_screen_type": "string",
     "streams[].channel.offline_screen_url": "null",
     "streams[].channel.offline_html": "null",
@@ -3708,12 +3179,6 @@
     "weather_zip": "null",
     "weather_detail": "string",
     "weather_show_location": "number",
-    "control_mode": "string",
-    "anon_controls_enabled": "number",
-    "control_rate_limit_ms": "number",
-    "active_control_config_id": "null",
-    "video_click_enabled": "number",
-    "video_click_rate_limit_ms": "number",
     "offline_screen_type": "string",
     "offline_screen_url": "null",
     "offline_html": "null",
@@ -3758,12 +3223,6 @@
     "channel.updated_at": "string",
     "channel.weather_detail": "string",
     "channel.weather_show_location": "number",
-    "channel.control_mode": "string",
-    "channel.anon_controls_enabled": "number",
-    "channel.control_rate_limit_ms": "number",
-    "channel.active_control_config_id": "null",
-    "channel.video_click_enabled": "number",
-    "channel.video_click_rate_limit_ms": "number",
     "channel.offline_screen_type": "string",
     "channel.offline_screen_url": "null",
     "channel.offline_html": "null",
@@ -3774,6 +3233,17 @@
     "channel.ai_category": "null",
     "channel.ai_derivation_enabled": "number",
     "channel.social_links": "array",
+    "channel.social_links[]": "object",
+    "channel.social_links[].kind": "string",
+    "channel.social_links[].url": "string",
+    "channel.social_links[].handle": "string",
+    "channel.social_links[].label": "string",
+    "channel.social_links[].preview": "boolean",
+    "channel.social_links[].name": "string",
+    "channel.social_links[].icon": "string",
+    "channel.social_links[].color": "string",
+    "channel.social_links[].auto": "boolean",
+    "channel.social_links[].hidden": "boolean",
     "channel.username": "string",
     "channel.display_name": "string",
     "channel.avatar_url": "null",
@@ -3814,7 +3284,6 @@
     "stream.duration_seconds": "number",
     "stream.created_at": "string",
     "stream.call_mode": "null",
-    "stream.control_config_id": "null",
     "stream.managed_stream_id": "number",
     "stream.ai_overview": "null",
     "stream.ai_overview_short": "null",
@@ -3851,7 +3320,6 @@
     "streams[].duration_seconds": "number",
     "streams[].created_at": "string",
     "streams[].call_mode": "null",
-    "streams[].control_config_id": "null",
     "streams[].managed_stream_id": "number",
     "streams[].ai_overview": "null",
     "streams[].ai_overview_short": "null",
@@ -3879,8 +3347,6 @@
     "managed_streams[].tags": "string",
     "managed_streams[].protocol": "string",
     "managed_streams[].is_nsfw": "number",
-    "managed_streams[].control_config_id": "null",
-    "managed_streams[].sort_order": "number",
     "managed_streams[].created_at": "string",
     "managed_streams[].updated_at": "string",
     "managed_streams[].streaming_method": "string",
@@ -3949,12 +3415,6 @@
     "channel.updated_at": "string",
     "channel.weather_detail": "string",
     "channel.weather_show_location": "number",
-    "channel.control_mode": "string",
-    "channel.anon_controls_enabled": "number",
-    "channel.control_rate_limit_ms": "number",
-    "channel.active_control_config_id": "null",
-    "channel.video_click_enabled": "number",
-    "channel.video_click_rate_limit_ms": "number",
     "channel.offline_screen_type": "string",
     "channel.offline_screen_url": "null",
     "channel.offline_html": "null",
@@ -3965,6 +3425,17 @@
     "channel.ai_category": "null",
     "channel.ai_derivation_enabled": "number",
     "channel.social_links": "array",
+    "channel.social_links[]": "object",
+    "channel.social_links[].kind": "string",
+    "channel.social_links[].url": "string",
+    "channel.social_links[].handle": "string",
+    "channel.social_links[].label": "string",
+    "channel.social_links[].preview": "boolean",
+    "channel.social_links[].name": "string",
+    "channel.social_links[].icon": "string",
+    "channel.social_links[].color": "string",
+    "channel.social_links[].auto": "boolean",
+    "channel.social_links[].hidden": "boolean",
     "channel.username": "string",
     "channel.display_name": "string",
     "channel.avatar_url": "null",
@@ -3981,6 +3452,17 @@
     "channel.viewer_can_edit_about": "boolean",
     "channel.social_links_editor": "object",
     "channel.social_links_editor.connected": "array",
+    "channel.social_links_editor.connected[]": "object",
+    "channel.social_links_editor.connected[].kind": "string",
+    "channel.social_links_editor.connected[].url": "string",
+    "channel.social_links_editor.connected[].handle": "string",
+    "channel.social_links_editor.connected[].label": "string",
+    "channel.social_links_editor.connected[].preview": "boolean",
+    "channel.social_links_editor.connected[].name": "string",
+    "channel.social_links_editor.connected[].icon": "string",
+    "channel.social_links_editor.connected[].color": "string",
+    "channel.social_links_editor.connected[].auto": "boolean",
+    "channel.social_links_editor.connected[].hidden": "boolean",
     "channel.social_links_editor.restreams_without_link": "array",
     "channel.social_links_editor.hidden_auto": "array",
     "channel.ai_overview": "null",
@@ -4009,7 +3491,6 @@
     "stream.duration_seconds": "number",
     "stream.created_at": "string",
     "stream.call_mode": "null",
-    "stream.control_config_id": "null",
     "stream.managed_stream_id": "number",
     "stream.ai_overview": "null",
     "stream.ai_overview_short": "null",
@@ -4046,7 +3527,6 @@
     "streams[].duration_seconds": "number",
     "streams[].created_at": "string",
     "streams[].call_mode": "null",
-    "streams[].control_config_id": "null",
     "streams[].managed_stream_id": "number",
     "streams[].ai_overview": "null",
     "streams[].ai_overview_short": "null",
@@ -4074,8 +3554,6 @@
     "managed_streams[].tags": "string",
     "managed_streams[].protocol": "string",
     "managed_streams[].is_nsfw": "number",
-    "managed_streams[].control_config_id": "null",
-    "managed_streams[].sort_order": "number",
     "managed_streams[].created_at": "string",
     "managed_streams[].updated_at": "string",
     "managed_streams[].streaming_method": "string",
@@ -4144,12 +3622,6 @@
     "channel.updated_at": "string",
     "channel.weather_detail": "string",
     "channel.weather_show_location": "number",
-    "channel.control_mode": "string",
-    "channel.anon_controls_enabled": "number",
-    "channel.control_rate_limit_ms": "number",
-    "channel.active_control_config_id": "null",
-    "channel.video_click_enabled": "number",
-    "channel.video_click_rate_limit_ms": "number",
     "channel.offline_screen_type": "string",
     "channel.offline_screen_url": "null",
     "channel.offline_html": "null",
@@ -4160,6 +3632,17 @@
     "channel.ai_category": "null",
     "channel.ai_derivation_enabled": "number",
     "channel.social_links": "array",
+    "channel.social_links[]": "object",
+    "channel.social_links[].kind": "string",
+    "channel.social_links[].url": "string",
+    "channel.social_links[].handle": "string",
+    "channel.social_links[].label": "string",
+    "channel.social_links[].preview": "boolean",
+    "channel.social_links[].name": "string",
+    "channel.social_links[].icon": "string",
+    "channel.social_links[].color": "string",
+    "channel.social_links[].auto": "boolean",
+    "channel.social_links[].hidden": "boolean",
     "channel.username": "string",
     "channel.display_name": "string",
     "channel.avatar_url": "null",
@@ -4200,7 +3683,6 @@
     "stream.duration_seconds": "number",
     "stream.created_at": "string",
     "stream.call_mode": "null",
-    "stream.control_config_id": "null",
     "stream.managed_stream_id": "number",
     "stream.ai_overview": "null",
     "stream.ai_overview_short": "null",
@@ -4237,7 +3719,6 @@
     "streams[].duration_seconds": "number",
     "streams[].created_at": "string",
     "streams[].call_mode": "null",
-    "streams[].control_config_id": "null",
     "streams[].managed_stream_id": "number",
     "streams[].ai_overview": "null",
     "streams[].ai_overview_short": "null",
@@ -4265,8 +3746,6 @@
     "managed_streams[].tags": "string",
     "managed_streams[].protocol": "string",
     "managed_streams[].is_nsfw": "number",
-    "managed_streams[].control_config_id": "null",
-    "managed_streams[].sort_order": "number",
     "managed_streams[].created_at": "string",
     "managed_streams[].updated_at": "string",
     "managed_streams[].streaming_method": "string",
@@ -4335,12 +3814,6 @@
     "channel.updated_at": "string",
     "channel.weather_detail": "string",
     "channel.weather_show_location": "number",
-    "channel.control_mode": "string",
-    "channel.anon_controls_enabled": "number",
-    "channel.control_rate_limit_ms": "number",
-    "channel.active_control_config_id": "null",
-    "channel.video_click_enabled": "number",
-    "channel.video_click_rate_limit_ms": "number",
     "channel.offline_screen_type": "string",
     "channel.offline_screen_url": "null",
     "channel.offline_html": "null",
@@ -4351,6 +3824,17 @@
     "channel.ai_category": "null",
     "channel.ai_derivation_enabled": "number",
     "channel.social_links": "array",
+    "channel.social_links[]": "object",
+    "channel.social_links[].kind": "string",
+    "channel.social_links[].url": "string",
+    "channel.social_links[].handle": "string",
+    "channel.social_links[].label": "string",
+    "channel.social_links[].preview": "boolean",
+    "channel.social_links[].name": "string",
+    "channel.social_links[].icon": "string",
+    "channel.social_links[].color": "string",
+    "channel.social_links[].auto": "boolean",
+    "channel.social_links[].hidden": "boolean",
     "channel.username": "string",
     "channel.display_name": "string",
     "channel.avatar_url": "null",
@@ -4367,6 +3851,17 @@
     "channel.viewer_can_edit_about": "boolean",
     "channel.social_links_editor": "object",
     "channel.social_links_editor.connected": "array",
+    "channel.social_links_editor.connected[]": "object",
+    "channel.social_links_editor.connected[].kind": "string",
+    "channel.social_links_editor.connected[].url": "string",
+    "channel.social_links_editor.connected[].handle": "string",
+    "channel.social_links_editor.connected[].label": "string",
+    "channel.social_links_editor.connected[].preview": "boolean",
+    "channel.social_links_editor.connected[].name": "string",
+    "channel.social_links_editor.connected[].icon": "string",
+    "channel.social_links_editor.connected[].color": "string",
+    "channel.social_links_editor.connected[].auto": "boolean",
+    "channel.social_links_editor.connected[].hidden": "boolean",
     "channel.social_links_editor.restreams_without_link": "array",
     "channel.social_links_editor.hidden_auto": "array",
     "channel.ai_overview": "null",
@@ -4395,7 +3890,6 @@
     "stream.duration_seconds": "number",
     "stream.created_at": "string",
     "stream.call_mode": "null",
-    "stream.control_config_id": "null",
     "stream.managed_stream_id": "number",
     "stream.ai_overview": "null",
     "stream.ai_overview_short": "null",
@@ -4432,7 +3926,6 @@
     "streams[].duration_seconds": "number",
     "streams[].created_at": "string",
     "streams[].call_mode": "null",
-    "streams[].control_config_id": "null",
     "streams[].managed_stream_id": "number",
     "streams[].ai_overview": "null",
     "streams[].ai_overview_short": "null",
@@ -4460,8 +3953,6 @@
     "managed_streams[].tags": "string",
     "managed_streams[].protocol": "string",
     "managed_streams[].is_nsfw": "number",
-    "managed_streams[].control_config_id": "null",
-    "managed_streams[].sort_order": "number",
     "managed_streams[].created_at": "string",
     "managed_streams[].updated_at": "string",
     "managed_streams[].streaming_method": "string",
@@ -4530,12 +4021,6 @@
     "channel.updated_at": "string",
     "channel.weather_detail": "string",
     "channel.weather_show_location": "number",
-    "channel.control_mode": "string",
-    "channel.anon_controls_enabled": "number",
-    "channel.control_rate_limit_ms": "number",
-    "channel.active_control_config_id": "null",
-    "channel.video_click_enabled": "number",
-    "channel.video_click_rate_limit_ms": "number",
     "channel.offline_screen_type": "string",
     "channel.offline_screen_url": "null",
     "channel.offline_html": "null",
@@ -4546,6 +4031,17 @@
     "channel.ai_category": "null",
     "channel.ai_derivation_enabled": "number",
     "channel.social_links": "array",
+    "channel.social_links[]": "object",
+    "channel.social_links[].kind": "string",
+    "channel.social_links[].url": "string",
+    "channel.social_links[].handle": "string",
+    "channel.social_links[].label": "string",
+    "channel.social_links[].preview": "boolean",
+    "channel.social_links[].name": "string",
+    "channel.social_links[].icon": "string",
+    "channel.social_links[].color": "string",
+    "channel.social_links[].auto": "boolean",
+    "channel.social_links[].hidden": "boolean",
     "channel.username": "string",
     "channel.display_name": "string",
     "channel.avatar_url": "null",
@@ -4586,7 +4082,6 @@
     "stream.duration_seconds": "number",
     "stream.created_at": "string",
     "stream.call_mode": "null",
-    "stream.control_config_id": "null",
     "stream.managed_stream_id": "number",
     "stream.ai_overview": "null",
     "stream.ai_overview_short": "null",
@@ -4623,7 +4118,6 @@
     "streams[].duration_seconds": "number",
     "streams[].created_at": "string",
     "streams[].call_mode": "null",
-    "streams[].control_config_id": "null",
     "streams[].managed_stream_id": "number",
     "streams[].ai_overview": "null",
     "streams[].ai_overview_short": "null",
@@ -4651,8 +4145,6 @@
     "managed_streams[].tags": "string",
     "managed_streams[].protocol": "string",
     "managed_streams[].is_nsfw": "number",
-    "managed_streams[].control_config_id": "null",
-    "managed_streams[].sort_order": "number",
     "managed_streams[].created_at": "string",
     "managed_streams[].updated_at": "string",
     "managed_streams[].streaming_method": "string",
@@ -4721,12 +4213,6 @@
     "channel.updated_at": "string",
     "channel.weather_detail": "string",
     "channel.weather_show_location": "number",
-    "channel.control_mode": "string",
-    "channel.anon_controls_enabled": "number",
-    "channel.control_rate_limit_ms": "number",
-    "channel.active_control_config_id": "null",
-    "channel.video_click_enabled": "number",
-    "channel.video_click_rate_limit_ms": "number",
     "channel.offline_screen_type": "string",
     "channel.offline_screen_url": "null",
     "channel.offline_html": "null",
@@ -4737,6 +4223,17 @@
     "channel.ai_category": "null",
     "channel.ai_derivation_enabled": "number",
     "channel.social_links": "array",
+    "channel.social_links[]": "object",
+    "channel.social_links[].kind": "string",
+    "channel.social_links[].url": "string",
+    "channel.social_links[].handle": "string",
+    "channel.social_links[].label": "string",
+    "channel.social_links[].preview": "boolean",
+    "channel.social_links[].name": "string",
+    "channel.social_links[].icon": "string",
+    "channel.social_links[].color": "string",
+    "channel.social_links[].auto": "boolean",
+    "channel.social_links[].hidden": "boolean",
     "channel.username": "string",
     "channel.display_name": "string",
     "channel.avatar_url": "null",
@@ -4753,6 +4250,17 @@
     "channel.viewer_can_edit_about": "boolean",
     "channel.social_links_editor": "object",
     "channel.social_links_editor.connected": "array",
+    "channel.social_links_editor.connected[]": "object",
+    "channel.social_links_editor.connected[].kind": "string",
+    "channel.social_links_editor.connected[].url": "string",
+    "channel.social_links_editor.connected[].handle": "string",
+    "channel.social_links_editor.connected[].label": "string",
+    "channel.social_links_editor.connected[].preview": "boolean",
+    "channel.social_links_editor.connected[].name": "string",
+    "channel.social_links_editor.connected[].icon": "string",
+    "channel.social_links_editor.connected[].color": "string",
+    "channel.social_links_editor.connected[].auto": "boolean",
+    "channel.social_links_editor.connected[].hidden": "boolean",
     "channel.social_links_editor.restreams_without_link": "array",
     "channel.social_links_editor.hidden_auto": "array",
     "channel.ai_overview": "null",
@@ -4781,7 +4289,6 @@
     "stream.duration_seconds": "number",
     "stream.created_at": "string",
     "stream.call_mode": "null",
-    "stream.control_config_id": "null",
     "stream.managed_stream_id": "number",
     "stream.ai_overview": "null",
     "stream.ai_overview_short": "null",
@@ -4818,7 +4325,6 @@
     "streams[].duration_seconds": "number",
     "streams[].created_at": "string",
     "streams[].call_mode": "null",
-    "streams[].control_config_id": "null",
     "streams[].managed_stream_id": "number",
     "streams[].ai_overview": "null",
     "streams[].ai_overview_short": "null",
@@ -4846,8 +4352,6 @@
     "managed_streams[].tags": "string",
     "managed_streams[].protocol": "string",
     "managed_streams[].is_nsfw": "number",
-    "managed_streams[].control_config_id": "null",
-    "managed_streams[].sort_order": "number",
     "managed_streams[].created_at": "string",
     "managed_streams[].updated_at": "string",
     "managed_streams[].streaming_method": "string",
@@ -4920,7 +4424,6 @@
     "streams[].duration_seconds": "number",
     "streams[].created_at": "string",
     "streams[].call_mode": "null",
-    "streams[].control_config_id": "null",
     "streams[].managed_stream_id": "number",
     "streams[].ai_overview": "null",
     "streams[].ai_overview_short": "null",
@@ -4971,7 +4474,6 @@
     "streams[].duration_seconds": "number",
     "streams[].created_at": "string",
     "streams[].call_mode": "null",
-    "streams[].control_config_id": "null",
     "streams[].managed_stream_id": "number",
     "streams[].ai_overview": "null",
     "streams[].ai_overview_short": "null",
@@ -5018,12 +4520,6 @@
     "channel.updated_at": "string",
     "channel.weather_detail": "string",
     "channel.weather_show_location": "number",
-    "channel.control_mode": "string",
-    "channel.anon_controls_enabled": "number",
-    "channel.control_rate_limit_ms": "number",
-    "channel.active_control_config_id": "null",
-    "channel.video_click_enabled": "number",
-    "channel.video_click_rate_limit_ms": "number",
     "channel.offline_screen_type": "string",
     "channel.offline_screen_url": "null",
     "channel.offline_html": "null",
@@ -5034,6 +4530,17 @@
     "channel.ai_category": "null",
     "channel.ai_derivation_enabled": "number",
     "channel.social_links": "array",
+    "channel.social_links[]": "object",
+    "channel.social_links[].kind": "string",
+    "channel.social_links[].url": "string",
+    "channel.social_links[].handle": "string",
+    "channel.social_links[].label": "string",
+    "channel.social_links[].preview": "boolean",
+    "channel.social_links[].name": "string",
+    "channel.social_links[].icon": "string",
+    "channel.social_links[].color": "string",
+    "channel.social_links[].auto": "boolean",
+    "channel.social_links[].hidden": "boolean",
     "channel.username": "string",
     "channel.display_name": "string",
     "channel.avatar_url": "null",
@@ -5074,7 +4581,6 @@
     "stream.duration_seconds": "number",
     "stream.created_at": "string",
     "stream.call_mode": "null",
-    "stream.control_config_id": "null",
     "stream.managed_stream_id": "number",
     "stream.ai_overview": "null",
     "stream.ai_overview_short": "null",
@@ -5111,7 +4617,6 @@
     "streams[].duration_seconds": "number",
     "streams[].created_at": "string",
     "streams[].call_mode": "null",
-    "streams[].control_config_id": "null",
     "streams[].managed_stream_id": "number",
     "streams[].ai_overview": "null",
     "streams[].ai_overview_short": "null",
@@ -5139,8 +4644,6 @@
     "managed_streams[].tags": "string",
     "managed_streams[].protocol": "string",
     "managed_streams[].is_nsfw": "number",
-    "managed_streams[].control_config_id": "null",
-    "managed_streams[].sort_order": "number",
     "managed_streams[].created_at": "string",
     "managed_streams[].updated_at": "string",
     "managed_streams[].streaming_method": "string",
@@ -5209,12 +4712,6 @@
     "channel.updated_at": "string",
     "channel.weather_detail": "string",
     "channel.weather_show_location": "number",
-    "channel.control_mode": "string",
-    "channel.anon_controls_enabled": "number",
-    "channel.control_rate_limit_ms": "number",
-    "channel.active_control_config_id": "null",
-    "channel.video_click_enabled": "number",
-    "channel.video_click_rate_limit_ms": "number",
     "channel.offline_screen_type": "string",
     "channel.offline_screen_url": "null",
     "channel.offline_html": "null",
@@ -5225,6 +4722,17 @@
     "channel.ai_category": "null",
     "channel.ai_derivation_enabled": "number",
     "channel.social_links": "array",
+    "channel.social_links[]": "object",
+    "channel.social_links[].kind": "string",
+    "channel.social_links[].url": "string",
+    "channel.social_links[].handle": "string",
+    "channel.social_links[].label": "string",
+    "channel.social_links[].preview": "boolean",
+    "channel.social_links[].name": "string",
+    "channel.social_links[].icon": "string",
+    "channel.social_links[].color": "string",
+    "channel.social_links[].auto": "boolean",
+    "channel.social_links[].hidden": "boolean",
     "channel.username": "string",
     "channel.display_name": "string",
     "channel.avatar_url": "null",
@@ -5241,6 +4749,17 @@
     "channel.viewer_can_edit_about": "boolean",
     "channel.social_links_editor": "object",
     "channel.social_links_editor.connected": "array",
+    "channel.social_links_editor.connected[]": "object",
+    "channel.social_links_editor.connected[].kind": "string",
+    "channel.social_links_editor.connected[].url": "string",
+    "channel.social_links_editor.connected[].handle": "string",
+    "channel.social_links_editor.connected[].label": "string",
+    "channel.social_links_editor.connected[].preview": "boolean",
+    "channel.social_links_editor.connected[].name": "string",
+    "channel.social_links_editor.connected[].icon": "string",
+    "channel.social_links_editor.connected[].color": "string",
+    "channel.social_links_editor.connected[].auto": "boolean",
+    "channel.social_links_editor.connected[].hidden": "boolean",
     "channel.social_links_editor.restreams_without_link": "array",
     "channel.social_links_editor.hidden_auto": "array",
     "channel.ai_overview": "null",
@@ -5269,7 +4788,6 @@
     "stream.duration_seconds": "number",
     "stream.created_at": "string",
     "stream.call_mode": "null",
-    "stream.control_config_id": "null",
     "stream.managed_stream_id": "number",
     "stream.ai_overview": "null",
     "stream.ai_overview_short": "null",
@@ -5306,7 +4824,6 @@
     "streams[].duration_seconds": "number",
     "streams[].created_at": "string",
     "streams[].call_mode": "null",
-    "streams[].control_config_id": "null",
     "streams[].managed_stream_id": "number",
     "streams[].ai_overview": "null",
     "streams[].ai_overview_short": "null",
@@ -5334,8 +4851,6 @@
     "managed_streams[].tags": "string",
     "managed_streams[].protocol": "string",
     "managed_streams[].is_nsfw": "number",
-    "managed_streams[].control_config_id": "null",
-    "managed_streams[].sort_order": "number",
     "managed_streams[].created_at": "string",
     "managed_streams[].updated_at": "string",
     "managed_streams[].streaming_method": "string",
@@ -5404,12 +4919,6 @@
     "channel.updated_at": "string",
     "channel.weather_detail": "string",
     "channel.weather_show_location": "number",
-    "channel.control_mode": "string",
-    "channel.anon_controls_enabled": "number",
-    "channel.control_rate_limit_ms": "number",
-    "channel.active_control_config_id": "null",
-    "channel.video_click_enabled": "number",
-    "channel.video_click_rate_limit_ms": "number",
     "channel.offline_screen_type": "string",
     "channel.offline_screen_url": "null",
     "channel.offline_html": "null",
@@ -5420,6 +4929,17 @@
     "channel.ai_category": "null",
     "channel.ai_derivation_enabled": "number",
     "channel.social_links": "array",
+    "channel.social_links[]": "object",
+    "channel.social_links[].kind": "string",
+    "channel.social_links[].url": "string",
+    "channel.social_links[].handle": "string",
+    "channel.social_links[].label": "string",
+    "channel.social_links[].preview": "boolean",
+    "channel.social_links[].name": "string",
+    "channel.social_links[].icon": "string",
+    "channel.social_links[].color": "string",
+    "channel.social_links[].auto": "boolean",
+    "channel.social_links[].hidden": "boolean",
     "channel.username": "string",
     "channel.display_name": "string",
     "channel.avatar_url": "null",
@@ -5460,7 +4980,6 @@
     "stream.duration_seconds": "number",
     "stream.created_at": "string",
     "stream.call_mode": "null",
-    "stream.control_config_id": "null",
     "stream.managed_stream_id": "number",
     "stream.ai_overview": "null",
     "stream.ai_overview_short": "null",
@@ -5497,7 +5016,6 @@
     "streams[].duration_seconds": "number",
     "streams[].created_at": "string",
     "streams[].call_mode": "null",
-    "streams[].control_config_id": "null",
     "streams[].managed_stream_id": "number",
     "streams[].ai_overview": "null",
     "streams[].ai_overview_short": "null",
@@ -5525,8 +5043,6 @@
     "managed_streams[].tags": "string",
     "managed_streams[].protocol": "string",
     "managed_streams[].is_nsfw": "number",
-    "managed_streams[].control_config_id": "null",
-    "managed_streams[].sort_order": "number",
     "managed_streams[].created_at": "string",
     "managed_streams[].updated_at": "string",
     "managed_streams[].streaming_method": "string",
@@ -5595,12 +5111,6 @@
     "channel.updated_at": "string",
     "channel.weather_detail": "string",
     "channel.weather_show_location": "number",
-    "channel.control_mode": "string",
-    "channel.anon_controls_enabled": "number",
-    "channel.control_rate_limit_ms": "number",
-    "channel.active_control_config_id": "null",
-    "channel.video_click_enabled": "number",
-    "channel.video_click_rate_limit_ms": "number",
     "channel.offline_screen_type": "string",
     "channel.offline_screen_url": "null",
     "channel.offline_html": "null",
@@ -5611,6 +5121,17 @@
     "channel.ai_category": "null",
     "channel.ai_derivation_enabled": "number",
     "channel.social_links": "array",
+    "channel.social_links[]": "object",
+    "channel.social_links[].kind": "string",
+    "channel.social_links[].url": "string",
+    "channel.social_links[].handle": "string",
+    "channel.social_links[].label": "string",
+    "channel.social_links[].preview": "boolean",
+    "channel.social_links[].name": "string",
+    "channel.social_links[].icon": "string",
+    "channel.social_links[].color": "string",
+    "channel.social_links[].auto": "boolean",
+    "channel.social_links[].hidden": "boolean",
     "channel.username": "string",
     "channel.display_name": "string",
     "channel.avatar_url": "null",
@@ -5627,6 +5148,17 @@
     "channel.viewer_can_edit_about": "boolean",
     "channel.social_links_editor": "object",
     "channel.social_links_editor.connected": "array",
+    "channel.social_links_editor.connected[]": "object",
+    "channel.social_links_editor.connected[].kind": "string",
+    "channel.social_links_editor.connected[].url": "string",
+    "channel.social_links_editor.connected[].handle": "string",
+    "channel.social_links_editor.connected[].label": "string",
+    "channel.social_links_editor.connected[].preview": "boolean",
+    "channel.social_links_editor.connected[].name": "string",
+    "channel.social_links_editor.connected[].icon": "string",
+    "channel.social_links_editor.connected[].color": "string",
+    "channel.social_links_editor.connected[].auto": "boolean",
+    "channel.social_links_editor.connected[].hidden": "boolean",
     "channel.social_links_editor.restreams_without_link": "array",
     "channel.social_links_editor.hidden_auto": "array",
     "channel.ai_overview": "null",
@@ -5655,7 +5187,6 @@
     "stream.duration_seconds": "number",
     "stream.created_at": "string",
     "stream.call_mode": "null",
-    "stream.control_config_id": "null",
     "stream.managed_stream_id": "number",
     "stream.ai_overview": "null",
     "stream.ai_overview_short": "null",
@@ -5692,7 +5223,6 @@
     "streams[].duration_seconds": "number",
     "streams[].created_at": "string",
     "streams[].call_mode": "null",
-    "streams[].control_config_id": "null",
     "streams[].managed_stream_id": "number",
     "streams[].ai_overview": "null",
     "streams[].ai_overview_short": "null",
@@ -5720,8 +5250,6 @@
     "managed_streams[].tags": "string",
     "managed_streams[].protocol": "string",
     "managed_streams[].is_nsfw": "number",
-    "managed_streams[].control_config_id": "null",
-    "managed_streams[].sort_order": "number",
     "managed_streams[].created_at": "string",
     "managed_streams[].updated_at": "string",
     "managed_streams[].streaming_method": "string",
@@ -5938,8 +5466,6 @@
     "managed_streams[].protocol": "string",
     "managed_streams[].stream_key": "string",
     "managed_streams[].is_nsfw": "number",
-    "managed_streams[].control_config_id": "null",
-    "managed_streams[].sort_order": "number",
     "managed_streams[].created_at": "string",
     "managed_streams[].updated_at": "string",
     "managed_streams[].broadcast_settings": "string",
@@ -5996,8 +5522,6 @@
     "managed_stream.tags": "string",
     "managed_stream.protocol": "string",
     "managed_stream.is_nsfw": "number",
-    "managed_stream.control_config_id": "null",
-    "managed_stream.sort_order": "number",
     "managed_stream.created_at": "string",
     "managed_stream.updated_at": "string",
     "managed_stream.broadcast_settings": "string",
@@ -6104,7 +5628,6 @@
     "streams[].duration_seconds": "number",
     "streams[].created_at": "string",
     "streams[].call_mode": "null",
-    "streams[].control_config_id": "null",
     "streams[].managed_stream_id": "number",
     "streams[].ai_overview": "null",
     "streams[].ai_overview_short": "null",
@@ -6181,6 +5704,12 @@
     "streamers[].managed_streams[].protocol": "string",
     "streamers[].managed_streams[].last_live_at": "string",
     "streamers[].managed_streams[].vod_thumbnail": "null",
+    "streamers[].managed_streams[].is_live": "boolean",
+    "streamers[].managed_streams[].live_started_at": "string",
+    "streamers[].live": "object",
+    "streamers[].live.started_at": "string",
+    "streamers[].live.viewer_count": "number",
+    "streamers[].live.title": "string",
     "total": "number",
     "limit": "number",
     "offset": "number",
@@ -6215,6 +5744,12 @@
     "streamers[].managed_streams[].protocol": "string",
     "streamers[].managed_streams[].last_live_at": "string",
     "streamers[].managed_streams[].vod_thumbnail": "null",
+    "streamers[].managed_streams[].is_live": "boolean",
+    "streamers[].managed_streams[].live_started_at": "string",
+    "streamers[].live": "object",
+    "streamers[].live.started_at": "string",
+    "streamers[].live.viewer_count": "number",
+    "streamers[].live.title": "string",
     "total": "number",
     "limit": "number",
     "offset": "number",
@@ -6267,52 +5802,6 @@
   },
   {
    "method": "GET",
-   "path": "/api/streams/voice-channels",
-   "auth": "anon",
-   "status": 200,
-   "kind": "json",
-   "reads": {
-    "channels": "array",
-    "channels[]": "object",
-    "channels[].id": "string",
-    "channels[].name": "string",
-    "channels[].mode": "string",
-    "channels[].createdBy": "null",
-    "channels[].streamId": "null",
-    "channels[].permanent": "boolean",
-    "channels[].maxParticipants": "number",
-    "channels[].participantCount": "number",
-    "channels[].participants": "array"
-   },
-   "from": [
-    "public/js/voice-channels.js"
-   ]
-  },
-  {
-   "method": "GET",
-   "path": "/api/streams/voice-channels",
-   "auth": "user",
-   "status": 200,
-   "kind": "json",
-   "reads": {
-    "channels": "array",
-    "channels[]": "object",
-    "channels[].id": "string",
-    "channels[].name": "string",
-    "channels[].mode": "string",
-    "channels[].createdBy": "null",
-    "channels[].streamId": "null",
-    "channels[].permanent": "boolean",
-    "channels[].maxParticipants": "number",
-    "channels[].participantCount": "number",
-    "channels[].participants": "array"
-   },
-   "from": [
-    "public/js/voice-channels.js"
-   ]
-  },
-  {
-   "method": "GET",
    "path": "/api/streams/1",
    "auth": "anon",
    "status": 200,
@@ -6338,7 +5827,6 @@
     "stream.duration_seconds": "number",
     "stream.created_at": "string",
     "stream.call_mode": "null",
-    "stream.control_config_id": "null",
     "stream.managed_stream_id": "number",
     "stream.ai_overview": "null",
     "stream.ai_overview_short": "null",
@@ -6369,12 +5857,6 @@
     "stream.channel.updated_at": "string",
     "stream.channel.weather_detail": "string",
     "stream.channel.weather_show_location": "number",
-    "stream.channel.control_mode": "string",
-    "stream.channel.anon_controls_enabled": "number",
-    "stream.channel.control_rate_limit_ms": "number",
-    "stream.channel.active_control_config_id": "null",
-    "stream.channel.video_click_enabled": "number",
-    "stream.channel.video_click_rate_limit_ms": "number",
     "stream.channel.offline_screen_type": "string",
     "stream.channel.offline_screen_url": "null",
     "stream.channel.offline_html": "null",
@@ -6388,7 +5870,7 @@
     "stream.pip_overlay": "null"
    },
    "from": [
-    "public/js/app-media.js"
+    "public/popout-chat.html"
    ]
   },
   {
@@ -6418,7 +5900,6 @@
     "stream.duration_seconds": "number",
     "stream.created_at": "string",
     "stream.call_mode": "null",
-    "stream.control_config_id": "null",
     "stream.managed_stream_id": "number",
     "stream.ai_overview": "null",
     "stream.ai_overview_short": "null",
@@ -6449,12 +5930,6 @@
     "stream.channel.updated_at": "string",
     "stream.channel.weather_detail": "string",
     "stream.channel.weather_show_location": "number",
-    "stream.channel.control_mode": "string",
-    "stream.channel.anon_controls_enabled": "number",
-    "stream.channel.control_rate_limit_ms": "number",
-    "stream.channel.active_control_config_id": "null",
-    "stream.channel.video_click_enabled": "number",
-    "stream.channel.video_click_rate_limit_ms": "number",
     "stream.channel.offline_screen_type": "string",
     "stream.channel.offline_screen_url": "null",
     "stream.channel.offline_html": "null",
@@ -6468,39 +5943,7 @@
     "stream.pip_overlay": "null"
    },
    "from": [
-    "public/js/app-media.js"
-   ]
-  },
-  {
-   "method": "GET",
-   "path": "/api/streams/1/call",
-   "auth": "anon",
-   "status": 200,
-   "kind": "json",
-   "reads": {
-    "call_mode": "null",
-    "channelId": "null",
-    "participants": "array",
-    "participant_count": "number"
-   },
-   "from": [
-    "public/js/broadcast.js"
-   ]
-  },
-  {
-   "method": "GET",
-   "path": "/api/streams/1/call",
-   "auth": "user",
-   "status": 200,
-   "kind": "json",
-   "reads": {
-    "call_mode": "null",
-    "channelId": "null",
-    "participants": "array",
-    "participant_count": "number"
-   },
-   "from": [
-    "public/js/broadcast.js"
+    "public/popout-chat.html"
    ]
   },
   {
@@ -6668,32 +6111,12 @@
   },
   {
    "method": "GET",
-   "path": "/api/vods/1/context",
-   "auth": "anon",
-   "status": 404,
-   "kind": "json",
-   "from": [
-    "public/js/context-cards.js"
-   ]
-  },
-  {
-   "method": "GET",
-   "path": "/api/vods/1/context",
-   "auth": "user",
-   "status": 404,
-   "kind": "json",
-   "from": [
-    "public/js/context-cards.js"
-   ]
-  },
-  {
-   "method": "GET",
    "path": "/api/vods/1/live-info",
    "auth": "anon",
    "status": 502,
    "kind": "json",
    "from": [
-    "public/js/app-media.js"
+    "public/js/stream-player.js"
    ]
   },
   {
@@ -6703,47 +6126,7 @@
    "status": 502,
    "kind": "json",
    "from": [
-    "public/js/app-media.js"
-   ]
-  },
-  {
-   "method": "GET",
-   "path": "/api/vods/1",
-   "auth": "anon",
-   "status": 502,
-   "kind": "json",
-   "from": [
-    "public/js/app-media.js"
-   ]
-  },
-  {
-   "method": "GET",
-   "path": "/api/vods/1",
-   "auth": "user",
-   "status": 502,
-   "kind": "json",
-   "from": [
-    "public/js/app-media.js"
-   ]
-  },
-  {
-   "method": "GET",
-   "path": "/api/vods/1/memories",
-   "auth": "anon",
-   "status": 502,
-   "kind": "json",
-   "from": [
-    "public/js/app-media.js"
-   ]
-  },
-  {
-   "method": "GET",
-   "path": "/api/vods/1/memories",
-   "auth": "user",
-   "status": 502,
-   "kind": "json",
-   "from": [
-    "public/js/app-media.js"
+    "public/js/stream-player.js"
    ]
   },
   {
@@ -6798,7 +6181,7 @@
   },
   {
    "method": "GET",
-   "path": "/css/style.css?v=57784f84656e",
+   "path": "/css/style.core.css?v=39879bee1919",
    "auth": "anon",
    "accept": "html",
    "status": 200,
@@ -6809,7 +6192,7 @@
   },
   {
    "method": "GET",
-   "path": "/css/features/home.css?v=1da8ab368854",
+   "path": "/css/style.css?v=a417682204dd",
    "auth": "anon",
    "accept": "html",
    "status": 200,
@@ -6820,7 +6203,18 @@
   },
   {
    "method": "GET",
-   "path": "/css/home-fx.css?v=8f135af68e76",
+   "path": "/css/features/home.css?v=faa8fa066557",
+   "auth": "anon",
+   "accept": "html",
+   "status": 200,
+   "kind": "text",
+   "from": [
+    "page /"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/css/home-fx.css?v=e663894c29e3",
    "auth": "anon",
    "accept": "html",
    "status": 200,
@@ -6842,7 +6236,7 @@
   },
   {
    "method": "GET",
-   "path": "/css/i18n-star.css?v=365567ee3c2e",
+   "path": "/css/i18n-star.css?v=c5b0b2261c10",
    "auth": "anon",
    "accept": "html",
    "status": 200,
@@ -6886,7 +6280,7 @@
   },
   {
    "method": "GET",
-   "path": "/css/cosmetics.css?v=73e2adf188e1",
+   "path": "/css/cosmetics.css?v=5d33ae6cb97b",
    "auth": "anon",
    "accept": "html",
    "status": 200,
@@ -6897,7 +6291,7 @@
   },
   {
    "method": "GET",
-   "path": "/css/messenger.css?v=8d3312c1f857",
+   "path": "/css/messenger.css?v=b546de06782d",
    "auth": "anon",
    "accept": "html",
    "status": 200,
@@ -7117,7 +6511,7 @@
   },
   {
    "method": "GET",
-   "path": "/shared/navbar.js?v=555cc6d59b78",
+   "path": "/shared/navbar.js?v=70456901fbfe",
    "auth": "anon",
    "accept": "html",
    "status": 200,
@@ -7128,7 +6522,7 @@
   },
   {
    "method": "GET",
-   "path": "/js/app.js?v=a34333556690",
+   "path": "/js/app.js?v=3dd6d6052d5b",
    "auth": "anon",
    "accept": "html",
    "status": 200,
@@ -7139,7 +6533,7 @@
   },
   {
    "method": "GET",
-   "path": "/js/ov-navbar-live.js?v=67c0ab5cc8f1",
+   "path": "/js/ov-navbar-live.js?v=d54491455927",
    "auth": "anon",
    "accept": "html",
    "status": 200,
@@ -7150,7 +6544,7 @@
   },
   {
    "method": "GET",
-   "path": "/js/chat-shared.js?v=bd4b18592b1a",
+   "path": "/js/chat-shared.js?v=045f792bf138",
    "auth": "anon",
    "accept": "html",
    "status": 200,
@@ -7172,7 +6566,7 @@
   },
   {
    "method": "GET",
-   "path": "/js/chat.js?v=214e3c481b2f",
+   "path": "/js/chat.js?v=aede89fcff0c",
    "auth": "anon",
    "accept": "html",
    "status": 200,
@@ -7183,7 +6577,7 @@
   },
   {
    "method": "GET",
-   "path": "/js/vibes.js?v=aef505d77f34",
+   "path": "/js/vibes.js?v=636a00a18df2",
    "auth": "anon",
    "accept": "html",
    "status": 200,
@@ -7227,7 +6621,7 @@
   },
   {
    "method": "GET",
-   "path": "/shared/footer.js?v=9f69d9ce17b9",
+   "path": "/shared/footer.js?v=885f7fd5835b",
    "auth": "anon",
    "accept": "html",
    "status": 200,
@@ -7238,7 +6632,7 @@
   },
   {
    "method": "GET",
-   "path": "/js/footer-live.js?v=a10429d40713",
+   "path": "/js/footer-live.js?v=02da2af6b629",
    "auth": "anon",
    "accept": "html",
    "status": 200,
@@ -7271,7 +6665,7 @@
   },
   {
    "method": "GET",
-   "path": "/shared/notification-ui.js?v=a889be53ea64",
+   "path": "/shared/notification-ui.js?v=5eb3ef9fa337",
    "auth": "anon",
    "accept": "html",
    "status": 200,
@@ -7304,7 +6698,7 @@
   },
   {
    "method": "GET",
-   "path": "/js/app-home.js?v=1dc431184ccc",
+   "path": "/js/app-home.js?v=63d6e4a54fd8",
    "auth": "anon",
    "accept": "html",
    "status": 200,
@@ -7359,7 +6753,7 @@
   },
   {
    "method": "GET",
-   "path": "/css/features/channel.css?v=63269f14afd5",
+   "path": "/css/features/channel.css?v=f41f8d4b31d8",
    "auth": "anon",
    "accept": "html",
    "status": 200,
@@ -7370,7 +6764,7 @@
   },
   {
    "method": "GET",
-   "path": "/css/context-cards.css?v=f2468014839c",
+   "path": "/css/context-cards.css?v=07823a1b5eb5",
    "auth": "anon",
    "accept": "html",
    "status": 200,
@@ -7392,7 +6786,7 @@
   },
   {
    "method": "GET",
-   "path": "/js/stream-player.js?v=fe62065746fd",
+   "path": "/js/stream-player.js?v=00262645004f",
    "auth": "anon",
    "accept": "html",
    "status": 200,
@@ -7414,7 +6808,7 @@
   },
   {
    "method": "GET",
-   "path": "/js/controls.js?v=04c5242890ee",
+   "path": "/js/context-cards.js?v=c5fd219fa47f",
    "auth": "anon",
    "accept": "html",
    "status": 200,
@@ -7425,7 +6819,7 @@
   },
   {
    "method": "GET",
-   "path": "/js/context-cards.js?v=edb4f671e62d",
+   "path": "/js/emotes.js?v=346f6a37bfb3",
    "auth": "anon",
    "accept": "html",
    "status": 200,
@@ -7436,18 +6830,7 @@
   },
   {
    "method": "GET",
-   "path": "/js/emotes.js?v=0099deffc3c0",
-   "auth": "anon",
-   "accept": "html",
-   "status": 200,
-   "kind": "other",
-   "from": [
-    "page /@n1star"
-   ]
-  },
-  {
-   "method": "GET",
-   "path": "/js/gif-picker.js?v=5ee269f4e9c1",
+   "path": "/js/gif-picker.js?v=fde186491f4e",
    "auth": "anon",
    "accept": "html",
    "status": 200,
@@ -7480,7 +6863,7 @@
   },
   {
    "method": "GET",
-   "path": "/js/channel-socials.js?v=983c9f5760d8",
+   "path": "/js/channel-socials.js?v=4444b3116395",
    "auth": "anon",
    "accept": "html",
    "status": 200,
@@ -7502,7 +6885,18 @@
   },
   {
    "method": "GET",
-   "path": "/js/app-channel.js?v=024dbdf78e62",
+   "path": "/js/channel-support.js?v=744f82e1cdc6",
+   "auth": "anon",
+   "accept": "html",
+   "status": 200,
+   "kind": "other",
+   "from": [
+    "page /@n1star"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/js/app-channel.js?v=5aa423964298",
    "auth": "anon",
    "accept": "html",
    "status": 200,
@@ -7599,16 +6993,6 @@
    "kind": "json",
    "from": [
     "public/js/ai-viewers.js"
-   ]
-  },
-  {
-   "method": "POST",
-   "path": "/api/arena/beefs/1/hype",
-   "auth": "anon",
-   "status": 400,
-   "kind": "json",
-   "from": [
-    "public/js/arena.js"
    ]
   },
   {
@@ -7728,18 +7112,7 @@
    "status": 401,
    "kind": "json",
    "from": [
-    "public/js/app-media.js",
     "public/js/dashboard.js"
-   ]
-  },
-  {
-   "method": "POST",
-   "path": "/api/clips/1/recut",
-   "auth": "anon",
-   "status": 401,
-   "kind": "json",
-   "from": [
-    "public/js/app-media.js"
    ]
   },
   {
@@ -7749,7 +7122,6 @@
    "status": 401,
    "kind": "json",
    "from": [
-    "public/js/app-media.js",
     "public/js/stream-player.js"
    ]
   },
@@ -7760,7 +7132,6 @@
    "status": 401,
    "kind": "json",
    "from": [
-    "public/js/app-media.js",
     "public/js/dashboard.js"
    ]
   },
@@ -7842,136 +7213,6 @@
    "kind": "json",
    "from": [
     "public/js/opencoins.js"
-   ]
-  },
-  {
-   "method": "DELETE",
-   "path": "/api/comments/1",
-   "auth": "anon",
-   "status": 401,
-   "kind": "json",
-   "from": [
-    "public/js/app-media.js"
-   ]
-  },
-  {
-   "method": "PUT",
-   "path": "/api/comments/1",
-   "auth": "anon",
-   "status": 401,
-   "kind": "json",
-   "from": [
-    "public/js/app-media.js"
-   ]
-  },
-  {
-   "method": "POST",
-   "path": "/api/comments/1/1",
-   "auth": "anon",
-   "status": 401,
-   "kind": "json",
-   "from": [
-    "public/js/app-media.js"
-   ]
-  },
-  {
-   "method": "POST",
-   "path": "/api/controls/configs",
-   "auth": "anon",
-   "status": 401,
-   "kind": "json",
-   "from": [
-    "public/js/dashboard.js"
-   ]
-  },
-  {
-   "method": "POST",
-   "path": "/api/controls/configs/deactivate",
-   "auth": "anon",
-   "status": 401,
-   "kind": "json",
-   "from": [
-    "public/js/dashboard.js"
-   ]
-  },
-  {
-   "method": "DELETE",
-   "path": "/api/controls/configs/1",
-   "auth": "anon",
-   "status": 401,
-   "kind": "json",
-   "from": [
-    "public/js/dashboard.js"
-   ]
-  },
-  {
-   "method": "POST",
-   "path": "/api/controls/configs/1/activate",
-   "auth": "anon",
-   "status": 401,
-   "kind": "json",
-   "from": [
-    "public/js/dashboard.js"
-   ]
-  },
-  {
-   "method": "DELETE",
-   "path": "/api/controls/configs/1/buttons/1",
-   "auth": "anon",
-   "status": 401,
-   "kind": "json",
-   "from": [
-    "public/js/dashboard.js"
-   ]
-  },
-  {
-   "method": "POST",
-   "path": "/api/controls/configs/1/buttons",
-   "auth": "anon",
-   "status": 401,
-   "kind": "json",
-   "from": [
-    "public/js/dashboard.js"
-   ]
-  },
-  {
-   "method": "PUT",
-   "path": "/api/controls/settings/channel",
-   "auth": "anon",
-   "status": 401,
-   "kind": "json",
-   "from": [
-    "public/js/dashboard.js"
-   ]
-  },
-  {
-   "method": "POST",
-   "path": "/api/controls/whitelist",
-   "auth": "anon",
-   "status": 401,
-   "kind": "json",
-   "from": [
-    "public/js/dashboard.js"
-   ]
-  },
-  {
-   "method": "DELETE",
-   "path": "/api/controls/whitelist/1",
-   "auth": "anon",
-   "status": 401,
-   "kind": "json",
-   "from": [
-    "public/js/dashboard.js"
-   ]
-  },
-  {
-   "method": "PUT",
-   "path": "/api/controls/1/config",
-   "auth": "anon",
-   "status": 401,
-   "kind": "json",
-   "from": [
-    "public/js/broadcast.js"
    ]
   },
   {
@@ -8324,66 +7565,6 @@
   },
   {
    "method": "POST",
-   "path": "/api/onvif/cameras",
-   "auth": "anon",
-   "status": 401,
-   "kind": "json",
-   "from": [
-    "public/js/onvif-dashboard.js"
-   ]
-  },
-  {
-   "method": "DELETE",
-   "path": "/api/onvif/cameras/1",
-   "auth": "anon",
-   "status": 401,
-   "kind": "json",
-   "from": [
-    "public/js/onvif-dashboard.js"
-   ]
-  },
-  {
-   "method": "PUT",
-   "path": "/api/onvif/cameras/1",
-   "auth": "anon",
-   "status": 401,
-   "kind": "json",
-   "from": [
-    "public/js/onvif-dashboard.js"
-   ]
-  },
-  {
-   "method": "POST",
-   "path": "/api/onvif/cameras/1/presets",
-   "auth": "anon",
-   "status": 401,
-   "kind": "json",
-   "from": [
-    "public/js/onvif-dashboard.js"
-   ]
-  },
-  {
-   "method": "DELETE",
-   "path": "/api/onvif/cameras/1/presets/1",
-   "auth": "anon",
-   "status": 401,
-   "kind": "json",
-   "from": [
-    "public/js/onvif-dashboard.js"
-   ]
-  },
-  {
-   "method": "POST",
-   "path": "/api/onvif/discover",
-   "auth": "anon",
-   "status": 401,
-   "kind": "json",
-   "from": [
-    "public/js/onvif-dashboard.js"
-   ]
-  },
-  {
-   "method": "POST",
    "path": "/api/pastes",
    "auth": "anon",
    "status": 502,
@@ -8670,6 +7851,36 @@
   },
   {
    "method": "POST",
+   "path": "/api/rum",
+   "auth": "anon",
+   "status": 204,
+   "kind": "empty",
+   "from": [
+    "public/js/ov-rum.js"
+   ]
+  },
+  {
+   "method": "PUT",
+   "path": "/api/rundown/opt-out",
+   "auth": "anon",
+   "status": 401,
+   "kind": "json",
+   "from": [
+    "public/js/rundown.js"
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/rundown/react",
+   "auth": "anon",
+   "status": 400,
+   "kind": "json",
+   "from": [
+    "public/js/rundown.js"
+   ]
+  },
+  {
+   "method": "POST",
    "path": "/api/streams",
    "auth": "anon",
    "status": 401,
@@ -8805,36 +8016,6 @@
    ]
   },
   {
-   "method": "POST",
-   "path": "/api/streams/voice-channels",
-   "auth": "anon",
-   "status": 401,
-   "kind": "json",
-   "from": [
-    "public/js/voice-channels.js"
-   ]
-  },
-  {
-   "method": "POST",
-   "path": "/api/streams/voice-channels/call-user",
-   "auth": "anon",
-   "status": 401,
-   "kind": "json",
-   "from": [
-    "public/js/chat.js"
-   ]
-  },
-  {
-   "method": "POST",
-   "path": "/api/streams/voice-channels/call-user/respond",
-   "auth": "anon",
-   "status": 401,
-   "kind": "json",
-   "from": [
-    "public/js/chat.js"
-   ]
-  },
-  {
    "method": "DELETE",
    "path": "/api/streams/1",
    "auth": "anon",
@@ -8901,7 +8082,6 @@
    "status": 401,
    "kind": "json",
    "from": [
-    "public/js/app-media.js",
     "public/js/broadcast.js",
     "public/js/stream-player.js"
    ]
@@ -8953,7 +8133,6 @@
    "status": 401,
    "kind": "json",
    "from": [
-    "public/js/app-media.js",
     "public/js/dashboard.js"
    ]
   },
@@ -8964,7 +8143,6 @@
    "status": 401,
    "kind": "json",
    "from": [
-    "public/js/app-media.js",
     "public/js/dashboard.js"
    ]
   },

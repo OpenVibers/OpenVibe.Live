@@ -1,7 +1,7 @@
 {
  "service": "live",
- "release": "81dc337dc7ae261ccc498f5894241f1f0e9cc52f",
- "recorded_at": "2026-10-08T18:28:45.009Z",
+ "release": "f0fed5be6d1b25cfcabb1a3f3e2db347dfea88fb",
+ "recorded_at": "2026-10-19T23:30:31.918Z",
  "note": "N-1 fixture: written by `npm run n-1:record`, replayed by test/n-1.test.js",
  "engine": "postgresql",
  "migrations": [
@@ -12,6 +12,38 @@
   {
    "name": "0002_live.sql",
    "sha256": "616fa09e397160ca847d72ac7f3d91824cf4c92d9318ea55b91d49501bc5dc59"
+  },
+  {
+   "name": "0003_users_identity_expand.sql",
+   "sha256": "57d14f58a8f1e139b9892b393c65c9e79c54f7079fbcc5bb530032acb8a2683e"
+  },
+  {
+   "name": "0004_comment_thread_refs_numeric_optional.sql",
+   "sha256": "6ec5f068b21d67ddb55134656c0d873d944b4a4bf7dab64729d04faec27d2f19"
+  },
+  {
+   "name": "0005_drop_live_cosmetics.sql",
+   "sha256": "3a1653ace7041e159358522dedfb46c91cfcdf9bb451046609bb89848ac4e351"
+  },
+  {
+   "name": "0006_telemetry.sql",
+   "sha256": "aadd653d2480dbb3264bd0f4898b9560bdf3160cd7b86eae854f910213613b69"
+  },
+  {
+   "name": "0007_setup_tasks.sql",
+   "sha256": "e14a4931df19751ec09dc65731abef52de6ced2704f4b3cfb618e14ec9354e93"
+  },
+  {
+   "name": "0008_arena_drama.sql",
+   "sha256": "d45a7c18d61e56c7c4cd3414e3846ec7b94ecf245dcf89c3b51d573ccf3e8ead"
+  },
+  {
+   "name": "0009_channel_tips.sql",
+   "sha256": "20352293553d3edbe49535cd48cc3f9a00eeda0bddf011f06e7ddd772c1e65be"
+  },
+  {
+   "name": "0010_rundown.sql",
+   "sha256": "7477f41b9d41a067f03adb79a5c198721ef88910774d8a1f52fefce8d8ddc251"
   }
  ],
  "statements": []
