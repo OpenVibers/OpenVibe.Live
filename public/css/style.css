@@ -4629,6 +4629,17 @@ textarea.form-input { resize: vertical; min-height: 60px; }
     align-items: center; justify-content: center;
 }
 .modal-overlay.show { display: flex; }
+/* A dialog taller than the window (zoomed in, a short window) must not be centred off both edges: these overlays
+   scroll, the dialog stays centred while it fits (safe center; browsers without it keep plain center), and scrolling
+   stops at the overlay instead of moving the page behind it (owner, 2026-10-20). `body :is()` outranks each
+   overlay's own later `align-items: center` (feature stylesheets load after this one). */
+body :is(.modal-overlay, .bc-ws-confirm-overlay, .bc-modal, .bc-perm-overlay, .bucks-log-overlay, .user-ai-modal-overlay,
+.paste-modal-overlay, .vc-modal-overlay, .chat-slur-nudge-modal, .cosmetics-modal-overlay, .link-trust-overlay,
+.link-preview-overlay, .cgw-pop-overlay, .image-censor-overlay) {
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    align-items: safe center;
+}
 .modal {
     background: var(--bg-tertiary); border: 1px solid var(--border);
     border-radius: 20px; padding: 24px;

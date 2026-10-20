@@ -1711,12 +1711,14 @@
 .bc-ws-confirm-overlay {
     position: fixed;
     inset: 0;
-    z-index: 200;
+    /* Above the navbar (1000): at 200 the navbar sat on top of the restream form (owner, 2026-10-20). */
+    z-index: 2000;
     background: rgba(0,0,0,0.5);
     backdrop-filter: blur(4px);
     display: flex;
     align-items: center;
     justify-content: center;
+    padding: 16px;
     animation: bc-confirm-fade-in 0.15s ease;
 }
 @keyframes bc-confirm-fade-in {
