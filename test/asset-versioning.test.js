@@ -69,6 +69,8 @@ async function check(name, fn) {
         const json = JSON.parse(m[1]);
         assert.strictEqual(json.v['/js/app.js'], NEW);
         assert.strictEqual(json.v['/css/style.css'], CSS);
+        assert.match(json.release, /^[0-9a-f]{12}$/, 'the client release the shell was rendered with');
+        assert.strictEqual(json.release, assets.clientRelease());
     });
 
     await check('a path cannot escape public/', () => {
@@ -78,11 +80,14 @@ async function check(name, fn) {
 
     await check('document version changes when a referenced asset changes', async () => {
         const before = assets.document('index.html').version;
+        const releaseBefore = assets.clientRelease();
         fs.writeFileSync(path.join(rel('new'), 'css', 'style.css'), 'body{color:blue}');
         await new Promise((r) => setTimeout(r, 2100));
         const after = assets.document('index.html');
         assert.notStrictEqual(after.version, before);
         assert.ok(after.html.includes(`/css/style.css?v=${sha('body{color:blue}')}`));
+        assert.notStrictEqual(assets.clientRelease(), releaseBefore, 'any changed asset is a new client release');
+        assert.ok(after.html.includes(`"release":"${assets.clientRelease()}"`), 'and the shell carries it');
     });
 
     // A real express app, because the cache policy lives in response headers.

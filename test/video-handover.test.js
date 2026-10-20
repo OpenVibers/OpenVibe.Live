@@ -1,7 +1,8 @@
 /**
  * Recordings and clips are watched on openvibe.video (server/web/video-handover.js): /vod/<id> and /clip/<id> answer a
  * 301 to the OpenVibe.Video page, with a ?t= start time as seconds (95, 1:35 or 0:01:35); anything that is not an id
- * falls through to Live's own 404; the SPA shell names the origin in its ov-video-base meta (public/js/app.js videoHref),
+ * falls through to Live's own 404; an OpenVibe.Video or Community address glued onto Live's (/https://openvibe.video/v/12,
+ * what a tab opened before the handover made of the new links) 301s to the page it names; the SPA shell names the origin in its ov-video-base meta (public/js/app.js videoHref),
  * and no client code links a /vod/ or /clip/ page any more.
  *
  *   node test/video-handover.test.js
@@ -34,6 +35,16 @@ process.env.NODE_ENV = 'test';
         assert.deepStrictEqual(await get('/vod/12?t=1:01:35'), { status: 301, location: 'https://openvibe.video/v/12?t=3695' });
         assert.deepStrictEqual(await get('/clip/7'), { status: 301, location: 'https://openvibe.video/c/7' });
         assert.deepStrictEqual(await get('/vod/12?t=soon'), { status: 301, location: 'https://openvibe.video/v/12' }, 'a junk start time is dropped');
+    });
+
+    await check('a whole OpenVibe.Video or Community address glued onto Live\'s (an old tab\'s router did that) goes to the page it names', async () => {
+        assert.deepStrictEqual(await get('/https://openvibe.video/v/5857'), { status: 301, location: 'https://openvibe.video/v/5857' });
+        assert.deepStrictEqual(await get('/https:/openvibe.video/v/5857?t=95'), { status: 301, location: 'https://openvibe.video/v/5857?t=95' }, 'merged slashes, start time kept');
+        assert.deepStrictEqual(await get('/https://openvibe.video/c/7'), { status: 301, location: 'https://openvibe.video/c/7' });
+        assert.deepStrictEqual(await get('/https://openvibe.community/p/abc'), { status: 301, location: 'https://openvibe.community/p/abc' });
+        assert.strictEqual((await get('/https://evil.example/v/1')).status, 404, 'any other host is no redirect');
+        assert.strictEqual((await get('/https://openvibe.video.evil.example/v/1')).status, 404);
+        assert.strictEqual((await get('/https:openvibe.video/v/1')).status, 404);
     });
 
     await check('what is not an id stays Live\'s 404', async () => {

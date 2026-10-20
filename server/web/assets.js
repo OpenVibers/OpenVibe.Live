@@ -171,6 +171,16 @@ function manifest() {
     return out;
 }
 
+/**
+ * One id for the client as a whole: the hash of every hash in the manifest, so it changes when any page script,
+ * stylesheet or fragment does. The shell carries the one it was rendered with (the ov-assets block) and
+ * GET /api/client-release answers the current one: a tab left open across a deploy compares the two (public/js/app.js).
+ */
+function clientRelease() {
+    const m = manifest();
+    return sha(Object.keys(m).sort().map((k) => `${k} ${m[k]}`).join('\n'));
+}
+
 /** public/features.json — the feature/route registry shared with public/js/ov-loader.js. */
 let _features = null, _featuresMtime = 0, _featuresAt = 0;
 function features() {
@@ -234,6 +244,7 @@ function rewriteHtml(html) {
         const reg = features();
         const payload = {
             v: manifest(),
+            release: clientRelease(),
             features: reg.features,
             routes: reg.routes.map(({ path: p, features: f }) => ({ path: p, features: f })),
         };
@@ -433,7 +444,7 @@ function staticHeaders(res) {
 
 module.exports = {
     PUBLIC_DIR, MANIFEST_MARK,
-    setSharedDir, hashOf, versioned, manifest, rewriteHtml, document, features, featuresFor, routeAssets, renderRoute, fragment, cspReportOnly,
+    setSharedDir, hashOf, versioned, manifest, clientRelease, rewriteHtml, document, features, featuresFor, routeAssets, renderRoute, fragment, cspReportOnly,
     versionedStatic, staticHeaders, setNoCache, setImmutable, serveCoreCss, firstPaintCss, CORE_CSS, FIRST_PAINT_ROUTES,
     _findPrevious: findPrevious,
 };
