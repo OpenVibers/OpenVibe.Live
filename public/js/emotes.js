@@ -145,8 +145,12 @@ function _substituteKickEmotes(text) {
     return parts;
 }
 
-/* ── Parse emote codes + linkify URLs in a message string → HTML ── */
+/* ── Parse emote codes + linkify URLs in a message string → HTML (||spoilers|| through chat-spoilers.js) ── */
 function parseEmotes(text) {
+    const sp = window.OpenVibeSpoilers;
+    return sp ? sp.withSpoilers(text, _parseEmotesPart) : _parseEmotesPart(String(text ?? ''));
+}
+function _parseEmotesPart(text) {
     // First pass: expand Kick inline [emote:name:id] tags regardless of loaded state
     const segments = _substituteKickEmotes(text);
 

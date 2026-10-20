@@ -7,11 +7,9 @@ let chatStreamId = null;
 let chatChannelUserId = null; // streamer's user id — stable room across slots + offline
 let chatRenderTargetId = null;
 
-/* `esc` used to be redefined here. Both copies were top-level function declarations in classic
-   scripts, so whichever loaded last won — this one did, which is the only reason app.js's weaker
-   version (it did not escape double quotes) never caused a problem. app.js now owns the single
-   correct implementation; relying on load order for an escaping function is not something to
-   keep. */
+// `esc` is app.js's (one escaping function, not two racing on load order).
+// Spoilers masked in plain text (reply snippets, TTS): chat-spoilers.js
+const _spoilFree = (t) => (window.OpenVibeSpoilers ? OpenVibeSpoilers.mask(t) : t);
 
 function toast(message, type = 'info') {
     // Delegate to the app-level toast saved in app.js (loaded before this file).
@@ -3811,7 +3809,7 @@ function buildChatMessageEl(msg, opts = {}) {
     let replyHtml = '';
     if (msg.reply_to) {
         const replyUser = esc(msg.reply_to.username || 'unknown');
-        const replySnippet = esc(msg.reply_to.message || '');
+        const replySnippet = esc(_spoilFree(msg.reply_to.message || ''));
         const replyMsgId = msg.reply_to.id ? `data-reply-target="${esc(String(msg.reply_to.id))}"` : '';
         replyHtml = `<div class="chat-reply-header" ${replyMsgId} onclick="scrollToReplyTarget(this)"><i class="fa-solid fa-reply fa-flip-horizontal"></i> <span class="chat-reply-user">@${replyUser}</span> <span class="chat-reply-snippet">${replySnippet}</span></div>`;
     }
@@ -4534,7 +4532,7 @@ function setChatReply(replyData) {
                 area.prepend(bar);
             }
         }
-        bar.innerHTML = `<div class="chat-reply-bar-content"><i class="fa-solid fa-reply fa-flip-horizontal"></i> Replying to <strong>${esc(replyData.username)}</strong><span class="chat-reply-bar-snippet">${esc(replyData.message)}</span></div><button class="chat-reply-bar-close" onclick="clearChatReply()" title="Cancel reply"><i class="fa-solid fa-xmark"></i></button>`;
+        bar.innerHTML = `<div class="chat-reply-bar-content"><i class="fa-solid fa-reply fa-flip-horizontal"></i> Replying to <strong>${esc(replyData.username)}</strong><span class="chat-reply-bar-snippet">${esc(_spoilFree(replyData.message))}</span></div><button class="chat-reply-bar-close" onclick="clearChatReply()" title="Cancel reply"><i class="fa-solid fa-xmark"></i></button>`;
         bar.style.display = '';
     });
     // Focus the relevant input
@@ -6446,7 +6444,7 @@ function speakTTS(text, voiceFX, username) {
     // "." prefix = TTS explicitly skipped (regardless of any per-viewer setting).
     if (String(text || '').trimStart().startsWith('.')) return;
     // Replace real links with TTS-friendly descriptions (shared with broadcast.js + server).
-    let cleanText = OpenVibeChat.ttsReplaceLinks(text, username);
+    let cleanText = OpenVibeChat.ttsReplaceLinks(_spoilFree(text), username);
     // Cap TTS to the streamer's max TTS length.
     const _ttsMax = _ttsMaxLen();
     if (cleanText.length > _ttsMax) cleanText = cleanText.slice(0, _ttsMax);
