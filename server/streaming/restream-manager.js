@@ -14,7 +14,7 @@
  *   
  *   For RTMP input:   ffmpeg -i http://localhost:9935/live/{key}.flv -c copy -f flv rtmp://dest
  *   For JSMPEG input:  ffmpeg -f mpegts -i pipe:0 -c:v libx264 -preset ultrafast ... -f flv rtmp://dest
- *   For WebRTC input:  ffmpeg -protocol_whitelist file,rtp,udp -i /tmp/openvibe-restream-{key}.sdp ... -f flv rtmp://dest
+ *   For WebRTC input:  ffmpeg -protocol_whitelist file,rtp,udp -i /tmp/openvibe-restream-{key}-{run}.sdp ... -f flv rtmp://dest
  */
 const { spawn } = require('child_process');
 const EventEmitter = require('events');
@@ -622,7 +622,9 @@ class RestreamManager extends EventEmitter {
         }
 
         // Step 4: Build SDP file
-        const sdpPath = path.join(os.tmpdir(), `openvibe-restream-${session.key.replace(':', '-')}.sdp`);
+        // A file per run: a previous run's cleanup must never delete the file this run is about to read.
+        this._sdpSeq = (this._sdpSeq || 0) + 1;
+        const sdpPath = path.join(os.tmpdir(), `openvibe-restream-${session.key.replace(':', '-')}-${this._sdpSeq}.sdp`);
         const sdpContent = this._buildSdp(videoConsumer, audioConsumer, videoRtpPort, audioRtpPort);
         fs.writeFileSync(sdpPath, sdpContent, 'utf8');
         console.log(`[Restream] WebRTC: SDP written to ${sdpPath}`);
@@ -667,15 +669,15 @@ class RestreamManager extends EventEmitter {
 
         this._spawnFFmpeg(session, args);
 
-        // On FFmpeg close, clean up SFU consumers + SDP
+        // On FFmpeg close, clean up this run's SFU consumers + SDP (never a newer run's).
+        const runState = session.webrtcState;
         session.dataTapCleanup = () => {
-            if (session.webrtcState) {
-                const { roomId: rid, videoTransportId, audioTransportId, sdpPath: sdp } = session.webrtcState;
-                if (videoTransportId) webrtcSFU.closePlainConsumer(rid, videoTransportId);
-                if (audioTransportId) webrtcSFU.closePlainConsumer(rid, audioTransportId);
-                try { fs.unlinkSync(sdp); } catch {}
-                session.webrtcState = null;
-            }
+            if (!runState) return;
+            const { roomId: rid, videoTransportId, audioTransportId, sdpPath: sdp } = runState;
+            if (videoTransportId) webrtcSFU.closePlainConsumer(rid, videoTransportId);
+            if (audioTransportId) webrtcSFU.closePlainConsumer(rid, audioTransportId);
+            try { fs.unlinkSync(sdp); } catch {}
+            if (session.webrtcState === runState) session.webrtcState = null;
         };
     }
 
@@ -883,6 +885,15 @@ class RestreamManager extends EventEmitter {
      * to avoid GnuTLS TLS session invalidation issues.
      */
     _spawnFFmpeg(session, args) {
+        // One FFmpeg per session. A second on the same stream key is refused by the platform as a second publisher,
+        // and the first, orphaned, kept the key (10-19: Twitch refused goosely's restream for 13 minutes).
+        if (session.process) {
+            console.warn(`[Restream] ${session.key}: an FFmpeg was still attached at spawn — stopping it first`);
+            const old = session.process;
+            session.process = null;
+            try { old.kill('SIGTERM'); } catch { /* */ }
+            setTimeout(() => { try { old.kill('SIGKILL'); } catch { /* */ } }, 5000).unref?.();
+        }
         this._disposeTransientSessionState(session);
 
         // Use OpenSSL FFmpeg binary for RTMPS destinations (GnuTLS has TLS rekeying issues)
@@ -987,8 +998,10 @@ class RestreamManager extends EventEmitter {
         });
 
         proc.on('error', (err) => {
+            const current = session.process === proc;
             this._disposeTransientSessionState(session, proc);
             console.error(`[Restream] FFmpeg spawn error for ${session.key}:`, err.message);
+            if (!current) return; // killed on purpose or replaced: whoever did that owns the restart
             session.lastError = err.message;
             session.status = 'error';
             this.emit('status-change', {
@@ -999,8 +1012,16 @@ class RestreamManager extends EventEmitter {
         });
 
         proc.on('close', (code) => {
+            // A run killed on purpose (_killProcess clears session.process first) or replaced by a newer one is not
+            // this session's failure: whoever stopped it scheduled what comes next. Restarting here too queued a second
+            // restart, and two FFmpeg ended up on one stream key.
+            const current = session.process === proc;
             this._disposeTransientSessionState(session, proc);
             if (session.status === 'stopped') return; // intentional stop
+            if (!current) {
+                console.log(`[Restream] FFmpeg exited for ${session.key} (stopped for a restart): code=${code}`);
+                return;
+            }
 
             const duration = Date.now() - (session.startedAt || Date.now());
             // ffmpeg names the output URL in its errors ("Error opening output rtmps://…/app/<key>"): keys never reach a log.
@@ -1044,6 +1065,8 @@ class RestreamManager extends EventEmitter {
      */
     async _scheduleRestart(session) {
         if (session.status === 'stopped') return;
+        // One pending restart per session: a second timer would start a second FFmpeg alongside the first.
+        if (session.restartTimer) return;
 
         // Stop this session. Only persist a destination-level cooldown when the destination is
         // genuinely dead (never once accepted our stream this session) — otherwise a healthy but
