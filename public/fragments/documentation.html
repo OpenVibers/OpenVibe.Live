@@ -288,7 +288,7 @@ const { stream, endpoint } = await fetch('https://openvibe.live/api/streams', {
 console.log(endpoint.whipUrlBase); // POST your SDP offer here (see WebRTC tab)
 </code></pre>
 <h3>The same with openvibe-sdk</h3>
-<p>In Node, <code>npm install https://codeload.github.com/OpenVibers/OpenVibe.SDK/tar.gz/refs/tags/v0.54.0</code> and use <code>openvibe-sdk/live</code>: who is live, channels, slots, going live, the session, the content feeds and WHIP, with errors as <code>OpenVibeError</code> (<a href="https://github.com/OpenVibers/OpenVibe.SDK#readme" target="_blank" rel="noopener">SDK README</a>).</p>
+<p>In Node, <code>npm install https://codeload.github.com/OpenVibers/OpenVibe.SDK/tar.gz/refs/tags/v0.55.0</code> and use <code>openvibe-sdk/live</code>: who is live, channels, slots, going live, the session, the content feeds and WHIP, with errors as <code>OpenVibeError</code> (<a href="https://github.com/OpenVibers/OpenVibe.SDK#readme" target="_blank" rel="noopener">SDK README</a>).</p>
 <pre><code>const { createClient } = require('openvibe-sdk');
 const { createLiveClient } = require('openvibe-sdk/live');
 const live = createLiveClient(createClient({ token: TOKEN }));   // openvibe.live is found through the network registry
