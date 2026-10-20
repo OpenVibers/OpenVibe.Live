@@ -317,6 +317,8 @@ body.no-shadow .msg { text-shadow: none; }
     transition: opacity 0.3s;
 }
 #status.hidden { opacity: 0; }
+    .spoiler { background: rgba(255, 255, 255, 0.35); color: transparent; border-radius: 4px; padding: 0 2px; }
+    .spoiler * { visibility: hidden; }
 </style>
 </head>
 <body>
@@ -415,7 +417,19 @@ body.no-shadow .msg { text-shadow: none; }
     // ── Emote parsing ──────────────────────────────────────────
     // Kick inline emote format: [emote:<id>:<name>] (numeric id first).
     const KICK_EMOTE_RE = /\[emote:(\d+):([^\]:]+)\]/g;
+    // ||spoilers|| stay a solid bar here: nobody watching the stream can click to show them.
+    const SPOILER_RE = /\|\|([\s\S]+?)\|\|/g;
     function parseEmotes(text) {
+        let out = '';
+        let last = 0;
+        for (const m of String(text).matchAll(SPOILER_RE)) {
+            if (!m[1].trim()) continue;
+            out += parseEmotesPart(text.slice(last, m.index)) + `<span class="spoiler">${parseEmotesPart(m[1])}</span>`;
+            last = m.index + m[0].length;
+        }
+        return out + parseEmotesPart(String(text).slice(last));
+    }
+    function parseEmotesPart(text) {
         // First expand Kick inline emotes (independent of the loaded emote map).
         const parts = [];
         let last = 0, m;
@@ -635,7 +649,7 @@ body.no-shadow .msg { text-shadow: none; }
         let replyHtml = '';
         if (msg.reply_to) {
             const replyUser = esc(msg.reply_to.username || 'unknown');
-            const replySnippet = esc(msg.reply_to.message || '');
+            const replySnippet = esc(String(msg.reply_to.message || '').replace(SPOILER_RE, (m, inner) => (inner.trim() ? '[spoiler]' : m)));
             replyHtml = `<div style="font-size:0.72em;opacity:0.6;margin-bottom:1px"><i class="fa-solid fa-reply fa-flip-horizontal" style="font-size:0.6em"></i> @${replyUser} ${replySnippet}</div>`;
         }
 

@@ -649,6 +649,7 @@ button{font:inherit}
 </div>
 
 <script src="/js/chat-shared.js"></script>
+<script src="/js/chat-spoilers.js"></script>
 <script>
 (() => {
   "use strict";
@@ -906,7 +907,7 @@ button{font:inherit}
         `data-uid="${esc(String(m.user_id||""))}"`,`data-platform="${esc(plat)}"`,`data-ext="${esc(ext)}"`,
         `data-color="${esc(nameColor)}"`].join(" ");
       html += `<span class="name" ${da} style="color:${esc(nameColor)}" title="Right-click for options">${esc(label)}</span> `;
-      html += `<span class="msg-text">${OpenVibeChat.linkify(m.message||"")}</span>`;
+      html += `<span class="msg-text">${OpenVibeSpoilers.withSpoilers(m.message||"", OpenVibeChat.linkify)}</span>`;
       el.innerHTML = html;
     }
     messages.appendChild(el);

@@ -470,3 +470,23 @@
 .csp-info-btn { background: none; border: 0; padding: 2px 4px; color: var(--text-muted); cursor: pointer; font-size: 0.85rem; }
 .csp-info-btn:hover, .csp-info-btn[aria-expanded="true"] { color: var(--accent-light, #a78bfa); }
 .csp-info-text { margin: 2px 0 8px; padding: 8px 10px; border-radius: 8px; font-size: 0.74rem; line-height: 1.45; color: var(--text-secondary); background: color-mix(in srgb, var(--accent, #8b5cf6) 9%, transparent); }
+
+/* Spoilers (||text|| or /spoiler): hidden until clicked; emotes and links inside stay hidden too. */
+.chat-spoiler {
+    background: var(--text-muted, #6b7280);
+    color: transparent;
+    border-radius: 4px;
+    padding: 0 2px;
+    cursor: pointer;
+    user-select: none;
+    transition: background 0.15s;
+}
+.chat-spoiler:hover { background: var(--text-secondary, #9ca3af); }
+.chat-spoiler:not(.revealed) * { visibility: hidden; }
+.chat-spoiler:focus-visible { outline: 2px solid var(--accent, #3b82f6); outline-offset: 1px; }
+.chat-spoiler.revealed {
+    background: color-mix(in srgb, currentColor 12%, transparent);
+    color: inherit;
+    cursor: auto;
+    user-select: text;
+}

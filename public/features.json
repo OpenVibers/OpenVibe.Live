@@ -66,6 +66,7 @@
     },
     "chatExtras": {
       "js": [
+        "/js/chat-spoilers.js",
         "/js/emotes.js",
         "/js/gif-picker.js",
         "/js/chat-autocomplete.js"

@@ -21,6 +21,7 @@ const SLASH_COMMANDS = [
     { name: 'viewers', desc: 'Show viewer count' },
     { name: 'uptime',  desc: 'Show stream uptime' },
     { name: 'me',      desc: 'Send an action message',   usage: '/me <action>' },
+    { name: 'spoiler', desc: 'Hide a message until clicked (or ||text|| inline)', usage: '/spoiler <text>' },
     { name: 'paste',   desc: 'Share a paste in chat',    usage: '/paste <content>' },
     { name: 'slow',    desc: 'Set slow mode (mod)',       usage: '/slow <seconds>' },
     { name: 'subonly', desc: 'Sub-only chat on/off (mod)', usage: '/subonly [off]' },
