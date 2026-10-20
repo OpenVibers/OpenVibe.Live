@@ -92,7 +92,18 @@ const { createRum, pageKind, deviceClass } = require('../server/web/rum');
     assert.deepStrictEqual([Object.keys(junk.snapshot().pages), junk.snapshot().pages['home|phone'].lcp.n], [['home|phone'], 1], 'malformed keys and values are left out');
     const index = fs.readFileSync(path.join(__dirname, '../server/index.js'), 'utf8');
     assert.ok(index.includes("app.get('/metrics/rum'") && index.includes('isLoopbackDirect(req)'), 'the host reads the snapshot on loopback only');
-    assert.ok(/if \(!drill\.enabled\) \{\s*db\.getState\('rum_state'\)/.test(index), 'restored at boot, never in a restore drill');
+    // Restored once the database is open (read at module load, the read failed before the pool existed and the first save
+    // overwrote the stored reservoirs: every deploy emptied them), and nothing is saved before a successful read.
+    const initAt = index.indexOf('await db.initDb();');
+    const restoreAt = index.indexOf('await restoreRum();');
+    assert.ok(initAt > 0 && restoreAt > initAt, 'restoreRum() runs in start(), after initDb');
+    assert.ok(index.indexOf('if (drill.enabled) return await startDrill();') < restoreAt, 'never in a restore drill');
+    const fn = index.slice(index.indexOf('async function restoreRum()'), index.indexOf('async function restoreRum()') + 900);
+    assert.ok(fn.indexOf("db.getState('rum_state')") < fn.indexOf('rumRestored = true') && fn.indexOf('rumRestored = true') < fn.indexOf("every('rum-save'"),
+        'read first, then mark restored, then start saving');
+    assert.ok(/catch \(err\) \{[^}]*return; \}/.test(fn), 'a failed read returns before any save is scheduled');
+    assert.ok(index.includes("if (!drill.enabled && rumRestored) await db.setState('rum_state'"), 'the shutdown save waits for a restore too');
+    assert.ok(!/^db\.getState\('rum_state'\)/m.test(index) && !/^\s{4}db\.getState\('rum_state'\)\.then/m.test(index), 'no read at module load any more');
 
     // app.js: every page load, once idle, through the runtime's versioned loader (a quarter of them gave too few
     // samples at this traffic; automated browsers are skipped in the script itself).
