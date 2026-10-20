@@ -70,4 +70,13 @@ assert.match(css, /\.dvr-live-btn\.dvr-behind \.live-dot \{[^}]*animation: none;
 assert.ok(!/\.dvr-live-btn \{[^}]*livePulse/.test(css), 'no pulsing red box');
 assert.match(read('public/css/features/channel.css'), /\.viewer-badge, \.uptime-badge \{[^}]*font-variant-numeric: tabular-nums;/);
 
+// The bar looks like the network's player (openvibe-shared player.css): the same backdrop, 38 px buttons, a focus ring.
+const backdrop = 'linear-gradient(to top, rgba(0,0,0,0.88) 0%, rgba(0,0,0,0.62) 42%, rgba(0,0,0,0.22) 75%, transparent 100%)';
+assert.ok(new RegExp(`\\.video-overlay \\{[^}]*background: ${backdrop.replace(/[().]/g, '\\$&')};`).test(css), 'the shared backdrop');
+let shared = null;
+try { shared = read('node_modules/openvibe-shared/player.css'); } catch { /* a pin older than 4.7.0 */ }
+if (shared) assert.ok(shared.replace(/, /g, ',').includes(backdrop.replace(/, /g, ',')), 'still the shared player\'s backdrop');
+assert.match(css, /\.vc-btn \{[^}]*min-width: 38px; min-height: 38px;/);
+assert.match(css, /\.vc-btn:focus-visible \{[^}]*outline: 2px solid var\(--accent\);/);
+
 console.log('player live clock: one clock at the live edge, "behind live" when rewound — all checks passed');

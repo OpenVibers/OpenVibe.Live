@@ -2775,7 +2775,8 @@ a.pulse-card:hover { border-color: var(--accent); transform: translateY(-2px); }
 }
 .video-overlay {
     position: absolute; bottom: 0; left: 0; right: 0;
-    background: linear-gradient(transparent, rgba(0,0,0,0.85));
+    /* The same backdrop as the network's player (openvibe-shared player.css), so every OpenVibe video looks alike. */
+    background: linear-gradient(to top, rgba(0,0,0,0.88) 0%, rgba(0,0,0,0.62) 42%, rgba(0,0,0,0.22) 75%, transparent 100%);
     padding: 0; opacity: 0;
     transition: opacity 0.3s;
     z-index: 5;
@@ -2790,12 +2791,14 @@ a.pulse-card:hover { border-color: var(--accent); transform: translateY(-2px); }
 }
 .vc-btn {
     background: none; border: none; color: #fff;
-    font-size: 1rem; padding: 6px 8px; border-radius: var(--radius-sm);
-    opacity: 0.9; transition: all 0.2s; cursor: pointer;
+    font-size: 1rem; padding: 0 8px; border-radius: 8px;
+    opacity: 0.92; transition: background 0.15s, opacity 0.15s; cursor: pointer;
     display: flex; align-items: center; justify-content: center;
-    min-width: 32px; min-height: 32px;
+    min-width: 38px; min-height: 38px;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.6);
 }
-.vc-btn:hover { opacity: 1; background: rgba(255,255,255,0.15); color: var(--accent-light); }
+.vc-btn:hover { opacity: 1; background: rgba(255,255,255,0.14); }
+.vc-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; opacity: 1; }
 .vc-btn:active { transform: scale(0.92); }
 .vc-btn.active { color: var(--accent); }
 .vc-spacer { flex: 1; }
