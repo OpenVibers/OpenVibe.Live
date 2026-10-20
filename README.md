@@ -1,6 +1,6 @@
 # OpenVibe.Live
 
-**Open Live Streaming**: the streaming front of the OpenVibe network. OpenVibe.Live runs ingest (RTMP, WHIP, WebRTC, JSMPEG), viewer playback, channels, the watch page and its chat surface, streamer tools, moderation, restreaming, Vibes and channel points, and the Arena.
+**Open Live Streaming**: the streaming front of the OpenVibe network. OpenVibe.Live runs ingest (RTMP, WHIP, WebRTC, JSMPEG), viewer playback, channels, the watch page and its chat surface, streamer tools, moderation, restreaming, channel points and tips, and The Rundown.
 
 ## Purpose
 
@@ -45,12 +45,13 @@ The media subsystem lives in **OpenVibe.Media**:
 - The SPA's existing `/api/vods…`, `/api/clips…`, `/api/pastes…`, `/api/thumbnails/:filename` calls are preserved by thin proxies; big media files 302-redirect to `https://openvibe.media`.
 - Media reports `vod.ready` / `clip.ready` (and failures, storage alerts) as `media.*` OpenVibe.Events events, delivered to `POST /internal/media-events`, driving recording state, AI jobs and clip chat announcements. Each outcome is applied once (see [docs/architecture.md](docs/architecture.md#media-outcomes-over-events)).
 - Live-owned AI/transcript state for Media-hosted content lives in `vod_ai_state` / `clip_ai_state` in Live's PostgreSQL database.
+- Recordings and clips are watched on **OpenVibe.Video** (`openvibe.video`, served by OpenVibe.MediaHub) since 2026-10-19: it owns their pages (player, AI chapters and captions, chat replay, comments, clipping), and Live's old `/vod/:id` and `/clip/:id` answer a permanent redirect there with any `?t=` (`server/web/video-handover.js`). `/vods` and `/clips` stay on Live as the Content feed with a filter.
 
 ### Authentication & currencies
 
 - User auth via OpenVibe.Network OAuth2 (client id `live`); RS256 tokens verified offline with the Network public key; local user records join Network identities via `linked_accounts`.
 - **OpenCoins** (network-wide) — earn/spend goes through the Network wallet API (`/internal/coins/credit|debit|transfer`, idempotency keys `live:<event>:<id>`). The legacy local balance column is frozen for migration.
-- **Vibes** (tips/cashout, PayPal) and per-streamer channel points stay Live-local.
+- **Vibes** (tips, checkouts, cash-outs, balances) are OpenVibe.Billing's since the cutover of 2026-10-17: every money action is a Billing call (`server/monetization/billing-client.js`), and provider webhooks go to Billing. Per-streamer channel points stay Live-local.
 
 ### Data storage
 
@@ -76,7 +77,7 @@ The media subsystem lives in **OpenVibe.Media**:
 
 - **Identity, sessions, follows, blocks, notifications, OpenCoins**: OpenVibe.Network. Live verifies its RS256 tokens offline and follows `network.user.*`, `network.follow.*` and deletion, export and merge events.
 - **Chat, its messages and every chat table**: OpenVibe.Chat (since 2026-09-23). Live keeps no copy: reads and writes go through `server/chat/chat-reads.js` and `chat-delivery.js`, and the twelve tables it still held are dropped at boot by migration `007_drop_chat_tables`.
-- **Recordings, clips, thumbnails, files**: OpenVibe.Media. The local `vods`/`clips`/`pastes` tables are frozen (`test/frozen-tables.test.js`).
+- **Recordings, clips, thumbnails, files**: OpenVibe.Media; their watch pages are OpenVibe.Video's. The local `vods`/`clips`/`pastes` tables are frozen (`test/frozen-tables.test.js`).
 - **Pastes and comments**: OpenVibe.Community.
 - **AI**: OpenVibe.AI. Live calls no model provider itself. Every prompt is an AI template; streamers' own keys are stored there; VOD and clip transcripts run there. Live-stream captions run in Live's own speech-to-text (`server/ai/transcribe.js`). Both use NVIDIA Parakeet TDT 0.6B v3 for English and 24 European languages and whisper.cpp for the rest.
 - **Search, events, tips, VIP, money ledger**: OpenVibe.Search, Events, Tips, VIP and Billing.
