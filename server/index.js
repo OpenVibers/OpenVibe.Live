@@ -820,6 +820,13 @@ app.get('/api/admin/analytics/bots', requireAuth, permissions.requireAdmin, asyn
     }
 });
 
+// Which client code is current (server/web/assets.js clientRelease): a tab open across a deploy asks, and loads its next
+// page in full when it is running older code (public/js/app.js).
+app.get('/api/client-release', (req, res) => {
+    res.set('Cache-Control', 'no-store');
+    res.json({ release: assets.clientRelease() });
+});
+
 // ── Health Check ─────────────────────────────────────────────
 app.get('/api/health', (req, res) => {
     res.json({

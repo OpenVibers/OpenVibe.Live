@@ -874,14 +874,8 @@ function dashNav(event) {
 
 /* ── SPA Router (URL-based) ───────────────────────────────────── */
 /**
- * Everything that must stop when we leave a route.
- *
- * This used to live inside navigate(), which meant the browser's Back and Forward buttons —
- * which go through popstate → routeFromURL() and never touch navigate() — left everything
- * running: the chat WebSocket still bound to the previous channel, the coin heartbeat still
- * crediting watch time on a page with nothing playing, the canvas socket and its timer, the
- * global AI poll, the AI-viewer loops, and the broadcast desk's five polls. Every Back
- * press added another set. Now both paths go through here.
+ * Everything that must stop when we leave a route, by a link (navigate()) or by Back and Forward
+ * (popstate → routeFromURL()), which used to leave the chat socket, coin heartbeat and polls running.
  */
 function teardownRoute(nextPath) {
     // A new route generation: anything the previous route registered through ov.scope() is
@@ -890,9 +884,6 @@ function teardownRoute(nextPath) {
     ovClearStrandedOverlays();
     if (typeof destroyPlayer === 'function') destroyPlayer();
     if (typeof destroyChat === 'function') destroyChat();
-    /* destroyCanvasPage lived in js/canvas.js, which index.html has not loaded since canvas moved
-       to OpenVibe.Games — so this guard has been permanently false. Removed rather than left as a
-       line that looks like cleanup and never runs. */
     if (typeof stopCoinHeartbeat === 'function') stopCoinHeartbeat();
     if (typeof updateChannelPointsNav === 'function') updateChannelPointsNav(null);
     if (typeof stopHomeRefresh === 'function') stopHomeRefresh();
@@ -931,11 +922,41 @@ function teardownRoute(nextPath) {
     }
 }
 
+/**
+ * A tab open across a deploy runs old code on new API data (10-20: an old router put a VOD's openvibe.video link under
+ * Live's address, "Page not found"). Back in view or on a route change, at most every 5 min, it asks for the current
+ * client release (server/web/assets.js); when it differs, the next link is a full load, once per release, never mid
+ * broadcast or call.
+ */
+const _ovRelease = { loaded: null, stale: null, checkedAt: Date.now() };
+try { _ovRelease.loaded = JSON.parse(document.getElementById('ov-assets').textContent).release || null; } catch { /* */ }
+function ovCheckRelease() {
+    if (!_ovRelease.loaded || _ovRelease.stale || document.visibilityState === 'hidden' || Date.now() - _ovRelease.checkedAt < 3e5) return;
+    _ovRelease.checkedAt = Date.now();
+    fetch('/api/client-release', { cache: 'no-store' }).then((r) => r.json()).then(({ release }) => {
+        let tried = null;
+        try { tried = sessionStorage.getItem('ov-release-load'); } catch { /* */ }
+        if (release && release !== _ovRelease.loaded && release !== tried) _ovRelease.stale = release;
+    }).catch(() => {});
+}
+document.addEventListener('visibilitychange', ovCheckRelease);
+window.addEventListener('pageshow', (e) => { if (e.persisted) ovCheckRelease(); });
+function _ovHoldsMedia() {
+    try { if ([...broadcastState.streams.values()].some((s) => s.localStream || s.signalingWs || s.vodUploading)) return true; } catch { /* */ }
+    try { return !!(callState.joined || callState.connecting); } catch { return false; }
+}
+
 /** A URL that leaves Live (an OpenVibe.Video watch page, another OpenVibe site): the browser goes there, not the SPA. */
 const isOffSite = (url) => /^https?:\/\//i.test(String(url || '')) && !String(url).startsWith(`${location.origin}/`);
 
 function navigate(urlPath, replace = false) {
     if (isOffSite(urlPath)) { if (replace) location.replace(urlPath); else location.href = urlPath; return; }
+    if (_ovRelease.stale && !_ovHoldsMedia()) {
+        const to = urlPath.startsWith('/') ? urlPath : `/${urlPath}`;
+        try { sessionStorage.setItem('ov-release-load', _ovRelease.stale); } catch { /* */ }
+        if (replace) location.replace(to); else location.assign(to);
+        return;
+    }
     teardownRoute(urlPath);
 
     // Normalize path
@@ -949,6 +970,7 @@ function navigate(urlPath, replace = false) {
     }
 
     routeFromURL();
+    ovCheckRelease();
 }
 
 const DEFAULT_PAGE_TITLE = 'OpenVibe.Live — Open-Source Live Streaming, Community Run';
@@ -1217,18 +1239,9 @@ const BRAND_AWAKE_MS = 5000;
 let _brandIdleTimer = 0, _brandSettleTimer = 0, _brandSpinTimer = 0, _brandEverWoken = false;
 
 /**
- * Wake the OV mark for a moment, then let it go still.
- *
- * The mark ran six looping animations — a float, a glow pulse, a comet sweep, a dot pulse and two
- * SMIL orbit motions, plus a sweeping gradient — forever, on every page. That is a composited
- * repaint every frame for the entire time someone sits reading, which is most of the time they
- * are here. It now animates when there is a reason to: the route changed, so the mark spins once
- * and stays lively for five seconds, then settles with an overshoot and holds still until the
- * next change.
- *
- * CSS loops stop via animation-play-state, which freezes them on their 0% keyframe — every one of
- * those is a sensible rest pose. SMIL cannot be paused from CSS at all, so the SVG element's own
- * pauseAnimations()/unpauseAnimations() handles the orbit dots and the gradient sweep.
+ * Wake the OV mark for a moment, then let it go still: a route change spins it once and keeps it
+ * lively for five seconds (looping forever repainted every frame while people read). CSS loops stop
+ * via animation-play-state on their 0% rest pose; SMIL needs the SVG's pauseAnimations().
  */
 function ovWakeBrandMark() {
     let marks;
