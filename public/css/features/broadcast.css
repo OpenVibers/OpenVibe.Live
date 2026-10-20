@@ -1885,6 +1885,11 @@
     max-width: 400px;
     width: 90%;
     box-shadow: 0 16px 64px rgba(0,0,0,0.5);
+    /* Zoomed in, the restream form is taller than the window: it scrolls inside instead of running off both edges. */
+    max-height: calc(100vh - 32px);
+    max-height: calc(100dvh - 32px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
 }
 .bc-ws-confirm-actions {
     display: flex;
