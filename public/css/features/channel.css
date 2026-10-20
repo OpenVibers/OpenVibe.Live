@@ -512,10 +512,10 @@
     }
 }
 .viewer-badge, .uptime-badge {
-    font-size: 0.75rem; color: rgba(255,255,255,0.85);
-    display: flex; align-items: center; gap: 4px;
-    padding: 2px 8px; border-radius: var(--radius-sm);
-    background: rgba(255,255,255,0.08);
+    font-size: 0.78rem; color: rgba(255,255,255,0.9);
+    display: flex; align-items: center; gap: 5px;
+    padding: 0 6px;
+    font-variant-numeric: tabular-nums;
 }
 .dvr-progress-wrap:hover .dvr-progress-bar {
     height: 6px;

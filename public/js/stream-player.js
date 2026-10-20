@@ -2391,20 +2391,22 @@ function updateDVRUI() {
     const container = document.getElementById('video-container');
 
     if (dvrState.isLive) {
-        // At live edge — progress bar is full (100%)
+        // At the live edge the bar shows no time of its own: the uptime beside it is the one clock. This read the DVR
+        // buffer's length, which trails the stream by a segment or more ("1:30:00 [LIVE]" next to "1:30:17").
         if (fill) fill.style.width = '100%';
-        const elapsed = dvrState.duration > 0
-            ? dvrState.duration
-            : Math.max(0, Math.floor((Date.now() - dvrState.streamStartTime) / 1000));
-        if (timeEl) timeEl.textContent = `${_dvrFmtTime(elapsed)} [LIVE]`;
+        if (timeEl) { timeEl.hidden = true; timeEl.textContent = ''; }
         if (container) container.classList.remove('dvr-rewound');
     } else {
-        // Rewound — show position within the DVR buffer
+        // Rewound: how far behind live, with the position in the buffer as its title
         const video = document.getElementById('video-element');
         if (video && dvrState.duration > 0 && !dvrState.seeking) {
             const pct = (video.currentTime / dvrState.duration) * 100;
             if (fill) fill.style.width = Math.min(pct, 100) + '%';
-            if (timeEl) timeEl.textContent = `${_dvrFmtTime(video.currentTime)} / ${_dvrFmtTime(dvrState.duration)}`;
+            if (timeEl) {
+                timeEl.hidden = false;
+                timeEl.textContent = `\u2212${_dvrFmtTime(dvrState.duration - video.currentTime)}`;
+                timeEl.title = `${_dvrFmtTime(video.currentTime)} of ${_dvrFmtTime(dvrState.duration)} recorded; behind live`;
+            }
         }
         if (container) container.classList.add('dvr-rewound');
     }
@@ -2531,7 +2533,7 @@ function switchToDVR(targetTime) {
     // Show "Jump to Live" button in alert style
     if (liveBtn) {
         liveBtn.classList.add('dvr-behind');
-        liveBtn.innerHTML = '<i class="fa-solid fa-forward"></i> Back to LIVE';
+        liveBtn.innerHTML = '<span class="live-dot"></span>Go live';
     }
 
     // Ensure the video element is visible (JSMPEG normally hides it)
@@ -2615,7 +2617,7 @@ function jumpToLive() {
     // Reset live button
     if (liveBtn) {
         liveBtn.classList.remove('dvr-behind');
-        liveBtn.innerHTML = '<i class="fa-solid fa-tower-broadcast"></i> LIVE';
+        liveBtn.innerHTML = '<span class="live-dot"></span>LIVE';
     }
 
     updateDVRUI();
