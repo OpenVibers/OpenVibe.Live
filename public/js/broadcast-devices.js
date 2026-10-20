@@ -256,19 +256,42 @@ async function populateCreateFormDevices() {
 }
 
 /**
+ * The phone studio's pinch zooms the camera itself (MediaStreamTrack `zoom`, broadcast-studio.js), and Chrome lists
+ * a camera's zoom in getCapabilities() only when the request asked for it. So on a touch screen, in a browser that
+ * knows the constraint, every camera request asks: `zoom: true` is a wish, not a requirement (a camera without zoom
+ * still opens). Without it the pinch said "This camera cannot zoom" on phones whose camera can (owner, 2026-10-20).
+ */
+function _withCameraZoom(constraints) {
+    const video = constraints && constraints.video;
+    if (!video) return constraints;
+    try {
+        if (!navigator.mediaDevices.getSupportedConstraints?.().zoom) return constraints;
+        if (!window.matchMedia?.('(pointer: coarse)').matches) return constraints;
+    } catch { return constraints; }
+    if (video === true) return { ...constraints, video: { zoom: true } };
+    return 'zoom' in video ? constraints : { ...constraints, video: { ...video, zoom: true } };
+}
+
+/**
  * Helper: call getUserMedia with a timeout to avoid indefinite hangs on mobile.
  * Also handles Android-specific quirks:
  *  - Some Android devices need the previous track fully stopped before re-acquiring
  *  - OverconstrainedError gets retried with relaxed constraints
  */
 function _getUserMediaWithTimeout(constraints, timeoutMs = 15000) {
+    const asked = _withCameraZoom(constraints);
     return new Promise((resolve, reject) => {
         const timer = setTimeout(() => reject(new Error('Camera/mic request timed out — try tapping Allow in the browser prompt')), timeoutMs);
-        navigator.mediaDevices.getUserMedia(constraints).then(stream => {
+        navigator.mediaDevices.getUserMedia(asked).then(stream => {
             clearTimeout(timer);
             resolve(stream);
         }).catch(err => {
             clearTimeout(timer);
+            // A browser that throws on the zoom wish: ask again as the caller asked.
+            if (asked !== constraints && err.name === 'TypeError') {
+                navigator.mediaDevices.getUserMedia(constraints).then(resolve).catch(reject);
+                return;
+            }
             // On OverconstrainedError, retry with relaxed constraints
             if (err.name === 'OverconstrainedError') {
                 const relaxed = {};
