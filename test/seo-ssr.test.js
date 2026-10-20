@@ -239,7 +239,7 @@ const server = http.createServer(app).listen(0, '127.0.0.1', async () => {
             const html = fs.readFileSync(path.join(__dirname, '..', 'public', `${name}.html`), 'utf8');
             assert.ok(html.includes(`<link rel="canonical" href="https://openvibe.live/${name}">`), name);
             assert.ok(html.includes(`<meta property="og:url" content="https://openvibe.live/${name}">`), name);
-            assert.ok(/<meta property="og:title" content="[^"]+">/.test(html) && html.includes('<meta property="og:image" content="https://openvibe.live/og-image.png">'), name);
+            assert.ok(/<meta property="og:title" content="[^"]+">/.test(html) && html.includes('<meta property="og:image" content="https://openvibe.live/shared/social/live.jpg">'), name);
             assert.ok(!/for the OpenVibe\b/.test(html.slice(0, html.indexOf('</head>'))), `${name}: "for the OpenVibe" reads wrong`);
         }
     });

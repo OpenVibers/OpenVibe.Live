@@ -573,6 +573,8 @@ console.log(`[Server] /shared: serving ${SHARED_BROWSER_FILES.length} browser fi
         res.setHeader('Cache-Control', 'no-cache');
         res.sendFile(path.join(sharedServePath, 'openvibe-sw.js'));
     });
+    // The share cards (og:image on every page), before the browser-file allowlist below.
+    require('./web/share-cards').register(app);
     // Serve only the whitelisted browser files — don't expose the entire package
     const sharedFileSet = new Set(SHARED_BROWSER_FILES);
     app.use('/shared', (req, res, next) => {
