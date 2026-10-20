@@ -149,13 +149,11 @@ console.log('✅ desk: live streams wait for talk; topics gather streamers and g
 
 // ── Reads ──
 const home = await read.home({ viewer: 'anon:t' });
-assert.ok(home.latest.some((x) => x.type === 'episode' && x.title === 'The Fridge Files'), 'the episode is in the latest');
-assert.ok(home.latest.some((x) => x.type === 'segment' && x.title === 'French fridges get hacked'), 'a score-4 take is in the latest');
+assert.ok([home.lead, ...home.streams.flatMap((x) => x.takes)].some((k) => k && k.title === 'French fridges get hacked'), 'a score-4 take is on the front page');
 assert.ok(!await db.get("SELECT 1 FROM rundown_segments WHERE title = 'Filler bit'"), 'a score-2 segment is filler: not kept');
-assert.ok(!home.latest.some((x) => x.title === 'Ranked is pain'), 'a score-3 take without a name is not on the front page');
 assert.strictEqual(home.trending[0].slug, 'supermarket-fridges-hacked-in-france');
 assert.strictEqual(home.trending[0].streamers, 2);
-assert.deepStrictEqual(Object.keys(home.latest[0].user).sort(), ['avatar_url', 'display_name', 'id', 'profile_color', 'username'], 'a person is five fields, never a users row');
+assert.deepStrictEqual(Object.keys(home.streams[0].user).sort(), ['avatar_url', 'display_name', 'id', 'profile_color', 'username'], 'a person is five fields, never a users row');
 assert.ok(home.lead && home.lead.score >= 4, 'the lead is a take scored 4 or 5');
 const fridgeNight = home.streams.find((x) => x.stream_id === s1);
 assert.ok(fridgeNight && fridgeNight.episode && fridgeNight.episode.title === 'The Fridge Files', 'stream by stream: a stream carries its episode');
@@ -189,7 +187,6 @@ console.log('✅ reads: front page, topic, episode, streamer, reactions');
 await read.hide('segment', segs[1].id);
 await read.setOptOut(goose, true);
 assert.strictEqual((await read.streamer('goosely')).opted_out, true);
-assert.ok(!(await read.home({})).latest.some((x) => x.user && x.user.username === 'goosely'), 'out: nothing about them on the front page');
 const outHome = await read.home({});
 assert.ok(!outHome.streams.some((x) => x.user.username === 'goosely') && !(outHome.lead && outHome.lead.user.username === 'goosely'), 'out: not in stream by stream or the lead');
 await read.setOptOut(goose, false);
@@ -212,7 +209,7 @@ await new Promise((res) => server.listen(0, '127.0.0.1', res));
 const base = `http://127.0.0.1:${server.address().port}/api/rundown`;
 try {
     const front = await (await fetch(`${base}/`)).json();
-    assert.ok(Array.isArray(front.latest) && front.trending.length >= 1 && front.counts.episodes === 1);
+    assert.ok(Array.isArray(front.latest) && !front.latest.length && front.trending.length >= 1 && front.counts.episodes === 1, 'the old river is empty');
     assert.ok(Array.isArray(front.streams) && front.streams.length >= 1, 'stream by stream');
     const page2 = await (await fetch(`${base}/streams?before=${encodeURIComponent(front.streams[0].last_at)}`)).json();
     assert.ok(Array.isArray(page2.streams) && 'next' in page2);

@@ -42,9 +42,6 @@ router.get('/', optionalAuth, async (req, res) => {
 router.get('/streams', optionalAuth, async (req, res) => {
     try { fresh(res); res.json(await read.streamsFeed({ before: req.query.before ? String(req.query.before) : null, viewer: await voterKey(req) })); } catch (err) { fail(res, err, 'Failed to load the streams'); }
 });
-router.get('/latest', optionalAuth, async (req, res) => {
-    try { fresh(res); res.json(await read.latest({ before: req.query.before ? String(req.query.before) : null, viewer: await voterKey(req) })); } catch (err) { fail(res, err, 'Failed to load the latest'); }
-});
 router.get('/topics', async (req, res) => {
     try {
         res.set('Cache-Control', 'public, max-age=60');
