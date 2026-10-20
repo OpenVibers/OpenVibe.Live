@@ -212,6 +212,9 @@ async function _pageMeta(routePath, { page = 1 } = {}) {
     if (p === '/search') return { title: `Search | ${SITE_NAME}`, description: 'Search channels, VODs and clips on OpenVibe.Live.', canonicalPath: '/search', ogType: 'website', robots: 'noindex,follow', jsonLd: [] };
     // The global chat room: its own title and canonical (the shell left it with neither; browser check, WS-Q task 3).
     if (p === '/chat') return { title: `Chat | ${SITE_NAME}`, description: 'The global chat room of OpenVibe.Live, open to everyone on the network.', canonicalPath: '/chat', ogType: 'website', robots: 'index,follow', jsonLd: [] };
+    // The API docs and the deploy log had the home page's title and description and no canonical: duplicates of "/".
+    if (p === '/documentation') return { title: `API docs | ${SITE_NAME}`, description: 'The OpenVibe.Live API: sign-in and tokens, streams and channels, WebRTC and WHIP broadcasting, chat bots, robots, AI, VODs, clips and webhooks.', canonicalPath: '/documentation', ogType: 'website', robots: 'index,follow', jsonLd: [] };
+    if (p === '/updates') return { title: `Updates | ${SITE_NAME}`, description: 'Every change deployed to OpenVibe.Live, newest first: each line is a commit from its open-source repository on GitHub.', canonicalPath: '/updates', ogType: 'website', robots: 'index,follow', jsonLd: [] };
 
     return null;
     void bu;
@@ -870,7 +873,7 @@ function _cacheSet(key, html, ttl = CACHE_TTL_MS) {
     _cache.set(key, { html, at: Date.now(), ttl });
 }
 
-const SEO_ROUTE_RE = /^\/(?:$|content$|moments$|vods$|clips$|pastes$|rundown(?:\/(?:topics|t\/[a-z0-9-]{1,80}|e\/\d{1,12}|[A-Za-z0-9_.-]{1,64}))?$|chat$|search$|vod\/\d+$|clip\/\d+$|recap\/\d+$|p\/[A-Za-z0-9_-]+$|@[A-Za-z0-9_]{3,24}$)/;
+const SEO_ROUTE_RE = /^\/(?:$|content$|moments$|vods$|clips$|pastes$|rundown(?:\/(?:topics|t\/[a-z0-9-]{1,80}|e\/\d{1,12}|[A-Za-z0-9_.-]{1,64}))?$|chat$|search$|documentation$|updates$|vod\/\d+$|clip\/\d+$|recap\/\d+$|p\/[A-Za-z0-9_-]+$|@[A-Za-z0-9_]{3,24}$)/;
 
 /** ?page=N on a channel page (its video list); 1 everywhere else and for anything that is not a number. */
 function _pageParam(p, query) {

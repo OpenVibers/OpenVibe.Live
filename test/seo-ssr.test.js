@@ -103,6 +103,7 @@ function get(p, headers = {}) {
 }
 const head = (html) => html.slice(0, html.search(/<\/head>/i));
 const titleOf = (html) => ((head(html).match(/<title>([^<]*)<\/title>/) || [])[1] || '').replace(/&#39;/g, "'");
+const descOf = (html) => ((head(html).match(/<meta name="description" content="([^"]*)">/) || [])[1] || '');
 const canonicalsOf = (html) => [...head(html).matchAll(/<link rel="canonical" href="([^"]+)">/g)].map((m) => m[1]);
 const robotsOf = (html) => [...head(html).matchAll(/<meta name="robots" content="([^"]+)">/g)].map((m) => m[1]);
 const ldOf = (html) => [...head(html).matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)].map((m) => { try { return JSON.parse(m[1]); } catch { return null; } }).filter(Boolean);
@@ -220,6 +221,27 @@ const server = http.createServer(app).listen(0, '127.0.0.1', async () => {
         const search = (await get('/search?q=minecraft')).body;
         assert.deepStrictEqual(canonicalsOf(search), ['https://openvibe.live/search'], 'every query is the one search page');
         assert.ok(/<meta name="robots" content="noindex,follow">/.test(head(search)));
+    });
+
+    await check('/documentation and /updates have their own title, description and canonical (they repeated the home page\'s)', async () => {
+        const homeDesc = descOf((await get('/')).body);
+        for (const [path, title] of [['/documentation', 'API docs | OpenVibe.Live'], ['/updates', 'Updates | OpenVibe.Live']]) {
+            const body = (await get(path)).body;
+            assert.deepStrictEqual(canonicalsOf(body), [`https://openvibe.live${path}`], path);
+            assert.strictEqual(titleOf(body), title);
+            const desc = descOf(body);
+            assert.ok(desc && desc !== homeDesc && desc.length <= 160, `${path}: ${desc}`);
+        }
+    });
+
+    await check('the legal pages name themselves canonical and carry share tags', () => {
+        for (const name of ['tos', 'privacy', 'dmca']) {
+            const html = fs.readFileSync(path.join(__dirname, '..', 'public', `${name}.html`), 'utf8');
+            assert.ok(html.includes(`<link rel="canonical" href="https://openvibe.live/${name}">`), name);
+            assert.ok(html.includes(`<meta property="og:url" content="https://openvibe.live/${name}">`), name);
+            assert.ok(/<meta property="og:title" content="[^"]+">/.test(html) && html.includes('<meta property="og:image" content="https://openvibe.live/og-image.png">'), name);
+            assert.ok(!/for the OpenVibe\b/.test(html.slice(0, html.indexOf('</head>'))), `${name}: "for the OpenVibe" reads wrong`);
+        }
     });
 
     await check('the home page\'s JSON-LD lists are named by the snapshot\'s visible headings', async () => {
