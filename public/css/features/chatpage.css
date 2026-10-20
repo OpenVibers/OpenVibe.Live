@@ -199,7 +199,21 @@
     background: var(--bg-primary);
     display: flex;
     flex-direction: column;
-    flex-shrink: 0;
+    /* In a call the panel shares the sidebar with the channel list, and on a laptop it did not fit: it pushed the
+       list out of sight and the sidebar cut off its bottom (Maticus, 2026-10-20). Now the list keeps a few rows and
+       the panel scrolls, its controls held at the bottom so Mute and Leave are always there. */
+    flex: 0 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+.vc-connected-panel > * { flex-shrink: 0; }
+.vc-sidebar:has(> .vc-connected-panel.is-open) .vc-channel-list { min-height: 112px; }
+.vc-connected-panel .vc-controls {
+    position: sticky;
+    bottom: 0;
+    z-index: 4;   /* above the tiles' menu buttons (3) scrolling behind it */
+    background: var(--bg-primary);
 }
 
 .vc-connected-header {
@@ -321,6 +335,9 @@
     /* The channel list (at least the Public room) fills in after the page: one row is held for it, so the chat below
        it does not move down when it lands (a 46-58 px shift on phones, CLS 0.04). */
     .vc-channel-list { min-height: 58px; }
+    /* In a call on a phone the panel gets under half the screen (the chat keeps the rest) and scrolls inside it. */
+    .vc-sidebar:has(> .vc-connected-panel.is-open) { max-height: 45vh; max-height: 45dvh; overflow: hidden; }
+    .vc-sidebar:has(> .vc-connected-panel.is-open) .vc-channel-list { min-height: 58px; }
     .vc-connected-header {
         padding: 8px 10px;
     }
