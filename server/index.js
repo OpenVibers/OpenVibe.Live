@@ -177,7 +177,7 @@ const stopper = gracefulStop({
         // No new background runs from here on (the jobs helper's loops); and end SSE streams so
         // the drain can actually complete instead of always hitting the deadline.
         () => { require('./utils/jobs').stopAll(); },
-        async () => { if (!drill.enabled) await db.setState('rum_state', JSON.stringify(rum.state())).catch(() => {}); },
+        async () => { if (!drill.enabled && rumRestored) await db.setState('rum_state', JSON.stringify(rum.state())).catch(() => {}); },
         () => { require('./streaming/live-events').closeAll(); },
     ],
     beforeDrain: async () => {
@@ -886,9 +886,17 @@ app.get('/metrics/rum', (req, res) => {
     if (!require('openvibe-shared/metrics').isLoopbackDirect(req)) return res.status(404).json({ error: 'Not found' });
     res.set('Cache-Control', 'no-store'); res.json(rum.snapshot());
 });
-// The reservoirs survive restarts: app_state rum_state (numbers only), saved every 5 minutes and at shutdown.
-if (!drill.enabled) {
-    db.getState('rum_state').then((raw) => { try { rum.restore(JSON.parse(raw || 'null')); } catch { /* start empty */ } }).catch(() => {});
+// The reservoirs survive restarts: app_state rum_state (numbers only), saved every 5 minutes and at shutdown. They are
+// read back once the database is open (start(), after initDb). Read at module load, the read always failed before the
+// pool existed, and the first save then overwrote the stored reservoirs with what had arrived since boot: every
+// deploy emptied them (2026-10-20: about 17 samples kept of ~1,000 beacons in three days). Nothing is saved until the
+// read has succeeded, so a failed read can never overwrite what is stored.
+let rumRestored = false;
+async function restoreRum() {
+    let raw;
+    try { raw = await db.getState('rum_state'); } catch (err) { console.warn('[RUM] could not read the saved reservoirs:', err.message); return; }
+    try { rum.restore(JSON.parse(raw || 'null')); } catch { /* a malformed save: start empty */ }
+    rumRestored = true;
     require('./utils/jobs').every('rum-save', 5 * 60_000, () => db.setState('rum_state', JSON.stringify(rum.state())));
 }
 
@@ -1207,6 +1215,7 @@ async function start() {
     await db.initDb();
     await analyticsStore.ready();
     console.log('[Server] Database ready');
+    await restoreRum();   // the real-user reservoirs, now that the database is open
     // Request telemetry (openvibe-sdk/service, plan T1): one aggregated sample per route template, method and status
     // class each minute, stored in telemetry_samples; rows older than 14 days go daily. A drill never gets here.
     telemetry.init({ service: 'live', sink: createPgTelemetrySink({ db: db.getDb(), log: console }), skipPrefixes: ['/shared'], intervalMs: 60_000 });
