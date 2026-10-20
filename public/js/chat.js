@@ -784,14 +784,9 @@ function isBroadcastingLiveForTTS() {
 }
 
 // ── Own-channel TTS: one speaking tab per device ─────────────────────────────
-// "TTS On My Channel When Live" must play in exactly ONE tab per browser no matter
-// how many chats/popouts the streamer has open — otherwise every tab speaks every
-// message on top of each other. A tab showing the streamer's OWN channel chat (or
-// their live broadcast page) takes a Web Lock and becomes the speaker; the rest stand
-// by and take over automatically when it closes or moves to another channel. Only
-// those tabs compete: every tab used to ask at load, so a home-page or other-channel
-// tab opened first held the lock for good and the streamer's own popout never spoke
-// (owner, 2026-10-18). Browsers without the Web Locks API keep every-tab behavior.
+// One tab per browser speaks the streamer's own-channel TTS: a tab showing their own chat (or broadcast page)
+// takes a Web Lock; the rest stand by and take over when it closes or leaves (owner, 2026-10-18). No Web Locks:
+// every tab speaks.
 const _ownTtsLocks = typeof navigator !== 'undefined' && 'locks' in navigator;
 let _ownTtsLeader = !_ownTtsLocks;
 let _ownTtsRelease = null;   // ends this tab's held (or queued) lock request
@@ -3372,6 +3367,8 @@ function handleChatMessage(msg) {
             break;
         }
         case 'tts':
+            // Shown as a chat line too (people heard /tts and saw nothing); speaking below is unchanged.
+            addChatMessage({ ...msg, type: 'chat', message_type: 'tts' });
             // Legacy browser-side TTS (Self TTS mode)
             // Only use broadcast TTS path when viewing own channel chat
             if (_isViewingOwnBroadcastChat() && broadcastState?.settings?.ttsMode === 'self') {
@@ -3734,6 +3731,7 @@ function buildChatMessageEl(msg, opts = {}) {
             </div>
         `;
     }
+    if (msg.message_type === 'tts') text = `<span class="chat-tts-tag" title="Read aloud (/tts)"><i class="fa-solid fa-volume-high"></i> TTS</span> ${text}`;
     if (msg.message_type === 'channel-sound') {
         const cmd = esc((msg.sound && msg.sound.command) || '');
         const sSpeed = Number((msg.sound && msg.sound.speed) || 1);

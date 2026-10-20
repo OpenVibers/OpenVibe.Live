@@ -591,6 +591,8 @@ body.no-shadow .msg { text-shadow: none; }
             return;
         }
 
+        // A /tts message shows as a chat line too, tagged, so viewers see what is being read (owner, 2026-10-20).
+        if (msg.type === 'tts') msg = { ...msg, type: 'chat', message_type: 'tts' };
         if (msg.type !== 'chat') return;
 
         const rawName = msg.username || msg.displayName || (msg.anonId ? `anon${msg.anonId}` : 'anon');
@@ -642,6 +644,7 @@ body.no-shadow .msg { text-shadow: none; }
             text = `<span class="channel-sound-pill"><i class="fa-solid fa-volume-high"></i> played !${cmd}</span>`;
         } else {
             text = parseEmotes(rawText);
+            if (msg.message_type === 'tts') text = `<span class="channel-sound-pill tts-pill"><i class="fa-solid fa-volume-high"></i> TTS</span> ${text}`;
         }
         const sep = msg.message_type === 'channel-sound' ? ' ' : ': ';
 
