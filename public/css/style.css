@@ -2844,9 +2844,8 @@ a.pulse-card:hover { border-color: var(--accent); transform: translateY(-2px); }
     border: 2px solid #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.4);
 }
 
-/* Badges */
-.viewer-badge i { color: var(--live-red); }
-.uptime-badge i { color: var(--accent); }
+/* Viewers and uptime: plain stats on the bar, not coloured pills (owner, 2026-10-20: "this gui should be improved"). */
+.viewer-badge i, .uptime-badge i { color: rgba(255,255,255,0.65); }
 
 /* ── DVR Progress Bar (Live Stream Seeking) ─────────────────── */
 .dvr-progress-wrap {
@@ -2881,25 +2880,28 @@ a.pulse-card:hover { border-color: var(--accent); transform: translateY(-2px); }
 /* DVR in non-live (rewound) mode: use accent color instead of red */
 
 .dvr-time-display {
-    font-size: 0.75rem; color: rgba(255,255,255,0.85);
-    font-family: var(--font-mono);
+    font-size: 0.78rem; color: rgba(255,255,255,0.9);
+    font-variant-numeric: tabular-nums;
     white-space: nowrap; padding: 0 4px;
-    min-width: 82px; text-align: center;
 }
+.dvr-time-display[hidden] { display: none !important; }
 
+/* LIVE: a red dot while at the live edge; behind it, a grey dot and "Go live" (a click jumps back). */
 .dvr-live-btn {
-    background: #e53e3e !important; color: #fff !important;
-    font-size: 0.7rem !important; font-weight: 700;
-    padding: 3px 10px !important; border-radius: 4px !important;
-    gap: 4px; letter-spacing: 0.5px;
-    animation: livePulse 1.5s infinite;
+    color: #fff !important;
+    font-size: 0.72rem !important; font-weight: 700;
+    letter-spacing: 0.06em; text-transform: uppercase;
+    padding: 4px 10px !important; border-radius: 999px !important;
+    gap: 7px;
 }
-.dvr-live-btn:hover { background: #c53030 !important; }
-.dvr-live-btn.dvr-behind {
-    background: rgba(255,255,255,0.15) !important;
-    border: 1px solid rgba(255,255,255,0.3);
-    animation: none;
+.dvr-live-btn .live-dot {
+    display: inline-block; flex-shrink: 0;
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--live-red, #e53e3e);
+    box-shadow: 0 0 0 3px rgba(229,62,62,0.28);
 }
+.dvr-live-btn.dvr-behind { background: rgba(255,255,255,0.14) !important; }
+.dvr-live-btn.dvr-behind .live-dot { background: rgba(255,255,255,0.6); box-shadow: none; animation: none; }
 
 /* Progress bar (for VOD/clip players) */
 .vc-progress-wrap {
