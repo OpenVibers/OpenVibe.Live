@@ -152,7 +152,13 @@ const pasteHref = (slug) => `${PASTES_BASE}/p/${encodeURIComponent(slug)}`;
 const VIDEO_META = `<meta name="ov-video-base" content="${esc(VIDEO_BASE)}">`;
 
 const SITE_NAME = 'OpenVibe.Live';
-const DEFAULT_OG_IMAGE = '/og-image.png';
+// Share cards (openvibe-shared/social, served at /shared/social/<id>.jpg by server/index.js): the site's card, and a page
+// card for the big pages. They replaced /og-image.png (a logo on purple, "Free & Open Live Streaming") on 2026-10-20,
+// after a friend said openvibe.quest's preview "looks way cooler than openvibe.live".
+const social = require('openvibe-shared/social');
+const shareCard = (id) => social.url(id) || social.url('live') || '/og-image.png';
+const DEFAULT_OG_IMAGE = shareCard('live');
+const LIST_CARDS = { content: 'live-content', vods: 'live-content', clips: 'live-content', pastes: 'live-content', moments: 'live-moments' };
 
 function baseUrl() {
     let b = (config && config.baseUrl) || 'https://openvibe.live';
@@ -211,7 +217,7 @@ async function _pageMeta(routePath, { page = 1 } = {}) {
     // Search results (public/js/app-search.js) are never indexed; the page itself is findable.
     if (p === '/search') return { title: `Search | ${SITE_NAME}`, description: 'Search channels, VODs and clips on OpenVibe.Live.', canonicalPath: '/search', ogType: 'website', robots: 'noindex,follow', jsonLd: [] };
     // The global chat room: its own title and canonical (the shell left it with neither; browser check, WS-Q task 3).
-    if (p === '/chat') return { title: `Chat | ${SITE_NAME}`, description: 'The global chat room of OpenVibe.Live, open to everyone on the network.', canonicalPath: '/chat', ogType: 'website', robots: 'index,follow', jsonLd: [] };
+    if (p === '/chat') return { title: `Chat | ${SITE_NAME}`, description: 'The global chat room of OpenVibe.Live, open to everyone on the network.', canonicalPath: '/chat', image: shareCard('live-chat'), ogType: 'website', robots: 'index,follow', jsonLd: [] };
     // The API docs and the deploy log had the home page's title and description and no canonical: duplicates of "/".
     if (p === '/documentation') return { title: `API docs | ${SITE_NAME}`, description: 'The OpenVibe.Live API: sign-in and tokens, streams and channels, WebRTC and WHIP broadcasting, chat bots, robots, AI, VODs, clips and webhooks.', canonicalPath: '/documentation', ogType: 'website', robots: 'index,follow', jsonLd: [] };
     if (p === '/updates') return { title: `Updates | ${SITE_NAME}`, description: 'Every change deployed to OpenVibe.Live, newest first: each line is a commit from its open-source repository on GitHub.', canonicalPath: '/updates', ogType: 'website', robots: 'index,follow', jsonLd: [] };
@@ -354,7 +360,7 @@ async function _clipperOf(c) { return c.display_name || c.username || _nameOf(aw
 async function _rundownMeta(p) {
     const read = require('../rundown/read');
     const crumbs = [{ name: 'Home', url: '/' }, { name: 'The Rundown', url: '/rundown' }];
-    const base = { image: DEFAULT_OG_IMAGE, ogType: 'website' };
+    const base = { image: shareCard('live-rundown'), ogType: 'website' };
     let m;
     if (p === '/rundown') {
         let home = null;
@@ -570,7 +576,7 @@ async function _listMeta(slug, label, description, itemsFn, { page = 1 } = {}) {
     if (more !== null && (page > 1 || more)) snapshot += _pager(basePath, page, null, more, label.toLowerCase());
     return {
         title: `${label}${pageLabel} — ${SITE_NAME}`, description, canonicalPath: selfPath,
-        image: DEFAULT_OG_IMAGE, ogType: 'website', robots: 'index,follow',
+        image: shareCard(LIST_CARDS[slug] || 'live'), ogType: 'website', robots: 'index,follow',
         jsonLd: [list, _breadcrumb([{ name: 'Home', url: '/' }, { name: label, url: basePath }, ...(page > 1 ? [{ name: `Page ${page}`, url: selfPath }] : [])])],
         snapshot,
     };
