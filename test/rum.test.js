@@ -114,5 +114,46 @@ const { createRum, pageKind, deviceClass } = require('../server/web/rum');
     assert.ok(/navigator\.webdriver \|\| \/bot\|crawl\|spider[^/]*headless/.test(client), 'automated browsers (crawlers, headless runs) send nothing');
     assert.ok(!/userAgent[^)]*sendBeacon|JSON\.stringify\(\{[^}]*userAgent/.test(client), 'the user agent is checked, never sent');
 
+    // ov-rum.js in a sandbox: what it sends for a page shown at once, one opened in a background tab, and its errors.
+    const runClient = ({ visibility, paints, lcp, errors = [] }) => {
+        const sent = [];
+        const handlers = {};
+        const observers = {};
+        const vm = require('vm');
+        const ctx = {
+            navigator: { sendBeacon: (url, body) => { sent.push(JSON.parse(body)); return true; }, webdriver: false, userAgent: 'Mozilla/5.0 (Linux; Android 14) Chrome/140 Mobile' },
+            document: { visibilityState: 'visible' },
+            location: { pathname: '/@goosely' }, innerWidth: 390, window: {},
+            performance: {
+                now: () => 30000,
+                getEntriesByType: (t) => (t === 'visibility-state' ? visibility : t === 'navigation' ? [{ name: 'https://openvibe.live/@goosely', responseStart: 120, activationStart: 0 }] : []),
+            },
+            PerformanceObserver: class { constructor(cb) { this.cb = cb; } observe(o) { observers[o.type] = this.cb; } },
+            addEventListener: (type, fn) => { handlers[type] = fn; },
+            URL, JSON, Math, String, Object, Infinity,
+        };
+        ctx.window = ctx;
+        vm.createContext(ctx);
+        vm.runInContext(client, ctx);
+        const feed = (type, entries) => observers[type] && observers[type]({ getEntries: () => entries });
+        feed('paint', paints);
+        feed('largest-contentful-paint', lcp);
+        for (const message of errors) handlers.error({ message });
+        ctx.document.visibilityState = 'hidden';
+        handlers.visibilitychange();
+        return sent[0];
+    };
+    const shownAtOnce = runClient({ visibility: [{ name: 'visible', startTime: 0 }], paints: [{ name: 'first-contentful-paint', startTime: 900 }], lcp: [{ startTime: 1400 }] });
+    assert.deepStrictEqual([shownAtOnce.fcp, shownAtOnce.lcp], [900, 1400], 'a page shown at once keeps its paints');
+    // Opened in a background tab (hidden from the start), shown 28 s later: its paints say when the visitor looked.
+    const background = runClient({ visibility: [{ name: 'hidden', startTime: 0 }, { name: 'visible', startTime: 28000 }], paints: [{ name: 'first-contentful-paint', startTime: 28488 }], lcp: [{ startTime: 28712 }] });
+    assert.deepStrictEqual([background.fcp, background.lcp], [0, 0], 'a background tab sends no FCP or LCP (the 28-29 s samples of 2026-10-20)');
+    assert.strictEqual(background.ttfb, 120, 'its other timings still count');
+    // Hidden after its first paint but before the largest one: the first counts, the late one does not.
+    const leftEarly = runClient({ visibility: [{ name: 'visible', startTime: 0 }, { name: 'hidden', startTime: 2000 }], paints: [{ name: 'first-contentful-paint', startTime: 800 }], lcp: [{ startTime: 1200 }, { startTime: 9000 }] });
+    assert.deepStrictEqual([leftEarly.fcp, leftEarly.lcp], [800, 1200]);
+    const errs = runClient({ visibility: [], paints: [], lcp: [], errors: ['ResizeObserver loop completed with undelivered notifications.', 'TypeError: x is undefined'] }).errs;
+    assert.deepStrictEqual(errs, ['TypeError: x is undefined'], 'the ResizeObserver notice is not an error');
+
     console.log('rum: all checks passed');
 })().catch((e) => { console.error(e); process.exit(1); });
