@@ -222,7 +222,7 @@ async function vcJoinChannel(ch) {
         toast(`Failed to join voice channel: ${err.message || 'Unknown error'}`, 'error');
         callState.channelId = null;
         callState.vcMode = false;
-        if (connPanel) connPanel.style.display = 'none';
+        if (connPanel) { connPanel.style.display = 'none'; connPanel.classList.remove('is-open'); }
         return;
     }
     if (seq !== vcState.joinSeq) return; // another channel was chosen meanwhile
@@ -460,7 +460,7 @@ function vcRenderUI() {
         if (callState.connecting) return;
         // Disconnected (kicked, banned, call ended, etc.)
         const connPanel = document.getElementById('vc-connected-panel');
-        if (connPanel) connPanel.style.display = 'none';
+        if (connPanel) { connPanel.style.display = 'none'; connPanel.classList.remove('is-open'); }
         // Reset VC state
         callState.vcMode = false;
         callState.channelId = null;

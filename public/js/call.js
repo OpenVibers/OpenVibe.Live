@@ -890,13 +890,8 @@ function destroyCall() {
 
 function _connectCallWs() {
     const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const token = _getAuthToken();
     const channelParam = callState.channelId || callState.streamId;
-    let url = `${proto}//${location.host}/ws/call?channelId=${encodeURIComponent(channelParam)}`;
-    // The server reads the session cookie on the upgrade; the token only rides in the URL (and
-    // every proxy log) for a browser that has no cookie.
-    const hasCookie = /(?:^|;\s*)(?:ov_token|token)=/.test(document.cookie);
-    if (token && !hasCookie) url += `&token=${encodeURIComponent(token)}`;
+    const url = `${proto}//${location.host}/ws/call?channelId=${encodeURIComponent(channelParam)}`;
 
     if (callState.reconnectTimer) {
         clearTimeout(callState.reconnectTimer);
@@ -928,6 +923,11 @@ function _connectCallWs() {
     ws.onopen = () => {
         if (callState.ws !== ws) return;
         callState.reconnectDelay = 3000;
+        // /ws/call is OpenVibe.Chat's: it signs a browser's socket in from this first message, never from the
+        // cookie or a token in the URL, so without it every signed-in person joined as an anon number (Maticus,
+        // 2026-10-20). Chat holds the socket's other messages until it has read this one.
+        const token = _getAuthToken();
+        if (token) _sendCallMsg({ type: 'auth-update', token });
     };
 
     ws.onmessage = (e) => {
