@@ -13,8 +13,22 @@
     const watch = (type, fn, extra) => {
         try { new PerformanceObserver((list) => list.getEntries().forEach(fn)).observe(Object.assign({ type, buffered: true }, extra)); } catch (e) { /* not in this browser */ }
     };
-    watch('paint', (e) => { if (e.name === 'first-contentful-paint') m.fcp = e.startTime; });
-    watch('largest-contentful-paint', (e) => { m.lcp = e.startTime; });
+    // A page opened in a background tab paints only when it is shown, so its FCP and LCP say when the visitor looked,
+    // not how fast it loaded (channel and moments pages reported 28-29 s on 2026-10-20). As web-vitals does, paints
+    // count only before the page was first hidden: the browser's visibility-state history (buffered, so it is there
+    // though this script loads late), else the state now. A prerendered page is timed from its activation.
+    let firstHidden = Infinity;
+    try {
+        const vis = performance.getEntriesByType('visibility-state');
+        if (vis && vis.length) { const h = vis.find((e) => e.name === 'hidden'); if (h) firstHidden = h.startTime; }
+        else if (document.visibilityState === 'hidden') firstHidden = 0;
+    } catch (e) { if (document.visibilityState === 'hidden') firstHidden = 0; }
+    addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden' && firstHidden === Infinity) firstHidden = performance.now(); }, true);
+    const nav0 = performance.getEntriesByType && performance.getEntriesByType('navigation')[0];
+    const activation = (nav0 && nav0.activationStart) || 0;
+    const shown = (t) => (t < firstHidden ? Math.max(0, t - activation) : 0);   // 0 = not measured (dropped server-side)
+    watch('paint', (e) => { if (e.name === 'first-contentful-paint') m.fcp = shown(e.startTime); });
+    watch('largest-contentful-paint', (e) => { const t = shown(e.startTime); if (t) m.lcp = t; });
     // CLS as web-vitals defines it: the worst window of shifts under 1 s apart, at most 5 s long.
     let win = 0, first = 0, last = 0;
     watch('layout-shift', (e) => {
@@ -25,7 +39,9 @@
     });
     watch('longtask', (e) => { if (m.fcp && e.startTime > m.fcp) m.tbt += Math.max(0, e.duration - 50); });
     watch('event', (e) => { if (e.interactionId && e.duration > m.inp) m.inp = e.duration; }, { durationThreshold: 40 });
-    const err = (msg) => { if (m.errs.length < 3) m.errs.push(String(msg).slice(0, 140)); };
+    // "ResizeObserver loop completed with undelivered notifications" is the browser deferring a resize callback to the
+    // next frame, not a failure (and the only "error" in the 10-20 snapshot): it is not counted.
+    const err = (msg) => { if (m.errs.length < 3 && !/^ResizeObserver loop/.test(String(msg))) m.errs.push(String(msg).slice(0, 140)); };
     addEventListener('error', (e) => err(e.message || 'error'));
     addEventListener('unhandledrejection', (e) => err('unhandled rejection: ' + ((e.reason && e.reason.message) || e.reason)));
     let sent = false;
