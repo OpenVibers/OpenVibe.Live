@@ -189,6 +189,70 @@ function loadStudio({ stream, cameras = [], screenShare = false }) {
         assert.ok(/height: min\(24dvh, 180px\)/.test(css), 'the studio chat keeps to the bottom quarter');
     });
 
+    await check('pinch on the picture zooms the camera itself; a double tap is 1x; it holds on a recovery, resets on a flip', async () => {
+        // The zoom code from the studio itself, with a camera whose track can zoom 1-8x in 0.1 steps.
+        const fnNames = ['zoomRange', 'trackZoom', 'trackDevice', 'showZoom', 'setZoom', 'onZoomTouchStart', 'onZoomTouchMove', 'onZoomTouchEnd', 'keepZoom'];
+        const zoomDecl = /const zoom = \{[^\n]*\};/.exec(studioSrc)[0];
+        const fingersDecl = /const fingers = [^\n]*;/.exec(studioSrc)[0];
+        const applied = [];
+        const toasts = [];
+        let current = { zoom: 1, deviceId: 'back' };
+        let caps = { zoom: { min: 1, max: 8, step: 0.1 } };
+        const cam = { getCapabilities: () => caps, getSettings: () => current, applyConstraints: async (c) => { applied.push(c.advanced[0].zoom); current = { ...current, zoom: c.advanced[0].zoom }; } };
+        const badge = { hidden: true, textContent: '' };
+        const body = `${zoomDecl}\n${fingersDecl}\n${fnNames.map((n) => extract(studioSrc, n)).join('\n')}\nreturn { zoom, ${fnNames.join(', ')} };`;
+        // eslint-disable-next-line no-new-func
+        const z = new Function('videoTrack', '$', 'say', 'setTimeout', 'clearTimeout', 'Date', body)(() => cam, (id) => (id === 'bcs-zoom' ? badge : null), (m) => toasts.push(m), () => 0, () => {}, Date);
+        const settle = () => new Promise((r) => setImmediate(r));
+        const touch = (...pts) => ({ touches: pts.map(([x, y]) => ({ clientX: x, clientY: y })), prevented: false, preventDefault() { this.prevented = true; } });
+
+        const start = touch([100, 300], [200, 300]);
+        z.onZoomTouchStart(start);
+        assert.ok(start.prevented, 'the page does not zoom instead');
+        z.onZoomTouchMove(touch([50, 300], [250, 300]));            // fingers twice as far apart
+        await settle();
+        assert.strictEqual(applied[applied.length - 1], 2, 'twice the distance is 2x, on the camera itself');
+        assert.strictEqual(badge.textContent, '2.0×');
+        z.onZoomTouchMove(touch([0, 300], [1000, 300]));            // far past the camera's max
+        await settle();
+        assert.strictEqual(applied[applied.length - 1], 8, 'clamped to what the camera can do');
+        z.onZoomTouchEnd(touch());
+
+        // A double tap goes back to 1x.
+        z.onZoomTouchStart(touch([10, 10]));
+        const second = touch([10, 10]);
+        z.onZoomTouchStart(second);
+        await settle();
+        assert.ok(second.prevented);
+        assert.strictEqual(applied[applied.length - 1], 1);
+
+        // Held when a recovery hands the same camera a fresh track at 1x; forgotten when the camera changes.
+        z.setZoom(3);
+        await settle();
+        current = { zoom: 1, deviceId: 'back' };
+        z.keepZoom();
+        await settle();
+        assert.strictEqual(applied[applied.length - 1], 3, 'the same camera gets its zoom back');
+        current = { zoom: 1, deviceId: 'front' };
+        const before = applied.length;
+        z.keepZoom();
+        await settle();
+        assert.strictEqual(applied.length, before, 'another camera starts at its own 1x');
+        assert.strictEqual(z.zoom.level, null);
+
+        // A camera without zoom says so, once, and the page is left alone.
+        caps = {};
+        const noZoom = touch([100, 300], [200, 300]);
+        z.onZoomTouchStart(noZoom);
+        z.onZoomTouchStart(touch([100, 300], [200, 300]));
+        assert.deepStrictEqual(toasts, ['This camera cannot zoom']);
+        assert.strictEqual(noZoom.prevented, false);
+
+        assert.ok(/zoom\.level = null;\s*await _switchActiveCamera\(next\.deviceId\)/.test(extract(studioSrc, 'flip')), 'a flip starts the new camera at 1x');
+        assert.ok(/attachZoom\(\)/.test(extract(studioSrc, 'mount')) && /detachZoom\(\)/.test(extract(studioSrc, 'unmount')));
+        assert.ok(/body\.bc-studio-on \.bc-video-container \{ touch-action: none; \}/.test(read('public/css/features/broadcast.css')), 'the browser leaves the pinch to the studio');
+    });
+
     await check('the studio loads with the broadcast feature, after broadcast.js', async () => {
         const js = features.broadcast.js;
         assert.ok(js.indexOf('/js/broadcast-studio.js') > js.indexOf('/js/broadcast.js'));

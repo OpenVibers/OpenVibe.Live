@@ -4,6 +4,7 @@
 
      top      LIVE, time live, people watching, restreams, connection, End
      right    Flip (front ↔ back in one tap), Mic, Camera, Light (a back camera's torch), Chat, Clip, More
+     picture  pinch to zoom the camera, double tap for 1×
      bottom   the stream chat, over the picture
      More     a sheet: share, watch as a viewer, any camera, screen, media requests, a longer clip, chat read
               aloud, restreams, stream health, all settings and the full page
@@ -58,6 +59,7 @@
         if (!s) return;
         for (const t of s.getAudioTracks()) if (t.enabled === st.micOff) t.enabled = !st.micOff;
         for (const t of s.getVideoTracks()) if (t.enabled === st.camOff) t.enabled = !st.camOff;
+        keepZoom();
     }
     function torchCapable() {
         const t = videoTrack();
@@ -69,6 +71,91 @@
         const s = (t.getSettings && t.getSettings()) || {};
         if (s.facingMode) return s.facingMode;
         return typeof _getCameraFacingHint === 'function' ? _getCameraFacingHint({ label: t.label }) : null;
+    }
+
+    // ── Pinch to zoom (owner, 2026-10-20: "some way to zoom while you're live on phone") ──
+    // Two fingers on the picture drive the camera's own zoom (MediaStreamTrack `zoom`: the lens or a sensor crop, so
+    // viewers get a sharp picture, never a stretched one); a double tap goes back to 1×. A camera without zoom says so
+    // once. The level holds across a replaced track (a recovery on the same camera) and resets when the camera changes.
+    const zoom = { level: null, deviceId: null, startLevel: 0, startDist: 0, busy: false, pending: null, lastTap: 0, told: false, badgeTimer: 0, surface: null };
+    function zoomRange() {
+        const t = videoTrack();
+        try { const c = t && typeof t.getCapabilities === 'function' && t.getCapabilities().zoom; return c && c.max > c.min ? c : null; } catch { return null; }
+    }
+    function trackZoom() { const t = videoTrack(); const s = (t && t.getSettings && t.getSettings()) || {}; return Number(s.zoom) || (zoomRange() || {}).min || 1; }
+    function trackDevice() { const t = videoTrack(); return (t && t.getSettings && t.getSettings().deviceId) || null; }
+    function showZoom(z) {
+        const b = $('bcs-zoom');
+        if (!b) return;
+        b.textContent = `${(Math.round(z * 10) / 10).toFixed(1)}×`;
+        b.hidden = false;
+        clearTimeout(zoom.badgeTimer);
+        zoom.badgeTimer = setTimeout(() => { b.hidden = true; }, 1200);
+    }
+    function setZoom(level) {
+        const r = zoomRange();
+        const t = videoTrack();
+        if (!r || !t) return;
+        const step = r.step > 0 ? r.step : 0.1;
+        const z = Math.min(r.max, Math.max(r.min, r.min + Math.round((level - r.min) / step) * step));
+        zoom.level = z;
+        zoom.deviceId = trackDevice();
+        showZoom(z);
+        if (zoom.busy) { zoom.pending = z; return; }   // one applyConstraints at a time; the newest level wins
+        zoom.busy = true;
+        t.applyConstraints({ advanced: [{ zoom: z }] }).catch(() => {}).finally(() => {
+            zoom.busy = false;
+            if (zoom.pending != null) { const next = zoom.pending; zoom.pending = null; setZoom(next); }
+        });
+    }
+    const fingers = (e) => Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+    function onZoomTouchStart(e) {
+        if (e.touches.length === 2) {
+            if (!zoomRange()) {
+                if (!zoom.told) { zoom.told = true; say('This camera cannot zoom'); }
+                return;
+            }
+            e.preventDefault();
+            zoom.startDist = fingers(e);
+            zoom.startLevel = zoom.level != null ? zoom.level : trackZoom();
+        } else if (e.touches.length === 1) {
+            const now = Date.now();
+            const r = zoomRange();
+            if (r && now - zoom.lastTap < 320) { e.preventDefault(); zoom.lastTap = 0; setZoom(r.min); } else zoom.lastTap = now;
+        }
+    }
+    function onZoomTouchMove(e) {
+        if (e.touches.length !== 2 || !zoom.startDist) return;
+        e.preventDefault();
+        setZoom(zoom.startLevel * (fingers(e) / zoom.startDist));
+    }
+    function onZoomTouchEnd(e) { if (e.touches.length < 2) zoom.startDist = 0; }
+    function attachZoom() {
+        const v = $('bc-video-preview');
+        const surface = v && v.closest('.bc-video-container');
+        if (!surface || zoom.surface === surface) return;
+        detachZoom();
+        zoom.surface = surface;
+        surface.addEventListener('touchstart', onZoomTouchStart, { passive: false });
+        surface.addEventListener('touchmove', onZoomTouchMove, { passive: false });
+        surface.addEventListener('touchend', onZoomTouchEnd);
+        surface.addEventListener('touchcancel', onZoomTouchEnd);
+    }
+    function detachZoom() {
+        const s = zoom.surface;
+        if (!s) return;
+        s.removeEventListener('touchstart', onZoomTouchStart);
+        s.removeEventListener('touchmove', onZoomTouchMove);
+        s.removeEventListener('touchend', onZoomTouchEnd);
+        s.removeEventListener('touchcancel', onZoomTouchEnd);
+        zoom.surface = null;
+    }
+    /** The chosen zoom, again on a replaced track of the same camera; forgotten when the camera changes. */
+    function keepZoom() {
+        if (zoom.level == null || zoom.busy) return;
+        if (trackDevice() !== zoom.deviceId) { zoom.level = null; return; }
+        const r = zoomRange();
+        if (r && Math.abs(trackZoom() - zoom.level) > (r.step > 0 ? r.step : 0.1) / 2) setZoom(zoom.level);
     }
 
     function toggleMic() { st.micOff = !st.micOff; applyTracks(); refresh(); }
@@ -98,6 +185,7 @@
             const i = cams.findIndex((d) => d.deviceId === now.deviceId);
             const next = other || cams[(i + 1) % cams.length];
             st.torch = false;
+            zoom.level = null;
             await _switchActiveCamera(next.deviceId);
             applyTracks();
         } catch (err) {
@@ -190,13 +278,15 @@
             railButton('chat', 'fa-comment', 'Chat', () => { st.chatHidden = !st.chatHidden; refresh(); }),
             railButton('clip', 'fa-scissors', 'Clip', () => quickClip(30)),
             railButton('more', 'fa-ellipsis', 'More', () => openSheet()));
-        return el('div', { class: 'bcs', id: 'bc-studio' }, top, el('div', { class: 'bcs-flags', id: 'bcs-flags', 'aria-live': 'polite' }), rail);
+        return el('div', { class: 'bcs', id: 'bc-studio' }, top, el('div', { class: 'bcs-flags', id: 'bcs-flags', 'aria-live': 'polite' }), rail,
+            el('div', { class: 'bcs-zoom', id: 'bcs-zoom', hidden: true, 'aria-live': 'polite' }));
     }
 
     function mount() {
         document.body.classList.add('bc-studio-on');
         st.root = build();
         document.body.append(st.root);
+        attachZoom();
         // The overlay chat replaces the phone chat sheet.
         try { if (typeof _bcMobileChatOpen !== 'undefined' && _bcMobileChatOpen && typeof toggleBroadcastMobileChat === 'function') toggleBroadcastMobileChat(); } catch { /* not open */ }
         // The studio chat has no emote or GIF buttons: a picker opened before it would have no way to close.
@@ -213,6 +303,7 @@
         closeConfirm();
         closeViewer();
         document.body.classList.remove('bc-studio-on', 'bc-studio-chat-off');
+        detachZoom();
         if (st.root) st.root.remove();
         st.root = null;
         const v = $('bc-video-preview');
