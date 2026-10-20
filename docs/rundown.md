@@ -67,9 +67,8 @@ Speech-to-text hears a stream's whole audio track. On 2026-10-18 the Arena's "qu
 
 | Method | Path | Notes |
 |---|---|---|
-| GET | `/` | `on_air`, `lead`, `streams` (+ `streams_next`), `trending`, `voices`, `counts`; `latest` (+ `next`) for the previous release's open tabs |
+| GET | `/` | `on_air`, `lead`, `streams` (+ `streams_next`), `trending`, `voices`, `counts` |
 | GET | `/streams?before=` | the next page of stream by stream |
-| GET | `/latest?before=` | the previous release's feed (episodes and takes scored 4 and up, newest first) |
 | GET | `/topics?sort=recent\|most&kind=` | every topic |
 | GET | `/t/:slug` | `topic`, `takes`, `related` |
 | GET | `/e/:streamId` | `episode`, `stream`, `segments`, `more` |
