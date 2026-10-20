@@ -94,6 +94,9 @@ assert.ok(renderPage({ name: 'README', title: '', html: '', headings: [] }).incl
 const described = renderPage({ name: 'go-live-in-your-browser', title: 'Go live', html: '<h1>Go live</h1>\n<p>Start in your <strong>browser</strong> &amp; go.</p><p>later</p>', headings: [] });
 assert.ok(described.includes('<meta name="description" content="Start in your browser &amp; go.">'), described.slice(0, 900));
 assert.ok(described.includes('<meta property="og:url" content="https://openvibe.live/docs/go-live-in-your-browser">'));
+// A shared docs link has the site's card (openvibe-shared/social), not a bare preview.
+assert.match(described, /<meta property="og:image" content="https:\/\/openvibe\.live\/shared\/social\/live\.jpg\?v=[0-9a-f]+">/);
+assert.ok(described.includes('<meta name="twitter:card" content="summary_large_image">'));
 assert.ok(!renderPage({ name: 'x', title: 'X', html: '<h2>no paragraph</h2>', headings: [] }).includes('name="description"'), 'no paragraph, no description');
 assert.ok(shell.includes('<link rel="icon" type="image/svg+xml" href="/assets/logo.svg">'));
 assert.ok(fs.existsSync(path.join(__dirname, '..', 'public', 'assets', 'logo.svg')), 'the icon file exists');

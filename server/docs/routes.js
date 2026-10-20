@@ -16,6 +16,7 @@ const express = require('express');
 const fs = require('fs');
 const path = require('path');
 const cache = require('openvibe-shared/cache-policy');
+const social = require('openvibe-shared/social');
 
 const router = express.Router();
 // Through OV_APP_ROOT (the `current` release symlink) when set, so doc edits go live without a restart.
@@ -256,7 +257,9 @@ function renderPage({ name, title, html, headings }) {
     <meta property="og:site_name" content="OpenVibe.Live">
     <meta property="og:title" content="${escapeHtml(title || 'OpenVibe.Live Docs')}">
     <meta property="og:description" content="${escapeHtml(description)}">
-    <meta property="og:url" content="${escapeHtml(canonical)}">` : ''}
+    <meta property="og:url" content="${escapeHtml(canonical)}">
+    <meta property="og:image" content="${escapeHtml(new URL(social.url('live') || '/og-image.png', canonical).href)}">
+    <meta name="twitter:card" content="summary_large_image">` : ''}
     <style>
         :root { --bg: #0d0d0f; --bg-2: #16161a; --bg-3: #1e1e24; --text: #e8e6e3; --text-2: #9a9a9a; --muted: #666;
                 --accent: #8b5cf6; --accent-light: #a78bfa; --border: #2a2a32; }
