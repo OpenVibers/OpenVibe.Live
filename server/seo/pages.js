@@ -286,12 +286,17 @@ async function _channelMeta(username, page = 1) {
     const canonicalPath = page > 1 && !pastEnd ? `${basePath}?page=${page}` : basePath;
     const pageLabel = page > 1 ? ` — videos, page ${page}` : '';
 
-    const desc = clean(bio || aiShort || `${name} (${handle}) streams live on ${SITE_NAME}. Watch their live streams, VODs and clips.`, 200);
-    const image = acct.avatarUrl ? abs(acct.avatarUrl) : DEFAULT_OG_IMAGE;
+    const about = clean(bio || aiShort || `${name} (${handle}) streams live on ${SITE_NAME}. Watch their live streams, VODs and clips.`, 200);
+    const avatar = acct.avatarUrl ? abs(acct.avatarUrl) : null;
+    // A live channel's shared link shows the stream as it is now (16:9) and says so; offline, the avatar. The page is
+    // kept a minute (CHANNEL_CACHE_MS), so the card follows the stream going live or ending.
+    const liveNow = live.length ? live[0] : null;
+    const image = (liveNow && liveNow.thumbnail_url ? abs(liveNow.thumbnail_url) : null) || avatar || DEFAULT_OG_IMAGE;
+    const desc = liveNow ? clean(`Live now: ${liveNow.title || `${name} is streaming`}. ${about}`, 200) : about;
     const person = {
         '@type': 'Person', name: clean(name, 80), alternateName: handle, url: abs(basePath),
-        image: image !== DEFAULT_OG_IMAGE ? image : undefined,
-        description: desc,
+        image: avatar || undefined,
+        description: about,
         interactionStatistic: followers ? { '@type': 'InteractionCounter', interactionType: 'https://schema.org/FollowAction', userInteractionCount: followers } : undefined,
     };
     const profile = { ...seo.jsonLd.webPage({ type: 'ProfilePage', name: `${name} (${handle})`, url: abs(canonicalPath) }), mainEntity: person };

@@ -244,6 +244,20 @@ const server = http.createServer(app).listen(0, '127.0.0.1', async () => {
         }
     });
 
+    await check('a live channel\'s shared link shows the stream as it is now and says so; the person keeps their avatar', async () => {
+        await addUser(6, 'carol', 'Carol', 'I paint.');
+        await db.run("UPDATE users SET avatar_url = 'https://openvibe.media/avatars/carol.png' WHERE id = 6");
+        await db.run("INSERT INTO streams (user_id, title, protocol, is_live, thumbnail_url, started_at, last_heartbeat) VALUES (6, 'Painting a sunset', 'webrtc', 1, '/api/thumbnails/stream-9-1.jpg', ov_now(), ov_now())");
+        const html = (await get('/@carol')).body;
+        assert.ok(head(html).includes('<meta property="og:image" content="https://openvibe.live/api/thumbnails/stream-9-1.jpg">'), 'the live picture');
+        assert.match(head(html), /<meta property="og:description" content="Live now: Painting a sunset\. I paint\.">/);
+        const person = ldOf(html).flatMap((n) => (n['@graph'] || [n])).find((n) => n['@type'] === 'Person' || (n.mainEntity && n.mainEntity['@type'] === 'Person'));
+        const p = person && (person['@type'] === 'Person' ? person : person.mainEntity);
+        assert.ok(p, 'a Person node');
+        assert.strictEqual(p.image, 'https://openvibe.media/avatars/carol.png', 'the person is still pictured by their avatar');
+        assert.strictEqual(p.description, 'I paint.', 'and described by their bio');
+    });
+
     await check('the home page\'s JSON-LD lists are named by the snapshot\'s visible headings', async () => {
         const home = (await get('/')).body;
         const lists = ldOf(home).filter((n) => n['@type'] === 'ItemList');
