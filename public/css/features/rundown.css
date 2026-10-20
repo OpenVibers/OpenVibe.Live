@@ -13,6 +13,17 @@
 .rd-tab:hover { color: var(--text-primary); border-color: var(--border); }
 .rd-tab.is-on { color: var(--text-primary); background: var(--bg-tertiary); border-color: var(--border); }
 
+/* What you can do here (rundown.js _rdUses): four entry points under the front page's masthead */
+.rd-uses { list-style: none; margin: 0 0 18px; padding: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.rd-use { display: flex; gap: 10px; align-items: flex-start; height: 100%; padding: 12px; border-radius: 14px; background: var(--bg-card);
+  border: 1px solid var(--border); color: var(--text-secondary); text-decoration: none; line-height: 1.35; }
+a.rd-use:hover { border-color: var(--accent); }
+a.rd-use:hover b { color: var(--accent); }
+.rd-use i { flex: none; display: grid; place-items: center; width: 34px; height: 34px; border-radius: 10px; font-size: 0.92rem;
+  background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--accent); }
+.rd-use b { display: block; margin-bottom: 2px; color: var(--text-primary); font-size: 0.95rem; }
+.rd-use small { display: block; font-size: 0.85rem; }
+
 /* Headings, layout */
 .rd-h1 { margin: 6px 0 8px; font-size: clamp(1.7rem, 5vw, 2.6rem); line-height: 1.08; font-weight: 900; letter-spacing: -0.02em; }
 .rd-h2 { display: flex; align-items: baseline; gap: 8px; margin: 26px 0 12px; font-size: 0.85rem; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-secondary); }
@@ -195,10 +206,17 @@
 .rd-topic-card .rd-what { margin: 0; font-size: 0.94rem; color: var(--text-secondary); }
 
 @media (max-width: 960px) {
+  .rd-uses { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .rd-grid { grid-template-columns: minmax(0, 1fr); }
   .rd-side { position: static; }
 }
 @media (max-width: 560px) {
+  /* Two by two, titles only: the four lines of text would push the first episode below the fold. */
+  .rd-uses { gap: 8px; margin-bottom: 14px; }
+  .rd-use { align-items: center; padding: 9px 10px; gap: 8px; }
+  .rd-use i { width: 28px; height: 28px; font-size: 0.8rem; }
+  .rd-use b { margin: 0; font-size: 0.86rem; }
+  .rd-use small { display: none; }
   .rd-card { padding: 12px 13px; }
   .rd-lead { padding: 14px; }
   .rd-issue-head { padding: 12px 13px 10px; }

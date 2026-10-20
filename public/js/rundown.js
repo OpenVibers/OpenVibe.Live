@@ -177,6 +177,21 @@ function _rdMast(counts, active = 'latest') {
         <nav class="rd-tabs" aria-label="The Rundown">${tab('latest', '/rundown', 'Latest')}${tab('topics', '/rundown/topics', 'Topics')}</nav>
     </header>`;
 }
+// What a visitor can do here, under the masthead of the front page. The page said what it is and never what it is for
+// ("still don't rly know wtf to do with this feature", a viewer, 2026-10-20). "Jump to the moment" opens the top take's.
+function _rdUses(lead) {
+    const item = (icon, title, text, href) => {
+        const body = `<i class="fa-solid ${icon}" aria-hidden="true"></i><span><b>${title}</b><small>${text}</small></span>`;
+        if (!href) return `<li><div class="rd-use">${body}</div></li>`;
+        return `<li>${href.startsWith('#') ? `<a class="rd-use" href="${href}">${body}</a>` : _rdA(href, body, 'rd-use')}</li>`;
+    };
+    return `<ul class="rd-uses" aria-label="What you can do here">
+        ${item('fa-forward', 'Catch up on a stream', 'Every stream becomes an episode: a recap, chapters and what was said.', '#rd-latest-h')}
+        ${item('fa-hashtag', 'Follow a topic', 'See every streamer who talked about it this week, side by side.', '/rundown/topics')}
+        ${item('fa-play', 'Jump to the moment', 'A take with a recording links to the second it was said.', lead && lead.vod_id ? videoHref('vod', lead.vod_id, Math.max(0, Math.floor(((lead.quotes || [])[0] || lead).sec || 0))) : null)}
+        ${item('fa-tower-broadcast', 'Get written up', 'Go live, and the desk turns your stream into an episode here.', '/broadcast')}
+    </ul>`;
+}
 function _rdOnAir(list) {
     if (!list.length) return '';
     return `<section class="rd-onair" aria-labelledby="rd-onair-h"><h2 id="rd-onair-h" class="rd-h2"><span class="rd-dot" aria-hidden="true"></span> On air now</h2>
@@ -207,7 +222,7 @@ async function _rdHome(root) {
     const d = await api('/rundown');
     _rdNext = d.streams_next;
     const feed = d.streams || [];
-    root.innerHTML = `${_rdMast(d.counts, 'latest')}${_rdOnAir(d.on_air || [])}
+    root.innerHTML = `${_rdMast(d.counts, 'latest')}${_rdUses(d.lead)}${_rdOnAir(d.on_air || [])}
         <div class="rd-grid">
             <div class="rd-main">
                 ${d.lead ? _rdLead(d.lead) : ''}
