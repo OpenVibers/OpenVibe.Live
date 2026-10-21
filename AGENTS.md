@@ -63,7 +63,7 @@ Each feature lives in its own `server/<feature>/` directory with `routes.js` + s
 - **DM delivery:** Server verifies `dm.isParticipant()` before delivering — always maintain this check.
 - **Schema:** every table is in `migrations/`; `ensureTables()` is gone. The frozen and Chat-owned tables are not in the PostgreSQL schema at all.
 
-**Robots:** OpenVibe.Bot owns them (plan T15). Live has no control socket, hardware API or ONVIF code: a channel bound to a robot (`channels.bot_robot_id`, `PUT /api/streams/channel/:username/bot`) embeds the robot's panel (`server/bot/embed.js`), and chat's `!forward`/`!say` … reach Live at `POST /internal/chat-effects/hardware`, which forwards them to Bot's `POST /api/v1/robots/:id/commands` as the viewer (`server/bot/bot-client.js`, Network grant `bot.robot.control`). The old controls tables stay unread until their contract migration drops them.
+**Robots:** OpenVibe.Bot owns them (plan T15). Live has no control socket, hardware API or ONVIF code: a channel bound to a robot (`channels.bot_robot_id`, `PUT /api/streams/channel/:username/bot`) embeds the robot's panel (`server/bot/embed.js`), and chat's `!forward`/`!say` … reach Live at `POST /internal/chat-effects/hardware`, which forwards them to Bot's `POST /api/v1/robots/:id/commands` as the viewer (`server/bot/bot-client.js`, Network grant `bot.robot.control`). Live's old controls tables (`control_configs`, its buttons and whitelist, `stream_controls`, the ONVIF camera tables, `api_keys`) and the columns that pointed at them are dropped by migration `0011_drop_live_controls` (`test/controls-tables-gone.test.js`).
 
 ## WebSocket Endpoints
 
