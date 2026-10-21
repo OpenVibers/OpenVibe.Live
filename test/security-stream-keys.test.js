@@ -8,7 +8,7 @@
  * over RTMP or WHIP. Those tests pin the endpoints that leaked. This one covers the class: it seeds
  * a streamer whose every credential is a sentinel (account key, a Live slot key, an OpenRestream slot's
  * rotated Live key, a restream key and SRT passphrase, RobotStreamer / platform / PowerChat tokens,
- * AI keys, control key and API token hashes, a camera password hash), boots the real server as a
+ * AI keys and an API token hash), boots the real server as a
  * restore-drill instance (test/security-crawl.js), and requests EVERY GET route Express knows,
  * plus the SPA pages, as five other people: anonymous, a viewer, another streamer, a global mod and
  * an admin. No response body or header, and no log line written while serving them, may contain
@@ -41,9 +41,7 @@ const K = {
     powerchatRefresh: 'powerchat-sentinel-refresh-d8d8',
     aiBotToken: 'aibot-sentinel-token-c9c9',
     byoKey: 'sentinel-not-a-secret-byo',
-    controlKeyHash: 'e1'.repeat(32),
     apiTokenHash: 'f2'.repeat(32),
-    cameraPasswordHash: 'camera-sentinel-hash-a3a3',
     // The other people's own account keys: none of them may see another's, and the crawl must not
     // echo a caller's own key on a page about someone else either.
     fan: 'd4'.repeat(16),
@@ -83,9 +81,7 @@ const SEED = `(async () => {
     await ins('INSERT INTO powerchat_connections (user_id, powerchat_username, powerchat_user_id, access_token, refresh_token) VALUES (?, ?, ?, ?, ?)', [owner, 'keyowner', 'p1', K.powerchatAccess, K.powerchatRefresh]);
     await ins('INSERT INTO ai_chatbot_configs (user_id, enabled, api_token) VALUES (?, 1, ?)', [owner, K.aiBotToken]);
     await ins('INSERT INTO channel_ai_config (user_id, enabled, use_shared_key, byo_key) VALUES (?, 1, 0, ?)', [owner, K.byoKey]);
-    await ins('INSERT INTO api_keys (user_id, key_hash, label) VALUES (?, ?, ?)', [owner, K.controlKeyHash, 'Robot']);
     await ins('INSERT INTO api_tokens (user_id, token_hash, label, scopes) VALUES (?, ?, ?, ?)', [owner, K.apiTokenHash, 'Bot', '["chat","read"]']);
-    const cam = Number((await ins('INSERT INTO camera_profiles (user_id, stream_id, name, onvif_url, username, password_hash) VALUES (?, ?, ?, ?, ?, ?) RETURNING id', [owner, live, 'Desk cam', 'http://camera.example.test', 'admin', K.cameraPasswordHash])).lastInsertRowid);
     await db.run('INSERT INTO follows (follower_id, streamer_id) VALUES (?, ?)', [fan, owner]);
 
     // What Live sends out about the stream, built from these rows the way production builds it.
@@ -102,7 +98,7 @@ const SEED = `(async () => {
     await le.announceGoLive(raw, streamer);
     out.sse = writes.join('');
     out.rawHadKey = raw.managed_stream_key === K.slotMain && streamer.stream_key === K.account;
-    return { ids: { owner, fan, peer, mod, admin, channel: ch.id, slot, slot2, live, ended, cam }, out };
+    return { ids: { owner, fan, peer, mod, admin, channel: ch.id, slot, slot2, live, ended }, out };
 })()`;
 
 function hits(text, needles) {
@@ -165,7 +161,7 @@ function hits(text, needles) {
     });
 
     // Parameter values: every seeded id and name, so each route is asked about the owner's things.
-    const numeric = [ids.live, ids.slot, ids.owner, ids.channel, ids.ended, ids.slot2, ids.cam, 1];
+    const numeric = [ids.live, ids.slot, ids.owner, ids.channel, ids.ended, ids.slot2, 1];
     const byName = {
         username: ['keyowner'], user: ['keyowner'], userId: [ids.owner], channelId: [ids.channel],
         streamId: [ids.live, ids.ended], managedStreamId: [ids.slot, ids.slot2], slotIdOrSlug: ['main', ids.slot, 'relay'],

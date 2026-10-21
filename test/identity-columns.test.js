@@ -17,7 +17,6 @@ const db = require('../server/db/database');
     const walk = (dir) => { for (const e of fs.readdirSync(dir, { withFileTypes: true })) { const p = path.join(dir, e.name); if (e.isDirectory()) { if (e.name !== 'node_modules') walk(p); } else if (p.endsWith('.js')) files.push(p); } };
     walk(path.join(__dirname, '..', 'server'));
     // Reads of the legacy columns: a users alias or a user object's field, or SQL selecting or filtering them on users.
-    // camera_profiles.password_hash (ONVIF device credentials, server/controls) is another table: `camera.password_hash`.
     const READS = [
         /\bu\.(email|password_hash)\b/,
         /\b\w*[uU]ser\.(email|password_hash)\b/,

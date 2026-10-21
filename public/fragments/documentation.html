@@ -225,19 +225,19 @@ console.log('Acting as:', me.user.username);
 <thead><tr><th>Method</th><th>Path</th><th>Auth</th><th>Notes</th></tr></thead>
 <tbody>
 <tr><td>GET</td><td>/api/streams/managed</td><td>Yes</td><td>My slots + slot limit</td></tr>
-<tr><td>POST</td><td>/api/streams/managed</td><td>Yes</td><td>Create a slot &rarr; unique <code>stream_key</code>. Body: <code>title, description, category, protocol, is_nsfw, slug, streaming_method, control_config_id</code></td></tr>
+<tr><td>POST</td><td>/api/streams/managed</td><td>Yes</td><td>Create a slot &rarr; unique <code>stream_key</code>. Body: <code>title, description, category, protocol, is_nsfw, slug, streaming_method</code></td></tr>
 <tr><td>PUT</td><td>/api/streams/managed/:id</td><td>Owner</td><td>Update slot + slot settings (see below)</td></tr>
 <tr><td>DELETE</td><td>/api/streams/managed/:id</td><td>Owner</td><td>Delete slot (409 if live)</td></tr>
 <tr><td>POST</td><td>/api/streams/managed/:id/regenerate-key</td><td>Owner</td><td>New slot stream key</td></tr>
 </tbody>
 </table>
-<p><strong>Per-slot settings</strong> (PUT <code>/managed/:id</code>): <code>streaming_method</code> (<code>browser|whip|cli|rtmp</code> &mdash; auto-derives <code>protocol</code>), <code>browser_mode</code> (<code>camera|mic_only|screen</code>), <code>default_vod_visibility</code> / <code>default_clip_visibility</code> (<code>public|unlisted|private</code>), <code>slot_vod_recording_enabled</code>, <code>slot_clip_recording_enabled</code>, <code>slot_clip_notify_enabled</code> (0/1), weather fields, <code>control_config_id</code>.</p>
+<p><strong>Per-slot settings</strong> (PUT <code>/managed/:id</code>): <code>streaming_method</code> (<code>browser|whip|cli|rtmp</code> &mdash; auto-derives <code>protocol</code>), <code>browser_mode</code> (<code>camera|mic_only|screen</code>), <code>default_vod_visibility</code> / <code>default_clip_visibility</code> (<code>public|unlisted|private</code>), <code>slot_vod_recording_enabled</code>, <code>slot_clip_recording_enabled</code>, <code>slot_clip_notify_enabled</code> (0/1), weather fields.</p>
 
 <h3>Go live / sessions</h3>
 <table class="doc-table" tabindex="0">
 <thead><tr><th>Method</th><th>Path</th><th>Auth</th><th>Notes</th></tr></thead>
 <tbody>
-<tr><td>POST</td><td>/api/streams</td><td>Yes</td><td><strong>Go live</strong> from a slot. Body: <code>managed_stream_id</code> (required) + optional <code>title, category, tags, is_nsfw, control_config_id</code> &rarr; <code>{ stream, endpoint }</code></td></tr>
+<tr><td>POST</td><td>/api/streams</td><td>Yes</td><td><strong>Go live</strong> from a slot. Body: <code>managed_stream_id</code> (required) + optional <code>title, category, tags, is_nsfw</code> &rarr; <code>{ stream, endpoint }</code></td></tr>
 <tr><td>GET</td><td>/api/streams/:id/endpoint</td><td>Owner</td><td>Ingest endpoint + <code>stream_key</code> for the session's protocol</td></tr>
 <tr><td>PUT</td><td>/api/streams/:id</td><td>Owner</td><td>Update live session (title/description/category/tags)</td></tr>
 <tr><td>DELETE</td><td>/api/streams/:id</td><td>Owner</td><td>End the session</td></tr>
