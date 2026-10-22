@@ -20,6 +20,7 @@ router.get('/catalog', async (req, res) => {
     const earn = await cosmetics.earnable();
     const catalog = {};
     for (const [id, c] of Object.entries(cosmetics.COSMETICS)) {
+        if (c.exclusive) continue;   // one of a kind: only its holder sees it, in their own inventory
         if (!catalog[c.category]) catalog[c.category] = [];
         catalog[c.category].push({ itemId: id, ...c, ...(earn[id] ? { earn: earn[id] } : {}) });
     }

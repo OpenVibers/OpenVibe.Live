@@ -175,6 +175,68 @@
     50% { background-position: 300% 50%; }
 }
 
+/* Josh Vegas: one of a kind (2026-10-22). The name in casino gold under marquee lights, between two slot reels that
+   spin through cherries, bells, diamonds, slot machines and lemons and land on 7. Only its one holder wears it (fx_vegas is
+   never in the catalog). The reels are pseudo-elements, so they carry their own fill, pause and reduced-motion rules. */
+.name-fx-vegas {
+    background: linear-gradient(90deg, #fff1b8 0%, #ffcf3f 22%, #ff9d00 40%, #ff3d7f 52%, #ffcf3f 66%, #fff1b8 82%, #ffcf3f 100%);
+    background-size: 280% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    font-weight: 800;
+    letter-spacing: .02em;
+    white-space: nowrap;
+    animation: nameFxVegasShine 2.6s linear infinite, nameFxVegasLights 1.4s steps(1, end) infinite;
+}
+.name-fx-vegas::before,
+.name-fx-vegas::after {
+    content: '7';
+    display: inline-block;
+    box-sizing: border-box;
+    width: 2em;
+    margin-right: .4em;
+    border: 1px solid #ffcf3f;
+    border-radius: 3px;
+    background: linear-gradient(180deg, #3d0512 0%, #8f0f2c 48%, #3d0512 100%);
+    box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .45), 0 0 5px rgba(255, 207, 63, .6);
+    color: #ffe27a;
+    -webkit-text-fill-color: #ffe27a;
+    font-size: .72em;
+    font-weight: 900;
+    letter-spacing: 0;
+    line-height: 1.35;
+    text-align: center;
+    overflow: hidden;
+    vertical-align: .1em;
+    animation: nameFxVegasReel 3.2s steps(1, end) infinite;
+}
+.name-fx-vegas::after { margin: 0 0 0 .4em; animation-delay: .35s; }
+@keyframes nameFxVegasShine {
+    0% { background-position: 0% 50%; }
+    100% { background-position: 280% 50%; }
+}
+/* Marquee bulbs: the glow steps between gold and pink, like the lights around a casino sign. */
+@keyframes nameFxVegasLights {
+    0% { filter: drop-shadow(0 0 3px rgba(255, 207, 63, .9)) drop-shadow(0 0 9px rgba(255, 157, 0, .55)); }
+    50% { filter: drop-shadow(0 0 3px rgba(255, 61, 127, .9)) drop-shadow(0 0 9px rgba(255, 61, 127, .5)); }
+}
+/* Each reel spins through the symbols, then lands on 7 and holds it (a browser that cannot animate `content` shows 7). */
+@keyframes nameFxVegasReel {
+    0% { content: '🍒'; }
+    7% { content: '🔔'; }
+    14% { content: '💎'; }
+    21% { content: '🎰'; }
+    28% { content: '🍋'; }
+    35%, 100% { content: '7'; }
+}
+.chat-msg.has-fx:not(.fx-on) .name-fx-vegas::before,
+.chat-msg.has-fx:not(.fx-on) .name-fx-vegas::after { animation-play-state: paused !important; }
+@media (prefers-reduced-motion: reduce) {
+    .name-fx-vegas, .name-fx-vegas::before, .name-fx-vegas::after { animation: none !important; }
+    .name-fx-vegas { filter: drop-shadow(0 0 3px rgba(255, 207, 63, .9)); }
+}
+
 
 /* ══════════════════════════════════════════════════════════════
    PARTICLE EFFECTS — spawned around chat usernames
