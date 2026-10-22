@@ -160,6 +160,8 @@ async function check(name, fn) {
     await check("the AI moments job never picks an opted-out channel's VODs", async () => {
         const pool = await moments._internals.momentPool(10);
         assert.deepStrictEqual(pool.map((v) => v.vod_id), [10]);
+        // Media's list names the owner by id only: the pool names them by username (pastes read "@null's stream").
+        assert.strictEqual(pool[0].username, 'alice');
     });
 
     await check('no "caught live" paste from an opted-out stream', async () => {

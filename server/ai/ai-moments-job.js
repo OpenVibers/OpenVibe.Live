@@ -269,6 +269,10 @@ async function _momentPool(limit) {
         if (rows.length) {
             return (await Promise.all(rows.map(async (v) => {
                 const state = (db.getVodAiState && await db.getVodAiState(v.id)) || {};
+                // Media's list names the owner by id only: the moment's footer and title name them by username
+                // (pastes read "@null's stream" without it).
+                let username = v.username || null;
+                if (!username && v.user_id) { try { username = (await db.getUserById(v.user_id))?.username || null; } catch { /* */ } }
                 let memory_count = 0, peak_viewers = 0;
                 if (v.stream_id) {
                     try { memory_count = (await db.get('SELECT COUNT(*) AS c FROM stream_memories WHERE stream_id = ?', [v.stream_id]))?.c || 0; } catch { /* */ }
@@ -276,7 +280,7 @@ async function _momentPool(limit) {
                 }
                 return {
                     vod_id: v.id, stream_id: v.stream_id || null, user_id: v.user_id || null,
-                    username: v.username || null, title: v.title || '',
+                    username, title: v.title || '',
                     ai_overview: state.ai_overview_short || v.ai_overview_short || '',
                     ai_overview_short: state.ai_overview_short || v.ai_overview_short || '',
                     view_count: Number(v.view_count) || 0,
@@ -422,7 +426,7 @@ async function tick(opts = {}) {
                 continue;
             }
             if (finalSig) thisSigs.add(finalSig);
-            const content = `${desc}\n\n▶ Watch this moment on @${v.username}'s stream: ${vodLink}`;
+            const content = `${desc}\n\n▶ Watch this moment on ${v.username ? `@${v.username}'s stream` : 'the stream'}: ${vodLink}`;
             const metadata = JSON.stringify({ ai_moment: true, vod_id: v.vod_id, offset, vod_link: vodPath, username: v.username, why: r.why || null });
             let pasteSlug = slug;
             try {
