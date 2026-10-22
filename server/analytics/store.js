@@ -19,6 +19,26 @@ function processDb() {
     });
 }
 
+// Crawler and bot rows are two thirds of the raw table (2026-10-22: 1.65M of 2.47M rows in 30 days, 1.49M of them bot
+// API calls; the table was 1.1 GB, 70% of ov_live). They are counted in the hourly and daily rollups when their day
+// closes (the tracker recomputes only today and yesterday), so after a week only the admin's bot breakdown would read
+// them: they are kept 7 days, the window its suspicious-sessions check already uses, and people's events 30.
+const BOT_RAW_DAYS = 7;
+const DAY_MS = 24 * 60 * 60 * 1000;
+const sqlTime = (ms) => new Date(ms).toISOString().replace('T', ' ').slice(0, 19);
+
+/** Bot rows older than BOT_RAW_DAYS, in batches as the shared prune does. */
+async function pruneBotEvents(db, { days = BOT_RAW_DAYS, now = Date.now, batch = 5000 } = {}) {
+    const cutoff = sqlTime(now() - days * DAY_MS);
+    let removed = 0;
+    for (;;) {
+        const n = await db.exec(`DELETE FROM analytics_events WHERE id IN (SELECT id FROM analytics_events WHERE is_bot = 1 AND created_at < $1 LIMIT ${batch})`, [cutoff]);
+        removed += n;
+        if (n < batch) break;
+    }
+    return { removed, cutoff };
+}
+
 function createAnalyticsStore({ db = processDb(), drill = false, timers = !drill } = {}) {
     const tracker = new AnalyticsTrackerPg(db, 'live', { retention: false, timers });
     let closing;
@@ -26,7 +46,11 @@ function createAnalyticsStore({ db = processDb(), drill = false, timers = !drill
         tracker,
         // The owner's migration made the table; the runtime role has no DDL rights.
         async ready() { await db.value('SELECT 1 FROM analytics_events LIMIT 1'); },
-        prune: () => pruneRawEventsPg(db, { days: analyticsModule.retention.MAX_DAYS }),
+        async prune() {
+            const all = await pruneRawEventsPg(db, { days: analyticsModule.retention.MAX_DAYS });
+            const bots = await pruneBotEvents(db);
+            return { ...all, bots };
+        },
         close() {
             if (!closing) closing = Promise.resolve(tracker.destroy());
             return closing;
@@ -34,4 +58,4 @@ function createAnalyticsStore({ db = processDb(), drill = false, timers = !drill
     };
 }
 
-module.exports = { createAnalyticsStore };
+module.exports = { createAnalyticsStore, pruneBotEvents, BOT_RAW_DAYS };

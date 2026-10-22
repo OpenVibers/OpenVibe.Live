@@ -1631,13 +1631,21 @@ async function start() {
     },
         { initialDelayMs: 3 * 60 * 1000, jitterMs: 60 * 1000 });
 
-    // 8b2. Raw analytics retention (ADR-021): events older than 30 days go, in bounded batches;
-    // hourly/daily rollups stay. Nightly, first run a few minutes after boot.
+    // 8b2. Raw analytics retention (ADR-021): events older than 30 days go, bot events older than 7, in bounded
+    // batches; hourly/daily rollups stay. Nightly, first run a few minutes after boot.
     require('./utils/jobs').every('analytics-prune', 24 * 60 * 60 * 1000, async () => {
         const out = await analyticsStore.prune();
         const deleted = out.deleted || out.removed;
         if (deleted) console.log(`[Analytics] pruned ${deleted} raw events older than ${out.cutoff}`);
+        if (out.bots && out.bots.removed) console.log(`[Analytics] pruned ${out.bots.removed} bot events older than ${out.bots.cutoff} (kept in the rollups)`);
     }, { initialDelayMs: 5 * 60 * 1000, jitterMs: 60 * 1000 });
+
+    // 8b2b. The first stream's follow-up (server/streaming/first-stream-followup.js): one notification after someone's
+    // first stream ends, with the recording and their channel address. Every 5 minutes.
+    require('./utils/jobs').every('first-stream-followup', 5 * 60 * 1000, async () => {
+        const out = await require('./streaming/first-stream-followup').run();
+        if (out.sent) console.log(`[FirstStream] ${out.sent} first-stream follow-up(s) sent`);
+    }, { initialDelayMs: 4 * 60 * 1000, jitterMs: 30 * 1000 });
 
     // 8b3. Media requests whose OpenCoins charge never got an answer: charged again with the same
     // key (a replay if it landed) and refunded, so no viewer pays for a request that failed.
