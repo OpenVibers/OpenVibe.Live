@@ -187,6 +187,32 @@ async function check(name, fn) {
         assert.deepStrictEqual(mediaCalls.map(([k, ...a]) => [k, ...a.slice(0, 2)]), [['updateClip', 200, { title: 'Alice trimmed' }], ['trimClip', 200, { start_s: 1, end_s: 4 }]]);
         mediaCalls.length = 0;
     });
+    await check('clip trim: a maker who may not delete their clip on the channel saves its title but cannot cut it down', async () => {
+        // Bob clipped Alice's stream; her channel does not let clip makers delete their clips (the default).
+        CLIPS[201] = { id: 201, user_id: BOB, channel_user_id: ALICE, vod_id: 100, title: 'Bob clip', visibility: 'public', is_public: 1, status: 'ready', start_time: 10, end_time: 20, duration_seconds: 10 };
+        mediaCalls.length = 0;
+        const titled = await call('POST', '/api/clips/201/trim', BOB, { start: 0, end: 10, title: 'Bob titled' });
+        assert.strictEqual(titled.status, 200, titled.text);
+        assert.deepStrictEqual(mediaCalls.map(([k, ...a]) => [k, ...a.slice(0, 2)]), [['updateClip', 201, { title: 'Bob titled' }], ['trimClip', 201, { start_s: 0, end_s: 10 }]], 'the whole clip: the title rule');
+        mediaCalls.length = 0;
+        const cut = await call('POST', '/api/clips/201/trim', BOB, { start: 0, end: 1, title: 'Bob one second' });
+        assert.strictEqual(cut.status, 403, cut.text);
+        assert.deepStrictEqual(mediaCalls, [], 'refused before anything is written (not even the title)');
+        assert.strictEqual(((await db.getClipAiState(201)) || {}).ai_window ?? null, null, 'no window recorded for a refused trim');
+        // Where the channel lets makers delete their clips, they may trim them too; the clip's window is recorded first.
+        await raw.prepare('UPDATE channels SET clips_allow_creator_delete = 1 WHERE id = ?').run(chanA.id);
+        const allowed = await call('POST', '/api/clips/201/trim', BOB, { start: 0, end: 1 });
+        assert.strictEqual(allowed.status, 200, allowed.text);
+        assert.deepStrictEqual(mediaCalls.map(([k, ...a]) => [k, ...a.slice(0, 2)]), [['trimClip', 201, { start_s: 0, end_s: 1 }]]);
+        assert.strictEqual((await db.getClipAiState(201)).ai_window, '10.0-20.0', 'the pre-trim window, for clip.ready to compare');
+        await raw.prepare('UPDATE channels SET clips_allow_creator_delete = 0 WHERE id = ?').run(chanA.id);
+        // Alice's channel mods and Alice herself are never held to the maker rule.
+        mediaCalls.length = 0;
+        assert.strictEqual((await call('POST', '/api/clips/201/trim', ALICE, { start: 2, end: 5 })).status, 200);
+        assert.deepStrictEqual(mediaCalls.map(([k]) => k), ['trimClip']);
+        mediaCalls.length = 0;
+        delete CLIPS[201];
+    });
 
     await check('streams: Bob cannot edit, end or delete Alice\'s stream', async () => {
         const before = await row('streams', streamA);

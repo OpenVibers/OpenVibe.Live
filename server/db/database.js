@@ -529,6 +529,33 @@ async function getVodAiState(vodId) {
 async function getClipAiState(clipId) {
     return await get('SELECT * FROM clip_ai_state WHERE clip_id = ?', [clipId]);
 }
+/** A clip's window of its source as clip_ai_state.ai_window keeps it: '<start>-<end>' seconds to a tenth, or null. */
+function clipAiWindow(clip) {
+    const start = Number(clip && clip.start_time), end = Number(clip && clip.end_time);
+    return clip && clip.start_time != null && clip.end_time != null && Number.isFinite(start) && Number.isFinite(end) && end > start
+        ? `${start.toFixed(1)}-${end.toFixed(1)}` : null;
+}
+/**
+ * Record the window a clip's AI state describes (migration 0012). A clip trimmed in place keeps its id with another
+ * window: when `window` differs from the recorded one, its overview and transcript describe footage it no longer has,
+ * so they are cleared and transcript_attempts moves on (media.analyze's idempotency key names it, so the next analysis
+ * is a new run, not a replay of the old one). A row with no window yet just records it. `seedOnly` records it only
+ * where none is recorded (the clip editor, before a trim, so a clip older than the column is compared too).
+ * → true when the window changed and the state was cleared.
+ */
+async function setClipAiWindow(clipId, window, { seedOnly = false } = {}) {
+    if (!window) return false;
+    await _ensureClipAiState(clipId);
+    if (!seedOnly) {
+        const r = await run(`UPDATE clip_ai_state SET ai_overview = NULL, ai_overview_short = NULL, ai_transcript_json = NULL,
+            transcript_partial_json = NULL, transcript_progress_sec = 0, transcript_attempts = COALESCE(transcript_attempts, 0) + 1,
+            transcript_error = NULL, transcript_next_at = NULL, ai_window = ?
+            WHERE clip_id = ? AND ai_window IS NOT NULL AND ai_window <> ?`, [window, clipId, window]);
+        if (r && r.changes) return true;
+    }
+    await run('UPDATE clip_ai_state SET ai_window = ? WHERE clip_id = ? AND ai_window IS NULL', [window, clipId]);
+    return false;
+}
 /** A VOD or clip OpenVibe.Media deleted: Live's own rows about it go (server/media-proxy/purge.js). */
 async function forgetMediaItem(kind, id) {
     return await getDb().tx(async () => {
@@ -3583,7 +3610,7 @@ module.exports = {
     getConcurrencyBaseline,
     getHomeStatSeries, homeSeriesLocal, HOME_SERIES_KEYS, vibesStatsSince, _computeHomeStats,
     getVodAiState, getClipAiState, forgetMediaItem,
-    scheduleClipNotifyState, bumpClipNotifyNowState, markClipNotifiedState, getDueClipNotifies,
+    scheduleClipNotifyState, bumpClipNotifyNowState, markClipNotifiedState, getDueClipNotifies, clipAiWindow, setClipAiWindow,
     getDb, initDb, run, get, all, tx, close,
     getTimelineSpeechSince,
     getDonationGoalsForWidget, getAllDonationGoals, getActiveDonationGoals, getDonationGoalById,

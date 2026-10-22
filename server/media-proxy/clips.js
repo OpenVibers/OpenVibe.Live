@@ -390,8 +390,10 @@ router.delete('/:id', requireAuth, async (req, res) => {
 /**
  * The clip editor's Save (trim & name a clip just made): the title, then, when the kept part is not the whole clip,
  * Media narrows the clip in place and cuts it again from its source (Media's POST /clips/:id/trim): the same id, so
- * its links, comments and chat announcement stay. The same rule as the title: whoever made the clip, the channel's
- * streamer and mods, staff.
+ * its links, comments and chat announcement stay. Saving the title (the whole clip kept) is the title's rule: whoever
+ * made the clip, the channel's streamer and mods, staff. Cutting footage away is the delete rule: a clip's maker on a
+ * channel that does not let makers delete their clips (clips_allow_creator_delete) cannot trim it down to a second
+ * either, and is refused before anything is written.
  *   body { start, end, title? }, seconds into the clip → { id, title, unchanged, status, job_id }; a job_id is the cut
  *   the editor follows (GET /api/clips/:id/job).
  */
@@ -406,6 +408,15 @@ router.post('/:id/trim', requireAuth, async (req, res) => {
         if (!Number.isFinite(start) || !Number.isFinite(end)) return res.status(400).json({ error: 'start and end are required' });
         const title = typeof req.body?.title === 'string' ? req.body.title.trim() : '';
         if (title.length > 200) return res.status(400).json({ error: 'Title must be 1-200 characters' });
+        // The whole clip, as Media decides it (within 0.05 s of both ends): only the title is saved.
+        const len = Number(clip.duration_seconds ?? clip.duration) || 0;
+        const whole = start < 0.05 && Math.min(end, len) > len - 0.05;
+        if (!whole) {
+            if (!(await canActorDeleteClip(req.user, clip))) return await refuse(req, res, clip, 'This channel does not let clip makers cut footage from their clips');
+            // A clip older than clip_ai_state.ai_window gets its current window recorded now, so the trimmed clip's
+            // clip.ready is told apart from it and its old overview and transcript go (outcomes.js).
+            try { await db.setClipAiWindow(clip.id, db.clipAiWindow(clip), { seedOnly: true }); } catch { /* best effort */ }
+        }
         if (title && title !== clip.title) await media.updateClip(clip.id, { title });
         const out = await media.trimClip(clip.id, { start_s: start, end_s: end });
         // A pending chat announcement goes out now with the title (after the cut, when there is one).

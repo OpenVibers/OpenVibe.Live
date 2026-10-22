@@ -5,8 +5,9 @@
  *     manage it): status, attempts, the error once it failed. Anyone else, a job of another clip, or
  *     a job that is not a clip.cut gets 404; a malformed job id 400.
  *   - public/js/ov-clip-jobs.js (run here with a stand-in fetch, localStorage and timers) follows a job
- *     to ready or failed, says so once per retry, keeps the pending cut across a "reload" and resumes it,
- *     and forgets a job the server no longer knows.
+ *     to ready or failed, says so once per retry, keeps the pending cut across a "reload" and resumes it
+ *     (a trim's cut with the trim handlers, by its kind), and forgets a job the server no longer knows.
+ *   - the clip editor's Save ignores a second press while it runs (a second trim would narrow the clip again).
  *
  *   node test/clip-cut-job.test.js
  */
@@ -133,6 +134,28 @@ console.error = () => {};
     await settle(); await drain();
     assert.deepStrictEqual(seen2, ['gave up'], 'the resumed cut reports its failure');
     assert.deepStrictEqual(plain(w2.OVClipJobs.pending()), []);
+
+    // A trim's cut keeps its kind: a reload resumes it with the trim handlers (a toast), not a new clip's (the editor).
+    const w5 = makeWindow();
+    vm.runInNewContext(src, w5);
+    script.mjob_5 = [{ status: 200, body: { job: { status: 'running', attempts: 0 } } }];
+    w5.OVClipJobs.follow(15, 'mjob_5', {}, 'trim');
+    await settle();
+    timers.length = 0;                                   // reloaded mid-cut
+    assert.deepStrictEqual(JSON.parse(store.get('ov_clip_jobs')).map((e) => [e.jobId, e.kind]), [['mjob_5', 'trim']], 'the kind is kept');
+    const w6 = makeWindow();
+    vm.runInNewContext(src, w6);
+    script.mjob_5 = [{ status: 200, body: { job: { status: 'succeeded' }, clip: { id: 15 } } }];
+    const seen5 = [];
+    w6.OVClipJobs.resume({ onReady: () => seen5.push('editor reopened') }, { trim: { onReady: () => seen5.push('trim saved') } });
+    await settle(); await drain();
+    assert.deepStrictEqual(seen5, ['trim saved'], 'a resumed trim does not reopen the editor');
+
+    // The editor's Save ignores a second press (Enter in the title field) while the first save runs.
+    const player = fs.readFileSync(path.join(__dirname, '../public/js/stream-player.js'), 'utf8');
+    assert.ok(/const doSave = async \(\) => \{\s*(\/\/[^\n]*\n\s*)*if \(saveBtn\.disabled\) return;/.test(player), 'doSave returns while a save is running');
+    assert.ok(/OVClipJobs\.resume\(_clipCutHandlers, \{ trim: _clipTrimHandlers \}\)/.test(player) && /follow\(clipId, data\.job_id, _clipTrimHandlers, 'trim'\)/.test(player),
+        'the editor follows its trim as a trim, and a reload resumes it so');
 
     // A job the server no longer knows (or no longer shows this person) is dropped silently.
     const w3 = makeWindow();

@@ -28,12 +28,16 @@ async function _sendOne(clipId) {
     let clip = null;
     try { clip = await media.getClip(clipId); } catch { /* Media hiccup — retry next sweep */ }
     if (!clip) return; // keep pending; a deleted clip 404s forever → mark below
-    if (clip.status && !['ready', 'done', 'ok'].includes(String(clip.status))) return; // still processing
 
     const streamId = clip.stream_id || null;
     const srcStream = streamId ? await db.getStreamById(streamId) : null;
-    // Only announce clips of a CURRENTLY-LIVE stream — that's when there's an audience.
+    // Only announce clips of a CURRENTLY-LIVE stream — that's when there's an audience. Decided before waiting for the
+    // cut, so a clip that never becomes ready (a trim whose cut failed for good) stops being asked about once its
+    // stream ends.
     if (!srcStream || !srcStream.is_live) { await db.markClipNotifiedState(clipId); return; }
+    // Still being cut (a trim from the clip editor makes the clip processing until its new cut is in): wait for it, so
+    // the line carries the trimmed clip's length and thumbnail.
+    if (clip.status && !['ready', 'done', 'ok'].includes(String(clip.status))) return;
     if (clip.visibility === 'private') { await db.markClipNotifiedState(clipId); return; }
     if (srcStream.managed_stream_id) {
         try {

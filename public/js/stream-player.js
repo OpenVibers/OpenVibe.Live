@@ -902,7 +902,7 @@ function _applyLoaderThumb(stream) {
 
 function initPlayer(stream) {
     // Clips this browser asked for before a reload are still being cut: reattach to them.
-    if (window.OVClipJobs && !initPlayer._clipsResumed) { initPlayer._clipsResumed = true; window.OVClipJobs.resume(_clipCutHandlers); }
+    if (window.OVClipJobs && !initPlayer._clipsResumed) { initPlayer._clipsResumed = true; window.OVClipJobs.resume(_clipCutHandlers, { trim: _clipTrimHandlers }); }
     destroyPlayer();
     // Camera overlay is a separate viewer session against another slot's live stream;
     // attach it alongside whichever protocol the main stream uses, and let it fail
@@ -3143,6 +3143,13 @@ const _clipCutHandlers = {
     onRetry: (job) => toast(`Still working on your clip (attempt ${job.attempts + 1} of ${job.max_attempts})…`, 'info'),
 };
 function _followClipCut(clipId, jobId) { window.OVClipJobs.follow(clipId, jobId, _clipCutHandlers); }
+// A trim saved in the clip editor is cut again on the server: its outcome is a toast only (the editor is done), also
+// when a reload resumes it (ov-clip-jobs.js keeps its kind, 'trim').
+const _clipTrimHandlers = {
+    onReady: () => toast('Clip trimmed & saved!', 'success'),
+    onFailed: (msg) => toast('The trimmed clip could not be cut: ' + msg, 'error'),
+    onRetry: (job) => _clipCutHandlers.onRetry(job),
+};
 
 /**
  * Show a modal prompt for the user to title their clip after creation.
@@ -3332,6 +3339,8 @@ function _buildClipTrimModal(clipId, dur, defaultTitle) {
     const close = () => { try { video.pause(); } catch {} overlay.remove(); };
 
     const doSave = async () => {
+        // Enter in the title field also saves: a second press while the first save runs would trim the narrowed clip again.
+        if (saveBtn.disabled) return;
         const title = titleInput.value.trim();
         saveBtn.disabled = true;
         saveBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Saving...';
@@ -3348,11 +3357,7 @@ function _buildClipTrimModal(clipId, dur, defaultTitle) {
             // A trim is cut again on the server: follow that cut like the first one.
             if (data.job_id && window.OVClipJobs) {
                 toast('Saving your trimmed clip…', 'info');
-                window.OVClipJobs.follow(clipId, data.job_id, {
-                    onReady: () => toast('Clip trimmed & saved!', 'success'),
-                    onFailed: (msg) => toast('The trimmed clip could not be cut: ' + msg, 'error'),
-                    onRetry: _clipCutHandlers.onRetry,
-                });
+                window.OVClipJobs.follow(clipId, data.job_id, _clipTrimHandlers, 'trim');
             } else {
                 toast(data.unchanged ? 'Clip saved!' : 'Clip trimmed & saved!', 'success');
             }

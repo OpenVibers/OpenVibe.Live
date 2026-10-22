@@ -139,6 +139,9 @@ async function apply(event, data) {
             // Schedule the chat announce with a grace period (creator titles the clip first); the
             // clip-notify sweeper fires it (survives restarts).
             try { await require('./clip-notify').scheduleClipNotify(data.id); } catch { /* */ }
+            // A clip trimmed in place keeps its id with a narrower window: an overview and transcript of the old window
+            // are cleared, and the analysis below runs under a new key (db.setClipAiWindow).
+            try { await db.setClipAiWindow(data.id, db.clipAiWindow(data)); } catch { /* */ }
             try { await db.setClipTranscriptStatus(data.id, 'pending'); } catch { /* */ }
             return {
                 outcome: 'clip_ready',
