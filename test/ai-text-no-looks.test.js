@@ -1,7 +1,8 @@
 'use strict';
 // Public AI text never describes how a person looks: a frame note or an overview that names looks or an age
-// ("A shirtless man sits…", "a young boy at a desk") is stored with that person as "the streamer", a plain "a man"
-// or "a black chair" stays as written, and rows stored before the rule are repaired by the AI cleanup pass.
+// ("A shirtless man sits…", "a young boy at a desk") is stored with that person as "the streamer"; a guessed gender
+// ("a man", "two men", "a male or female host") becomes a person; "a black chair" stays as written; and rows stored
+// before a rule changed are repaired by the AI cleanup pass.
 const assert = require('assert');
 console.warn = () => {};
 
@@ -17,37 +18,44 @@ const db = require('../server/db/database');
         ['A livestream frame showing a shirtless streamer in a small inset while playing a MOBA.', 'A livestream frame showing the streamer in a small inset while playing a MOBA.'],
         ['Chat watches a young boy at a desk build a PC.', 'Chat watches the streamer at a desk build a PC.'],
         ['Young, bearded man plays chess.', 'Streamer plays chess.'],
-        ['A man plays chess next to a black chair.', 'A man plays chess next to a black chair.'],
+        ['A man plays chess next to a black chair.', 'A person plays chess next to a black chair.'],
         ['The streamer, topless, laughs at chat.', 'The streamer laughs at chat.'],
-        ['A man is shirtless and appears to be talking to chat.', 'A man appears to be talking to chat.'],
+        ['A man is shirtless and appears to be talking to chat.', 'A person appears to be talking to chat.'],
         ['A person watches TV while a child sits nearby.', 'A person watches TV while someone sits nearby.'],
         ['The girl waves at the camera.', 'The person waves at the camera.'],
         // Clothing, hair and face go; the rest of the sentence stays.
         ['The streamer wearing a red beanie speaks to the camera outdoors, seemingly addressing chat.', 'The streamer speaks to the camera outdoors, seemingly addressing chat.'],
         ['The view is close to the camera while wearing a black beanie and hoodie, with trees around.', 'The view is close to the camera, with trees around.'],
-        ['A man in a gray tank top sits against a plain light background.', 'A man sits against a plain light background.'],
-        ['A man with a long beard and plaid shirt examines a woven item.', 'A man examines a woven item.'],
+        ['A man in a gray tank top sits against a plain light background.', 'A person sits against a plain light background.'],
+        ['A man with a long beard and plaid shirt examines a woven item.', 'A person examines a woven item.'],
         // Pose and expression are the person too (2026-10-17, the home page's "Right now").
         ['A live stream frame shows the streamer in a small window bottom-left, appearing to be reacting with a thoughtful pose while the main screen is black.',
             'A live stream frame shows the streamer in a small window bottom-left while the main screen is black.'],
         ['The streamer sits in a relaxed posture at the desk.', 'The streamer sits at the desk.'],
         ['A kitchen studio with a headset-wearing host, microphone, and on-screen graphics.', 'A kitchen studio with a host, microphone, and on-screen graphics.'],
         ['Panelists discuss while wearing headsets and microphones, with a trophy nearby.', 'Panelists discuss, with a trophy nearby.'],
-        ['A man wearing sunglasses on his head looks down at the camera.', 'A man looks down at the camera.'],
-        ['A collage of a man in a white shirt and tie wearing dark sunglasses in the left panel.', 'A collage of a man in the left panel.'],
+        ['A man wearing sunglasses on his head looks down at the camera.', 'A person looks down at the camera.'],
+        ['A collage of a man in a white shirt and tie wearing dark sunglasses in the left panel.', 'A collage of a person in the left panel.'],
         ['Behind him a green mat; he wears a blue jacket and is leaning to the left.', 'Behind him a green mat; he is leaning to the left.'],
-        ['Two men lift weights, one shirtless and sweating.', 'Two men lift weights, one sweating.'],
-        ['Two men stand in an alley, one and drinking from a bottle while the other wears a dusty t-shirt; both look tired.', 'Two men stand in an alley, one drinking from a bottle; both look tired.'],
-        ['A man wearing a green bucket hat with frog-like eyes sits indoors.', 'A man sits indoors.'],
-        ['A man in sunglasses reaches toward the camera inside a car.', 'A man reaches toward the camera inside a car.'],
+        ['Two men lift weights, one shirtless and sweating.', 'Two people lift weights, one sweating.'],
+        ['Two men stand in an alley, one and drinking from a bottle while the other wears a dusty t-shirt; both look tired.', 'Two people stand in an alley, one drinking from a bottle; both look tired.'],
+        ['A man wearing a green bucket hat with frog-like eyes sits indoors.', 'A person sits indoors.'],
+        ['A man in sunglasses reaches toward the camera inside a car.', 'A person reaches toward the camera inside a car.'],
         ['A live stream window shows a broadcaster with a headset on the left, a chat panel on the right.', 'A live stream window shows a broadcaster on the left, a chat panel on the right.'],
-        ['A man with a red shirt sits in a room; a desk with a headset and keyboard.', 'A man sits in a room; a desk with a headset and keyboard.'],
+        ['A man with a red shirt sits in a room; a desk with a headset and keyboard.', 'A person sits in a room; a desk with a headset and keyboard.'],
         ['A gamer faces a casually dressed NPC in a grim interior.', 'A gamer faces a NPC in a grim interior.'],
         ['A cartoon streaming setup: wearing a headset with a microphone, rugged jacket, backpack with a mat.', 'A cartoon streaming setup: backpack with a mat.'],
         ['A partial view of a person wearing a gray zip-up jacket with a white zipper, seated indoors.', 'A partial view of a person, seated indoors.'],
         ['Close-up of a person wearing a yellow vest over a gray knit top, with a backpack visible.', 'Close-up of a person, with a backpack visible.'],
         ['A Minecraft player in a top-down view builds a house; the streamer reviews new headphones.', 'A Minecraft player in a top-down view builds a house; the streamer reviews new headphones.'],
         ['The streamer laughs — heard: "Put your headset on. I like your hair."', 'The streamer laughs — heard: "Put your headset on. I like your hair."'],
+        // Clip overviews found public on 2026-10-22: a guessed gender, a slashed pattern before a shirt, a grooming sentence.
+        ['The video features a man in a plaid/checkered shirt delivering a live-streamed explanation or discussion.', 'The video features a person delivering a live-streamed explanation or discussion.'],
+        ['The video shows a man in a kitchen setting, appearing to stream live from a couch or kitchen area.', 'The video shows a person in a kitchen setting, appearing to stream live from a couch or kitchen area.'],
+        ['The video centers on a live stream featuring a male or female host wearing headphones, visible in a small webcam window.', 'The video centers on a live stream featuring a host, visible in a small webcam window.'],
+        ['A home kitchen where a person adjusts their hair or clothing near the counter. A pot of soup simmers on the stove.', 'A pot of soup simmers on the stove.'],
+        ['A female streamer and two guys race karts; the other men cheer.', 'A streamer and two people race karts; the other people cheer.'],
+        ['An Iron Man skin fights Pac-Man in a man-made arena while chat says "that man is cracked".', 'An Iron Man skin fights Pac-Man in a man-made arena while chat says "that man is cracked".'],
     ];
     let off = 0;
     // Public memory text is the observation alone: the raw transcript clause stays for the AI's context, never shown.
@@ -69,14 +77,19 @@ const db = require('../server/db/database');
     await db.run('INSERT INTO stream_memories (stream_id, user_id, offset_seconds, description) VALUES (?, ?, ?, ?)', [sid, uid, 9060, 'An older version of the game loads.']);
     await db.run('INSERT INTO stream_memories (stream_id, user_id, offset_seconds, description) VALUES (?, ?, ?, ?)', [sid, uid, 9120, 'A man wearing headphones sits at a desk.']);
     await db.cleanupMalformedAiText({ force: true });
-    assert.strictEqual((await db.get('SELECT description FROM stream_memories WHERE offset_seconds = 9120')).description, 'A man sits at a desk.');
+    assert.strictEqual((await db.get('SELECT description FROM stream_memories WHERE offset_seconds = 9120')).description, 'A person sits at a desk.');
     // The scan runs once per version of the rules: the next boot skips it (rows are scrubbed when written).
     await db.run('INSERT INTO stream_memories (stream_id, user_id, offset_seconds, description) VALUES (?, ?, ?, ?)', [sid, uid, 9180, 'A man wearing a hat waves.']);
     await db.cleanupMalformedAiText();
     assert.strictEqual((await db.get('SELECT description FROM stream_memories WHERE offset_seconds = 9180')).description, 'A man wearing a hat waves.', 'skipped: the rules have not changed');
     await db.setState('ai_looks_repair_rules', 'an older rule set');
     await db.cleanupMalformedAiText();
-    assert.strictEqual((await db.get('SELECT description FROM stream_memories WHERE offset_seconds = 9180')).description, 'A man waves.', 'new rules: scanned again');
+    assert.strictEqual((await db.get('SELECT description FROM stream_memories WHERE offset_seconds = 9180')).description, 'A person waves.', 'new rules: scanned again');
+    // A plain guessed gender stored before this rule is repaired too (the scan's pattern names gendered words).
+    await db.run('INSERT INTO stream_memories (stream_id, user_id, offset_seconds, description) VALUES (?, ?, ?, ?)', [sid, uid, 9240, 'A woman cooks pasta.']);
+    await db.setState('ai_looks_repair_rules', 'an older rule set');
+    await db.cleanupMalformedAiText();
+    assert.strictEqual((await db.get('SELECT description FROM stream_memories WHERE offset_seconds = 9240')).description, 'A person cooks pasta.');
     assert.strictEqual((await db.get('SELECT description FROM stream_memories WHERE offset_seconds = 9000')).description, 'The streamer rests his chin on his hand.');
     assert.deepStrictEqual(Object.values(await db.get('SELECT ai_overview, ai_overview_short FROM streams WHERE id = ?', [sid])), ['The streamer plays Fortnite.', 'The streamer plays Fortnite.']);
     assert.strictEqual((await db.get('SELECT description FROM stream_memories WHERE offset_seconds = 9060')).description, 'An older version of the game loads.', 'looks words about things stay');
@@ -87,7 +100,7 @@ const db = require('../server/db/database');
     // The chat popover and the profile's AI tab: every AI string in the answer, however nested.
     const { noLooksDeep } = require('../server/ai/chat-ai-routes')._internals;
     assert.deepStrictEqual(noLooksDeep({ overview_alltime: 'A shirtless host chats.', n: 3, jokes: ['the streamer wearing a hat dances'], sessions: [{ moments: [{ description: 'A man in a red shirt cooks.' }] }] }),
-        { overview_alltime: 'A host chats.', n: 3, jokes: ['the streamer dances'], sessions: [{ moments: [{ description: 'A man cooks.' }] }] });
+        { overview_alltime: 'A host chats.', n: 3, jokes: ['the streamer dances'], sessions: [{ moments: [{ description: 'A person cooks.' }] }] });
 
     // A session's AI title about looks is not used: the stream's own title is stored instead.
     await db.setStreamAiTitle(sid, 'Orange Shirt Kitchen Chat');
