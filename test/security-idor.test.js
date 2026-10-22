@@ -11,7 +11,7 @@
  *   - streams and slots: edit, end, delete, the slot's settings, its stream key regeneration (the
  *     answer would be the new key), the slot's vibe-coding settings;
  *   - restream destinations (each holds a platform stream key): edit, delete, start, stop;
- *   - API tokens, ONVIF cameras and their presets.
+ *   - API tokens.
  *
  * Every refusal must leave the object exactly as it was (the row, or no call to Media at all) and
  * return nothing of it (no key); each area also has a positive control, so a route that simply
@@ -154,8 +154,10 @@ async function check(name, fn) {
         refused(await call('PUT', '/api/clips/200/visibility', BOB, { visibility: 'private' }), 'clip visibility');
         refused(await call('DELETE', '/api/clips/200', BOB), 'DELETE clip');
         refused(await call('POST', '/api/clips/200/recut', BOB), 'recut');
-        const trim = await call('POST', '/api/vods/clips/200/trim', BOB, { start_time: 1, end_time: 2 });
-        assert.ok([403, 404, 410, 400, 501].includes(trim.status), `trim: ${trim.status} ${trim.text.slice(0, 120)}`);
+        refused(await call('POST', '/api/clips/200/trim', BOB, { start: 1, end: 2, title: 'pwned' }), 'trim');
+        // The old path only sends tabs on to the route above.
+        const old = await call('POST', '/api/vods/clips/200/trim', BOB, { start: 1, end: 2 });
+        assert.deepStrictEqual([old.status, old.text.includes('Alice')], [307, false], 'the old trim path redirects');
         const bulk = await call('POST', '/api/clips/bulk', BOB, { ids: [200], action: 'delete' });
         assert.deepStrictEqual([bulk.status, bulk.json && bulk.json.done], [200, 0], bulk.text);
         assert.deepStrictEqual(writesTo('clip', 200), []);
@@ -179,6 +181,10 @@ async function check(name, fn) {
         assert.strictEqual((await call('PUT', '/api/vods/100', ALICE, { title: 'Alice renamed' })).status, 200);
         assert.strictEqual((await call('PUT', '/api/clips/200/title', ALICE, { title: 'Alice renamed' })).status, 200);
         assert.ok(writesTo('vod', 100).length >= 1 && writesTo('clip', 200).length >= 1);
+        mediaCalls.length = 0;
+        const trim = await call('POST', '/api/clips/200/trim', ALICE, { start: 1, end: 4, title: 'Alice trimmed' });
+        assert.strictEqual(trim.status, 200, trim.text);
+        assert.deepStrictEqual(mediaCalls.map(([k, ...a]) => [k, ...a.slice(0, 2)]), [['updateClip', 200, { title: 'Alice trimmed' }], ['trimClip', 200, { start_s: 1, end_s: 4 }]]);
         mediaCalls.length = 0;
     });
 

@@ -3218,8 +3218,9 @@ function _buildClipTitleModal(overlay, clipId) {
 }
 
 // After a clip is created, let the user preview it and trim the start/end further.
-// Only the final cut is stored (the server re-encodes and replaces the file).
-// Falls back to the plain title prompt if the clip can't be loaded for preview.
+// Only the final cut is stored (Media cuts the kept part again from the source, same clip id).
+// Falls back to the plain title prompt if the clip can't be loaded for preview, or was uploaded
+// from the browser already cut (no source recording to trim from).
 async function openClipTrimEditor(clipId) {
     let clip;
     try {
@@ -3228,8 +3229,8 @@ async function openClipTrimEditor(clipId) {
         const data = await resp.json().catch(() => ({}));
         clip = data.clip;
     } catch { /* */ }
-    if (!clip || !clip.file_path || !(clip.duration_seconds > 0)) {
-        // Can't preview — fall back to the simple title prompt.
+    if (!clip || !clip.file_path || !clip.vod_id || !(clip.duration_seconds > 0)) {
+        // Can't preview or trim — fall back to the simple title prompt.
         return promptClipTitle(clipId);
     }
     const dur = Number(clip.duration_seconds);
@@ -3336,15 +3337,25 @@ function _buildClipTrimModal(clipId, dur, defaultTitle) {
         saveBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Saving...';
         try {
             const token = localStorage.getItem('token');
-            const resp = await fetch(`/api/vods/clips/${clipId}/trim`, {
+            const resp = await fetch(`/api/clips/${clipId}/trim`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
                 body: JSON.stringify({ start: startT, end: endT, title }),
             });
             const data = await resp.json().catch(() => ({}));
             if (!resp.ok) throw new Error(data.error || 'Failed to save');
-            toast(data.unchanged ? 'Clip saved!' : 'Clip trimmed & saved!', 'success');
             close();
+            // A trim is cut again on the server: follow that cut like the first one.
+            if (data.job_id && window.OVClipJobs) {
+                toast('Saving your trimmed clip…', 'info');
+                window.OVClipJobs.follow(clipId, data.job_id, {
+                    onReady: () => toast('Clip trimmed & saved!', 'success'),
+                    onFailed: (msg) => toast('The trimmed clip could not be cut: ' + msg, 'error'),
+                    onRetry: _clipCutHandlers.onRetry,
+                });
+            } else {
+                toast(data.unchanged ? 'Clip saved!' : 'Clip trimmed & saved!', 'success');
+            }
         } catch (err) {
             toast('Failed to save clip: ' + (err.message || 'error'), 'error');
             saveBtn.disabled = false;

@@ -800,10 +800,11 @@ router.get('/clips/stream/:streamId', optionalAuth, async (req, res) => {
     }
 });
 
-// TODO(contract): clip trimming (re-cut an existing clip in place) has no Media API v1
-// endpoint. Cut a fresh clip from the source VOD instead once Media exposes trim.
+// The clip editor's Save is POST /api/clips/:id/trim (media-proxy/clips.js). Tabs still running the client that posted
+// here are sent there with the method and body kept.
 router.post('/clips/:id/trim', requireAuth, (req, res) => {
-    res.status(501).json({ error: 'Clip trimming is temporarily unavailable while media moves to openvibe.media.' });
+    if (!/^\d+$/.test(req.params.id)) return res.status(404).json({ error: 'Clip not found' });
+    res.redirect(307, `/api/clips/${req.params.id}/trim`);
 });
 
 module.exports = router;
