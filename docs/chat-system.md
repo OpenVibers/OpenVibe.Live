@@ -77,8 +77,8 @@ path are deleted. Without Live's service credentials (development, tests) chat i
   and `moderation_actions`. Chat imported them with ids kept at the cutover and has been their only
   writer since; Live's readers and writers are gone (#28–#32 and the release that carries this, #33)
   and it no longer creates them. #33 is in production and its N-1 fixtures no longer run SQL over the
-  tables ([test/n-1.test.js](../test/n-1.test.js)), so the drop is boot migration `007_drop_chat_tables`
-  (ADR-028). The deployment notice is Chat's too: Live
+  tables ([test/n-1.test.js](../test/n-1.test.js)), so SQLite-era boot migration 007 dropped them
+  (ADR-028); on PostgreSQL (since 2026-10-08) they were never created. The deployment notice is Chat's too: Live
   queues `live.release.deployed` and Chat folds and stores the rolling card. `test/chat-tables-dropped.test.js`
   guards that nothing under `server/` names them.
 

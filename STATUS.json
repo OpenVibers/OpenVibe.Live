@@ -27,10 +27,10 @@
     "VODs and clips recorded and stored by OpenVibe.Media; pastes and comments on OpenVibe.Community",
     "AI viewers, stream memories, overviews, moments, recaps, translation: every prompt an OpenVibe.AI template; VOD and clip transcripts by window on OpenVibe.AI",
     "streamers' own AI keys stored encrypted in OpenVibe.AI; per-streamer daily AI budgets as AI quotas",
-    "channel points and Vibes; the Arena (ARENA ALERT drama desk, Lolcow Index, Clout Rankings, beefs); after-show recaps; the Star of OpenVibe",
+    "channel points and Vibes; The Rundown (/rundown: what streamers talked about, from their speech; replaced the Arena 2026-10-19); after-show recaps; the Star of OpenVibe",
     "live, VOD and clip transcripts by Parakeet TDT 0.6B v3 on the server for English and 24 European languages (whisper for others)",
     "per-actor limits on API writes; account export and deletion contributions; follows on OpenVibe.Network",
-    "channel ↔ OpenVibe.Bot robot binding, its dashboard field and the Bot panel iframe on the channel page behind LIVE_BOT_EMBED (off by default)"
+    "channel ↔ OpenVibe.Bot robot binding, its dashboard field and the Bot panel iframe on the channel page behind LIVE_BOT_EMBED (off by default; on in production)"
   ],
-  "updated": "2026-10-21"
+  "updated": "2026-10-22"
 }
