@@ -34,6 +34,9 @@ const COSMETICS = {
     fx_glitch:   { name: 'Glitch Name',   emoji: '📟', category: 'name_effect', tier: 3, cssClass: 'name-fx-glitch',   desc: 'Digital glitch' },
     fx_hologram: { name: 'Hologram Name', emoji: '🔮', category: 'name_effect', tier: 4, cssClass: 'name-fx-hologram', desc: 'Holographic shimmer' },
     fx_divine:   { name: 'Divine Name',   emoji: '✝️', category: 'name_effect', tier: 5, cssClass: 'name-fx-divine',   desc: 'Divine radiance' },
+    // One of a kind (2026-10-22, the owner's gift to his friend Josh, "Josh Vegas" since they were kids): granted to
+    // its one holder, never listed in the catalog nor earnable.
+    fx_vegas:    { name: 'Josh Vegas',    emoji: '🎰', category: 'name_effect', tier: 6, cssClass: 'name-fx-vegas',    desc: 'Slot reels and casino lights', exclusive: true },
 
     // ── Particle Effects ─────────────────────────────────
     px_sparkle:  { name: 'Sparkle',       emoji: '✨', category: 'particle', tier: 1, cssClass: 'px-sparkle',  chars: '✦✧⋆',    desc: 'Sparkle particles' },
