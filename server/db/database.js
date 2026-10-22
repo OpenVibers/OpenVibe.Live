@@ -400,7 +400,7 @@ const _cap = (m, s) => (/^[A-Z]/.test(m) ? s[0].toUpperCase() + s.slice(1) : s);
 const _ART = '(?:(?:a|an|the|his|her|their|some|matching)\\s+)?';
 const _WORN = 't-shirts?|shirts?|tees?|tank tops?|hoodies?|sweatshirts?|sweaters?|jackets?|coats?|vests?|beanies?|baseball caps?|caps?|hats?|helmets?|headsets?|headphones|sunglasses|glasses|outfits?|dress(?:es)?|jerseys?|suits?|robes?|bandanas?|scarf|scarves|masks?|apparel|attire';
 const _FACE = 'beards?|mustaches?|moustaches?|goatees?|stubble|sunglasses|glasses|tattoos?|hair|ponytails?|braids|dreadlocks|piercings?|freckles|makeup|expressions?|beanies?|backward caps?|baseball caps?|hoodies?';
-const _WORN_ANY = `${_WORN}|microphones?|mics?|earbuds|earphones|belts?|gloves|boots|shoes|sneakers|jeans|pants|shorts|necklaces?|chains?|earrings|watch(?:es)?|uniforms?|clothes|clothing|gear|costumes?|wigs?|crowns?|goggles|visors?|lanyards?|tops?|neckties?|bow ties?|ties?|headbands?|garments?|turbans?`;
+const _WORN_ANY = `${_WORN}|microphones?|mics?|earbuds?|earphones?|belts?|gloves|boots|shoes|sneakers|jeans|pants|shorts|necklaces?|chains?|earrings|watch(?:es)?|uniforms?|clothes|clothing|gear|costumes?|wigs?|crowns?|goggles|visors?|lanyards?|tops?|neckties?|bow ties?|ties?|headbands?|garments?|turbans?`;
 const _WORN_NP = `${_ART}(?:[\\w'-]+\\s+){0,3}?\\b(?:${_WORN_ANY})\\b(?:\\s+(?:on|around|over|across)\\s+(?:his|her|their|the|its)\\s+(?:head|neck|face|forehead|shoulders?|ears?|eyes|chest))?(?:\\s+with\\s+(?:(?:a|an)\\s+)?(?:[\\w'-]+\\s+){0,2}?(?:zippers?|logos?|prints?|patterns?|designs?|graphics?|hoods?|stripes?|collars?|text|eyes|ears|horns|patch(?:es)?|badges?|stickers?|emblems?|lettering|writing|trim|buttons|accents|embellishments|details|sleeves))?`;
 const _WEARING = new RegExp(`,?\\s*(?:who\\s+(?:is\\s+)?|while\\s+|and\\s+)?(?<!-)\\b(?:wearing|wears|dressed in|sporting)\\s+${_WORN_NP}(?:\\s*(?:,|and|or|with|over|under)\\s+${_WORN_NP})*`, 'gi');
 const _IN_WORN = new RegExp(`\\s+in\\s+(?:(?:a|an|the|his|her|their)\\s+)?(?:[\\w'-]+\\s+){0,3}?\\b(?:${_WORN})\\b(?:\\s+(?:and|or)\\s+${_ART}(?:[\\w'-]+\\s+){0,2}?\\b(?:${_WORN_ANY})\\b)*`, 'gi');
@@ -413,11 +413,13 @@ const _WEARS_CLAUSE = new RegExp(`,?\\s+(?:while|and|as|whereas)\\s+(?:the other
 const _SLASHED_WORN = new RegExp(`\\b([\\w'-]+)/[\\w'-]+(?=\\s+(?:[\\w'-]+\\s+){0,2}?(?:${_WORN_ANY})\\b)`, 'gi');
 // ", with a blue jacket partially visible": a comma-led clause about clothes, whoever wears them, goes (clothes only:
 // "a desk with a headset" stays).
-const _WITH_CLOTHES = /,\s*with\s+(?:(?:a|an|the|their|his|her)\s+)?(?:[\w'-]+\s+){0,2}?(?:t-shirts?|shirts?|tees?|tank tops?|hoodies?|sweatshirts?|sweaters?|jackets?|coats?|vests?|outfits?|dress(?:es)?|jerseys?|suits?|robes?|outerwear)\b[^,.;!?]*/gi;
+const _WITH_CLOTHES = /,\s*with\s+(?:(?:a|an|the|their|his|her)\s+)?(?:[\w'-]+\s+){0,2}?(?:t-shirts?|shirts?|tees?|tank tops?|hoodies?|sweatshirts?|sweaters?|jackets?|coats?|vests?|outfits?|dress(?:es)?|jerseys?|suits?|robes?|outerwear)\b[^,.;!?]*(?:,(?=\s+(?:is|are|was|were)\s))?/gi;
 function _noClothing(text) {
     return text.split(/("[^"]*"?|“[^”]*”?)/).map((part, i) => (i % 2 ? part : part
         .replace(_SLASHED_WORN, '$1')
         .replace(_WITH_CLOTHES, '')
+        // A parenthetical clause taken out of the middle ("A third person, with a red cap, is shown") leaves no ",,".
+        .replace(/\s*,\s*,\s*/g, ' ')
         .replace(/\b[\w-]+-wearing\s+/gi, '')
         .replace(_WEARS_AND, '')
         .replace(_WEARS_CLAUSE, '')
@@ -747,7 +749,7 @@ let _looksRulesVersion = null;
 // What the repair covers is part of its version: a change in scope runs the scan again even when the rules did not change.
 const _LOOKS_REPAIR_SCOPE = 'full and short columns, each on its own (2026-10-22)';
 function looksRulesVersion() {
-    if (!_looksRulesVersion) _looksRulesVersion = require('crypto').createHash('sha1').update([_LOOKS_REPAIR_SCOPE, _WITH_CLOTHES, _noLooks, _noLooksWords, _noGender, _noGrooming, _noClothing, _LOOKS, _PEOPLE, _WORN, _WORN_ANY, _FACE, _GENDER_ADJ, _GROOMING].map(String).join('|')).digest('hex').slice(0, 12);
+    if (!_looksRulesVersion) _looksRulesVersion = require('crypto').createHash('sha1').update([_LOOKS_REPAIR_SCOPE, _WITH_CLOTHES, 'no double commas; earbud', _noLooks, _noLooksWords, _noGender, _noGrooming, _noClothing, _LOOKS, _PEOPLE, _WORN, _WORN_ANY, _FACE, _GENDER_ADJ, _GROOMING].map(String).join('|')).digest('hex').slice(0, 12);
     return _looksRulesVersion;
 }
 async function cleanupMalformedAiText({ force = false } = {}) {
