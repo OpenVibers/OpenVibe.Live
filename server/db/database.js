@@ -735,8 +735,10 @@ function _extractDescFromMaybeJson(text) {
 // The looks repair below scans ~20k rows with a regex (~0.8 s of database time on every boot). New rows are scrubbed when
 // written, so the scan only needs to run again when the scrub rules change: this hash of their source says when.
 let _looksRulesVersion = null;
+// What the repair covers is part of its version: a change in scope runs the scan again even when the rules did not change.
+const _LOOKS_REPAIR_SCOPE = 'full and short columns, each on its own (2026-10-22)';
 function looksRulesVersion() {
-    if (!_looksRulesVersion) _looksRulesVersion = require('crypto').createHash('sha1').update([_noLooks, _noLooksWords, _noGender, _noGrooming, _noClothing, _LOOKS, _PEOPLE, _WORN, _WORN_ANY, _FACE, _GENDER_ADJ, _GROOMING].map(String).join('|')).digest('hex').slice(0, 12);
+    if (!_looksRulesVersion) _looksRulesVersion = require('crypto').createHash('sha1').update([_LOOKS_REPAIR_SCOPE, _noLooks, _noLooksWords, _noGender, _noGrooming, _noClothing, _LOOKS, _PEOPLE, _WORN, _WORN_ANY, _FACE, _GENDER_ADJ, _GROOMING].map(String).join('|')).digest('hex').slice(0, 12);
     return _looksRulesVersion;
 }
 async function cleanupMalformedAiText({ force = false } = {}) {
@@ -795,6 +797,17 @@ async function cleanupMalformedAiText({ force = false } = {}) {
                 if (short) await run(`UPDATE ${table} SET ${col} = ?, ${short} = ? WHERE ${key} = ?`, [clean, _shortOverview(clean), r.k]);
                 else await run(`UPDATE ${table} SET ${col} = ? WHERE ${key} = ?`, [clean, r.k]);
                 fixed++;
+            }
+            // A card line can be stored without its full text (or derived from an older one): it is repaired on its own.
+            // ' ' is the "nothing to say" sentinel and stays when the whole line goes.
+            if (short) {
+                const shorts = await all(`SELECT ${key} AS k, ${short} AS v FROM ${table} WHERE ${short} ${looks}`);
+                for (const r of shorts) {
+                    const clean = _noLooks(r.v);
+                    if (clean === r.v) continue;
+                    await run(`UPDATE ${table} SET ${short} = ? WHERE ${key} = ?`, [clean && clean.trim() ? clean : ' ', r.k]);
+                    fixed++;
+                }
             }
         } catch (e) { console.warn(`[AI] looks repair (${table}):`, e.message); looksDone = null; }
     }
