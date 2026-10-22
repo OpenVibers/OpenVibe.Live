@@ -157,7 +157,7 @@
 }
 .vc-participant-muted {
     font-size: 0.6rem;
-    color: var(--danger);
+    color: var(--danger-text, var(--danger));
     opacity: 0.75;
     flex-shrink: 0;
 }
@@ -230,7 +230,7 @@
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.05em;
-    color: var(--success, #22c55e);
+    color: var(--success-text, var(--success, #22c55e));
     display: flex;
     align-items: center;
     gap: 6px;

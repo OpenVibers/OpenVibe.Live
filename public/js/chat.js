@@ -5818,7 +5818,7 @@ async function adminToolsIpBanAll(ip, username) {
         // Refresh the admin tools panel if still open
         const body = document.querySelector('.admin-tools-body');
         if (body) {
-            body.innerHTML = '<div class="admin-tools-loading"><i class="fa-solid fa-check" style="color:var(--success)"></i> Ban applied. Close and reopen to refresh.</div>';
+            body.innerHTML = '<div class="admin-tools-loading"><i class="fa-solid fa-check" style="color:var(--success-text, var(--success))"></i> Ban applied. Close and reopen to refresh.</div>';
         }
     } catch (e) {
         toast(e.message || 'Ban failed', 'error');

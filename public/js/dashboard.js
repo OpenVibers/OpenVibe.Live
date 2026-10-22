@@ -1006,7 +1006,7 @@ async function loadDashTokens() {
             const created = t.created_at ? new Date(t.created_at).toLocaleDateString() : 'Unknown';
             const lastUsed = t.last_used_at ? new Date(t.last_used_at).toLocaleDateString() : 'Never';
             const expires = t.expires_at ? new Date(t.expires_at).toLocaleDateString() : 'Never';
-            const statusClass = t.is_active ? 'color:var(--success)' : 'color:var(--danger)';
+            const statusClass = t.is_active ? 'color:var(--success-text, var(--success))' : 'color:var(--danger-text, var(--danger))';
             const statusLabel = t.is_active ? 'Active' : 'Revoked';
             return `<div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:var(--bg-secondary);border-radius:6px;border:1px solid var(--border)">
                 <div style="flex:1;min-width:0">
@@ -1184,7 +1184,7 @@ async function loadDashChatLogs(page) {
             pagination.innerHTML = '';
         }
     } catch (e) {
-        results.innerHTML = `<p class="muted" style="color:var(--danger)">Failed to load chat logs: ${esc(e.message)}</p>`;
+        results.innerHTML = `<p class="muted" style="color:var(--danger-text, var(--danger))">Failed to load chat logs: ${esc(e.message)}</p>`;
     }
 }
 

@@ -97,11 +97,11 @@
 }
 .ctx-btn:hover { background: var(--bg-hover); }
 .ctx-btn i { width: 16px; text-align: center; color: var(--text-muted); font-size: 0.8rem; }
-.ctx-btn-danger { color: var(--danger); }
-.ctx-btn-danger i { color: var(--danger); }
+.ctx-btn-danger { color: var(--danger-text, var(--danger)); }
+.ctx-btn-danger i { color: var(--danger-text, var(--danger)); }
 .ctx-btn-danger:hover { background: rgba(231,76,60,0.12); }
-.ctx-btn-warn { color: var(--warning, #f39c12); }
-.ctx-btn-warn i { color: var(--warning, #f39c12); }
+.ctx-btn-warn { color: var(--warning-text, var(--warning, #f39c12)); }
+.ctx-btn-warn i { color: var(--warning-text, var(--warning, #f39c12)); }
 .ctx-btn-warn:hover { background: rgba(243,156,18,0.12); }
 
 /* Deleted message fade-out */
@@ -172,7 +172,7 @@
     background: var(--bg-primary, #1e1e24);
     border-bottom: 1px solid var(--border, #3a3a44);
     font-size: 1.05rem; font-weight: 600;
-    color: var(--warning, #f59e0b);
+    color: var(--warning-text, var(--warning, #f59e0b));
 }
 .link-trust-header i { font-size: 1.2rem; }
 

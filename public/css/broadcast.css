@@ -1022,7 +1022,7 @@
     padding: 10px 14px;
     margin-bottom: 16px;
     font-size: 0.85rem;
-    color: var(--warning, #f39c12);
+    color: var(--warning-text, var(--warning, #f39c12));
 }
 .bc-active-notice i {
     font-size: 1.1rem;
@@ -1250,7 +1250,7 @@
 
 /* ── Required Asterisk ───────────────────────────────────────── */
 .bc-required {
-    color: var(--danger, #e74c3c);
+    color: var(--danger-text, var(--danger, #e74c3c));
     font-weight: 700;
 }
 
@@ -1763,7 +1763,7 @@
     flex: 1 1 200px;
 }
 .bc-ws-restream-cooldown i.fa-triangle-exclamation {
-    color: var(--warning, #e0a800);
+    color: var(--warning-text, var(--warning, #e0a800));
 }
 
 /* ── Workspace tabs ── */

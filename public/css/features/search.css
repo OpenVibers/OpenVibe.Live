@@ -18,7 +18,7 @@
 .ls-title:hover { color: var(--accent); }
 .ls-meta { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; margin: 4px 0; font-size: 0.8rem; color: var(--text-muted); }
 .ls-kind { display: inline-flex; align-items: center; gap: 5px; padding: 1px 8px; border-radius: 999px; border: 1px solid var(--border); color: var(--text-secondary); }
-.ls-live { color: var(--live-red); font-weight: 700; }
+.ls-live { color: var(--live-red-text, var(--live-red)); font-weight: 700; }
 .ls-snippet { margin: 4px 0 0; color: var(--text-secondary); font-size: 0.9rem; overflow-wrap: anywhere; }
 .ls-snippet mark { background: var(--bg-tertiary); color: var(--text-primary); border-radius: 3px; padding: 0 2px; box-shadow: inset 0 -2px 0 var(--accent); }
 .ls-more-wrap { display: flex; justify-content: center; margin-top: 16px; }

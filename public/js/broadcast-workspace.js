@@ -1204,7 +1204,7 @@ function _wsConfirmUnsaved(message) {
         overlay.className = 'bc-ws-confirm-overlay';
         overlay.innerHTML = `
             <div class="bc-ws-confirm-dialog">
-                <h3><i class="fa-solid fa-triangle-exclamation" style="color:var(--warning)"></i> Unsaved Changes</h3>
+                <h3><i class="fa-solid fa-triangle-exclamation" style="color:var(--warning-text, var(--warning))"></i> Unsaved Changes</h3>
                 <p>${esc(message || 'You have unsaved changes.')}</p>
                 <div class="bc-ws-confirm-actions">
                     <button class="btn btn-small" id="bc-ws-confirm-cancel">Cancel</button>
@@ -1235,7 +1235,7 @@ function _wsConfirmAction(message, { title = 'Are you sure?', okLabel = 'Confirm
         overlay.className = 'bc-ws-confirm-overlay';
         overlay.innerHTML = `
             <div class="bc-ws-confirm-dialog">
-                <h3><i class="fa-solid fa-triangle-exclamation" style="color:var(--warning)"></i> ${esc(title)}</h3>
+                <h3><i class="fa-solid fa-triangle-exclamation" style="color:var(--warning-text, var(--warning))"></i> ${esc(title)}</h3>
                 <p>${esc(message)}</p>
                 <div class="bc-ws-confirm-actions">
                     <button class="btn btn-small" id="bc-ws-confirm-cancel">Cancel</button>
@@ -2566,7 +2566,7 @@ function _wsRenderSlotRsCard() {
                 <button class="btn btn-small btn-outline" onclick="_wsEditSlotRs()" title="Edit">
                     <i class="fa-solid fa-pen"></i>
                 </button>
-                <button class="btn btn-small btn-outline" style="color:var(--danger)" onclick="_wsDeleteSlotRs()" title="Delete">
+                <button class="btn btn-small btn-outline" style="color:var(--danger-text, var(--danger))" onclick="_wsDeleteSlotRs()" title="Delete">
                     <i class="fa-solid fa-trash"></i>
                 </button>
             </div>
@@ -2616,7 +2616,7 @@ function _wsRenderRestreamList(container) {
                     <button class="btn btn-small btn-outline" onclick="_wsEditRestreamDest(${d.id})" title="Edit">
                         <i class="fa-solid fa-pen"></i>
                     </button>
-                    <button class="btn btn-small btn-outline" style="color:var(--danger)" onclick="_wsDeleteRestreamDest(${d.id})" title="Delete">
+                    <button class="btn btn-small btn-outline" style="color:var(--danger-text, var(--danger))" onclick="_wsDeleteRestreamDest(${d.id})" title="Delete">
                         <i class="fa-solid fa-trash"></i>
                     </button>
                 </div>
@@ -3101,7 +3101,7 @@ function _wsRenderRestreamConnect(platform) {
                 <i class="fa-solid fa-circle-check" style="color:#53fc18"></i>
                 <span style="flex:1"></span>
                 <button class="btn btn-small btn-outline" type="button" onclick="_wsConnectPlatform('${platform}')" title="Reconnect"><i class="fa-solid fa-rotate"></i></button>
-                <button class="btn btn-small btn-outline" type="button" style="color:var(--danger)" onclick="_wsDisconnectPlatform('${platform}')"><i class="fa-solid fa-link-slash"></i> Disconnect</button>
+                <button class="btn btn-small btn-outline" type="button" style="color:var(--danger-text, var(--danger))" onclick="_wsDisconnectPlatform('${platform}')"><i class="fa-solid fa-link-slash"></i> Disconnect</button>
             </div>
             <p class="muted" style="font-size:0.75rem;margin:6px 0 0">${providesKey
                 ? 'Your ingest URL &amp; stream key are filled in automatically — just save.'

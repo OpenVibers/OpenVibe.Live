@@ -238,7 +238,7 @@ async function loadPasteViewer(slug) {
         if (p.burned || (p.burn_after_read && p.views > 1)) {
             container.innerHTML = `
                 <div class="paste-burned">
-                    <i class="fa-solid fa-fire" style="font-size:3rem; color:var(--danger); margin-bottom:16px;"></i>
+                    <i class="fa-solid fa-fire" style="font-size:3rem; color:var(--danger-text, var(--danger)); margin-bottom:16px;"></i>
                     <h2>This paste has been burned</h2>
                     <p>It was set to self-destruct after being read.</p>
                     <button class="btn btn-primary" onclick="navigate('/pastes')">Back to Pastes</button>
@@ -251,7 +251,7 @@ async function loadPasteViewer(slug) {
         if (p.is_nsfw && !nsfwDismissed) {
             container.innerHTML = `
                 <div class="paste-nsfw-gate">
-                    <i class="fa-solid fa-triangle-exclamation" style="font-size:3rem; color:var(--warning, #f39c12); margin-bottom:16px;"></i>
+                    <i class="fa-solid fa-triangle-exclamation" style="font-size:3rem; color:var(--warning-text, var(--warning, #f39c12)); margin-bottom:16px;"></i>
                     <h2>NSFW Content</h2>
                     <p>This paste has been marked as containing content that may not be suitable for all audiences.</p>
                     <div style="display:flex;gap:12px;margin-top:16px;">
@@ -422,7 +422,7 @@ async function loadPasteViewer(slug) {
         const isMissing = /not found/i.test(err && err.message || '');
         container.innerHTML = `
             <div class="empty-state" style="text-align:center; padding:48px;">
-                <i class="fa-solid fa-circle-exclamation" style="font-size:2rem; color:var(--danger); margin-bottom:12px;"></i>
+                <i class="fa-solid fa-circle-exclamation" style="font-size:2rem; color:var(--danger-text, var(--danger)); margin-bottom:12px;"></i>
                 <h3>${isMissing ? 'Paste not found' : 'Couldn\u2019t display this paste'}</h3>
                 <p>${isMissing
                     ? 'It may have been deleted or the link is invalid.'

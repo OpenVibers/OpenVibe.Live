@@ -2173,7 +2173,7 @@ function createManagedStreamModal() {
             </button>
             <button class="btn btn-outline" onclick="closeModal()" style="flex:1">Cancel</button>
         </div>
-        <p id="cms-error" style="display:none;color:var(--danger);margin-top:8px;font-size:0.85rem"></p>`;
+        <p id="cms-error" style="display:none;color:var(--danger-text, var(--danger));margin-top:8px;font-size:0.85rem"></p>`;
 }
 
 function _cmsSelectMethod(method) {

@@ -55,8 +55,8 @@
 .sn-tile-sub { font-size: 0.72rem; color: var(--text-secondary); }
 .sn-delta { display: inline-flex; align-items: center; gap: 4px; font-size: 0.72rem; font-weight: 600; color: var(--text-secondary); }
 .sn-delta i { font-size: 0.7rem; }
-.sn-delta.is-up i { color: var(--success, #2ecc71); }
-.sn-delta.is-down i { color: var(--error, #e74c3c); }
+.sn-delta.is-up i { color: var(--success-text, var(--success, #2ecc71)); }
+.sn-delta.is-down i { color: var(--error-text, var(--error, #e74c3c)); }
 
 .sn-body { position: relative; transition: opacity var(--dur-fast, 160ms); }
 .sn-body.is-loading { opacity: 0.45; pointer-events: none; }
