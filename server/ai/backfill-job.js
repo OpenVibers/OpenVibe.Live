@@ -33,6 +33,11 @@ async function _clipMeta(row) {
     try {
         const c = await media.getClip(row.id);
         if (!c) return null;
+        // Being cut (a trim narrows a clip in place): its file is the old cut until clip.ready, which queues it again.
+        if (c.status === 'processing') {
+            try { await db.setClipTranscriptStatus(row.id, 'retry', 'the clip is being cut', 5); } catch { /* */ }
+            return null;
+        }
         return { ...c, id: row.id, duration_seconds: c.duration_seconds ?? c.duration ?? 0 };
     } catch { return null; }
 }

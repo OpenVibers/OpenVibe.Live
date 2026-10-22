@@ -5,9 +5,12 @@
  * and survives a reload: pending cuts are kept in localStorage (ov_clip_jobs, 30 minutes at most) and
  * the next page that loads this reattaches to them.
  *
- *   OVClipJobs.follow(clipId, jobId, { onReady(clip), onFailed(message), onRetry(job) })
- *   OVClipJobs.resume({ onReady, onFailed, onRetry })    follow what an earlier page left pending
- *   OVClipJobs.pending()                                  [{ clipId, jobId, at }]
+ *   OVClipJobs.follow(clipId, jobId, { onReady(clip), onFailed(message), onRetry(job) }, kind?)
+ *   OVClipJobs.resume({ onReady, onFailed, onRetry }, byKind?)   follow what an earlier page left pending
+ *   OVClipJobs.pending()                                  [{ clipId, jobId, kind, at }]
+ *
+ * `kind` names what the cut is for ('trim': a clip cut down in its editor), so a reload resumes it with that kind's
+ * handlers (byKind[kind]) instead of a new clip's (which open the editor again); without one, the first handlers.
  */
 (function () {
     'use strict';
@@ -23,9 +26,11 @@
     }
     function save(list) { try { localStorage.setItem(KEY, JSON.stringify(list.slice(-10))); } catch (e) { /* storage off: this page still follows */ } }
     function forget(jobId) { save(load().filter(function (e) { return e.jobId !== jobId; })); delete followed[jobId]; }
-    function remember(clipId, jobId) {
+    function remember(clipId, jobId, kind) {
         var list = load().filter(function (e) { return e.jobId !== jobId; });
-        list.push({ clipId: clipId, jobId: jobId, at: Date.now() });
+        var entry = { clipId: clipId, jobId: jobId, at: Date.now() };
+        if (kind) entry.kind = String(kind);
+        list.push(entry);
         save(list);
     }
     function headers() {
@@ -34,11 +39,11 @@
         return t ? { Authorization: 'Bearer ' + t } : {};
     }
 
-    function follow(clipId, jobId, h) {
+    function follow(clipId, jobId, h, kind) {
         h = h || {};
         if (!clipId || !jobId || followed[jobId]) return;
         followed[jobId] = true;
-        remember(clipId, jobId);
+        remember(clipId, jobId, kind);
         var started = Date.now(), tries = 0, retried = 0;
         (function poll() {
             if (Date.now() - started > MAX_AGE_MS) { forget(jobId); return; }
@@ -58,7 +63,12 @@
         })();
     }
 
-    function resume(h) { load().forEach(function (e) { follow(e.clipId, e.jobId, h); }); }
+    function resume(h, byKind) {
+        load().forEach(function (e) {
+            var own = e.kind && byKind && Object.prototype.hasOwnProperty.call(byKind, e.kind) ? byKind[e.kind] : null;
+            follow(e.clipId, e.jobId, own || h, e.kind);
+        });
+    }
 
     window.OVClipJobs = { follow: follow, resume: resume, pending: load };
 })();

@@ -33,13 +33,18 @@ async function analyze(kind, item) {
     inFlight.add(key);
     const bump = kind === 'vod' ? db.bumpVodTranscriptAttempt : db.bumpClipTranscriptAttempt;
     const status = kind === 'vod' ? db.setVodTranscriptStatus : db.setClipTranscriptStatus;
+    // A clip trimmed while this ran: its clip.ready cleared the state and moved the attempt on (db.setClipAiWindow), and
+    // it gets an analysis of its own. This one describes the old window, so it stores nothing, not even a retry.
+    let attemptNo = null;
+    const superseded = async () => kind === 'clip' && attemptNo != null
+        && (Number((await db.getClipAiState(item.id) || {}).transcript_attempts) || 0) !== attemptNo;
     try {
         const state = kind === 'vod' ? await db.getVodAiState(item.id) : await db.getClipAiState(item.id);
-        const mediaUrl = await source(kind, item);
-        if (!mediaUrl) throw new Error('Media did not provide a readable URL');
         // One AI run per attempt: a retry after a failure starts a new run, while a run still going when the poll
         // budget ends is re-joined later by the same key (never a second analysis of the same recording at once).
-        const attemptNo = Number(state && state.transcript_attempts) || 0;
+        attemptNo = Number(state && state.transcript_attempts) || 0;
+        const mediaUrl = await source(kind, item);
+        if (!mediaUrl) throw new Error('Media did not provide a readable URL');
         const run = await aiService.run('media.analyze', { media_url: mediaUrl, language: 'en', allow_paid: false }, {
             target: { service: 'live', type: kind, id: String(item.id) },
             attribution: aiService.ownerRef(item.user_id),
@@ -49,13 +54,14 @@ async function analyze(kind, item) {
             waitMs: Math.max(0, Number(process.env.LIVE_MEDIA_ANALYSIS_WAIT_MS ?? 60000) || 0), pollMs: 0,
         });
         if (run && (run.status === 'queued' || run.status === 'running')) {
-            await status(item.id, 'retry', 'OpenVibe.AI is still analysing it', 15);
+            if (!await superseded()) await status(item.id, 'retry', 'OpenVibe.AI is still analysing it', 15);
             return null;
         }
         const out = aiService.usable(run);
         if (!out || !out.overview || typeof out.overview.text !== 'string' || !out.overview.text.trim() || !out.transcript || !Array.isArray(out.transcript.segments)) {
             throw new Error((run && run.error && (run.error.code || run.error.detail)) || (run && run.status) || 'no usable media.analyze result');
         }
+        if (await superseded()) return null;
         // The state setters derive ai_overview_short and store segments in the
         // existing [{start,end,text}] JSON format. AI signals/highlights have no
         // corresponding state columns; keep all other Live state untouched.
@@ -86,6 +92,7 @@ async function analyze(kind, item) {
         }
         return out;
     } catch (e) {
+        if (await superseded().catch(() => false)) return null;
         const attempt = await bump(item.id);
         await status(item.id, 'retry', e.message, retryMinutes(attempt));
         failures++;
