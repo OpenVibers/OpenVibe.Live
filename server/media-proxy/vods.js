@@ -635,7 +635,6 @@ router.post('/upload', requireAuth, memUpload.single('video'), async (req, res) 
             filename: req.file.originalname || 'upload.webm',
             contentType: req.file.mimetype || 'video/webm',
         });
-        await media.completeVodChunks(id).catch(() => {});
         await media.finalizeVod(id);
         const vod = await media.getVod(id).catch(() => ({ id, status: 'processing' }));
         res.status(201).json({ vod });

@@ -48,8 +48,8 @@ const token = (cap, { aud = 'openvibe.live', sub = 'svc:network', env } = {}) =>
         for (const h of [{ 'x-internal-key': KEY }, { 'x-internal-secret': 'openvibe-internal-2026' }]) {
             assert.strictEqual((await post('/api/cosmetics/internal-unlock', h, { userId: 1, itemId: 'fx_fire' })).status, 404, 'internal-unlock no longer exists');
         }
-        // activate/deactivate answer 410 for one release (old tabs, ADR-016), behind the same auth.
-        for (const p of ['/api/cosmetics/activate', '/api/cosmetics/deactivate']) assert.strictEqual((await post(p, {}, { itemId: 'fx_fire' })).status, 401, `${p} still needs a session`);
+        // activate/deactivate answered 410 for one release (old tabs, ADR-016) and are gone now.
+        for (const p of ['/api/cosmetics/activate', '/api/cosmetics/deactivate']) assert.strictEqual((await post(p, {}, { itemId: 'fx_fire' })).status, 404, `${p} no longer exists`);
 
         // ── /internal/user-avatar: live.avatar.write ─────────────────────────────────
         const avatar = (headers) => post('/internal/user-avatar', headers, { username: 'nobody-here' });

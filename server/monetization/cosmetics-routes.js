@@ -60,11 +60,4 @@ router.post('/unequip', requireAuth, async (req, res) => {
     res.json(result);
 });
 
-// The openvibe-quest game-item bridge is gone (plan T2; the quest game runs nowhere, so these always failed). Open
-// tabs of the previous release may still call them for one release (ADR-016 N-1): they answer 410 behind the same
-// auth, then the next release deletes both.
-for (const p of ['/activate', '/deactivate']) {
-    router.post(p, requireAuth, (req, res) => res.status(410).json({ error: 'Game items no longer convert to cosmetics' }));
-}
-
 module.exports = router;

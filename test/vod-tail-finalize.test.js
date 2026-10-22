@@ -51,7 +51,6 @@ media.createVod = async (body) => { const id = nextVod++; note('createVod', id, 
 media.ingestRtmp = async (id, url) => { note('ingestRtmp', id, url); Object.assign(VODS[id], { status: 'recording', is_recording: true, file_path: `vod-${id}.mp4` }); };
 media.ingestRtpStart = async (id, codecs) => { note('ingestRtpStart', id, codecs); Object.assign(VODS[id], { status: 'recording', is_recording: true, file_path: `vod-${id}.webm` }); return { videoPort: 12000, audioPort: 12002 }; };
 media.ingestRtpStop = async (id) => { note('ingestRtpStop', id); };
-media.completeVodChunks = async (id) => { note('completeVodChunks', id); };
 media.finalizeVod = async (id) => { note('finalizeVod', id); };
 media.deleteVod = async (id) => { note('deleteVod', id); delete VODS[id]; };
 media.getVod = async (id) => {
@@ -203,12 +202,12 @@ async function check(name, fn) {
         assert.deepStrictEqual(plain.closed.sort(), ['plain-12000', 'plain-12002']);
     });
 
-    await check('browser chunks: stream end completes the chunk session and finalises it', async () => {
+    await check('browser chunks: stream end finalises the chunk session', async () => {
         const sid = await newStream('webrtc');
         recorder.registerChunkSession(sid, 900);
         recorder.stopRecording(sid);
         await until(() => !recorder.isFinalizingStream(sid), 'the chunk finalise');
-        assert.deepStrictEqual(callsFor(900), ['completeVodChunks', 'finalizeVod']);
+        assert.deepStrictEqual(callsFor(900), ['finalizeVod']);
     });
 
     await check('clips-only recording (VOD-disabled slot) is finalised and then discarded', async () => {

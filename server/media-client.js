@@ -197,11 +197,6 @@ async function uploadVodChunk(vodId, chunk, fields = {}, opts = {}) {
     return await request('POST', `/vods/${vodId}/chunks`, { body: fd, timeoutMs: 120000, ...opts });
 }
 
-/** POST /vods/:id/chunks/complete */
-async function completeVodChunks(vodId, opts = {}) {
-    return await request('POST', `/vods/${vodId}/chunks/complete`, opts);
-}
-
 /** POST /vods/:id/finalize → close recording, kick off thumbnail + probe */
 async function finalizeVod(vodId, opts = {}) {
     return await request('POST', `/vods/${vodId}/finalize`, opts);
@@ -428,7 +423,7 @@ module.exports = {
     request, proxy, actingUserFrom, _formData, _authHeader, _reset, MEDIA_AUDIENCE,
     // vods
     createVod, ingestRtmp, ingestRtpStart, ingestRtpStop,
-    uploadVodChunk, completeVodChunks, finalizeVod,
+    uploadVodChunk, finalizeVod,
     getVod, listVods, updateVod, deleteVod,
     // clips
     createClip, getClip, listClips, updateClip, deleteClip, recutClip, trimClip, getJob,
