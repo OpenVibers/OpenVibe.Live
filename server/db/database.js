@@ -409,8 +409,11 @@ const _WITH_FACE = new RegExp(`\\s+with\\s+${_ART}(?:[\\w'-]+\\s+){0,2}?\\b(?:${
 const _WEARS_AND = new RegExp(`(?<!-)\\bwears\\s+${_WORN_NP}(?:\\s*(?:,|and|or|with|over|under)\\s+${_WORN_NP})*\\s+and\\s+(?=\\w)`, 'gi');
 // "…, while the other wears a dusty t-shirt;" goes as a whole clause.
 const _WEARS_CLAUSE = new RegExp(`,?\\s+(?:while|and|as|whereas)\\s+(?:the other|one|another|someone|he|she|they|the streamer|(?:a|the) (?:man|woman|person|guy))\\s+wears\\s+${_WORN_NP}(?:\\s*(?:,|and|or|with|over|under)\\s+${_WORN_NP})*(?=\\s*(?:[;,.!?]|$))`, 'gi');
+// "a plaid/checkered shirt": a slashed pair of words before what is worn reads as one word, so the rules below see it.
+const _SLASHED_WORN = new RegExp(`\\b([\\w'-]+)/[\\w'-]+(?=\\s+(?:[\\w'-]+\\s+){0,2}?(?:${_WORN_ANY})\\b)`, 'gi');
 function _noClothing(text) {
     return text.split(/("[^"]*"?|“[^”]*”?)/).map((part, i) => (i % 2 ? part : part
+        .replace(_SLASHED_WORN, '$1')
         .replace(/\b[\w-]+-wearing\s+/gi, '')
         .replace(_WEARS_AND, '')
         .replace(_WEARS_CLAUSE, '')
@@ -435,8 +438,33 @@ function _noLooksTags(tags) {
 }
 // Body language is the person too ("reacting with a thoughtful pose", "in a relaxed posture"): the phrase goes.
 const _POSE = /,?\s*(?:(?:appearing|seeming|seemingly)\s+(?:to\s+be\s+)?)?(?:(?:reacting|sitting|standing|leaning|posing|looking|resting)\s+)?(?:with|in)\s+(?:an?|their|his|her)\s+(?:[\w-]+\s+){0,2}(?:pose|posture|expression|facial expression|stance)\b/gi;
+// A guessed gender is a description of the person too (owner's rule: no looks, body, clothing, hair, age or guessed
+// gender): "a man in a kitchen" is "a person in a kitchen", "two men" are "two people", "a male or female host" is "a
+// host". Only after an article or a count, so names (Iron Man, Pac-Man, Spice Girls) and quoted speech stay.
+const _GENDERED = 'man|woman|guy|gal|lady|gentleman';
+const _GENDERED_ONE = new RegExp(`\\b(a|an|the|one|another|this|that|each|every)\\s+(?:${_GENDERED})\\b(?!-)`, 'gi');
+const _GENDERED_MANY = new RegExp(`\\b(two|three|four|five|several|some|the|both|many|other|few|these|those|\\d+)\\s+(?:men|women|guys|gals|ladies|gentlemen)\\b`, 'gi');
+const _GENDER_ADJ = /\b(?:(?:a|an)\s+)?(?:male|female)\s+(?:or|and|\/)\s+(?:male|female)\s+|\b(?:male|female)\s+(?=(?:hosts?|streamers?|players?|speakers?|presenters?|gamers?|voices?|narrators?|commentators?|figures?|characters?|broadcasters?|viewers?|individuals?|persons?|people)\b)/gi;
+// What is left of a sentence about someone's hair, clothes or body ("a person adjusts their hair or clothing near the
+// counter") cannot be repaired word by word: the sentence goes.
+const _GROOMING = /\b(?:their|his|her)\s+(?:own\s+)?(?:hair|beard|face|makeup|clothing|clothes|outfit|appearance|body|figure|looks)\b/i;
+function _noGender(text) {
+    return text.split(/("[^"]*"?|“[^”]*”?)/).map((part, i) => (i % 2 ? part : part
+        .replace(_GENDER_ADJ, (m) => (/^an?\s/i.test(m) ? m.slice(0, m.indexOf(' ') + 1) : ''))
+        .replace(_GENDERED_ONE, (m, art) => _cap(m, `${/^an$/i.test(art) ? 'a' : art.toLowerCase()} person`))
+        .replace(_GENDERED_MANY, (m, n) => _cap(m, `${n.toLowerCase()} people`))
+        .replace(/\ba\s+(?=[aeiou]\w*\s+(?:host|streamer|player|speaker|presenter|gamer|figure|character|broadcaster|person)\b)/gi, (m) => _cap(m, 'an '))
+        .replace(/ {2,}/g, ' '))).join('');
+}
+function _noGrooming(text) {
+    const sentences = text.match(/[^.!?]+(?:[.!?]+(?:["”])?|$)\s*/g) || [text];
+    return sentences.filter((s) => !_GROOMING.test(s.replace(/"[^"]*"?|“[^”]*”?/g, ''))).join('').trim();
+}
 function _noLooks(text) {
     if (!text || typeof text !== 'string') return text;
+    return _noGrooming(_noGender(_noLooksWords(text)));
+}
+function _noLooksWords(text) {
     return _noClothing(text).replace(_POSE, '').replace(/\s+([,.;:!?])/g, '$1').replace(/ {2,}/g, ' ')
         // Looks named: the person on camera. Only an age ("a child sits nearby"): someone, who may not be the streamer.
         .replace(_LOOKED_AT, (m, art, looks, noun) => (looks ? _cap(m, 'the streamer') : _AGE_NOUN.test(noun) ? _cap(m, /^the$/i.test(art) ? 'the person' : 'someone') : m))
@@ -708,7 +736,7 @@ function _extractDescFromMaybeJson(text) {
 // written, so the scan only needs to run again when the scrub rules change: this hash of their source says when.
 let _looksRulesVersion = null;
 function looksRulesVersion() {
-    if (!_looksRulesVersion) _looksRulesVersion = require('crypto').createHash('sha1').update([_noLooks, _noClothing, _LOOKS, _PEOPLE, _WORN, _WORN_ANY, _FACE].map(String).join('|')).digest('hex').slice(0, 12);
+    if (!_looksRulesVersion) _looksRulesVersion = require('crypto').createHash('sha1').update([_noLooks, _noLooksWords, _noGender, _noGrooming, _noClothing, _LOOKS, _PEOPLE, _WORN, _WORN_ANY, _FACE, _GENDER_ADJ, _GROOMING].map(String).join('|')).digest('hex').slice(0, 12);
     return _looksRulesVersion;
 }
 async function cleanupMalformedAiText({ force = false } = {}) {
@@ -754,7 +782,7 @@ async function cleanupMalformedAiText({ force = false } = {}) {
     // prompts forbade it): the person becomes "the streamer" and the card line follows.
     let looksDone = false;
     try { looksDone = !force && (await getState('ai_looks_repair_rules')) === looksRulesVersion(); } catch { looksDone = false; }
-    const looks = "~* '(shirtless|topless|bare-chested|young|teen|little|bearded|bald|blond|haired|tattooed|muscular|heavyset|older|elderly|middle-aged|skinny|slim|chubby|attractive|pretty|handsome|cute|boy|girl|kid|child|youth)|\\m(wear|dressed|sporting|shirt|t-shirt|tee|tank top|hoodie|sweat|jacket|coat|vest|beanie|cap|hat|helmet|headset|headphones|sunglasses|glasses|outfit|dress|jersey|suit|robe|bandana|scar|mask|attire|apparel|beard|mustache|moustache|goatee|stubble|tattoo|hair|ponytail|braids|dreadlocks|piercing|freckles|makeup|[a-z-]+-wearing)'";
+    const looks = "~* '(shirtless|topless|bare-chested|young|teen|little|bearded|bald|blond|haired|tattooed|muscular|heavyset|older|elderly|middle-aged|skinny|slim|chubby|attractive|pretty|handsome|cute|boy|girl|kid|child|youth)|\\m(wear|dressed|sporting|shirt|t-shirt|tee|tank top|hoodie|sweat|jacket|coat|vest|beanie|cap|hat|helmet|headset|headphones|sunglasses|glasses|outfit|dress|jersey|suit|robe|bandana|scar|mask|attire|apparel|beard|mustache|moustache|goatee|stubble|tattoo|hair|ponytail|braids|dreadlocks|piercing|freckles|makeup|[a-z-]+-wearing)|\\m(man|woman|men|women|guy|guys|gal|lady|ladies|gentleman|gentlemen|male|female)\\M'";
     for (const [table, key, col, short] of [['stream_memories', 'id', 'description', null], ['streams', 'id', 'ai_overview', 'ai_overview_short'],
         ['vod_ai_state', 'vod_id', 'ai_overview', 'ai_overview_short'], ['clip_ai_state', 'clip_id', 'ai_overview', 'ai_overview_short'],
         ['streamer_overviews', 'user_id', 'overview', 'overview_short']]) {
