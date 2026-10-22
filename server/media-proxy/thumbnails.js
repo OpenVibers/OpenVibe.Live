@@ -24,12 +24,6 @@ const { requireAuth, optionalAuth } = require('../auth/auth');
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 2 * 1024 * 1024 } });
 
-// 1x1 JPEG fallback for missing live thumbs (matches old behavior).
-const PIXEL = Buffer.from(
-    '/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////2wBDAf//////////////////////////////////////////////////////////////////////////////////////wAARCAABAAEDASIAAhEBAxEB/8QAFAABAAAAAAAAAAAAAAAAAAAACf/EABQQAQAAAAAAAAAAAAAAAAAAAAD/xAAUAQEAAAAAAAAAAAAAAAAAAAAA/8QAFBEBAAAAAAAAAAAAAAAAAAAAAP/aAAwDAQACEQMRAD8AKwA=',
-    'base64'
-);
-
 // ── Live stream thumbnail upload (from broadcaster client) ───
 router.post('/live/:streamId', requireAuth, upload.single('thumbnail'), async (req, res) => {
     try {
@@ -173,10 +167,21 @@ router.get('/:filename', async (req, res) => {
         });
         return pipeline(fs.createReadStream(localPath), res, () => {});
     }
-    if (filename.startsWith('stream-')) {
-        // Missing live thumbnail → transparent pixel (old behavior; avoids broken cards).
-        res.writeHead(200, { 'Content-Type': 'image/jpeg', 'Content-Length': PIXEL.length, 'Cache-Control': 'no-cache' });
-        return res.end(PIXEL);
+    const named = /^stream-(\d+)-\d+\.(?:jpg|png)$/.exec(filename);
+    if (named || filename.startsWith('stream-')) {
+        res.set('Cache-Control', 'no-cache');
+        // A live thumbnail is replaced every ~2 minutes and the old file deleted at once (live-thumbs.js _replaceThumb),
+        // but pages still name it: the network home, which keeps its list for a minute and is cached in browsers, share
+        // cards, a channel list loaded a minute ago. The old name answers with the stream's current frame.
+        if (named) {
+            const current = await liveThumbs.getStreamThumbnailState(Number(named[1]));
+            if (current.exists && path.basename(current.thumbUrl) !== filename) return res.redirect(302, current.thumbUrl);
+            if (/^https:\/\//.test(current.thumbUrl || '')) return res.redirect(302, current.thumbUrl);
+        }
+        // No frame at all: a 404, so the page's own fallback shows (the streamer's avatar on openvibe.network, Live's
+        // handleThumbnailError). Until 2026-10-22 this was a 1×1 pixel answered 200, which every card drew as an empty
+        // box ("these thumbnails are broken").
+        return res.status(404).json({ error: 'No live thumbnail' });
     }
     // TODO(contract): legacy /api/thumbnails/<file> names map onto Media's /t/<file>
     // (Media inherits the same vod-/clip-/moment- thumbnail naming).

@@ -98,7 +98,13 @@ const get = (p) => new Promise((resolve, reject) => {
     assert.deepStrictEqual([r.status, r.headers.location], [302, 'https://openvibe.media/t/vod-9-1.jpg'], 'a Media fallback frame is followed');
     r = await get(`/api/thumbnails/${path.basename((await current()).thumbUrl)}`);
     assert.strictEqual(r.body.toString('latin1').slice(4), 'three', 'the real file names are still served');
-    assert.strictEqual((await get('/api/thumbnails/stream-999-123.jpg')).headers['content-type'], 'image/jpeg', 'a missing card thumbnail is still the placeholder pixel');
+    // A card that names an older capture gets the stream's current frame; with no frame at all, a 404 lets the page's
+    // fallback show (the 1×1 pixel it used to answer drew an empty box on every card).
+    const now = (await db.get('SELECT thumbnail_url FROM streams WHERE id = ?', [sid])).thumbnail_url;
+    const old = await get(`/api/thumbnails/stream-${sid}-1000.jpg`);
+    assert.strictEqual(old.status, 302);
+    assert.strictEqual(old.headers.location, now, 'the name of an old capture answers with the current one');
+    assert.strictEqual((await get('/api/thumbnails/stream-999-123.jpg')).status, 404, 'no frame: 404, so the card falls back to the avatar');
     console.log('OK /api/thumbnails/stream-<id>-live.jpg serves the current live thumbnail, uncached');
 
     // ── clean ──
