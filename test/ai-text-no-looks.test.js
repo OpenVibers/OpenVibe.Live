@@ -62,6 +62,8 @@ const db = require('../server/db/database');
         ['The streamer packs camera gear into a bag.', 'The streamer packs camera gear into a bag.'],
         ['A second person leans into the frame from the left, with a blue jacket partially visible.', 'A second person leans into the frame from the left.'],
         ['A cozy desk, with a headset and a mug, faces the window.', 'A cozy desk, with a headset and a mug, faces the window.'],
+        ['The streamer, who is tired, is quiet tonight.', 'The streamer, who is tired, is quiet tonight.'],
+        ['A third person, with a blue jacket partially visible, is shown in a close-up, looking to the left and wearing an earbud.', 'A third person is shown in a close-up, looking to the left.'],
     ];
     let off = 0;
     // Public memory text is the observation alone: the raw transcript clause stays for the AI's context, never shown.
