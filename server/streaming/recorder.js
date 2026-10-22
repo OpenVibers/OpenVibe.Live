@@ -342,7 +342,6 @@ class StreamRecorder {
             if (rec.type === 'rtp') {
                 await media.ingestRtpStop(rec.vodId).catch((e) => console.warn(`[VOD] rtp stop failed (vod ${rec.vodId}):`, e.message));
             } else if (rec.type === 'chunks') {
-                await media.completeVodChunks(rec.vodId).catch(() => {});
                 await media.finalizeVod(rec.vodId).catch((e) => console.warn(`[VOD] finalize failed (vod ${rec.vodId}):`, e.message));
             } else {
                 await media.finalizeVod(rec.vodId).catch((e) => console.warn(`[VOD] finalize failed (vod ${rec.vodId}):`, e.message));
