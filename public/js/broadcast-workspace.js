@@ -1558,7 +1558,7 @@ rpicam-vid -t 0 --width 1280 --height 720 --framerate 30 \\
 
             <!-- ═══ WebRTC (WHIP) Tab ═══ -->
             <div class="bc-ws-cli-panel" data-clipanel="whip">
-                <p class="bc-ws-cli-desc"><strong>Low latency + high quality</strong> &mdash; WHIP (WebRTC HTTP Ingest Protocol) supports H.264/VP8/VP9 + Opus audio. Sub-second latency with modern codecs. Requires FFmpeg 7+ or GStreamer with WHIP support.</p>
+                <p class="bc-ws-cli-desc"><strong>Low latency + high quality</strong> &mdash; WHIP (WebRTC HTTP Ingest Protocol) takes H.264 (Constrained Baseline, no B-frames) or VP8 video with Opus audio, at sub-second latency. Requires FFmpeg 8.0+ (it added the WHIP muxer: <code>ffmpeg -muxers | grep whip</code>) or GStreamer with WHIP support.</p>
 
                 <div class="bc-ws-method-info-row" style="margin-bottom:4px">
                     <span class="bc-ws-method-info-label">WHIP URL</span>
@@ -1572,22 +1572,22 @@ rpicam-vid -t 0 --width 1280 --height 720 --framerate 30 \\
                     <span class="bc-ws-method-info-note">Use the stream key above</span>
                 </div>
 
-                <h5><i class="fa-solid fa-video"></i> Camera + Audio (FFmpeg 7+)</h5>
+                <h5><i class="fa-solid fa-video"></i> Camera + Audio (FFmpeg 8+)</h5>
                 <pre class="bc-ws-cli-code">ffmpeg -f v4l2 -i /dev/video0 -f alsa -i default \\
-  -c:v libx264 -preset veryfast -tune zerolatency -b:v 2500k \\
+  -c:v libx264 -profile:v baseline -pix_fmt yuv420p -bf 0 -g 60 -preset veryfast -tune zerolatency -b:v 2500k \\
   -c:a libopus -b:a 128k -ar 48000 \\
   -f whip "${esc(whipUrl)}"</pre>
 
-                <h5><i class="fa-solid fa-display"></i> Screen Capture (FFmpeg 7+)</h5>
+                <h5><i class="fa-solid fa-display"></i> Screen Capture (FFmpeg 8+)</h5>
                 <pre class="bc-ws-cli-code">ffmpeg -f x11grab -s 1920x1080 -r 30 -i :0.0 \\
   -f pulse -i default \\
-  -c:v libx264 -preset veryfast -tune zerolatency -b:v 3000k \\
+  -c:v libx264 -profile:v baseline -pix_fmt yuv420p -bf 0 -g 60 -preset veryfast -tune zerolatency -b:v 3000k \\
   -c:a libopus -b:a 128k -ar 48000 \\
   -f whip "${esc(whipUrl)}"</pre>
 
-                <h5><i class="fa-solid fa-film"></i> MP4 / File Loop (FFmpeg 7+)</h5>
+                <h5><i class="fa-solid fa-film"></i> MP4 / File Loop (FFmpeg 8+)</h5>
                 <pre class="bc-ws-cli-code">ffmpeg -re -stream_loop -1 -i video.mp4 \\
-  -c:v libx264 -preset veryfast -tune zerolatency -b:v 2500k \\
+  -c:v libx264 -profile:v baseline -pix_fmt yuv420p -bf 0 -g 60 -preset veryfast -tune zerolatency -b:v 2500k \\
   -c:a libopus -b:a 128k -ar 48000 \\
   -f whip "${esc(whipUrl)}"</pre>
 

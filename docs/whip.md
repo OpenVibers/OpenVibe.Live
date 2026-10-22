@@ -1,6 +1,6 @@
 # WHIP Ingest API
 
-OpenVibe.Live accepts live video over **WHIP** (WebRTC-HTTP Ingestion Protocol, [RFC 9725](https://www.rfc-editor.org/rfc/rfc9725)). Anything that can produce a WebRTC offer can go live with a single HTTP request — OBS 30+, FFmpeg 7+, GStreamer, hardware encoders, **and a plain web page**.
+OpenVibe.Live accepts live video over **WHIP** (WebRTC-HTTP Ingestion Protocol, [RFC 9725](https://www.rfc-editor.org/rfc/rfc9725)). Anything that can produce a WebRTC offer can go live with a single HTTP request — OBS 30+, FFmpeg 8+, GStreamer, hardware encoders, **and a plain web page**.
 
 > **Can a frontend-only site stream to WHIP?** Yes. The endpoint is open to every origin (CORS `*`) and authenticates with your stream key, so a static page with no backend can publish straight from the browser using only `RTCPeerConnection` + `fetch()`. Jump to [Publishing from a browser](#publishing-from-a-browser), or try the hosted single-file demo at **<https://openvibe.live/whip-publisher.html>** (view-source to copy it).
 
@@ -161,7 +161,7 @@ Things worth knowing:
 ## Other clients
 
 - **OBS Studio (30+):** *Settings → Stream → Service: WHIP*, Server = the WHIP URL, Bearer Token = your stream key.
-- **FFmpeg (7.0+):** `ffmpeg -re -i input.mp4 -c:v libx264 -profile:v baseline -level 3.1 -pix_fmt yuv420p -c:a libopus -f whip "https://whip.openvibe.live/whip/<streamKey>"`
+- **FFmpeg (8.0+, which added the WHIP muxer; `ffmpeg -muxers | grep whip` lists it):** `ffmpeg -re -i input.mp4 -c:v libx264 -profile:v baseline -level 3.1 -pix_fmt yuv420p -bf 0 -c:a libopus -ar 48000 -f whip "https://whip.openvibe.live/whip/<streamKey>"`. From a script, with the slot set up by a Live API token: [OpenVibe.Examples `go-live`](https://github.com/OpenVibers/OpenVibe.Examples/tree/main/examples/go-live).
 - **GStreamer:** `... ! whipsink whip-endpoint="https://whip.openvibe.live/whip/<streamKey>"` (needs `gst-plugins-rs`).
 
 The Broadcast page shows ready-to-paste commands for each with your key filled in. See [Broadcasting Guide](broadcasting.md) for the other ingest methods.
