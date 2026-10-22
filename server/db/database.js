@@ -447,7 +447,12 @@ const _GENDERED_MANY = new RegExp(`\\b(two|three|four|five|several|some|the|both
 const _GENDER_ADJ = /\b(?:(?:a|an)\s+)?(?:male|female)\s+(?:or|and|\/)\s+(?:male|female)\s+|\b(?:male|female)\s+(?=(?:hosts?|streamers?|players?|speakers?|presenters?|gamers?|voices?|narrators?|commentators?|figures?|characters?|broadcasters?|viewers?|individuals?|persons?|people)\b)/gi;
 // What is left of a sentence about someone's hair, clothes or body ("a person adjusts their hair or clothing near the
 // counter") cannot be repaired word by word: the sentence goes.
-const _GROOMING = /\b(?:their|his|her)\s+(?:own\s+)?(?:hair|beard|face|makeup|clothing|clothes|outfit|appearance|body|figure|looks)\b/i;
+const _GROOMING = new RegExp('\\b(?:(?:their|his|her)\\s+(?:own\\s+)?(?:hair|beard|face|makeup|clothing|clothes|outfit|appearance|body|figure|looks)'
+    // The face and body described ("smiling broadly, displaying white teeth and a beard") and clothes the word lists do
+    // not name ("blue outerwear", "in outdoor gear"): the sentence goes. Things a person holds or reviews (headphones, a
+    // headset on a desk) are not here.
+    + '|beards?|mustaches?|moustaches?|teeth|grin(?:s|ning)?|smil(?:e|es|ing)\\s+(?:broadly|widely|warmly|at)|freckles|complexion|wrinkles'
+    + '|hairstyles?|haircuts?|outerwear|(?:in|wearing)\\s+(?:[\\w-]+\\s+){0,2}gear|face\\s+shields?)\\b', 'i');
 function _noGender(text) {
     return text.split(/("[^"]*"?|“[^”]*”?)/).map((part, i) => (i % 2 ? part : part
         .replace(_GENDER_ADJ, (m) => (/^an?\s/i.test(m) ? m.slice(0, m.indexOf(' ') + 1) : ''))
