@@ -14,9 +14,17 @@
  */
 
 // Prevent sub-service port conflicts from crashing the main HTTP server
+// While stopping, a database connection that drops (PgBouncer or PostgreSQL restarting in the same
+// systemd wave, as on 2026-10-22) is expected: a client checked out of the pool for a transaction has
+// no 'error' listener (pg-pool removes its idle one on checkout), so pg's "Connection terminated
+// unexpectedly" arrives here. Log it and let the graceful stop finish and exit 0.
+let _shuttingDown = false;
+const { isPgConnectionError } = require('./utils/pg-errors');
 process.on('uncaughtException', (err) => {
     if (err.code === 'EADDRINUSE') {
         console.warn(`[Server] Port ${err.port || '?'} already in use — sub-service skipped`);
+    } else if (_shuttingDown && isPgConnectionError(err)) {
+        console.warn(`[Server] Database connection dropped during shutdown (expected): ${err.message}`);
     } else {
         console.error('[Server] Uncaught exception:', err);
         process.exit(1);
@@ -158,6 +166,7 @@ const stopper = gracefulStop({
     deadlineExitCode: 1,
     stop: [
         () => {
+            _shuttingDown = true;
             console.log('\n[Server] Shutting down...');
             // Stop advertising readiness immediately: from here on this process is draining, and anything
             // gating on /api/ready should see that before the socket actually closes.
@@ -1675,6 +1684,7 @@ async function startDrill() {
 
 // ── Graceful Shutdown ────────────────────────────────────────
 function shutdown(signal) {
+    _shuttingDown = true;
     if (drill.enabled) {
         // Nothing was started but the HTTP server and the two databases.
         console.log('[Drill] Shutting down');
