@@ -66,6 +66,7 @@ function normalizeRtmpHost(host) {
 }
 
 let _lastUrlLines = '';   // the Effective URLs block last printed
+let _registryLogged = false;
 
 function buildConfig(registryValues) {
     registryValues = registryValues || {};
@@ -324,7 +325,9 @@ async function refreshRegistry() {
         );
         const updated = buildConfig(registry);
         Object.assign(config, updated);
-        console.log('[Config] URL registry loaded from openvibe.network resolved registry');
+        // The refresh runs every few minutes; the Effective URLs block (buildConfig) says when anything changed.
+        if (!_registryLogged) console.log('[Config] URL registry loaded from openvibe.network resolved registry');
+        _registryLogged = true;
     } catch (err) {
         console.warn('[Config] Unable to load URL registry from openvibe.network:', err.message);
     }

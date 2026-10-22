@@ -75,7 +75,7 @@ async function startBilling({ network }) {
     function route(method, path, q, b, res) {
         let m;
         if (method === 'GET' && path === '/rates') {
-            return send(res, 200, { bits_per_usd: 100, min_purchase_bits: 100, subscription: { price_cents: 499, streamer_share_pct: 70, site_route_fee_pct: 10 }, cashout: { min_bits: 500, escrow_days: 14 }, providers: { powerchat: true, stripe: true } });
+            return send(res, 200, { bits_per_usd: 100, min_purchase_bits: 100, subscription: { price_cents: 499, streamer_share_pct: 70, site_route_fee_pct: 10 }, cashout: { min_bits: 500, escrow_days: 14 }, providers: state.providers || { powerchat: true, stripe: true, nowpayments: true } });
         }
         if (method === 'POST' && path === '/intents') {
             const kind = b.kind;

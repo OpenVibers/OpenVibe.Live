@@ -429,11 +429,19 @@ app.use('/api/views', require('./media-proxy/view-beacon').createViewBeacon({ ra
 const rum = require('./web/rum').createRum();
 app.use('/api/rum', rum.router);
 
+// A refused origin is logged once an hour each: "null" (sandboxed frames, file:// pages, privacy redirects) arrived
+// ~400 times a day and said nothing new after the first.
+const _corsLogged = new Map();   // origin -> last logged at
 const allowlistedCors = cors({
     origin(origin, callback) {
         if (!origin) return callback(null, true);
         if (isAllowedOrigin(origin)) return callback(null, true);
-        console.warn(`[CORS] Rejected origin: "${origin}" | allowed: ${[...allowedOrigins].join(', ')} (+ *.openvibe.tools)`);
+        const now = Date.now();
+        if (!(now - (_corsLogged.get(origin) || 0) < 3600_000)) {
+            if (_corsLogged.size > 500) _corsLogged.clear();
+            _corsLogged.set(origin, now);
+            console.warn(`[CORS] Rejected origin: "${origin}" | allowed: ${[...allowedOrigins].join(', ')} (+ *.openvibe.tools); repeats are not logged for an hour`);
+        }
         return callback(new Error('Origin not allowed by CORS'));
     },
     credentials: true,

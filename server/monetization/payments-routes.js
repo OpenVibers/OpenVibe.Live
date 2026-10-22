@@ -36,6 +36,7 @@ router.post('/bucks/checkout', requireAuth, money.guardWrite, async (req, res) =
     if (bucks < minBucks) return res.status(400).json({ error: `Minimum purchase is ${minBucks.toLocaleString()} Vibes` });
     if (bucks > 1_000_000) return res.status(400).json({ error: 'Amount too large' });
     if (!['stripe', 'paypal', 'ccbill', 'crypto', 'powerchat'].includes(provider)) return res.status(400).json({ error: 'Unknown payment provider' });
+    if (provider !== 'powerchat' && !(await pay.offered())[provider]) return res.status(403).json({ error: 'That way to pay is not available right now' });
     try {
         const r = await billingActions.checkout(req, { provider, bucks });
         return res.status(r.status).json(r.body);
@@ -60,6 +61,7 @@ router.post('/subscribe', requireAuth, money.guardWrite, async (req, res) => {
     // gates the card/PayPal/Vibes-purchase rails.
     const viaPowerchat = provider === 'powerchat' || provider === 'powerchat_site';
     if (!await pay.isEnabled() && !viaPowerchat && provider !== 'bucks') return res.status(403).json({ error: 'Payments are not enabled' });
+    if (provider === 'stripe' && !(await pay.offered()).stripe) return res.status(403).json({ error: 'Card subscriptions are not available right now' });
     const streamer = await db.getUserByUsername(String(req.body.streamer || ''));
     if (!streamer) return res.status(404).json({ error: 'Streamer not found' });
     if (streamer.id === req.user.id) return res.status(400).json({ error: 'You cannot subscribe to yourself' });

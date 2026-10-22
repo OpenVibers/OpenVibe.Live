@@ -11,8 +11,6 @@
  * GET    /api/admin/streams                - All active streams
  * DELETE /api/admin/streams/:id            - Force end a stream
  * GET    /api/admin/bans                   - List all bans
- * GET    /api/admin/vpn-queue              - VPN approval queue
- * PUT    /api/admin/vpn-queue/:id          - Approve/deny VPN
  * GET    /api/admin/money                  - Money authority (OpenVibe.Billing), freeze state, Billing health
  * POST   /api/admin/money/freeze           - Owner: freeze/unfreeze Live money writes { on, reason }
  * POST   /api/admin/money/actions/:id/resolve - Owner: re-send a Billing action whose outcome is unknown
@@ -442,38 +440,9 @@ router.get('/bans', async (req, res) => {
     }
 });
 
-// ── VPN Approval Queue ───────────────────────────────────────
-router.get('/vpn-queue', async (req, res) => {
-    try {
-        const queue = await db.all(`
-            SELECT v.*, u.username
-            FROM vpn_approvals v
-            LEFT JOIN users u ON v.user_id = u.id
-            WHERE v.status = 'pending'
-            ORDER BY v.created_at ASC
-        `);
-        res.json({ queue });
-    } catch (err) {
-        res.status(500).json({ error: 'Failed to get VPN queue' });
-    }
-});
-
-// ── Approve/Deny VPN ─────────────────────────────────────────
-router.put('/vpn-queue/:id', async (req, res) => {
-    try {
-        const { status } = req.body; // 'approved' or 'denied'
-        if (!['approved', 'denied'].includes(status)) {
-            return res.status(400).json({ error: 'Status must be approved or denied' });
-        }
-
-        await db.run('UPDATE vpn_approvals SET status = ?, reviewed_by = ? WHERE id = ?',
-            [status, req.user.id, req.params.id]);
-
-        res.json({ message: `VPN request ${status}` });
-    } catch (err) {
-        res.status(500).json({ error: 'Failed to update VPN request' });
-    }
-});
+// The VPN approval queue left 2026-10-22: IP approval is OpenVibe.Chat's (pending_ip_messages), nothing has written
+// vpn_approvals since the chat cutover (0 rows in production), and Network's admin dropped its tab (Network#299). The
+// table goes with a later contract migration.
 
 // ═══════════════════════════════════════════════════════════════
 // Site Settings
