@@ -528,7 +528,15 @@ class WebRTCSFU extends EventEmitter {
     }
 
     /**
-     * Find a producer by kind (audio/video) in a room.
+     * Find a producer by kind (audio/video) in a room: the first one on the newest transport whose ICE is up, else the
+     * first one on the newest transport.
+     *
+     * A broadcaster whose network changes (a phone moving between cell towers and Wi-Fi) produces again on a new
+     * transport while the old producers stay open on the dead one until its transport closes. Picking the first open
+     * producer, as this did until 2026-10-22, handed the recorder's next part, speech capture, restreams and live
+     * thumbnails that dead producer: stream 2697 lost three recording parts (16 minutes) and its transcript that way.
+     * Within one transport the first producer still wins, so a screen share next to the camera does not replace it.
+     * Only the stream's broadcaster produces in its room (broadcast-server.js, whip-handler.js).
      * @param {string} roomId
      * @param {string} kind - 'audio' or 'video'
      * @returns {{ id: string, peerId: string }|null}
@@ -536,10 +544,18 @@ class WebRTCSFU extends EventEmitter {
     findProducerByKind(roomId, kind) {
         const room = this.rooms.get(roomId);
         if (!room) return null;
-        for (const [id, { producer, peerId }] of room.producers) {
-            if (producer.kind === kind && !producer.closed) return { id, peerId };
+        const seen = new Set();
+        let newest = null, healthy = null;
+        for (const [id, { producer, peerId, transportId }] of room.producers) {
+            if (producer.kind !== kind || producer.closed) continue;
+            const key = `${peerId}-${transportId}`;
+            if (seen.has(key)) continue;
+            seen.add(key);
+            newest = { id, peerId };
+            const transport = room.transports.get(key);
+            if (transport && (transport.iceState === 'connected' || transport.iceState === 'completed')) healthy = { id, peerId };
         }
-        return null;
+        return healthy || newest;
     }
 
     /**

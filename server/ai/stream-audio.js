@@ -131,7 +131,7 @@ async function _prepareWebrtcSource(stream) {
 
     try { fs.writeFileSync(sdpPath, sdpContent, 'utf8'); }
     catch { cleanup(); return null; }
-    return { sdpPath, cleanup };
+    return { sdpPath, cleanup, producerId: audioProducer.id };
 }
 
 // Common ffmpeg input flags for reading an RTP/SDP source. Tolerant of the packet loss and
@@ -232,11 +232,42 @@ const SPOOL_ROOT = require('../paths').data('asr');
 // openvibe.media is actively growing into, so an unbounded spool is not an option.
 const MAX_SPOOL_FILES = Math.max(4, parseInt(process.env.AI_HEAR_MAX_SPOOL, 10) || 40);
 
-const _capturing = new Map();   // streamId -> { ff, dir, cleanup, seq }
+const _capturing = new Map();   // streamId -> { ff, dir, cleanup, startedAt, producerId, firstIndex }
+// Streams whose spool this process has started: only the first start drops leftover segments (a previous process's,
+// numbered from 0 again); a restart in this process continues the numbering and keeps what was captured.
+const _startedHere = new Set();
+// ffmpeg that ends soon after it started (no RTP from a dead producer, an input it cannot probe) is retried after a
+// growing pause instead of every timeline tick, and logged once per streak with its last error line.
+const _retry = new Map();       // streamId -> { at, delayMs, fails, reason }
+const RETRY_MIN_MS = 20_000, RETRY_MAX_MS = 5 * 60_000, SHORT_RUN_MS = 60_000;
 
 function spoolDir(streamId) { return path.join(SPOOL_ROOT, String(streamId)); }
 
 function isCapturing(streamId) { return _capturing.has(streamId); }
+
+function _segmentIndexes(dir) {
+    try { return fs.readdirSync(dir).filter(n => /^seg-\d{6}\.wav$/.test(n)).map(n => parseInt(n.slice(4, 10), 10)); }
+    catch { return []; }
+}
+
+// A broadcaster who produces audio again on a new transport (a phone changing networks) leaves the capture reading
+// the old, dead producer: stop it so the next timeline tick starts again on the new one (webrtc-sfu picks it).
+let _producerWatch = null;
+function _watchProducers() {
+    if (_producerWatch) return;
+    let webrtcSFU;
+    try { webrtcSFU = require('../streaming/webrtc-sfu'); } catch { return; }
+    _producerWatch = ({ roomId, producerId, kind }) => {
+        if (kind !== 'audio') return;
+        const m = /^stream-(\d+)$/.exec(String(roomId || ''));
+        const entry = m && _capturing.get(Number(m[1]));
+        if (!entry || !entry.producerId || entry.producerId === producerId) return;
+        console.log(`[AI-Hear] stream ${m[1]}: the broadcaster produced audio again — moving capture to the new producer`);
+        _retry.delete(Number(m[1]));
+        stopContinuousCapture(Number(m[1]), { quiet: true });
+    };
+    webrtcSFU.on('producer-added', _producerWatch);
+}
 
 /**
  * Start continuous audio capture for a live stream. Idempotent.
@@ -247,6 +278,9 @@ function isCapturing(streamId) { return _capturing.has(streamId); }
 async function startContinuousCapture(stream) {
     if (!stream || !stream.id) return false;
     if (_capturing.has(stream.id)) return true;
+    const retry = _retry.get(stream.id);
+    if (retry && Date.now() < retry.at) return false;
+    _watchProducers();
 
     const dir = spoolDir(stream.id);
     try { fs.mkdirSync(dir, { recursive: true }); } catch { return false; }
@@ -254,20 +288,31 @@ async function startContinuousCapture(stream) {
     // restart at 0 for the new ffmpeg, so old files would be mis-ordered against new ones
     // — the "newest file is still being written" rule then skipped a stale file and fed a
     // half-written one to whisper. Drop them; the VOD transcript covers that audio.
-    try {
-        const stale = fs.readdirSync(dir).filter(n => /^seg-\d{6}\.wav$/.test(n));
-        for (const n of stale) { try { fs.unlinkSync(path.join(dir, n)); } catch { /* */ } }
-        if (stale.length) console.log(`[AI-Hear] stream ${stream.id}: dropped ${stale.length} stale spool segment(s) from a previous run`);
-    } catch { /* */ }
+    // A restart within this process instead numbers on from the last segment, so the audio
+    // the previous ffmpeg wrote is still transcribed (on 2026-10-22 a capture restarting
+    // every 22 s dropped its own segment each time).
+    let firstIndex = 0;
+    if (!_startedHere.has(stream.id)) {
+        try {
+            const stale = fs.readdirSync(dir).filter(n => /^seg-\d{6}\.wav$/.test(n));
+            for (const n of stale) { try { fs.unlinkSync(path.join(dir, n)); } catch { /* */ } }
+            if (stale.length) console.log(`[AI-Hear] stream ${stream.id}: dropped ${stale.length} stale spool segment(s) from a previous run`);
+        } catch { /* */ }
+    } else {
+        const indexes = _segmentIndexes(dir);
+        if (indexes.length) firstIndex = Math.max(...indexes) + 1;
+    }
 
     // Resolve an input the same way the one-shot grab does: WHIP/WebRTC via a plain RTP
     // consumer, RTMP via the local HTTP-FLV output.
     let inputArgs = null;
     let cleanup = () => {};
+    let producerId = null;
     const src = await _prepareWebrtcSource(stream).catch(() => null);
     if (src) {
         inputArgs = [...SDP_INPUT_ARGS, '-i', src.sdpPath];
         cleanup = src.cleanup;
+        producerId = src.producerId;
     } else {
         const streamKey = await resolveStreamKey(stream);
         if (!streamKey) return false;
@@ -278,6 +323,7 @@ async function startContinuousCapture(stream) {
         '-y', ...inputArgs,
         '-vn', '-ac', '1', '-ar', '16000', '-af', LOUDNORM,
         '-f', 'segment', '-segment_time', String(SEGMENT_SEC),
+        '-segment_start_number', String(firstIndex),
         '-reset_timestamps', '0',          // keep timestamps continuous across segments
         '-segment_format', 'wav',
         '-strftime', '0',
@@ -285,28 +331,45 @@ async function startContinuousCapture(stream) {
     ];
 
     let ff;
-    try { ff = spawn('ffmpeg', args, { stdio: 'ignore' }); }
+    try { ff = spawn('ffmpeg', ['-hide_banner', '-loglevel', 'error', ...args], { stdio: ['ignore', 'ignore', 'pipe'] }); }
     catch { cleanup(); return false; }
 
-    const entry = { ff, dir, cleanup, startedAt: Date.now() };
+    const entry = { ff, dir, cleanup, startedAt: Date.now(), producerId, firstIndex };
     _capturing.set(stream.id, entry);
-    const onExit = () => {
-        if (_capturing.get(stream.id) === entry) _capturing.delete(stream.id);
+    _startedHere.add(stream.id);
+    let lastErr = '';
+    ff.stderr.on('data', (d) => { const lines = String(d).trim().split('\n'); lastErr = (lines[lines.length - 1] || lastErr).slice(0, 200); });
+    let exited = false;
+    const onExit = (code) => {
+        if (exited) return;
+        exited = true;
+        const mine = _capturing.get(stream.id) === entry;
+        if (mine) _capturing.delete(stream.id);
         try { cleanup(); } catch { /* */ }
+        if (!mine || entry.stopped) return;
+        // ffmpeg ended by itself while the stream is live: pause before the next try when it did not last.
+        const ran = Date.now() - entry.startedAt;
+        const prev = _retry.get(stream.id);
+        if (ran >= SHORT_RUN_MS) { _retry.delete(stream.id); return; }
+        const delayMs = prev ? Math.min(RETRY_MAX_MS, prev.delayMs * 2) : RETRY_MIN_MS;
+        const reason = lastErr || (typeof code === 'number' ? `exit ${code}` : String(code || 'ended'));
+        _retry.set(stream.id, { at: Date.now() + delayMs, delayMs, fails: (prev ? prev.fails : 0) + 1, reason });
+        if (!prev || prev.reason !== reason) console.warn(`[AI-Hear] stream ${stream.id}: capture ended after ${Math.round(ran / 1000)}s (${reason}); retrying in ${Math.round(delayMs / 1000)}s, then less often`);
     };
     ff.on('close', onExit);
-    ff.on('error', onExit);
-    console.log(`[AI-Hear] stream ${stream.id}: continuous capture started (${SEGMENT_SEC}s segments → ${dir})`);
+    ff.on('error', (e) => onExit(e && e.message));
+    if (!retry) console.log(`[AI-Hear] stream ${stream.id}: continuous capture started (${SEGMENT_SEC}s segments → ${dir})`);
     return true;
 }
 
-function stopContinuousCapture(streamId) {
+function stopContinuousCapture(streamId, { quiet = false } = {}) {
     const entry = _capturing.get(streamId);
     if (!entry) return false;
+    entry.stopped = true;
     _capturing.delete(streamId);
     try { entry.ff.kill('SIGKILL'); } catch { /* */ }
     try { entry.cleanup(); } catch { /* */ }
-    console.log(`[AI-Hear] stream ${streamId}: continuous capture stopped`);
+    if (!quiet) console.log(`[AI-Hear] stream ${streamId}: continuous capture stopped`);
     return true;
 }
 
@@ -338,7 +401,9 @@ function pendingSegments(streamId, { includeLast = false } = {}) {
         try { fs.unlinkSync(path.join(dir, ready[i])); } catch { /* */ }
     }
     if (overflow) console.warn(`[AI-Hear] stream ${streamId}: transcriber ${overflow * SEGMENT_SEC}s behind — dropped ${overflow} oldest segment(s)`);
-    const startedAt = (_capturing.get(streamId) || {}).startedAt || null;
+    const cur = _capturing.get(streamId) || {};
+    const startedAt = cur.startedAt || null;
+    const firstIndex = cur.firstIndex || 0;
     return ready.slice(overflow).map(name => {
         const index = parseInt(name.slice(4, 10), 10);
         return {
@@ -348,7 +413,7 @@ function pendingSegments(streamId, { includeLast = false } = {}) {
             offsetSec: index * SEGMENT_SEC,
             // Wall-clock instant this segment's audio ENDED, so the job can report how far
             // behind live the transcript actually is.
-            endedAtMs: startedAt ? startedAt + (index + 1) * SEGMENT_SEC * 1000 : null,
+            endedAtMs: startedAt && index >= firstIndex ? startedAt + (index - firstIndex + 1) * SEGMENT_SEC * 1000 : null,
         };
     });
 }
@@ -368,6 +433,8 @@ function spooledStreamIds() {
 
 /** Remove a stream's whole spool directory (call when the stream ends). */
 function purgeSpool(streamId) {
+    _startedHere.delete(streamId);
+    _retry.delete(streamId);
     try { fs.rmSync(spoolDir(streamId), { recursive: true, force: true }); return true; }
     catch { return false; }
 }
