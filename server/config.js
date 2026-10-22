@@ -65,6 +65,8 @@ function normalizeRtmpHost(host) {
     return cleaned;
 }
 
+let _lastUrlLines = '';   // the Effective URLs block last printed
+
 function buildConfig(registryValues) {
     registryValues = registryValues || {};
     const getRegistryEntry = (key) => {
@@ -135,12 +137,18 @@ function buildConfig(registryValues) {
         ? mediaSoupEntry.source
         : 'default';
 
-    console.log('[Config] Effective URLs:');
-    console.log('[Config]  BASE_URL=', baseUrl, `(${baseUrlSource})`);
-    console.log('[Config]  WEBRTC_PUBLIC_URL=', webRtcPublicUrl, `(${webRtcSource})`);
-    console.log('[Config]  WHIP_PUBLIC_URL=', whipPublicUrl, `(${whipSource})`);
-    console.log('[Config]  MEDIASOUP_ANNOUNCED_IP=', mediasoupAnnouncedIp, `(${mediaSoupSource})`);
-    console.log('[Config]  OV_NETWORK_URL=', openvibeToolsUrl || '(not set — SSO base will fall back to https://openvibe.network)');
+    // The registry refresh rebuilds the config every few minutes; print the block at boot and when it changes only.
+    const urlLines = [
+        `[Config]  BASE_URL= ${baseUrl} (${baseUrlSource})`,
+        `[Config]  WEBRTC_PUBLIC_URL= ${webRtcPublicUrl} (${webRtcSource})`,
+        `[Config]  WHIP_PUBLIC_URL= ${whipPublicUrl} (${whipSource})`,
+        `[Config]  MEDIASOUP_ANNOUNCED_IP= ${mediasoupAnnouncedIp} (${mediaSoupSource})`,
+        `[Config]  OV_NETWORK_URL= ${openvibeToolsUrl || '(not set — SSO base will fall back to https://openvibe.network)'}`,
+    ].join('\n');
+    if (urlLines !== _lastUrlLines) {
+        console.log(`[Config] Effective URLs${_lastUrlLines ? ' (changed)' : ''}:\n${urlLines}`);
+        _lastUrlLines = urlLines;
+    }
 
     if (process.env.NODE_ENV === 'production' && baseUrl.includes('localhost')) {
         console.error('[Config] CRITICAL: BASE_URL is localhost in production! CORS will reject all browser requests.');

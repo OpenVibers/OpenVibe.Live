@@ -48,6 +48,9 @@ const MAX_RESTARTS = 12;             // consecutive restarts before giving up (a
 const STABLE_MS = 60000;             // a run that stayed live this long resets the restart counter
 const SOURCE_CHECK_MS = 5000;        // how often a running session re-checks that its source is live
 
+const DEBUG_MEDIA = process.env.LIVE_DEBUG_MEDIA === '1';
+const FLOW_LOG_EVERY = 30;           // stats ticks (10 s each) between flow lines when not debugging: 5 minutes
+
 function log(streamId, ...a) { console.log(`[RS Passthrough ${streamId}]`, ...a); }
 
 // ── RS HTTP API (robot_page_load → rtc_sfu host/port) ────────────────────
@@ -966,7 +969,9 @@ class RsPassthroughRelay {
         // where video freezes originate: IN = streamer→relay (our seq-gap detection), RS = relay→RS
         // (werift's RTCP receiver reports from RobotStreamer). pliRx/firRx = keyframes RS asked for.
         let lastVIn = 0, lastVOut = 0, lastAIn = 0, lastAOut = 0, lastLostIn = 0, lastKf = 0, lastLateFill = 0;
+        let flowTicks = 0;
         session.statsTimer = setInterval(() => {
+            flowTicks++;
             const s = vSender || {};
             const rsLostPct = typeof s.remoteFractionLost === 'number' ? ((s.remoteFractionLost / 256) * 100).toFixed(1) : '?';
             const kbps = (n) => Math.round(n);
@@ -984,7 +989,9 @@ class RsPassthroughRelay {
                 nacks: s.nackCount ?? null, plis: s.pliCount ?? null,
                 stalled_ms: _videoStalledSince ? Date.now() - _videoStalledSince : 0,
             };
-            log(sid, `flow: vIn ${Math.round((stats.vIn - lastVIn) / 10)}/s vOut ${Math.round((stats.vOut - lastVOut) / 10)}/s ` +
+            // session.rs (for /status) updates every 10 s; the flow line prints every 10 s only under
+            // LIVE_DEBUG_MEDIA=1, else the first one, one every 5 minutes, and every one while video is stalled.
+            if (DEBUG_MEDIA || _videoStalledSince || flowTicks % FLOW_LOG_EVERY === 1) log(sid, `flow: vIn ${Math.round((stats.vIn - lastVIn) / 10)}/s vOut ${Math.round((stats.vOut - lastVOut) / 10)}/s ` +
                 `aIn ${Math.round((stats.aIn - lastAIn) / 10)}/s aOut ${Math.round((stats.aOut - lastAOut) / 10)}/s${stalled} ` +
                 `| writeErr v=${stats.vErr} a=${stats.aErr} alienSsrc v=${stats.vAlien} a=${stats.aAlien} | stalls=${stats.ingestStalls} (${Math.round(stats.ingestStallMs / 1000)}s total) ` +
                 `| kf ${stats.kf - lastKf}/10s maxKfGap ${stats.maxKfGap}ms injSPS/PPS=${stats.inj}${INJECT_PARAMS ? '' : '(off)'} gopDmg=${stats.gopDamaged} ` +

@@ -306,8 +306,11 @@ async function chatRelayStats(userId) {
     return st;
 }
 
-// Relay health: quiet on success, but surface failures at a sane rate.
-const _relayState = new Map();  // userId → { failAt, okAfterFail }
+// Relay health: quiet on success, but surface failures at a sane rate. The same failure repeats
+// for as long as PowerChat refuses the call, so it is logged once an hour per person (with how many
+// were held back); a different failure is logged at once.
+const RELAY_FAIL_LOG_MS = 60 * 60 * 1000;
+const _relayState = new Map();  // userId → { failAt, reason, held }
 function _relayOk(userId) {
     const st = _relayState.get(userId);
     if (st && st.failAt) {
@@ -315,14 +318,17 @@ function _relayOk(userId) {
         _relayState.delete(userId);
     }
 }
-function _relayFail(userId, reason) {
-    const now = Date.now();
-    const st = _relayState.get(userId) || { failAt: 0 };
-    if (now - st.failAt > 60000) {
-        console.warn(`[PowerChat] chat relay failed for user ${userId}: ${reason || 'unknown'}`);
-        st.failAt = now;
-        _relayState.set(userId, st);
+function _relayFail(userId, reason, now = Date.now()) {
+    const why = reason || 'unknown';
+    const st = _relayState.get(userId) || { failAt: 0, reason: null, held: 0 };
+    if (why !== st.reason || now - st.failAt >= RELAY_FAIL_LOG_MS) {
+        const held = st.reason === why && st.held ? ` (${st.held} more since the last report)` : '';
+        console.warn(`[PowerChat] chat relay failed for user ${userId}: ${why}${held}`);
+        _relayState.set(userId, { failAt: now, reason: why, held: 0 });
+        return true;
     }
+    st.held++;
+    return false;
 }
 
 // ── follows:write ────────────────────────────────────────────
@@ -597,5 +603,5 @@ module.exports = {
     sendViewCount, startViewerCountSweeper,
     sendCurrencyRedemption, queueCurrencyEarn, startCurrencyEarnFlusher, sendCustomAlert,
     startChatVerifier, chatRelayStats,
-    _test: { verifyTick: _verifyTick, setNow: (fn) => { _now = fn || (() => Date.now()); }, reset: () => _verify.clear() },
+    _test: { relayFail: _relayFail, relayReset: () => _relayState.clear(), verifyTick: _verifyTick, setNow: (fn) => { _now = fn || (() => Date.now()); }, reset: () => _verify.clear() },
 };

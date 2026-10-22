@@ -10,6 +10,8 @@
 const EventEmitter = require('events');
 const config = require('../config');
 
+const DEBUG_MEDIA = process.env.LIVE_DEBUG_MEDIA === '1';   // per-request keyframe lines (off: one line per failure only)
+
 let mediasoup;
 try {
     mediasoup = require('mediasoup');
@@ -363,7 +365,7 @@ class WebRTCSFU extends EventEmitter {
                 const timer = setTimeout(async () => {
                     try {
                         await consumer.requestKeyFrame();
-                        console.log(`[WebRTC] Recording keyframe request #${attempt} sent for consumer ${consumer.id} in room ${roomId}`);
+                        if (DEBUG_MEDIA) console.log(`[WebRTC] Recording keyframe request #${attempt} sent for consumer ${consumer.id} in room ${roomId}`);
                     } catch (err) {
                         console.warn(`[WebRTC] Recording keyframe request #${attempt} failed for consumer ${consumer.id} in room ${roomId}:`, err.message);
                     }
