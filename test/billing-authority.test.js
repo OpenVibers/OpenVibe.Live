@@ -329,12 +329,59 @@ async function check(name, fn) {
         let r = await call('POST', '/api/payments/bucks/checkout', 2, { provider: 'stripe', bucks: 500 });
         assert.strictEqual(r.status, 403); assert.strictEqual(callsSince(n).length, 0);
         await db.setSetting('payments_enabled', 'true');
+        // The provider's own switch is off: not offered, and Billing is not asked.
+        r = await call('POST', '/api/payments/bucks/checkout', 2, { provider: 'stripe', bucks: 500 });
+        assert.strictEqual(r.status, 403, r.text);
+        assert.ok(!callsSince(n).some((c) => c.path === '/intents'), 'no intent for a rail that is off');
+        await db.setSetting('stripe_enabled', 'true'); await db.setSetting('crypto_enabled', 'true');
         r = await call('POST', '/api/payments/bucks/checkout', 2, { provider: 'stripe', bucks: 500 });
         assert.strictEqual(r.status, 200, r.text);
         assert.match(r.json.url, /^https:\/\/checkout\.test\/pi_/);
         r = await call('POST', '/api/payments/bucks/checkout', 2, { provider: 'crypto', bucks: 500 });
         assert.strictEqual(lastCall().body.provider, 'nowpayments');
         await db.setSetting('payments_enabled', 'false');
+    });
+
+    await check('Live offers a card rail only when Billing reports the provider enabled (Billing holds the keys, Live none)', async () => {
+        const pay = require('../server/monetization/payments');
+        await db.setSetting('payments_enabled', 'true');
+        pay._resetProviders();
+        let cfg = (await call('GET', '/api/payments/config')).json;
+        assert.deepStrictEqual(cfg.providers, { paypal: false, stripe: true, ccbill: false, crypto: true, powerchat: cfg.providers.powerchat });
+        assert.ok(!('stripePublishableKey' in cfg), 'no provider key leaves Live');
+        // Billing has no Stripe keys: the button goes, and a checkout or card subscription is refused before Billing.
+        billing.state.providers = { powerchat: true, nowpayments: true };
+        pay._resetProviders();
+        cfg = (await call('GET', '/api/payments/config')).json;
+        assert.strictEqual(cfg.providers.stripe, false);
+        assert.strictEqual(cfg.providers.crypto, true);
+        const n = billing.calls.length;
+        let r = await call('POST', '/api/payments/bucks/checkout', 2, { provider: 'stripe', bucks: 500 });
+        assert.strictEqual(r.status, 403, r.text);
+        r = await call('POST', '/api/payments/subscribe', 2, { streamer: 'bob', provider: 'stripe' });
+        assert.strictEqual(r.status, 403, r.text);
+        assert.ok(!callsSince(n).some((c) => c.path === '/intents' || c.path === '/subscriptions'), 'Billing is not asked to charge');
+        // Billing unreachable with nothing cached: no card rail is offered.
+        billing.state.fail500 = true;
+        pay._resetProviders();
+        cfg = (await call('GET', '/api/payments/config')).json;
+        assert.deepStrictEqual([cfg.providers.stripe, cfg.providers.crypto], [false, false]);
+        billing.state.fail500 = false;
+        delete billing.state.providers;
+        pay._resetProviders();
+        await db.setSetting('payments_enabled', 'false');
+    });
+
+    await check('no provider credential is read by Live, and migration 0013 removes them from site_settings', async () => {
+        const fs = require('fs'); const path = require('path');
+        const sql = fs.readFileSync(path.join(__dirname, '..', 'migrations', '0013_provider_keys_are_billings.sql'), 'utf8');
+        const keys = [...sql.matchAll(/'((?:paypal|stripe|ccbill|crypto)_[a-z_]+)'/g)].map((m) => m[1]);
+        assert.strictEqual(keys.length, 15);
+        const files = [];
+        (function walk(d) { for (const e of fs.readdirSync(d, { withFileTypes: true })) { const p = path.join(d, e.name); if (e.isDirectory()) walk(p); else if (p.endsWith('.js')) files.push(p); } })(path.join(__dirname, '..', 'server'));
+        const readers = files.flatMap((f) => { const src = fs.readFileSync(f, 'utf8'); return keys.filter((k) => src.includes(`'${k}'`)).map((k) => `${path.basename(f)}: ${k}`); });
+        assert.deepStrictEqual(readers, []);
+        for (const k of keys) assert.strictEqual(await db.getSetting(k), null, `${k} is gone`);
     });
 
     await check('a Vibes media request is a paid interaction keyed by its request; its refund reverses that exact transfer', async () => {
