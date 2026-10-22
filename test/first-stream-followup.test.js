@@ -1,7 +1,8 @@
 'use strict';
 // The first stream's follow-up (server/streaming/first-stream-followup.js): one notification after someone's first
 // stream ends (settled for 5 minutes), never twice, never for a second stream or a test under 30 seconds; it links the
-// public recording when Media has it, else the after-show report (8 minutes and up), else the channel.
+// public recording when Media has it, else the after-show report (8 minutes and up), else the channel; it counts the
+// signed-in viewers who watched (watch_time, the streamer left out), never peak_viewers.
 const assert = require('assert');
 const db = require('../server/db/database');
 const followup = require('../server/streaming/first-stream-followup');
@@ -32,6 +33,12 @@ const sqlTime = (ms) => new Date(ms).toISOString().replace('T', ' ').slice(0, 19
     await mkStream(ed, { endedAgoMin: 5000, seconds: 900 });
     await mkStream(ed, { endedAgoMin: 20, seconds: 900 });
 
+    // Ana's stream: two signed-in viewers watched, and her own row (watching herself) is not one of them.
+    const v1 = await mkUser('fs_v1');
+    const v2 = await mkUser('fs_v2');
+    for (const u of [v1, v2, ana]) await db.run('INSERT INTO watch_time (user_id, stream_id, minutes_watched) VALUES (?, ?, 3)', [u, anaStream]);
+    await db.run('UPDATE streams SET peak_viewers = 40 WHERE id = ?', [boStream]);
+
     const sent = [];
     const vodFor = async (s) => (s.id === anaStream ? 'https://openvibe.video/v/77' : null);
     const out = await followup.run({ now: () => NOW, push: (n) => sent.push(n), vodFor });
@@ -39,11 +46,11 @@ const sqlTime = (ms) => new Date(ms).toISOString().replace('T', ' ').slice(0, 19
     const byUser = Object.fromEntries(sent.map((n) => [n.user_id, n]));
     assert.deepStrictEqual(Object.keys(byUser).map(Number).sort(), [ana, bo].map(Number).sort());
     assert.strictEqual(byUser[ana].url, 'https://openvibe.video/v/77');
-    assert.match(byUser[ana].message, /^6 minutes live\. The recording is on OpenVibe\.Video/);
+    assert.match(byUser[ana].message, /^6 minutes live, watched by 2 signed-in viewers\. The recording is on OpenVibe\.Video/);
     assert.match(byUser[ana].message, /share openvibe\.live\/@fs_ana before you go live/);
     assert.strictEqual(byUser[bo].url, `https://openvibe.live/recap/${boStream}`, 'no public recording yet: the after-show report');
     assert.strictEqual(byUser[ana].type, 'STREAM_SUMMARY');
-    assert.ok(!/viewer/i.test(sent.map((n) => n.message).join(' ')), 'no viewer counts (peak_viewers is not a person count)');
+    assert.ok(!/viewer/i.test(byUser[bo].message), 'no signed-in viewer watched Bo: nothing said, and peak_viewers (not a person count) is never used');
 
     // Never twice; the test stream was marked too, so it never comes back either.
     assert.strictEqual((await followup.run({ now: () => NOW, push: (n) => sent.push(n), vodFor })).sent, 0);
@@ -57,6 +64,7 @@ const sqlTime = (ms) => new Date(ms).toISOString().replace('T', ' ').slice(0, 19
     // Short first stream with no recording: the channel.
     const m = followup.messageFor({ username: 'zed', seconds: 90, vodUrl: null });
     assert.match(m.message, /^2 minutes live\. The recording appears on your channel/);
+    assert.match(followup.messageFor({ username: 'zed', seconds: 90, vodUrl: null, watchers: 1 }).message, /^2 minutes live, watched by 1 signed-in viewer\. /);
     console.log('first-stream follow-up: once, settled, recording/report/channel links, no test streams');
     process.exit(0);
 })().catch((e) => { console.error(e); process.exit(1); });

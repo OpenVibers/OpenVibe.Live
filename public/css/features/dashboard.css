@@ -375,6 +375,7 @@
 }
 .dash-profile-head .settings-banner-name { font-size:1.15rem; font-weight:700; color:var(--text); }
 .settings-avatar-edit:hover { background:var(--accent-dark,var(--accent-dark)); color:#fff; }
+.dash-tips-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
 .dash-goal { display: flex; gap: 12px; align-items: center; padding: 10px; border: 1px solid var(--border); border-radius: 10px; margin-bottom: 10px; background: var(--bg-secondary); }
 .dash-goal-thumb { width: 64px; height: 64px; border-radius: 8px; object-fit: cover; flex-shrink: 0; background: #000; }
 .dash-goal-thumb-ph { display: flex; align-items: center; justify-content: center; color: var(--text-muted); font-size: 1.3rem; background: var(--bg-tertiary); }

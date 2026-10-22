@@ -15,7 +15,7 @@ const _DASH_TAB_CARDS = {
     chatai:     ['dash-aibot-card', 'dash-card-overlay', 'dash-card-chatlogs'],
     moderation: [],  // injected by dashboard-moderation.js into #dash-grid-moderation
     controls:   ['dash-card-bot-embed', 'dash-card-tokens'],
-    money:      ['dash-card-bucks', 'dash-card-goals', 'dash-powerchat-card'],
+    money:      ['dash-card-bucks', 'dash-card-goals', 'dash-card-tips-page', 'dash-powerchat-card'],
     points:     ['dash-card-points-config', 'dash-card-rewards', 'dash-card-redemptions'],
     content:    [],  // content cards go into sub-grids (see _DASH_CONTENT_SUBCARDS)
 };
@@ -103,7 +103,7 @@ function _call(name) { try { if (typeof window[name] === 'function') window[name
 window._dashTabLoaders.home = () => { _call('loadSettingsProfile'); _call('loadAiDerivationSetting'); _call('loadSettingsOffline'); _call('loadDashFunds'); };
 window._dashTabLoaders.chatai = () => { _call('updateDashObsOverlayUrl'); _call('loadAiViewers'); };
 window._dashTabLoaders.controls = () => { _call('loadBotEmbedSetting'); _call('loadDashTokens'); };
-window._dashTabLoaders.money = () => { _call('loadDashFunds'); _call('loadDashGoals'); _call('loadPowerchatStatus'); };
+window._dashTabLoaders.money = () => { _call('loadDashFunds'); _call('loadDashGoals'); _call('loadDashTipsPage'); _call('loadPowerchatStatus'); };
 window._dashTabLoaders.points = () => { _call('loadDashPointsConfig'); _call('loadDashRewards'); _call('loadDashRedemptions'); };
 window._dashTabLoaders.content = () => { switchDashContentTab('videos', document.querySelector('#dash-content-subtabs .ch-tab[data-cdtab="videos"]')); _call('loadDashAiMomentsCount'); };
 // moderation loader is registered by dashboard-moderation.js
@@ -272,6 +272,29 @@ function showEndpointInfo(stream) {
     }
 
     el.textContent = info;
+}
+
+/* ── Tip page on OpenVibe.Tips ─────────────────────────────────── */
+// The channel links a creator's Tips page once it is on (server/monetization/elsewhere.js). This card says whether it
+// is, and starts it in one step: openvibe.tips/start, signed in with the same account, one button. DOM nodes only.
+async function loadDashTipsPage() {
+    const box = document.getElementById('dash-tips-page-status');
+    if (!box || !currentUser || !currentUser.username) return;
+    let d = null;
+    try { d = await api(`/payments/channel/${encodeURIComponent(currentUser.username)}/elsewhere`); } catch { d = null; }
+    const link = (href, text, cls) => { const a = document.createElement('a'); a.href = href; a.target = '_blank'; a.rel = 'noopener'; if (cls) a.className = cls; a.textContent = text; return a; };
+    const p = document.createElement('p');
+    const row = document.createElement('div');
+    row.className = 'dash-tips-actions';
+    if (d && d.tips_url) {
+        p.append('On at ', link(d.tips_url, d.tips_url.replace(/^https:\/\//, '')), '.');
+        row.append(link(d.tips_url, 'Open my page', 'btn btn-outline'), link('https://openvibe.tips/dashboard', 'Settings and overlays', 'btn btn-outline'));
+    } else {
+        p.className = 'muted';
+        p.textContent = 'Not on yet. One step: the page is made from this account.';
+        row.append(link('https://openvibe.tips/start', 'Turn on my tip page', 'btn btn-primary'));
+    }
+    box.replaceChildren(p, row);
 }
 
 /* ── Goals ─────────────────────────────────────────────────────── */
