@@ -90,6 +90,13 @@ const db = require('../server/db/database');
     await db.setState('ai_looks_repair_rules', 'an older rule set');
     await db.cleanupMalformedAiText();
     assert.strictEqual((await db.get('SELECT description FROM stream_memories WHERE offset_seconds = 9240')).description, 'A person cooks pasta.');
+    // A card line stored without its full text (or derived from an older one) is repaired on its own.
+    await db.run('INSERT INTO clip_ai_state (clip_id, ai_overview_short) VALUES (?, ?)', [990001, 'The video shows a man wearing a headset in a kitchen.']);
+    await db.run('INSERT INTO clip_ai_state (clip_id, ai_overview_short) VALUES (?, ?)', [990002, 'A person adjusts their hair or clothing near the counter.']);
+    await db.setState('ai_looks_repair_rules', 'an older rule set');
+    await db.cleanupMalformedAiText();
+    assert.strictEqual((await db.get('SELECT ai_overview_short FROM clip_ai_state WHERE clip_id = 990001')).ai_overview_short, 'The video shows a person in a kitchen.');
+    assert.strictEqual((await db.get('SELECT ai_overview_short FROM clip_ai_state WHERE clip_id = 990002')).ai_overview_short, ' ', 'a line that is all looks becomes the nothing-to-say sentinel');
     assert.strictEqual((await db.get('SELECT description FROM stream_memories WHERE offset_seconds = 9000')).description, 'The streamer rests his chin on his hand.');
     assert.deepStrictEqual(Object.values(await db.get('SELECT ai_overview, ai_overview_short FROM streams WHERE id = ?', [sid])), ['The streamer plays Fortnite.', 'The streamer plays Fortnite.']);
     assert.strictEqual((await db.get('SELECT description FROM stream_memories WHERE offset_seconds = 9060')).description, 'An older version of the game loads.', 'looks words about things stay');
