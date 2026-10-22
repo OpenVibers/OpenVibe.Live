@@ -709,8 +709,9 @@ app.post('/internal/openre-events', require('./openre/mirror').webhookHandler);
 // Internal (server-to-server) routes — allow openvibe.network to call into this service
 // Summary numbers for the Network's navigation service (ordering sites by real use).
 // A service token with live.analytics.read (loopback only); returns totals, never rows.
-// One computation per window per 10 minutes (./analytics/summary-cache): the full stats take ~4 s of database time.
-const analyticsSummary = require('./analytics/summary-cache').createSummaryCache((days) => analytics.getStats({ days }));
+// The window's totals from the daily rollups, one computation per window per 10 minutes (./analytics/summary-cache).
+const { createSummaryCache, rollupSummary } = require('./analytics/summary-cache');
+const analyticsSummary = createSummaryCache(async (days) => ({ summary: await rollupSummary(db.getDb(), { days }) }));
 app.get('/internal/analytics-summary', require('./net/service-guard').guard('live.analytics.read'), async (req, res) => {
     try {
         const days = Math.min(parseInt(req.query.days, 10) || 7, 90);

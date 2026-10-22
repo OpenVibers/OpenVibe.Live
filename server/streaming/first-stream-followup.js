@@ -2,9 +2,10 @@
 /**
  * The first stream's follow-up (plan 2026-10-22, track C3). Of the 41 people whose first stream was in the last 30
  * days (to 2026-10-22), 10 streamed again within 14 days; most first streams ran 1 to 10 minutes. After someone's
- * first stream ends, they get one notification on the network: how long it ran, where the recording is (a public VOD
- * on OpenVibe.Video once Media has it, else the after-show report, else their channel), and the channel address to
- * share before going live again.
+ * first stream ends, they get one notification on the network: how long it ran, how many signed-in viewers watched
+ * (watch_time: one row per person per stream, the streamer left out; peak_viewers counts connections, not people),
+ * where the recording is (a public VOD on OpenVibe.Video once Media has it, else the after-show report, else their
+ * channel), and the channel address to share before going live again.
  *
  *   run()   every 5 minutes (server/index.js): first streams that ended 5 minutes to 2 hours ago, each notified once
  *           (app_state `first_stream_followup:<user id>`). A stream under 30 seconds is a test and gets nothing.
@@ -25,14 +26,14 @@ function minutes(seconds) {
 }
 
 /** The notification for a first stream: { title, message, url }. */
-function messageFor({ username, seconds, vodUrl }) {
+function messageFor({ username, seconds, vodUrl, watchers = 0 }) {
     const channel = `${LIVE_URL}/@${encodeURIComponent(username)}`;
     const where = vodUrl ? 'The recording is on OpenVibe.Video, ready to watch, clip and share.'
         : seconds >= RECAP_MIN_SECONDS ? 'Your after-show report is ready, and the recording follows on your channel.'
             : 'The recording appears on your channel once it is ready.';
     return {
         title: 'Your first stream is done 🎉',
-        message: `${minutes(seconds)} live. ${where} Next time, share ${channel.replace('https://', '')} before you go live so people can find you.`,
+        message: `${minutes(seconds)} live${watchers > 0 ? `, watched by ${watchers} signed-in ${watchers === 1 ? 'viewer' : 'viewers'}` : ''}. ${where} Next time, share ${channel.replace('https://', '')} before you go live so people can find you.`,
         url: vodUrl || null,
     };
 }
@@ -58,7 +59,8 @@ async function run({ now = Date.now, push = null, vodFor = null } = {}) {
         if (seconds < MIN_SECONDS) continue;
         let vodUrl = null;
         try { vodUrl = await findVod(s); } catch { /* Media unreachable: the channel link instead */ }
-        const m = messageFor({ username: s.username, seconds, vodUrl });
+        const seen = await db.get('SELECT COUNT(*) AS n FROM watch_time WHERE stream_id = ? AND user_id <> ?', [s.id, s.user_id]);
+        const m = messageFor({ username: s.username, seconds, vodUrl, watchers: Number(seen && seen.n) || 0 });
         const url = m.url || (seconds >= RECAP_MIN_SECONDS ? `${LIVE_URL}/recap/${s.id}` : `${LIVE_URL}/@${encodeURIComponent(s.username)}`);
         send({ user_id: s.user_id, type: 'STREAM_SUMMARY', category: 'stream', title: m.title, message: m.message, url });
         sent++;
