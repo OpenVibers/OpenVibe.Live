@@ -271,6 +271,12 @@ async function recutClip(clipId, opts = {}) {
     return await request('POST', `/clips/${clipId}/recut`, opts);
 }
 
+/** Narrow a ready clip in place to { start_s, end_s }, seconds into it → 202 { id, status, job_id } (cut again from its
+ *  source), or the clip (a virtual clip, at once; `unchanged: true` for the whole clip). */
+async function trimClip(clipId, { start_s, end_s }, opts = {}) {
+    return await request('POST', `/clips/${clipId}/trim`, { body: { start_s, end_s }, ...opts });
+}
+
 // ── Files ────────────────────────────────────────────────────────────────────
 
 /** POST /files (multipart) → { key, url, size, mime } */
@@ -425,7 +431,7 @@ module.exports = {
     uploadVodChunk, completeVodChunks, finalizeVod,
     getVod, listVods, updateVod, deleteVod,
     // clips
-    createClip, getClip, listClips, updateClip, deleteClip, recutClip, getJob,
+    createClip, getClip, listClips, updateClip, deleteClip, recutClip, trimClip, getJob,
     // files + thumbnails
     uploadFile, getFileMeta, deleteFile,
     uploadThumbnail, generateThumbnail,

@@ -388,6 +388,35 @@ router.delete('/:id', requireAuth, async (req, res) => {
 });
 
 /**
+ * The clip editor's Save (trim & name a clip just made): the title, then, when the kept part is not the whole clip,
+ * Media narrows the clip in place and cuts it again from its source (Media's POST /clips/:id/trim): the same id, so
+ * its links, comments and chat announcement stay. The same rule as the title: whoever made the clip, the channel's
+ * streamer and mods, staff.
+ *   body { start, end, title? }, seconds into the clip → { id, title, unchanged, status, job_id }; a job_id is the cut
+ *   the editor follows (GET /api/clips/:id/job).
+ */
+router.post('/:id/trim', requireAuth, async (req, res) => {
+    try {
+        if (!/^\d+$/.test(req.params.id)) return clipNotFound(res);
+        let clip;
+        try { clip = await media.getClip(req.params.id); } catch (err) { return mediaErr(res, err, 'Clip not found'); }
+        if (!clip) return clipNotFound(res);
+        if (!(await canActorModerateClip(req.user, clip))) return await refuse(req, res, clip, 'Not authorized to edit this clip');
+        const start = Number(req.body?.start), end = Number(req.body?.end);
+        if (!Number.isFinite(start) || !Number.isFinite(end)) return res.status(400).json({ error: 'start and end are required' });
+        const title = typeof req.body?.title === 'string' ? req.body.title.trim() : '';
+        if (title.length > 200) return res.status(400).json({ error: 'Title must be 1-200 characters' });
+        if (title && title !== clip.title) await media.updateClip(clip.id, { title });
+        const out = await media.trimClip(clip.id, { start_s: start, end_s: end });
+        // A pending chat announcement goes out now with the title (after the cut, when there is one).
+        if (title) { try { await require('./clip-notify').bumpClipNotifyNow(clip.id); } catch { /* */ } }
+        res.json({ id: clip.id, title: title || clip.title, unchanged: !!out?.unchanged, status: out?.status || 'ready', job_id: out?.job_id || null });
+    } catch (err) {
+        mediaErr(res, err, 'Failed to save clip');
+    }
+});
+
+/**
  * Retry a failed clip cut. Same permission rule as deleting one: whoever may remove a
  * clip may also ask for it to be re-rendered. Nothing here is destructive — the row and
  * its timestamps are untouched, only the media is rebuilt.
