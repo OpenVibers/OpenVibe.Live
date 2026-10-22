@@ -411,9 +411,13 @@ const _WEARS_AND = new RegExp(`(?<!-)\\bwears\\s+${_WORN_NP}(?:\\s*(?:,|and|or|w
 const _WEARS_CLAUSE = new RegExp(`,?\\s+(?:while|and|as|whereas)\\s+(?:the other|one|another|someone|he|she|they|the streamer|(?:a|the) (?:man|woman|person|guy))\\s+wears\\s+${_WORN_NP}(?:\\s*(?:,|and|or|with|over|under)\\s+${_WORN_NP})*(?=\\s*(?:[;,.!?]|$))`, 'gi');
 // "a plaid/checkered shirt": a slashed pair of words before what is worn reads as one word, so the rules below see it.
 const _SLASHED_WORN = new RegExp(`\\b([\\w'-]+)/[\\w'-]+(?=\\s+(?:[\\w'-]+\\s+){0,2}?(?:${_WORN_ANY})\\b)`, 'gi');
+// ", with a blue jacket partially visible": a comma-led clause about clothes, whoever wears them, goes (clothes only:
+// "a desk with a headset" stays).
+const _WITH_CLOTHES = /,\s*with\s+(?:(?:a|an|the|their|his|her)\s+)?(?:[\w'-]+\s+){0,2}?(?:t-shirts?|shirts?|tees?|tank tops?|hoodies?|sweatshirts?|sweaters?|jackets?|coats?|vests?|outfits?|dress(?:es)?|jerseys?|suits?|robes?|outerwear)\b[^,.;!?]*/gi;
 function _noClothing(text) {
     return text.split(/("[^"]*"?|“[^”]*”?)/).map((part, i) => (i % 2 ? part : part
         .replace(_SLASHED_WORN, '$1')
+        .replace(_WITH_CLOTHES, '')
         .replace(/\b[\w-]+-wearing\s+/gi, '')
         .replace(_WEARS_AND, '')
         .replace(_WEARS_CLAUSE, '')
@@ -743,7 +747,7 @@ let _looksRulesVersion = null;
 // What the repair covers is part of its version: a change in scope runs the scan again even when the rules did not change.
 const _LOOKS_REPAIR_SCOPE = 'full and short columns, each on its own (2026-10-22)';
 function looksRulesVersion() {
-    if (!_looksRulesVersion) _looksRulesVersion = require('crypto').createHash('sha1').update([_LOOKS_REPAIR_SCOPE, _noLooks, _noLooksWords, _noGender, _noGrooming, _noClothing, _LOOKS, _PEOPLE, _WORN, _WORN_ANY, _FACE, _GENDER_ADJ, _GROOMING].map(String).join('|')).digest('hex').slice(0, 12);
+    if (!_looksRulesVersion) _looksRulesVersion = require('crypto').createHash('sha1').update([_LOOKS_REPAIR_SCOPE, _WITH_CLOTHES, _noLooks, _noLooksWords, _noGender, _noGrooming, _noClothing, _LOOKS, _PEOPLE, _WORN, _WORN_ANY, _FACE, _GENDER_ADJ, _GROOMING].map(String).join('|')).digest('hex').slice(0, 12);
     return _looksRulesVersion;
 }
 async function cleanupMalformedAiText({ force = false } = {}) {
