@@ -206,7 +206,7 @@
     transition: color 0.15s, background 0.15s;
 }
 .bc-ws-item:hover .bc-ws-item-del { display: flex; align-items: center; }
-.bc-ws-item-del:hover { color: var(--danger); background: color-mix(in srgb, var(--danger) 10%, transparent); }
+.bc-ws-item-del:hover { color: var(--danger-text, var(--danger)); background: color-mix(in srgb, var(--danger) 10%, transparent); }
 .bc-ws-empty {
     flex: 1;
     display: flex;
@@ -790,8 +790,8 @@
     line-height: 1.35;
     overflow-wrap: anywhere;
 }
-.bc-restream-err { color: var(--danger, #e74c3c); }
-.bc-restream-warn { color: var(--warning, #f39c12); }
+.bc-restream-err { color: var(--danger-text, var(--danger, #e74c3c)); }
+.bc-restream-warn { color: var(--warning-text, var(--warning, #f39c12)); }
 .bc-restream-transport {
     margin-left: 6px;
     padding: 1px 5px;
@@ -829,11 +829,11 @@
     border-radius: 10px;
     white-space: nowrap;
 }
-.bc-restream-status-live { background: rgba(46, 204, 113, 0.15); color: var(--success, #2ecc71); }
-.bc-restream-status-starting { background: rgba(243, 156, 18, 0.15); color: var(--warning, #f39c12); }
-.bc-restream-status-error { background: rgba(231, 76, 60, 0.15); color: var(--danger, #e74c3c); }
+.bc-restream-status-live { background: rgba(46, 204, 113, 0.15); color: var(--success-text, var(--success, #2ecc71)); }
+.bc-restream-status-starting { background: rgba(243, 156, 18, 0.15); color: var(--warning-text, var(--warning, #f39c12)); }
+.bc-restream-status-error { background: rgba(231, 76, 60, 0.15); color: var(--danger-text, var(--danger, #e74c3c)); }
 .bc-restream-status-idle { background: var(--bg-tertiary); color: var(--text-secondary); }
-.bc-restream-status-failed { background: rgba(231, 76, 60, 0.15); color: var(--danger, #e74c3c); }
+.bc-restream-status-failed { background: rgba(231, 76, 60, 0.15); color: var(--danger-text, var(--danger, #e74c3c)); }
 
 .bc-restream-actions {
     margin-left: auto;
@@ -895,9 +895,9 @@
     gap: 5px;
     white-space: nowrap;
 }
-.bc-rs-live    { color: var(--success, #2ecc71); }
-.bc-rs-connecting { color: var(--warning, #f39c12); }
-.bc-rs-error   { color: var(--danger, #e74c3c); }
+.bc-rs-live    { color: var(--success-text, var(--success, #2ecc71)); }
+.bc-rs-connecting { color: var(--warning-text, var(--warning, #f39c12)); }
+.bc-rs-error   { color: var(--danger-text, var(--danger, #e74c3c)); }
 .bc-rs-ready   { color: var(--text-secondary, #888); }
 .bc-rs-off     { color: var(--text-muted, #555); }
 
@@ -1215,7 +1215,7 @@
 .bc-tab .bc-tab-close:hover {
     opacity: 1;
     background: rgba(231, 76, 60, 0.3);
-    color: var(--danger);
+    color: var(--danger-text, var(--danger));
 }
 #bc-stream-manager {
     padding: 24px;
@@ -1628,7 +1628,7 @@
     background: color-mix(in srgb, var(--danger) 15%, var(--bg-secondary));
     border: 1px solid var(--danger);
     border-radius: var(--radius);
-    color: var(--danger);
+    color: var(--danger-text, var(--danger));
     font-size: 0.85rem;
     font-weight: 600;
     margin: 8px 16px;
@@ -1800,10 +1800,10 @@
     min-width: 80px;
     text-align: right;
 }
-.bc-ws-dirty { color: var(--warning, #e6a700); }
+.bc-ws-dirty { color: var(--warning-text, var(--warning, #e6a700)); }
 .bc-ws-saving { color: var(--text-muted); }
-.bc-ws-saved { color: var(--success, #2ecc71); }
-.bc-ws-save-error { color: var(--danger, #e74c3c); }
+.bc-ws-saved { color: var(--success-text, var(--success, #2ecc71)); }
+.bc-ws-save-error { color: var(--danger-text, var(--danger, #e74c3c)); }
 .bc-ws-panel-hd {
     display: flex;
     align-items: center;
@@ -2433,7 +2433,7 @@
 .bc-switch:has(input:checked) { border-color: color-mix(in srgb, var(--danger, #ef4444) 45%, var(--border)); background: color-mix(in srgb, var(--danger, #ef4444) 7%, transparent); }
 .bc-switch-text { display: grid; gap: 2px; min-width: 0; }
 .bc-switch-text b { font-size: 0.88rem; font-weight: 700; color: var(--text-primary); }
-.bc-switch-text b i { color: var(--danger, #ef4444); margin-right: 3px; }
+.bc-switch-text b i { color: var(--danger-text, var(--danger, #ef4444)); margin-right: 3px; }
 .bc-switch-text small { font-size: 0.76rem; color: var(--text-muted); line-height: 1.4; }
 
 /* Video quality: reads as a row that opens (chevron, current values), not a static label. */

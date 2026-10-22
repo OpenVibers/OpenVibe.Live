@@ -1198,7 +1198,7 @@ body.ov-nav-overlay .navbar.ovnav-top {
     margin: 18px auto 0; font-size: 0.86rem; color: var(--text-secondary);
 }
 .hero-golive-note span { display: inline-flex; align-items: center; gap: 6px; }
-.hero-golive-note i { color: var(--success, #22c55e); font-size: 0.78rem; }
+.hero-golive-note i { color: var(--success-text, var(--success, #22c55e)); font-size: 0.78rem; }
 .hero-golive-note a { color: var(--accent-light); font-weight: 600; }
 .hero-philosophy-btn {
     display: inline-flex;
@@ -1432,7 +1432,7 @@ body.ov-nav-overlay .navbar.ovnav-top {
     font-size: 0.75rem; font-weight: 600;
 }
 .live-dot {
-    color: var(--live-red); font-size: 0.6rem;
+    color: var(--live-red-text, var(--live-red)); font-size: 0.6rem;
     animation: pulse-live 1.5s infinite;
 }
 @keyframes pulse-live {
@@ -2519,7 +2519,7 @@ a.pulse-card:hover { border-color: var(--accent); transform: translateY(-2px); }
 
 .stream-nsfw-gate-card i {
     font-size: clamp(2rem, 5vw, 3rem);
-    color: var(--warning, #f39c12);
+    color: var(--warning-text, var(--warning, #f39c12));
     margin-bottom: 2px;
 }
 
@@ -3631,10 +3631,10 @@ a.pulse-card:hover { border-color: var(--accent); transform: translateY(-2px); }
 .chat-badge i { font-size: 0.66rem; line-height: 1; }
 .chat-badge:hover { transform: translateY(-1px); }
 /* role colours: tinted fill + coloured icon + subtle matching border */
-.chat-badge-admin    { color: var(--warning);      background: color-mix(in srgb, var(--warning) 18%, transparent);      border-color: color-mix(in srgb, var(--warning) 40%, transparent); }
-.chat-badge-mod      { color: var(--success);      background: color-mix(in srgb, var(--success) 18%, transparent);      border-color: color-mix(in srgb, var(--success) 40%, transparent); }
+.chat-badge-admin    { color: var(--warning-text, var(--warning));      background: color-mix(in srgb, var(--warning) 18%, transparent);      border-color: color-mix(in srgb, var(--warning) 40%, transparent); }
+.chat-badge-mod      { color: var(--success-text, var(--success));      background: color-mix(in srgb, var(--success) 18%, transparent);      border-color: color-mix(in srgb, var(--success) 40%, transparent); }
 .chat-badge-cmod     { color: #6ea8ff;             background: color-mix(in srgb, #6ea8ff 18%, transparent);             border-color: color-mix(in srgb, #6ea8ff 40%, transparent); }
-.chat-badge-streamer { color: var(--live-red);     background: color-mix(in srgb, var(--live-red) 18%, transparent);     border-color: color-mix(in srgb, var(--live-red) 40%, transparent); }
+.chat-badge-streamer { color: var(--live-red-text, var(--live-red));     background: color-mix(in srgb, var(--live-red) 18%, transparent);     border-color: color-mix(in srgb, var(--live-red) 40%, transparent); }
 .chat-badge-sub      { color: var(--accent-light, var(--accent)); background: color-mix(in srgb, var(--accent) 18%, transparent); border-color: color-mix(in srgb, var(--accent) 40%, transparent); }
 /* VIP member badge (OpenVibe.VIP): a short text label, so it is a pill rather than an icon square. */
 .chat-vip-badge      { width: auto; padding: 0 5px; font-size: 0.62rem; font-weight: 700; letter-spacing: 0.02em; white-space: nowrap; color: var(--accent-light, var(--accent)); background: color-mix(in srgb, var(--accent) 22%, transparent); border-color: color-mix(in srgb, var(--accent) 50%, transparent); }
@@ -3704,7 +3704,7 @@ a.pulse-card:hover { border-color: var(--accent); transform: translateY(-2px); }
     z-index: 1;
 }
 .chat-slowmode-info i {
-    color: var(--warning);
+    color: var(--warning-text, var(--warning));
     font-size: 0.7rem;
 }
 .chat-slowmode-label {
@@ -3712,7 +3712,7 @@ a.pulse-card:hover { border-color: var(--accent); transform: translateY(-2px); }
     color: var(--text-secondary, var(--text-muted));
 }
 .chat-slowmode-duration {
-    color: var(--warning);
+    color: var(--warning-text, var(--warning));
     font-variant-numeric: tabular-nums;
     font-weight: 600;
 }
@@ -4007,11 +4007,11 @@ a.pulse-card:hover { border-color: var(--accent); transform: translateY(-2px); }
 }
 .ctx-btn:hover { background: var(--bg-hover); }
 .ctx-btn i { width: 16px; text-align: center; color: var(--text-muted); font-size: 0.8rem; }
-.ctx-btn-danger { color: var(--danger); }
-.ctx-btn-danger i { color: var(--danger); }
+.ctx-btn-danger { color: var(--danger-text, var(--danger)); }
+.ctx-btn-danger i { color: var(--danger-text, var(--danger)); }
 .ctx-btn-danger:hover { background: rgba(231,76,60,0.12); }
-.ctx-btn-warn { color: var(--warning, #f39c12); }
-.ctx-btn-warn i { color: var(--warning, #f39c12); }
+.ctx-btn-warn { color: var(--warning-text, var(--warning, #f39c12)); }
+.ctx-btn-warn i { color: var(--warning-text, var(--warning, #f39c12)); }
 .ctx-btn-warn:hover { background: rgba(243,156,18,0.12); }
 
 /* Deleted message fade-out */
@@ -4712,13 +4712,13 @@ body :is(.modal-overlay, .bc-ws-confirm-overlay, .bc-modal, .bc-perm-overlay, .b
     opacity: 0.9;
 }
 .toast.success { border-color: color-mix(in srgb, var(--success) 65%, transparent); }
-.toast.success i { color: var(--success); }
+.toast.success i { color: var(--success-text, var(--success)); }
 .toast.error { border-color: color-mix(in srgb, var(--danger) 65%, transparent); }
-.toast.error i { color: var(--danger); }
+.toast.error i { color: var(--danger-text, var(--danger)); }
 .toast.warning { border-color: color-mix(in srgb, var(--warning) 70%, transparent); }
-.toast.warning i { color: var(--warning); }
+.toast.warning i { color: var(--warning-text, var(--warning)); }
 .toast.info { border-color: color-mix(in srgb, var(--info) 65%, transparent); }
-.toast.info i { color: var(--info); }
+.toast.info i { color: var(--info-text, var(--info)); }
 @keyframes toast-in {
     from { opacity: 0; transform: translate3d(0, -10px, 0) scale(0.98); }
     to { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
@@ -5283,7 +5283,7 @@ body :is(.modal-overlay, .bc-ws-confirm-overlay, .bc-modal, .bc-perm-overlay, .b
 /* ── Media Request tab ── */
 .ch-media-req input { flex: 1; }
 .ch-media-hint i { margin-right: 3px; opacity: 0.8; }
-.ch-media-status.ok { color: var(--success, #4fd48a); }
+.ch-media-status.ok { color: var(--success-text, var(--success, #4fd48a)); }
 .ch-media-section-label i { color: var(--accent); }
 .ch-media-item { display: flex; align-items: center; gap: 12px; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 10px; padding: 8px 10px; flex-wrap: wrap; }
 .ch-media-pos { width: 22px; text-align: center; font-weight: 700; color: var(--text-muted); flex-shrink: 0; }
@@ -5300,7 +5300,7 @@ body :is(.modal-overlay, .bc-ws-confirm-overlay, .bc-modal, .bc-perm-overlay, .b
 /* Quote card: the exact price for this link, shown before anything is charged. */
 .ch-media-quote-meta { min-width: 0; flex: 1; }
 .ch-media-quote-price i { color: var(--accent); }
-.ch-media-quote-price.ok { color: var(--success, #4fd48a); }
+.ch-media-quote-price.ok { color: var(--success-text, var(--success, #4fd48a)); }
 /* Container-relative, not viewport-relative: the channel tab is a narrow column even on
    a wide screen, which is why viewport breakpoints alone left the controls clipped. */
 @media (max-width: 900px) {
@@ -5449,7 +5449,7 @@ body :is(.modal-overlay, .bc-ws-confirm-overlay, .bc-modal, .bc-perm-overlay, .b
 .uai-section h4 .uai-tag { margin-left: auto; font-size: 0.68rem; padding: 1px 7px; border-radius: 999px; text-transform: none; letter-spacing: 0; }
 .uai-tag-today { background: color-mix(in srgb, var(--accent) 22%, transparent); color: var(--accent); }
 .uai-tag-all { background: var(--bg-tertiary); color: var(--text-secondary); }
-.uai-tag-streamer { background: color-mix(in srgb, var(--live-red, #e05a5a) 20%, transparent); color: var(--live-red, #e05a5a); }
+.uai-tag-streamer { background: color-mix(in srgb, var(--live-red, #e05a5a) 20%, transparent); color: var(--live-red-text, var(--live-red, #e05a5a)); }
 .uai-body { font-size: 0.9rem; line-height: 1.55; color: var(--text-primary); }
 /* Collapsible overview sections (collapsed by default; header toggles open) */
 .uai-collapsible .uai-collapse-toggle { cursor: pointer; user-select: none; }
@@ -6868,11 +6868,11 @@ body.theme-light .btn-outline:hover {
     text-transform: uppercase;
 }
 .paste-card-pin {
-    color: var(--warning, #f59e0b);
+    color: var(--warning-text, var(--warning, #f59e0b));
     font-size: 0.75rem;
 }
 .paste-card-burn {
-    color: var(--danger, #ef4444);
+    color: var(--danger-text, var(--danger, #ef4444));
     font-size: 0.75rem;
 }
 .paste-card-nsfw {
@@ -7521,7 +7521,7 @@ body.theme-light .btn-outline:hover {
     min-width: 0;
 }
 .vc-channel-count.full {
-    color: var(--danger);
+    color: var(--danger-text, var(--danger));
 }
 
 /* Participant list — shown inside channel items */
@@ -8814,7 +8814,7 @@ body.theme-light .btn-outline:hover {
     background: var(--bg-primary, #1e1e24);
     border-bottom: 1px solid var(--border, #3a3a44);
     font-size: 1.05rem; font-weight: 600;
-    color: var(--warning, #f59e0b);
+    color: var(--warning-text, var(--warning, #f59e0b));
 }
 .link-trust-header i { font-size: 1.2rem; }
 
@@ -9097,7 +9097,7 @@ body.theme-light .btn-outline:hover {
     padding: 32px 0; text-align: center; color: var(--text-muted);
     font-size: 0.9rem;
 }
-.admin-tools-error { color: var(--danger); }
+.admin-tools-error { color: var(--danger-text, var(--danger)); }
 
 /* Admin tools button in context menu */
 .ctx-btn-admin-tools { color: var(--accent); }
@@ -10348,7 +10348,7 @@ label.staff-inline-toggle.aiv-field { flex-direction:row; align-items:center; }
 /* The live dot keeps its pulse and stays a dot — a tile around it would hide the signal. */
 .section-header h2 > i.live-dot {
     width: auto; height: auto; background: none; border: 0; box-shadow: none;
-    color: var(--live-red); font-size: 0.62rem;
+    color: var(--live-red-text, var(--live-red)); font-size: 0.62rem;
 }
 /* A rule that carries the section colour out across the page and fades. */
 .section-header::after {
@@ -10634,7 +10634,7 @@ label.staff-inline-toggle.aiv-field { flex-direction:row; align-items:center; }
 .ov-conn-pill[data-state="connected"] .ov-conn-dot { background: var(--success); }
 @keyframes ovConnPulse { 50% { transform: scale(0.55); opacity: 0.5; } }
 .chat-conn-status { font-style: italic; opacity: 0.85; }
-.chat-conn-status[data-state="connected"] { color: var(--success); }
+.chat-conn-status[data-state="connected"] { color: var(--success-text, var(--success)); }
 @media (prefers-reduced-motion: reduce) {
     .ov-conn-pill { transition: opacity var(--motion-fast) linear; transform: translate3d(-50%, 0, 0); }
     .ov-conn-pill .ov-conn-dot { animation: none !important; }
