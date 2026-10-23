@@ -37,6 +37,8 @@ const COSMETICS = {
     // One of a kind (2026-10-22, the owner's gift to his friend Josh, "Josh Vegas" since they were kids), with its set
     // (px_vegas, hat_vegas, voice_vegas): granted to their one holder, never listed in the catalog nor earnable.
     fx_vegas:    { name: 'Josh Vegas',    emoji: '🎰', category: 'name_effect', tier: 6, cssClass: 'name-fx-vegas',    desc: 'Slot reels and casino lights', exclusive: true },
+    // 2fat's set (2026-10-23, the owner's ask; px_twofat, hat_twofat, voice_twofat): the old classic bangers, back.
+    fx_twofat:   { name: '2fat Bass Drop', emoji: '🔊', category: 'name_effect', tier: 6, cssClass: 'name-fx-twofat',   desc: 'A bass drop and a dancing equalizer', exclusive: true },
 
     // ── Particle Effects ─────────────────────────────────
     px_sparkle:  { name: 'Sparkle',       emoji: '✨', category: 'particle', tier: 1, cssClass: 'px-sparkle',  chars: '✦✧⋆',    desc: 'Sparkle particles' },
@@ -45,6 +47,7 @@ const COSMETICS = {
     px_stars:    { name: 'Stars',         emoji: '⭐', category: 'particle', tier: 2, cssClass: 'px-stars',    chars: '★☆✩',    desc: 'Orbiting stars' },
     px_void:     { name: 'Void',          emoji: '🕳️', category: 'particle', tier: 3, cssClass: 'px-void',    chars: '◉◎⊙',    desc: 'Dark matter' },
     px_vegas:    { name: 'Josh Vegas Chips', emoji: '🎲', category: 'particle', tier: 6, cssClass: 'px-vegas', chars: '♠♥♦♣🎲🪙💰', desc: 'Cards, dice and coins', exclusive: true },
+    px_twofat:   { name: '2fat Bangers', emoji: '💿', category: 'particle', tier: 6, cssClass: 'px-twofat', chars: '🎵🎶💿📼🔊', desc: 'Notes, a CD and a tape', exclusive: true },
 
     // ── Hats ─────────────────────────────────────────────
     hat_basic_cap:  { name: 'Basic Cap',    emoji: '🧢', category: 'hat', tier: 1, hatChar: '🧢', desc: 'Simple cap' },
@@ -54,6 +57,7 @@ const COSMETICS = {
     hat_halo:       { name: 'Halo',         emoji: '😇', category: 'hat', tier: 5, hatChar: '😇', animated: 'float',  desc: 'Angelic' },
     hat_void_crown: { name: 'Void Crown',   emoji: '🕳️', category: 'hat', tier: 6, hatChar: '🕳️', animated: 'warp', desc: 'From the dungeon depths' },
     hat_vegas:      { name: 'Josh Vegas Top Hat', emoji: '🎩', category: 'hat', tier: 6, hatChar: '🎩', animated: 'float', desc: 'The showman on the Strip', exclusive: true },
+    hat_twofat:     { name: '2fat Boombox', emoji: '📻', category: 'hat', tier: 6, hatChar: '📻', animated: 'pulse', desc: 'The old classic bangers, back on the air', exclusive: true },
 
     // ── Voices (TTS style — cosmetic, actual TTS is client-side SpeechSynthesis) ──
     voice_default:  { name: 'Default Voice',  emoji: '🔊', category: 'voice', tier: 0, desc: 'Standard TTS' },
@@ -149,6 +153,7 @@ const COSMETICS = {
     pl_matthew_gen:      { name: 'Gen Matt', emoji: '🌟', category: 'voice', tier: 6, pitch: 1.0, rate: 1.0, desc: 'Amazon Polly Generative' },
     pl_ruth_gen:         { name: 'Gen Ruth', emoji: '🌟', category: 'voice', tier: 6, pitch: 1.0, rate: 1.0, desc: 'Amazon Polly Generative' },
     voice_vegas:        { name: 'Vegas Announcer',   emoji: '🎙️', category: 'voice', tier: 6, pitch: 0.7, rate: 0.92, desc: 'Ladies and gentlemen…', exclusive: true },
+    voice_twofat:       { name: 'Bass Boss',         emoji: '🎛️', category: 'voice', tier: 6, pitch: 0.6, rate: 1.0, desc: 'Deep enough to rattle the subwoofer', exclusive: true },
 };
 
 // Category → slot name mapping
@@ -177,33 +182,68 @@ async function getEquipped(userId) {
     }, {});
 }
 
-/** What a chat line carries for one { slot → item id } set: { nameFX, particleFX, hatFX, badgeFX, voiceFX } (each optional). */
-function profileOf(equipped) {
+/**
+ * A renderer for an item Live's catalog does not list but Inventory defines (a one-of-a-kind set made for one person,
+ * say), read from the definition's attributes and checked as strictly as Inventory's own kinds: a name effect or
+ * particle class Chat and the stylesheets accept, at most 16 particle characters, a hat of at most 8 with a known
+ * motion, a voice's pitch and rate in range. So a new item shows in chat as soon as Inventory has it and the
+ * stylesheets draw its class, without waiting for a Live release (2fat's set waited for one, 2026-10-23).
+ */
+const KIND_SLOT = { 'live.name_effect': 'name_effect', 'live.particle': 'particle', 'live.hat': 'hat', 'live.voice': 'voice' };
+function fromDefinition(d) {
+    const a = d && d.attributes;
+    if (!a || typeof a !== 'object') return null;
+    const num = (v, lo, hi) => (typeof v === 'number' && v >= lo && v <= hi ? v : null);
+    switch (KIND_SLOT[d.kind]) {
+        case 'name_effect':
+            return /^name-fx-[a-z]{2,24}$/.test(String(a.css_class || '')) ? { category: 'name_effect', cssClass: a.css_class } : null;
+        case 'particle':
+            return /^px-[a-z]{2,24}$/.test(String(a.css_class || '')) && typeof a.chars === 'string' && a.chars && a.chars.length <= 16
+                ? { category: 'particle', cssClass: a.css_class, chars: a.chars } : null;
+        case 'hat':
+            return typeof a.hat_char === 'string' && a.hat_char && a.hat_char.length <= 8 && (a.animated == null || ['float', 'pulse', 'warp'].includes(a.animated))
+                ? { category: 'hat', hatChar: a.hat_char, animated: a.animated || null } : null;
+        case 'voice': {
+            const pitch = num(a.pitch, 0, 2);
+            const rate = num(a.rate, 0.1, 3);
+            return pitch != null && rate != null ? { category: 'voice', pitch, rate } : null;
+        }
+        default: return null;
+    }
+}
+
+/**
+ * What a chat line carries for one { slot → item id } set: { nameFX, particleFX, hatFX, badgeFX, voiceFX } (each
+ * optional). `defs` (Inventory's definitions by alias) renders an item Live's catalog does not list (fromDefinition).
+ */
+function profileOf(equipped, defs = null) {
+    const item = (slot) => {
+        const alias = equipped[slot];
+        if (!alias) return null;
+        if (COSMETICS[alias]) return COSMETICS[alias];
+        const c = fromDefinition(defs && defs.get(alias));
+        return c && c.category === slot ? c : null;
+    };
     const result = {};
-    if (equipped.name_effect && COSMETICS[equipped.name_effect]) {
-        const c = COSMETICS[equipped.name_effect];
-        result.nameFX = { itemId: equipped.name_effect, cssClass: c.cssClass };
-    }
-    if (equipped.particle && COSMETICS[equipped.particle]) {
-        const c = COSMETICS[equipped.particle];
-        result.particleFX = { itemId: equipped.particle, cssClass: c.cssClass, chars: c.chars };
-    }
-    if (equipped.hat && COSMETICS[equipped.hat]) {
-        const c = COSMETICS[equipped.hat];
-        result.hatFX = { itemId: equipped.hat, hatChar: c.hatChar, cssClass: c.hatChar, animated: c.animated };
-    }
+    const fx = item('name_effect');
+    if (fx) result.nameFX = { itemId: equipped.name_effect, cssClass: fx.cssClass };
+    const px = item('particle');
+    if (px) result.particleFX = { itemId: equipped.particle, cssClass: px.cssClass, chars: px.chars };
+    const hat = item('hat');
+    if (hat) result.hatFX = { itemId: equipped.hat, hatChar: hat.hatChar, cssClass: hat.hatChar, animated: hat.animated };
     // A community badge from the Workshop (network.badge): its reviewed image on OpenVibe.Media, before the name.
     if (/^med_[0-9A-HJKMNP-TV-Z]{26}$/.test(String(equipped._badge || ''))) result.badgeFX = { mediaId: equipped._badge };
-    if (equipped.voice && COSMETICS[equipped.voice]) {
-        const c = COSMETICS[equipped.voice];
-        result.voiceFX = { itemId: equipped.voice, pitch: c.pitch, rate: c.rate };
-    }
+    const voice = item('voice');
+    if (voice) result.voiceFX = { itemId: equipped.voice, pitch: voice.pitch, rate: voice.rate };
     return result;
 }
 
+/** Inventory's definitions by alias (cached by the client), or null when Inventory cannot be read. */
+const definitions = async () => await quietly(async () => (await inventory.catalog()).byAlias, null);
+
 // ── Get full cosmetic profile (for chat messages) ────────────
 async function getCosmeticProfile(userId) {
-    return profileOf(await getEquipped(userId));
+    return profileOf(await getEquipped(userId), await definitions());
 }
 
 /**
@@ -217,7 +257,8 @@ async function getCosmeticProfiles(userIds) {
         const subjects = new Map();
         for (const id of userIds) { const s = await inventory.subjectOf(id); if (s) subjects.set(id, s); }
         const sets = await inventory.equippedMany([...new Set(subjects.values())]);
-        for (const [id, s] of subjects) out[id] = profileOf(sets.get(s) || {});
+        const defs = await definitions();
+        for (const [id, s] of subjects) out[id] = profileOf(sets.get(s) || {}, defs);
     }, null);
     return out;
 }
@@ -319,6 +360,7 @@ async function getFullInventory(userId) {
 
 module.exports = {
     COSMETICS,
+    profileOf,
     getUnlocked,
     getEquipped,
     getCosmeticProfile,
