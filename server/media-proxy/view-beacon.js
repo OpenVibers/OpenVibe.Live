@@ -59,6 +59,9 @@ function createViewBeacon({ rateLimit }) {
         const origin = req.get('origin');
         if (!origin || !VIEW_ORIGINS.has(origin)) return res.status(403).json({ error: 'Origin not allowed' });
         res.set('Access-Control-Allow-Origin', origin);
+        // Helmet's same-origin resource policy made the browser refuse the beacon's answer (a console error on every
+        // watch page; the view was still counted): the allowed site may read it.
+        res.set('Cross-Origin-Resource-Policy', 'cross-origin');
         res.set('Vary', 'Origin');
         res.set('Cache-Control', 'no-store');
         if (req.method === 'OPTIONS') {
