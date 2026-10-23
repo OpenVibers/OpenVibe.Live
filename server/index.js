@@ -1501,6 +1501,9 @@ async function start() {
     const deadAir = require('./streaming/dead-air').createDeadAir({ limitMs: Math.max(5, Number(process.env.LIVE_DEAD_AIR_MINUTES) || 30) * 60 * 1000 });
     /** Everything a stream that is gone needs: ended, its recording finalized, its bridges, restreams and room closed. */
     async function endGoneStream(stream, reason) {
+        // A WHIP client can stay connected while sending nothing: close its session first, so the stream ends with
+        // this reason and nothing keeps it alive.
+        try { await require('./streaming/whip-handler').endSessionsForStream(stream.id, reason); } catch (e) { console.warn(`[WHIP] closing stream ${stream.id}'s sessions failed:`, e.message); }
         await db.endStream(stream.id, reason);
         try { await db.computeAndCacheStreamAnalytics(stream.id); } catch {}
         // Auto-finalize any active VOD recording for this stream (via OpenVibe.Media)
