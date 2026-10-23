@@ -3331,6 +3331,8 @@ a.pulse-card:hover { border-color: var(--accent); transform: translateY(-2px); }
     touch-action: pan-y;
     scrollbar-gutter: stable;
 }
+/* The list takes keyboard focus so it scrolls without a mouse (axe scrollable-region-focusable); the ring sits inside it. */
+.chat-messages:focus-visible { outline: 2px solid var(--accent-light, var(--accent)); outline-offset: -2px; }
 .chat-msg {
     font-size: 0.85rem; line-height: 1.4;
     padding: 2px 0; word-break: break-word;
