@@ -340,7 +340,8 @@ console.log('✅ API: front page, topic, reactions as a signed-out reader; old /
     const started = Date.parse((await db.get('SELECT started_at FROM streams WHERE id = ?', [st])).started_at.replace(' ', 'T') + 'Z');
     const chat = require('../server/chat/chat-client');
     const prevRead = chat.readMessages;
-    chat.readMessages = async (q) => (Number(q.stream_id) === st && !q.after_id ? { messages: [{ id: 7, message: 'WTF this site is so cool', message_type: 'chat', timestamp: new Date(started + 5000).toISOString().replace('T', ' ').slice(0, 19) }] } : { messages: [] });
+    // Like Chat: an after_id that is not a positive id is a 400 (the first page names none).
+    chat.readMessages = async (q) => (q.after_id !== undefined && !(Number(q.after_id) > 0) ? Promise.reject(new Error('Chat answered 400 (Invalid after_id)')) : Number(q.stream_id) === st && !q.after_id ? { messages: [{ id: 7, message: 'WTF this site is so cool', message_type: 'chat', timestamp: new Date(started + 5000).toISOString().replace('T', ' ').slice(0, 19) }] } : { messages: [] });
     desk._test.reset();
     await desk.tick();
     const sent = calls.filter((c) => c.workflow === 'live.rundown.segment' && c.input.streamer === 'ttsstreamer');
