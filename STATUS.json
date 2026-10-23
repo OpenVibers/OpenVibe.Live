@@ -7,7 +7,7 @@
   "domain": "openvibe.live (www, ingest, whip)",
   "contracts": "openvibe-contracts v0.209.0",
   "sdk": "openvibe-sdk v0.61.0",
-  "shared": "openvibe-shared v4.8.0",
+  "shared": "openvibe-shared v4.9.0",
   "capabilities": [
     "live.chat_context.read",
     "live.chat_effects.write",
@@ -32,5 +32,5 @@
     "per-actor limits on API writes; account export and deletion contributions; follows on OpenVibe.Network",
     "channel ↔ OpenVibe.Bot robot binding, its dashboard field and the Bot panel iframe on the channel page behind LIVE_BOT_EMBED (off by default; on in production)"
   ],
-  "updated": "2026-10-22"
+  "updated": "2026-10-23"
 }
