@@ -246,6 +246,71 @@
     .name-fx-vegas, .name-fx-vegas::before, .name-fx-vegas::after { animation: none !important; }
     .name-fx-vegas { filter: drop-shadow(0 0 3px rgba(255, 207, 63, .9)); }
 }
+/* 2fat Bass Drop (2026-10-23, one of a kind: 2fat, who brings the old classic bangers back): the name thumps on the beat,
+   a big drop then a smaller one, in club lights, with an equalizer dancing before it and a speaker after it. Only its
+   one holder wears it (fx_twofat is never in the catalog). The equalizer and the speaker are pseudo-elements, so they
+   carry their own fill, pause and reduced-motion rules. */
+.name-fx-twofat {
+    background: linear-gradient(90deg, #ff2fd6 0%, #a855ff 25%, #3de0ff 50%, #a855ff 75%, #ff2fd6 100%);
+    background-size: 200% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    display: inline-block;
+    font-weight: 900;
+    letter-spacing: .03em;
+    white-space: nowrap;
+    transform-origin: 50% 70%;
+    animation: nameFxTwofatLights 3s linear infinite, nameFxTwofatThump 1s ease-out infinite;
+}
+.name-fx-twofat::before {
+    content: '▂▅▇▃▆';
+    display: inline-block;
+    margin-right: .3em;
+    color: #3de0ff;
+    -webkit-text-fill-color: #3de0ff;
+    text-shadow: 0 0 4px rgba(61, 224, 255, .8);
+    font-size: .6em;
+    letter-spacing: .12em;
+    vertical-align: .1em;
+    animation: nameFxTwofatEq .5s steps(1, end) infinite;
+}
+.name-fx-twofat::after {
+    content: '🔊';
+    display: inline-block;
+    margin-left: .3em;
+    -webkit-text-fill-color: initial;
+    font-size: .85em;
+    animation: nameFxTwofatSpeaker 1s ease-out infinite;
+}
+@keyframes nameFxTwofatLights {
+    0% { background-position: 0% 50%; }
+    100% { background-position: 200% 50%; }
+}
+/* The beat: a big thump, then a smaller one, the glow flaring pink, then blue. */
+@keyframes nameFxTwofatThump {
+    0% { transform: scale(1.12); filter: drop-shadow(0 0 6px rgba(255, 47, 214, .95)); }
+    18% { transform: scale(1); filter: drop-shadow(0 0 2px rgba(168, 85, 255, .6)); }
+    50% { transform: scale(1.05); filter: drop-shadow(0 0 4px rgba(61, 224, 255, .85)); }
+    68%, 100% { transform: scale(1); filter: drop-shadow(0 0 2px rgba(168, 85, 255, .6)); }
+}
+/* The equalizer jumps four times a beat (a browser that cannot animate `content` shows the first frame). */
+@keyframes nameFxTwofatEq {
+    0% { content: '▂▅▇▃▆'; }
+    25% { content: '▅▃▆▇▂'; }
+    50% { content: '▇▆▂▅▃'; }
+    75% { content: '▃▇▅▂▆'; }
+}
+@keyframes nameFxTwofatSpeaker {
+    0% { transform: scale(1.25); }
+    25%, 100% { transform: scale(1); }
+}
+.chat-msg.has-fx:not(.fx-on) .name-fx-twofat::before,
+.chat-msg.has-fx:not(.fx-on) .name-fx-twofat::after { animation-play-state: paused !important; }
+@media (prefers-reduced-motion: reduce) {
+    .name-fx-twofat, .name-fx-twofat::before, .name-fx-twofat::after { animation: none !important; }
+    .name-fx-twofat { filter: drop-shadow(0 0 3px rgba(255, 47, 214, .9)); }
+}
 
 
 /* ══════════════════════════════════════════════════════════════
@@ -278,6 +343,8 @@
 .px-void .chat-particle { color: #9900ff; }
 /* Josh Vegas particles: card suits, dice and coins thrown from the name in casino gold. */
 .px-vegas .chat-particle { color: #ffcf3f; text-shadow: 0 0 4px rgba(255, 61, 127, .75); }
+/* 2fat's bangers: notes, a CD and a tape thrown from the name in club pink with a blue glow. */
+.px-twofat .chat-particle { color: #ff2fd6; text-shadow: 0 0 4px rgba(61, 224, 255, .8); }
 
 
 /* ══════════════════════════════════════════════════════════════
