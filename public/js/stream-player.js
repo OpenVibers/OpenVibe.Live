@@ -1581,8 +1581,10 @@ async function handleSfuViewerReady(msg, ws, video, updateStatus, scheduleRewatc
                 if (!_hasVideoFrames && !player._stallTimer) {
                     console.log('[Player] SFU transport connected — starting 20s first-frame grace window');
                     player._stallTimer = setTimeout(() => {
+                        // The player can be torn down (player = null) before this fires: RUM saw the TypeError.
+                        if (!player) return;
                         player._stallTimer = null;
-                        if (!player || player._sfuRecvTransport !== recvTransport || _hasVideoFrames) return;
+                        if (player._sfuRecvTransport !== recvTransport || _hasVideoFrames) return;
                         const streamTracks = video.srcObject?.getTracks() || [];
                         const trackInfo = streamTracks.map(t => `${t.kind}:${t.readyState}:enabled=${t.enabled}:muted=${t.muted}`).join(', ');
                         console.warn(`[Player] SFU video stall — no frames after 20s post-connect | readyState=${video.readyState} videoWidth=${video.videoWidth} paused=${video.paused} currentTime=${video.currentTime.toFixed(2)} networkState=${video.networkState} error=${video.error?.message || 'none'} srcObjectActive=${video.srcObject?.active} tracks=[${trackInfo}] transportState=${recvTransport.connectionState}`);
@@ -1659,19 +1661,16 @@ async function handleSfuViewerReady(msg, ws, video, updateStatus, scheduleRewatc
             }).catch((err) => {
                 _playPending = false;
                 console.warn(`[Player] play() failed: ${err.name}: ${err.message} — readyState=${video.readyState} videoWidth=${video.videoWidth} networkState=${video.networkState}`);
-                if (err.name === 'AbortError') {
-                    player._playRetryTimer = setTimeout(() => {
-                        player._playRetryTimer = null;
-                        _playPending = false;
-                        tryPlay();
-                    }, 300);
-                } else {
-                    player._playRetryTimer = setTimeout(() => {
-                        player._playRetryTimer = null;
-                        _playPending = false;
-                        tryPlay();
-                    }, 1000);
-                }
+                // A play() that settles after the player was torn down retries nothing (RUM: "Cannot set properties of
+                // null (setting '_playRetryTimer')").
+                if (!player) return;
+                const retryIn = err.name === 'AbortError' ? 300 : 1000;
+                player._playRetryTimer = setTimeout(() => {
+                    if (!player) return;
+                    player._playRetryTimer = null;
+                    _playPending = false;
+                    tryPlay();
+                }, retryIn);
             });
         };
 
@@ -1875,8 +1874,9 @@ async function handleSfuViewerReady(msg, ws, video, updateStatus, scheduleRewatc
         // Start playback after all tracks consumed
         if (consumedCount >= 2) {
             tryPlay();
-        } else {
+        } else if (player) {
             player._playRetryTimer = setTimeout(() => {
+                if (!player) return;
                 player._playRetryTimer = null;
                 _playPending = false;
                 tryPlay();
