@@ -650,7 +650,7 @@ function _extractDescFromMaybeJson(text) {
 // written, so the scan only needs to run again when the scrub rules change: this hash of their source says when.
 let _looksRulesVersion = null;
 // What the repair covers is part of its version: a change in scope runs the scan again even when the rules did not change.
-const _LOOKS_REPAIR_SCOPE = 'full and short columns, each on its own (2026-10-22)';
+const _LOOKS_REPAIR_SCOPE = 'full and short columns, each on its own; pronouns (2026-10-23)';
 function looksRulesVersion() {
     if (!_looksRulesVersion) _looksRulesVersion = require('crypto').createHash('sha1').update([_LOOKS_REPAIR_SCOPE, _LOOKS_RULES].join('|')).digest('hex').slice(0, 12);
     return _looksRulesVersion;
@@ -698,7 +698,7 @@ async function cleanupMalformedAiText({ force = false } = {}) {
     // prompts forbade it): the person becomes "the streamer" and the card line follows.
     let looksDone = false;
     try { looksDone = !force && (await getState('ai_looks_repair_rules')) === looksRulesVersion(); } catch { looksDone = false; }
-    const looks = "~* '(shirtless|topless|bare-chested|young|teen|little|bearded|bald|blond|haired|tattooed|muscular|heavyset|older|elderly|middle-aged|skinny|slim|chubby|attractive|pretty|handsome|cute|boy|girl|kid|child|youth)|\\m(wear|dressed|sporting|shirt|t-shirt|tee|tank top|hoodie|sweat|jacket|coat|vest|beanie|cap|hat|helmet|headset|headphones|sunglasses|glasses|outfit|dress|jersey|suit|robe|bandana|scar|mask|attire|apparel|beard|mustache|moustache|goatee|stubble|tattoo|hair|ponytail|braids|dreadlocks|piercing|freckles|makeup|[a-z-]+-wearing)|\\m(man|woman|men|women|guy|guys|gal|lady|ladies|gentleman|gentlemen|male|female)\\M'";
+    const looks = "~* '(shirtless|topless|bare-chested|young|teen|little|bearded|bald|blond|haired|tattooed|muscular|heavyset|older|elderly|middle-aged|skinny|slim|chubby|attractive|pretty|handsome|cute|boy|girl|kid|child|youth)|\\m(wear|dressed|sporting|shirt|t-shirt|tee|tank top|hoodie|sweat|jacket|coat|vest|beanie|cap|hat|helmet|headset|headphones|sunglasses|glasses|outfit|dress|jersey|suit|robe|bandana|scar|mask|attire|apparel|beard|mustache|moustache|goatee|stubble|tattoo|hair|ponytail|braids|dreadlocks|piercing|freckles|makeup|[a-z-]+-wearing)|\\m(man|woman|men|women|guy|guys|gal|lady|ladies|gentleman|gentlemen|male|female|he|she|him|his|her|hers|himself|herself)\\M'";
     for (const [table, key, col, short] of [['stream_memories', 'id', 'description', null], ['streams', 'id', 'ai_overview', 'ai_overview_short'],
         ['vod_ai_state', 'vod_id', 'ai_overview', 'ai_overview_short'], ['clip_ai_state', 'clip_id', 'ai_overview', 'ai_overview_short'],
         ['streamer_overviews', 'user_id', 'overview', 'overview_short']]) {

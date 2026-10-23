@@ -36,7 +36,7 @@ const db = require('../server/db/database');
         ['Panelists discuss while wearing headsets and microphones, with a trophy nearby.', 'Panelists discuss, with a trophy nearby.'],
         ['A man wearing sunglasses on his head looks down at the camera.', 'A person looks down at the camera.'],
         ['A collage of a man in a white shirt and tie wearing dark sunglasses in the left panel.', 'A collage of a person in the left panel.'],
-        ['Behind him a green mat; he wears a blue jacket and is leaning to the left.', 'Behind him a green mat; he is leaning to the left.'],
+        ['Behind him a green mat; he wears a blue jacket and is leaning to the left.', 'Behind them a green mat; the person is leaning to the left.'],
         ['Two men lift weights, one shirtless and sweating.', 'Two people lift weights, one sweating.'],
         ['Two men stand in an alley, one and drinking from a bottle while the other wears a dusty t-shirt; both look tired.', 'Two people stand in an alley, one drinking from a bottle; both look tired.'],
         ['A man wearing a green bucket hat with frog-like eyes sits indoors.', 'A person sits indoors.'],
@@ -98,6 +98,11 @@ const db = require('../server/db/database');
     await db.setState('ai_looks_repair_rules', 'an older rule set');
     await db.cleanupMalformedAiText();
     assert.strictEqual((await db.get('SELECT description FROM stream_memories WHERE offset_seconds = 9240')).description, 'A person cooks pasta.');
+    // A pronoun is a guessed gender too (SDK 0.62.0): a row whose only gendered word is "he" or "his" is repaired.
+    await db.run('INSERT INTO stream_memories (stream_id, user_id, offset_seconds, description) VALUES (?, ?, ?, ?)', [sid, uid, 9300, 'The streamer says he will check his settings.']);
+    await db.setState('ai_looks_repair_rules', 'an older rule set');
+    await db.cleanupMalformedAiText();
+    assert.strictEqual((await db.get('SELECT description FROM stream_memories WHERE offset_seconds = 9300')).description, 'The streamer says the person will check their settings.');
     // A card line stored without its full text (or derived from an older one) is repaired on its own.
     await db.run('INSERT INTO clip_ai_state (clip_id, ai_overview_short) VALUES (?, ?)', [990001, 'The video shows a man wearing a headset in a kitchen.']);
     await db.run('INSERT INTO clip_ai_state (clip_id, ai_overview_short) VALUES (?, ?)', [990002, 'A person adjusts their hair or clothing near the counter.']);
@@ -105,7 +110,7 @@ const db = require('../server/db/database');
     await db.cleanupMalformedAiText();
     assert.strictEqual((await db.get('SELECT ai_overview_short FROM clip_ai_state WHERE clip_id = 990001')).ai_overview_short, 'The video shows a person in a kitchen.');
     assert.strictEqual((await db.get('SELECT ai_overview_short FROM clip_ai_state WHERE clip_id = 990002')).ai_overview_short, ' ', 'a line that is all looks becomes the nothing-to-say sentinel');
-    assert.strictEqual((await db.get('SELECT description FROM stream_memories WHERE offset_seconds = 9000')).description, 'The streamer rests his chin on his hand.');
+    assert.strictEqual((await db.get('SELECT description FROM stream_memories WHERE offset_seconds = 9000')).description, 'The streamer rests their chin on their hand.');
     assert.deepStrictEqual(Object.values(await db.get('SELECT ai_overview, ai_overview_short FROM streams WHERE id = ?', [sid])), ['The streamer plays Fortnite.', 'The streamer plays Fortnite.']);
     assert.strictEqual((await db.get('SELECT description FROM stream_memories WHERE offset_seconds = 9060')).description, 'An older version of the game loads.', 'looks words about things stay');
 
