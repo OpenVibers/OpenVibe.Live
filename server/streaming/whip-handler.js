@@ -148,6 +148,19 @@ function findSessionsByStreamId(streamId) {
 
 const _WHIP_KEEPALIVE_INTERVAL_MS = 30000;
 
+/**
+ * Close every WHIP session of a stream that Live is ending for its own reasons (dead air, a lost heartbeat): the
+ * producers and transport go, the keepalive stops touching the stream's heartbeat, and the client learns it is over
+ * when its connection fails. The stream itself is the caller's to end, with its reason (no endActiveWhipStream here).
+ * 2026-10-23: stream 2718's client stayed connected and silent for 9 hours; ending only the row would have left its
+ * session in place.
+ */
+async function endSessionsForStream(streamId, reason = 'stream_ended') {
+    const found = findSessionsByStreamId(streamId);
+    for (const { resourceId } of found) await cleanupSession(resourceId, { endStreamIfNoActiveSessions: false, reason });
+    return found.length;
+}
+
 async function cleanupExistingSessionsForStream(streamId) {
     for (const { resourceId } of findSessionsByStreamId(streamId)) {
         console.log(`[WHIP] Cleaning existing WHIP session ${resourceId} for stream ${streamId}`);
@@ -1201,6 +1214,7 @@ module.exports = {
     hasActiveSessionsForStream,
     sessions,
     cleanupSession,
+    endSessionsForStream,
     available: !!sdpTransform,
     _extractRtpParameters: extractRtpParameters,
     _extractDtlsParameters: extractDtlsParameters,
