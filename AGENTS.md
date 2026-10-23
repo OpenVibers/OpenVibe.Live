@@ -67,7 +67,7 @@ Each feature lives in its own `server/<feature>/` directory with `routes.js` + s
 
 ## WebSocket Endpoints
 
-`/ws/broadcast`, `/ws/call`, `/ws/robotstreamer-publish` — upgraded via the handler in `server/index.js` with origin checks and IP bans. `/ws/chat` is OpenVibe.Chat's (nginx routes it to 127.0.0.1:4400); Live runs no chat WebSocket server.
+`/ws/broadcast`, `/ws/call`, `/ws/robotstreamer-publish` — upgraded via the handler in `server/index.js` with origin checks and IP bans. `/ws/chat` is OpenVibe.Chat's (nginx routes it to 127.0.0.1:4400); Live runs no chat WebSocket server. Any other path gets a plain HTTP answer, not a dropped socket (nginx logs a drop as a 502): 404, or 410 naming OpenVibe.Bot for the retired robot control socket `/ws/control` ([server/net/ws-paths.js](server/net/ws-paths.js)); a new WebSocket server adds its path there.
 
 ## Testing
 
