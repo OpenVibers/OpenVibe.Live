@@ -103,6 +103,17 @@ const stub = http.createServer((req, res) => {
     assert.strictEqual(await outbox.pending(), 0);
     assert.strictEqual(published[2].payload.title, 'while down');
 
+    // Shutdown: after stop() the relay sends nothing; a stream that ends while the process drains is queued for
+    // the next boot.
+    await outbox.flush();
+    const sentBefore = published.length;
+    await streamEvents.stop();
+    await db.endStream(Number(later.lastInsertRowid));
+    streamEvents.kick();
+    await new Promise((r) => setTimeout(r, 200));
+    assert.strictEqual(published.length, sentBefore, 'nothing is published after stop()');
+    assert.strictEqual(await outbox.pending(), 1, 'the ended event waits in the outbox');
+
     // A hook failure never blocks going live.
     db.onStreamLifecycle(async () => { throw new Error('hook broken'); });
     const log = console.warn; console.warn = () => {};
@@ -111,6 +122,7 @@ const stub = http.createServer((req, res) => {
     assert.ok(safe.lastInsertRowid);
 
     assert.strictEqual(streamEvents.status().enabled, true);
+
     streamEvents._reset();
     stub.close();
     console.log('✅ stream lifecycle events: outbox, relay, retry, rollback');

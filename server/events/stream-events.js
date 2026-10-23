@@ -80,6 +80,8 @@ function toIso(v) {
     return Number.isNaN(d.getTime()) ? null : d.toISOString();
 }
 
+let pruneTimer = null;
+
 function init({ eventsUrl = EVENTS_URL, clientSecret = CLIENT_SECRET, fetchImpl, intervalMs } = {}) {
     if (outbox) return outbox;
     if (process.env.EVENTS_PUBLISH === 'off' || !eventsUrl || !clientSecret) {
@@ -107,8 +109,8 @@ function init({ eventsUrl = EVENTS_URL, clientSecret = CLIENT_SECRET, fetchImpl,
         db.getDb().afterCommit(() => { if (outbox) Promise.resolve(outbox.kick()).catch((err) => { stats.lastError = err.message; }); });
     });
     outbox.start();
-    const prune = setInterval(() => { if (outbox) outbox.prune().catch(() => { /* next time */ }); }, PRUNE_EVERY_MS);
-    if (prune.unref) prune.unref();
+    pruneTimer = setInterval(() => { if (outbox) outbox.prune().catch(() => { /* next time */ }); }, PRUNE_EVERY_MS);
+    if (pruneTimer.unref) pruneTimer.unref();
     outbox.pending().then((n) => console.log(`[Events] stream lifecycle → ${eventsUrl} (${n} pending)`), () => {});
     return outbox;
 }
@@ -142,6 +144,16 @@ async function counts() {
     return { ...status(), pending: Number(await outbox.pending()), rejected: Number(await outbox.rejected()) };
 }
 
-function _reset() { if (outbox) outbox.stop(); outbox = null; db.onStreamLifecycle(null); stats.queued = 0; stats.lastError = null; }
+/**
+ * Shutdown: the relay sends nothing more (it ran on past the pool's end, "Cannot use a pool after calling end on the
+ * pool", 2026-10-23) and a send in flight finishes first. Events queued while the process drains stay in the outbox
+ * for the next boot: enqueue() still writes, kick() no longer wakes the relay.
+ */
+function stop() {
+    if (pruneTimer) { clearInterval(pruneTimer); pruneTimer = null; }
+    return outbox ? outbox.stop() : Promise.resolve();
+}
 
-module.exports = { init, enqueue, kick, status, counts, envelopeFor, _reset };
+function _reset() { stop(); outbox = null; db.onStreamLifecycle(null); stats.queued = 0; stats.lastError = null; }
+
+module.exports = { init, enqueue, kick, stop, status, counts, envelopeFor, _reset };
