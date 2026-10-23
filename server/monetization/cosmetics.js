@@ -34,8 +34,8 @@ const COSMETICS = {
     fx_glitch:   { name: 'Glitch Name',   emoji: '📟', category: 'name_effect', tier: 3, cssClass: 'name-fx-glitch',   desc: 'Digital glitch' },
     fx_hologram: { name: 'Hologram Name', emoji: '🔮', category: 'name_effect', tier: 4, cssClass: 'name-fx-hologram', desc: 'Holographic shimmer' },
     fx_divine:   { name: 'Divine Name',   emoji: '✝️', category: 'name_effect', tier: 5, cssClass: 'name-fx-divine',   desc: 'Divine radiance' },
-    // One of a kind (2026-10-22, the owner's gift to his friend Josh, "Josh Vegas" since they were kids): granted to
-    // its one holder, never listed in the catalog nor earnable.
+    // One of a kind (2026-10-22, the owner's gift to his friend Josh, "Josh Vegas" since they were kids), with its set
+    // (px_vegas, hat_vegas, voice_vegas): granted to their one holder, never listed in the catalog nor earnable.
     fx_vegas:    { name: 'Josh Vegas',    emoji: '🎰', category: 'name_effect', tier: 6, cssClass: 'name-fx-vegas',    desc: 'Slot reels and casino lights', exclusive: true },
 
     // ── Particle Effects ─────────────────────────────────
@@ -44,6 +44,7 @@ const COSMETICS = {
     px_flames:   { name: 'Flames',        emoji: '🔥', category: 'particle', tier: 2, cssClass: 'px-flames',   chars: '🔥🔸⚡',  desc: 'Flame embers' },
     px_stars:    { name: 'Stars',         emoji: '⭐', category: 'particle', tier: 2, cssClass: 'px-stars',    chars: '★☆✩',    desc: 'Orbiting stars' },
     px_void:     { name: 'Void',          emoji: '🕳️', category: 'particle', tier: 3, cssClass: 'px-void',    chars: '◉◎⊙',    desc: 'Dark matter' },
+    px_vegas:    { name: 'Josh Vegas Chips', emoji: '🎲', category: 'particle', tier: 6, cssClass: 'px-vegas', chars: '♠♥♦♣🎲🪙💰', desc: 'Cards, dice and coins', exclusive: true },
 
     // ── Hats ─────────────────────────────────────────────
     hat_basic_cap:  { name: 'Basic Cap',    emoji: '🧢', category: 'hat', tier: 1, hatChar: '🧢', desc: 'Simple cap' },
@@ -52,6 +53,7 @@ const COSMETICS = {
     hat_crown:      { name: 'Royal Crown',  emoji: '👑', category: 'hat', tier: 4, hatChar: '👑', animated: 'pulse',  desc: 'Royalty' },
     hat_halo:       { name: 'Halo',         emoji: '😇', category: 'hat', tier: 5, hatChar: '😇', animated: 'float',  desc: 'Angelic' },
     hat_void_crown: { name: 'Void Crown',   emoji: '🕳️', category: 'hat', tier: 6, hatChar: '🕳️', animated: 'warp', desc: 'From the dungeon depths' },
+    hat_vegas:      { name: 'Josh Vegas Top Hat', emoji: '🎩', category: 'hat', tier: 6, hatChar: '🎩', animated: 'float', desc: 'The showman on the Strip', exclusive: true },
 
     // ── Voices (TTS style — cosmetic, actual TTS is client-side SpeechSynthesis) ──
     voice_default:  { name: 'Default Voice',  emoji: '🔊', category: 'voice', tier: 0, desc: 'Standard TTS' },
@@ -102,6 +104,7 @@ const COSMETICS = {
     pl_ruth_long:       { name: 'Ruth',              emoji: '🎤', category: 'voice', tier: 4, pitch: 1.0, rate: 0.85, desc: 'Polly Long-form' },
     pl_arthur_neural:   { name: 'Arthur Neural',     emoji: '🧠', category: 'voice', tier: 5, pitch: 0.9, rate: 0.85, desc: 'Polly Neural' },
     vs_mine_dwarf_lord: { name: 'Dwarf Lord',        emoji: '⛏️', category: 'voice', tier: 5, pitch: 0.5, rate: 0.7,  desc: 'Skill mastery' },
+    voice_vegas:        { name: 'Vegas Announcer',   emoji: '🎙️', category: 'voice', tier: 6, pitch: 0.7, rate: 0.92, desc: 'Ladies and gentlemen…', exclusive: true },
 };
 
 // Category → slot name mapping
