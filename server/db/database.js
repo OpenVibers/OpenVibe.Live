@@ -79,16 +79,21 @@ async function bootRecovery() {
  * already points at a VOD, the stream's remaining rows belong to that same VOD by construction (one recording per
  * stream). The partial index idx_timeline_null_vod makes "is there anything to adopt?" cheap, so the common case
  * skips the update entirely.
+ *
+ * One pass per stream, not per row: the streams with NULL rows (that index), the VOD each already names, then one
+ * join. The per-row form ran two subqueries over the row's whole stream for every NULL row, quadratic in a stream's
+ * length, and with 32,105 NULL rows over 41 streams (most never recorded, so never adopted) it hit the 15 s
+ * statement timeout on every run (44 times in the PostgreSQL log on 2026-10-23).
  */
 async function adoptOrphanedTimelineRows() {
     const pending = await get('SELECT 1 AS x FROM stream_timeline_events WHERE vod_id IS NULL LIMIT 1');
     if (!pending) return 0;
-    const res = await run(`UPDATE stream_timeline_events AS t
-        SET vod_id = (SELECT s.vod_id FROM stream_timeline_events s
-                      WHERE s.stream_id = t.stream_id AND s.vod_id IS NOT NULL LIMIT 1)
-        WHERE t.vod_id IS NULL
-          AND EXISTS (SELECT 1 FROM stream_timeline_events s
-                      WHERE s.stream_id = t.stream_id AND s.vod_id IS NOT NULL)`);
+    const res = await run(`UPDATE stream_timeline_events AS t SET vod_id = v.vod_id
+        FROM (SELECT s.stream_id, MIN(s.vod_id) AS vod_id FROM stream_timeline_events s
+              WHERE s.vod_id IS NOT NULL
+                AND s.stream_id IN (SELECT DISTINCT n.stream_id FROM stream_timeline_events n WHERE n.vod_id IS NULL)
+              GROUP BY s.stream_id) v
+        WHERE t.stream_id = v.stream_id AND t.vod_id IS NULL`);
     if (res.changes) console.log(`[DB] stream_timeline_events: adopted ${res.changes} orphaned row(s) onto their VOD`);
     return res.changes;
 }
