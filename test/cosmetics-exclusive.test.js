@@ -35,7 +35,7 @@ const cosmetics = require('../server/monetization/cosmetics');
         const { catalog } = await res.json();
         const listed = Object.values(catalog).flat().map((c) => c.itemId);
         assert.ok(listed.includes('fx_galaxy'), 'the catalog still lists the others');
-        for (const id of ['fx_vegas', 'px_vegas', 'hat_vegas', 'voice_vegas']) assert.ok(!listed.includes(id), `${id}, one of a kind, is never listed`);
+        for (const id of ['fx_vegas', 'px_vegas', 'hat_vegas', 'voice_vegas', 'fx_twofat', 'px_twofat', 'hat_twofat', 'voice_twofat']) assert.ok(!listed.includes(id), `${id}, one of a kind, is never listed`);
     } finally {
         server.close();
     }
@@ -45,6 +45,17 @@ const cosmetics = require('../server/monetization/cosmetics');
         assert.ok(css.includes('.name-fx-vegas {') && css.includes('@keyframes nameFxVegasReel') && css.includes('@keyframes nameFxVegasJackpot'), `${file} draws the effect`);
         assert.ok(css.includes('.px-vegas .chat-particle'), `${file} colours the Vegas particles`);
         assert.ok(css.includes('prefers-reduced-motion: reduce') && /\.name-fx-vegas::before, \.name-fx-vegas::after \{ animation: none/.test(css), `${file} stops the reels for reduced motion`);
+        // 2fat's set (2026-10-23): the bass drop, its equalizer and its particles, stopped for reduced motion too.
+        assert.ok(css.includes('.name-fx-twofat {') && css.includes('@keyframes nameFxTwofatThump') && css.includes('@keyframes nameFxTwofatEq'), `${file} draws 2fat's effect`);
+        assert.ok(css.includes('.px-twofat .chat-particle'), `${file} colours 2fat's particles`);
+        assert.ok(/\.name-fx-twofat, \.name-fx-twofat::before, \.name-fx-twofat::after \{ animation: none/.test(css), `${file} stops 2fat's effect for reduced motion`);
     }
+    // 2fat's set is one of a kind like Vegas, and fits Inventory's kinds.
+    const T = cosmetics.COSMETICS;
+    for (const [id, category] of Object.entries({ fx_twofat: 'name_effect', px_twofat: 'particle', hat_twofat: 'hat', voice_twofat: 'voice' })) {
+        assert.ok(T[id] && T[id].exclusive === true && T[id].category === category, `${id} is a one-of-a-kind ${category}`);
+    }
+    assert.match(T.fx_twofat.cssClass, /^name-fx-[a-z]{2,24}$/);
+    assert.ok(T.px_twofat.chars.length <= 16 && /^px-[a-z]+$/.test(T.px_twofat.cssClass));
     console.log('cosmetics exclusive: all checks passed');
 })().catch((e) => { console.error(e); process.exit(1); });
