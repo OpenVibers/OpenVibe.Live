@@ -1180,11 +1180,15 @@ app.use((err, req, res, _next) => {
 });
 
 // ── WebSocket Upgrade Handler ────────────────────────────────
+const wsPaths = require('./net/ws-paths');
 server.on('upgrade', async (req, socket, head) => {
     // A restore-drill instance has no WebSocket servers: chat, broadcast, calls and controls are live
     // traffic, and a drill only answers reads.
     if (drill.enabled) return drill.refuseUpgrade(socket);
     const url = req.url || '';
+    // A path no server here answers (a retired one says where it went): a plain HTTP answer, before any lookup.
+    const target = wsPaths.classify(url);
+    if (target !== 'served') return wsPaths.refuse(socket, target);
     const origin = normalizeOrigin(req.headers.origin);
 
     if (origin && !allowedOrigins.has(origin)) {
@@ -1211,8 +1215,6 @@ server.on('upgrade', async (req, socket, head) => {
         broadcastServer.handleUpgrade(req, socket, head);
     } else if (url.startsWith('/ws/robotstreamer-publish')) {
         robotStreamerService.handleUpgrade(req, socket, head);
-    } else {
-        socket.destroy();
     }
 });
 
