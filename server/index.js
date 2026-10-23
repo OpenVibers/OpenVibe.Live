@@ -186,6 +186,8 @@ const stopper = gracefulStop({
         // No new background runs from here on (the jobs helper's loops); and end SSE streams so
         // the drain can actually complete instead of always hitting the deadline.
         () => { require('./utils/jobs').stopAll(); },
+        // The Events relay stops while the database is open (events queued from here on wait in the outbox).
+        () => require('./events/stream-events').stop(),
         async () => { if (!drill.enabled && rumRestored) await db.setState('rum_state', JSON.stringify(rum.state())).catch(() => {}); },
         () => { require('./streaming/live-events').closeAll(); },
     ],
