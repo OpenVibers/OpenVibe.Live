@@ -45,7 +45,7 @@ permissions.isOwner = (u) => !!u && Number(u.id) === 1;
 
 // What production looks like: configuration, a secret, job state and the money freeze in one table.
 for (const [k, v, t] of [['motd', 'hello', 'string'], ['max_clip_duration', '60', 'number'], ['stripe_secret_key', 'sk_live_verysecret', 'string'],
-    ['star_streamer', 'alice', 'string'], ['arena_backfill_cursor_3', '100', 'string'], ['money_writes_frozen', 'false', 'boolean']]) {
+    ['star_streamer', 'alice', 'string'], ['storage_tier.cursor_3', '100', 'string'], ['money_writes_frozen', 'false', 'boolean']]) {
     await raw.prepare('INSERT INTO site_settings (key, value, type) VALUES (?, ?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value, type = excluded.type').run(k, v, t);
 }
 
@@ -67,7 +67,7 @@ const call = async (method, p, body, user = 1) => {
     assert.strictEqual(store.revision(), 1);
     const keys = Object.keys(store.get());
     for (const k of ['max_clip_duration', 'motd', 'stripe_secret_key']) assert.ok(keys.includes(k), `${k} is configuration`);
-    for (const k of ['star_streamer', 'arena_backfill_cursor_3', 'money_writes_frozen']) assert.ok(!keys.includes(k), `${k} is not`);
+    for (const k of ['star_streamer', 'storage_tier.cursor_3', 'money_writes_frozen']) assert.ok(!keys.includes(k), `${k} is not`);
     assert.strictEqual(await db.getSetting('max_clip_duration'), 60, 'readers read the rows, typed as before');
 
     // ── An admin change: one revision, written to the rows ──
@@ -107,10 +107,10 @@ const call = async (method, p, body, user = 1) => {
     assert.strictEqual(r.status, 200);
     assert.strictEqual(await db.getSetting('motd'), null);
     assert.ok(!('motd' in store.get()));
-    r = await call('PUT', '/api/admin/settings', { settings: { arena_backfill_cursor_3: '200' } }, 2);
+    r = await call('PUT', '/api/admin/settings', { settings: { 'storage_tier.cursor_3': '200' } }, 2);
     assert.strictEqual(r.status, 200);
-    assert.strictEqual(await db.getSetting('arena_backfill_cursor_3'), '200');
-    assert.ok(!('arena_backfill_cursor_3' in store.get()), 'job state stays out of the journal');
+    assert.strictEqual(await db.getSetting('storage_tier.cursor_3'), '200');
+    assert.ok(!('storage_tier.cursor_3' in store.get()), 'job state stays out of the journal');
     assert.strictEqual(await db.getSetting('money_writes_frozen'), false);
     await assert.rejects(siteConfig.change({ set: { money_writes_frozen: 'true' } }), /not configuration/);
 
