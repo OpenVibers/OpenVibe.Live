@@ -3332,7 +3332,69 @@ async function toggleChannelFollow(username) {
             if (el) el.textContent = `${data.count || 0} followers`;
         });
         toast(data.following ? 'Followed!' : 'Unfollowed', 'info');
+        if (data.following) offerLiveAlerts(username);
     } catch (e) { toast(e.message, 'error'); }
+}
+
+/**
+ * Right after a follow, offer go-live alerts on this device. Network pushes every STREAM_LIVE notification to the
+ * devices that turned push on, but on 2026-10-23 only 2 of 426 people had: the switch sat inside the bell's panel.
+ * Offered only where push works and is neither on nor blocked, and not for 30 days after "Not now". The browser's
+ * permission prompt opens from the button (a user gesture), never by itself.
+ */
+const LIVE_ALERTS_DECLINED_KEY = 'ov_live_alerts_declined_at';
+async function offerLiveAlerts(name) {
+    const n = window.OpenVibeNotifications;
+    const box = document.getElementById('toast-container');
+    if (!box || !n || typeof n.pushStatus !== 'function' || typeof n.enablePush !== 'function') return;
+    if (document.getElementById('live-alerts-offer')) return;
+    let st;
+    try { st = await n.pushStatus(); } catch { return; }
+    if (!st || !st.supported || st.subscribed || st.permission === 'denied') return;
+    try {
+        if (Date.now() - (Number(localStorage.getItem(LIVE_ALERTS_DECLINED_KEY)) || 0) < 30 * 24 * 3600 * 1000) return;
+    } catch { /* no storage: offer it */ }
+
+    const card = document.createElement('div');
+    card.id = 'live-alerts-offer';
+    card.className = 'toast info toast-offer';
+    card.setAttribute('role', 'group');
+    card.setAttribute('aria-label', 'Go-live alerts');
+    const text = document.createElement('p');
+    text.className = 'toast-offer-text';
+    text.textContent = `Turn on alerts on this device? You'll get one when ${name} goes live, even with this tab closed.`;
+    const actions = document.createElement('div');
+    actions.className = 'toast-offer-actions';
+    const later = document.createElement('button');
+    later.type = 'button';
+    later.className = 'btn btn-small';
+    later.textContent = 'Not now';
+    const on = document.createElement('button');
+    on.type = 'button';
+    on.className = 'btn btn-primary btn-small';
+    on.textContent = 'Turn on alerts';
+    actions.append(later, on);
+    card.append(text, actions);
+    later.addEventListener('click', () => {
+        try { localStorage.setItem(LIVE_ALERTS_DECLINED_KEY, String(Date.now())); } catch { /* */ }
+        card.remove();
+    });
+    on.addEventListener('click', async () => {
+        on.disabled = true;
+        later.disabled = true;
+        try {
+            await n.enablePush();
+            text.textContent = `Alerts are on for this device. You'll hear when ${name} or anyone else you follow goes live.`;
+            actions.remove();
+            setTimeout(() => card.remove(), 6000);
+        } catch (err) {
+            text.textContent = (err && err.message) || 'Alerts could not be turned on in this browser.';
+            on.remove();
+            later.disabled = false;
+            later.textContent = 'Close';
+        }
+    });
+    box.appendChild(card);
 }
 
 async function banChannelUser(userId, username) {

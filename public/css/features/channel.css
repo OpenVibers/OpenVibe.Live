@@ -1510,3 +1510,9 @@
 .ch-bot-bind-text code { font-size: 0.85em; }
 .ch-bot-bind-note { margin: 0 0 10px; font-size: 0.85rem; color: var(--text-secondary); }
 .ch-bot-bind-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* After a follow: the go-live alerts offer (app-channel.js offerLiveAlerts), a toast with its own two buttons. */
+.toast.toast-offer { flex-direction: column; align-items: stretch; gap: 8px; cursor: default; max-width: min(320px, calc(100vw - 24px)); }
+.toast-offer-text { margin: 0; }
+.toast-offer-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+@media (max-width: 768px) { .toast.toast-offer { max-width: none; } }
