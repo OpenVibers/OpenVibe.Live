@@ -400,6 +400,36 @@ function vcToggleCamera() {
     toggleCallCamera(); // re-renders the panel itself when the track is up
 }
 
+/** Share a screen, a window or a tab as the call's video (call.js toggleCallScreen); again to stop. */
+function vcToggleScreen() {
+    toggleCallScreen();
+}
+
+/** The call dock's pictures: large, small, or hidden (the bar alone). Remembered on this device. */
+const VC_DOCK_SIZES = ['large', 'small', 'off'];
+function vcDockSize() {
+    try { const v = localStorage.getItem('ov:vc-dock-size'); if (VC_DOCK_SIZES.includes(v)) return v; } catch { /* storage blocked */ }
+    return 'large';
+}
+function vcDockCycleSize() {
+    const next = VC_DOCK_SIZES[(VC_DOCK_SIZES.indexOf(vcDockSize()) + 1) % VC_DOCK_SIZES.length];
+    try { localStorage.setItem('ov:vc-dock-size', next); } catch { /* storage blocked */ }
+    vcUpdateMiniBar();
+}
+
+/** The whole call (every tile, devices, settings) is on the Chat page. */
+function vcOpenFullCall() {
+    if (typeof navigate === 'function') navigate('/chat');
+    else location.href = '/chat';
+}
+
+/** Where the call's tiles go: the Chat page's grid there, the floating call dock (#vc-mini-bar) on every other page. */
+function vcCallGrid() {
+    const chatTab = document.getElementById('page-chat');
+    const onChat = !!(chatTab && chatTab.classList.contains('active'));
+    return document.getElementById(onChat ? 'vc-participants-grid' : 'vc-dock-grid') || document.getElementById('vc-participants-grid');
+}
+
 function vcToggleSettings() {
     vcState.settingsOpen = !vcState.settingsOpen;
     const panel = document.getElementById('vc-incall-settings');
@@ -446,6 +476,29 @@ function vcUpdateControlButtons() {
             : '<i class="fa-solid fa-video"></i>';
         camBtn.classList.toggle('active', camOff);
     }
+    vcUpdateDockButtons();
+}
+
+/** The call dock's camera and screen buttons follow the call (hidden in a voice-only call). */
+function vcUpdateDockButtons() {
+    const voiceOnly = callState.callMode === 'mic';
+    const sharing = !!callState.screenTrack;
+    const camOn = !callState.cameraOff && !callState.forceCameraOff && !sharing;
+    const cam = document.getElementById('vc-mini-camera');
+    if (cam) {
+        cam.hidden = voiceOnly;
+        cam.innerHTML = camOn ? '<i class="fa-solid fa-video"></i>' : '<i class="fa-solid fa-video-slash"></i>';
+        cam.classList.toggle('is-on', camOn);
+        cam.title = camOn ? 'Turn camera off' : 'Turn camera on';
+        cam.setAttribute('aria-pressed', String(camOn));
+    }
+    const screen = document.getElementById('vc-mini-screen');
+    if (screen) {
+        screen.hidden = voiceOnly || !navigator.mediaDevices?.getDisplayMedia;
+        screen.classList.toggle('is-on', sharing);
+        screen.title = sharing ? 'Stop sharing your screen' : 'Share your screen';
+        screen.setAttribute('aria-pressed', String(sharing));
+    }
 }
 
 /* ── Participant Grid Rendering ────────────────────────────── */
@@ -472,8 +525,13 @@ function vcRenderUI() {
 
     vcUpdateControlButtons();
 
-    const grid = document.getElementById('vc-participants-grid');
+    const grid = vcCallGrid();
     if (!grid) return;
+    // One place at a time: the tiles' video elements are cached on the peers, so the other grid is emptied.
+    const other = document.getElementById(grid.id === 'vc-dock-grid' ? 'vc-participants-grid' : 'vc-dock-grid');
+    if (other && other.firstChild) other.replaceChildren();
+    const dock = document.getElementById('vc-mini-bar');
+    if (dock) dock.classList.toggle('has-video', !callState.cameraOff || [...callState.peers.values()].some((p) => !p.cameraOff && !p.forceCameraOff && !p.localCameraOff));
     // Keyed by peer: a tile that is still there is swapped for its fresh version (video elements are
     // cached on the peer, so the picture does not restart), newcomers pop in, leavers fade out.
     const wanted = [];
@@ -683,8 +741,23 @@ function vcUpdateMiniBar() {
     const isOnChatTab = chatTab && chatTab.classList.contains('active');
     const isConnected = typeof callState !== 'undefined' && callState.joined && callState.vcMode;
 
+    // The dock holds the call's tiles off the Chat page: when that changes, they are drawn again in the right place.
+    const docked = !!(isConnected && !isOnChatTab);
+    if (vcState.docked !== docked) {
+        vcState.docked = docked;
+        if (isConnected) vcRenderUI();
+    }
+
     if (isConnected && !isOnChatTab) {
         miniBar.style.display = '';
+        const size = vcDockSize();
+        for (const s of VC_DOCK_SIZES) miniBar.classList.toggle(`vc-dock-${s}`, s === size);
+        const sizeBtn = document.getElementById('vc-mini-size');
+        if (sizeBtn) {
+            sizeBtn.innerHTML = size === 'off' ? '<i class="fa-solid fa-eye"></i>' : size === 'large' ? '<i class="fa-solid fa-down-left-and-up-right-to-center"></i>' : '<i class="fa-solid fa-eye-slash"></i>';
+            sizeBtn.title = size === 'off' ? 'Show the pictures' : size === 'large' ? 'Smaller pictures' : 'Hide the pictures';
+        }
+        vcUpdateDockButtons();
         // Update channel name
         const nameEl = document.getElementById('vc-mini-channel-name');
         if (nameEl) {

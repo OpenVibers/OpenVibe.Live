@@ -109,6 +109,9 @@
       ]
     },
     "voice": {
+      "css": [
+        "/css/features/voice.css"
+      ],
       "js": [
         "/js/call.js",
         "/js/voice-channels.js"
@@ -127,7 +130,7 @@
         "vcSwitchCam",
         "vcOnInputModeChange",
         "vcOnPttKeyChange",
-        "vcOnVadChange"
+        "vcOnVadChange", "vcToggleScreen", "vcDockCycleSize", "vcOpenFullCall"
       ]
     },
     "chatpage": {

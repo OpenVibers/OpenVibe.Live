@@ -1,0 +1,50 @@
+/* Voice calls (features.json "voice", with call.js and voice-channels.js).
+   The call dock: off the Chat page, #vc-mini-bar carries the call's pictures (cameras, a shared screen) above its
+   controls, so a call started from "Call this user" is seen on any page, not only on Chat. */
+
+.vc-mini-bar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+    max-width: calc(100vw - 40px);
+}
+.vc-mini-row { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.vc-mini-channel { overflow: hidden; text-overflow: ellipsis; }
+.vc-mini-btn[hidden] { display: none; }
+.vc-mini-btn.is-on { background: var(--accent-strong, #3472d8); border-color: transparent; color: var(--on-accent-strong, #fff); }
+
+/* The pictures: a row of tiles, large or small (the size button), hidden when nobody shows video or the viewer hid them. */
+.vc-dock-grid { display: none; gap: 6px; overflow-x: auto; overscroll-behavior: contain; --vc-dock-h: 180px; }
+.vc-mini-bar.vc-dock-small .vc-dock-grid { --vc-dock-h: 100px; }
+.vc-mini-bar.has-video:not(.vc-dock-off) .vc-dock-grid { display: flex; }
+.vc-dock-grid .call-participant-tile {
+    flex: none;
+    height: var(--vc-dock-h);
+    width: auto;
+    min-height: 0;
+    aspect-ratio: 1;
+    font-size: 0.7rem;
+}
+.vc-dock-grid .call-participant-tile.has-video { aspect-ratio: 16 / 9; }
+.vc-dock-grid .call-avatar { width: 46%; height: auto; aspect-ratio: 1; font-size: 1.1rem; }
+.vc-dock-grid .call-participant-label { font-size: 0.68rem; padding: 2px 6px; }
+
+/* A picture is shown whole (a screen keeps its text, a camera its framing), on black. */
+.vc-dock-grid .has-video .call-video,
+.vc-participants-grid .has-video .call-video { object-fit: contain; background: #000; }
+
+/* On the Chat page, a tile with a picture is large enough to watch; avatars stay small. */
+.vc-participants-grid .call-participant-tile.has-video {
+    width: min(100%, 360px);
+    height: auto;
+    min-width: 0;
+    aspect-ratio: 16 / 9;
+}
+.vc-participants-grid:has(.has-video) { max-height: none; }
+
+@media (max-width: 600px) {
+    .vc-mini-bar { left: 16px; right: 16px; bottom: 72px; max-width: none; }
+    .vc-mini-row { flex-wrap: wrap; gap: 6px 10px; }
+    .vc-dock-grid { --vc-dock-h: 120px; }
+    .vc-mini-bar.vc-dock-small .vc-dock-grid { --vc-dock-h: 80px; }
+}

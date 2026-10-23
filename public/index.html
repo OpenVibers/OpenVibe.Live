@@ -996,17 +996,20 @@
     <span class="fab-label">Global</span>
 </button>
 
-<!-- ── Mini Voice Channel Indicator (shows when connected & not on Chat tab) ── -->
-<div id="vc-mini-bar" class="vc-mini-bar" style="display:none">
-    <span class="vc-mini-status"><i class="fa-solid fa-circle vc-mini-dot"></i> Voice Connected</span>
-    <span class="vc-mini-channel" id="vc-mini-channel-name">Public</span>
-    <div class="vc-mini-controls">
-        <button class="vc-mini-btn" id="vc-mini-mute" onclick="vcToggleMute()" title="Mute">
-            <i class="fa-solid fa-microphone"></i>
-        </button>
-        <button class="vc-mini-btn vc-mini-leave" onclick="vcLeave()" title="Disconnect">
-            <i class="fa-solid fa-phone-slash"></i>
-        </button>
+<!-- ── Call dock (shows when connected & not on Chat tab): the call's pictures and its controls ── -->
+<div id="vc-mini-bar" class="vc-mini-bar" role="region" aria-label="Call" style="display:none">
+    <div id="vc-dock-grid" class="vc-dock-grid"></div>
+    <div class="vc-mini-row">
+        <span class="vc-mini-status"><i class="fa-solid fa-circle vc-mini-dot"></i> Voice Connected</span>
+        <span class="vc-mini-channel" id="vc-mini-channel-name">Public</span>
+        <div class="vc-mini-controls">
+            <button class="vc-mini-btn" id="vc-mini-mute" onclick="vcToggleMute()" title="Mute"><i class="fa-solid fa-microphone"></i></button>
+            <button class="vc-mini-btn" id="vc-mini-camera" onclick="vcToggleCamera()" title="Turn camera on" aria-pressed="false"><i class="fa-solid fa-video-slash"></i></button>
+            <button class="vc-mini-btn" id="vc-mini-screen" onclick="vcToggleScreen()" title="Share your screen" aria-pressed="false"><i class="fa-solid fa-display"></i></button>
+            <button class="vc-mini-btn" id="vc-mini-size" onclick="vcDockCycleSize()" title="Smaller pictures"><i class="fa-solid fa-down-left-and-up-right-to-center"></i></button>
+            <button class="vc-mini-btn" onclick="vcOpenFullCall()" title="Open the whole call"><i class="fa-solid fa-up-right-and-down-left-from-center"></i></button>
+            <button class="vc-mini-btn vc-mini-leave" onclick="vcLeave()" title="Disconnect"><i class="fa-solid fa-phone-slash"></i></button>
+        </div>
     </div>
 </div>
 

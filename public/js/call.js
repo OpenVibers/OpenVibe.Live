@@ -21,6 +21,8 @@ const callState = {
     peers: new Map(),
     muted: false,
     cameraOff: true,
+    screenTrack: null,         // the shared screen while it is the call's video (toggleCallScreen)
+    cameraBeforeScreen: false, // the camera was on when the share began: it comes back when the share ends
     forceMuted: false,         // server-side force mute applied to us
     forceCameraOff: false,     // server-side force camera off applied to us
     joined: false,
@@ -624,6 +626,8 @@ function leaveCall() {
     const wasBroadcast = callState.broadcastMode;
     const wasVcMode = callState.vcMode;
     callState.joined = false;
+    callState.screenTrack = null;          // its track stops with the local stream (_cleanupCall)
+    callState.cameraBeforeScreen = false;
     callState.connecting = false;
     _cleanupCall();
     _renderCallUI();
@@ -738,11 +742,107 @@ function toggleCallMute() {
 }
 
 /** Toggle camera */
+/** Send `track` as our video to every peer: into the existing video sender (no renegotiation), or a new one. */
+async function _sendVideoToPeers(track) {
+    for (const [peerId, peer] of callState.peers) {
+        try {
+            const existingSender = peer.pc.getSenders().find(s => s.track?.kind === 'video' || (s.track === null && s._isVideoSlot));
+            if (existingSender) {
+                await existingSender.replaceTrack(track);
+                _optimizeCallSender(existingSender, track);
+            } else {
+                const sender = peer.pc.addTrack(track, callState.localStream);
+                _optimizeCallSender(sender, track);
+            }
+        } catch (peerErr) {
+            console.warn(`[Call] Failed to send video to peer ${peerId}:`, peerErr.message);
+        }
+    }
+}
+
+/** Stop sending video to every peer. */
+function _stopVideoToPeers() {
+    for (const [peerId, peer] of callState.peers) {
+        try {
+            for (const sender of peer.pc.getSenders()) {
+                if (sender.track && sender.track.kind === 'video') peer.pc.removeTrack(sender);
+            }
+        } catch (peerErr) {
+            console.warn(`[Call] Failed to stop video to peer ${peerId}:`, peerErr.message);
+        }
+    }
+}
+
+/** The shared screen stops being the call's video, here only (the caller decides what the peers get next). */
+function _endScreenTrack() {
+    const track = callState.screenTrack;
+    if (!track) return false;
+    callState.screenTrack = null;
+    track.stop();
+    callState.localStream?.removeTrack(track);
+    callState.cameraOff = true;
+    return true;
+}
+
+/**
+ * Share a screen, a window or a tab as this call's video, in place of the camera: the others see it where the camera
+ * would be (the same video sender and the same camera-off signal, so nothing changes on the server). Stopping it here
+ * or with the browser's own "Stop sharing" brings the camera back if it was on.
+ */
+async function toggleCallScreen() {
+    if (callState.screenTrack) return await _stopCallScreen({ restoreCamera: true });
+    if (!callState.joined || !callState.localStream) return;
+    if (callState.callMode === 'mic') { _callSystemMessage('This call is voice only'); return; }
+    if (callState.forceCameraOff) { _callSystemMessage('Your camera is disabled by the streamer'); return; }
+    if (!navigator.mediaDevices?.getDisplayMedia) { _callSystemMessage('This browser cannot share its screen'); return; }
+    let display;
+    try {
+        display = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: { ideal: 15, max: 30 }, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false });
+    } catch (err) {
+        if (err?.name !== 'NotAllowedError' && err?.name !== 'AbortError') _callSystemMessage('Could not share the screen');
+        return;   // the picker was closed
+    }
+    const track = display.getVideoTracks()[0];
+    if (!track) return;
+    try { track.contentHint = 'detail'; } catch { /* older browsers */ }
+    if (!callState.joined || !callState.localStream) { track.stop(); return; }
+    callState.cameraBeforeScreen = !callState.cameraOff;
+    // The camera pauses while the screen is shared.
+    callState.localStream.getVideoTracks().forEach(t => { t.stop(); callState.localStream.removeTrack(t); });
+    callState.localStream.addTrack(track);
+    callState.screenTrack = track;
+    callState.cameraOff = false;
+    track.addEventListener('ended', () => { if (callState.screenTrack === track) _stopCallScreen({ restoreCamera: true }); });
+    await _sendVideoToPeers(track);
+    _sendCallMsg({ type: 'camera-off', cameraOff: false });
+    _updateLocalPreview();
+    _renderCallUI();
+}
+
+async function _stopCallScreen({ restoreCamera = true } = {}) {
+    const back = restoreCamera && callState.cameraBeforeScreen;
+    callState.cameraBeforeScreen = false;
+    if (!_endScreenTrack()) return;
+    if (back) {
+        await toggleCallCamera();          // the camera takes the video sender back and tells everyone
+        if (!callState.cameraOff) return;
+    }
+    _stopVideoToPeers();
+    _sendCallMsg({ type: 'camera-off', cameraOff: true });
+    _updateLocalPreview();
+    _renderCallUI();
+}
+
 async function toggleCallCamera() {
     if (callState.callMode === 'mic') return;
     if (callState.forceCameraOff) {
         _callSystemMessage('Your camera is disabled by the streamer');
         return;
+    }
+    // The camera button during a screen share switches to the camera (it takes over the same video sender).
+    if (callState.screenTrack) {
+        callState.cameraBeforeScreen = false;
+        _endScreenTrack();
     }
 
     if (callState.cameraOff) {
@@ -758,25 +858,18 @@ async function toggleCallCamera() {
             callState.localStream.addTrack(camTrack);
             callState.cameraOff = false;
 
-            // Add video track to all existing peer connections —
-            // use replaceTrack if a video sender slot already exists (avoids renegotiation)
-            for (const [peerId, peer] of callState.peers) {
-                try {
-                    const existingSender = peer.pc.getSenders().find(s => s.track?.kind === 'video' || (s.track === null && s._isVideoSlot));
-                    if (existingSender) {
-                        await existingSender.replaceTrack(camTrack);
-                        _optimizeCallSender(existingSender, camTrack);
-                    } else {
-                        const sender = peer.pc.addTrack(camTrack, callState.localStream);
-                        _optimizeCallSender(sender, camTrack);
-                    }
-                } catch (peerErr) {
-                    console.warn(`[Call] Failed to add camera track to peer ${peerId}:`, peerErr.message);
-                }
-            }
+            // Into each peer's video sender when there is one (no renegotiation), else a new one.
+            await _sendVideoToPeers(camTrack);
         } catch (err) {
             console.warn('[Call] Camera enable failed:', err);
             _callSystemMessage('Could not enable camera');
+            // A screen share this was replacing has already stopped: the others are told there is no video.
+            if (callState.cameraOff) {
+                _stopVideoToPeers();
+                _sendCallMsg({ type: 'camera-off', cameraOff: true });
+                _updateLocalPreview();
+                _renderCallUI();
+            }
             return;
         }
     } else {
@@ -787,20 +880,7 @@ async function toggleCallCamera() {
             callState.localStream.removeTrack(t);
         });
         callState.cameraOff = true;
-
-        // Remove video senders from all peer connections
-        for (const [peerId, peer] of callState.peers) {
-            try {
-                const senders = peer.pc.getSenders();
-                for (const sender of senders) {
-                    if (sender.track && sender.track.kind === 'video') {
-                        peer.pc.removeTrack(sender);
-                    }
-                }
-            } catch (peerErr) {
-                console.warn(`[Call] Failed to remove camera track from peer ${peerId}:`, peerErr.message);
-            }
-        }
+        _stopVideoToPeers();
     }
 
     if (callState.ws && callState.ws.readyState === WebSocket.OPEN) {
@@ -1574,8 +1654,10 @@ function _attachPeerVideoTrack(peerId, peer, track) {
     }
     peer.videoStream = peer.mediaStream;
     if (!peer.forceCameraOff) peer.cameraOff = false;
+    // Muted: the voice plays from the peer's own audio element (its volume and local mute), never twice; a muted
+    // video also starts without a click, where an unmuted one can be held back by the browser's autoplay rule.
     if (peer.videoEl) {
-        _bindVideoElement(peer.videoEl, peer.videoStream, false);
+        _bindVideoElement(peer.videoEl, peer.videoStream, true);
     }
     _syncCallVideoPopout();
     _scheduleRender();
@@ -1873,6 +1955,9 @@ function _createParticipantTile(opts) {
     // Video or avatar placeholder
     const showVideo = _peerHasActiveVideo(opts);
     if (showVideo) {
+        // A tile with a picture is drawn larger than an avatar (voice-channel grid and the floating call dock).
+        tile.classList.add('has-video');
+        if (opts.isLocal && callState.screenTrack) tile.classList.add('is-screen');
         let video;
         if (opts.isLocal) {
             // Cache the local video element to avoid flicker on re-render
@@ -1889,7 +1974,7 @@ function _createParticipantTile(opts) {
         } else if (opts.videoStream) {
             const peer = callState.peers.get(opts.peerId);
             if (peer) peer.videoEl = video;
-            _bindVideoElement(video, opts.videoStream, false);
+            _bindVideoElement(video, opts.videoStream, true);   // the voice is the audio element's (see _attachPeerVideoTrack)
         }
         tile.appendChild(video);
     } else {
