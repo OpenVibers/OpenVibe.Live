@@ -333,7 +333,7 @@ router.delete('/streams/:id', async (req, res) => {
             return res.status(403).json({ error: "You cannot end the owner's stream" });
         }
 
-        await db.endStream(req.params.id);
+        await db.endStream(req.params.id, 'staff');
         // A force-end must actually take the stream down everywhere, not just flip is_live:
         // outbound forwarders (RobotStreamer passthrough, ffmpeg restreams, chat relays), the
         // signaling room and its viewers, the SFU room and any voice channel.

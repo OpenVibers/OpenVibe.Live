@@ -331,15 +331,21 @@ async function createStream({ user_id, channel_id, managed_stream_id, title, des
     });
 }
 
-async function endStream(streamId) {
+/** The reasons a stream ends (streams.end_reason, migration 0014). */
+const END_REASONS = new Set(['streamer', 'staff', 'broadcaster_left', 'ingest_ended', 'heartbeat_lost', 'dead_air']);
+
+async function endStream(streamId, reason = null) {
     return await getDb().tx(async () => {
         const stream = await get('SELECT started_at, is_live FROM streams WHERE id = ?', [streamId]);
         if (!stream) return null;
+        // The first reason given stays: a stream another path already ended keeps why it ended.
+        const why = END_REASONS.has(reason) ? reason : null;
         const result = await run(
             `UPDATE streams SET is_live = 0, ended_at = ov_now(),
-             duration_seconds = CAST((julianday(ov_now()) - julianday(started_at)) * 86400 AS INTEGER)
+             duration_seconds = CAST((julianday(ov_now()) - julianday(started_at)) * 86400 AS INTEGER),
+             end_reason = COALESCE(end_reason, ?)
              WHERE id = ?`,
-            [streamId]
+            [why, streamId]
         );
         if (stream.is_live) await fireStreamLifecycle('ended', streamId);
         return result;

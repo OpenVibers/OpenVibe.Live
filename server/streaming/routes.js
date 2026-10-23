@@ -2040,7 +2040,7 @@ router.delete('/:id', requireAuth, async (req, res) => {
             return res.status(403).json({ error: 'Not your stream' });
         }
 
-        await db.endStream(stream.id);
+        await db.endStream(stream.id, stream.user_id === req.user.id ? 'streamer' : 'staff');
 
         // Stop server-side recording (RTMP is handled in rtmp-server.js, but JSMPEG needs it here)
         if (stream.protocol === 'jsmpeg') {
