@@ -938,7 +938,7 @@
 .off-cyc-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
 .off-cyc-title { display: inline-flex; align-items: center; gap: 7px; font-size: 0.82rem; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-primary); }
 .off-cyc-ranges { display: inline-flex; gap: 4px; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 999px; padding: 3px; }
-.off-cyc-chip { border: 0; background: transparent; color: var(--text-secondary); font-size: 0.74rem; font-weight: 600; padding: 4px 12px; border-radius: 999px; cursor: pointer; transition: background .15s, color .15s; }
+.off-cyc-chip { border: 0; background: transparent; color: var(--text-secondary); font-size: 0.74rem; font-weight: 600; padding: 4px 12px; border-radius: 999px; white-space: nowrap; cursor: pointer; transition: background .15s, color .15s; }
 .off-cyc-single-label { font-size: 0.74rem; color: var(--text-muted); }
 .off-cyc-nav { display: inline-flex; gap: 4px; margin-left: auto; }
 .off-cyc-arrow { width: 28px; height: 28px; border-radius: 50%; border: 1px solid var(--border); background: var(--bg-secondary); color: var(--text-secondary); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; transition: border-color .15s, color .15s; }
@@ -1085,8 +1085,10 @@
 .ch-offline-header .ch-actions { display: flex; gap: 6px; margin-left: auto; }
 .ch-username { color: var(--text-muted); margin: 0 0 4px; font-size: 0.9rem; }
 .ch-description { color: var(--text-secondary); margin: 0 0 8px; font-size: 0.9rem; }
-.ch-meta { display: flex; gap: 12px; align-items: center; font-size: 0.85rem; }
-.ch-follower-count { color: var(--text-muted); }
+.ch-meta { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; font-size: 0.85rem; }
+/* Each item stays on one line; on a phone the row wraps instead ("22 / followers" and "IRL · / inferred" did). */
+.ch-follower-count { color: var(--text-muted); white-space: nowrap; }
+.ch-meta .ch-category-badge { white-space: nowrap; }
 .ch-actions { flex-shrink: 0; }
 
 .channel-below-fold { padding-top: 6px; }
