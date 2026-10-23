@@ -89,6 +89,7 @@ and RS's own RTCP view of us (`rs.loss_pct`, `rs.rtt_ms`, `rs.nacks`, `rs.plis`)
 | OBS stops (RTMP `donePublish`) | `index.js` `rtmpServer.on('unpublish')` | restreams, RS, chat relays, AI bots |
 | WHIP session ends | `whip-handler.js` `endActiveWhipStream` | restreams, RS, chat relays, AI bots, room |
 | No heartbeat for 5 min | `index.js` stale sweep | RS, chat relays, AI bots, restreams, room |
+| No video or audio for 30 min, page still open (dead air, `LIVE_DEAD_AIR_MINUTES`) | `index.js` stale sweep + `streaming/dead-air.js` (the SFU room's producer bytes, read each minute); the streamer gets a notification | the same as a stale stream |
 | Admin force-end | `DELETE /api/admin/streams/:id` | RS, restreams, chat relays, AI bots, room, SFU room, voice channel |
 | Process shutdown | `index.js` SIGTERM handler | `rsPassthroughRelay.stopAll()` closes each RS peer so RS's viewers get `consumerClosed` immediately |
 

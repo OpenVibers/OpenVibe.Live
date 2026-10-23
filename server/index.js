@@ -1493,6 +1493,35 @@ async function start() {
 
     // 8. Start stale stream heartbeat cleanup (every 60 seconds)
     let heartbeatCleanupRunning = false;
+    // Browser and WHIP streams with no media for 30 minutes end (server/streaming/dead-air.js).
+    const deadAir = require('./streaming/dead-air').createDeadAir({ limitMs: Math.max(5, Number(process.env.LIVE_DEAD_AIR_MINUTES) || 30) * 60 * 1000 });
+    /** Everything a stream that is gone needs: ended, its recording finalized, its bridges, restreams and room closed. */
+    async function endGoneStream(stream) {
+        await db.endStream(stream.id);
+        try { await db.computeAndCacheStreamAnalytics(stream.id); } catch {}
+        // Auto-finalize any active VOD recording for this stream (via OpenVibe.Media)
+        if (!recorder.isFinalizingStream(stream.id)) {
+            recorder.finalizeStream(stream.id).catch(err => {
+                console.warn(`[VOD] Auto-finalize failed for stale stream ${stream.id}:`, err.message);
+            });
+        }
+        // Stop RS chat bridge for this stream (prevents zombie bridges)
+        robotStreamerService.stopForStream(stream.id);
+        // Stop chat relay bridges for this stream
+        chatRelayService.stopForStream(stream.id);
+        // Stop AI chatbots for this stream
+        try { require('./integrations/ai-chatbot-service').stopForStream(stream.id); } catch { /* non-critical */ }
+        // Stop any active restreams for this stream
+        restreamManager.stopAllForStream(stream.id);
+        // Close signaling room and notify viewers
+        broadcastServer.endStream(stream.id);
+        const user = await db.getUserById(stream.user_id);
+        if (stream.protocol === 'jsmpeg' && user) {
+            jsmpegRelay.destroyChannel(user.stream_key);
+        } else if (stream.protocol === 'webrtc') {
+            webrtcSFU.closeRoom(`stream-${stream.id}`);
+        }
+    }
     const liveVodThumbGeneratedAt = new Map();   // streamId → last Media frame-grab time
     const maintenanceInterval = setInterval(async () => {
         if (heartbeatCleanupRunning) return;
@@ -1512,30 +1541,22 @@ async function start() {
                     continue;
                 }
                 console.log(`[Heartbeat] Ending stale stream ${stream.id} (no heartbeat for 5+ minutes)`);
-                await db.endStream(stream.id);
-                try { await db.computeAndCacheStreamAnalytics(stream.id); } catch {}
-                // Auto-finalize any active VOD recording for this stream (via OpenVibe.Media)
-                if (!recorder.isFinalizingStream(stream.id)) {
-                    recorder.finalizeStream(stream.id).catch(err => {
-                        console.warn(`[VOD] Auto-finalize failed for stale stream ${stream.id}:`, err.message);
-                    });
-                }
-                // Stop RS chat bridge for this stream (prevents zombie bridges)
-                robotStreamerService.stopForStream(stream.id);
-                // Stop chat relay bridges for this stream
-                chatRelayService.stopForStream(stream.id);
-                // Stop AI chatbots for this stream
-                try { require('./integrations/ai-chatbot-service').stopForStream(stream.id); } catch { /* non-critical */ }
-                // Stop any active restreams for this stream
-                restreamManager.stopAllForStream(stream.id);
-                // Close signaling room and notify viewers
-                broadcastServer.endStream(stream.id);
-                const user = await db.getUserById(stream.user_id);
-                if (stream.protocol === 'jsmpeg' && user) {
-                    jsmpegRelay.destroyChannel(user.stream_key);
-                } else if (stream.protocol === 'webrtc') {
-                    webrtcSFU.closeRoom(`stream-${stream.id}`);
-                }
+                await endGoneStream(stream);
+            }
+
+            // Dead air (server/streaming/dead-air.js): a browser or WHIP stream whose page heartbeats while its
+            // producers receive nothing ends like a stale stream, and the streamer is told why.
+            const browserLive = await db.all(`SELECT id, user_id, protocol FROM streams WHERE is_live = 1 AND protocol IN ('webrtc', 'browser', 'screen')`);
+            deadAir.keep(new Set(browserLive.map((x) => x.id)));
+            for (const stream of browserLive) {
+                if (!deadAir.observe(stream.id, await webrtcSFU.producerBytes(`stream-${stream.id}`))) continue;
+                console.log(`[Heartbeat] Ending stream ${stream.id}: no video or audio for ${Math.round(deadAir.limitMs / 60000)} minutes (dead air)`);
+                await endGoneStream(stream);
+                require('./utils/notify').pushNotification({
+                    user_id: stream.user_id, type: 'STREAM_SUMMARY', category: 'stream', title: 'Your stream was ended',
+                    message: `No video or audio reached OpenVibe for ${Math.round(deadAir.limitMs / 60000)} minutes, so your stream was ended and its recording saved. Go live again whenever you are ready.`,
+                    url: 'https://openvibe.live/broadcast',
+                });
             }
 
             // Also finalize recordings whose stream already ended (finalize was never called)

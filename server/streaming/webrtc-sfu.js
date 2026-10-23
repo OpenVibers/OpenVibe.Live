@@ -607,6 +607,21 @@ class WebRTCSFU extends EventEmitter {
     }
 
     /**
+     * Bytes every open producer in a room has received (mediasoup Producer.getStats byteCount, summed). A new producer
+     * starts from 0, so a caller compares for a change, not a rise. 0 for a room that does not exist.
+     */
+    async producerBytes(roomId) {
+        const room = this.rooms.get(roomId);
+        if (!room) return 0;
+        let total = 0;
+        for (const { producer } of room.producers.values()) {
+            if (producer.closed) continue;
+            try { for (const st of await producer.getStats()) total += Number(st.byteCount) || 0; } catch { /* closed meanwhile */ }
+        }
+        return total;
+    }
+
+    /**
      * Get viewer count for a room
      */
     getViewerCount(roomId) {

@@ -990,8 +990,11 @@ class RsPassthroughRelay {
                 stalled_ms: _videoStalledSince ? Date.now() - _videoStalledSince : 0,
             };
             // session.rs (for /status) updates every 10 s; the flow line prints every 10 s only under
-            // LIVE_DEBUG_MEDIA=1, else the first one, one every 5 minutes, and every one while video is stalled.
-            if (DEBUG_MEDIA || _videoStalledSince || flowTicks % FLOW_LOG_EVERY === 1) log(sid, `flow: vIn ${Math.round((stats.vIn - lastVIn) / 10)}/s vOut ${Math.round((stats.vOut - lastVOut) / 10)}/s ` +
+            // LIVE_DEBUG_MEDIA=1, else the first one, one every 5 minutes, and every one in a stall's first minute (its
+            // diagnosis). A stall that lasts goes back to one every 5 minutes: stream 2718's 2.5-hour stall on
+            // 2026-10-23 printed 2,176 lines.
+            const youngStall = _videoStalledSince && Date.now() - _videoStalledSince < 60000;
+            if (DEBUG_MEDIA || youngStall || flowTicks % FLOW_LOG_EVERY === 1) log(sid, `flow: vIn ${Math.round((stats.vIn - lastVIn) / 10)}/s vOut ${Math.round((stats.vOut - lastVOut) / 10)}/s ` +
                 `aIn ${Math.round((stats.aIn - lastAIn) / 10)}/s aOut ${Math.round((stats.aOut - lastAOut) / 10)}/s${stalled} ` +
                 `| writeErr v=${stats.vErr} a=${stats.aErr} alienSsrc v=${stats.vAlien} a=${stats.aAlien} | stalls=${stats.ingestStalls} (${Math.round(stats.ingestStallMs / 1000)}s total) ` +
                 `| kf ${stats.kf - lastKf}/10s maxKfGap ${stats.maxKfGap}ms injSPS/PPS=${stats.inj}${INJECT_PARAMS ? '' : '(off)'} gopDmg=${stats.gopDamaged} ` +
