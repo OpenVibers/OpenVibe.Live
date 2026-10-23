@@ -417,6 +417,8 @@ function isAllowedOrigin(origin) {
     } catch { return false; }
 }
 
+// The WHIP host answers WHIP only; its other paths go to the site (server/web/whip-host.js).
+app.use(require('./web/whip-host').createWhipHostRedirect({ whipUrl: () => (config.whip?.enabled ? config.whip.publicUrl : null), siteUrl: () => config.baseUrl }));
 // WHIP ingest is keyed by the stream key, not by a cookie, so it is open to every origin —
 // that is what lets a static, backend-less site publish from the browser (docs/whip.md).
 // It must therefore bypass the credentialed allowlist below, which would 403 the preflight.
