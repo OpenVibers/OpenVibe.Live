@@ -191,7 +191,8 @@ async function streamChat(stream) {
         try {
             const chat = require('../chat/chat-client');
             for (let page = 0; page < 6; page++) {
-                const out = await chat.readMessages({ stream_id: stream.id, after_id: hit.afterId, limit: CHAT_PAGE });
+                // The first page names no after_id: Chat refuses after_id=0 (an id is positive), which left every stream unfiltered.
+                const out = await chat.readMessages({ stream_id: stream.id, after_id: hit.afterId || undefined, limit: CHAT_PAGE });
                 const rows = (out && out.messages) || [];
                 for (const m of rows) {
                     hit.afterId = Math.max(hit.afterId, Number(m.id) || 0);
