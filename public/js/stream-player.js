@@ -425,7 +425,7 @@ function _ensurePlayerLoaderStructure(placeholder) {
                     </div>
                     <details class="player-loader-diagnostics">
                         <summary>Technical details</summary>
-                        <pre></pre>
+                        <pre tabindex="0"></pre>
                     </details>
                 </div>
             </div>
