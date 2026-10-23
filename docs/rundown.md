@@ -90,7 +90,7 @@ Migration `0010_rundown.sql`:
 - `rundown_progress`: how far the desk has read each stream.
 - `rundown_reactions`: readers' reactions.
 
-The Arena's tables are no longer written. Its pages, styles and readers are gone (the recap, the home digest, the star pick and the VOD stats read The Rundown); its server code and `/api/arena` go once no open tab of an earlier release calls them, and its tables after that.
+The Arena's tables are no longer written. Its pages, styles and readers are gone (the recap, the home digest, the star pick and the VOD stats read The Rundown); its server code and `/api/arena` went on 2026-10-19 (Live#264), and its tables with migration `0015_drop_arena` (applied after 2026-10-23 18:34 UTC). `arena_opt_outs` stays: it is The Rundown's list of streamers who keep themselves out.
 
 ## Chat
 

@@ -41,7 +41,7 @@ const OVERRIDE_DELETE = new Set(['ip_log.user_id', 'vpn_approvals.user_id']);
 // Copies of the person's name kept beside a person column: cleared wherever the row stays.
 const NAME_COLS = ['username', 'display_name', 'user_name', 'sender_name', 'sender_username', 'author_name', 'author_username', 'avatar_url', 'user_avatar'];
 // Person columns the schema declares without a foreign key.
-const EXTRA = [['channel_points', 'streamer_id'], ['arena_mic_moments', 'target_user_id'], ['arena_drama', 'other_user_id'], ['arena_topics', 'created_by'], ['arena_topics', 'target_user_id']];
+const EXTRA = [['channel_points', 'streamer_id']];
 const SECRET_COL = /(^|_)(token|tokens|secret|hash|password|code|key|keys|p256dh|auth|cookie|cookies|credentials)($|_)/i;
 const ROW_LIMIT = 2000;
 const PART_BUDGET = 18 * 1024 * 1024;

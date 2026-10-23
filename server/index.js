@@ -1400,7 +1400,6 @@ async function start() {
     server.listen(socketActivated ? { fd: 3 } : { port: config.port, host: config.listenHost }, async () => {
         console.log('');
         console.log(`[Server] HTTP server:  http://${config.host}:${config.port}`);
-        console.log(`[Server] WebSocket:    ws://${config.host}:${config.port}/ws/chat`);
         console.log(`[Server] WebSocket:    ws://${config.host}:${config.port}/ws/broadcast`);
         console.log(`[Server] Environment:  ${config.nodeEnv}`);
         console.log(`[Server] BASE_URL:     ${config.baseUrl}`);
