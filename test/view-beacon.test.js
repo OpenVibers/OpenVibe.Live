@@ -57,6 +57,7 @@ const rateLimit = require('express-rate-limit');
         let r = await post('/api/views/vod/1');
         assert.strictEqual(r.status, 204);
         assert.strictEqual(r.headers.get('access-control-allow-origin'), 'https://openvibe.video');
+        assert.strictEqual(r.headers.get('cross-origin-resource-policy'), 'cross-origin', 'the watch page may read the answer');
         assert.deepStrictEqual(rows, ['vod|1|203.0.113.5'], 'a public VOD is counted for the viewer\'s address');
 
         r = await post('/api/views/vod/1');
