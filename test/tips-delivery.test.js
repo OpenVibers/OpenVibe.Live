@@ -35,7 +35,7 @@ const token = (cap, aud = 'openvibe.live') => serviceAuth.signServiceToken({ iss
     const db = require('../server/db/database');
     await db.initDb();
     const d = db.getDb();
-    await d.prepare("INSERT INTO users (id, username, display_name, password_hash, openvibe_bucks_balance, openvibe_bucks_cashout_balance) OVERRIDING SYSTEM VALUE VALUES (501, 'alex', 'Alex', 'x', 0, 0)").run();
+    await d.prepare("INSERT INTO users (id, username, display_name, password_hash) OVERRIDING SYSTEM VALUE VALUES (501, 'alex', 'Alex', 'x')").run();
     await d.prepare("INSERT INTO linked_accounts (user_id, service, service_user_id, subject_id) VALUES (501, 'network', '77', ?)").run(SUBJECT);
 
     // Chat persists and shows the line (Live keeps no chat table): stub the ingress call and record
@@ -168,10 +168,8 @@ const token = (cap, aud = 'openvibe.live') => serviceAuth.signServiceToken({ iss
     const u = await post({ ...job, creator: { type: 'user', id: 'usr_01J0000000000000000000000Y' } }, { key: 'tint_2:chat_line' });
     assert.strictEqual(u.status, 404);
 
-    // No Live balance moved.
-    const user = await d.prepare('SELECT openvibe_bucks_balance, openvibe_bucks_cashout_balance FROM users WHERE id = 501').get();
-    assert.deepStrictEqual(user, { openvibe_bucks_balance: 0, openvibe_bucks_cashout_balance: 0 });
-    assert.strictEqual((await d.prepare("SELECT COUNT(*) AS n FROM transactions").get()).n, 0);
+    // Live keeps no balance or ledger of its own to move (migration 0016): the tip is OpenVibe.Billing's.
+    assert.strictEqual((await d.prepare("SELECT COUNT(*) AS n FROM information_schema.tables WHERE table_schema = current_schema() AND table_name = 'transactions'").get()).n, 0);
 
     server.close();
     process.stdout.write('tips-delivery: all passed\n');

@@ -2,9 +2,9 @@
 /**
  * OpenVibe.Billing is the ledger (since the cutover of 2026-10-17; ADR-012): every Live money action goes to
  * OpenVibe.Billing with Live's service token (audience openvibe.billing), the one capability that
- * route needs, a deterministic Idempotency-Key and canonical subjects — and Live's own money
- * columns and tables (users.openvibe_bucks_*, transactions, payment_orders, subscriptions) are
- * never written. A person with no subject cannot move money; Billing being down or slow fails
+ * route needs, a deterministic Idempotency-Key and canonical subjects. Live's own money columns
+ * and tables (users.openvibe_bucks_*, transactions, payment_orders, subscriptions) are gone since
+ * migration 0016. A person with no subject cannot move money; Billing being down or slow fails
  * clearly; the provider and PowerChat webhooks on Live answer 410 with Billing's URL.
  *
  * Network and Billing are local stand-ins (test/billing-stub.js); sign-in is stubbed with an
@@ -47,12 +47,12 @@ async function check(name, fn) {
     await db.initDb();
     const raw = db.getDb();
     const addUser = async (id, username, role, extra = {}) => await raw.prepare(
-        `INSERT INTO users (id, username, display_name, email, password_hash, role, is_owner, openvibe_bucks_balance, openvibe_bucks_cashout_balance) OVERRIDING SYSTEM VALUE
-         VALUES (?, ?, ?, ?, 'x', ?, ?, ?, ?)`).run(id, username, username, `${username}@x`, role, extra.is_owner ? 1 : 0, extra.bucks || 0, extra.cashout || 0);
+        `INSERT INTO users (id, username, display_name, email, password_hash, role, is_owner) OVERRIDING SYSTEM VALUE
+         VALUES (?, ?, ?, ?, 'x', ?, ?)`).run(id, username, username, `${username}@x`, role, extra.is_owner ? 1 : 0);
     await addUser(1, 'owner', 'admin', { is_owner: 1 });
-    await addUser(2, 'ann', 'user', { bucks: 1000 });            // legacy columns carry values: they must never move
-    await addUser(3, 'bob', 'streamer', { cashout: 2000 });
-    await addUser(4, 'cat', 'user', { bucks: 5000 });            // no subject anywhere
+    await addUser(2, 'ann', 'user');
+    await addUser(3, 'bob', 'streamer');
+    await addUser(4, 'cat', 'user');                              // no subject anywhere
     await addUser(5, 'dan', 'user');
     await addUser(6, 'eve', 'streamer');                          // streamer with no subject
     await addUser(7, 'admin2', 'admin');                          // an admin who is not the owner
@@ -64,13 +64,11 @@ async function check(name, fn) {
     await db.setSetting('powerchat_client_id', 'pca_test');
     await db.setSetting('powerchat_site_tip_username', 'sitepc');
 
+    // What Live kept of its own ledger: nothing (migration 0016).
     const ledger = async () => ({
-        users: await raw.prepare('SELECT id, openvibe_bucks_balance AS b, openvibe_bucks_cashout_balance AS c FROM users ORDER BY id').all(),
-        transactions: (await raw.prepare('SELECT COUNT(*) AS n FROM transactions').get()).n,
-        payment_orders: (await raw.prepare('SELECT COUNT(*) AS n FROM payment_orders').get()).n,
-        subscriptions: await raw.prepare('SELECT COUNT(*) AS n, COALESCE(MAX(updated_at), \'\') AS u FROM subscriptions').get(),
+        tables: (await raw.prepare("SELECT table_name AS t FROM information_schema.tables WHERE table_schema = current_schema() AND table_name IN ('transactions', 'payment_orders', 'subscriptions') ORDER BY 1").all()).map((r) => r.t),
+        columns: (await raw.prepare("SELECT column_name AS c FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'users' AND column_name LIKE 'openvibe\\_%' ORDER BY 1").all()).map((r) => r.c),
     });
-    const before = await ledger();
 
     const auth = require('../server/auth/auth');
     const signIn = async (req) => { const id = Number(req.headers['x-test-user'] || 0); const u = id ? await db.getUserById(id) : null; if (u) req.user = u; return u; };
@@ -473,8 +471,8 @@ async function check(name, fn) {
         assert.ok(u.json.users.every((x) => x.openvibe_bucks_balance === null));
     });
 
-    await check('after everything: Live\'s money columns and tables are exactly as before', async () => {
-        assert.deepStrictEqual(await ledger(), before);
+    await check('after everything: Live has no money columns or tables of its own to write', async () => {
+        assert.deepStrictEqual(await ledger(), { tables: [], columns: [] });
     });
 
     server.close();

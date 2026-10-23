@@ -7,9 +7,7 @@
  *   node --import ./test/helpers/pg-preload.mjs test/channel-tips.test.js
  */
 const assert = require('assert');
-const fs = require('fs');
 const http = require('http');
-const path = require('path');
 
 process.env.NODE_ENV = 'test';
 const quiet = console.log;
@@ -20,10 +18,10 @@ console.warn = () => {};
     const db = require('../server/db/database');
     await db.initDb();
     const raw = db.getDb();
-    const addUser = async (id, username, bucks = 0) => await raw.prepare(
-        `INSERT INTO users (id, username, display_name, email, password_hash, role, openvibe_bucks_balance) OVERRIDING SYSTEM VALUE
-         VALUES (?, ?, ?, ?, 'x', 'user', ?)`).run(id, username, username[0].toUpperCase() + username.slice(1), `${username}@x`, bucks);
-    await addUser(2, 'ann', 2000);
+    const addUser = async (id, username) => await raw.prepare(
+        `INSERT INTO users (id, username, display_name, email, password_hash, role) OVERRIDING SYSTEM VALUE
+         VALUES (?, ?, ?, ?, 'x', 'user')`).run(id, username, username[0].toUpperCase() + username.slice(1), `${username}@x`);
+    await addUser(2, 'ann');
     await addUser(3, 'bob');
     const streamId = Number((await db.run("INSERT INTO streams (user_id, title, protocol, is_live) VALUES (3, 'bob live', 'webrtc', 1) RETURNING id")).lastInsertRowid);
 
@@ -85,18 +83,7 @@ console.warn = () => {};
     assert.strictEqual(stats.supporters, 3, 'ann, pcfan and the supporter who hid the amount');
     assert.strictEqual((await db.getHomeStatSeries('supporters', 30)).total, 3);
 
-    // The migration's backfill: completed donations in the ledger become tips once; failed ones and purchases do not.
-    const sql = fs.readFileSync(path.join(__dirname, '..', 'migrations', '0009_channel_tips.sql'), 'utf8');
-    const backfill = sql.slice(sql.indexOf('INSERT INTO channel_tips'));
-    const ok = Number((await db.run("INSERT INTO transactions (from_user_id, to_user_id, amount, type, status) VALUES (2, 3, 70, 'donation', 'completed') RETURNING id")).lastInsertRowid);
-    const failed = Number((await db.run("INSERT INTO transactions (from_user_id, to_user_id, amount, type, status) VALUES (2, 3, 80, 'donation', 'failed') RETURNING id")).lastInsertRowid);
-    const bought = Number((await db.run("INSERT INTO transactions (from_user_id, to_user_id, amount, type, status) VALUES (NULL, 2, 500, 'purchase', 'completed') RETURNING id")).lastInsertRowid);
-    await raw.prepare(backfill).run();
-    await raw.prepare(backfill).run();
-    assert.deepStrictEqual(await tip(`live-txn:${ok}`), { to_user_id: 3, from_user_id: 2, username: null, stream_id: null, amount: 70, source: 'vibes' });
-    assert.strictEqual(await tip(`live-txn:${failed}`), undefined);
-    assert.strictEqual(await tip(`live-txn:${bought}`), undefined);
-    assert.strictEqual(await count(), 5, 'one copy of each completed donation');
+    // 0009's backfill copied the ledger's completed donations on 2026-10-17; the ledger itself went in 0016.
 
     server.close();
     quiet('channel tips: all checks passed');
