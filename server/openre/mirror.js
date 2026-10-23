@@ -111,7 +111,7 @@ async function apply(event) {
     [sessionId, known ? known.managed_stream_id : slotRef(p), streamId, state, revision, toSqlTime(p.ended_at)]);
     if (!streamId) return { outcome: 'recorded' };
     const row = await db.getStreamById(streamId);
-    if (row && row.is_live) await db.endStream(streamId);
+    if (row && row.is_live) await db.endStream(streamId, 'ingest_ended');
     return {
         outcome: 'ended',
         after: async () => {

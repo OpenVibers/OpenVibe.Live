@@ -510,7 +510,7 @@ class BroadcastServer extends EventEmitter {
                     if (currentRoom && !currentRoom.broadcaster) {
                         console.log(`[Broadcast] Broadcaster did not reconnect, ending stream ${client.streamId}`);
                         try {
-                            await db.endStream(client.streamId);
+                            await db.endStream(client.streamId, 'broadcaster_left');
                             require('./recorder').finalizeStream(client.streamId).catch((err) => {
                                 console.warn(`[Broadcast] Failed to finalize VOD for stale stream ${client.streamId}:`, err.message);
                             });

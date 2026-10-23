@@ -247,7 +247,7 @@ class RTMPServer extends EventEmitter {
                     info.heartbeatTimer = null;
                 }
 
-                await db.endStream(info.streamId);
+                await db.endStream(info.streamId, 'ingest_ended');
                 try { await db.computeAndCacheStreamAnalytics(info.streamId); } catch {}
                 this.activeStreams.delete(streamKey);
                 console.log(`[RTMP] Stream ended: ${maskKey(streamKey)} (stream ${info.streamId})`);

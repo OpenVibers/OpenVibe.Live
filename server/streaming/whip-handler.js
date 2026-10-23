@@ -187,7 +187,7 @@ async function endActiveWhipStream(streamId, reason = 'whip_cleanup') {
 
     console.log(`[WHIP] Ending live stream ${streamId} due to WHIP session termination (${reason})`);
     try {
-        await db.endStream(streamId);
+        await db.endStream(streamId, 'ingest_ended');
     } catch (err) {
         console.error(`[WHIP] Failed to end stream ${streamId}:`, err.message);
     }

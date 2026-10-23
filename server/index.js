@@ -1498,8 +1498,8 @@ async function start() {
     // Browser and WHIP streams with no media for 30 minutes end (server/streaming/dead-air.js).
     const deadAir = require('./streaming/dead-air').createDeadAir({ limitMs: Math.max(5, Number(process.env.LIVE_DEAD_AIR_MINUTES) || 30) * 60 * 1000 });
     /** Everything a stream that is gone needs: ended, its recording finalized, its bridges, restreams and room closed. */
-    async function endGoneStream(stream) {
-        await db.endStream(stream.id);
+    async function endGoneStream(stream, reason) {
+        await db.endStream(stream.id, reason);
         try { await db.computeAndCacheStreamAnalytics(stream.id); } catch {}
         // Auto-finalize any active VOD recording for this stream (via OpenVibe.Media)
         if (!recorder.isFinalizingStream(stream.id)) {
@@ -1543,7 +1543,7 @@ async function start() {
                     continue;
                 }
                 console.log(`[Heartbeat] Ending stale stream ${stream.id} (no heartbeat for 5+ minutes)`);
-                await endGoneStream(stream);
+                await endGoneStream(stream, 'heartbeat_lost');
             }
 
             // Dead air (server/streaming/dead-air.js): a browser or WHIP stream whose page heartbeats while its
@@ -1553,7 +1553,7 @@ async function start() {
             for (const stream of browserLive) {
                 if (!deadAir.observe(stream.id, await webrtcSFU.producerBytes(`stream-${stream.id}`))) continue;
                 console.log(`[Heartbeat] Ending stream ${stream.id}: no video or audio for ${Math.round(deadAir.limitMs / 60000)} minutes (dead air)`);
-                await endGoneStream(stream);
+                await endGoneStream(stream, 'dead_air');
                 require('./utils/notify').pushNotification({
                     user_id: stream.user_id, type: 'STREAM_SUMMARY', category: 'stream', title: 'Your stream was ended',
                     message: `No video or audio reached OpenVibe for ${Math.round(deadAir.limitMs / 60000)} minutes, so your stream was ended and its recording saved. Go live again whenever you are ready.`,
