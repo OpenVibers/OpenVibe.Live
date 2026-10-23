@@ -357,12 +357,22 @@ async function generateClipOverview(clip) {
     });
     const overview = (r && r.overview) ? r.overview : ' ';
     const transcript = r ? r.transcript : '';
-    try { await db.setClipAiOverview(clip.id, { overview, transcript: transcript || null, segments: r ? r.segments : null }); } catch { /* */ }
-    // The overview pass already ran whisper — record it as done so the transcript poller
-    // doesn't re-transcribe the same clip. (Only when we actually got speech; a blank
-    // result is left for the dedicated, retrying transcript path to handle properly.)
-    try { if (transcript && transcript.trim()) await db.setClipTranscriptStatus(clip.id, 'done'); } catch { /* */ }
+    const speech = clipOverviewSpeech(r);
+    try { await db.setClipAiOverview(clip.id, { overview, transcript: transcript || null, segments: speech.segments }); } catch { /* */ }
+    try { if (speech.status) await db.setClipTranscriptStatus(clip.id, speech.status); } catch { /* */ }
     return { overview: r ? r.overview : null, transcript };
+}
+
+/**
+ * What a clip's overview pass records about speech. It already ran speech-to-text, so when that heard the clip its
+ * segments are stored and the status settled (done, or empty for no speech), and the transcript poller leaves the clip
+ * alone. When speech-to-text failed nothing is stored: segments null keeps ai_transcript_json NULL (never attempted),
+ * the poller's retrying path takes the clip. Storing [] there took 172 clips out of the queue for good (2026-10-23:
+ * AI could not read Media's virtual clips, and each was left `pending` or `retry` with an empty transcript).
+ */
+function clipOverviewSpeech(r) {
+    if (!r || !r.transcriptOk) return { segments: null, status: null };
+    return { segments: r.segments || [], status: String(r.transcript || '').trim() ? 'done' : 'empty' };
 }
 
 /** Report AI config + optionally probe OpenVibe.AI with a one-word run. */
@@ -388,7 +398,7 @@ module.exports = {
     isEnabled, withinBudget, pasteAnalysisEnabled, streamMemoryEnabled, transcriptionEnabled, captureIntervalSec,
     analyzeImagePaste, analyzeTextPaste, analyzeStreamFrame, summarizeStreamMemories,
     generateStreamerOverview, generateVodOverview, generateClipOverview, ensureVodTimeline,
-    generateVodTranscript, generateClipTranscript, testStatus,
+    generateVodTranscript, generateClipTranscript, clipOverviewSpeech, testStatus,
     sharedKeyReady,
     complete: llm.complete, llm,
 };

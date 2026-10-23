@@ -151,9 +151,11 @@ async function _momentContext(streamId, vodId) {
     const transcript = _sample(await db.getStreamTranscriptSegments(streamId) || [], 60);
     // Where viewers clipped: the clips live in OpenVibe.Media.
     const clipTimes = await require('../media-proxy/lookups').clipStartTimes(streamId, vodId);
-    // Chat's own buckets since the stream began (offsets are relative to started_at, as before).
-    const started = await (async () => { try { const r = await db.get('SELECT started_at FROM streams WHERE id = ?', [streamId]); return r && r.started_at ? Date.parse(String(r.started_at).replace(' ', 'T') + 'Z') : 0; } catch { return 0; } })();
-    const spikes = started > 0 ? (await chatReads.spikeOffsets(streamId, 30, 8, started) || []) : [];
+    // Chat's own buckets over the stream (offsets are relative to started_at, as before; it ends at ended_at, or now).
+    const ms = (t) => (t ? Date.parse(String(t).replace(' ', 'T') + 'Z') || 0 : 0);
+    const span = await (async () => { try { return await db.get('SELECT started_at, ended_at FROM streams WHERE id = ?', [streamId]) || {}; } catch { return {}; } })();
+    const started = ms(span.started_at);
+    const spikes = started > 0 ? (await chatReads.spikeOffsets(streamId, 30, 8, started, ms(span.ended_at) || undefined) || []) : [];
     // Non-speech sounds are strong moment candidates — an explosion or a burst of
     // laughter marks a highlight as reliably as anything said out loud.
     let sounds = [];

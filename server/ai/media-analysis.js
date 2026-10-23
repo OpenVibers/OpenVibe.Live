@@ -313,7 +313,7 @@ async function _transcribeSpan(src, duration, { resumeFromSec = 0, priorSegments
 /**
  * Analyze a media source (ffmpeg-consumable path or URL): spread frames → vision
  * descriptions (optionally stored as memories) + sampled transcript → overview.
- * @returns {{ overview, transcript, frames, duration }}
+ * @returns {{ overview, transcript, segments, transcriptOk, frames, duration }}
  */
 async function analyzeMedia(src, { streamId = null, userId = null, numFrames = null, storeMemories = false, offsetBase = 0 } = {}) {
     if (!src) return { overview: null, transcript: '', frames: [], duration: 0 };
@@ -331,7 +331,7 @@ async function analyzeMedia(src, { streamId = null, userId = null, numFrames = n
         frames = await captureFrameMemories(src, times, { streamId, userId, offsetBase, store: storeMemories });
     }
 
-    const { text: transcript, segments } = await _transcribeSpan(src, duration);
+    const { text: transcript, segments, ok: transcriptOk } = await _transcribeSpan(src, duration);
 
     let overview = null;
     if ((frames.length || transcript) && await ai.isEnabled() && await ai.withinBudget()) {
@@ -339,7 +339,8 @@ async function analyzeMedia(src, { streamId = null, userId = null, numFrames = n
         const o = await require('./ai-service').structured('live.media.overview', { frames: frames.map(f => String(f.description || '').slice(0, 1000)).filter(Boolean).slice(0, 60), transcript: String(transcript || '').slice(0, 200000) }, { meter: { kind: 'media_overview', role: 'legacy', ownerUserId: userId } });
         overview = o && o.overview ? String(o.overview).slice(0, 2000) : null;
     }
-    return { overview: overview || null, transcript: transcript || '', segments: segments || [], frames, duration };
+    // transcriptOk: speech-to-text heard the media (an empty transcript then means no speech, not a failure).
+    return { overview: overview || null, transcript: transcript || '', segments: segments || [], transcriptOk: !!transcriptOk, frames, duration };
 }
 
 /**

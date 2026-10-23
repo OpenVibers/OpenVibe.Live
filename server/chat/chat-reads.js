@@ -31,6 +31,7 @@ const client = require('./chat-client');
 const CACHE_TTL_MS = 15_000;        // how long an answer is used without asking Chat again
 const CACHE_KEEP_MS = 15 * 60_000;  // how long a last-good value answers peeks and failures
 const FAIL_TTL_MS = 2_000;          // how long a failure is not retried (it never replaces the value)
+const SPIKE_MAX_BUCKETS = 10_000;   // Chat's timeline answers at most this many buckets
 
 const cache = new Map();     // key -> { at, value, failed?, failedAt? }
 const inflight = new Map();  // key -> Promise
@@ -478,13 +479,16 @@ function recentChatText(streamId, sinceSec = 120, limit = 40) {
     }, () => []);
 }
 
-/** The busiest `bucketSec` time-buckets of a stream, as offsets from `sinceMs`: [{ offset, count }]. */
-function spikeOffsets(streamId, bucketSec = 30, topN = 8, sinceMs) {
+/** The busiest `bucketSec` time-buckets of a stream between `sinceMs` and `untilMs` (default now), as offsets from
+ *  `sinceMs`: [{ offset, count }]. Chat answers at most 10,000 buckets, so a stream that ended gives its end: up to
+ *  now, a stream from two months ago asked for 184,000 and got a 400 (2026-10-23). */
+function spikeOffsets(streamId, bucketSec = 30, topN = 8, sinceMs, untilMs) {
     const id = Number(streamId) || 0;
     if (!id) return Promise.resolve([]);
-    const key = `sp:${id}:${bucketSec}:${topN}:${sinceMs || 0}`;
+    const until = untilMs > (sinceMs || 0) ? Math.min(untilMs, (sinceMs || 0) + SPIKE_MAX_BUCKETS * bucketSec * 1000) : null;
+    const key = `sp:${id}:${bucketSec}:${topN}:${sinceMs || 0}:${until || 0}`;
     return load(key, async () => {
-        const out = await client.readTimeline({ stream_id: id, since: sinceMs || 0, bucket_ms: bucketSec * 1000 });
+        const out = await client.readTimeline({ stream_id: id, since: sinceMs || 0, until, bucket_ms: bucketSec * 1000 });
         if (!out || !Array.isArray(out.buckets)) throw unavailable('timeline');
         const base = sinceMs || 0;
         return out.buckets
