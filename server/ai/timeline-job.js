@@ -128,6 +128,9 @@ async function _processSegment(stream, seg) {
 
     if (events.length) await db.addTimelineEvents(events);
     audio.discardSegment(stream.id, seg.name);
+    // Vibe on stream: the streamer's call word in these phrases wakes Vibe (clip the moment, or answer in chat). Off
+    // unless the streamer turned it on; never holds up the timeline.
+    if (events.some((e) => e.kind === 'speech')) require('./vibe-voice').onSpeech(stream, events).catch(() => {});
 
     const spoken = events.filter(e => e.kind === 'speech').length;
     const heard = events.filter(e => e.kind === 'sound').length;
