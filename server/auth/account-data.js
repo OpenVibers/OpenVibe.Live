@@ -33,11 +33,12 @@ const SUBJECT_RE = /^usr_[0-9A-HJKMNP-TV-Z]{26}$/;
 const EXPORT_RE = /^exp_[0-9A-HJKMNP-TV-Z]{26}$/;
 const DELETION_RE = /^del_[0-9A-HJKMNP-TV-Z]{26}$/;
 const FROZEN = new Set(['vods', 'clips', 'pastes', 'paste_likes', 'paste_comments', 'comments']);
-const RETAIN = new Set(['payment_orders', 'subscriptions', 'transactions', 'coin_transactions', 'channel_points_log', 'bans',
+// Money history is OpenVibe.Billing's (Live's own ledger went in migration 0016): what stays here is points and
+// moderation records.
+const RETAIN = new Set(['coin_transactions', 'channel_points_log', 'bans',
     'token_revocations', 'verification_keys', 'subject_merges', 'account_data_events']);
-// Rows the schema keeps without the person (SET NULL) that are theirs to erase all the same: sign-in IPs and
-// VPN requests.
-const OVERRIDE_DELETE = new Set(['ip_log.user_id', 'vpn_approvals.user_id']);
+// Rows the schema keeps without the person (SET NULL) that are theirs to erase all the same: sign-in IPs.
+const OVERRIDE_DELETE = new Set(['ip_log.user_id']);
 // Copies of the person's name kept beside a person column: cleared wherever the row stays.
 const NAME_COLS = ['username', 'display_name', 'user_name', 'sender_name', 'sender_username', 'author_name', 'author_username', 'avatar_url', 'user_avatar'];
 // Person columns the schema declares without a foreign key.
@@ -162,11 +163,6 @@ async function eraseUsers(d, userIds, { now = new Date().toISOString() } = {}) {
                         : await d.prepare(`DELETE FROM ${q(t)} WHERE ${q(c.col)} = ?`).run(uid);
                     bump(erased, t, r.changes);
                 }
-            }
-            // A donation's message is the person's words: cleared from Live's old ledger (read-only since the Billing
-            // cutover, gone with its contract migration; OpenVibe.Billing holds the money history now).
-            if (cols.has('transactions')) {
-                await d.prepare('UPDATE transactions SET message = NULL WHERE from_user_id = ? AND message IS NOT NULL').run(uid);
             }
             // The tombstone: the kept rows point at nobody; the username is free again.
             const set = { username: `deleted-${uid}`, email: null, password_hash: null, display_name: null, avatar_url: null, bio: null, stream_key: null,

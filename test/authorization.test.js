@@ -34,13 +34,13 @@ auth.optionalAuth = (req, res, next) => { signIn(req).then(() => next()).catch(n
 
 // Accounts: an owner-admin, a second admin, two streamers, a bystander.
 const addUser = async (id, username, role, extra = {}) => await raw.prepare(
-    `INSERT INTO users (id, username, display_name, email, password_hash, role, is_owner, openvibe_bucks_balance, openvibe_bucks_cashout_balance) OVERRIDING SYSTEM VALUE
-     VALUES (?, ?, ?, ?, 'x', ?, ?, ?, ?)`).run(id, username, username, `${username}@x`, role, extra.is_owner ? 1 : 0, extra.bucks || 0, extra.cashout || 0);
+    `INSERT INTO users (id, username, display_name, email, password_hash, role, is_owner) OVERRIDING SYSTEM VALUE
+     VALUES (?, ?, ?, ?, 'x', ?, ?)`).run(id, username, username, `${username}@x`, role, extra.is_owner ? 1 : 0);
 await addUser(1, 'owner', 'admin', { is_owner: 1 });
 await addUser(2, 'admin2', 'admin');
-await addUser(3, 'alice', 'streamer', { cashout: 0 });
+await addUser(3, 'alice', 'streamer');
 await addUser(4, 'bob', 'streamer');
-await addUser(5, 'carol', 'user', { bucks: 0 });
+await addUser(5, 'carol', 'user');
 for (const id of [3, 4]) await db.ensureChannel(id);
 const chanA = await db.getChannelByUserId(3), chanB = await db.getChannelByUserId(4);
 const streamA = (await db.createStream({ user_id: 3, channel_id: chanA.id, title: 'A', protocol: 'webrtc' })).lastInsertRowid;
@@ -144,10 +144,8 @@ async function check(name, fn) {
         const mq = require('../server/media/media-queue');
         const reqRow = await raw.prepare(`INSERT INTO media_requests (streamer_id, user_id, username, title, cost, currency, status, provider, input, canonical_url)
             VALUES (3, 5, 'carol', 't', 1000, 'vibes', 'pending', 'video', 'https://x', 'https://x') RETURNING id`).run();
-        const before = (await db.getUserById(5)).openvibe_bucks_balance;
         const refunded = await mq.refund(reqRow.lastInsertRowid);
         assert.strictEqual(refunded, 0);
-        assert.strictEqual((await db.getUserById(5)).openvibe_bucks_balance, before);
     });
 
     await check('media playback position: only channel managers can move it', async () => {
@@ -173,11 +171,9 @@ async function check(name, fn) {
     await check('payments: a provider webhook reaching Live credits nothing and names OpenVibe.Billing', async () => {
         // Billing receives every payment webhook since the cutover (its own tests cover underpaid and replayed sales).
         await db.setSetting('ccbill_webhook_secret', 'sek');
-        const before = (await db.getUserById(5)).openvibe_bucks_balance;
         const r = await call('POST', `/api/payments/webhook/ccbill?secret=sek&${new URLSearchParams({ 'X-order': 1, eventType: 'NewSaleSuccess', billedInitialPrice: '100.00' })}`, null, {});
         assert.strictEqual(r.status, 410, r.text);
         assert.match(r.json.webhook_url, /\/webhooks\/ccbill$/);
-        assert.strictEqual((await db.getUserById(5)).openvibe_bucks_balance, before);
     });
 
     await check('API tokens: scopes gate writes; money, staff and credential routes refuse tokens', () => {

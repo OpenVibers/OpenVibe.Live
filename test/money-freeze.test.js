@@ -34,10 +34,10 @@ async function check(name, fn) {
     await db.initDb();
     const raw = db.getDb();
     const addUser = async (id, username, role, extra = {}) => await raw.prepare(
-        `INSERT INTO users (id, username, display_name, email, password_hash, role, is_owner, openvibe_bucks_balance, openvibe_bucks_cashout_balance) OVERRIDING SYSTEM VALUE
-         VALUES (?, ?, ?, ?, 'x', ?, ?, ?, ?)`).run(id, username, username, `${username}@x`, role, extra.is_owner ? 1 : 0, extra.bucks || 0, extra.cashout || 0);
+        `INSERT INTO users (id, username, display_name, email, password_hash, role, is_owner) OVERRIDING SYSTEM VALUE
+         VALUES (?, ?, ?, ?, 'x', ?, ?)`).run(id, username, username, `${username}@x`, role, extra.is_owner ? 1 : 0);
     await addUser(1, 'owner', 'admin', { is_owner: 1 });
-    await addUser(2, 'ann', 'user', { bucks: 2000 });
+    await addUser(2, 'ann', 'user');
     await addUser(3, 'bob', 'streamer', { cashout: 1000 });
     await addUser(4, 'admin2', 'admin');
     await raw.prepare("INSERT INTO linked_accounts (user_id, service, service_user_id, subject_id) VALUES (2, 'network', '102', ?), (3, 'network', '103', ?)").run(SID_ANN, SID_BOB);

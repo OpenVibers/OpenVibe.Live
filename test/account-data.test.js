@@ -46,8 +46,7 @@ const ulid = () => ids.ulid();
     await d.prepare("INSERT INTO streams (id, user_id, title) OVERRIDING SYSTEM VALUE VALUES (1, 20, 'dana live'), (2, 21, 'xena live')").run();
     await d.prepare("INSERT INTO managed_streams (user_id, stream_key) VALUES (20, 'sk_live_secret_dana')").run();
     await d.prepare("INSERT INTO api_tokens (user_id, token_hash) VALUES (20, 'hash-secret-dana')").run();
-    await d.prepare("INSERT INTO transactions (from_user_id, to_user_id, amount, type, message) VALUES (20, 21, 5, 'donation', 'love you xena'), (22, 20, 3, 'donation', 'for dana')").run();
-    await d.prepare("INSERT INTO payment_orders (user_id, provider, provider_ref, kind, amount_cents, currency, bucks, status) VALUES (20, 'paypal', 'PO-1', 'bucks', 500, 'USD', 5, 'completed')").run();
+    await d.prepare("INSERT INTO coin_transactions (user_id, stream_id, amount, type) VALUES (20, 2, 5, 'watch'), (20, 2, 3, 'chat_bonus'), (22, 1, 2, 'watch')").run();
 
     const app = express();
     app.use(express.json({ verify: (req, res, buf) => { req.rawBody = buf; } }));
@@ -84,7 +83,7 @@ const ulid = () => ids.ulid();
         }
         assert.strictEqual(byName['profile.json'].username, 'dana');
         assert.deepStrictEqual(byName['follows.json'].map((f) => [f.follower_id, f.streamer_id]).sort(), [[20, 21], [22, 20]]);
-        assert.ok(byName['transactions.json'] && byName['payment_orders.json'], 'money history is theirs to see');
+        assert.ok(byName['coin_transactions.json'], 'points history is theirs to see (money history is OpenVibe.Billing\'s)');
         const text = JSON.stringify(part);
         for (const secret of ['sk_live_secret_dana', 'hash-secret-dana', '$sso$']) assert.ok(!text.includes(secret), `no ${secret}`);
         assert.strictEqual(await accountData.apply(exp, { send }), 'unchanged', 'a redelivery sends nothing twice');
@@ -102,8 +101,7 @@ const ulid = () => ids.ulid();
         assert.strictEqual(await n('SELECT COUNT(*) AS n FROM follows'), 1, "others' follows stay");
         assert.strictEqual(await n('SELECT COUNT(*) AS n FROM streams WHERE user_id = 20'), 0);
         assert.strictEqual((await n('SELECT COUNT(*) AS n FROM managed_streams WHERE user_id = 20')) + (await n('SELECT COUNT(*) AS n FROM api_tokens WHERE user_id = 20')) + (await n("SELECT COUNT(*) AS n FROM linked_accounts WHERE user_id = 20")), 0);
-        assert.deepStrictEqual(await d.prepare('SELECT from_user_id AS f, message FROM transactions ORDER BY id').all(), [{ f: 20, message: null }, { f: 22, message: 'for dana' }], 'money kept; her own message cleared');
-        assert.strictEqual(await n("SELECT COUNT(*) AS n FROM payment_orders WHERE user_id = 20"), 1, 'payment orders kept');
+        assert.strictEqual(await n('SELECT COUNT(*) AS n FROM coin_transactions WHERE user_id = 20'), 2, 'points history kept');
         const tomb = await d.prepare('SELECT username, email, bio, deleted_at FROM users WHERE id = 20').get();
         assert.deepStrictEqual([tomb.username, tomb.email, tomb.bio, !!tomb.deleted_at], ['deleted-20', null, null, true]);
         await d.prepare("INSERT INTO users (username, password_hash) VALUES ('dana', '$sso$')").run();
@@ -112,7 +110,7 @@ const ulid = () => ids.ulid();
         assert.strictEqual(conf.path, `/internal/account-deletions/${del.payload.deletion_id}/confirmations`);
         assert.ok(validate('network.account-deletion-confirmation@1', conf.body).valid, JSON.stringify(validate('network.account-deletion-confirmation@1', conf.body).errors));
         assert.ok(conf.body.erased.follows >= 2 && conf.body.erased.streams === 1 && conf.body.erased.accounts === 1, JSON.stringify(conf.body.erased));
-        assert.ok(conf.body.retained.transactions === 2 && conf.body.retained.payment_orders === 1, JSON.stringify(conf.body.retained));
+        assert.ok(conf.body.retained.coin_transactions === 2 && !('transactions' in conf.body.retained), JSON.stringify(conf.body.retained));
         assert.strictEqual(await accountData.apply(del, { send }), 'unchanged');
         assert.strictEqual(sent.length, 3);
 
