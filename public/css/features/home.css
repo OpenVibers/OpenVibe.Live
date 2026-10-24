@@ -1055,6 +1055,14 @@ body.egg-rainbow { animation: eggRainbow 2.6s linear; }
 .hero-stat-strip .hero-stat-delta em { display: none; }
 .hero-stat-strip .hero-stat-trend { margin-left: 4px; padding-left: 4px; }
 .hero-stat-strip .hero-stat-chart-hint { font-size: 0.5rem; margin-left: 2px; }
+/* Nine across, a card is ~127 px: beside the icon the pill had ~67 px and "+3.7k ▲ 431%" lost its end, and
+   "STREAMERS" its last letters (measured 2026-10-24 at 1280 px). The pill takes the card's whole width on its own
+   line, and the labels are set a little tighter. */
+@media (min-width: 1280px) {
+    .hero-stat-strip .hero-stat > i { grid-row: 1; }
+    .hero-stat-strip .hero-stat-delta { grid-column: 1 / -1; }
+    .hero-stat-strip .hero-stat-label { letter-spacing: 0.03em; }
+}
 /* Tablets and small laptops: three horizontal rows — icon · number + label · delta on the right. */
 @media (max-width: 1279px) {
     .hero-stats { min-height: 204px; }
