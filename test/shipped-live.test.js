@@ -11,8 +11,8 @@ const ROOT = path.join(__dirname, '..');
 const read = (p) => fs.readFileSync(path.join(ROOT, p), 'utf8');
 
 // The shared views
-const index = read('public/index.html');
-assert.ok(/id="hero-latest" data-ov-shipped="latest" data-service="live" href="\/updates"/.test(index), 'the hero one-liner is the shared view');
+const homeHtml = read('public/fragments/home.html');
+assert.ok(/id="hero-latest" data-ov-shipped="latest" data-service="live" href="\/updates"/.test(homeHtml), 'the hero one-liner is the shared view');
 const app = read('public/js/app.js');
 assert.ok(app.includes("sc.src = '/shared/shipped.js'") && app.includes("sc.setAttribute('data-ov-shipped-src', '')"), 'shipped.js from this site\'s own /shared/ pin, with the footer\'s marker');
 assert.ok(/shipped\.log\(container, \{ service: 'live'/.test(app), '/updates is the shared log');

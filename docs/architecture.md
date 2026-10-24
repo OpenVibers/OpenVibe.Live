@@ -39,10 +39,11 @@ OpenVibe.Live is a self-hosted live streaming platform, one of the OpenVibe serv
 The SPA is plain JavaScript with no build step. What loads is decided per route:
 
 ```
-public/index.html        shell: navbar, home page, empty <section id="page-*"> shells, core scripts
+public/index.html        shell: navbar, empty <section id="page-*"> shells, core scripts (no page markup)
 public/features.json     registry: feature → fragment, stylesheets, scripts, dependencies, stubs, idle prefetch
                          routes: URL pattern → features
-public/fragments/*.html  page markup for channel, dashboard, broadcast, chat, documentation, content, moments (VOD and clip pages are OpenVibe.Video's)
+public/fragments/*.html  page markup for home, channel, dashboard, broadcast, chat, documentation, content, moments, search,
+                         rundown, updates (VOD and clip pages are OpenVibe.Video's)
 public/css/features/*.css rules used only by one feature (split out of style.css / broadcast.css / i18n-star.css)
 public/js/ov-loader.js   configures /shared/web-runtime.js (openvibe-shared): ov.load(feature), ov.route(path), ov.prefetch(),
                          route generations, scopes, stubs, transactional asset groups, ov.diagnostics()/ov.leaks()
@@ -52,7 +53,9 @@ public/js/app-*.js       route code split out of app.js: home, channel, media, c
 
 - **First paint.** `server/web/assets.js` renders `index.html` for the requested path: the route's
   stylesheets go in `<head>` (right after `style.css`), its scripts after the core scripts, and its
-  fragment is inlined into the section shell. A direct visit needs no extra round trip.
+  fragment is inlined into the section shell. A direct visit needs no extra round trip, and a page
+  carries only its own markup: the home page's hero and lists are inlined on `/` alone, so every
+  other page has one `<h1>`, its own (`test/shell-one-h1.test.js`).
 - **Navigation.** `routeFromURL()` calls `whenRouteReady(page, render)`: the loader inserts the
   feature's markup first (modules bind to it on load), then dependencies, stylesheets and scripts in
   order, runs the feature's `after` hook once, and renders only if the route generation is still

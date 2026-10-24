@@ -295,14 +295,15 @@ function renderRoute(html, urlPath) {
  * visit to a channel, a VOD or the chat painted the home page (its hero and lists) until the router ran and swapped
  * pages — a flash of the wrong page and the largest layout shifts measured on the site (CLS 1.0 on a channel page,
  * 0.5 on a VOD, phone profile). The route's last feature with a page fragment names its section; the router's own
- * showPage() then finds it already active.
+ * showPage() then finds it already active. The home page is a fragment too (inlined on "/" only), so on any other
+ * route the shell carries its placeholder, not the hero and its <h1>.
  */
 function activePage(html, names, reg) {
     const frag = [...names].reverse().map((n) => reg.features[n] && reg.features[n].fragment)
         .find((f) => f && html.includes(`class="page" data-fragment="${f}"`));
     if (!frag) return html;
     return html
-        .replace('<section id="page-home" class="page active">', '<section id="page-home" class="page">')
+        .replace('<section id="page-home" class="page active"', '<section id="page-home" class="page"')
         .replace(`class="page" data-fragment="${frag}"`, `class="page active" data-fragment="${frag}"`);
 }
 

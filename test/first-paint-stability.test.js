@@ -49,8 +49,9 @@ ok('VOD and clip pages live on OpenVibe.Video');
 
 // ── Home hero and early widgets ──
 const index = read('public/index.html');
-assert.ok(/<div class="hero-slogan-timer" id="hero-slogan-timer">&nbsp;<\/div>/.test(index), 'the countdown line is held from the first paint');
-assert.ok(/<a class="hero-latest" id="hero-latest"[^>]*><\/a>/.test(index) && !/id="hero-latest"[^>]*\shidden>/.test(index), 'the shipped line is not hidden (shipped.js would collapse it, then refill it)');
+const homeHtml = read('public/fragments/home.html');
+assert.ok(/<div class="hero-slogan-timer" id="hero-slogan-timer">&nbsp;<\/div>/.test(homeHtml), 'the countdown line is held from the first paint');
+assert.ok(/<a class="hero-latest" id="hero-latest"[^>]*><\/a>/.test(homeHtml) && !/id="hero-latest"[^>]*\shidden>/.test(homeHtml), 'the shipped line is not hidden (shipped.js would collapse it, then refill it)');
 const home = read('public/css/features/home.css');
 assert.ok(home.includes('.hero-latest:empty { visibility: hidden; min-height: 33px; }'), 'the empty shipped line keeps its height, invisibly');
 assert.ok(/\.hero-stats \{ margin: 16px 0 10px; gap: 10px; min-height: 120px; \}/.test(home) && home.includes('.hero-stats { min-height: 204px; }') && home.includes('.hero-stats { min-height: 256px; margin-top: 14px; }'),

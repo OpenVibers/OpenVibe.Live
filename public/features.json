@@ -2,6 +2,7 @@
   "_comment": "Feature and route registry, read by server/web/assets.js (first paint: which assets the requested route needs) and by public/js/ov-loader.js (navigation: what to load before a route renders). Scripts in a feature run in the listed order, after the feature's dependencies. `fragment` names public/fragments/<name>.html, inserted into section #page-<section> before any of the feature's scripts run. `after` names a global function called once when the feature has loaded. `stubs` are global functions that inline handlers call; until the feature is loaded they load it and then call the real function. See docs/architecture.md#frontend-loading.",
   "features": {
     "home": {
+      "fragment": "home",
       "css": [
         "/css/features/home.css",
         "/css/home-fx.css",
@@ -232,7 +233,7 @@
         "regenerateDashStreamKey"
       ]
     },
-    "rundown": {"css": ["/css/features/rundown.css"], "js": ["/js/rundown.js"]},
+    "rundown": {"fragment": "rundown", "css": ["/css/features/rundown.css"], "js": ["/js/rundown.js"]},
     "recap": {
       "css": [
         "/css/recap.css"
@@ -248,6 +249,9 @@
       "stubs": [
         "openCosmeticsModal"
       ]
+    },
+    "updates": {
+      "fragment": "updates"
     },
     "docs": {
       "fragment": "documentation",
@@ -343,6 +347,7 @@
       ]
     },
     {"path": "^/rundown", "features": ["rundown"]}, {"path": "^/arena", "features": ["rundown"]},
+    {"path": "^/updates/?$", "features": ["updates"]},
     {
       "path": "^/documentation",
       "features": [
