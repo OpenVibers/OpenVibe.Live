@@ -14,20 +14,31 @@ const db = require('../db/database');
 const ai = require('./ai-analysis');
 const media = require('../media-client');
 const remote = require('./ai-media-analyze');
+const purge = require('../media-proxy/purge');
 
 let _timer = null;
 let _busy = false;
 let _loadWarnedAt = 0;
 
+// Media answered 404: the item was deleted there without passing through Live (on openvibe.video, or by Media's own
+// tools), so Live's rows about it never went. They go now, as after a delete through Live (purge.afterDelete). The
+// queues are newest first and take a few candidates a minute, so eight such rows on top kept every older one waiting
+// (2026-10-24: 49 clips and every older VOD).
+async function _gone(kind, id, err) {
+    if (!err || err.status !== 404) return;
+    await purge.afterDelete(kind, id);
+    console.log(`[AI backfill] ${kind} ${id} no longer exists on Media: its AI state is dropped`);
+}
+
 // Resolve Media metadata for a state row ({id} = Media id). Returns a vod/clip-shaped
-// object the ai-analysis functions understand, or null (→ retry later).
+// object the ai-analysis functions understand, or null (→ retry later; a 404 drops the row).
 async function _vodMeta(row) {
     try {
         const v = await media.getVod(row.id);
         if (!v) return null;
         if (v.status && String(v.status) === 'recording') return null; // still growing
         return { ...v, id: row.id, duration_seconds: v.duration_seconds ?? v.duration ?? 0 };
-    } catch { return null; }
+    } catch (e) { await _gone('vod', row.id, e).catch(() => {}); return null; }
 }
 async function _clipMeta(row) {
     try {
@@ -39,7 +50,7 @@ async function _clipMeta(row) {
             return null;
         }
         return { ...c, id: row.id, duration_seconds: c.duration_seconds ?? c.duration ?? 0 };
-    } catch { return null; }
+    } catch (e) { await _gone('clip', row.id, e).catch(() => {}); return null; }
 }
 
 async function tick() {

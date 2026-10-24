@@ -3,7 +3,8 @@
  * OpenVibe.Live — what Live does once OpenVibe.Media has deleted a VOD or clip for it.
  *
  * Every delete path calls afterDelete() after Media confirmed the delete: the owner's /api/vods and
- * /api/clips routes (one, bulk, older-than) and the admin storage page. It
+ * /api/clips routes (one, bulk, older-than) and the admin storage page; and the AI backfill when Media
+ * answers 404 for an item deleted elsewhere (openvibe.video, Media's own tools). It
  *   - hides the item's comment thread on OpenVibe.Community (comments-client.js);
  *   - drops Live's own rows about it: the AI state (vod_ai_state / clip_ai_state), which the AI
  *     backfill (server/ai/backfill-job.js) takes newest-first and would otherwise keep offering for an
