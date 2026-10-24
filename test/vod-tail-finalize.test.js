@@ -157,6 +157,11 @@ async function check(name, fn) {
         r = await call('GET', `/api/vods/${rtmpVod}/live-info`);
         assert.deepStrictEqual([r.json.isRecording, r.json.seekable, r.json.duration, r.json.fileSize], [true, true, 30, 4_000_000],
             'a growing recording with bytes is seekable, so the page refreshes toward the live edge');
+        assert.strictEqual(r.json.dvr_hls, `https://media.test/v/${rtmpVod}/dvr.m3u8`, 'an MP4 recording seeks through Media\'s playlist over the file');
+        VODS[rtmpVod].file_path = `vod-${rtmpVod}.webm`;
+        r = await call('GET', `/api/vods/${rtmpVod}/live-info`);
+        assert.strictEqual(r.json.dvr_hls, null, 'a WebM recording keeps its seekable copy');
+        VODS[rtmpVod].file_path = `vod-${rtmpVod}.mp4`;
     });
 
     await check('live tail: the page plays the recording through /api/vods/<id>/file → Media /v/<id>', async () => {
@@ -184,6 +189,7 @@ async function check(name, fn) {
         Object.assign(VODS[rtmpVod], { status: 'ready', is_recording: false, duration: 3600, duration_seconds: 3600, file_size: 9e8 });
         const r = await call('GET', `/api/vods/${rtmpVod}/live-info`);
         assert.deepStrictEqual([r.json.isRecording, r.json.seekable, r.json.duration], [false, true, 3600]);
+        assert.strictEqual(r.json.dvr_hls, null, 'finished: no DVR playlist');
     });
 
     await check('WebRTC/WHIP: PlainRTP consumers feed Media\'s ports; stream end stops the RTP ingest and closes them', async () => {

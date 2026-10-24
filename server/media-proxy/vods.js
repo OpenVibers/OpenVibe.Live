@@ -313,6 +313,10 @@ router.get('/:id/live-info', optionalAuth, async (req, res) => {
             // and the VOD page's tail refresh (public/js/app-media.js) never ran: a viewer stayed at
             // the length the recording had when they opened it.
             seekable: !!vod.seekable || !recording || (Number(vod.file_size) || 0) > 0,
+            // An MP4 recording (RTMP, OBS) seeks through Media's playlist over the file as it grows (/v/<id>/dvr.m3u8):
+            // no copy of the recording per pass. Public and unlisted only: an HLS player sends no credentials.
+            dvr_hls: recording && /\.mp4$/i.test(String(vod.file_path || '')) && (vod.visibility || (vod.is_public ? 'public' : 'private')) !== 'private'
+                ? media.vodDvrPlaylistUrl(vod.id) : null,
         });
     } catch (err) {
         mediaErr(res, err, 'Failed to get live info');
