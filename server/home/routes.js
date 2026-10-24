@@ -503,13 +503,17 @@ router.get('/digest', optionalAuth, async (req, res) => {
             new_members: Number((await one('SELECT COUNT(*) AS n FROM users WHERE created_at >= ?', [sinceSql]) || {}).n || 0),
             takes: Number((await one("SELECT COUNT(*) AS n FROM rundown_segments WHERE status = 'live' AND said_at >= ?", [sinceSql]) || {}).n || 0),
         };
-        // The best Rundown takes since then (server/rundown): the quote when there is one, else the headline.
+        // The best Rundown takes since then (server/rundown): the quote when there is one, else the headline. The front
+        // page leaves out a take with a slur, strong profanity or a hate topic (front-page-text.js) and shows the next.
         let hot = [];
         try {
+            const { frontPageOk } = require('./front-page-text');
             hot = (await db.all(`SELECT s.title, s.quotes_json, s.said_at, t.title AS topic, t.slug, u.username, u.display_name FROM rundown_segments s
                 JOIN users u ON u.id = s.user_id LEFT JOIN rundown_topics t ON t.id = s.topic_id
-                WHERE s.status = 'live' AND s.said_at >= ? AND s.score >= 4 AND COALESCE(u.is_banned, 0) = 0 ORDER BY s.score DESC, s.said_at DESC LIMIT 3`, [sinceSql]) || [])
-                .map((r) => { let q = null; try { q = JSON.parse(r.quotes_json || '[]')[0] || null; } catch { q = null; } return { text: q ? q.text : r.title, quoted: !!q, topic: r.topic || null, slug: r.slug || null, said_at: r.said_at, username: r.username, display_name: r.display_name }; });
+                WHERE s.status = 'live' AND s.said_at >= ? AND s.score >= 4 AND COALESCE(u.is_banned, 0) = 0 ORDER BY s.score DESC, s.said_at DESC LIMIT 15`, [sinceSql]) || [])
+                .map((r) => { let q = null; try { q = JSON.parse(r.quotes_json || '[]')[0] || null; } catch { q = null; } return { text: q ? q.text : r.title, quoted: !!q, topic: r.topic || null, slug: r.slug || null, said_at: r.said_at, username: r.username, display_name: r.display_name }; })
+                .filter((h) => frontPageOk(h.text) && (!h.topic || frontPageOk(h.topic)))
+                .slice(0, 3);
         } catch { hot = []; }
         res.set('Cache-Control', uid ? 'private, max-age=30' : 'public, max-age=60');
         res.json({ since, signed_in: !!uid, liveNow, streamed, stats, hot });
