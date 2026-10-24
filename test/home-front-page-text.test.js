@@ -16,11 +16,13 @@ for (const t of [
     'I had Hermes say, oh, that\'s got an anti-semitic trope. I can\'t help.',
     'that was some bullshit', 'what a bitch move', 'he went full nazi on it', 'the Holocaust bit again',
     'n1gger', 'f a g g o t', 'Motherfucker!', '', null,
+    'Eita, pô, tô com tô com o rollback do caralho.', 'Que porra é essa', '¡Joder, qué mierda!', 'putain de merde', 'So eine Scheiße',
 ]) assert.ok(!frontPageOk(t), `left off the front page: ${t}`);
 for (const t of [
     'That first time I walked in, I knew that I was not alone.', 'We finally beat the boss on hard mode',
     'Shitake mushrooms are underrated', 'My dad Dick says hi', 'Scunthorpe won again', 'Grape soda forever',
     'The cockpit view in this sim is amazing',
+    'Eita, pô, tô com o rollback do servidor.', 'O computador travou de novo', 'Hola a todos, ¿qué tal?', 'Disputa final hoje',
 ]) assert.ok(frontPageOk(t), `fine for the front page: ${t}`);
 console.log('  ✓ slurs, strong profanity and hate topics are left off; ordinary takes (and Shitake, Scunthorpe, grape) stay');
 
