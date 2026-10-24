@@ -21,6 +21,7 @@ const ai = require('./ai-analysis');
 const aiService = require('./ai-service');
 const media = require('../media-client');
 const registry = require('./moment-registry');
+const explicit = require('./explicit');
 let cfg = null; try { cfg = require('../config'); } catch { /* */ }
 let thumb = null; try { thumb = require('../media-proxy/live-thumbs'); } catch { /* optional */ }
 const FRAMES_TMP_DIR = path.join(os.tmpdir(), 'openvibe-live-moments');
@@ -204,6 +205,7 @@ async function _findBestMoment(vod, { flavor = 'paste', avoid = [] } = {}) {
                 if (!farFromUsed(t)) { console.log(`[AI-Moments] VOD ${vod.vod_id}: pick at ${_mmss(t)} is next to a used moment — trying the objective signals instead`); throw new Error('near used'); }
                 const near = _nearestMemory(ctx.memories, t);
                 const result = { offset: t, title: _publicTitle(j.title, vod, t, j.desc), desc: db.noLooks(_cleanText(_deJson(j.desc), 400) || (near && _deJson(near.description)) || ''), tags: _memTags(near) };
+                if (explicit.isExplicit(j.desc, j.title, near && near.description, result.desc)) { console.log(`[AI-Moments] VOD ${vod.vod_id}: the pick at ${_mmss(t)} shows sexual content — no moment from it`); return null; }
                 return _isEmptyScene(result.desc) ? null : result;
             }
         } catch { /* fall through to signal-based pick */ }
@@ -220,6 +222,7 @@ async function _findBestMoment(vod, { flavor = 'paste', avoid = [] } = {}) {
     let offset = clamp(candidates[0].t);
     const near = _nearestMemory(ctx.memories, offset);
     const desc = near ? db.noLooks(_deJson(near.description)) : '';
+    if (near && explicit.isExplicit(near.description)) return null;   // never a moment of sexual content (server/ai/explicit.js)
     return _isEmptyScene(desc) ? null : { offset, title: _fallbackTitle(vod, offset, desc), desc, tags: _memTags(near) };
 }
 // True when a description says the frame is essentially empty — black/dark/loading/blank — so we
@@ -378,6 +381,7 @@ async function tick(opts = {}) {
             // The source is the OpenVibe.Media playback URL — ffmpeg range-seeks the remote
             // file, so cold VODs still work.
             let screenshotPath = null;
+            let sexual = false;   // the vision pass says the frame shows sexual content (server/ai/explicit.js)
             let momentSource = null; // resolved Media URL, for clipping
             let img = `/api/thumbnails/generate/vod/${v.vod_id}`;
             try {
@@ -397,6 +401,7 @@ async function tick(opts = {}) {
                         if (await _aiOn() && ai.analyzeImagePaste) {
                             try {
                                 const vis = await ai.analyzeImagePaste(outPath, title, 'moment_frame');
+                                if (vis && explicit.isExplicit(vis.description, (vis.tags || []).join(' '))) sexual = true;
                                 if (vis && vis.description && vis.description.length > 25) {
                                     desc = db.noLooks(_cleanText(vis.description, 500));
                                     if (Array.isArray(vis.tags) && vis.tags.length) tags = vis.tags.slice(0, 8);
@@ -413,6 +418,12 @@ async function tick(opts = {}) {
             // paste, which just clutters the pastes tab.
             if (!screenshotPath) {
                 console.log(`[AI-Moments] Skipped VOD ${v.vod_id} — could not extract moment frame (no local file).`);
+                continue;
+            }
+            // Never post or clip a frame of sexual content.
+            if (sexual) {
+                console.log(`[AI-Moments] Skipped VOD ${v.vod_id} — the frame shows sexual content; nothing posted or clipped.`);
+                try { require('node:fs').unlinkSync(screenshotPath); } catch { /* */ }
                 continue;
             }
             // Pixel backstop: never post/clip a black or empty frame.

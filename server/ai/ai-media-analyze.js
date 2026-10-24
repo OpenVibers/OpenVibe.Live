@@ -70,7 +70,10 @@ async function analyze(kind, item) {
         // An overview Live already has (a model's, or a person's edit) is kept: AI's fills only a missing one.
         if (!state || !String(state.ai_overview || '').trim()) {
             if (kind === 'vod') await db.setVodAiOverview(item.id, overview);
-            else await db.setClipAiOverview(item.id, { overview });
+            else {
+                await db.setClipAiOverview(item.id, { overview });
+                await require('./explicit').guardAutoClip(item, overview);
+            }
         }
         const partialSpeech = Array.isArray(out.gaps) && out.gaps.some(g => /^Speech-to-text failed/i.test(String(g)));
         if (out.transcript.available && !partialSpeech) {
