@@ -125,6 +125,19 @@
                     <p class="muted" id="pc-hint" style="font-size:0.82rem;margin-top:10px"></p>
                 </div>
 
+                <!-- Vibe on stream (server/ai/vibe-voice.js): the streamer's call word wakes OpenVibe's assistant -->
+                <div class="dash-card dash-card-wide" id="dash-card-vibe">
+                    <h3><i class="fa-solid fa-wand-magic-sparkles"></i> Vibe on stream <span class="muted">your call word</span></h3>
+                    <p class="muted" style="font-size:0.9rem">Say your call word on stream and Vibe, OpenVibe's assistant, jumps in. <b>"<span data-vibe-word>hey vibe</span>, clip that"</b> clips the last 45 seconds and posts the link. Anything else, like <b>"<span data-vibe-word>hey vibe</span>, what was the score last night?"</b>, gets an answer in your chat.</p>
+                    <form class="vibe-form" id="dash-vibe-form">
+                        <label class="vibe-switch"><input type="checkbox" name="enabled"> <span>Listen for my call word</span></label>
+                        <label class="vibe-word">Call word <input type="text" name="call_word" class="form-input" maxlength="40" placeholder="hey vibe" autocomplete="off"></label>
+                        <label class="vibe-switch"><input type="checkbox" name="speak"> <span>Read Vibe's answers aloud on stream</span></label>
+                        <div class="vibe-actions"><button type="submit" class="btn btn-primary btn-small">Save</button> <span class="muted" id="dash-vibe-status" role="status"></span></div>
+                    </form>
+                    <p class="muted" id="dash-vibe-note" style="font-size:0.8rem;margin-top:8px">Vibe hears through your stream's live captions, about 10 to 20 seconds behind live, so give it a moment.</p>
+                </div>
+
                 <!-- AI Chat Bots -->
                 <div class="dash-card dash-card-wide" id="dash-aibot-card">
                     <h3><i class="fa-solid fa-robot"></i> AI Chat Viewers <span class="muted">a chat that remembers</span></h3>

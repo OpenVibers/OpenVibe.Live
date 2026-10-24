@@ -804,6 +804,7 @@ app.use('/api/restream', restreamRoutes);
 app.use('/api/thumbnails', (req, res, next) => { res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin'); next(); }, thumbnailRoutes);
 app.use('/api/themes', themeRoutes);
 app.use('/api/ai-viewers', require('./ai/viewers/routes'));
+app.use('/api/vibe', require('./ai/vibe-routes'));
 app.use('/api/powerchat', require('./integrations/powerchat-routes'));
 app.use('/api/meta', metaRoutes);
 app.use('/api/pastes', pasteRoutes);

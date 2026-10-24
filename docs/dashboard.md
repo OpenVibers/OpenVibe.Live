@@ -14,6 +14,22 @@ Available scopes: `chat`, `read`, `stream`, `vibe_coding_publish`.
 
 See [API Tokens](api-tokens.md) for full details.
 
+## Vibe on stream
+
+The **Chat AI** tab's first card. Turn on **Listen for my call word** and say it on stream ("hey vibe" unless you set
+your own: 1 to 4 words, 3 to 40 characters), and Vibe, OpenVibe's assistant, acts on what you say next:
+
+- **"hey vibe, clip that"** (also clip it, clip this, make a clip, save that) clips the 45 seconds before you said it
+  from the recording and posts the link in your chat.
+- **Anything else** ("hey vibe, what was the score last night?") is answered in your chat in a sentence or three, from
+  your stream's title and category and what you said in the last few minutes. Turn on **Read Vibe's answers aloud** to
+  hear them through chat's text-to-speech.
+
+Vibe hears through the stream's live captions (the live timeline), about 10 to 20 seconds behind live, so it needs
+OpenVibe's live captions on (`ai_timeline_enabled`) and a recording for clips. It wakes at most once every 8 seconds
+of stream time, never describes anyone's looks, and its lines are AI lines in your chat. Settings: `GET/PUT
+/api/vibe/settings` `{ enabled, call_word, speak }` (`server/ai/vibe-voice.js`, table `channel_vibe_settings`).
+
 ## Chat Logs
 
 View and manage chat messages from your streams:

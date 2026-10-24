@@ -12,7 +12,7 @@ let activeStreams = [];
    modules (e.g. moderation) register their loader on window._dashTabLoaders. */
 const _DASH_TAB_CARDS = {
     home:       ['dash-card-profile', 'dash-card-ai-derivation', 'dash-card-offline'],
-    chatai:     ['dash-aibot-card', 'dash-card-overlay', 'dash-card-chatlogs'],
+    chatai:     ['dash-card-vibe', 'dash-aibot-card', 'dash-card-overlay', 'dash-card-chatlogs'],
     moderation: [],  // injected by dashboard-moderation.js into #dash-grid-moderation
     controls:   ['dash-card-bot-embed', 'dash-card-tokens'],
     money:      ['dash-card-bucks', 'dash-card-goals', 'dash-card-tips-page', 'dash-powerchat-card'],
@@ -101,7 +101,34 @@ window.switchDashTab = switchDashTab;
 // Per-tab loaders (guarded so a missing fn never breaks the tab).
 function _call(name) { try { if (typeof window[name] === 'function') window[name](); } catch (e) { console.warn('[dash]', name, e); } }
 window._dashTabLoaders.home = () => { _call('loadSettingsProfile'); _call('loadAiDerivationSetting'); _call('loadSettingsOffline'); _call('loadDashFunds'); };
-window._dashTabLoaders.chatai = () => { _call('updateDashObsOverlayUrl'); _call('loadAiViewers'); };
+window._dashTabLoaders.chatai = () => { _call('updateDashObsOverlayUrl'); _call('loadAiViewers'); loadDashVibe(); };
+
+/* ── Vibe on stream (server/ai/vibe-voice.js, /api/vibe/settings) ─────────────────── */
+async function loadDashVibe() {
+    const form = document.getElementById('dash-vibe-form');
+    const status = document.getElementById('dash-vibe-status');
+    if (!form || form.dataset.bound) return;
+    form.dataset.bound = '1';
+    const paintWord = (w) => document.querySelectorAll('[data-vibe-word]').forEach((el) => { el.textContent = w || 'hey vibe'; });
+    const fill = (d) => {
+        form.elements.enabled.checked = !!d.settings.enabled;
+        form.elements.speak.checked = !!d.settings.speak;
+        form.elements.call_word.value = d.settings.call_word || '';
+        paintWord(d.settings.call_word);
+        const note = document.getElementById('dash-vibe-note');
+        if (note && d.hearing === false) note.textContent = 'Live captions are off on OpenVibe right now, so Vibe cannot hear your call word yet. Your settings are kept.';
+    };
+    try { fill(await api('/vibe/settings')); } catch (e) { status.textContent = 'Could not load your Vibe settings.'; }
+    form.elements.call_word.addEventListener('input', () => paintWord(form.elements.call_word.value.trim()));
+    form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        status.textContent = 'Saving…';
+        try {
+            fill(await api('/vibe/settings', { method: 'PUT', body: { enabled: form.elements.enabled.checked, speak: form.elements.speak.checked, call_word: form.elements.call_word.value.trim() || 'hey vibe' } }));
+            status.textContent = form.elements.enabled.checked ? `Saved. Say "${form.elements.call_word.value}" on stream.` : 'Saved. Vibe is not listening.';
+        } catch (err) { status.textContent = (err && err.message) || 'That did not save.'; }
+    });
+}
 window._dashTabLoaders.controls = () => { _call('loadBotEmbedSetting'); _call('loadDashTokens'); };
 window._dashTabLoaders.money = () => { _call('loadDashFunds'); _call('loadDashGoals'); _call('loadDashTipsPage'); _call('loadPowerchatStatus'); };
 window._dashTabLoaders.points = () => { _call('loadDashPointsConfig'); _call('loadDashRewards'); _call('loadDashRedemptions'); };
