@@ -58,20 +58,23 @@ function _deJson(desc) {
 // dangling word ("…Speaking To") and never about how someone looks (owner's rule for public AI text: "A Man With A
 // Beard Is Speaking To" and "A Person In A Bright Yellow High-Visibility Jacket" titled public clips, 2026-10-17).
 // Otherwise the stream's own title and the moment's time ("Fortnite! at 41:20").
-const LOOKS_WORDS = /\b(wearing|wears|dressed|beard(ed)?|mustache|glasses|sunglasses|jacket|hoodie|sweater|vest|shirt|shirtless|tank top|t-shirt|beanie|cap|hat|helmet|headset|headphones|hair|bald|blonde|expression|face|smil(e|ing)|clothing|outfit|tattoo(ed)?|young|old(er)?|teen(age)?|boy|girl|kid|child|blurred|body|skin)\b/i;
+const LOOKS_WORDS = /\b(wearing|wears|dressed|beard(ed)?|mustache|glasses|sunglasses|jacket|hoodie|sweater|vest|shirt|shirtless|topless|naked|nude|tank top|t-shirt|beanie|cap|hat|helmet|headset|headphones|hair|bald|blonde|expression|face|smil(e|ing)|clothing|outfit|tattoo(ed)?|young|old(er)?|teen(age)?|boy|girl|kid|child|blurred|body|skin)\b/i;
+// A title also fails the shared rule (openvibe-sdk/no-looks, db.hasLooks): this list alone let "A Naked Man Lying On
+// Their Back With Legs" through to Live's home (clip 483, 2026-10-23): it named neither "man" nor "naked".
+const namesLooks = (s) => LOOKS_WORDS.test(s) || db.hasLooks(s);
 const DANGLING = /\s+(to|in|with|a|an|of|and|the|on|at|is|are|was|from|for|by|near|while|as|or|into|onto|its|his|her|their)$/i;
 function _captionTitle(desc) {
     let s = _cleanText(desc).split(/[.!?;:]|,\s(?=(?:with|and|as|while|near|showing|likely)\b)/i)[0].trim();
     s = s.split(' ').filter(Boolean).slice(0, 9).join(' ').replace(/[,\s]+$/, '');
     while (DANGLING.test(s)) s = s.replace(DANGLING, '');
-    if (s.split(' ').length < 3 || LOOKS_WORDS.test(s)) return null;
+    if (s.split(' ').length < 3 || namesLooks(s)) return null;
     return s.replace(/\b\w/g, (ch) => ch.toUpperCase()).slice(0, 70);
 }
 // An AI-written title is used unless it is about looks ("Red Beanie Moment", "Glasses Adjustment Tension"); then the
 // fallback above.
 function _publicTitle(title, vod, offset, desc) {
     const t = _cleanTitle(title);
-    return t && !LOOKS_WORDS.test(t) ? t : _fallbackTitle(vod, offset, desc);
+    return t && !namesLooks(t) ? t : _fallbackTitle(vod, offset, desc);
 }
 function _fallbackTitle(vod, offset, desc) {
     const fromCaption = desc ? _captionTitle(desc) : null;

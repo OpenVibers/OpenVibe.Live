@@ -28,6 +28,10 @@ assert.ok(fallbackTitle({ title: 'x'.repeat(200) }, 59).length <= 80, 'at most 8
 const { publicTitle } = require('../server/ai/ai-moments-job');
 assert.strictEqual(publicTitle('Boss Fight Comeback', vod, 60, ''), 'Boss Fight Comeback');
 assert.strictEqual(publicTitle('Red Beanie Moment', vod, 2480, 'A man wearing a red beanie looks up.'), 'Fortnite! at 41:20');
+// The shared rule too (openvibe-sdk/no-looks via db.hasLooks): clip 483 was titled this on Live's home (2026-10-23).
+assert.strictEqual(publicTitle('A Naked Man Lying On Their Back With Legs', vod, 2480, ''), 'Fortnite! at 41:20');
+assert.strictEqual(publicTitle('Woman Laughs At Chat', vod, 2480, ''), 'Fortnite! at 41:20', 'a guessed gender is a look');
+assert.strictEqual(captionTitle('A naked man lies on a bed near a window.'), null);
 assert.strictEqual(publicTitle('Headphones Hit a Revelation', { title: 'A little couch surfing before the store.' }, 61, ''), 'A little couch surfing before the store at 1:01');
 assert.strictEqual(publicTitle('', { title: '', username: 'goosely' }, 75, ''), "goosely's stream at 1:15");
 process.stdout.write('moment fallback title: all checks passed\n');
