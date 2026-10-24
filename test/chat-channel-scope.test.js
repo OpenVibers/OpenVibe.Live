@@ -44,7 +44,7 @@ function load({ streaming = false } = {}) {
         isStreaming: () => streaming,
         getChatRenderTargetId: () => 'chat-messages',
         getChatEl: () => ({ messages: null }),
-        refreshVibeWidgetFeed: () => Promise.resolve(),
+        refreshFeedCard: () => Promise.resolve(),
         hydrateActiveChatHistory: () => Promise.resolve(),
         CHAT_RECONNECT_BASE: 1000,
         console,

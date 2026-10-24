@@ -875,12 +875,6 @@ const DASH_TOKEN_SCOPE_FALLBACKS = Object.freeze([
         title: 'Stream control',
         description: 'Start or stop streams and update stream state or metadata.',
     },
-    {
-        id: 'vibe_coding_publish',
-        label: 'vibe_coding_publish',
-        title: 'Vibe coding publisher',
-        description: 'Publish sanitized coding-feed events to /ws/vibe-coding/publish for a managed stream slot.',
-    },
 ]);
 const DASH_TOKEN_PRESET_FALLBACKS = Object.freeze([
     {
@@ -889,13 +883,6 @@ const DASH_TOKEN_PRESET_FALLBACKS = Object.freeze([
         description: 'Recommended for bots that read chat and post messages back into chat.',
         suggested_label: 'Chat Bot',
         scopes: ['chat', 'read'],
-    },
-    {
-        id: 'vibe-coding-publisher',
-        label: 'GitHub Copilot Companion',
-        description: 'Recommended for the OpenVibe.Live VS Code companion and other coding-feed publishers.',
-        suggested_label: 'Copilot Companion',
-        scopes: ['read', 'vibe_coding_publish'],
     },
     {
         id: 'stream-controller',
@@ -1077,7 +1064,7 @@ function showCreateTokenModal() {
                 <div style="display:flex;flex-direction:column;gap:6px">
                     ${renderDashTokenScopeOptions(['chat', 'read'])}
                 </div>
-                <p class="muted" style="font-size:0.78rem;margin-top:8px">Use <strong>vibe_coding_publish</strong> for coding-feed publishers such as the OpenVibe.Live VS Code companion.</p>
+                <p class="muted" style="font-size:0.78rem;margin-top:8px">Showing your coding session live? Feeds have their own key on <a href="https://openvibe.chat/feeds" target="_blank" rel="noopener">openvibe.chat/feeds</a>.</p>
             </div>
             <div class="form-group">
                 <label>Expires</label>

@@ -12,7 +12,7 @@ const { classify, refuse, SERVED } = require('../server/net/ws-paths');
 
 (async () => {
     assert.strictEqual(classify('/ws/broadcast?stream=1'), 'served');
-    assert.strictEqual(classify('/ws/vibe-coding/publish'), 'served');
+    assert.deepStrictEqual(classify('/ws/vibe-coding/publish?token=x'), { status: '410 Gone', text: 'Vibe coding feeds moved to OpenVibe.Chat: https://openvibe.chat/feeds' });
     assert.strictEqual(classify('/ws/robotstreamer-publish?key=x'), 'served');
     assert.deepStrictEqual(classify('/ws/control'), { status: '410 Gone', text: 'Robot control moved to OpenVibe.Bot: https://openvibe.bot' });
     assert.deepStrictEqual(classify('/ws/control?robot=7'), classify('/ws/control'));

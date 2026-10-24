@@ -8,7 +8,7 @@ API tokens provide programmatic access to OpenVibe.Live for bots, integrations, 
 - Each user can create up to **10 active tokens**
 - Tokens are hashed with SHA-256 before storage — the raw token is shown only once at creation
 - Tokens support scoped permissions and optional expiration
-- The dashboard exposes integration presets, including a dedicated vibe-coding publisher preset
+- The dashboard exposes integration presets
 
 ## Creating a Token
 
@@ -47,12 +47,10 @@ Response:
 | `read` | Read streams, VODs, user info |
 | `stream` | Start/stop streams, update stream info |
 | `control` | Hardware control bridge access |
-| `vibe_coding_publish` | Publish sanitized coding-feed events to `/ws/vibe-coding/publish` |
 
 ## Recommended Presets
 
 - `Chat Bot` → `chat`, `read`
-- `GitHub Copilot Companion` → `read`, `vibe_coding_publish`
 - `Stream Controller` → `read`, `stream`, `control`
 
 ## Using a Token
@@ -68,7 +66,7 @@ curl https://openvibe.live/api/streams \
 
 ### Vibe Coding Publisher
 
-For the OpenVibe.Live VS Code companion or any other coding-feed publisher, use a token with the `vibe_coding_publish` scope. It is the only scope `/ws/vibe-coding/publish` and the `/api/vibe-coding` writes accept; a `stream` token is refused there.
+Vibe coding feeds moved to OpenVibe Chat on 2026-10-24 ([docs/vibe-coding.md](vibe-coding.md)). A feed has its own key from [openvibe.chat/feeds](https://openvibe.chat/feeds), so Live API tokens no longer publish there.
 
 ### WebSocket (Chat)
 
@@ -137,7 +135,6 @@ ws.on('message', (data) => {
 
 - Treat API tokens like passwords — never commit them to source control
 - Use the narrowest scope necessary for your use case
-- Prefer `vibe_coding_publish` over `stream` for coding-feed publishers so tokens stay least-privilege
 - Set an expiration for tokens used in shared environments
 - Revoke tokens immediately if compromised
 - The `last_used_at` field in the token list helps identify unused tokens for cleanup

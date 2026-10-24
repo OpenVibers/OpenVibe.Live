@@ -10,7 +10,7 @@ Your RTMP stream key is shown (hidden by default) for use with OBS, Streamlabs, 
 
 Create long-lived API tokens for bots and integrations. Tokens authenticate via the `Authorization: Bearer hbt_...` header for REST API and chat WebSocket connections.
 
-Available scopes: `chat`, `read`, `stream`, `vibe_coding_publish`.
+Available scopes: `chat`, `read`, `stream`. (A vibe coding feed has its own key on openvibe.chat/feeds since 2026-10-24.)
 
 See [API Tokens](api-tokens.md) for full details.
 

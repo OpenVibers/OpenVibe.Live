@@ -5,10 +5,15 @@
  * A path Live never served, or no longer serves, gets a real HTTP answer instead of a dropped socket: nginx logged
  * every drop as a 502. Old Pi robot clients still reconnect to /ws/control every few seconds (robots moved to
  * OpenVibe.Bot, plan T15): 2,137 502s from two of them in three hours on 2026-10-23. They now get a 410 that says
- * where control went, and neither answer costs a ban lookup.
+ * where control went, and neither answer costs a ban lookup. The vibe coding publisher socket answers the same way
+ * since feeds moved to OpenVibe.Chat.
  */
-const SERVED = ['/ws/vibe-coding/publish', '/ws/broadcast', '/ws/robotstreamer-publish'];
-const GONE = { '/ws/control': 'Robot control moved to OpenVibe.Bot: https://openvibe.bot' };
+const SERVED = ['/ws/broadcast', '/ws/robotstreamer-publish'];
+const GONE = {
+    '/ws/control': 'Robot control moved to OpenVibe.Bot: https://openvibe.bot',
+    // Vibe coding feeds moved to OpenVibe.Chat (2026-10-24): a publisher posts to the feed's API there with its key.
+    '/ws/vibe-coding/publish': 'Vibe coding feeds moved to OpenVibe.Chat: https://openvibe.chat/feeds',
+};
 
 /** 'served' for a path a WebSocket server here answers, else { status, text } to answer with. */
 function classify(url) {

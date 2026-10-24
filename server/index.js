@@ -109,7 +109,6 @@ const rtmpServer = require('./streaming/rtmp-server');
 // Real-time
 const chatDelivery = require('./chat/chat-delivery');
 const broadcastServer = require('./streaming/broadcast-server');
-const VibeCodingPublishServer = require('./vibe-coding/publish-server');
 
 // Routes
 const authRoutes = require('./auth/routes');
@@ -136,7 +135,6 @@ const themeRoutes = require('./themes/routes');
 const metaRoutes = require('./meta/routes');
 const robotStreamerService = require('./integrations/robotstreamer-service');
 const chatRelayService = require('./integrations/chat-relay-service');
-const vibeCodingRoutes = require('./vibe-coding/routes');
 
 // Restream
 const restreamRoutes = require('./streaming/restream-routes');
@@ -247,7 +245,6 @@ const observability = require('./web/observability');
 const { registry: metricsRegistry } = observability.mountMetrics(app, { release });
 app.use(telemetry.middleware);   // request telemetry (openvibe-sdk/service): a no-op until start() calls telemetry.init()
 if (!drill.enabled) require('./ai/ai-media-analyze').registerMetrics(metricsRegistry);
-const vibeCodingPublishServer = new VibeCodingPublishServer(db);
 
 function normalizeOrigin(origin) {
     if (!origin || typeof origin !== 'string') return null;
@@ -380,7 +377,8 @@ app.use(helmet({
             // request tab was doing for every YouTube link.
             imgSrc: ["'self'", "data:", "blob:", "image.tmdb.org", "https://openvibe.network", "https://openvibe.media", "cdn.frankerfacez.com", "cdn.betterttv.net", "cdn.7tv.app", "https://files.kick.com", "https://i.ytimg.com", "https://img.youtube.com", "https://i.vimeocdn.com", "https://openvibe.community"],   // paste screenshots (OpenVibe.Community owns pastes)
             // https://cloudflareinsights.com is where Cloudflare Web Analytics' beacon (script-src static.cloudflareinsights.com) reports.
-            connectSrc: ["'self'", "wss:", "https://openvibe.network", "https://openvibe.events", "https://openvibe.media", "https://openvibe.games", "https://cdn.jsdelivr.net", "https://esm.sh", "https://static.cloudflareinsights.com", "https://cloudflareinsights.com", whipConnectSrc],
+            // https://openvibe.chat: the channel chat's feed card asks Chat which feed a slot shows (public/js/chat.js).
+            connectSrc: ["'self'", "wss:", "https://openvibe.network", "https://openvibe.chat", "https://openvibe.events", "https://openvibe.media", "https://openvibe.games", "https://cdn.jsdelivr.net", "https://esm.sh", "https://static.cloudflareinsights.com", "https://cloudflareinsights.com", whipConnectSrc],
             // VODs/clips play from openvibe.media (the /api proxies 302 there), which may
             // itself redirect to presigned B2/R2 object-store URLs or, for a B2 copy, to its
             // origin shield edge.openvibe.media — all must be allowed or the browser blocks
@@ -388,7 +386,8 @@ app.use(helmet({
             // data: — the mod TTS voice preview plays a data:audio/… URL; without it the browser
             // rejects the element ("no supported source") even though the backend returned audio.
             mediaSrc: ["'self'", "blob:", "data:", "https://openvibe.media", "https://edge.openvibe.media", "https://s3.us-west-004.backblazeb2.com", "https://*.backblazeb2.com", "https://*.r2.cloudflarestorage.com"],
-            frameSrc: ["'self'", "https://openvibe.network", "https://www.youtube.com", "https://www.youtube-nocookie.com", "https://player.vimeo.com", ...botFrameSrc],
+            // https://openvibe.chat: the feed card above a channel's chat is Chat's embed (/embed/feed/:id).
+            frameSrc: ["'self'", "https://openvibe.network", "https://openvibe.chat", "https://www.youtube.com", "https://www.youtube-nocookie.com", "https://player.vimeo.com", ...botFrameSrc],
             workerSrc: ["'self'", "blob:"],
             scriptSrcAttr: ["'unsafe-inline'"],
         },
@@ -819,7 +818,11 @@ app.use('/api/media', require('./media/routes'));
 // Privacy proxy for third-party images (offline-screen HTML, panels): fetched server-side so a
 // viewer's IP/UA never reaches a host a streamer chose. SSRF-guarded, image-only, cache-forever.
 app.use('/api/img-proxy', require('./media/external-image-proxy'));
-app.use('/api/vibe-coding', vibeCodingRoutes);
+// Vibe coding feeds moved to OpenVibe.Chat (2026-10-24, its server/feeds/): the old routes say where they went. A page
+// of the previous release still asks for a slot's feed; it gets one that is off, so its widget stays hidden (N-1).
+const VIBE_CODING_OFF = Object.freeze({ enabled: 0, widget_title: 'Vibe Coding', viewer_depth: 'standard', show_prompts: 1, show_responses: 1, show_thinking: 0, show_tool_calls: 1, show_tool_arguments: 0, show_file_events: 1, show_file_snippets: 0, redact_file_paths: 1, paused: 0, delay_ms: 0, max_events: 18, max_prompt_chars: 220, max_response_chars: 360, max_thinking_chars: 140, max_tool_chars: 140, max_snippet_chars: 140 });
+app.get('/api/vibe-coding/channel/:username/:slot/events', (req, res) => res.json({ managed_stream: null, live_stream_id: null, settings: VIBE_CODING_OFF, publisher: null, events: [], moved_to: 'https://openvibe.chat/feeds' }));
+app.use('/api/vibe-coding', (req, res) => res.status(410).json({ error: 'Vibe coding feeds moved to OpenVibe.Chat', moved_to: 'https://openvibe.chat/feeds', api: 'https://openvibe.chat/api/chat/feeds' }));
 const analyticsRoutes = require('./streaming/analytics-routes');
 app.use('/api/analytics', analyticsRoutes);
 const newsRoutes = require('./news/news-routes');
@@ -1210,9 +1213,7 @@ server.on('upgrade', async (req, socket, head) => {
     } catch (e) { /* non-critical — allow through on DB error */ }
 
     // /ws/chat is OpenVibe.Chat's (nginx routes it to 127.0.0.1:4400); Live mounts no chat server.
-    if (url.startsWith('/ws/vibe-coding/publish')) {
-        vibeCodingPublishServer.handleUpgrade(req, socket, head);
-    } else if (url.startsWith('/ws/broadcast')) {
+    if (url.startsWith('/ws/broadcast')) {
         broadcastServer.handleUpgrade(req, socket, head);
     } else if (url.startsWith('/ws/robotstreamer-publish')) {
         robotStreamerService.handleUpgrade(req, socket, head);
@@ -1273,7 +1274,6 @@ async function start() {
 
     // 3. Initialize chat server
     await chatDelivery.init();
-    vibeCodingPublishServer.init(server);
 
     // 3b. Initialize breaking news service
     const newsService = require('./news/news-service');
