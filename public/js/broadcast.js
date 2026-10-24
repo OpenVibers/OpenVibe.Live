@@ -2439,13 +2439,15 @@ function startVodRecording(streamId) {
         ss.vodUploading = false;    // upload lock
         ss.vodFinalized = false;    // prevent double finalize on actual stream end
         ss.vodSegmentId = (ss.vodSegmentId || 0) + 1;
-        ss.vodRecorder = new MediaRecorder(ss.localStream, {
+        const recorder = new MediaRecorder(ss.localStream, {
             mimeType,
             videoBitsPerSecond: Math.max(600000, Math.round(getTargetVideoBitrate() * 0.85)),
             audioBitsPerSecond: 128000,
         });
+        ss.vodRecorder = recorder;
 
-        ss.vodRecorder.ondataavailable = (e) => {
+        recorder.ondataavailable = (e) => {
+            if (ss.vodRecorder !== recorder) return;   // a recorder replaced by restartVodRecording: its last slice is dropped
             if (e.data.size > 0) {
                 ss.vodChunks.push(e.data);
                 uploadVodChunk(streamId);   // try to flush immediately
@@ -2456,6 +2458,22 @@ function startVodRecording(streamId) {
         ss.vodRecorder.start(30000);
         console.log('[VOD] Incremental recording started for stream', streamId, 'segment', ss.vodSegmentId);
     } catch (err) { console.warn('[VOD] Failed to start:', err); }
+}
+
+/**
+ * Start a fresh MediaRecorder for a stream whose recording the server has to open again (needs-header): only a
+ * recorder's first slice carries the WebM header, so the pending slices are dropped and the next upload starts a
+ * playable file.
+ */
+function restartVodRecording(streamId) {
+    const ss = getStreamState(streamId);
+    if (!ss) return;
+    const old = ss.vodRecorder;
+    ss.vodRecorder = null;
+    ss.vodChunks = [];
+    if (old && old.state !== 'inactive') { try { old.stop(); } catch {} }
+    console.log('[VOD] Restarting the browser recorder so the next slice starts a new file');
+    startVodRecording(streamId);
 }
 
 /**
@@ -2493,6 +2511,17 @@ async function uploadVodChunk(streamId) {
                 if (ss.vodRecorder && ss.vodRecorder.state !== 'inactive') { try { ss.vodRecorder.stop(); } catch {} }
                 ss.vodRecorder = null;
                 console.log('[VOD] Server-side recording active — browser chunk upload stopped');
+            }
+        } else if (resp.status === 409) {
+            const data = await resp.json().catch(() => ({}));
+            if (data.status === 'stream-ended') {
+                // The server ended this stream: nothing more to record, and no new VOD should start from it.
+                ss.vodChunks = [];
+                const old = ss.vodRecorder; ss.vodRecorder = null;
+                if (old && old.state !== 'inactive') { try { old.stop(); } catch {} }
+                console.log('[VOD] The stream has ended on the server — browser recording stopped');
+            } else if (data.status === 'needs-header') {
+                restartVodRecording(streamId);
             }
         } else {
             console.warn('[VOD] Chunk upload HTTP error:', resp.status);
