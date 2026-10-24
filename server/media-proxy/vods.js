@@ -14,6 +14,14 @@ const db = require('../db/database');
 const chatReads = require('../chat/chat-reads');
 const media = require('../media-client');
 const recorder = require('../streaming/recorder');
+// The EBML magic every WebM file starts with: a MediaRecorder's first slice has it, the later ones do not.
+const WEBM_MAGIC = Buffer.from([0x1a, 0x45, 0xdf, 0xa3]);
+/** May this chunk open a new VOD? null when it may, else the 409 answer: the stream ended, or the chunk is not a file start. */
+function chunkOpensVod(stream, buffer) {
+    if (stream && stream.ended_at) return { error: 'This stream has ended', status: 'stream-ended' };
+    if (!Buffer.isBuffer(buffer) || !buffer.subarray(0, 4).equals(WEBM_MAGIC)) return { error: 'A new recording must start with the WebM header', status: 'needs-header' };
+    return null;
+}
 const { requireAuth, optionalAuth } = require('../auth/auth');
 const permissions = require('../auth/permissions');
 const access = require('./access');
@@ -212,6 +220,13 @@ router.post('/stream/:streamId/chunk', requireAuth, memUpload.single('chunk'), a
             return res.json({ vodId: rec.vodId || null, status: 'server-recording', skipped: true });
         }
         if (!rec) {
+            // A chunk opens a new VOD only for a stream that is still live, and only when it starts a WebM file. After
+            // Live ended Maticus's stream (2026-10-23 23:31, ingest_ended) his browser kept sending its 30-second
+            // slices: each one with no recording open made a new VOD from a mid-stream slice with no header, which
+            // nothing could play (5939, 5940). The browser stops on stream-ended and restarts its recorder (a slice
+            // with a header) on needs-header.
+            const refused = chunkOpensVod(stream, req.file.buffer);
+            if (refused) return res.status(409).json(refused);
             const { id } = await media.createVod({
                 title: stream.title || 'Stream Recording',
                 stream_id: streamId,
@@ -808,3 +823,4 @@ router.post('/clips/:id/trim', requireAuth, (req, res) => {
 
 module.exports = router;
 module.exports.isGhostVod = isGhostVod;
+module.exports.chunkOpensVod = chunkOpensVod;
