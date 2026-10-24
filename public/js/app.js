@@ -1158,7 +1158,7 @@ function routeFromURL() {
         whenRouteReady('rundown', () => { if (typeof loadRundownPage === 'function') loadRundownPage(segments); });
     } else if (segments[0] === 'updates') {
         showPage('updates');
-        loadUpdatesPage();
+        whenRouteReady('updates', () => loadUpdatesPage());
     } else if (segments[0] === 'dmca') {
         window.location.replace('/dmca');
         return;

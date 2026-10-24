@@ -30,7 +30,7 @@ BASE=http://127.0.0.1:3000 npm run test:browser  # Browser smoke (running server
 - **Database:** [server/db/database.js](server/db/database.js) — all queries (async, `openvibe-sdk/db`), schema in [migrations/](migrations/) (`0001_analytics.sql`, `0002_live.sql`)
 - **Auth:** [server/auth/auth.js](server/auth/auth.js) — RS256 JWT from openvibe.tools SSO + `hbt_` API tokens
 - **Permissions:** [server/auth/permissions.js](server/auth/permissions.js) — role hierarchy: `user < streamer < global_mod < admin`
-- **Frontend shell:** [public/index.html](public/index.html) — navbar, home page and empty `<section id="page-*">` shells; routing via `history.pushState` in [public/js/app.js](public/js/app.js)
+- **Frontend shell:** [public/index.html](public/index.html) — navbar and `<section id="page-*">` shells (page markup, the home page's included, is in `public/fragments/`, inlined on its own route); routing via `history.pushState` in [public/js/app.js](public/js/app.js)
 - **Route loading:** [public/features.json](public/features.json) maps routes → features (fragment in `public/fragments/`, CSS in `public/css/features/`, scripts, deps, stubs); [public/js/ov-loader.js](public/js/ov-loader.js) loads them. New page code goes in a feature, not in `index.html`/core `app.js`. See [docs/architecture.md](docs/architecture.md#frontend-loading).
 
 Each feature lives in its own `server/<feature>/` directory with `routes.js` + service files. Frontend: one JS file per feature in `public/js/`, registered in `public/features.json`.
