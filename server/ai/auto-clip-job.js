@@ -133,6 +133,8 @@ async function _checkLiveStream(stream) {
         const end = Math.min(momentOffset + CLIP_POST, Math.max(0, recEdge - 0.5));
         if (end - start < 5) return; // not enough flushed footage around the moment yet
 
+        // A moment the AI describes as sexual content is never clipped (server/ai/explicit.js).
+        if (require('./explicit').isExplicit(verdict.desc, verdict.title)) { console.log(`[AutoClip] stream ${streamId}: skipped a moment the AI describes as sexual content`); return; }
         const title = verdict.title ? require('./ai-moments-job').publicTitle(verdict.title, stream, momentOffset, verdict.desc) : 'Chat-Hyped Moment';
         const clip = await media.createClip({
             vod_id: rec.vodId, start_s: start, end_s: end,
@@ -278,6 +280,10 @@ async function clipVodMoment(o) {
         const { vod, offset, title, desc } = o || {};
         if (!vod || !(offset >= 0)) return null;
         if (!await _derivationOn(vod.user_id)) return null;   // the channel turned AI Moments off
+        if (require('./explicit').isExplicit(desc, title)) {     // never a clip of sexual content (server/ai/explicit.js)
+            console.log(`[AutoClip] skip VOD ${vod.vod_id || vod.id} — the AI describes the moment as sexual content`);
+            return null;
+        }
         if (await _isDuplicateAutoClip(vod, offset, desc, title)) {
             console.log(`[AutoClip] skip VOD ${vod.vod_id || vod.id} — duplicate/near-identical auto-clip already exists`);
             return null;
