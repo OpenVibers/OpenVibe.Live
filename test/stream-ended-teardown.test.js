@@ -28,7 +28,7 @@ function extract(src, head) {
 }
 
 const player = read('public/js/stream-player.js');
-const code = ['let dvrState = {', 'async function initDVR(', 'async function pollDVR(', 'function destroyDVR(', 'function showStreamEnded('].map((h) => extract(player, h)).join('\n');
+const code = ['let dvrState = {', 'async function initDVR(', 'async function pollDVR(', 'function destroyDVR(', 'function _destroyDvrHls(', 'function showStreamEnded('].map((h) => extract(player, h)).join('\n');
 
 // Fake timers, an api that answers 404 like the server does for an ended stream, and the few DOM calls made.
 const timers = new Map();

@@ -625,6 +625,9 @@ let dvrState = {
     savedSrcObject: null, // WebRTC MediaStream saved when switching to DVR
     savedLivePlayer: null, // HLS/FLV player saved when switching to DVR
     seeking: false,      // User is dragging the DVR progress bar
+    hlsUrl: null,        // an MP4 recording's DVR playlist (Media /v/<id>/dvr.m3u8): seeking with no snapshot copy
+    dvrHls: null,        // the hls.js instance playing it while rewound
+    dvrNative: false,    // or the browser's own HLS (Safari) playing it
 };
 
 function loadExternalScriptOnce(src) {
@@ -2332,10 +2335,11 @@ async function pollDVR(streamId) {
                 const info = await api(`/vods/${vod.id}/live-info`);
                 dvrState.duration = info.duration || 0;
                 dvrState.seekable = info.seekable || false;
+                dvrState.hlsUrl = typeof info.dvr_hls === 'string' && /^https:\/\//.test(info.dvr_hls) ? info.dvr_hls : null;
             } catch {}
 
-            // Show DVR controls when we have a seekable copy
-            if (dvrState.seekable && dvrState.vodFile) {
+            // Show DVR controls when we have a seekable copy (or the recording's own playlist)
+            if (dvrState.seekable && (dvrState.vodFile || dvrState.hlsUrl)) {
                 dvrState.active = true;
                 showDVRControls();
             }
@@ -2501,7 +2505,7 @@ function setupDVRSeek() {
  * @param {number} targetTime - Seek position in seconds
  */
 function switchToDVR(targetTime) {
-    if (!dvrState.vodFile || !dvrState.seekable) return;
+    if ((!dvrState.vodFile && !dvrState.hlsUrl) || !dvrState.seekable) return;
 
     const video = document.getElementById('video-element');
     const canvas = document.getElementById('video-canvas');
@@ -2539,10 +2543,17 @@ function switchToDVR(targetTime) {
     // Ensure the video element is visible (JSMPEG normally hides it)
     video.style.display = 'block';
 
-    // Switch video source from live to HTTP VOD file
     video.srcObject = null;
-    video.src = `${dvrState.vodFile}?t=${Date.now()}`;
+    if (dvrState.hlsUrl) _playDvrHls(video, targetTime);
+    else _playDvrFile(video, targetTime);
 
+    console.log(`[DVR] Switched to VOD seeking at ${Math.round(targetTime)}s`);
+}
+
+/** The recording's HTTP file (Media serves a seekable copy of it while it records). */
+function _playDvrFile(video, targetTime) {
+    if (!dvrState.vodFile) return;
+    video.src = `${dvrState.vodFile}?t=${Date.now()}`;
     video.addEventListener('loadedmetadata', function _seekOnLoad() {
         video.removeEventListener('loadedmetadata', _seekOnLoad);
         // Use server duration or video.duration, whichever is valid
@@ -2550,8 +2561,40 @@ function switchToDVR(targetTime) {
         video.currentTime = Math.min(targetTime, dur);
         video.play().catch(() => {});
     });
+}
 
-    console.log(`[DVR] Switched to VOD seeking at ${Math.round(targetTime)}s`);
+/**
+ * An MP4 recording's own playlist (Media /v/<id>/dvr.m3u8: slices of the file as it grows), with hls.js, or the
+ * browser's HLS on Safari. A seek while already on it moves within it; a failure falls back to the file.
+ */
+function _playDvrHls(video, targetTime) {
+    if (dvrState.dvrHls || dvrState.dvrNative) { video.currentTime = targetTime; video.play().catch(() => {}); return; }
+    const fallback = () => { _destroyDvrHls(); dvrState.hlsUrl = null; if (!dvrState.isLive) _playDvrFile(video, targetTime); };
+    loadExternalScriptOnce('https://cdn.jsdelivr.net/npm/hls.js@latest').then(() => {
+        if (dvrState.isLive || !dvrState.hlsUrl) return;   // back to live, or the playlist went away, meanwhile
+        if (!window.Hls || !Hls.isSupported()) {
+            if (!video.canPlayType('application/vnd.apple.mpegurl')) return fallback();
+            dvrState.dvrNative = true;
+            video.src = dvrState.hlsUrl;
+            video.addEventListener('loadedmetadata', () => { video.currentTime = targetTime; video.play().catch(() => {}); }, { once: true });
+            return;
+        }
+        const hls = new Hls({ enableWorker: true, startPosition: targetTime, backBufferLength: 60, maxBufferLength: 30 });
+        dvrState.dvrHls = hls;
+        hls.on(Hls.Events.MANIFEST_PARSED, () => { video.play().catch(() => {}); });
+        hls.on(Hls.Events.ERROR, (_e, data) => {
+            if (!data || !data.fatal) return;
+            console.warn('[DVR] the recording\'s playlist failed, using its file:', data.details);
+            fallback();
+        });
+        hls.loadSource(dvrState.hlsUrl);
+        hls.attachMedia(video);
+    }).catch(fallback);
+}
+
+function _destroyDvrHls() {
+    if (dvrState.dvrHls) { try { dvrState.dvrHls.destroy(); } catch {} dvrState.dvrHls = null; }
+    dvrState.dvrNative = false;
 }
 
 /**
@@ -2565,6 +2608,7 @@ function jumpToLive() {
     if (!video) return;
 
     const liveBtn = document.getElementById('dvr-live-btn');
+    _destroyDvrHls();   // the recording's playlist lets go of the video element first
 
     if (playerType === 'webrtc') {
         // Restore WebRTC MediaStream
@@ -2630,6 +2674,8 @@ function jumpToLive() {
 function destroyDVR() {
     if (dvrState.pollTimer) { clearTimeout(dvrState.pollTimer); dvrState.pollTimer = null; }
     if (dvrState.updateTimer) { clearInterval(dvrState.updateTimer); dvrState.updateTimer = null; }
+    _destroyDvrHls();
+    dvrState.hlsUrl = null;
     dvrState.active = false;
     dvrState.isLive = true;
     dvrState.vodId = null;

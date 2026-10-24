@@ -304,6 +304,8 @@ async function generateThumbnail(kind, id, opts = {}) {
 // ── Public URL builders (MEDIA_PUBLIC_URL) ───────────────────────────────────
 
 function vodPlaybackUrl(id) { return `${MEDIA_PUBLIC_URL}/v/${id}`; }
+/** An MP4 recording's DVR while it is written: Media's EVENT playlist over the file itself (no seekable copy). */
+function vodDvrPlaylistUrl(id) { return `${MEDIA_PUBLIC_URL}/v/${id}/dvr.m3u8`; }
 function clipUrl(id) { return `${MEDIA_PUBLIC_URL}/c/${id}`; }
 function pasteScreenshotUrl(slug) { return `${MEDIA_PUBLIC_URL}/p/${encodeURIComponent(slug)}/screenshot`; }
 function thumbUrl(id) { return `${MEDIA_PUBLIC_URL}/t/${id}`; }
@@ -431,5 +433,5 @@ module.exports = {
     uploadFile, getFileMeta, deleteFile,
     uploadThumbnail, generateThumbnail,
     // URL builders
-    vodPlaybackUrl, clipUrl, pasteScreenshotUrl, thumbUrl, fileUrl, publicUrl, setPlaybackUrls,
+    vodPlaybackUrl, vodDvrPlaylistUrl, clipUrl, pasteScreenshotUrl, thumbUrl, fileUrl, publicUrl, setPlaybackUrls,
 };
