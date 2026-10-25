@@ -63,6 +63,18 @@ Viewers can create clips from live streams:
 
 Clips are **unlisted by default** — the stream owner can publish or delete them from the dashboard.
 
+### Naming a clip
+
+Naming is optional everywhere. Right after a clip is made without a name (the phone studio's **Clip** button, or the
+dashboard's **Create Clip** with the name left empty), a card offers **Save name** or **Skip**. It closes by itself
+after 20 seconds and never covers the stream's controls. Viewers name their clip in the trim editor when its cut is
+ready.
+
+A clip left unnamed (still "Untitled Clip", "Clip from stream" or "Clip: <stream title>") is named by the AI once its
+overview exists: 3-6 words about what happens, never about what anyone looks like, and no slurs or strong profanity
+(`server/ai/clip-title.js`). A name a person gives always wins, even one given while the AI was writing. The clip's
+"clipped: …" line in chat waits up to 3 minutes for the AI's name.
+
 ## VOD Management
 
 From the dashboard:

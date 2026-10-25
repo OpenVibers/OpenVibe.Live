@@ -312,6 +312,8 @@ router.put('/:id/title', requireAuth, async (req, res) => {
         const title = (req.body.title || '').trim();
         if (!title || title.length > 200) return res.status(400).json({ error: 'Title must be 1-200 characters' });
         await media.updateClip(clip.id, { title });
+        // A person named it: the AI titler (server/ai/clip-title.js) leaves it alone from now on.
+        try { await db.run("INSERT INTO clip_ai_state (clip_id, title_status) VALUES (?, 'kept') ON CONFLICT (clip_id) DO UPDATE SET title_status = 'kept'", [clip.id]); } catch { /* */ }
         // If the clip's chat announcement is still pending, fire it now with this title.
         try { await require('./clip-notify').bumpClipNotifyNow(clip.id); } catch { /* */ }
         res.json({ message: 'Clip title updated', title });

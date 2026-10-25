@@ -5445,7 +5445,7 @@ function _updateBroadcastClipUI() {
 
 async function createBroadcastClip() {
     const ss = getActiveStreamState();
-    if (!ss) return showToast('No active stream', 'error');
+    if (!ss) { toast('No active stream', 'error'); return null; }
 
     // Auto-retry if VOD not ready yet (up to 3 attempts, 2s apart)
     if (!ss.vodId) {
@@ -5457,15 +5457,17 @@ async function createBroadcastClip() {
             if (retry?.vodId) { ss.vodId = retry.vodId; break; }
         }
         if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-scissors"></i> Create Clip'; }
-        if (!ss.vodId) return showToast('VOD recording not ready yet — try again in a few seconds', 'error');
+        if (!ss.vodId) { toast('VOD recording not ready yet — try again in a few seconds', 'error'); return null; }
     }
 
     const duration = _bcClipEnd - _bcClipStart;
-    if (duration <= 0) return showToast('End time must be after start time', 'error');
-    if (duration > 60) return showToast('Clip cannot exceed 60 seconds', 'error');
-    if (_bcClipStart < 0) return showToast('Invalid start time', 'error');
+    if (duration <= 0) { toast('End time must be after start time', 'error'); return null; }
+    if (duration > 60) { toast('Clip cannot exceed 60 seconds', 'error'); return null; }
+    if (_bcClipStart < 0) { toast('Invalid start time', 'error'); return null; }
 
-    const title = document.getElementById('bc-clip-title')?.value?.trim() || 'Untitled Clip';
+    // No title typed: the server names it after the stream for now, and the card below offers to name it (or the AI
+    // does, from what was said and shown: server/ai/clip-title.js).
+    const typed = document.getElementById('bc-clip-title')?.value?.trim() || '';
     const btn = document.getElementById('bc-clip-create-btn');
     if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Creating…'; }
 
@@ -5478,22 +5480,25 @@ async function createBroadcastClip() {
                 stream_id: ss.streamData?.id,
                 start_time: _bcClipStart,
                 end_time: _bcClipEnd,
-                title,
+                title: typed,
             }),
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Failed to create clip');
 
-        // The server cuts it (Media's clip.cut job): say when it is ready, even after a reload.
         const made = data.clip || {};
+        const card = typed ? null : _offerClipName(made, duration);
+        const name = () => (card && card.named) || typed;
+        const said = (n) => (n ? `Clip "${n}"` : 'Your clip');
+        // The server cuts it (Media's clip.cut job): say when it is ready, even after a reload.
         if (made.job_id && made.status === 'processing' && window.OVClipJobs) {
-            showToast(`Clip "${title}" created — cutting it now…`, 'success');
+            if (!card) toast(`${said(typed)} is saved — cutting it now…`, 'success');
             window.OVClipJobs.follow(made.id, made.job_id, {
-                onReady: () => showToast(`Clip "${title}" is ready`, 'success'),
-                onFailed: (msg) => showToast(`Clip "${title}" could not be cut: ${msg}`, 'error'),
+                onReady: () => toast(`${said(name())} is ready`, 'success'),
+                onFailed: (msg) => toast(`${said(name())} could not be cut: ${msg}`, 'error'),
             });
-        } else {
-            showToast(`Clip created! "${title}"`, 'success');
+        } else if (!card) {
+            toast(`${said(typed)} is saved`, 'success');
         }
 
         // Reset panel
@@ -5504,12 +5509,88 @@ async function createBroadcastClip() {
         _bcClipEnd = now;
         _bcClipStart = Math.max(0, now - 30);
         _updateBroadcastClipUI();
+        return made;
     } catch (err) {
         console.error('[Clip] Error:', err);
-        showToast(err.message || 'Failed to create clip', 'error');
+        toast(err.message || 'Failed to create clip', 'error');
+        return null;
     } finally {
         if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-scissors"></i> Create Clip'; }
     }
+}
+
+/**
+ * Right after a clip is made without a title (the phone studio's Clip button, the panel's Create Clip with the name
+ * left empty): a card at the top offers to name it. It never blocks the stream's controls: Skip, Escape or 20 seconds
+ * untouched close it, and a clip left unnamed is named by the AI from what was said and shown. Returns the card's
+ * state ({ named }) so later notices use the name.
+ */
+const CLIP_NAME_SECONDS = 20;
+function _offerClipName(clip, seconds) {
+    const state = { named: '' };
+    if (!clip || !clip.id) return state;
+    document.getElementById('bc-clip-name')?.remove();
+
+    const make = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text) n.textContent = text; return n; };
+    const card = make('form', 'bc-clip-name');
+    card.id = 'bc-clip-name';
+    card.setAttribute('role', 'dialog');
+    card.setAttribute('aria-labelledby', 'bc-clip-name-t');
+    const head = make('div', 'bc-clip-name-head');
+    const ico = make('i', 'fa-solid fa-scissors');
+    ico.setAttribute('aria-hidden', 'true');
+    const title = make('b', null, 'Clip saved');
+    title.id = 'bc-clip-name-t';
+    head.append(ico, title, make('small', null, `${Math.round(seconds) || 30} s, cutting now`));
+    const input = make('input', 'bc-clip-name-input');
+    Object.assign(input, { type: 'text', maxLength: 200, placeholder: 'Name it: what happened?', autocomplete: 'off', enterKeyHint: 'done' });
+    input.setAttribute('aria-label', 'Clip name');
+    const hint = make('p', 'bc-clip-name-hint', 'Or skip it, and the AI names it from what was said and shown.');
+    const skip = make('button', 'bc-clip-name-skip', 'Skip');
+    skip.type = 'button';
+    const save = make('button', 'bc-clip-name-save', 'Save name');
+    save.type = 'submit';
+    const acts = make('div', 'bc-clip-name-acts');
+    acts.append(skip, save);
+    const timer = make('div', 'bc-clip-name-timer');
+    timer.setAttribute('aria-hidden', 'true');
+    timer.style.animationDuration = `${CLIP_NAME_SECONDS}s`;
+    card.append(head, input, hint, acts, timer);
+    document.body.appendChild(card);
+
+    let closeAt = setTimeout(() => close(), CLIP_NAME_SECONDS * 1000);
+    const hold = () => { clearTimeout(closeAt); closeAt = null; card.classList.add('is-held'); };
+    const close = () => { clearTimeout(closeAt); card.remove(); document.removeEventListener('keydown', onKey, true); };
+    const onKey = (e) => { if (e.key === 'Escape' && document.body.contains(card)) { e.stopPropagation(); close(); } };
+    document.addEventListener('keydown', onKey, true);
+    // Touching it or typing keeps it open: nobody loses a half-typed name to the timer.
+    card.addEventListener('pointerdown', hold);
+    input.addEventListener('input', hold);
+    // A keyboard and mouse: ready to type. A phone: no keyboard pops up over the stream until the box is tapped.
+    if (!window.matchMedia('(pointer: coarse)').matches) input.focus({ preventScroll: true });
+    skip.addEventListener('click', () => { close(); toast('Skipped: the AI will name it', 'info'); });
+    card.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const name = input.value.trim();
+        if (!name) { input.focus(); return; }
+        save.disabled = true;
+        save.textContent = 'Saving…';
+        try {
+            const res = await fetch(`/api/clips/${encodeURIComponent(clip.id)}/title`, {
+                method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: name }),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data.error || 'Could not save the name');
+            state.named = name;
+            close();
+            toast(`Named "${name}"`, 'success');
+        } catch (err) {
+            save.disabled = false;
+            save.textContent = 'Save name';
+            toast(err.message || 'Could not save the name', 'error');
+        }
+    });
+    return state;
 }
 
 /* ── /Live Clip Creator ────────────────────────────────────── */

@@ -14,6 +14,9 @@ const media = require('../media-client');
 
 const GRACE_SECONDS = 60;
 const SWEEP_INTERVAL_MS = 15000;
+// A clip nobody named waits up to this long after it was made for its AI title (server/ai/clip-title.js), so the line
+// says what happened instead of "Untitled Clip".
+const TITLE_WAIT_SECONDS = 180;
 
 async function scheduleClipNotify(clipId) {
     try { await db.scheduleClipNotifyState(clipId, GRACE_SECONDS); }
@@ -45,6 +48,8 @@ async function _sendOne(clipId) {
             if (ms && Number(ms.slot_clip_notify_enabled) === 0) { await db.markClipNotifiedState(clipId); return; }
         } catch { /* fall through and notify */ }
     }
+
+    if (await _waitForTitle(clip, srcStream)) return;
 
     const ownerId = srcStream.user_id;
     const creator = clip.user_id ? await db.getUserById(clip.user_id) : null;
@@ -78,6 +83,16 @@ async function _sendOne(clipId) {
     await db.markClipNotifiedState(clipId);
 }
 
+async function _waitForTitle(clip, srcStream, now = Date.now()) {
+    const titles = require('../ai/clip-title');
+    if (!titles.isPlaceholder(clip.title, [srcStream && srcStream.title])) return false;
+    const made = Date.parse(String(clip.created_at || '').replace(' ', 'T').replace(/(T\d\d:\d\d:\d\d(\.\d+)?)$/, '$1Z'));
+    if (!Number.isFinite(made) || now - made > TITLE_WAIT_SECONDS * 1000) return false;
+    const state = await db.getClipAiState(clip.id).catch(() => null);
+    if (state && state.title_status) return false;   // decided: titled (Media's title is fresh above), kept or failed
+    try { return await require('../ai/ai-analysis').isEnabled(); } catch { return false; }
+}
+
 let _sweepTimer = null;
 // Clips whose announce is currently being sent. A slow Media getClip() once let
 // six 15s sweep ticks stack up on the same clip and announce it six times when
@@ -99,4 +114,4 @@ function startClipNotifySweeper() {
     console.log('[ClipNotify] sweeper started (Media-backed clips)');
 }
 
-module.exports = { scheduleClipNotify, bumpClipNotifyNow, startClipNotifySweeper };
+module.exports = { scheduleClipNotify, bumpClipNotifyNow, startClipNotifySweeper, _sendOne, _waitForTitle, TITLE_WAIT_SECONDS };

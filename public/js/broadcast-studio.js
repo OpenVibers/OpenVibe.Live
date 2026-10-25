@@ -205,8 +205,18 @@
         else { try { _bcClipEnd = end; _bcClipStart = Math.max(0, end - seconds); } catch { /* the panel's own defaults stand */ } }
         const title = $('bc-clip-title');
         if (title) title.value = '';
-        say(`Clipping the last ${Math.min(seconds, end)} seconds…`);
-        createBroadcastClip();
+        // The Clip button spins until the clip is saved; then broadcast.js's card offers to name it (or skip, and the
+        // AI names it).
+        const b = st.root && st.root.querySelector('[data-act="clip"]');
+        if (b && b.classList.contains('is-busy')) return;
+        const look = (busy) => {
+            if (!b) return;
+            b.classList.toggle('is-busy', busy);
+            b.querySelector('i').className = `fa-solid ${busy ? 'fa-spinner fa-spin' : 'fa-scissors'}`;
+            b.querySelector('.bcs-lbl').textContent = busy ? 'Clipping' : 'Clip';
+        };
+        look(true);
+        Promise.resolve(createBroadcastClip()).catch(() => null).finally(() => look(false));
     }
 
     /** Copies the channel link. (The system share sheet takes a phone away from this tab, which pauses the camera.) */
