@@ -48,7 +48,7 @@ console.warn = () => {};
     media.updateClip = async (id, fields) => { updates.push([Number(id), fields.title]); clips.get(Number(id)).title = fields.title; return { id }; };
 
     const calls = [];
-    const answers = { 'triple kill': 'Triple Kill Final Round Clutch', 'dress': 'Woman In Red Dress Dances', 'rough clutch': 'Fucking Insane Clutch', 'rename': 'Late Game Comeback', 'default': 'Shotgun Rush Through Hallway' };
+    const answers = { 'triple kill': 'Triple Kill Final Round Clutch', 'dress': 'Woman In Red Dress Dances', 'painted': 'Boobs by Bobs Chalk Talk', 'rough clutch': 'Fucking Insane Clutch', 'rename': 'Late Game Comeback', 'default': 'Shotgun Rush Through Hallway' };
     aiService.structured = async (workflow, input, opts) => {
         calls.push({ workflow, input, opts });
         return { titles: input.summaries.map((s, index) => {
@@ -70,6 +70,7 @@ console.warn = () => {};
     put(605, 'Clip from stream');         await seed(605, 'Someone in a red dress dances on the stage while chat cheers.');
     put(606, 'Untitled Clip');            await seed(606, 'A rough clutch play in the last seconds.');
                                           await seed(607, 'Overview of a clip Media no longer has.');
+    put(612, 'Clip from stream');         await seed(612, 'A streamer shows chalkboard signs for "Boobs Painted by Bobs", an art collection.');
     put(608, 'Untitled Clip');            await seed(608, 'A rename test: a late game comeback.');
     reads.set(608, ['Untitled Clip', 'What a comeback']);  // the person names it before the AI's title is saved
 
@@ -79,17 +80,18 @@ console.warn = () => {};
     assert.strictEqual(calls[0].workflow, 'live.stream.titles');
     assert.strictEqual(calls[0].opts.meter.kind, 'clip_titles');
     const summaries = calls[0].input.summaries;
-    assert.ok(summaries.length === 5 && summaries.every((s) => s.length <= 1000), 'one summary per placeholder clip with an overview');
+    assert.ok(summaries.length === 6 && summaries.every((s) => s.length <= 1000), 'one summary per placeholder clip with an overview');
     const s601 = summaries.find((s) => s.includes('triple kill'));
     assert.ok(s601.includes('Said: "no way, no way!"') && s601.includes('From the stream "Friday ranked" (Shooters)'), s601);
 
     const byId = new Map(updates);
     assert.strictEqual(byId.get(601), 'Triple Kill Final Round Clutch');
     assert.strictEqual(byId.get(603), 'Shotgun Rush Through Hallway', '"Clip: <stream title>" is a placeholder');
-    assert.ok(byId.has(605) && !/dress|woman/i.test(byId.get(605)), `a title naming looks is replaced: ${byId.get(605)}`);
+    assert.strictEqual(byId.get(605), 'Friday ranked at 0:42', 'a title naming looks gives way to the stream and the moment');
     assert.strictEqual(byId.get(606), 'Friday ranked at 0:42', 'a rough title gives way to the stream and the moment');
+    assert.strictEqual(byId.get(612), 'Friday ranked at 0:42', 'a body word gives way too (clip 488, 2026-10-25)');
     assert.ok(!byId.has(602) && !byId.has(604) && !byId.has(607) && !byId.has(608), 'nothing else is written to Media');
-    assert.strictEqual(n, 4);
+    assert.strictEqual(n, 5);
 
     assert.deepStrictEqual(
         [await status(601), await status(602), await status(603), await status(604), await status(605), await status(606), await status(607), await status(608)],

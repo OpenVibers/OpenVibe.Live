@@ -59,7 +59,7 @@ function _deJson(desc) {
 // dangling word ("…Speaking To") and never about how someone looks (owner's rule for public AI text: "A Man With A
 // Beard Is Speaking To" and "A Person In A Bright Yellow High-Visibility Jacket" titled public clips, 2026-10-17).
 // Otherwise the stream's own title and the moment's time ("Fortnite! at 41:20").
-const LOOKS_WORDS = /\b(wearing|wears|dressed|beard(ed)?|mustache|glasses|sunglasses|jacket|hoodie|sweater|vest|shirt|shirtless|topless|naked|nude|tank top|t-shirt|beanie|cap|hat|helmet|headset|headphones|hair|bald|blonde|expression|face|smil(e|ing)|clothing|outfit|tattoo(ed)?|young|old(er)?|teen(age)?|boy|girl|kid|child|blurred|body|skin)\b/i;
+const LOOKS_WORDS = /\b(wearing|wears|dressed|beard(ed)?|mustache|glasses|sunglasses|jacket|hoodie|sweater|vest|shirt|shirtless|topless|naked|nude|tank top|t-shirt|beanie|cap|hat|helmet|headset|headphones|hair|bald|blonde|expression|face|smil(e|ing)|clothing|outfit|tattoo(ed)?|young|old(er)?|teen(age)?|boy|girl|kid|child|blurred|body|skin|boob(s|ies)?|tits|titties|breasts?|cleavage|nipples?|butts?|booty|thighs?|crotch|sexy|busty|curvy|thicc)\b/i;
 // A title also fails the shared rule (openvibe-sdk/no-looks, db.hasLooks): this list alone let "A Naked Man Lying On
 // Their Back With Legs" through to Live's home (clip 483, 2026-10-23): it named neither "man" nor "naked".
 const namesLooks = (s) => LOOKS_WORDS.test(s) || db.hasLooks(s);
