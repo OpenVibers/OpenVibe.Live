@@ -364,3 +364,6 @@
 
 /* Without JavaScript (the server inlines this fragment for a direct visit): what needs it, and where to go instead. */
 .chat-noscript { max-width: 720px; margin: 24px auto; padding: 0 16px; line-height: 1.6; }
+
+/* The page's one heading, for screen readers and search engines (the layout shows the channel names instead). */
+.chat-page-title { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
