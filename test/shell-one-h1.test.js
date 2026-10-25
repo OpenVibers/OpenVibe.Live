@@ -22,7 +22,7 @@ for (const url of ['/', '/@someone', '/updates', '/content', '/clips', '/moments
     assert.ok(h1s(html) <= 1, `${url}: at most one <h1> (${h1s(html)})`);
     assert.strictEqual(html.includes('class="hero-tagline"'), url === '/', `${url}: the home hero ${url === '/' ? 'is' : 'is not'} in the page`);
 }
-for (const url of ['/', '/updates', '/content', '/moments', '/search', '/@someone']) {
+for (const url of ['/', '/updates', '/content', '/moments', '/search', '/@someone', '/chat']) {
     assert.strictEqual(h1s(assets.renderRoute(doc, url)), 1, `${url}: its page's <h1> is there from the first paint`);
 }
 
