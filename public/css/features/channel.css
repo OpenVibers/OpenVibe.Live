@@ -1367,7 +1367,7 @@
 .ch-social-livethumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .ch-social-livethumb span { position: absolute; right: 8px; bottom: 8px; font-size: 0.7rem; font-weight: 800; padding: 2px 7px; border-radius: 5px; background: rgba(0,0,0,.72); color: #fff; }
 .ch-social-livetitle { margin: 0; font-size: 0.82rem; font-weight: 700; }
-.ch-social-items { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.ch-social-items { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; }
 .ch-social-items a { display: flex; gap: 8px; align-items: flex-start; padding: 7px 8px; border-radius: 9px; background: var(--bg-secondary); color: var(--text-secondary); text-decoration: none; font-size: 0.8rem; line-height: 1.4; }
 .ch-social-items a:hover { color: var(--text-primary); }
 .ch-social-items img { width: 64px; height: 36px; object-fit: cover; border-radius: 6px; flex: none; }

@@ -41,7 +41,7 @@
 .recap-mic { display: block; padding: 8px 10px; border-radius: 10px; background: var(--bg-tertiary); border: 1px solid var(--border); font-size: 0.88rem; line-height: 1.4; color: var(--text-primary); text-decoration: none; font-style: italic; position: relative; }
 .recap-mic i.fa-play { color: var(--g); font-style: normal; margin-right: 4px; font-size: 0.75rem; }
 .recap-mic:hover { border-color: var(--g); }
-.recap-chatters { list-style: none; margin: 0; padding: 0; display: grid; gap: 7px; }
+.recap-chatters { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 7px; }
 .recap-chatters li { display: grid; grid-template-columns: 26px 26px minmax(70px, 1fr) minmax(60px, 2fr) 40px; align-items: center; gap: 8px; font-size: 0.9rem; }
 .recap-medal { text-align: center; font-weight: 800; color: var(--text-muted); }
 .recap-chatter-name { font-weight: 700; color: var(--text-primary); text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

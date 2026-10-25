@@ -45,7 +45,7 @@
 .egg-slot.is-next { border-style: dashed; border-color: color-mix(in srgb, var(--accent) 60%, transparent); }
 .hero-egg-slots.is-wrong .egg-slot { border-color: #ff5a5f; background: color-mix(in srgb, #ff5a5f 18%, var(--bg-tertiary)); animation: eggShakeSlot .45s; }
 .hero-egg-slots.is-right .egg-slot, .hero-egg-slots.is-solved .egg-slot { border-color: #06d6a0; background: color-mix(in srgb, #06d6a0 20%, var(--bg-tertiary)); }
-.hero-egg-clues { margin: 0 0 12px; padding: 0; list-style: none; display: grid; gap: 6px; counter-reset: clue; }
+.hero-egg-clues { margin: 0 0 12px; padding: 0; list-style: none; display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; counter-reset: clue; }
 .hero-egg-clues li { display: grid; grid-template-columns: 22px 1fr auto; align-items: center; gap: 8px; font-size: 0.84rem; color: var(--text-primary); padding: 6px 8px; border-radius: 10px; background: var(--bg-secondary); border: 1px solid var(--border); }
 .egg-clue-n { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; font-size: 0.7rem; font-weight: 800; color: var(--on-accent-strong, var(--on-accent, #fff)); background: var(--accent-strong, var(--accent, #3472d8)); }
 .egg-clue-text { font-style: italic; line-height: 1.35; }
