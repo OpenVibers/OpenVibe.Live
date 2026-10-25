@@ -1,7 +1,8 @@
 'use strict';
 /**
  * The home page's "Lately on OpenVibe" quotes leave out a take with a slur, strong profanity or a hate topic, and show
- * the next best one (server/home/front-page-text.js); the Rundown keeps every take as said.
+ * the next best one (server/home/front-page-text.js, the platform rule from openvibe-sdk/front-page); the Rundown keeps every
+ * take as said.
  *
  *   node test/home-front-page-text.test.js
  */
