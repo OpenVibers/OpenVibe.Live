@@ -32,6 +32,12 @@ assert.strictEqual(publicTitle('Red Beanie Moment', vod, 2480, 'A man wearing a 
 assert.strictEqual(publicTitle('A Naked Man Lying On Their Back With Legs', vod, 2480, ''), 'Fortnite! at 41:20');
 assert.strictEqual(publicTitle('Woman Laughs At Chat', vod, 2480, ''), 'Fortnite! at 41:20', 'a guessed gender is a look');
 assert.strictEqual(captionTitle('A naked man lies on a bed near a window.'), null);
+// Body words too: clip 488 was AI-titled "Boobs by Bobs Chalk Talk" from a sign in the stream (2026-10-25).
+assert.strictEqual(publicTitle('Boobs by Bobs Chalk Talk', vod, 2480, ''), 'Fortnite! at 41:20');
+assert.strictEqual(publicTitle('Sexy Dance Break', vod, 2480, ''), 'Fortnite! at 41:20');
+assert.strictEqual(publicTitle('Thighs and Cleavage Cam', vod, 2480, ''), 'Fortnite! at 41:20');
+assert.strictEqual(publicTitle('Butt Slide Fail', vod, 2480, ''), 'Fortnite! at 41:20');
+assert.strictEqual(publicTitle('Kick-Ass Combo Finish', vod, 60, ''), 'Kick-Ass Combo Finish', 'not every rough word is a body word');
 assert.strictEqual(publicTitle('Headphones Hit a Revelation', { title: 'A little couch surfing before the store.' }, 61, ''), 'A little couch surfing before the store at 1:01');
 assert.strictEqual(publicTitle('', { title: '', username: 'goosely' }, 75, ''), "goosely's stream at 1:15");
 process.stdout.write('moment fallback title: all checks passed\n');
