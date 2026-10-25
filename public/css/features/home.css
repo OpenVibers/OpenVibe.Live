@@ -1174,3 +1174,15 @@ body.egg-rainbow { animation: eggRainbow 2.6s linear; }
     .cta-btn { width: 100%; }
     .cta-checks { gap: 4px 12px; font-size: 0.8rem; }
 }
+
+/* ── A phone on its side: Go live stays in view (2026-10-25) ─────────────────────
+   At 844x390 the title, a two-line tagline and the quip put the Go live button at y 352, below the 334px under the
+   navbar. On a short landscape screen the hero starts right under the navbar, its lines are one size smaller and the
+   memes timer waits for the upright phone, so the button shows without scrolling. */
+@media (max-height: 520px) and (orientation: landscape) {
+    #page-home .hero { min-height: 0; padding-top: calc(var(--navbar-h) + 12px); padding-bottom: 12px; }
+    #page-home .hero h1 { font-size: clamp(26px, 6.5vh, 32px); margin-bottom: 2px; }
+    #page-home .hero .hero-tagline { font-size: clamp(18px, 5.2vh, 22px); margin: 0 0 4px; }
+    #page-home .hero .hero-quip { font-size: 14px; margin: 0 0 8px; }
+    #page-home .hero .hero-slogan-timer { display: none; }
+}
