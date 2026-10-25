@@ -2107,6 +2107,13 @@ a.pulse-card:hover { border-color: var(--accent); transform: translateY(-2px); }
 
 /* Viewers and uptime: plain stats on the bar, not coloured pills (owner, 2026-10-20: "this gui should be improved"). */
 .viewer-badge i, .uptime-badge i { color: rgba(255,255,255,0.65); }
+/* Muted by the browser's autoplay rule: the stream stays in view, a pill says so, and a tap anywhere on it brings the sound
+   in (stream-player.js showUnmuteOverlay; the same look as the shared player's "Tap for sound"). */
+.unmute-overlay { position: absolute; inset: 0; z-index: 20; cursor: pointer; background: transparent; -webkit-tap-highlight-color: transparent; }
+.unmute-pill { position: absolute; left: 12px; top: 12px; display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px 8px 11px; border-radius: 999px; background: rgba(0,0,0,0.66); color: #fff; font: 650 13px/1 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); box-shadow: 0 4px 18px rgba(0,0,0,0.35); animation: unmute-pop .3s ease-out both; }
+.unmute-overlay:hover .unmute-pill, .unmute-overlay:focus-visible .unmute-pill { background: var(--accent-strong, var(--accent, #3b82f6)); color: var(--on-accent-strong, #fff); }
+@keyframes unmute-pop { from { opacity: 0; transform: translateY(-4px) scale(.96); } }
+@media (prefers-reduced-motion: reduce) { .unmute-pill { animation: none; } }
 
 /* ── DVR Progress Bar (Live Stream Seeking) ─────────────────── */
 .dvr-progress-wrap {
