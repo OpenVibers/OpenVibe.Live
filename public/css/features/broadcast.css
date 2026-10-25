@@ -2692,3 +2692,43 @@ body.bc-golive-dock-on .messenger-toggle { display: none !important; }
 .bcs-viewer-head > div { display: grid; }
 .bcs-viewer-head small { color: var(--text-secondary, #a1a1aa); font-size: 0.76rem; }
 .bcs-viewer-frame { flex: 1; width: 100%; border: 0; background: #000; }
+
+/* "Clip saved: name it" card (public/js/broadcast.js _offerClipName): at the top, clear of the studio's controls and of
+   the phone keyboard; Skip, Escape or 20 s untouched close it (the thin line shows the time left). */
+.bc-clip-name {
+    position: fixed; top: calc(12px + env(safe-area-inset-top, 0px)); left: 50%; transform: translateX(-50%); z-index: 3100;
+    width: min(420px, calc(100vw - 24px)); box-sizing: border-box; overflow: hidden;
+    display: grid; gap: 8px; padding: 14px 14px 16px; border-radius: 16px;
+    background: var(--bg-secondary, #15151c); color: var(--text-primary, #f4f4f5);
+    border: 1px solid var(--border, rgba(255,255,255,0.12)); box-shadow: 0 16px 48px rgba(0,0,0,0.45);
+    animation: bc-clip-name-in 0.18s ease-out;
+}
+@keyframes bc-clip-name-in { from { transform: translate(-50%, -12px); opacity: 0; } }
+.bc-clip-name-head { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.bc-clip-name-head i { color: var(--accent, #60a5fa); }
+.bc-clip-name-head b { font-size: 1rem; }
+.bc-clip-name-head small { margin-left: auto; color: var(--text-secondary, #a1a1aa); font-size: 0.78rem; white-space: nowrap; }
+.bc-clip-name-input {
+    width: 100%; box-sizing: border-box; min-height: 44px; padding: 0 12px; border-radius: 10px;
+    border: 1px solid var(--border, rgba(255,255,255,0.18)); background: var(--bg-primary, #0b0b10); color: inherit;
+    font: inherit; font-size: 1rem;
+}
+.bc-clip-name-input:focus { outline: 2px solid var(--accent, #60a5fa); outline-offset: 1px; }
+.bc-clip-name-hint { margin: 0; color: var(--text-secondary, #a1a1aa); font-size: 0.82rem; line-height: 1.35; }
+.bc-clip-name-acts { display: flex; gap: 8px; justify-content: flex-end; }
+.bc-clip-name-acts button {
+    min-height: 40px; padding: 0 16px; border-radius: 999px; cursor: pointer; font: inherit; font-weight: 700; font-size: 0.9rem;
+    border: 1px solid var(--border, rgba(255,255,255,0.16)); background: var(--surface-raised, rgba(255,255,255,0.06)); color: inherit;
+}
+.bc-clip-name-acts .bc-clip-name-save { background: var(--accent-strong, #2563eb); color: var(--on-accent-strong, #fff); border-color: transparent; }
+.bc-clip-name-acts button:disabled { opacity: 0.6; cursor: default; }
+.bc-clip-name-timer {
+    position: absolute; left: 0; bottom: 0; height: 3px; width: 100%; transform-origin: left;
+    background: var(--accent, #60a5fa); animation: bc-clip-name-time linear forwards;
+}
+.bc-clip-name.is-held .bc-clip-name-timer { display: none; }
+@keyframes bc-clip-name-time { to { transform: scaleX(0); } }
+@media (prefers-reduced-motion: reduce) {
+    .bc-clip-name { animation: none; }
+    .bc-clip-name-timer { animation: none; display: none; }
+}

@@ -3217,8 +3217,8 @@ function _buildClipTitleModal(overlay, clipId) {
     modal.style.cssText = 'background:var(--card-bg, #1a1a2e);border:1px solid var(--border, #333);border-radius:12px;padding:24px;max-width:400px;width:90%;text-align:center;';
     modal.innerHTML = `
         <h3 style="margin:0 0 8px 0"><i class="fa-solid fa-scissors"></i> Name Your Clip</h3>
-        <p style="margin:0 0 16px 0;opacity:0.7;font-size:0.9rem">Give your clip a title so others know what it is</p>
-        <input type="text" id="live-clip-title-input" class="form-input" placeholder="Enter clip title..."
+        <p style="margin:0 0 16px 0;opacity:0.7;font-size:0.9rem">Say what happened, or skip it and the AI names it from what was said and shown.</p>
+        <input type="text" id="live-clip-title-input" class="form-input" placeholder="What happened?" aria-label="Clip name"
                maxlength="200" style="width:100%;box-sizing:border-box;margin-bottom:16px;font-size:1rem;padding:10px 12px">
         <div style="display:flex;gap:8px;justify-content:center">
             <button id="live-clip-title-save" class="btn btn-primary" style="flex:1">
@@ -3237,12 +3237,7 @@ function _buildClipTitleModal(overlay, clipId) {
 
     const saveTitle = async () => {
         const title = input.value.trim();
-        if (!title) {
-            input.style.borderColor = '#e53e3e';
-            input.placeholder = 'Please enter a title...';
-            input.focus();
-            return;
-        }
+        if (!title) return skip();   // nothing typed: the AI names it (server/ai/clip-title.js)
         try {
             const token = localStorage.getItem('token');
             const resp = await fetch(`/api/clips/${clipId}/title`, {
@@ -3258,7 +3253,7 @@ function _buildClipTitleModal(overlay, clipId) {
         overlay.remove();
     };
 
-    const skip = () => overlay.remove();
+    const skip = () => { overlay.remove(); toast('Skipped: the AI will name it', 'info'); };
 
     document.getElementById('live-clip-title-save').onclick = saveTitle;
     document.getElementById('live-clip-title-skip').onclick = skip;
@@ -3325,7 +3320,7 @@ function _buildClipTrimModal(clipId, dur, defaultTitle) {
             <label style="display:block;font-size:0.78rem;opacity:0.7;margin:6px 0 2px">End</label>
             <input type="range" id="clip-trim-end" min="0" max="${dur}" step="0.1" value="${dur}" style="width:100%">
         </div>
-        <input type="text" id="clip-trim-title" class="form-input" placeholder="Give your clip a title..."
+        <input type="text" id="clip-trim-title" class="form-input" placeholder="Name it (optional: the AI names it if you leave it empty)" aria-label="Clip name"
                maxlength="200" style="width:100%;box-sizing:border-box;margin:10px 0 14px;font-size:1rem;padding:10px 12px">
         <div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap">
             <button id="clip-trim-skip" class="btn" style="opacity:0.7">Skip</button>
@@ -3345,7 +3340,8 @@ function _buildClipTrimModal(clipId, dur, defaultTitle) {
     const titleInput = modal.querySelector('#clip-trim-title');
     const saveBtn = modal.querySelector('#clip-trim-save');
     const skipBtn = modal.querySelector('#clip-trim-skip');
-    if (defaultTitle && defaultTitle !== 'Clip from stream') titleInput.value = defaultTitle;
+    // A default name (a Clip button's, or "Clip: <stream title>") stays out of the box: empty means the AI names it.
+    if (defaultTitle && !/^(clip from stream|untitled clip|clip: .*)$/i.test(defaultTitle.trim())) titleInput.value = defaultTitle;
 
     const MIN_LEN = 1;
     const refresh = () => {

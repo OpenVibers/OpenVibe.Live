@@ -360,6 +360,7 @@ async function generateClipOverview(clip) {
     const speech = clipOverviewSpeech(r);
     try { await db.setClipAiOverview(clip.id, { overview, transcript: transcript || null, segments: speech.segments }); } catch { /* */ }
     await require('./explicit').guardAutoClip(clip, overview);
+    require('./clip-title').soon(clip.id);
     try { if (speech.status) await db.setClipTranscriptStatus(clip.id, speech.status); } catch { /* */ }
     return { overview: r ? r.overview : null, transcript };
 }

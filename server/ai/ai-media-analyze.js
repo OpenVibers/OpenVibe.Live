@@ -73,6 +73,7 @@ async function analyze(kind, item) {
             else {
                 await db.setClipAiOverview(item.id, { overview });
                 await require('./explicit').guardAutoClip(item, overview);
+                require('./clip-title').soon(item.id);
             }
         }
         const partialSpeech = Array.isArray(out.gaps) && out.gaps.some(g => /^Speech-to-text failed/i.test(String(g)));
