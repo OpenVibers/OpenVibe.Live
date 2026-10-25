@@ -177,3 +177,21 @@
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
     else boot();
 })();
+
+/* Phones: the floating buttons (messages, global chat, a channel's chat) tuck away while you scroll down to read (they
+   covered cards, titles and the clip feed's sound buttons) and come back when you scroll up, near the top, or at the
+   end of the page. */
+(function () {
+    'use strict';
+    var phone = window.matchMedia('(max-width: 768px) and (pointer: coarse)');
+    var last = window.scrollY || 0, ticking = false;
+    function update() {
+        ticking = false;
+        var y = window.scrollY || 0;
+        var atEnd = y + window.innerHeight >= document.documentElement.scrollHeight - 80;
+        if (!phone.matches || y <= 120 || atEnd || y < last - 4) document.body.classList.remove('fabs-tucked');
+        else if (y > last + 4) document.body.classList.add('fabs-tucked');
+        last = y;
+    }
+    window.addEventListener('scroll', function () { if (!ticking) { ticking = true; requestAnimationFrame(update); } }, { passive: true });
+})();

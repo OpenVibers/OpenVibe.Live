@@ -1516,3 +1516,31 @@
 .toast-offer-text { margin: 0; }
 .toast-offer-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
 @media (max-width: 768px) { .toast.toast-offer { max-width: none; } }
+
+/* ── The player's controls on a narrow phone (2026-10-25) ─────────────────────────
+   At 360-390px the bar ran past the screen: clip and fullscreen sat at x 361-444, out of reach. Under 480px the volume
+   slider goes (a phone has volume buttons; mute stays) and so does the uptime badge, so every button fits. */
+@media (max-width: 480px) {
+    #page-channel .vc-volume-group .volume-slider { display: none !important; }
+    #page-channel #uptime-badge { display: none; }
+}
+
+/* ── A phone on its side: the stream fills the screen (2026-10-25) ───────────────
+   Landscape, at most 540px tall, on a touch screen. Every rule above sizes the player for a portrait phone (half the
+   screen height at most: 195px of 390), so turning the phone made the picture smaller instead of bigger. Here the
+   navbar steps aside on the channel page, the player takes the whole screen (a 16:9 stream fills it on most phones, a
+   9:16 one sits in the middle), and the chat opens over the right side from its corner button. Turning back restores
+   all of it. */
+@media (orientation: landscape) and (max-height: 540px) and (hover: none) {
+    body:has(#page-channel.active) #navbar-mount { display: none; }
+    #page-channel.page.active { padding-top: 0; }
+    #page-channel .video-container,
+    #page-channel .video-container.is-vertical { aspect-ratio: auto; height: 100vh; height: 100dvh; max-height: none; border-radius: 0; }
+    #page-channel #video-element,
+    #page-channel #video-canvas { max-height: none; }
+    body:has(#page-channel.active) .chat-sidebar { top: 0; height: 100vh; height: 100dvh; }
+    /* The player's controls run along the bottom edge: the chat button moves to the top right corner, smaller, and the
+       messages button waits until the phone is upright again (it covered play and volume). */
+    #page-channel .mobile-chat-toggle { top: 10px; bottom: auto; right: 10px; width: 42px; height: 42px; font-size: 0.95rem; }
+    body:has(#page-channel.active) #messenger-toggle { display: none !important; }
+}

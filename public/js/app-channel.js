@@ -3480,3 +3480,16 @@ function startUptime(startedAt) {
     update();
     uptimeInterval = setInterval(update, 1000);
 }
+
+/* A phone turned on its side on a channel page: the player fills the screen (channel.css, "A phone on its side"), so
+   bring it into view, the way a video app does when you turn the phone. Turning back leaves the page where it is. */
+(function _landscapePlayerInView() {
+    const sideways = window.matchMedia('(orientation: landscape) and (max-height: 540px) and (hover: none)');
+    const onChange = () => {
+        if (!sideways.matches) return;
+        const page = document.getElementById('page-channel');
+        if (page && page.classList.contains('active')) window.scrollTo({ top: 0, behavior: 'instant' });
+    };
+    if (sideways.addEventListener) sideways.addEventListener('change', onChange);
+    else if (sideways.addListener) sideways.addListener(onChange);
+})();
