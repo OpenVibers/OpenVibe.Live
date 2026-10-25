@@ -7,7 +7,7 @@
 
 ## Features
 - [Chat System](chat-system.md) — Chat features, moderation, popout chat, TTS
-- [Vibe Coding](vibe-coding.md) — Copilot companion publisher protocol, slot settings, and viewer feed
+- [Vibe Coding](vibe-coding.md) — moved to OpenVibe Chat feeds (openvibe.chat/feeds); what Live answers now
 - [VOD & Clips](vods-and-clips.md) — Recordings, DVR seeking, clip creation
 - [API Tokens](api-tokens.md) — Bot/integration authentication
 - [The Rundown](rundown.md) — What streamers talked about, written up: topics, takes in their own words, episodes (replaced the Arena, 2026-10-19)

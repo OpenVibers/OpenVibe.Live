@@ -9,7 +9,7 @@
  *     recut, trim, bulk actions (which take a list of ids), thumbnail regeneration, and uploading
  *     recording chunks / a live thumbnail into someone else's stream;
  *   - streams and slots: edit, end, delete, the slot's settings, its stream key regeneration (the
- *     answer would be the new key), the slot's vibe-coding settings;
+ *     answer would be the new key) (a slot's vibe coding feed is OpenVibe.Chat's since 2026-10-24);
  *   - restream destinations (each holds a platform stream key): edit, delete, start, stop;
  *   - API tokens.
  *
@@ -88,7 +88,6 @@ app.use('/api/restream', require('../server/streaming/restream-routes'));
 app.use('/api/vods', require('../server/media-proxy/vods'));
 app.use('/api/clips', require('../server/media-proxy/clips'));
 app.use('/api/thumbnails', require('../server/media-proxy/thumbnails'));
-app.use('/api/vibe-coding', require('../server/vibe-coding/routes'));
 const server = http.createServer(app).listen(0, '127.0.0.1');
 
 let ipSeq = 0;
@@ -238,12 +237,6 @@ async function check(name, fn) {
         assert.strictEqual(r.status, 200, r.text.slice(0, 200));
         assert.strictEqual((await db.getUserById(ALICE)).stream_key, '3'.repeat(32));
         assert.strictEqual((await row('managed_streams', slotA)).stream_key, SLOT_KEY);
-    });
-    await check('vibe-coding: Bob cannot change Alice\'s slot settings', async () => {
-        refused(await call('PUT', `/api/vibe-coding/managed/${slotA}/settings`, BOB, { enabled: true, repo: 'bob/pwn' }), 'PUT settings');
-        refused(await call('GET', `/api/vibe-coding/managed/${slotA}/settings`, BOB), 'GET settings');
-        refused(await call('GET', `/api/vibe-coding/managed/${slotA}/events`, BOB), 'GET events');
-        assert.strictEqual((await call('GET', `/api/vibe-coding/managed/${slotA}/settings`, ALICE)).status, 200, 'control: Alice reads hers');
     });
     await check('control: Alice can edit her own slot', async () => {
         const r = await call('PUT', `/api/streams/managed/${slotA}`, ALICE, { title: 'Alice main' });

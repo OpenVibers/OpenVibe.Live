@@ -704,12 +704,6 @@ const TOKEN_SCOPE_DEFINITIONS = Object.freeze([
         title: 'Stream control',
         description: 'Start or stop streams and update stream state or metadata.',
     },
-    {
-        id: 'vibe_coding_publish',
-        label: 'vibe_coding_publish',
-        title: 'Vibe coding publisher',
-        description: 'Publish sanitized coding-feed events to /ws/vibe-coding/publish for a managed stream slot.',
-    },
 ]);
 
 const TOKEN_PRESET_DEFINITIONS = Object.freeze([
@@ -719,13 +713,6 @@ const TOKEN_PRESET_DEFINITIONS = Object.freeze([
         description: 'Recommended for bots that read chat and post messages back into chat.',
         suggested_label: 'Chat Bot',
         scopes: ['chat', 'read'],
-    },
-    {
-        id: 'vibe-coding-publisher',
-        label: 'GitHub Copilot Companion',
-        description: 'Recommended for the OpenVibe.Live VS Code companion and other coding-feed publishers.',
-        suggested_label: 'Copilot Companion',
-        scopes: ['read', 'vibe_coding_publish'],
     },
     {
         id: 'stream-controller',

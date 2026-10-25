@@ -428,7 +428,7 @@
 
 /* ── Chat rendering (public/js/chat.js) ─────────────────────────────────────────────────────── */
 /* Scroll containment without a wheel handler: a chat pane never drags the page along at its ends. */
-.chat-sidebar, .global-chat-main, .offline-global-chat, .chat-vibe-widget-feed, .chat-messages,
+.chat-sidebar, .global-chat-main, .offline-global-chat, .chat-messages,
 .global-chat-messages, .fullscreen-chat-messages, .chat-users-panel, .rewards-panel, .fcw-messages, #pc-msgs {
     overscroll-behavior: contain;
 }
