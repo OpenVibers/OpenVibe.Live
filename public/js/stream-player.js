@@ -1040,14 +1040,10 @@ function startJSMPEG(wsUrl, canvas, placeholder, bufferProfile = getJsmpegBuffer
                     if (container && !document.getElementById('unmute-overlay')) {
                         const overlay = document.createElement('div');
                         overlay.id = 'unmute-overlay';
-                        overlay.style.cssText = 'position:absolute;inset:0;z-index:20;display:flex;align-items:center;justify-content:center;cursor:pointer;background:rgba(0,0,0,0.45);transition:background 0.2s;';
-                        overlay.innerHTML = `
-                            <div style="display:flex;flex-direction:column;align-items:center;gap:12px;">
-                                <div style="width:72px;height:72px;border-radius:50%;background:rgba(255,255,255,0.15);border:2px solid rgba(255,255,255,0.6);display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px);transition:transform 0.15s,background 0.15s;">
-                                    <i class="fa-solid fa-play" style="font-size:1.8rem;color:#fff;margin-left:4px;"></i>
-                                </div>
-                                <span style="color:#fff;font-size:0.9rem;opacity:0.85;text-shadow:0 1px 4px rgba(0,0,0,0.6);">Click to enable audio</span>
-                            </div>`;
+                        overlay.className = 'unmute-overlay';
+                        overlay.setAttribute('role', 'button');
+                        overlay.setAttribute('aria-label', 'Turn the sound on');
+                        overlay.innerHTML = '<span class="unmute-pill"><i class="fa-solid fa-volume-xmark"></i> Tap for sound</span>';
                         overlay.addEventListener('click', () => {
                             audioCtx.resume().then(() => {
                                 console.log('[JSMPEG] AudioContext resumed by user click');
@@ -3578,9 +3574,16 @@ function _clearStreamError() {
     }
 }
 
+// The media volume keys (UI Events names, and the older ones): while the stream is muted for autoplay, volume up is a tap.
+document.addEventListener('keydown', (e) => {
+    if (!/^(AudioVolumeUp|VolumeUp|AudioVolumeMute|VolumeMute)$/.test(e.key)) return;
+    const overlay = document.getElementById('unmute-overlay');
+    if (overlay) overlay.click();
+});
+
 /**
- * Show a click-to-play overlay when autoplay policy forced muted playback.
- * One tap unmutes, restores volume, and removes the overlay.
+ * Show a "Tap for sound" pill when autoplay policy forced muted playback.
+ * One tap anywhere on the picture unmutes, restores volume, and removes it.
  */
 function showUnmuteOverlay(video) {
     // Don't duplicate
@@ -3589,18 +3592,12 @@ function showUnmuteOverlay(video) {
     if (!container) return;
     const overlay = document.createElement('div');
     overlay.id = 'unmute-overlay';
-    overlay.style.cssText = 'position:absolute;inset:0;z-index:20;display:flex;align-items:center;justify-content:center;cursor:pointer;background:rgba(0,0,0,0.45);transition:background 0.2s;';
-    overlay.innerHTML = `
-        <div style="display:flex;flex-direction:column;align-items:center;gap:12px;">
-            <div style="width:72px;height:72px;border-radius:50%;background:rgba(255,255,255,0.15);border:2px solid rgba(255,255,255,0.6);display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px);transition:transform 0.15s,background 0.15s;">
-                <i class="fa-solid fa-play" style="font-size:1.8rem;color:#fff;margin-left:4px;"></i>
-            </div>
-            <span style="color:#fff;font-size:0.9rem;opacity:0.85;text-shadow:0 1px 4px rgba(0,0,0,0.6);">Click to enable audio</span>
-        </div>`;
-    // Hover effect on the play circle
-    const circle = overlay.querySelector('div > div');
-    overlay.addEventListener('mouseenter', () => { if (circle) { circle.style.transform = 'scale(1.1)'; circle.style.background = 'rgba(255,255,255,0.25)'; } });
-    overlay.addEventListener('mouseleave', () => { if (circle) { circle.style.transform = ''; circle.style.background = ''; } });
+    overlay.className = 'unmute-overlay';
+    overlay.setAttribute('role', 'button');
+    overlay.setAttribute('aria-label', 'Turn the sound on');
+    // The stream stays in view (owner, 2026-10-25): a small pill says it is muted, and a tap anywhere on the picture or a
+    // media volume key (where the browser passes it to the page) turns the sound on.
+    overlay.innerHTML = '<span class="unmute-pill"><i class="fa-solid fa-volume-xmark"></i> Tap for sound</span>';
     overlay.addEventListener('click', () => {
         video.muted = false;
         // Restore volume from saved preference / slider
