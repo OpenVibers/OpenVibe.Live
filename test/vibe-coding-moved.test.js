@@ -2,8 +2,8 @@
 
 // Vibe coding feeds are OpenVibe.Chat's since 2026-10-24 (its server/feeds/, openvibe.chat/feeds; the owner: "migrate
 // that whole entire feature so it's built into the openvibe.chat system"). Nothing under server/ or scripts/ reads or
-// writes Live's vibe_coding_sessions or vibe_coding_events (Chat's scripts/import-live-feeds.js copies them; a contract
-// migration drops them once the copy is verified), the publisher socket and the old routes answer 410 naming Chat, and
+// writes Live's vibe_coding_sessions or vibe_coding_events (Chat's scripts/import-live-feeds.js copied them, verified, on
+// 2026-10-25; migrations/0018_drop_vibe_coding.sql drops them), the publisher socket and the old routes answer 410 naming Chat, and
 // the channel chat shows Chat's own card instead of Live's widget.
 
 const assert = require('assert');
@@ -46,4 +46,9 @@ assert.ok(!/_vibeWidgetState|refreshVibeWidgetFeed|\/vibe-coding\/channel\//.tes
 assert.match(chat, /\$\{FEED_ORIGIN\}\/api\/chat\/feeds\?slot=/);
 assert.match(chat, /\$\{FEED_ORIGIN\}\/embed\/feed\//);
 assert.match(chat, /e\.origin !== FEED_ORIGIN/, 'the card\'s height comes only from Chat\'s frame');
+// The contract migration drops them, after the N-1 window (it names 0002, so the migrator holds it for 7 days).
+const drop = fs.readFileSync(path.join(ROOT, 'migrations', '0018_drop_vibe_coding.sql'), 'utf8');
+assert.match(drop, /^-- phase: contract$/m);
+assert.match(drop, /^-- after: 0002$/m);
+assert.deepStrictEqual([...drop.matchAll(/^DROP TABLE IF EXISTS (\w+);$/gm)].map((m) => m[1]).sort(), ['vibe_coding_events', 'vibe_coding_sessions']);
 console.log('vibe coding: Chat\'s; nothing reads Live\'s old tables, the old socket and routes answer 410, the channel shows Chat\'s card');
