@@ -43,6 +43,8 @@ You don't need any of the following:
   only.
 - A phone sends H.264, which its hardware encodes, so the stream uses less battery and keeps its frame rate. When the
   network or the phone gets busy, the picture gets softer before it gets choppy.
+- **Turn the phone whenever you like.** Viewers' players take your picture's shape, upright or sideways, and ease from
+  one to the other when you turn. The recording keeps each part in its own shape too.
 - **End** asks before it ends the stream.
 - Keep the OpenVibe tab open and in front while you are live. A phone pauses the camera in other tabs and apps, and
   the stream ends after a minute away, so "Watch as a viewer" opens over the studio instead of in a new tab.

@@ -53,6 +53,7 @@
         "clipJobs"
       ],
       "js": [
+        "/js/player-shape.js",
         "/js/stream-player.js",
         "/js/stream-pip.js"
       ]

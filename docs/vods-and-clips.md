@@ -40,6 +40,18 @@ OpenVibe.Live automatically records your streams as VODs (Video on Demand).
 3. **Finalize**: When the stream ends, the recording is remuxed for proper seeking, duration is probed, and a thumbnail is generated
 4. **Auto-cleanup**: Recordings shorter than 10 seconds are automatically deleted (test streams, accidental go-lives)
 
+### A stream that changes shape
+
+A broadcaster who turns their phone, or whose connection makes WebRTC lower the resolution, sends frames of another
+size partway through. The recording keeps them as they came. OpenVibe.Media's playback copy (its HLS timeline) is cut in
+one part per shape, each with its own size, and the player switches between them, so a portrait part plays portrait.
+Before 2026-10-26 it was squeezed into the first part's 16:9 (VOD 6017). A lowered resolution is not a new part: it is
+scaled up to that part's size. A clip whose window crosses a turn shows its main shape, with bars for the rest.
+
+The live player does the same for viewers: the box takes the picture's own ratio (`public/js/player-shape.js`), eases
+to a new one when the broadcaster turns, keeps its size when only the resolution drops, and opens on the channel's last
+shape. A blurred copy of the picture fills the sides of a tall picture.
+
 ### Browser Tab Close Safety
 
 If you close the browser tab during a WebRTC stream, `sendBeacon` attempts to upload any remaining chunks. The server will auto-finalize when it detects the stream has ended.
