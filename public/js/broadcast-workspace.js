@@ -528,6 +528,11 @@ function _wsRenderPanel() {
                                 oninput="_wsMarkDirty()">
                         </div>
                     </div>
+                    <label class="bc-ws-saver">
+                        <input type="checkbox" id="bc-ws-battery-saver"${typeof batterySaverOn === 'function' && batterySaverOn() ? ' checked' : ''}
+                            onchange="setBatterySaver(this.checked); if (broadcastState.activeStreamId) applyBroadcastQuality().catch(() => {})">
+                        <span><b>Battery saver on this device</b><small>480p at 30 fps, whatever is set above: a cooler phone and a longer stream. Change it while live under More → Video.</small></span>
+                    </label>
                 </details>
                 </div>
 
@@ -1022,6 +1027,23 @@ function _wsConfirmAction(message, { title = 'Are you sure?', okLabel = 'Confirm
         overlay.querySelector('#bc-ws-confirm-ok').onclick = () => cleanup(true);
         overlay.addEventListener('click', (e) => { if (e.target === overlay) cleanup(false); });
     });
+}
+
+/**
+ * Keep a quality change made while live (the phone studio's Video quality) as the slot's default for next time: the
+ * slot's settings blob with the new resolution, frame rate and bitrate, and the Video quality form, when it shows that
+ * slot.
+ */
+async function _wsRememberQuality(managedStreamId, { resolution, fps, bitrate }) {
+    if (!managedStreamId || Number(managedStreamId) !== Number(_wsState.selectedId) || !_wsState.profile) return false;
+    const profile = { ..._wsState.profile, resolution: String(resolution), fps: String(fps), bitrate: Number(bitrate) };
+    await api('/streams/broadcast-settings', { method: 'PUT', body: { managed_stream_id: Number(managedStreamId), settings: profile } });
+    _wsState.profile = profile;
+    const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = String(v); };
+    set('bc-ws-resolution', profile.resolution); set('bc-ws-fps', profile.fps); set('bc-ws-bitrate', profile.bitrate);
+    const sum = document.querySelector('.bc-ws-quality .bc-sum-val');
+    if (sum) sum.textContent = `${profile.resolution}p · ${profile.fps} fps · ${profile.bitrate} kbps`;
+    return true;
 }
 
 /* ── Live stats timer ────────────────────────────────────────── */

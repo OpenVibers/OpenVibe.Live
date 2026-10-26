@@ -272,6 +272,25 @@ router.post('/stream/:streamId/finalize', requireAuth, async (req, res) => {
     }
 });
 
+// Whether the server records this stream itself (Media ingest from the SFU or RTMP), and whether the channel records
+// at all. The broadcast page asks before it starts its own fallback recorder: a second encode of the camera on the
+// streamer's device (a phone's battery), and slices the chunk route above would only drop.
+router.get('/stream/:streamId/recording', requireAuth, async (req, res) => {
+    try {
+        const streamId = parseInt(req.params.streamId, 10);
+        const stream = Number.isFinite(streamId) ? await db.getStreamById(streamId) : null;
+        if (!stream) return res.status(404).json({ error: 'Stream not found' });
+        if (stream.user_id !== req.user.id && !permissions.can(req.user, 'staff.streams.manage')) {
+            return res.status(403).json({ error: 'Not your stream' });
+        }
+        const policy = await db.getChannelVodRecordingPolicyByUserId(stream.user_id, stream.managed_stream_id);
+        const rec = recorder.getActiveRecording(streamId);
+        res.json({ recording: !!policy.recordingEnabled, server: !!(rec && rec.type !== 'chunks') });
+    } catch {
+        res.status(500).json({ error: 'Could not read the recording state' });
+    }
+});
+
 router.get('/stream/:streamId/live', optionalAuth, async (req, res) => {
     try {
         const streamId = parseInt(req.params.streamId);
