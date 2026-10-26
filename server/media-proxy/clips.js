@@ -218,6 +218,25 @@ router.get('/:id/file', (req, res) => {
     res.redirect(302, media.clipUrl(id));
 });
 
+// The URL its file downloads from (OpenVibe.Video's Download menu): Media's bytes as an attachment named ?name, signed
+// for a private clip (its owner, the clipped streamer, staff). See ./download-url.js.
+router.get('/:id/download-url', optionalAuth, async (req, res) => {
+    try {
+        if (!/^\d+$/.test(req.params.id)) return clipNotFound(res);
+        let clip;
+        try { clip = await media.getClip(req.params.id); }
+        catch (err) {
+            if (err && err.name === 'MediaApiError' && err.status === 404) return clipNotFound(res);
+            return mediaErr(res, err, 'Failed to get clip');
+        }
+        if (!clip || !await access.canView(req.user, clip)) return clipNotFound(res);
+        res.set('Cache-Control', 'private, no-store');
+        res.json(await require('./download-url').downloadUrl('clip', clip, req.query.name));
+    } catch (err) {
+        mediaErr(res, err, 'Failed to get the download link');
+    }
+});
+
 router.get('/:id', optionalAuth, async (req, res) => {
     try {
         if (!/^\d+$/.test(req.params.id)) return clipNotFound(res);

@@ -169,6 +169,11 @@ lists) carries three URLs, set by `setPlaybackUrls()` in `server/media-client.js
 The watch pages play `hls_url` when there is one and fall back to the file. The server-rendered pages name no
 playback URL at all: their schema.org `contentUrl` is the page and their `og:video` tags carry only the duration.
 
+To save the file, `GET /api/vods/:id/download-url?name=…` and `/api/clips/:id/download-url?name=…` answer
+`{ url, expires_at }`: the byte route with `?download=1&name=…`, which Media answers as an attachment named after
+`name` (its real extension added), so a browser saves it instead of playing it. A private item (for whoever may see it)
+gets a signed URL valid for 15 minutes. OpenVibe.Video's Download menu uses these.
+
 ## Views
 
 A view is one `content_views` row per item and address: Live's detail read (`GET /api/vods/:id`, `GET /api/clips/:id`)
