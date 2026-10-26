@@ -426,11 +426,20 @@ router.get('/:id/memories', optionalAuth, async (req, res) => {
         if (!vod) return;
         const streamId = vod.stream_id || null;
         if (!streamId) return res.json({ memories: [] });
-        const memories = (await db.getStreamMemories(streamId) || []).map(m => ({
+        let memories = (await db.getStreamMemories(streamId) || []).map(m => ({
             offset_seconds: m.offset_seconds,
             description: db.publicMemoryText(m.description),
             tags: m.tags ? (() => { try { return JSON.parse(m.tags); } catch { return []; } })() : [],
         }));
+        // A VOD that is one part of its stream (the broadcaster reconnected): the moments inside it, in its own time.
+        // Its chapters (OpenVibe.Video) pointed eleven minutes late on part 2 of stream 2795.
+        const part = await require('../streaming/stream-history').partForVod(vod.id);
+        if (part) {
+            const len = part.end != null ? part.end - part.at : Infinity;
+            memories = memories
+                .filter((m) => Number(m.offset_seconds) >= part.at && Number(m.offset_seconds) - part.at <= len)
+                .map((m) => ({ ...m, offset_seconds: Math.round(Number(m.offset_seconds) - part.at) }));
+        }
         res.json({ memories });
     } catch {
         res.status(500).json({ error: 'Failed to load AI timeline' });
@@ -532,6 +541,10 @@ router.get('/:id', optionalAuth, async (req, res) => {
 
         // Enrich with local stream details for chat replay.
         if (vod.stream_id) {
+            // One part of a stream recorded in parts: where it starts in the stream (seconds since stream_started_at),
+            // so chat replay and other stream-time things land at the right place in it.
+            const part = await require('../streaming/stream-history').partForVod(vod.id).catch(() => null);
+            if (part) { vod.stream_offset_sec = part.at; vod.part = part.part; }
             if (stream) {
                 vod.stream_started_at = stream.started_at;
                 vod.stream_ended_at = stream.ended_at;
@@ -576,6 +589,19 @@ router.get('/:id', optionalAuth, async (req, res) => {
         res.json({ vod, clips });
     } catch {
         res.status(500).json({ error: 'Failed to get VOD' });
+    }
+});
+
+// The URL its file downloads from (OpenVibe.Video's Download menu): Media's bytes as an attachment named ?name, signed
+// for a private VOD (its owner, staff). See ./download-url.js.
+router.get('/:id/download-url', optionalAuth, async (req, res) => {
+    try {
+        const vod = await loadVisibleVod(req, res, req.params.id);
+        if (!vod) return;
+        res.set('Cache-Control', 'private, no-store');
+        res.json(await require('./download-url').downloadUrl('vod', vod, req.query.name));
+    } catch (err) {
+        mediaErr(res, err, 'Failed to get the download link');
     }
 });
 
