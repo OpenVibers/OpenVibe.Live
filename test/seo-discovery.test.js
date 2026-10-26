@@ -30,7 +30,9 @@ async function check(name, fn) {
             const r = await get('/robots.txt');
             assert.strictEqual(r.status, 200);
             assert.match(r.headers['content-type'], /^text\/plain/);
-            assert.ok(r.text.startsWith('User-agent: *\nAllow: /\n'), r.text.slice(0, 80));
+            // Shared 4.13 opens robots.txt with its content-signals note (a comment and Content-Signal); the rules follow.
+            assert.ok(r.text.replace(/^(?:#[^\n]*\n|Content-Signal:[^\n]*\n|\n)*/, '').startsWith('User-agent: *\nAllow: /\n'), r.text.slice(0, 160));
+            assert.ok(/^Content-Signal: search=yes, ai-input=yes, ai-train=yes$/m.test(r.text), 'search, AI answers and AI training allowed in words');
             assert.ok(/^User-agent: GPTBot$/m.test(r.text) && /^User-agent: ClaudeBot$/m.test(r.text));
             assert.ok(r.text.includes('Sitemap: https://openvibe.live/sitemap.xml'));
             assert.strictEqual(r.headers['cache-control'], 'public, max-age=3600, stale-while-revalidate=3600');
