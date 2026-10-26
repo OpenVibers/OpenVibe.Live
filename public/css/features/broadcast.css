@@ -2569,6 +2569,9 @@ body.bc-studio-on .toast-container { z-index: 1500; }
     font-variant-numeric: tabular-nums; white-space: nowrap;
 }
 .bcs-pill b { font-weight: 700; }
+/* The count is a button: a tap lists where the stream is watched (viewer-places.js). */
+.bcs-viewers { -webkit-tap-highlight-color: transparent; }
+.bcs-viewers[aria-expanded="true"] { background: rgba(255,255,255,0.2); border-color: rgba(255,255,255,0.4); }
 .bcs-dot { width: 8px; height: 8px; border-radius: 50%; background: #9ca3af; }
 .bcs-pill.is-ok .bcs-dot, .bcs-restream.is-ok::before { background: #22c55e; }
 .bcs-pill.is-warn .bcs-dot, .bcs-restream.is-warn::before { background: #f59e0b; }

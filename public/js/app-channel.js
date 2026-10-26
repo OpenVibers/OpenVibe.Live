@@ -5,8 +5,58 @@
    route (public/features.json); it runs after app.js and relies on app.js globals.
    ═══════════════════════════════════════════════════════════════ */
 let _streamSwitchToken = 0;
-/** Cached native HS viewer count from WebSocket — updated by stream-player.js WS handler */
-let _cachedHsViewerCount = 0;
+
+/* The player's viewer count: the watched stream's viewers everywhere it goes out, added up, and a tap lists them
+   (viewer-places.js; owner, 2026-10-26: on a phone it left out Twitch, Kick, YouTube and RobotStreamer). The server's
+   places (GET /streams/channel, on load and every poll) give the platforms. OpenVibe's own count also comes live from
+   the player's socket ('viewer-count', stream-player.js) and from chat ('user-count', chat.js): the larger one shows. */
+const _viewerCount = { streamId: null, places: [], socket: 0, chat: 0 };
+
+/** The watched stream's places, OpenVibe first with its live count. */
+function _watchedViewerPlaces() {
+    const others = _viewerCount.places.filter((p) => p.key !== 'openvibe');
+    return [{ key: 'openvibe', name: 'OpenVibe', count: Math.max(_viewerCount.socket, _viewerCount.chat) }, ...others];
+}
+
+/** A live count of OpenVibe viewers from 'socket' or 'chat'. A count for another stream than the watched one is ignored. */
+function setLiveViewerCount(source, count, streamId) {
+    if (streamId != null && _viewerCount.streamId != null && String(streamId) !== String(_viewerCount.streamId)) return;
+    _viewerCount[source === 'socket' ? 'socket' : 'chat'] = Math.max(0, Number(count) || 0);
+    _paintViewerCount();
+}
+
+function _setWatchedViewerPlaces(stream) {
+    if (String(stream.id) !== String(_viewerCount.streamId)) Object.assign(_viewerCount, { streamId: stream.id, places: [], socket: 0, chat: 0 });
+    const places = stream.viewer_places && Array.isArray(stream.viewer_places.places) ? stream.viewer_places.places : null;
+    if (places) {
+        _viewerCount.places = places;
+        const here = places.find((p) => p.key === 'openvibe');
+        if (here) _viewerCount.chat = Number(here.count) || 0;
+    } else {
+        // A server from before viewer_places (a deploy in progress): its own count, and one line for the rest.
+        _viewerCount.places = stream.external_viewer_count ? [{ key: 'custom', name: 'Other platforms', count: stream.external_viewer_count }] : [];
+        _viewerCount.chat = stream.viewer_count || 0;
+    }
+    _paintViewerCount();
+}
+
+function _paintViewerCount() {
+    const places = _watchedViewerPlaces();
+    const total = places.reduce((n, p) => n + (Number(p.count) || 0), 0);
+    const el = document.getElementById('vc-viewers');
+    if (el) el.textContent = total;
+    const badge = document.getElementById('viewer-count-badge');
+    if (badge) {
+        const where = places.length > 1 && window.OVViewerPlaces ? `: ${OVViewerPlaces.summary(places)}` : '';
+        badge.title = `${total} watching now${where}`;
+        badge.setAttribute('aria-label', `${total} watching now${where}. Show where`);
+        if (!badge.dataset.bound) {
+            badge.dataset.bound = '1';
+            badge.addEventListener('click', () => { if (window.OVViewerPlaces) OVViewerPlaces.toggle(badge, _watchedViewerPlaces); });
+        }
+    }
+    if (window.OVViewerPlaces) OVViewerPlaces.update();
+}
 
 function _updateMicOnlyOverlay(browserMode, streamingMethod) {
     const container = document.getElementById('video-container');
@@ -1454,17 +1504,8 @@ function updateCumulativeViewers(liveStreams, rsRestream = {}, restreamLinks = n
     const watched = liveStreams.find(s => String(s.id) === String(typeof currentStreamId !== 'undefined' ? currentStreamId : ''))
         || liveStreams[0] || null;
     const watchedMsId = watched?.managed_stream_id ?? null;
-    const watchedNative = watched?.viewer_count || 0;
-    const watchedExternal = watched?.external_viewer_count || 0;
-
-    // Cache the WATCHED slot's external count so the live WS update adds the right number.
-    _cachedExternalViewerCount = watchedExternal;
-    // Main viewer badge = this slot's native + this slot's restream viewers.
-    const vcEl = document.getElementById('vc-viewers');
-    if (vcEl) {
-        const bestHs = Math.max(_cachedHsViewerCount || 0, watchedNative);
-        vcEl.textContent = bestHs + watchedExternal;
-    }
+    // Main viewer badge = this slot's viewers on OpenVibe and on every platform it is restreamed to.
+    if (watched) _setWatchedViewerPlaces(watched);
 
     let html = '';
 

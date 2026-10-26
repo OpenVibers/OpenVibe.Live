@@ -30,8 +30,6 @@ function getOpenVibeNetworkUrl(service) {
 function getOpenVibeToolsUrl() {
     return getOpenVibeNetworkUrl('tools');
 }
-/** Cached external viewer count (Kick/Twitch/RS) — updated by cumulative viewer poll */
-let _cachedExternalViewerCount = 0;
 
 /* ── Capability helpers ────────────────────────────────────── */
 function mergeUserWithCapabilities(user, capabilities) {

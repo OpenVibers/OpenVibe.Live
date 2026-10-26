@@ -33,6 +33,8 @@ You don't need any of the following:
 
 - The camera fills the screen, and chat runs over the bottom of the picture, where you can read and answer it.
 - The top shows LIVE, how long you have been live, how many people are watching, your restreams and your connection.
+  The number watching counts everywhere your stream goes: OpenVibe, RobotStreamer, Twitch, Kick and YouTube. Tap it
+  to see each one. Viewers see the same count on your channel's player, and can tap it too.
 - The buttons on the right are Flip (front and back camera), Mute, Camera, Light (a back camera's flash), Chat (hide or
   show it), Clip (the last 30 seconds) and More.
 - **More** opens copy link, watch as a viewer, choose any camera, media requests, a one-minute clip,

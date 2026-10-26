@@ -111,6 +111,19 @@ let server;
     assert.strictEqual((await manager.getExternalViewerCountsForUser(1, slotB)).total, 7, 'slot B counts only its own platform viewers');
     assert.strictEqual((await manager.getExternalViewerCountsForUser(1, slotA)).total, 40);
     assert.strictEqual((await manager.getExternalViewerCountsForUser(1, null)).total, 3, 'no slot counts only unbound destinations');
+    // Where it is watched (viewer-places.js): a restream nobody watches yet is 0 there, not left out; a platform that
+    // says it is not live is left out; a restream sending with no count from its platform is listed as null.
+    const kickOnly = async () => (await manager.getExternalViewerCountsForUser(1, slotB)).breakdown.map((p) => [p.platform, p.count, p.url]);
+    manager.setViewerCount(bKick, 0, true);
+    assert.deepStrictEqual(await kickOnly(), [['kick', 0, null]]);
+    manager.setViewerCount(bKick, 4, false);
+    assert.deepStrictEqual(await kickOnly(), [], 'not live on Kick (yet): no Kick line');
+    manager._viewerCountCache.delete(bKick);
+    assert.deepStrictEqual(await kickOnly(), [], 'nothing known and nothing sending: no line');
+    manager.sessions.set('test:kick', { destId: bKick, status: 'live' });
+    assert.deepStrictEqual(await kickOnly(), [['kick', null, null]], 'sending, but Kick gives no count: live there, no number');
+    manager.sessions.delete('test:kick');
+    manager.setViewerCount(bKick, 7, true);
 
     // ── Display: routes ─────────────────────────────────────────────────────────────
     const express = require('express');

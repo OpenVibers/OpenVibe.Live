@@ -1324,10 +1324,8 @@ async function initWebRTC(stream) {
                         showStreamEnded();
                         break;
                     case 'viewer-count':
-                        const vcEl = document.getElementById('vc-viewers');
-                        const extVc = (typeof _cachedExternalViewerCount === 'number') ? _cachedExternalViewerCount : 0;
-                        if (typeof _cachedHsViewerCount !== 'undefined') _cachedHsViewerCount = msg.count || 0;
-                        if (vcEl) vcEl.textContent = (msg.count || 0) + extVc;
+                        // The channel's count adds the restream platforms' viewers to it (app-channel.js).
+                        if (typeof setLiveViewerCount === 'function') setLiveViewerCount('socket', msg.count || 0);
                         break;
                     case 'sfu-source-unavailable':
                         // Server: ingest source is gone or stale — stop aggressive retrying.

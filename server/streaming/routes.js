@@ -28,6 +28,7 @@ const config = require('../config');
 const { requireAuth, requireStreamer, optionalAuth } = require('../auth/auth');
 const jsmpegRelay = require('./jsmpeg-relay');
 const webrtcSFU = require('./webrtc-sfu');
+const { viewerPlaces } = require('./viewer-places');
 const recorder = require('./recorder');
 const openreAuthority = require('../openre/authority');
 const openreMirror = require('../openre/mirror');
@@ -373,7 +374,12 @@ router.get('/channel/:username', optionalAuth, async (req, res) => {
             ls.rs_viewers = rsActive ? rsVc : 0;
             ls.platform_viewers = ext.breakdown;
             ls.external_viewer_count = ext.total + ls.rs_viewers;
-            ls.total_viewer_count = (ls.viewer_count || 0) + ls.external_viewer_count;
+            // Where it is watched, OpenVibe first (viewer-places.js): the player's count and the broadcaster's add these
+            // up and list them on a tap. OpenVibe's own is the larger of Chat's count and the player sockets'.
+            let sockets = 0;
+            try { sockets = require('./broadcast-server').getViewerCount(ls.id) || 0; } catch { /* no signaling */ }
+            ls.viewer_places = viewerPlaces({ native: Math.max(ls.viewer_count || 0, sockets), rs: rsInfo[ls.id] || null, platforms: ext.breakdown });
+            ls.total_viewer_count = ls.viewer_places.total;
         }
 
         // Include restream destination links (Twitch/Kick/YouTube) for live streams.
