@@ -61,40 +61,57 @@ class StreamRecorder {
      * Media keep "recording" nothing and the stream ends as a zero-byte VOD. Watch for a video
      * producer arriving on a DIFFERENT transport than the one we recorded from, and roll the
      * recording to a new part on the new producer. A second video source on the same transport
-     * (screen share next to the camera) is not a reconnect and is left alone.
+     * (screen share next to the camera) is not a reconnect and is left alone. Likewise a microphone
+     * that arrives after the recording started without sound rolls it to a part with sound.
      */
     _installProducerWatch() {
         if (this._producerWatch) return;
         let webrtcSFU;
         try { webrtcSFU = require('./webrtc-sfu'); } catch (e) { console.warn('[VOD] producer watch not installed:', e.message); return; }
         this._producerWatch = ({ roomId, producerId, kind }) => {
-            if (kind !== 'video') return;
+            if (kind !== 'video' && kind !== 'audio') return;
             const m = /^stream-(\d+)$/.exec(String(roomId || ''));
             if (!m) return;
             const streamId = Number(m[1]);
             const rec = this.activeRecordings.get(streamId);
-            if (!rec || rec.type !== 'rtp' || !rec.videoProducerId || rec.videoProducerId === producerId || rec._rolling) return;
+            if (!rec || rec.type !== 'rtp' || !rec.videoProducerId || rec._rolling) return;
             const room = webrtcSFU.rooms?.get(roomId);
+            const alive = (id) => { const e = id && room?.producers?.get(id); return !!(e && e.producer && !e.producer.closed); };
+            if (kind === 'audio') {
+                // A microphone that arrives after the recording settled without one (or after its own died): the
+                // recording so far is silent, so it rolls to a part that has the sound. A second microphone beside a
+                // live one is not followed.
+                if (!rec.audioSettled || rec.audioProducerId === producerId || alive(rec.audioProducerId)) return;
+                this._rollRecording(streamId, rec, 'a microphone arrived while the recording had no live one');
+                return;
+            }
+            if (rec.videoProducerId === producerId) return;
             const oldEntry = room?.producers?.get(rec.videoProducerId);
             const newEntry = room?.producers?.get(producerId);
             const oldAlive = !!(oldEntry && oldEntry.producer && !oldEntry.producer.closed);
             const sameTransport = !!(oldEntry && newEntry && oldEntry.transportId === newEntry.transportId);
             if (oldAlive && sameTransport) return;
-            rec._rolling = true;
-            const next = { mode: rec.mode, part: (rec.part || 1) + 1, baseTitle: rec.baseTitle };
-            console.log(`[VOD] Broadcaster re-produced video for stream ${streamId} on a new transport — rolling recording to part ${next.part}`);
-            this.stopRecording(streamId);
-            const timer = setTimeout(async () => {
-                try {
-                    const live = await db.getStreamById(streamId);
-                    if (!live || !live.is_live || this.isActivelyRecording(streamId)) return;
-                    await this.startRecording(streamId, rec.protocol, {}, next);
-                } catch (e) { console.warn(`[VOD] roll restart failed for stream ${streamId}:`, e.message); }
-            }, 1500);
-            if (timer.unref) timer.unref();
+            this._rollRecording(streamId, rec, 'the broadcaster re-produced video on a new transport');
         };
         webrtcSFU.on('producer-added', this._producerWatch);
     }
+
+    /** Stop a WebRTC recording and start its next part a moment later, on the producers there are then. */
+    _rollRecording(streamId, rec, why) {
+        rec._rolling = true;
+        const next = { mode: rec.mode, part: (rec.part || 1) + 1, baseTitle: rec.baseTitle };
+        console.log(`[VOD] Stream ${streamId}: ${why} — rolling recording to part ${next.part}`);
+        this.stopRecording(streamId);
+        const timer = setTimeout(async () => {
+            try {
+                const live = await db.getStreamById(streamId);
+                if (!live || !live.is_live || this.isActivelyRecording(streamId)) return;
+                await this.startRecording(streamId, rec.protocol, {}, next);
+            } catch (e) { console.warn(`[VOD] roll restart failed for stream ${streamId}:`, e.message); }
+        }, 1500);
+        if (timer.unref) timer.unref();
+    }
+
     async startRecording(streamId, protocol, endpoint = {}, opts = {}) {
         this._installProducerWatch();
         if (this.activeRecordings.has(streamId)) {
@@ -144,6 +161,7 @@ class StreamRecorder {
         });
     }
 
+    static get AUDIO_WAIT_MS() { return Number(process.env.VOD_AUDIO_WAIT_MS) || 5000; }
     static get DISK_RETRY_DELAY_MS() { return 5 * 60 * 1000; }
     static get DISK_RETRY_MAX() { return 12; } // ≈ 1 h of a still-live stream
 
@@ -222,7 +240,17 @@ class StreamRecorder {
         }
         if (rec._cancel || !this.activeRecordings.has(streamId)) return;
         rec.videoProducerId = videoProducer.id;
-        const audioProducer = webrtcSFU.findProducerByKind(roomId, 'audio');
+        // A browser produces its audio a moment after its video. Asked once, the instant the video arrived, the answer
+        // was "no audio" and the whole recording was silent (VOD 5986, 2026-10-25: both producers in the same second).
+        // So wait a few seconds for it: a stream with no microphone then records video only, and a microphone that
+        // comes later rolls the recording to a part with sound (_installProducerWatch).
+        let audioProducer = webrtcSFU.findProducerByKind(roomId, 'audio');
+        if (!audioProducer) {
+            try { audioProducer = await webrtcSFU.waitForProducer(roomId, 'audio', StreamRecorder.AUDIO_WAIT_MS); } catch { audioProducer = null; }
+            if (rec._cancel || !this.activeRecordings.has(streamId)) return;
+        }
+        rec.audioProducerId = audioProducer ? audioProducer.id : null;
+        rec.audioSettled = true;
 
         // Codec info for Media's SDP: mimeType/clockRate from the producer; payload type
         // from the router's preferred PT (that's what the PlainRTP consumer will emit).

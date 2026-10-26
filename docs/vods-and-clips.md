@@ -29,9 +29,14 @@ OpenVibe.Live automatically records your streams as VODs (Video on Demand).
 
 | Protocol | Recording Method | Format |
 |----------|-----------------|--------|
-| **WebRTC (Browser)** | Browser-side MediaRecorder, chunks uploaded to server | WebM (VP8/VP9 + Opus) |
-| **RTMP** | Server-side FFmpeg capture | WebM (VP8 + Vorbis) |
-| **JSMPEG** | Server-side FFmpeg via WebSocket relay | WebM (VP8 + Vorbis) |
+| **WebRTC (Browser, WHIP)** | Server-side: the SFU forwards the broadcaster's video and audio as RTP to OpenVibe.Media, which copies them | WebM (VP8 + Opus), MP4 (H.264 + AAC) from phones |
+| **RTMP** | Server-side: OpenVibe.Media pulls the local RTMP endpoint and copies it | MP4 (H.264 + AAC) |
+| **JSMPEG** | Not recorded (Media has no MPEG-TS ingest) | — |
+
+A browser produces its audio a moment after its video. The recorder waits up to 5 s for it (`VOD_AUDIO_WAIT_MS`):
+VOD 5986 (2026-10-25) was recorded silent because the recorder asked for the audio in the same instant the video
+arrived, just before the microphone did. A stream with no microphone records video only after the wait. A microphone
+that comes later, or a new one after the recorded one stopped, rolls the recording to a new part that has the sound.
 
 ### Recording Lifecycle
 
