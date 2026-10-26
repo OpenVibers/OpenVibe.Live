@@ -863,6 +863,10 @@ function _applyLoaderThumb(stream) {
         const img = new Image();
         img.crossOrigin = 'anonymous';
         img.onload = () => {
+            // The thumbnail is the stream's shape: the box takes it until the picture arrives.
+            if (window.OVPlayerShape && img.naturalWidth && img.naturalHeight) {
+                window.OVPlayerShape.hint(document.getElementById('video-container'), img.naturalWidth / img.naturalHeight);
+            }
             try {
                 // Cluster the thumbnail's colours by hue and pull the TWO strongest, most
                 // saturated clusters → a real two-tone palette to theme the loader with.
@@ -2699,21 +2703,14 @@ function setupVideoControls() {
         ? '<i class="fa-solid fa-volume-xmark"></i>'
         : '<i class="fa-solid fa-volume-high"></i>';
 
-    // Detect vertical (portrait) video and add CSS class for responsive layout
-    const _detectVerticalVideo = () => {
-        const vid = document.getElementById('video-element');
-        const container = document.getElementById('video-container');
-        if (!vid || !container) return;
-        const w = vid.videoWidth;
-        const h = vid.videoHeight;
-        if (w > 0 && h > 0) {
-            container.classList.toggle('is-vertical', h > w);
-        }
-    };
+    // The box takes the picture's shape (player-shape.js): its own ratio, eased when the broadcaster turns, the same box
+    // when only the resolution drops, remembered per channel for the next first paint.
     const vid = document.getElementById('video-element');
+    if (window.OVPlayerShape) {
+        window.OVPlayerShape.watch(vid, document.getElementById('video-container'),
+            { key: streamRef && streamRef.username, canvas: document.getElementById('video-canvas') });
+    }
     if (vid) {
-        vid.addEventListener('loadedmetadata', _detectVerticalVideo);
-        vid.addEventListener('resize', _detectVerticalVideo);
 
         // Sync local muted state when the browser auto-mutes for autoplay policy
         vid.addEventListener('volumechange', () => {

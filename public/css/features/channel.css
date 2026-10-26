@@ -1525,6 +1525,41 @@
     #page-channel #uptime-badge { display: none; }
 }
 
+/* ── The player takes the stream's shape (2026-10-26) ──────────────────────────────
+   player-shape.js sets --video-ar (the picture's width / height) on #video-container. The box stays the column's width,
+   so its controls keep their room, and its height is the picture's at that width, up to --player-max-h: a wide picture
+   (16:9, 21:9) fills the box exactly, a tall one (4:3 on a short screen, square, 9:16) is as tall as allowed, and a
+   blurred copy of it fills the sides instead of black (.player-shape-glow, painted by player-shape.js). The cap keeps
+   the channel line under the player on screen: a portrait stream used to push it below a laptop's fold. When the
+   broadcaster turns their phone the box eases to the new shape; a resolution drop that keeps the shape moves nothing.
+   Before the first frame the box is 16:9 (no layout shift: the phone CLS fix of 2026-10-23), or the channel's last shape.
+   A phone on its side (below) and fullscreen still fill the screen. */
+#page-channel .video-container {
+    --player-max-h: calc(100vh - var(--navbar-h) - var(--live-tabs-h, 0px) - 64px);
+    --player-max-h: calc(100dvh - var(--navbar-h) - var(--live-tabs-h, 0px) - 64px);
+    aspect-ratio: var(--video-ar, 16 / 9);
+    max-height: var(--player-max-h);
+    isolation: isolate;   /* the glow sits behind the picture and every overlay, above the box's black */
+    transition: aspect-ratio 0.45s cubic-bezier(0.22, 1, 0.36, 1), max-height 0.3s ease, background 0.35s ease, box-shadow 0.35s ease;
+}
+#page-channel.has-live-tabs .video-container { --live-tabs-h: 44px; }
+@media (max-width: 768px) and (orientation: portrait) {
+    /* A phone held upright: up to 65% of the screen, as before, so the channel line clears the round chat button. */
+    #page-channel .video-container { --player-max-h: 65vh; --player-max-h: 65dvh; }
+}
+#page-channel .video-container #video-element,
+#page-channel .video-container #video-canvas { max-height: none; object-fit: contain; }
+.player-shape-glow {
+    position: absolute; inset: 0; width: 100%; height: 100%; z-index: -1; pointer-events: none;
+    opacity: 0; transform: scale(1.25); filter: blur(32px) saturate(1.25) brightness(0.5);
+    transition: opacity 0.9s ease;
+}
+.player-shape-glow.is-on { opacity: 0.8; }
+#page-channel .video-container:fullscreen { aspect-ratio: auto; max-height: none; width: 100%; height: 100%; }
+@media (prefers-reduced-motion: reduce) {
+    #page-channel .video-container { transition: none; }
+}
+
 /* ── A phone on its side: the stream fills the screen (2026-10-25) ───────────────
    Landscape, at most 540px tall, on a touch screen. Every rule above sizes the player for a portrait phone (half the
    screen height at most: 195px of 390), so turning the phone made the picture smaller instead of bigger. Here the
