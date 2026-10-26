@@ -63,21 +63,35 @@ The relay must never outlive its source: RobotStreamer keeps a robot "live" for 
 as our producers exist on its SFU, so a relay left running after the streamer stopped shows RS
 viewers a live robot with a black picture. The session therefore ends on any of:
 
-1. `producer-removed` for the stream's video producer on our SFU (tab closed, room closed);
+1. `producer-removed` for the video producer the relay forwards, with no replacement within 20 s (tab closed, room
+   closed);
 2. the stream row going not-live (checked every 5 s as a backstop for end paths that never
    touch the SFU room — stale-heartbeat sweeps, an ingest handler calling `db.endStream`);
 3. an explicit stop: the broadcaster's **Stop** button (`POST /api/robotstreamer/restream/stop`),
    the integration being disabled, or any of the stream-end paths below.
 
-Restarts (RS websocket closed, ICE/DTLS to RS lost, the run throwing, a producer being replaced
-on reconnect) first re-check that the source is live, then back off 3 s → 30 s and give up after
+### Following a broadcaster who reconnects
+
+A broadcaster whose network drops produces again on a new transport while the old producers stay open on the dead one
+(viewers, the recorder and restreams move to the new one through `findProducerByKind`). The relay follows too: on a
+producer added in the room, on its own producer closing, and on a stall of 2.5 s it asks for the producer viewers get,
+and when that differs it moves its ingest there (a new plain consumer, the old one closed). Its RobotStreamer producer,
+SSRC and consumer stay. The first packet from the new source sets offsets that continue RS's sequence at last + 1 and
+advance its clock by the time that passed, and a keyframe is pulled at once, so RS viewers see a short freeze, never the
+cut a restart causes. A video stall of 10 s whose own consumer is gone gets a fresh consumer on the same producer. A
+source that changed codec still restarts (RS was told one codec). `source_switches` in the status counts these. Before
+2026-10-26 the relay sampled the producer once: on stream 2781 it forwarded a dead producer for 32 minutes, black on
+RobotStreamer while openvibe.live played.
+
+Restarts (RS websocket closed, ICE/DTLS to RS lost, the run throwing, a source with no replacement)
+first re-check that the source is live, then back off 3 s → 30 s and give up after
 12 consecutive attempts. A run that stayed live for a minute resets the counter. A session that
 gave up stays visible as `failed` with its reason until **Retry**
 (`POST /api/robotstreamer/restream/start`) relaunches it.
 
 `rsPassthroughRelay.status(streamId)` (in `/api/restream/status`) reports `state`
 (`starting | live | restarting | failed`), `restarts`, `last_error` / `last_restart_reason`,
-`next_restart_at`, `uptime_ms`, `video_codec`, `has_audio`, `keyframe_requests`, `ingest_stalls`
+`next_restart_at`, `uptime_ms`, `video_codec`, `has_audio`, `keyframe_requests`, `ingest_stalls`, `source_switches`
 and RS's own RTCP view of us (`rs.loss_pct`, `rs.rtt_ms`, `rs.nacks`, `rs.plis`).
 
 ## Every stream-end path stops the forwarders
@@ -108,6 +122,8 @@ and passphrase.
 ## Tests
 
 - `test/rs-passthrough-lifecycle.test.js` — stop-when-source-ended, backoff, cap, relaunch, status.
+- `test/rs-passthrough-follow.test.js` — following a reconnect: the rebase (sequence and clock across wrap-around), a
+  simulated switch reaching RS as one contiguous stream, and the wiring (a stale producer closing is ignored).
 - `test/restream-manager-lifecycle.test.js` — URL building (RTMP/RTMPS/Kick/SRT), per-transport
   output flags, 1× VBV, friendly errors, and the progress-based live ACK against a real ffmpeg.
 - `test/rs-passthrough-ssrc-filter.test.js`, `test/rs-chat-bridge-single-flight.test.js` — earlier

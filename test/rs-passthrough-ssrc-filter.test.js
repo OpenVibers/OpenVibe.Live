@@ -78,7 +78,8 @@ console.log('OK C: guard edge cases (unknown ssrc, near-miss, exact match)');
 // ── The relay must actually contain the guard ───────────────────────────────────────
 const fs = require('fs'), path = require('path');
 const src = fs.readFileSync(path.join(__dirname, '../server/integrations/rs-passthrough-relay.js'), 'utf8');
-assert.ok(src.includes('const vSsrcExpect = videoIn.ssrc'), 'relay must derive the expected video SSRC from the consumer');
+assert.ok(/(?:const|let) vSsrcExpect = videoIn\.ssrc/.test(src), 'relay must derive the expected video SSRC from the consumer');
+assert.ok(src.includes('vSsrcExpect = next.ssrc'), "a switch to a new source producer expects that consumer's SSRC (rs-passthrough-follow.test.js)");
 assert.ok(src.includes('p.header.ssrc !== vSsrcExpect'), 'relay must drop video packets from a foreign SSRC');
 assert.ok(src.includes('p.header.ssrc !== aSsrcExpect'), 'relay must drop audio packets from a foreign SSRC');
 assert.ok(/ssrc: info\.ssrc/.test(src), 'openPlainIngest must propagate the consumer SSRC');
