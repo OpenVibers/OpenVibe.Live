@@ -38,6 +38,12 @@ VOD 5986 (2026-10-25) was recorded silent because the recorder asked for the aud
 arrived, just before the microphone did. A stream with no microphone records video only after the wait. A microphone
 that comes later, or a new one after the recorded one stopped, rolls the recording to a new part that has the sound.
 
+A browser encoder sends a keyframe only when something asks for one, and the recording grows a keyframe at a time: until
+the next keyframe, the newest footage is not in the file. Stream 2795 (2026-10-26) went up to 100 s between keyframes,
+so a live clip of the last 30 s was cut from footage 80 s old and the live rewind moved in minute-long steps. The
+recording now asks the broadcaster for a keyframe every 4 s (`VOD_KEYFRAME_SEC`, 0 turns it off), like an OBS
+keyframe interval; viewers who lose a packet recover sooner too.
+
 ### Recording Lifecycle
 
 1. **Start**: Recording begins when the stream goes live

@@ -162,6 +162,8 @@ class StreamRecorder {
     }
 
     static get AUDIO_WAIT_MS() { return Number(process.env.VOD_AUDIO_WAIT_MS) || 5000; }
+    /** How often a WebRTC recording asks the broadcaster for a keyframe (webrtc-sfu.js createPlainConsumer); 0 turns it off. */
+    static get KEYFRAME_SEC() { const v = process.env.VOD_KEYFRAME_SEC; const n = Number(v); return v != null && v !== '' && Number.isFinite(n) && n >= 0 ? n : 4; }
     static get DISK_RETRY_DELAY_MS() { return 5 * 60 * 1000; }
     static get DISK_RETRY_MAX() { return 12; } // ≈ 1 h of a still-live stream
 
@@ -290,7 +292,8 @@ class StreamRecorder {
             // Media listens on 127.0.0.1:<port> (RTCP on port+1 — Media allocates its
             // ingest pool in rtp/rtcp pairs, mirroring the inherited recorder).
             const videoConsumer = await webrtcSFU.createPlainConsumer(
-                roomId, videoProducer.id, '127.0.0.1', videoPort, videoPort + 1
+                roomId, videoProducer.id, '127.0.0.1', videoPort, videoPort + 1,
+                { keyframeEverySec: StreamRecorder.KEYFRAME_SEC }
             );
             webrtcState.videoTransportId = videoConsumer.transportId;
             if (video.payloadType !== videoConsumer.payloadType) {

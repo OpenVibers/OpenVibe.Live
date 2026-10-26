@@ -291,9 +291,11 @@ class WebRTCSFU extends EventEmitter {
      * @param {string} remoteIp - Where to send RTP (FFmpeg listen address)
      * @param {number} remoteRtpPort - FFmpeg RTP listen port
      * @param {number} remoteRtcpPort - FFmpeg RTCP listen port
+     * @param {{ keyframeEverySec?: number }} [opts] - keyframeEverySec: keep asking the source for a keyframe this often
+     *   (a recording: see RECORDING_KEYFRAME_SEC in recorder.js)
      * @returns {{ transportId, consumerId, kind, rtpParameters, payloadType, ssrc, clockRate }}
      */
-    async createPlainConsumer(roomId, producerId, remoteIp, remoteRtpPort, remoteRtcpPort) {
+    async createPlainConsumer(roomId, producerId, remoteIp, remoteRtpPort, remoteRtcpPort, opts = {}) {
         const room = this.rooms.get(roomId);
         if (!room) throw new Error(`Room ${roomId} not found`);
 
@@ -380,6 +382,23 @@ class WebRTCSFU extends EventEmitter {
             scheduleKeyframe(500, 2);
             scheduleKeyframe(1500, 3);
             scheduleKeyframe(3000, 4);
+            // A browser encoder sends a keyframe only when asked (a viewer joining, a loss), so a recording went 100 s
+            // without one (stream 2795, 2026-10-26). The recorder writes a fragment per keyframe: until the next one,
+            // the newest footage is not in the file, so a clip of the last 30 s was cut 80 s short of the moment, and
+            // the live rewind moved in steps as long as the gaps. Asking every few seconds keeps the file seconds
+            // behind live, like an OBS keyframe interval. Cleared with the other timers (clearTimeout clears an
+            // interval too).
+            const every = Number(opts.keyframeEverySec) || 0;
+            if (every > 0) {
+                const steady = setInterval(() => {
+                    if (consumer.closed) return;
+                    consumer.requestKeyFrame().catch(() => {});
+                }, every * 1000);
+                if (steady.unref) steady.unref();
+                const timers = room.plainRecordingTimers.get(consumer.id) || [];
+                timers.push(steady);
+                room.plainRecordingTimers.set(consumer.id, timers);
+            }
         }
 
         return {
