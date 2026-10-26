@@ -89,6 +89,22 @@ async function check(name, fn) {
         assert.strictEqual(r.body.managed_streams[0].title, 'Main slot');
     });
 
+    await check('a live stream lists where it is watched (viewer_places): OpenVibe, then its restreams, no ingest key', async () => {
+        const dest = await db.createRestreamDestination(901, {
+            platform: 'twitch', name: 'my twitch', server_url: 'rtmp://live.twitch.tv/app', stream_key: 'T'.repeat(30),
+            channel_url: 'https://www.twitch.tv/keyowner', managed_stream_id: ms.id, enabled: 1,
+        });
+        require('../server/streaming/restream-manager').setViewerCount(dest.id, 12, true);
+        const r = await getJson('/api/streams/channel/keyowner?pollOnly=1');
+        const live = r.body.streams.find((s) => s.is_live);
+        assert.deepStrictEqual(live.viewer_places.places.map((p) => [p.key, p.count, p.url]),
+            [['openvibe', 0, null], ['twitch', 12, 'https://www.twitch.tv/keyowner']]);
+        assert.strictEqual(live.viewer_places.total, 12);
+        assert.strictEqual(live.total_viewer_count, 12);
+        assert.ok(!r.text.includes('T'.repeat(30)), 'the restream key stays private');
+        assert.deepStrictEqual(findSecrets(r.body), []);
+    });
+
     await check('stream detail keeps the channel but not its ZIP', async () => {
         const live = await raw.prepare('SELECT id FROM streams WHERE user_id = 901').get();
         const r = await getJson(`/api/streams/${live.id}`);
