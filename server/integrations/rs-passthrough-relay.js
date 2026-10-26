@@ -294,11 +294,39 @@ async function openPlainIngest(sfu, roomId, producerId) {
     const port = socket.address().port;
     const info = await sfu.createPlainConsumer(roomId, producerId, '127.0.0.1', port, port + 1);
     return {
-        socket, port, transportId: info.transportId, consumerId: info.consumerId,
+        socket, port, producerId, transportId: info.transportId, consumerId: info.consumerId,
         payloadType: info.payloadType, kind: info.kind, ssrc: info.ssrc,
         mimeType: info.mimeType, clockRate: info.clockRate, channels: info.channels,
         codecParameters: info.codecParameters || {},
     };
+}
+
+/**
+ * After the relay switches to a new source producer: the offsets that continue RobotStreamer's stream from the last
+ * packet sent (`last`: { seq, ts, at }) when the new source's first packet has header `h`. The sequence goes on at
+ * last + 1 and the clock advances by the time that passed, so RS's receiver sees one stream with a pause in it, never a
+ * jump (its pre-3.12 mediasoup treats a jump past 3000 as phantom loss). Null when nothing was sent yet.
+ */
+function rebaseFor(last, h, now, clockRate) {
+    if (!last) return null;
+    const seq = (last.seq + 1 - h.sequenceNumber) & 0xffff;
+    const advance = Math.max(1, Math.round(((now - last.at) / 1000) * clockRate));
+    const ts = (last.ts + advance - h.timestamp) >>> 0;
+    return { seq, ts };
+}
+/** Apply a rebase to a packet header in place (seq mod 2^16, timestamp mod 2^32). */
+function applyRebase(h, rb) {
+    if (!rb) return;
+    h.sequenceNumber = (h.sequenceNumber + rb.seq) & 0xffff;
+    h.timestamp = (h.timestamp + rb.ts) >>> 0;
+}
+/** Remember the newest packet sent: `last` moves only forward (a reordered, older packet leaves it). */
+function advanceLast(last, h, now) {
+    if (last) {
+        const fwd = (h.sequenceNumber - last.seq) & 0xffff;
+        if (fwd === 0 || fwd >= 30000) return last;
+    }
+    return { seq: h.sequenceNumber, ts: h.timestamp, at: now };
 }
 
 // ── Relay ────────────────────────────────────────────────────────────────
@@ -416,6 +444,7 @@ class RsPassthroughRelay {
             packets_out: (st.vOut || 0) + (st.aOut || 0),
             keyframe_requests: st.pli || 0,
             ingest_stalls: st.ingestStalls || 0,
+            source_switches: st.switches || 0,                // ingest moved to a new source producer (a reconnect), no restart
             rs: s.rs,                                         // { loss_pct, rtt_ms, nacks, plis } from RS's RTCP
         };
     }
@@ -470,6 +499,7 @@ class RsPassthroughRelay {
         if (session.ingestWatchdog) { clearInterval(session.ingestWatchdog); session.ingestWatchdog = null; }
         if (session._audioWatch) { try { session._audioWatch(); } catch { /* */ } session._audioWatch = null; }
         if (session._producerWatch) { try { session._producerWatch(); } catch { /* */ } session._producerWatch = null; }
+        if (session._followWatch) { try { session._followWatch(); } catch { /* */ } session._followWatch = null; }
         if (session.sourceCheck) { clearInterval(session.sourceCheck); session.sourceCheck = null; }
         const sfu = require('../streaming/webrtc-sfu');
         for (const ing of session.ingests) {
@@ -525,8 +555,12 @@ class RsPassthroughRelay {
         // notices. Tear down at once: if the OpenVibe stream is over, stop for good; if it is a
         // reconnect (stream still live), come back through the restart path and wait for the new
         // producer.
-        const onProducerRemoved = ({ roomId, kind }) => {
-            if (session.stopped || roomId !== session.roomId || kind !== 'video') return;
+        const onProducerRemoved = ({ roomId, kind, producerId }) => {
+            if (session.stopped || roomId !== session.roomId) return;
+            // Forwarding already: the follower below switches to the replacement, or waits for one before restarting.
+            if (session.follow) { session.follow.removed(kind, producerId); return; }
+            // Before that, only our own video producer matters (a stale one from an earlier connection going away doesn't).
+            if (kind !== 'video' || (producerId && producerId !== videoProd.id)) return;
             sfu.removeListener?.('producer-removed', onProducerRemoved);
             session._producerWatch = null;
             log(sid, 'source video producer removed');
@@ -551,7 +585,7 @@ class RsPassthroughRelay {
         session.sourceCheck.unref?.();
 
         // 2) Encoded-RTP ingest (PlainTransport → localhost UDP socket).
-        const videoIn = await openPlainIngest(sfu, session.roomId, videoProd.id);
+        let videoIn = await openPlainIngest(sfu, session.roomId, videoProd.id);
         session.ingests.push(videoIn);
         let audioIn = null;
         if (audioProd) { audioIn = await openPlainIngest(sfu, session.roomId, audioProd.id); session.ingests.push(audioIn); }
@@ -770,9 +804,12 @@ class RsPassthroughRelay {
             }
             if (audioIn && !_audioStalledSince && now - _lastAudioAt > INGEST_STALL_MS * 3) {
                 _audioStalledSince = _lastAudioAt;
-                log(sid, `⚠️ AUDIO INGEST STALL (${now - _lastAudioAt}ms) — both legs quiet means the ` +
-                    `event loop or the process stalled, not the video path`);
+                log(sid, `⚠️ AUDIO INGEST STALL (${now - _lastAudioAt}ms) — both legs quiet: the source stopped sending ` +
+                    `(a broadcaster reconnecting on a new transport, or their network), or the process stalled`);
             }
+            // A stall can mean the source moved to a new producer: the follower checks (and switches).
+            if (_videoStalledSince && session.follow) session.follow.stalled('video', now - _videoStalledSince);
+            if (audioIn && _audioStalledSince && session.follow) session.follow.stalled('audio', now - _audioStalledSince);
         }, 500);
         ingestWatchdog.unref?.();
         session.ingestWatchdog = ingestWatchdog;
@@ -868,8 +905,11 @@ class RsPassthroughRelay {
         // Forwarding a foreign SSRC was never correct: probation padding is not media, and the
         // consumer's own ssrc is authoritative. Prefer it over first-seen so a probation packet
         // arriving first can never define the stream.
-        const vSsrcExpect = videoIn.ssrc;
-        videoIn.socket.on('message', (buf) => {
+        let vSsrcExpect = videoIn.ssrc;
+        // After a switch to a new source (the follower below), the first packet sets the offsets that continue RS's
+        // sequence and clock; every later packet of that source carries them.
+        let _vPendingRebase = false, _vRebase = null, _vLastOut = null;
+        const onVideoPacket = (buf) => {
             const now = Date.now();
             const timeGap = (now - _lastVideoAt) > VIDEO_GAP_MS;
             let p;
@@ -878,6 +918,13 @@ class RsPassthroughRelay {
                 if (stats.vAlien++ === 0) log(sid, `dropping non-media RTP on video ingest: ssrc=${p.header.ssrc} pt=${p.header.payloadType} (mediasoup probation/rtx; forwarding it corrupts RS's sequence accounting)`);
                 return;
             }
+            if (_vPendingRebase) {
+                _vPendingRebase = false;
+                _vRebase = rebaseFor(_vLastOut, p.header, now, videoIn.clockRate || 90000);
+                _vSsrc = p.header.ssrc; _holes.clear();
+            }
+            applyRebase(p.header, _vRebase);
+            _vLastOut = advanceLast(_vLastOut, p.header, now);
             stats.vIn++;
             noteIngest('video', now);
             // Reorder-tolerant loss detection on the MAIN video stream only (ignore RTX/other SSRCs
@@ -927,7 +974,8 @@ class RsPassthroughRelay {
             const kfStale = (now - _lastKfAt) > KF_STALE_MS;
             if (timeGap || burst || kfStale) pullKeyframe(now);
             emitVideo(p);
-        });
+        };
+        videoIn.socket.on('message', onVideoPacket);
 
         function emitVideo(p) {
             p.header.payloadType = vPt; p.header.extensions = [];
@@ -943,23 +991,120 @@ class RsPassthroughRelay {
             try { videoTrack.writeRtp(p); rtxRemember(p); stats.vOut++; }
             catch (e) { if (stats.vErr++ === 0) log(sid, 'video writeRtp failed (first of run):', e.message); }
         }
-        if (audioIn && aMedia) {
-            const aPt = +aMedia.pts[0];
-            const aSsrcExpect = audioIn.ssrc;
-            audioIn.socket.on('message', (buf) => {
-                try {
-                    const p = RtpPacket.deSerialize(buf);
-                    if (aSsrcExpect != null && p.header.ssrc !== aSsrcExpect) {
-                        if (stats.aAlien++ === 0) log(sid, `dropping non-media RTP on audio ingest: ssrc=${p.header.ssrc} pt=${p.header.payloadType}`);
-                        return;
+        const aPt = aMedia ? +aMedia.pts[0] : null;
+        let aSsrcExpect = audioIn ? audioIn.ssrc : null;
+        let _aPendingRebase = false, _aRebase = null, _aLastOut = null;
+        const onAudioPacket = (buf) => {
+            try {
+                const now = Date.now();
+                const p = RtpPacket.deSerialize(buf);
+                if (aSsrcExpect != null && p.header.ssrc !== aSsrcExpect) {
+                    if (stats.aAlien++ === 0) log(sid, `dropping non-media RTP on audio ingest: ssrc=${p.header.ssrc} pt=${p.header.payloadType}`);
+                    return;
+                }
+                if (_aPendingRebase) { _aPendingRebase = false; _aRebase = rebaseFor(_aLastOut, p.header, now, (audioIn && audioIn.clockRate) || 48000); }
+                applyRebase(p.header, _aRebase);
+                _aLastOut = advanceLast(_aLastOut, p.header, now);
+                stats.aIn++;
+                noteIngest('audio', now);
+                p.header.payloadType = aPt; p.header.extensions = [];
+                audioTrack.writeRtp(p); stats.aOut++;
+            } catch (e) { if (stats.aErr++ === 0) log(sid, 'audio writeRtp failed (first of run):', e.message); }
+        };
+        if (audioIn && aMedia) audioIn.socket.on('message', onAudioPacket);
+
+        // ── Following the source across a reconnect (the owner, 2026-10-26) ────────────────────────────
+        // A broadcaster whose network drops produces again on a new transport while the old producers stay open on the
+        // dead one; findProducerByKind picks the newest live one, and the recorder and restreams follow it (10-22). This
+        // relay sampled the producer once: on stream 2781 it forwarded the dead one for 32 minutes, so RobotStreamer was
+        // black while openvibe.live played. Now its ingest moves to the producer viewers get, and its RS producer, SSRC
+        // and consumer stay: RS viewers see a short freeze, not the cut a restart causes (a new SSRC blanks their player).
+        // Triggers: a producer added in the room, ours closed (wait for the replacement before restarting), and a stall.
+        const FOLLOW_STALL_MS = 2500;     // no video this long: is there a newer producer?
+        const REOPEN_STALL_MS = 10000;    // and if not, is our consumer itself gone? reopen it on the same producer
+        const REPLACE_WAIT_MS = 20000;    // our producer closed with no replacement yet: keep RS's side this long
+        let _switching = false, _lastFollowAt = 0, _lastReopenAt = 0, _replaceTimer = null;
+        let follower = null;   // this run's follower: a timer left over from an earlier run (before a restart) does nothing
+        const current = () => !session.stopped && session.follow === follower;
+        const closeIngest = (ing) => {
+            try { ing.socket.removeAllListeners('message'); ing.socket.close(); } catch { /* */ }
+            try { sfu.closePlainConsumer(session.roomId, ing.transportId); } catch { /* */ }
+        };
+        const switchIngest = async (kind, producer, why, force = false) => {
+            const cur = kind === 'video' ? videoIn : audioIn;
+            if (!current() || _switching || !producer || !cur || (!force && producer.id === cur.producerId)) return false;
+            _switching = true;
+            try {
+                const next = await openPlainIngest(sfu, session.roomId, producer.id);
+                if (!current()) { closeIngest(next); return false; }
+                // RS was told one codec; a source that changed codec needs a new RS producer (a restart).
+                if (kind === 'video' && String(next.mimeType).toLowerCase() !== String(videoIn.mimeType).toLowerCase()) {
+                    closeIngest(next);
+                    log(sid, `source video codec changed (${videoIn.mimeType} → ${next.mimeType}) — restarting for a new RS producer`);
+                    this._teardown(session);
+                    this._scheduleRestart(session, 'source video codec changed').catch(err => log(sid, 'restart check error:', err.message));
+                    return false;
+                }
+                if (kind === 'video') { videoIn = next; vSsrcExpect = next.ssrc; _vPendingRebase = true; next.socket.on('message', onVideoPacket); }
+                else { audioIn = next; aSsrcExpect = next.ssrc; _aPendingRebase = true; next.socket.on('message', onAudioPacket); }
+                session.ingests = session.ingests.filter(i => i !== cur).concat(next);
+                closeIngest(cur);
+                stats.switches = (stats.switches || 0) + 1;
+                log(sid, `↪ ${kind} now from producer ${producer.id} (${why}) — same RS producer and SSRC, no restart`);
+                if (kind === 'video') { reqKeyNow(0); setTimeout(() => reqKeyNow(250), 400); }
+                return true;
+            } finally { _switching = false; }
+        };
+        const follow = (kind, why) => {
+            const cur = kind === 'video' ? videoIn : audioIn;
+            if (!cur || !current()) return;
+            const best = sfu.findProducerByKind(session.roomId, kind);
+            if (best && best.id !== cur.producerId) switchIngest(kind, best, why).catch(err => log(sid, `switching ${kind} failed: ${err.message}`));
+        };
+        follower = {
+            // A new producer may still be connecting (findProducerByKind keeps a healthy one until it is up): look again.
+            added: (kind) => { for (const ms of [0, 1500, 4000, 8000]) setTimeout(() => follow(kind, 'a new producer in the room'), ms).unref?.(); },
+            removed: (kind, producerId) => {
+                const cur = kind === 'video' ? videoIn : audioIn;
+                if (!cur || (producerId && producerId !== cur.producerId)) return;   // a stale producer going away
+                const best = sfu.findProducerByKind(session.roomId, kind);
+                if (best && best.id !== cur.producerId) { switchIngest(kind, best, 'its producer closed').catch(err => log(sid, `switching ${kind} failed: ${err.message}`)); return; }
+                if (kind !== 'video') { log(sid, 'source audio producer closed — waiting for a new one'); return; }
+                log(sid, `source video producer closed — waiting up to ${REPLACE_WAIT_MS / 1000}s for its replacement before restarting`);
+                const until = Date.now() + REPLACE_WAIT_MS;
+                clearInterval(_replaceTimer);
+                _replaceTimer = setInterval(() => {
+                    if (!current()) { clearInterval(_replaceTimer); return; }
+                    const b = sfu.findProducerByKind(session.roomId, 'video');
+                    if (b && b.id !== videoIn.producerId) {
+                        clearInterval(_replaceTimer);
+                        switchIngest('video', b, 'the replacement producer').catch(err => log(sid, `switching video failed: ${err.message}`));
+                    } else if (Date.now() > until) {
+                        clearInterval(_replaceTimer);
+                        this._teardown(session);
+                        this._scheduleRestart(session, 'source video producer removed').catch(err => log(sid, 'restart check error:', err.message));
                     }
-                    stats.aIn++;
-                    noteIngest('audio', Date.now());
-                    p.header.payloadType = aPt; p.header.extensions = [];
-                    audioTrack.writeRtp(p); stats.aOut++;
-                } catch (e) { if (stats.aErr++ === 0) log(sid, 'audio writeRtp failed (first of run):', e.message); }
-            });
-        }
+                }, 1000);
+                _replaceTimer.unref?.();
+            },
+            stalled: (kind, ms) => {
+                if (ms < FOLLOW_STALL_MS) return;
+                const now = Date.now();
+                if (now - _lastFollowAt > 2000) { _lastFollowAt = now; follow(kind, `no ${kind} for ${Math.round(ms / 1000)}s`); }
+                if (kind !== 'video' || ms < REOPEN_STALL_MS || now - _lastReopenAt < 15000 || _switching) return;
+                const st = sfu.plainConsumerState(session.roomId, videoIn.consumerId) || {};
+                if (st.found && !st.closed) return;   // our consumer is fine: the source itself is quiet
+                const best = sfu.findProducerByKind(session.roomId, 'video');
+                if (best) { _lastReopenAt = now; switchIngest('video', best, `no video for ${Math.round(ms / 1000)}s and our consumer is gone: a fresh one`, true).catch(err => log(sid, `reopening video failed: ${err.message}`)); }
+            },
+            stop: () => clearInterval(_replaceTimer),
+        };
+        session.follow = follower;
+        const onFollowAdded = ({ roomId, kind }) => {
+            if (!session.stopped && roomId === session.roomId && (kind === 'video' || kind === 'audio')) session.follow?.added(kind);
+        };
+        sfu.on?.('producer-added', onFollowAdded);
+        session._followWatch = () => { sfu.removeListener?.('producer-added', onFollowAdded); session.follow?.stop(); session.follow = null; };
 
         // 10) Relay RS keyframe requests (PLI/FIR) back to the source encoder.
         const vSender = videoTx.sender;
@@ -1061,4 +1206,4 @@ class RsPassthroughRelay {
 
 module.exports = new RsPassthroughRelay();
 // Exposed for the offline bridge test harness.
-module.exports._internals = { parseOffer, buildAnswer, buildProduceParams };
+module.exports._internals = { parseOffer, buildAnswer, buildProduceParams, rebaseFor, applyRebase, advanceLast };
