@@ -2766,7 +2766,20 @@ function setupVideoControls() {
     // Start showing pause icon since autoplay
     btnPlay.innerHTML = '<i class="fa-solid fa-pause"></i>';
 
+    // A phone under 480px has no room for the slider in the bar (2026-10-25): a tap on the speaker also shows it, above
+    // the button, for a few seconds (the owner, 2026-10-26: "can't easily adjust volume" on a phone). Not on an iPhone,
+    // whose Safari ignores a page setting the volume; there the speaker mutes, and the phone's buttons set the level.
+    const volGroup = btnVol.closest('.vc-volume-group');
+    const popVolume = () => {
+        if (!volGroup || !window.matchMedia || !matchMedia('(max-width: 480px)').matches || !_volumeSettable()) return;
+        volGroup.classList.add('is-popped');
+        clearTimeout(popVolume.timer);
+        popVolume.timer = setTimeout(() => volGroup.classList.remove('is-popped'), 3500);
+    };
+    volSlider.onpointerdown = popVolume;
+
     btnVol.onclick = () => {
+        popVolume();
         muted = !muted;
         btnVol.innerHTML = muted
             ? '<i class="fa-solid fa-volume-xmark"></i>'
@@ -2781,6 +2794,7 @@ function setupVideoControls() {
     };
 
     volSlider.oninput = () => {
+        popVolume();
         const v = volSlider.value / 100;
         setVolume(v, { muted: v === 0 });
         muted = v === 0;
@@ -3389,6 +3403,14 @@ function _buildClipTrimModal(clipId, dur, defaultTitle) {
     skipBtn.onclick = close;
     titleInput.onkeydown = (e) => { if (e.key === 'Enter') doSave(); if (e.key === 'Escape') close(); };
     overlay.onclick = (e) => { if (e.target === overlay) close(); };
+}
+
+/** Whether this browser lets a page set a media element's volume (an iPhone's Safari does not: only mute). */
+function _volumeSettable() {
+    if (_volumeSettable.value == null) {
+        try { const a = document.createElement('audio'); a.volume = 0.5; _volumeSettable.value = Math.abs(a.volume - 0.5) < 0.01; } catch { _volumeSettable.value = false; }
+    }
+    return _volumeSettable.value;
 }
 
 function setVolume(v) {
