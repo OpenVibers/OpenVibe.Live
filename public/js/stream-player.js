@@ -2595,11 +2595,17 @@ function switchToDVR(targetTime, part = null) {
     console.log(`[DVR] Switched to ${part ? `part from ${Math.round(part.at)}s` : 'the recording'} at ${Math.round(targetTime)}s`);
 }
 
-/** An earlier part played to its end: carry on into the next part (or the recording one) without a gap of choice. */
+/**
+ * An earlier part played to its end: carry on at the start of the next part (or of the recording one). Its end is not
+ * the place: the reconnect's gap lies between, and a seek there lands back in this part.
+ */
 function _dvrPartEnded() {
     const p = dvrState.playingPart;
     if (!p || dvrState.isLive) return;
-    _dvrSeekBar(p.end - _dvrSpan().start + 0.01);
+    const next = dvrState.earlier.find((x) => x.at > p.at);
+    const at = next ? next.at : dvrState.activeAt;
+    if (at == null) return;
+    _dvrSeekBar(at - _dvrSpan().start + 0.01);
 }
 
 /** The recording's HTTP file (Media serves a seekable copy of it while it records). */
