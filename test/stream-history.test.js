@@ -202,6 +202,20 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
         assert.deepStrictEqual(t.json.parts.map((p) => [p.vod_id, p.at]), [[6025, 28], [6026, 709]]);
     });
 
+    await check('a VOD without its full transcript yet shows the live captions, in its own time', async () => {
+        media.listClips = async () => ({ clips: [] });
+        const r = await call('GET', '/api/vods/6026');
+        assert.strictEqual(r.status, 200, r.text);
+        assert.strictEqual(r.json.vod.transcript_source, 'live');
+        assert.deepStrictEqual(JSON.parse(r.json.vod.ai_transcript_json), [{ start: 11, end: 14.5, text: 'test successful' }]);
+        assert.strictEqual(r.json.vod.ai_transcript, 'test successful');
+        await raw.prepare('INSERT INTO vod_ai_state (vod_id, ai_transcript_json, transcript_status) VALUES (?, ?, ?)')
+            .run(6026, JSON.stringify([{ start: 11, end: 14.5, text: 'Test successful.' }]), 'done');
+        const done = await call('GET', '/api/vods/6026');
+        assert.strictEqual(done.json.vod.transcript_source, undefined, 'the full pass wins once it is in');
+        assert.strictEqual(done.json.vod.ai_transcript, 'Test successful.');
+    });
+
     await check('speech capture offsets are stream time across a restart', async () => {
         const fs = require('fs');
         const path = require('path');

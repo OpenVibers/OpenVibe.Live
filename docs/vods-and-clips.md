@@ -15,6 +15,11 @@ unavailable analyses retry with backoff; Live does not run its VOD/clip decoder 
 Live stream captions and sound events continue using their real-time paths. The
 `live_media_analysis_retry_total` metric counts deferred analyses by media kind.
 
+Until a VOD's full transcript is in, `GET /api/vods/:id` serves the captions heard while it was live (the timeline rows
+stamped with that VOD, moved into its own time) with `transcript_source: "live"`; the full pass replaces them. The full
+pass runs after the stream and waits while the machine is busy, so a part that ended minutes ago used to show no
+transcript at all (VOD 6026, 2026-10-26).
+
 > Written before the media split. Storage, cutting, thumbnails and files now live in OpenVibe.Media;
 > Live proxies to it (`server/media-proxy/`) and starts/stops recordings (`server/streaming/recorder.js`).
 > Pastes live in OpenVibe.Community. Live's old local `vods`/`clips`/`pastes` tables are frozen: nothing

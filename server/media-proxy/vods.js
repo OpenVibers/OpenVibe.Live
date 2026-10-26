@@ -552,6 +552,16 @@ router.get('/:id', optionalAuth, async (req, res) => {
                 }
                 vod.transcript_status = st.transcript_status || vod.transcript_status;
             }
+            // Until the full pass is in (it runs after the stream, and waits while the box is busy: VOD 6026 had none
+            // for half an hour, 2026-10-26), the captions heard while it was live stand in, in the VOD's own time.
+            if (!st || !st.ai_transcript_json) {
+                const live = await liveTranscript(vod.id);
+                if (live.length) {
+                    vod.ai_transcript_json = JSON.stringify(live);
+                    vod.ai_transcript = live.map((x) => x.text).join(' ');
+                    vod.transcript_source = 'live';
+                }
+            }
         } catch { /* */ }
 
         const clips = co?.clips || (Array.isArray(co) ? co : []);
@@ -866,6 +876,22 @@ async function clipPlace(stream, startTime, endTime) {
     const start = Math.max(0, end - (endTime - startTime));
     if (end - start < 1) return null;
     return { vodId: part.vod_id, part: part.part, start: Math.round(start * 10) / 10, end: Math.round(end * 10) / 10 };
+}
+
+/**
+ * The speech heard while a VOD's stream was live (the timeline rows stamped with this VOD), as transcript segments in
+ * the VOD's own time ([{ start, end, text }]); [] when there are none.
+ */
+async function liveTranscript(vodId) {
+    const rows = (await db.getTimelineByVod(vodId)).filter((r) => r.kind === 'speech' && String(r.text || '').trim());
+    if (!rows.length) return [];
+    const history = require('../streaming/stream-history');
+    const offset = (await history.vodOffsets([vodId])).get(Number(vodId)) || 0;
+    return rows.map((r) => ({
+        start: history.vodTime(r.start_sec, offset),
+        end: r.end_sec == null ? null : history.vodTime(r.end_sec, offset),
+        text: String(r.text).trim(),
+    }));
 }
 
 async function _notifyStreamerOfClip(streamId, clipper, title, clipId) {
