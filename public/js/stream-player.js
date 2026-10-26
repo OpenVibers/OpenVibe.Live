@@ -628,6 +628,12 @@ let dvrState = {
     hlsUrl: null,        // an MP4 recording's DVR playlist (Media /v/<id>/dvr.m3u8): seeking with no snapshot copy
     dvrHls: null,        // the hls.js instance playing it while rewound
     dvrNative: false,    // or the browser's own HLS (Safari) playing it
+    dvrSrc: null,        // the source the rewound video is playing (the recording's playlist or file, or an earlier part's)
+    // A broadcaster who reconnects is recorded in parts, each its own VOD (the stream's history: GET /streams/:id/history).
+    // The bar spans them all, in stream time: an earlier part plays from its own VOD.
+    earlier: [],         // finished parts before the recording one: [{ vodId, at, end, src, hls }] (at/end: stream seconds)
+    activeAt: null,      // where the recording part starts, in stream seconds (null: no history, the bar is that part)
+    playingPart: null,   // the earlier part playing while rewound, or null for the recording part
 };
 
 function loadExternalScriptOnce(src) {
@@ -2297,9 +2303,11 @@ async function initDVR(stream) {
  * Poll the server for live VOD info and update DVR state.
  */
 async function pollDVR(streamId) {
+    let recording = false;
     try {
         const data = await api(`/vods/stream/${streamId}/live`);
         if (data && data.vod) {
+            recording = true;
             const vod = data.vod;
             dvrState.vodId = vod.id;
             if (vod.file_path) {
@@ -2314,18 +2322,73 @@ async function pollDVR(streamId) {
                 dvrState.hlsUrl = typeof info.dvr_hls === 'string' && /^https:\/\//.test(info.dvr_hls) ? info.dvr_hls : null;
             } catch {}
 
-            // Show DVR controls when we have a seekable copy (or the recording's own playlist)
-            if (dvrState.seekable && (dvrState.vodFile || dvrState.hlsUrl)) {
-                dvrState.active = true;
-                showDVRControls();
-            }
         }
     } catch {
         // No live VOD yet — normal for first ~30-60s
     }
+    if (recording) await _pollDvrParts(streamId);   // an ended stream (its live recording a 404) asks nothing more
+    // Show DVR controls when we have a seekable copy (or the recording's own playlist), or earlier parts to rewind into
+    if ((dvrState.seekable && (dvrState.vodFile || dvrState.hlsUrl)) || dvrState.earlier.length) {
+        dvrState.active = true;
+        showDVRControls();
+    }
 
     // Continue polling every 20s
     dvrState.pollTimer = setTimeout(() => pollDVR(streamId), 20000);
+}
+
+/** The stream's recording parts (its history): the earlier, finished ones to rewind into, and where the recording one starts. */
+async function _pollDvrParts(streamId) {
+    let h = null;
+    try { h = await api(`/streams/${streamId}/history`); } catch { return; }
+    const parts = Array.isArray(h && h.parts) ? h.parts.filter((p) => Number.isFinite(p.at)) : [];
+    const rec = parts.find((p) => p.recording) || null;
+    dvrState.activeAt = rec ? rec.at : null;
+    dvrState.earlier = rec ? parts
+        .filter((p) => !p.recording && p.vod_id && typeof p.src === 'string' && /^https:\/\//.test(p.src) && Number.isFinite(p.end) && p.end > p.at + 1 && p.at < rec.at)
+        .map((p) => ({ vodId: p.vod_id, at: p.at, end: Math.min(p.end, rec.at), src: p.src, hls: !!p.hls })) : [];
+}
+
+/**
+ * The bar's span in seconds: from the first earlier part's start to the live edge of the recording part, in stream time;
+ * without history, the recording part alone. → { start, total } (start in stream seconds).
+ */
+function _dvrSpan() {
+    const first = dvrState.earlier[0];
+    if (!first || dvrState.activeAt == null) return { start: dvrState.activeAt || 0, total: dvrState.duration };
+    return { start: first.at, total: dvrState.activeAt - first.at + dvrState.duration };
+}
+
+/** Where the rewound video is on the bar, in seconds from its start. */
+function _dvrBarTime(video) {
+    const span = _dvrSpan();
+    const p = dvrState.playingPart;
+    const base = p ? p.at : (dvrState.activeAt != null && dvrState.earlier.length ? dvrState.activeAt : span.start);
+    return (base - span.start) + (video ? video.currentTime : 0);
+}
+
+/** Seek to a point of the bar (seconds from its start): the recording part, or the earlier part that holds it. */
+function _dvrSeekBar(barTime) {
+    const span = _dvrSpan();
+    const t = span.start + Math.max(0, Math.min(barTime, span.total));
+    if (!dvrState.earlier.length || dvrState.activeAt == null || t >= dvrState.activeAt) {
+        if (dvrState.seekable && (dvrState.vodFile || dvrState.hlsUrl)) return switchToDVR(t - (dvrState.earlier.length ? dvrState.activeAt : span.start));
+        if (!dvrState.earlier.length) return;
+    }
+    let part = dvrState.earlier[0];
+    for (const p of dvrState.earlier) if (p.at <= t) part = p;
+    switchToDVR(Math.max(0, Math.min(t - part.at, part.end - part.at - 0.5)), part);
+}
+
+/** Move the rewound video by `delta` seconds: within what it is playing, or on to the part that holds the new time. */
+function _dvrNudge(video, delta) {
+    const span = _dvrSpan();
+    const target = Math.max(0, Math.min(_dvrBarTime(video) + delta, span.total));
+    const p = dvrState.playingPart;
+    const local = target - ((p ? p.at : (dvrState.earlier.length ? dvrState.activeAt : span.start)) - span.start);
+    const length = p ? p.end - p.at : dvrState.duration;
+    if (local >= 0 && local <= length) { video.currentTime = local; updateDVRUI(); return; }
+    _dvrSeekBar(target);
 }
 
 /**
@@ -2379,13 +2442,15 @@ function updateDVRUI() {
     } else {
         // Rewound: how far behind live, with the position in the buffer as its title
         const video = document.getElementById('video-element');
-        if (video && dvrState.duration > 0 && !dvrState.seeking) {
-            const pct = (video.currentTime / dvrState.duration) * 100;
+        const span = _dvrSpan();
+        if (video && span.total > 0 && !dvrState.seeking) {
+            const at = _dvrBarTime(video);
+            const pct = (at / span.total) * 100;
             if (fill) fill.style.width = Math.min(pct, 100) + '%';
             if (timeEl) {
                 timeEl.hidden = false;
-                timeEl.textContent = `\u2212${_dvrFmtTime(dvrState.duration - video.currentTime)}`;
-                timeEl.title = `${_dvrFmtTime(video.currentTime)} of ${_dvrFmtTime(dvrState.duration)} recorded; behind live`;
+                timeEl.textContent = `\u2212${_dvrFmtTime(span.total - at)}`;
+                timeEl.title = `${_dvrFmtTime(at)} of ${_dvrFmtTime(span.total)} recorded; behind live`;
             }
         }
         if (container) container.classList.add('dvr-rewound');
@@ -2406,13 +2471,13 @@ function setupDVRSeek() {
     wrap._dvrListenersAttached = true;
 
     const seekToPercent = (pct) => {
-        if (!dvrState.seekable || dvrState.duration <= 0) return;
-        const targetTime = pct * dvrState.duration;
-        switchToDVR(targetTime);
+        const span = _dvrSpan();
+        if (!(dvrState.seekable || dvrState.earlier.length) || span.total <= 0) return;
+        _dvrSeekBar(pct * span.total);
     };
 
     wrap.addEventListener('click', (e) => {
-        if (!dvrState.active || !dvrState.seekable) return;
+        if (!dvrState.active || !(dvrState.seekable || dvrState.earlier.length)) return;
         const rect = wrap.getBoundingClientRect();
         const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
         seekToPercent(pct);
@@ -2420,7 +2485,7 @@ function setupDVRSeek() {
 
     // Drag to seek
     wrap.addEventListener('mousedown', (e) => {
-        if (!dvrState.active || !dvrState.seekable) return;
+        if (!dvrState.active || !(dvrState.seekable || dvrState.earlier.length)) return;
         dvrState.seeking = true;
         const rect = wrap.getBoundingClientRect();
         const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
@@ -2445,7 +2510,7 @@ function setupDVRSeek() {
 
     // Touch seek (scoped to the bar so it works on mobile without a hover).
     wrap.addEventListener('touchstart', (e) => {
-        if (!dvrState.active || !dvrState.seekable || !e.touches[0]) return;
+        if (!dvrState.active || !(dvrState.seekable || dvrState.earlier.length) || !e.touches[0]) return;
         dvrState.seeking = true;
         const rect = wrap.getBoundingClientRect();
         const pct = Math.max(0, Math.min(1, (e.touches[0].clientX - rect.left) / rect.width));
@@ -2480,8 +2545,8 @@ function setupDVRSeek() {
  * and HLS/RTMP (detach live player).
  * @param {number} targetTime - Seek position in seconds
  */
-function switchToDVR(targetTime) {
-    if ((!dvrState.vodFile && !dvrState.hlsUrl) || !dvrState.seekable) return;
+function switchToDVR(targetTime, part = null) {
+    if (!part && ((!dvrState.vodFile && !dvrState.hlsUrl) || !dvrState.seekable)) return;
 
     const video = document.getElementById('video-element');
     const canvas = document.getElementById('video-canvas');
@@ -2520,16 +2585,31 @@ function switchToDVR(targetTime) {
     video.style.display = 'block';
 
     video.srcObject = null;
-    if (dvrState.hlsUrl) _playDvrHls(video, targetTime);
+    dvrState.playingPart = part;
+    if (part) {
+        if (part.hls) _playDvrHls(video, targetTime, part.src);
+        else _playDvrFile(video, targetTime, part.src);
+    } else if (dvrState.hlsUrl) _playDvrHls(video, targetTime);
     else _playDvrFile(video, targetTime);
 
-    console.log(`[DVR] Switched to VOD seeking at ${Math.round(targetTime)}s`);
+    console.log(`[DVR] Switched to ${part ? `part from ${Math.round(part.at)}s` : 'the recording'} at ${Math.round(targetTime)}s`);
+}
+
+/** An earlier part played to its end: carry on into the next part (or the recording one) without a gap of choice. */
+function _dvrPartEnded() {
+    const p = dvrState.playingPart;
+    if (!p || dvrState.isLive) return;
+    _dvrSeekBar(p.end - _dvrSpan().start + 0.01);
 }
 
 /** The recording's HTTP file (Media serves a seekable copy of it while it records). */
-function _playDvrFile(video, targetTime) {
-    if (!dvrState.vodFile) return;
-    video.src = `${dvrState.vodFile}?t=${Date.now()}`;
+function _playDvrFile(video, targetTime, src = null) {
+    const file = src || dvrState.vodFile;
+    if (!file) return;
+    _destroyDvrHls();
+    dvrState.dvrSrc = file;
+    video.src = src ? src : `${file}?t=${Date.now()}`;
+    if (src) video.addEventListener('ended', _dvrPartEnded, { once: true });
     video.addEventListener('loadedmetadata', function _seekOnLoad() {
         video.removeEventListener('loadedmetadata', _seekOnLoad);
         // Use server duration or video.duration, whichever is valid
@@ -2543,15 +2623,27 @@ function _playDvrFile(video, targetTime) {
  * An MP4 recording's own playlist (Media /v/<id>/dvr.m3u8: slices of the file as it grows), with hls.js, or the
  * browser's HLS on Safari. A seek while already on it moves within it; a failure falls back to the file.
  */
-function _playDvrHls(video, targetTime) {
-    if (dvrState.dvrHls || dvrState.dvrNative) { video.currentTime = targetTime; video.play().catch(() => {}); return; }
-    const fallback = () => { _destroyDvrHls(); dvrState.hlsUrl = null; if (!dvrState.isLive) _playDvrFile(video, targetTime); };
+function _playDvrHls(video, targetTime, src = null) {
+    const url = src || dvrState.hlsUrl;
+    if ((dvrState.dvrHls || dvrState.dvrNative) && dvrState.dvrSrc === url) { video.currentTime = targetTime; video.play().catch(() => {}); return; }
+    _destroyDvrHls();
+    dvrState.dvrSrc = url;
+    // The recording's playlist falls back to its file; an earlier part has no other source.
+    // A recording that rolled to a new part meanwhile has a new playlist and file: its old one is gone, so back to live.
+    const fallback = () => {
+        _destroyDvrHls();
+        if (src) return;
+        if (url !== dvrState.hlsUrl) { if (!dvrState.isLive) jumpToLive(); return; }
+        dvrState.hlsUrl = null;
+        if (!dvrState.isLive) _playDvrFile(video, targetTime);
+    };
     loadExternalScriptOnce('https://cdn.jsdelivr.net/npm/hls.js@latest').then(() => {
-        if (dvrState.isLive || !dvrState.hlsUrl) return;   // back to live, or the playlist went away, meanwhile
+        if (dvrState.isLive || dvrState.dvrSrc !== url) return;   // back to live, or another source, meanwhile
+        if (src) video.addEventListener('ended', _dvrPartEnded, { once: true });
         if (!window.Hls || !Hls.isSupported()) {
             if (!video.canPlayType('application/vnd.apple.mpegurl')) return fallback();
             dvrState.dvrNative = true;
-            video.src = dvrState.hlsUrl;
+            video.src = url;
             video.addEventListener('loadedmetadata', () => { video.currentTime = targetTime; video.play().catch(() => {}); }, { once: true });
             return;
         }
@@ -2560,10 +2652,10 @@ function _playDvrHls(video, targetTime) {
         hls.on(Hls.Events.MANIFEST_PARSED, () => { video.play().catch(() => {}); });
         hls.on(Hls.Events.ERROR, (_e, data) => {
             if (!data || !data.fatal) return;
-            console.warn('[DVR] the recording\'s playlist failed, using its file:', data.details);
+            console.warn(`[DVR] ${src ? 'the earlier part\'s' : 'the recording\'s'} playlist failed${src ? '' : ', using its file'}:`, data.details);
             fallback();
         });
-        hls.loadSource(dvrState.hlsUrl);
+        hls.loadSource(url);
         hls.attachMedia(video);
     }).catch(fallback);
 }
@@ -2571,6 +2663,9 @@ function _playDvrHls(video, targetTime) {
 function _destroyDvrHls() {
     if (dvrState.dvrHls) { try { dvrState.dvrHls.destroy(); } catch {} dvrState.dvrHls = null; }
     dvrState.dvrNative = false;
+    dvrState.dvrSrc = null;
+    const video = document.getElementById('video-element');
+    if (video) video.removeEventListener('ended', _dvrPartEnded);
 }
 
 /**
@@ -2633,6 +2728,7 @@ function jumpToLive() {
     }
 
     dvrState.isLive = true;
+    dvrState.playingPart = null;
 
     // Reset live button
     if (liveBtn) {
@@ -2652,6 +2748,9 @@ function destroyDVR() {
     if (dvrState.updateTimer) { clearInterval(dvrState.updateTimer); dvrState.updateTimer = null; }
     _destroyDvrHls();
     dvrState.hlsUrl = null;
+    dvrState.earlier = [];
+    dvrState.activeAt = null;
+    dvrState.playingPart = null;
     dvrState.active = false;
     dvrState.isLive = true;
     dvrState.vodId = null;
@@ -2833,34 +2932,23 @@ function setupVideoControls() {
     if (container) {
         container.tabIndex = 0;
         container.addEventListener('keydown', (e) => {
-            if (!dvrState.active || !dvrState.seekable) return;
+            if (!dvrState.active || !(dvrState.seekable || dvrState.earlier.length)) return;
             const video = document.getElementById('video-element');
             if (!video) return;
+            const span = _dvrSpan();
 
             switch (e.key) {
                 case 'ArrowLeft':
                     e.preventDefault();
-                    if (dvrState.isLive) {
-                        // First rewind: jump to 10s before live edge
-                        const pos = Math.max(0, dvrState.duration - 10);
-                        switchToDVR(pos);
-                    } else {
-                        // Already in DVR — rewind 5 more seconds
-                        const newTime = Math.max(0, video.currentTime - 5);
-                        video.currentTime = newTime;
-                        updateDVRUI();
-                    }
+                    // First rewind: 10 s before the live edge; then 5 s more each time, into an earlier part when it gets there
+                    if (dvrState.isLive) _dvrSeekBar(Math.max(0, span.total - 10));
+                    else _dvrNudge(video, -5);
                     break;
                 case 'ArrowRight':
                     e.preventDefault();
                     if (!dvrState.isLive) {
-                        const newTime = video.currentTime + 5;
-                        if (newTime >= dvrState.duration - 2) {
-                            jumpToLive();
-                        } else {
-                            video.currentTime = newTime;
-                            updateDVRUI();
-                        }
+                        if (_dvrBarTime(video) + 5 >= span.total - 2) jumpToLive();
+                        else _dvrNudge(video, 5);
                     }
                     break;
             }

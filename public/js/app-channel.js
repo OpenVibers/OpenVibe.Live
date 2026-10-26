@@ -2096,7 +2096,19 @@ async function _aiTlToggleTranscript(btn) {
             }
             const nSpeech = blocks.filter(b => b.kind === 'speech').length, nSound = blocks.filter(b => b.kind === 'sounds').length;
             const cov = data.coverageSec ? `${_aiTimeFmt(data.coverageSec)} of speech transcribed` : '';
-            const jumpFor = (t, cls = 'ai-tl-ts') => vod ? `<a class="${cls}" href="${videoHref('vod', vod, Math.floor(t))}" onclick="return handleLinkClick(event, '${videoHref('vod', vod, Math.floor(t))}')" title="Watch from here">${_aiTimeFmt(t)}</a>` : `<span class="${cls}">${_aiTimeFmt(t)}</span>`;
+            // A stream recorded in parts links each moment into the part that recorded it, at that part's own time.
+            const parts = Array.isArray(data.parts) ? data.parts.filter(p => p && p.vod_id && Number.isFinite(p.at)) : [];
+            const where = (t) => {
+                let p = null;
+                for (const x of parts) if (x.at <= t + 0.5) p = x;
+                return p ? { vod: p.vod_id, at: Math.max(0, t - p.at) } : vod ? { vod, at: t } : null;
+            };
+            const jumpFor = (t, cls = 'ai-tl-ts') => {
+                const w = where(t);
+                if (!w) return `<span class="${cls}">${_aiTimeFmt(t)}</span>`;
+                const href = videoHref('vod', w.vod, Math.floor(w.at));
+                return `<a class="${cls}" href="${href}" onclick="return handleLinkClick(event, '${href}')" title="Watch from here">${_aiTimeFmt(t)}</a>`;
+            };
             const toolbar = `<div class="ai-tl-tr-bar">
                 <div class="ai-tl-tr-filter" role="tablist">
                     <button type="button" class="active" data-f="all">All</button>

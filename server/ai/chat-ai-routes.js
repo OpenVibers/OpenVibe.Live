@@ -248,15 +248,20 @@ router.get('/vod-transcripts', async (req, res) => {
         const shown = await Promise.all(ids.map((id) => media.getVod(id).then((v) => (v && !isPrivate(v) ? id : null), () => null)));
 
         const out = {};
+        // Timeline rows are in stream time; a VOD that is one part of a stream (the broadcaster reconnected) starts
+        // later than the stream did, so its rows are moved to its own time (streaming/stream-history.js).
+        const history = require('../streaming/stream-history');
+        const offsets = await history.vodOffsets(shown.filter((id) => id != null));
         for (const vodId of shown.filter((id) => id != null)) {
             let segments = [];
             let events = [];
+            const at = (sec) => (sec == null ? sec : offsets.has(vodId) ? history.vodTime(sec, offsets.get(vodId)) : sec);
             // Prefer the timeline: it covers the whole stream and carries sound events.
             try {
                 const rows = await db.getTimelineByVod(vodId);
                 for (const r of rows) {
-                    if (r.kind === 'speech') segments.push({ start: r.start_sec, end: r.end_sec, text: r.text });
-                    else events.push({ start: r.start_sec, end: r.end_sec, label: r.label, confidence: r.confidence });
+                    if (r.kind === 'speech') segments.push({ start: at(r.start_sec), end: at(r.end_sec), text: r.text });
+                    else events.push({ start: at(r.start_sec), end: at(r.end_sec), label: r.label, confidence: r.confidence });
                 }
             } catch { /* */ }
             // The timeline and the batch-transcribed blob are two views of the same audio
@@ -316,7 +321,17 @@ router.get('/transcript/:streamId', async (req, res) => {
         try { events = await db.getTimeline(sid, { kind: 'sound', limit: 2000 }) || []; } catch { /* */ }
         let coverageSec = 0;
         try { coverageSec = await db.getTimelineCoverage(sid) || 0; } catch { /* */ }
-        res.json({ streamId: sid, vodId, segments, events, coverageSec });
+        // A stream recorded in parts (its broadcaster reconnected): each part's VOD and where it starts in stream time, so
+        // a line links into the part that recorded it. Public parts only, like vodId.
+        let parts = [];
+        try {
+            const media = require('../media-client');
+            const { isPrivate } = require('../media-proxy/access');
+            const h = await require('../streaming/stream-history').forStream(sid);
+            const shown = await Promise.all(h.parts.map((p) => (p.vod_id ? media.getVod(p.vod_id).then((v) => (v && !isPrivate(v) ? p : null), () => null) : null)));
+            parts = shown.filter(Boolean).map((p) => ({ vod_id: p.vod_id, at: p.at, end: p.end }));
+        } catch { /* no history: vodId alone */ }
+        res.json({ streamId: sid, vodId, parts, segments, events, coverageSec });
     } catch (err) {
         res.status(500).json({ error: 'Failed to load transcript' });
     }

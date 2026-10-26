@@ -28,7 +28,7 @@ function extract(src, head) {
 }
 
 const player = read('public/js/stream-player.js');
-const code = ['let dvrState = {', 'async function initDVR(', 'async function pollDVR(', 'function destroyDVR(', 'function _destroyDvrHls(', 'function showStreamEnded('].map((h) => extract(player, h)).join('\n');
+const code = ['let dvrState = {', 'async function initDVR(', 'async function pollDVR(', 'async function _pollDvrParts(', 'function destroyDVR(', 'function _destroyDvrHls(', 'function _dvrPartEnded(', 'function showStreamEnded('].map((h) => extract(player, h)).join('\n');
 
 // Fake timers, an api that answers 404 like the server does for an ended stream, and the few DOM calls made.
 const timers = new Map();
@@ -37,7 +37,7 @@ const setTimeout = (fn, ms) => { timers.set(nextId, { fn, ms }); return nextId++
 const clearTimeout = (id) => { timers.delete(id); };
 const asked = [];
 const api = async (p) => { asked.push(p); const e = new Error('Not found'); e.status = 404; throw e; };
-const el = () => ({ style: {} });
+const el = () => ({ style: {}, removeEventListener() {} });
 const document = { getElementById: el };
 const window = { dispatchEvent() {} };
 class CustomEvent { constructor(type, init) { this.type = type; this.detail = init && init.detail; } }

@@ -236,6 +236,18 @@ const _capturing = new Map();   // streamId -> { ff, dir, cleanup, startedAt, pr
 // Streams whose spool this process has started: only the first start drops leftover segments (a previous process's,
 // numbered from 0 again); a restart in this process continues the numbering and keeps what was captured.
 const _startedHere = new Set();
+// streamId → [{ firstIndex, baseSec }]: each capture run's first segment number and when it began in stream time
+// (seconds since streams.started_at). A capture that restarts (the broadcaster reconnected) numbers on from the last
+// segment, but the seconds it missed are not in any segment: offsets counted from the index alone fell behind the
+// stream by every gap, and started a few seconds after it went live. With each run's start, a segment's offset is
+// stream time, the time the stream's history measures recording parts in (streaming/stream-history.js).
+const _runs = new Map();
+function noteRun(streamId, firstIndex, baseSec) {
+    if (baseSec == null) return;
+    const runs = (_runs.get(streamId) || []).filter((r) => r.firstIndex < firstIndex);
+    runs.push({ firstIndex, baseSec });
+    _runs.set(streamId, runs);
+}
 // ffmpeg that ends soon after it started (no RTP from a dead producer, an input it cannot probe) is retried after a
 // growing pause instead of every timeline tick, and logged once per streak with its last error line.
 const _retry = new Map();       // streamId -> { at, delayMs, fails, reason }
@@ -293,6 +305,7 @@ async function startContinuousCapture(stream) {
     // every 22 s dropped its own segment each time).
     let firstIndex = 0;
     if (!_startedHere.has(stream.id)) {
+        _runs.delete(stream.id);
         try {
             const stale = fs.readdirSync(dir).filter(n => /^seg-\d{6}\.wav$/.test(n));
             for (const n of stale) { try { fs.unlinkSync(path.join(dir, n)); } catch { /* */ } }
@@ -337,6 +350,7 @@ async function startContinuousCapture(stream) {
     const entry = { ff, dir, cleanup, startedAt: Date.now(), producerId, firstIndex };
     _capturing.set(stream.id, entry);
     _startedHere.add(stream.id);
+    noteRun(stream.id, firstIndex, require('../streaming/stream-history').streamSeconds(stream, entry.startedAt));
     let lastErr = '';
     ff.stderr.on('data', (d) => { const lines = String(d).trim().split('\n'); lastErr = (lines[lines.length - 1] || lastErr).slice(0, 200); });
     let exited = false;
@@ -404,13 +418,16 @@ function pendingSegments(streamId, { includeLast = false } = {}) {
     const cur = _capturing.get(streamId) || {};
     const startedAt = cur.startedAt || null;
     const firstIndex = cur.firstIndex || 0;
+    const runs = _runs.get(streamId) || [];
     return ready.slice(overflow).map(name => {
         const index = parseInt(name.slice(4, 10), 10);
+        let run = null;
+        for (const r of runs) if (r.firstIndex <= index) run = r;
         return {
             name,
             path: path.join(dir, name),
             index,
-            offsetSec: index * SEGMENT_SEC,
+            offsetSec: run ? Math.round((run.baseSec + (index - run.firstIndex) * SEGMENT_SEC) * 10) / 10 : index * SEGMENT_SEC,
             // Wall-clock instant this segment's audio ENDED, so the job can report how far
             // behind live the transcript actually is.
             endedAtMs: startedAt && index >= firstIndex ? startedAt + (index - firstIndex + 1) * SEGMENT_SEC * 1000 : null,
@@ -434,6 +451,7 @@ function spooledStreamIds() {
 /** Remove a stream's whole spool directory (call when the stream ends). */
 function purgeSpool(streamId) {
     _startedHere.delete(streamId);
+    _runs.delete(streamId);
     _retry.delete(streamId);
     try { fs.rmSync(spoolDir(streamId), { recursive: true, force: true }); return true; }
     catch { return false; }
@@ -443,5 +461,5 @@ module.exports = {
     captureAudioChunk,
     startContinuousCapture, stopContinuousCapture, stopAllCaptures, isCapturing,
     pendingSegments, discardSegment, purgeSpool, spoolDir, spooledStreamIds,
-    SEGMENT_SEC,
+    SEGMENT_SEC, _noteRun: noteRun,
 };

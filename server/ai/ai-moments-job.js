@@ -167,7 +167,28 @@ async function _momentContext(streamId, vodId) {
         sounds = _sample((await db.getTimeline(streamId, { kind: 'sound', limit: 400 }) || [])
             .filter(e => Number(e.confidence || 0) >= 0.45), 30);
     } catch { /* timeline optional */ }
-    return { memories, transcript, clipTimes, spikes, sounds };
+    return _inPart({ memories, transcript, clipTimes, spikes, sounds }, vodId);
+}
+
+/**
+ * The signals above are in stream time. A VOD that is one part of a stream (its broadcaster reconnected) starts later
+ * (streaming/stream-history.js): its moments are picked from the signals inside it, moved to its own time. Clip times are
+ * the VOD's own already. A VOD with no part on record keeps the stream's times, as before.
+ */
+async function _inPart(ctx, vodId) {
+    const history = require('../streaming/stream-history');
+    const part = await history.partForVod(vodId);
+    if (!part) return ctx;
+    const len = part.end != null ? part.end - part.at : Infinity;
+    const inside = (t) => Number.isFinite(t) && t >= part.at && t - part.at <= len;
+    const move = (t) => Math.round((t - part.at) * 10) / 10;
+    return {
+        ...ctx,
+        memories: ctx.memories.filter(m => inside(Number(m.offset_seconds) || 0)).map(m => ({ ...m, offset_seconds: move(Number(m.offset_seconds) || 0) })),
+        transcript: ctx.transcript.filter(t => inside(Number(t.start) || 0)).map(t => ({ ...t, start: move(Number(t.start) || 0), end: t.end == null ? null : move(Number(t.end)) })),
+        spikes: ctx.spikes.filter(sp => inside(Number(sp.offset))).map(sp => ({ ...sp, offset: move(Number(sp.offset)) })),
+        sounds: ctx.sounds.filter(e => inside(Number(e.start_sec))).map(e => ({ ...e, start_sec: move(Number(e.start_sec)), end_sec: e.end_sec == null ? null : move(Number(e.end_sec)) })),
+    };
 }
 function _nearestMemory(memories, offset) {
     let best = null, bestD = Infinity;
