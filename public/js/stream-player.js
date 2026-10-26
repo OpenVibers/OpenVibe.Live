@@ -1034,24 +1034,8 @@ function startJSMPEG(wsUrl, canvas, placeholder, bufferProfile = getJsmpegBuffer
                 // Check if AudioContext is suspended (autoplay policy)
                 const audioCtx = player?.audioOut?.context || player?.audioOut?.destination?.context;
                 if (audioCtx && audioCtx.state === 'suspended' && !audioPrefs.muted) {
-                    console.warn('[JSMPEG] AudioContext suspended — showing unmute overlay');
-                    // Show unmute overlay on the canvas container
-                    const container = document.getElementById('video-container');
-                    if (container && !document.getElementById('unmute-overlay')) {
-                        const overlay = document.createElement('div');
-                        overlay.id = 'unmute-overlay';
-                        overlay.className = 'unmute-overlay';
-                        overlay.setAttribute('role', 'button');
-                        overlay.setAttribute('aria-label', 'Turn the sound on');
-                        overlay.innerHTML = '<span class="unmute-pill"><i class="fa-solid fa-volume-xmark"></i> Tap for sound</span>';
-                        overlay.addEventListener('click', () => {
-                            audioCtx.resume().then(() => {
-                                console.log('[JSMPEG] AudioContext resumed by user click');
-                            }).catch(() => {});
-                            overlay.remove();
-                        }, { once: true });
-                        container.appendChild(overlay);
-                    }
+                    console.warn('[JSMPEG] AudioContext suspended — sound comes on with the first touch');
+                    showUnmuteOverlay(null);
                 }
 
                 // Delay clip recording start so JSMpeg has time to decode & render
@@ -1384,6 +1368,15 @@ async function initWebRTC(stream) {
                             showDiagnostics: true,
                         });
                         break;
+                    case 'sfu-source-moved':
+                        // The broadcaster reconnected and produces on a new transport; this viewer was still on the old
+                        // producers (a frozen picture, no sound). Watching again gets the current ones, with no reload.
+                        console.log('[Player] The stream moved to a new producer — watching it');
+                        if (!player?.ws || player.ws.readyState !== WebSocket.OPEN || _viewerIntentionalClose) break;
+                        player.watchSent = false;
+                        sendPlayerSignal({ type: 'watch' });
+                        player.watchSent = true;
+                        break;
                     case 'sfu-keyframe-requested':
                         // Server acknowledged the re-watch by requesting a keyframe from the producer.
                         // Clear the offer timeout so we don't loop into "Still warming up".
@@ -1655,6 +1648,7 @@ async function handleSfuViewerReady(msg, ws, video, updateStatus, scheduleRewatc
                     video.muted = true;
                     video.volume = 0;
                     document.getElementById('unmute-overlay')?.remove();
+                    showMutedHint();
                 }
                 _maybeHidePlayerPlaceholderForLiveVideo(video);
             }).catch((err) => {
@@ -2112,11 +2106,7 @@ function initHLS(endpoint, stream) {
                     showDiagnostics: true,
                 });
                 video.playsInline = true;
-                video.autoplay = true;
-                video.muted = true;
-                video.play().catch(() => {
-                    showUnmuteOverlay(video);
-                });
+                playThenSound(video, () => video.play());
             });
             hls.on(Hls.Events.ERROR, (event, data) => {
                 if (data.fatal) {
@@ -2170,11 +2160,7 @@ function initHLS(endpoint, stream) {
                     showDiagnostics: true,
                 });
                 video.playsInline = true;
-                video.autoplay = true;
-                video.muted = true;
-                video.play().catch(() => {
-                    showUnmuteOverlay(video);
-                });
+                playThenSound(video, () => video.play());
             });
             hls.on(Hls.Events.ERROR, (event, data) => {
                 if (data.fatal) {
@@ -2242,11 +2228,7 @@ function tryFlvPlayer(flvUrl, video) {
             showDiagnostics: true,
         });
         video.playsInline = true;
-        video.autoplay = true;
-        video.muted = true;
-        flvPlayer.play().catch(() => {
-            showUnmuteOverlay(video);
-        });
+        playThenSound(video, () => flvPlayer.play());
         player = { flv: flvPlayer, video };
     } else {
         loadExternalScriptOnce('https://cdn.jsdelivr.net/npm/flv.js@latest').then(() => {
@@ -2277,11 +2259,7 @@ function tryFlvPlayer(flvUrl, video) {
                     showDiagnostics: true,
                 });
                 video.playsInline = true;
-                video.autoplay = true;
-                video.muted = true;
-                flvPlayer.play().catch(() => {
-                    showUnmuteOverlay(video);
-                });
+                playThenSound(video, () => flvPlayer.play());
                 player = { flv: flvPlayer, video };
             } else {
                 showStreamError('Your browser does not support FLV playback');
@@ -2705,8 +2683,12 @@ function setupVideoControls() {
     volSlider.value = savedVol;
     // For WebRTC (SFU), the player start path sets volume + handles autoplay policy.
     // For JSMPEG, onSourceEstablished handles it. For HLS, set it here.
+    // HLS: the level only. Unmuting here, before the page was touched, made the browser pause the video; playThenSound
+    // turns the sound on when it may.
     if (playerType === 'hls') {
-        setVolume(savedVol / 100, { muted: audioPrefs.muted });
+        const hv = document.getElementById('video-element');
+        if (audioPrefs.muted) setVolume(savedVol / 100, { muted: true });
+        else if (hv) hv.volume = savedVol / 100;
     }
 
     let muted = audioPrefs.muted;
@@ -3570,19 +3552,64 @@ function _clearStreamError() {
     }
 }
 
-// The media volume keys (UI Events names, and the older ones): while the stream is muted for autoplay, volume up is a tap.
+/* ── Sound, on with the first touch (the owner, 2026-10-26) ───────────────────────────────────
+   A browser lets a page play sound only after the person has touched it, so a stream that should be heard starts
+   muted (so it starts at all). People had to find the "Tap for sound" pill on the picture, and many refreshed instead.
+   Now the first tap, click or key ANYWHERE on the page turns the sound on, and from then on every reconnect comes back
+   with sound by itself (the page has been touched). The pill stays as the visible hint until then. A mute the person
+   chose (the volume button, the slider at 0) is kept: only sound the browser held back is turned on. */
+let _soundHeldBack = false;
+
+/** Turn on sound the browser held back. Returns whether there was any. */
+function unlockSound() {
+    if (!_soundHeldBack || getSavedMuted()) return false;
+    _soundHeldBack = false;
+    const savedVol = getSavedVolume();
+    const vol = savedVol > 0 ? savedVol / 100 : 0.75;
+    const ctx = player && player.audioOut && (player.audioOut.context || (player.audioOut.destination && player.audioOut.destination.context));
+    if (ctx && ctx.state === 'suspended') ctx.resume().catch(() => {});
+    if (player && player.audioOut && player.audioOut.gain) player.audioOut.gain.value = vol;
+    const video = document.getElementById('video-element');
+    if (video && (video.srcObject || video.currentSrc)) {
+        video.volume = vol;
+        video.muted = false;
+        // Still refused (no real activation, e.g. a synthetic event): muted again, and the hint comes back.
+        video.play().catch(() => { video.muted = true; video.play().catch(() => {}); showUnmuteOverlay(video); });
+    }
+    try { localStorage.setItem(PLAYER_MUTED_KEY, '0'); } catch {}
+    const slider = document.getElementById('volume-slider');
+    if (slider) slider.value = Math.round(vol * 100);
+    const volBtn = document.getElementById('btn-volume');
+    if (volBtn) volBtn.innerHTML = '<i class="fa-solid fa-volume-high"></i>';
+    document.getElementById('unmute-overlay')?.remove();
+    return true;
+}
+
+// The first touch anywhere: a tap, a click, a key (the events that count as a person's activation). The volume control
+// decides for itself (a click on the mute button means mute).
+for (const type of ['pointerup', 'touchend', 'click', 'keydown']) {
+    document.addEventListener(type, (e) => {
+        if (!_soundHeldBack) return;
+        if (type === 'keydown' && (e.key === 'Escape' || e.key === 'Tab' || e.metaKey || e.ctrlKey || e.altKey)) return;
+        if (e.target && e.target.closest && e.target.closest('#btn-volume, #volume-slider')) return;
+        unlockSound();
+    }, { capture: true, passive: true });
+}
+
+// The media volume keys (UI Events names, and the older ones): while the browser holds the sound back, volume up is a tap.
 document.addEventListener('keydown', (e) => {
     if (!/^(AudioVolumeUp|VolumeUp|AudioVolumeMute|VolumeMute)$/.test(e.key)) return;
-    const overlay = document.getElementById('unmute-overlay');
-    if (overlay) overlay.click();
+    unlockSound();
 });
 
 /**
- * Show a "Tap for sound" pill when autoplay policy forced muted playback.
- * One tap anywhere on the picture unmutes, restores volume, and removes it.
+ * The browser held the stream's sound back: a "Tap for sound" pill on the picture until the first touch anywhere on
+ * the page (unlockSound) turns it on. `video` is the element (null for JSMPEG's Web Audio).
  */
 function showUnmuteOverlay(video) {
-    // Don't duplicate
+    void video;
+    if (getSavedMuted()) return;   // the person's own mute: no hint of a block
+    _soundHeldBack = true;
     if (document.getElementById('unmute-overlay')) return;
     const container = document.getElementById('video-container');
     if (!container) return;
@@ -3590,29 +3617,53 @@ function showUnmuteOverlay(video) {
     overlay.id = 'unmute-overlay';
     overlay.className = 'unmute-overlay';
     overlay.setAttribute('role', 'button');
+    overlay.setAttribute('tabindex', '0');
     overlay.setAttribute('aria-label', 'Turn the sound on');
-    // The stream stays in view (owner, 2026-10-25): a small pill says it is muted, and a tap anywhere on the picture or a
-    // media volume key (where the browser passes it to the page) turns the sound on.
+    // The stream stays in view (owner, 2026-10-25): a small pill says the sound waits for a tap, anywhere on the page.
     overlay.innerHTML = '<span class="unmute-pill"><i class="fa-solid fa-volume-xmark"></i> Tap for sound</span>';
-    overlay.addEventListener('click', () => {
-        video.muted = false;
-        // Restore volume from saved preference / slider
-        const slider = document.getElementById('volume-slider');
-        const savedVol = getSavedVolume();
-        const vol = savedVol > 0 ? savedVol / 100 : (slider ? slider.value / 100 : 0.75);
-        video.volume = vol;
-        if (slider) slider.value = Math.round(vol * 100);
-        try { localStorage.setItem(PLAYER_MUTED_KEY, '0'); } catch {}
-        overlay.remove();
-        // Sync the volume button icon
-        const volBtn = document.getElementById('btn-volume');
-        if (volBtn) volBtn.innerHTML = vol === 0
-            ? '<i class="fa-solid fa-volume-xmark"></i>'
-            : '<i class="fa-solid fa-volume-high"></i>';
-        // Try playing again now that user has interacted
-        video.play().catch(() => {});
-    }, { once: true });
+    overlay.addEventListener('click', () => unlockSound());
     container.appendChild(overlay);
+}
+
+/**
+ * Start an HLS or FLV stream: muted first (autoplay always allows that), then the sound, right away when the page has
+ * been touched, else with the first touch (the pill). Muted by the person's choice: the short hint instead.
+ */
+function playThenSound(video, play) {
+    video.autoplay = true;
+    video.muted = true;
+    Promise.resolve().then(play).then(() => {
+        if (getSavedMuted()) { showMutedHint(); return; }
+        const savedVol = getSavedVolume();
+        video.volume = savedVol > 0 ? savedVol / 100 : 0.75;
+        video.muted = false;
+        const p = video.play();
+        if (p) p.catch(() => { video.muted = true; video.play().catch(() => {}); showUnmuteOverlay(video); });
+    }).catch(() => showUnmuteOverlay(video));
+}
+
+/** Muted because the person muted it (here or on another stream): say so for a few seconds, one tap turns it on. */
+function showMutedHint() {
+    const container = document.getElementById('video-container');
+    if (!container || document.getElementById('unmute-overlay') || document.getElementById('muted-hint')) return;
+    const hint = document.createElement('button');
+    hint.type = 'button';
+    hint.id = 'muted-hint';
+    hint.className = 'unmute-pill muted-hint';
+    hint.innerHTML = '<i class="fa-solid fa-volume-xmark"></i> Sound is off · tap to turn on';
+    hint.addEventListener('click', (e) => {
+        e.stopPropagation();
+        hint.remove();
+        setVolume((getSavedVolume() || 75) / 100, { muted: false });
+        const video = document.getElementById('video-element');
+        if (video) video.play().catch(() => {});
+        const slider = document.getElementById('volume-slider');
+        if (slider) slider.value = getSavedVolume() || 75;
+        const volBtn = document.getElementById('btn-volume');
+        if (volBtn) volBtn.innerHTML = '<i class="fa-solid fa-volume-high"></i>';
+    });
+    container.appendChild(hint);
+    setTimeout(() => hint.remove(), 6000);
 }
 
 /* ── Player stats overlay ─────────────────────────────────────
