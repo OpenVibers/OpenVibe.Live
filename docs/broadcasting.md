@@ -69,6 +69,15 @@ Clip (the last 30 seconds) and More, a sheet with share, watch as viewer, choose
 one-minute clip, chat read aloud, the restream controls, stream health, all settings and **Full page** (the classic
 page, with a button back). The studio drives the same functions as the page and reads its counters.
 
+### Viewer counts across platforms
+A live stream's viewers are counted wherever it goes out (`server/streaming/viewer-places.js`): OpenVibe itself (the
+larger of Chat's count and the player sockets'), RobotStreamer, and each restream destination of the stream's slot
+(Twitch through Helix, Kick through its API, YouTube with a `youtube_api_key` site setting; a platform that gives no
+number is listed as live without one). `GET /api/streams/channel/:username` gives each live stream these
+`viewer_places`. The channel player's count and the broadcaster's (the go-live page, the OBS/JSMPEG/WHIP panels and the
+phone studio) are their sum, and a tap on the player's count or the studio's lists them (`public/js/viewer-places.js`).
+The broadcaster's page reads the same answer every 20 seconds, so both sides see one number.
+
 ### Stream Chat
 The broadcast page includes an embedded chat sidebar with:
 - Full chat functionality (emotes, GIFs, TTS)

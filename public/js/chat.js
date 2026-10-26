@@ -2135,7 +2135,7 @@ function handleChatMessage(msg) {
             if (typeof goalReachedInWidget === 'function' && msg.goal) goalReachedInWidget(msg.goal);
             break;
         case 'user-count':
-            updateViewerCount(msg.count);
+            updateViewerCount(msg.count, msg.stream_id);
             updateTabViewerCount(msg.stream_id, msg.count);
             // Also update broadcast page viewer count element
             if (typeof updateViewerCountBroadcast === 'function') updateViewerCountBroadcast(msg.count);
@@ -5236,11 +5236,9 @@ function freezeGifEmote(img) {
     else img.addEventListener('load', freeze, { once: true });
 }
 
-function updateViewerCount(count) {
-    const el = document.getElementById('vc-viewers');
-    // Include cached external viewer count (Kick/Twitch/RS) if available
-    const external = (typeof _cachedExternalViewerCount === 'number') ? _cachedExternalViewerCount : 0;
-    if (el) el.textContent = count + external;
+function updateViewerCount(count, streamId) {
+    // The channel player's count, which adds the restream platforms' viewers to it (app-channel.js).
+    if (typeof setLiveViewerCount === 'function') setLiveViewerCount('chat', count, streamId);
 }
 
 /**

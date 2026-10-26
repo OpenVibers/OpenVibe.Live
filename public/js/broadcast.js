@@ -1626,8 +1626,7 @@ function showBrowserBroadcast() {
     document.getElementById('bc-chat-sidebar').style.display = '';
     const lb = document.getElementById('bc-live-badge'); if (lb) lb.style.display = '';
     const ib = document.getElementById('bc-info-bar'); if (ib) ib.style.display = '';
-    _startRsViewerPoll();
-    _startRestreamViewerPoll();
+    _startViewerPlacesPoll();
     syncBroadcastLiveButtonVisibility();
 }
 
@@ -1642,8 +1641,7 @@ async function showRTMPInstructions(stream) {
     document.getElementById('bc-webrtc-obs-instructions').style.display = 'none';
     document.getElementById('bc-chat-sidebar').style.display = '';
     const ib = document.getElementById('bc-info-bar'); if (ib) ib.style.display = '';
-    _startRsViewerPoll();
-    _startRestreamViewerPoll();
+    _startViewerPlacesPoll();
     syncBroadcastLiveButtonVisibility();
     try {
         const data = await api(`/streams/${stream.id}/endpoint`);
@@ -1790,8 +1788,7 @@ async function showJSMPEGInstructions(stream) {
     document.getElementById('bc-webrtc-obs-instructions').style.display = 'none';
     document.getElementById('bc-chat-sidebar').style.display = '';
     const ib = document.getElementById('bc-info-bar'); if (ib) ib.style.display = '';
-    _startRsViewerPoll();
-    _startRestreamViewerPoll();
+    _startViewerPlacesPoll();
     syncBroadcastLiveButtonVisibility();
     try {
         const data = await api(`/streams/${stream.id}/endpoint`);
@@ -1846,8 +1843,7 @@ async function showWHIPInstructions(stream) {
     document.getElementById('bc-webrtc-obs-instructions').style.display = '';
     document.getElementById('bc-chat-sidebar').style.display = '';
     const ib = document.getElementById('bc-info-bar'); if (ib) ib.style.display = '';
-    _startRsViewerPoll();
-    _startRestreamViewerPoll();
+    _startViewerPlacesPoll();
     syncBroadcastLiveButtonVisibility();
     const isLocalHost = /^(localhost|127\.|\[::1\])$/.test(location.hostname);
     let whipBaseUrl = null;
@@ -2164,8 +2160,8 @@ function cleanupStream(streamId) {
     _perStreamViewerCounts.delete(streamId);
     _updateTotalViewerCount();
 
-    // Stop RS viewer polling if no streams left
-    if (broadcastState.streams.size === 0) { _stopRsViewerPoll(); _stopRestreamViewerPoll(); }
+    // Stop the viewer count poll if no streams are left
+    if (broadcastState.streams.size === 0) _stopViewerPlacesPoll();
 
     // If this was the active stream, clear the preview.
     // Do NOT auto-switch to a sibling stream — the caller (endBroadcastTab, stopBroadcast, etc.)
@@ -2343,8 +2339,7 @@ function startGlobalDisplayTimers() {
 function clearGlobalDisplayTimers() {
     clearInterval(_globalStatsInterval); _globalStatsInterval = null;
     clearInterval(_globalUptimeInterval); _globalUptimeInterval = null;
-    _stopRsViewerPoll();
-    _stopRestreamViewerPoll();
+    _stopViewerPlacesPoll();
 }
 
 /* ── Per-Stream Heartbeat ────────────────────────────────────── */
@@ -4364,11 +4359,6 @@ async function handleSignalingMessage(streamId, msg) {
 
 /** Per-stream viewer counts from signaling, keyed by streamId */
 const _perStreamViewerCounts = new Map();
-let _rsViewerCount = 0;
-let _rsViewerPollTimer = null;
-/** Platform viewer counts (Twitch, Kick, etc.) fetched from server */
-let _platformViewerCount = 0;
-let _platformViewerBreakdown = [];
 
 function updateBroadcastStatus(state) {
     const el = document.getElementById('bc-connection-status'); if (!el) return;
@@ -4399,104 +4389,100 @@ function _updateTabViewerCount(streamId, count) {
     if (badge) badge.innerHTML = `<i class="fa-solid fa-eye"></i> ${count}`;
 }
 
+/* ── Where people are watching: OpenVibe, RobotStreamer and each restream platform ──
+   The broadcaster's count is the one viewers see: the server's places for the stream (server/streaming/viewer-places.js,
+   in GET /streams/channel/<you>), from its own polls of Twitch, Kick, YouTube and RobotStreamer. This page used to ask
+   with its restream panel's destination list, which was empty when the page loaded before a slot was picked, so a
+   phone's count left every platform out (owner, 2026-10-26). OpenVibe's own count is the larger of signaling's count
+   (instant) and the server's. A tap on the phone studio's count lists the places (broadcast-studio.js). */
+let _viewerPlacesTimer = null;
+let _viewerPlacesFirst = null;
+let _serverViewerPlaces = [];
+
+function _startViewerPlacesPoll() {
+    if (_viewerPlacesTimer) return;
+    _viewerPlacesFirst = setTimeout(_pollViewerPlaces, 3000);
+    _viewerPlacesTimer = setInterval(_pollViewerPlaces, 20000);
+}
+
+function _stopViewerPlacesPoll() {
+    clearTimeout(_viewerPlacesFirst); _viewerPlacesFirst = null;
+    clearInterval(_viewerPlacesTimer); _viewerPlacesTimer = null;
+    _serverViewerPlaces = [];
+}
+
+async function _pollViewerPlaces() {
+    if (!currentUser || document.hidden) return;
+    try {
+        const data = await api(`/streams/channel/${encodeURIComponent(currentUser.username)}?pollOnly=1`);
+        const live = (data.streams || []).filter((s) => s && s.is_live);
+        // The streams this page sends; a stream from OBS (or another device) is not in it, and then all of yours count.
+        const here = live.filter((s) => broadcastState.streams.has(s.id));
+        _serverViewerPlaces = _mergeViewerPlaces((here.length ? here : live).map((s) => (s.viewer_places && s.viewer_places.places) || []));
+    } catch { /* keep the last answer */ }
+    _updateTotalViewerCount();
+}
+
+/** Several streams' places as one list: the same platform's counts add up; null (live, no count) stays null alone. */
+function _mergeViewerPlaces(lists) {
+    const out = [];
+    for (const list of lists) {
+        for (const p of list) {
+            const same = out.find((o) => o.key === p.key && o.name === p.name);
+            if (!same) { out.push({ ...p }); continue; }
+            if (p.count != null) same.count = (same.count || 0) + p.count;
+            if (!same.url) same.url = p.url;
+        }
+    }
+    return out;
+}
+
+/** This page's places, OpenVibe first. */
+function broadcastViewerPlaces() {
+    let signaled = 0;
+    for (const [, c] of _perStreamViewerCounts) signaled += c;
+    const server = _serverViewerPlaces.find((p) => p.key === 'openvibe');
+    const here = Math.max(signaled, server ? Number(server.count) || 0 : 0);
+    return [{ key: 'openvibe', name: 'OpenVibe', count: here }, ..._serverViewerPlaces.filter((p) => p.key !== 'openvibe')];
+}
+
 function _updateTotalViewerCount() {
-    let hsTotal = 0;
-    for (const [, c] of _perStreamViewerCounts) hsTotal += c;
-    const total = hsTotal + _rsViewerCount + _platformViewerCount;
-    const el = document.getElementById('bc-viewer-count');
-    if (el) el.textContent = total;
-    // RS viewer count badge (show breakdown when RS viewers exist)
+    const places = broadcastViewerPlaces();
+    const total = places.reduce((n, p) => n + (Number(p.count) || 0), 0);
+    // The browser view's info bar, and the OBS / JSMPEG / WHIP panels' own counts.
+    for (const id of ['bc-viewer-count', 'bc-rtmp-viewer-count', 'bc-jsmpeg-viewer-count', 'bc-whip-viewer-count']) {
+        const el = document.getElementById(id);
+        if (el) el.textContent = total;
+    }
+    const rs = places.find((p) => p.key === 'robotstreamer');
     const rsEl = document.getElementById('bc-rs-viewer-count');
     if (rsEl) {
-        if (_rsViewerCount > 0) { rsEl.style.display = ''; rsEl.querySelector('strong').textContent = _rsViewerCount; }
+        if (rs && rs.count > 0) { rsEl.style.display = ''; rsEl.querySelector('strong').textContent = rs.count; }
         else rsEl.style.display = 'none';
     }
-    // Platform viewer count badges (Twitch/Kick/YouTube)
-    _updatePlatformViewerBadges();
+    _updatePlatformViewerBadges(places);
+    if (window.OVViewerPlaces) OVViewerPlaces.update();
 }
 
-/** Render platform viewer count badges (Twitch/Kick/YouTube) in the broadcaster info bar */
-function _updatePlatformViewerBadges() {
+/** The info bar's line per place (OpenVibe too, once there is anywhere else): "5 on Twitch". RobotStreamer has its own. */
+function _updatePlatformViewerBadges(places) {
     const container = document.getElementById('bc-platform-viewer-badges');
     if (!container) return;
-    if (!_platformViewerBreakdown || _platformViewerBreakdown.length === 0) {
-        container.innerHTML = '';
-        return;
-    }
-    const platformIcons = { twitch: 'fa-brands fa-twitch', kick: 'fa-brands fa-kickstarter-k', youtube: 'fa-brands fa-youtube', custom: 'fa-solid fa-globe' };
-    const platformColors = { twitch: '#9146ff', kick: '#53fc18', youtube: '#ff0000', custom: '#888' };
-    let html = '';
-    for (const entry of _platformViewerBreakdown) {
-        const icon = platformIcons[entry.platform] || platformIcons.custom;
-        const color = platformColors[entry.platform] || platformColors.custom;
-        const name = entry.name || entry.platform;
-        const countDisplay = entry.count != null ? `<strong>${entry.count}</strong>` : `<strong style="opacity:0.6">N/A</strong>`;
-        html += `<div class="bc-info-item" style="color:${color}"><i class="${icon}"></i> ${countDisplay} on ${name}</div>`;
-    }
-    container.innerHTML = html;
-}
-
-async function _startRsViewerPoll() {
-    _stopRsViewerPoll();
-    // Wait for RS integration to load before checking enabled/robotId
-    if (_robotStreamerIntegrationPromise) {
-        try { await _robotStreamerIntegrationPromise; } catch {}
-    }
-    const rs = broadcastState.robotStreamer;
-    if (!rs?.enabled || !rs?.robotId || !rs.managedStreamId) return;
-    const poll = async () => {
-        try {
-            const data = await api('/robotstreamer/integration/validate', { method: 'POST', body: { robot_input: rs.robotId, managed_stream_id: rs.managedStreamId } });
-            const robots = data.integration?.available_robots || [];
-            const robot = robots.find(r => String(r.robot_id) === String(rs.robotId));
-            _rsViewerCount = robot ? Number(robot.viewers || 0) : 0;
-        } catch { _rsViewerCount = 0; }
-        _updateTotalViewerCount();
-    };
-    poll();
-    _rsViewerPollTimer = setInterval(poll, 60000);
-}
-
-function _stopRsViewerPoll() {
-    if (_rsViewerPollTimer) { clearInterval(_rsViewerPollTimer); _rsViewerPollTimer = null; }
-    _rsViewerCount = 0;
-}
-
-/* ── Restream Platform Viewer Count Polling ───────────────────── */
-// Server polls Kick/Twitch APIs directly (official API with OAuth tokens).
-// Client only fetches the aggregated counts from our server.
-let _restreamViewerPollTimer = null;
-
-function _startRestreamViewerPoll() {
-    _stopRestreamViewerPoll();
-    // Poll every 60s, with initial 10s delay
-    setTimeout(async () => {
-        await _pollRestreamViewerCounts();
-        _restreamViewerPollTimer = setInterval(_pollRestreamViewerCounts, 60000);
-    }, 10000);
-}
-
-function _stopRestreamViewerPoll() {
-    if (_restreamViewerPollTimer) { clearInterval(_restreamViewerPollTimer); _restreamViewerPollTimer = null; }
-    _platformViewerCount = 0;
-    _platformViewerBreakdown = [];
-}
-
-async function _pollRestreamViewerCounts() {
-    if (!_restreamDestinations || _restreamDestinations.length === 0) return;
-
-    // Platform viewer counts (Kick + Twitch + others) for the slot this panel shows; with no slot,
-    // the server counts the slots that are live now.
-    try {
-        const slotId = _restreamPanelSlotId();
-        const data = await api(slotId ? `/restream/viewer-counts?managed_stream_id=${slotId}` : '/restream/viewer-counts');
-        _platformViewerCount = data?.total || 0;
-        _platformViewerBreakdown = data?.breakdown || [];
-    } catch {
-        _platformViewerCount = 0;
-        _platformViewerBreakdown = [];
-    }
-    _updateTotalViewerCount();
+    const shown = places.length > 1 ? places.filter((p) => p.key !== 'robotstreamer') : [];
+    const colors = { openvibe: 'var(--accent)', twitch: '#9146ff', kick: '#53fc18', youtube: '#ff0000', custom: '#888' };
+    const icons = { openvibe: 'fa-solid fa-house-signal', twitch: 'fa-brands fa-twitch', kick: 'fa-brands fa-kickstarter-k', youtube: 'fa-brands fa-youtube', custom: 'fa-solid fa-globe' };
+    container.replaceChildren(...shown.map((p) => {
+        const item = document.createElement('div');
+        item.className = 'bc-info-item';
+        item.style.color = colors[p.key] || colors.custom;
+        const icon = document.createElement('i');
+        icon.className = icons[p.key] || icons.custom;
+        const n = document.createElement('strong');
+        n.textContent = p.count == null ? 'live' : p.count;
+        if (p.count == null) n.style.opacity = '0.7';
+        item.append(icon, ' ', n, ` on ${p.name}`);
+        return item;
+    }));
 }
 
 /* ── Broadcaster Controls ─────────────────────────────────────── */

@@ -264,6 +264,15 @@
         hiddenAt = 0;
     });
 
+    // ── Where people are watching (owner, 2026-10-26): the count adds up OpenVibe, RobotStreamer, Twitch, Kick and
+    // YouTube (broadcast.js broadcastViewerPlaces), and a tap on it lists them (viewer-places.js), under the pill.
+    function viewerPlaces() { return typeof broadcastViewerPlaces === 'function' ? broadcastViewerPlaces() : []; }
+    function toggleViewers() {
+        if (!window.OVViewerPlaces) return;
+        closeSheet();
+        OVViewerPlaces.toggle($('bcs-viewers'), viewerPlaces, { below: true });
+    }
+
     // ── The overlay ──
     function railButton(act, ico, label, onClick) {
         return el('button', { type: 'button', class: 'bcs-btn', 'data-act': act, onclick: onClick },
@@ -274,7 +283,8 @@
             el('div', { class: 'bcs-top-l' },
                 el('span', { class: 'bcs-live' }, el('span', { class: 'bcs-live-dot', 'aria-hidden': 'true' }), 'LIVE'),
                 el('span', { class: 'bcs-pill', id: 'bcs-time', title: 'Time live' }, '0:00'),
-                el('span', { class: 'bcs-pill', id: 'bcs-viewers', title: 'Watching now' }, icon('fa-eye'), el('b', { text: '0' })),
+                el('button', { type: 'button', class: 'bcs-pill bcs-viewers', id: 'bcs-viewers', 'aria-haspopup': 'dialog', 'aria-expanded': 'false', onclick: toggleViewers },
+                    icon('fa-eye'), el('b', { text: '0' })),
                 el('button', { type: 'button', class: 'bcs-pill bcs-restream', id: 'bcs-restream', hidden: true, onclick: () => openSheet('restreams') })),
             el('div', { class: 'bcs-top-r' },
                 el('button', { type: 'button', class: 'bcs-pill bcs-health', id: 'bcs-health', onclick: toggleHealth },
@@ -309,6 +319,7 @@
         refresh();
     }
     function unmount() {
+        if (window.OVViewerPlaces) OVViewerPlaces.close();
         closeSheet();
         closeConfirm();
         closeViewer();
@@ -350,7 +361,10 @@
         $('bcs-time').textContent = up ? (up[1] === '0' ? `${Number(up[2])}:${up[3]}` : `${up[1]}:${up[2]}:${up[3]}`) : (text('bc-uptime') || '0:00');
         const viewers = $('bcs-viewers').querySelector('b');
         viewers.textContent = text('bc-viewer-count') || '0';
-        $('bcs-viewers').title = `${viewers.textContent} watching now`;
+        const places = viewerPlaces();
+        const where = places.length > 1 && window.OVViewerPlaces ? `: ${OVViewerPlaces.summary(places)}` : '';
+        $('bcs-viewers').title = `${viewers.textContent} watching now${where}`;
+        $('bcs-viewers').setAttribute('aria-label', `${viewers.textContent} watching now${where}. Show where`);
 
         const rs = restreamSummary();
         const chip = $('bcs-restream');
@@ -483,6 +497,7 @@
 
     function openSheet(section) {
         closeSheet();
+        if (window.OVViewerPlaces) OVViewerPlaces.close();
         st.lastFocus = document.activeElement;
         const ss = streamState();
         const title = (ss && ss.streamData && ss.streamData.title) || 'Your stream';

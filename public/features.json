@@ -89,6 +89,14 @@
         "openChannelUploadModal"
       ]
     },
+    "viewerPlaces": {
+      "css": [
+        "/css/features/viewer-places.css"
+      ],
+      "js": [
+        "/js/viewer-places.js"
+      ]
+    },
     "channel": {
       "fragment": "channel",
       "css": [
@@ -98,7 +106,8 @@
         "player",
         "context",
         "chatExtras",
-        "uploads"
+        "uploads",
+        "viewerPlaces"
       ],
       "js": [
         "/js/channel-socials.js",
@@ -195,7 +204,8 @@
         "chatExtras",
         "guide",
         "aiViewers",
-        "clipJobs"
+        "clipJobs",
+        "viewerPlaces"
       ],
       "js": [
         "/js/broadcast-state.js",

@@ -1288,13 +1288,14 @@ class RestreamManager extends EventEmitter {
 
     /**
      * External (Twitch/Kick/YouTube) viewer counts for one of a user's stream slots:
-     * { total, breakdown: [{ platform, name, count, destId }] }; count is null when the
+     * { total, breakdown: [{ platform, name, count, destId, url }] }; count is null when the
      * platform is live but its viewer count is unavailable. Slot-only, like control: a slot
      * counts only its own destinations and no slot (a legacy session) counts only the
      * unbound ones, so one slot's platform viewers never show on another.
      */
     async getExternalViewerCountsForUser(userId, managedStreamId = null) {
         const db = require('../db/database');
+        const { placeUrl } = require('./viewer-places');
         const dests = await db.getRestreamDestinationsForSlot(userId, managedStreamId || null) || [];
         const breakdown = [];
         let total = 0;
@@ -1302,15 +1303,23 @@ class RestreamManager extends EventEmitter {
             if (!d.enabled) continue;
             const count = this.getCachedViewerCount(d.id);
             const platformLive = this.isPlatformLive(d.id);
-            if (count != null && count > 0) {
-                breakdown.push({ platform: d.platform, name: d.name || d.platform, count, destId: d.id });
+            const place = { platform: d.platform, name: d.name || d.platform, destId: d.id, url: placeUrl(d.platform, d.channel_url) };
+            if (count != null && platformLive !== false) {
+                // A restream nobody watches yet is 0 there, not "no count".
+                breakdown.push({ ...place, count });
                 total += count;
-            } else if (platformLive === true) {
-                // Platform is live but viewer count is unavailable (e.g. Kick without OAuth, YouTube)
-                breakdown.push({ platform: d.platform, name: d.name || d.platform, count: null, destId: d.id });
+            } else if (platformLive === true || (platformLive == null && this._restreamLiveTo(d.id))) {
+                // Live on the platform, which gives no viewer count (YouTube without an API key, Kick without OAuth).
+                breakdown.push({ ...place, count: null });
             }
         }
         return { total, breakdown };
+    }
+
+    /** Whether a restream session to this destination is sending now. */
+    _restreamLiveTo(destId) {
+        for (const [, s] of this.sessions) if (s.destId === destId && s.status === 'live') return true;
+        return false;
     }
 
     async getViewerPollingConfig() {
@@ -1411,8 +1420,12 @@ class RestreamManager extends EventEmitter {
                                 count = result.count;
                                 platformLive = result.platformLive;
                             }
+                        } else {
+                            // Throttled: the last answer stands until the next poll. Without this it went stale after
+                            // 180 s (getCachedViewerCount), so YouTube's count dropped out for 2 of every 5 minutes.
+                            const last = this._viewerCountCache.get(destId);
+                            if (last) last.fetchedAt = Date.now();
                         }
-                        // else: throttled — leave count/platformLive null so cache persists
                     }
                 }
 

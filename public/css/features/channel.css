@@ -517,6 +517,13 @@
     padding: 0 6px;
     font-variant-numeric: tabular-nums;
 }
+/* The viewer count is a button: a tap lists where the stream is watched (viewer-places.js). */
+button.viewer-badge {
+    background: none; border: 0; border-radius: 6px; margin: 0; min-height: 28px;
+    font-family: inherit; line-height: inherit; cursor: pointer; -webkit-tap-highlight-color: transparent;
+}
+button.viewer-badge:hover, button.viewer-badge[aria-expanded="true"] { background: rgba(255,255,255,0.14); color: #fff; }
+button.viewer-badge:focus-visible { outline: 2px solid #93c5fd; outline-offset: 1px; }
 .dvr-progress-wrap:hover .dvr-progress-bar {
     height: 6px;
 }
