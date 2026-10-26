@@ -1523,7 +1523,17 @@
 @media (max-width: 480px) {
     #page-channel .vc-volume-group .volume-slider { display: none !important; }
     #page-channel #uptime-badge { display: none; }
+    /* …except above the speaker for a few seconds after a tap on it (stream-player.js popVolume, 2026-10-26): the
+       volume stays adjustable on a phone without taking room in the bar. */
+    #page-channel .vc-volume-group { position: relative; }
+    #page-channel .vc-volume-group.is-popped .volume-slider {
+        display: block !important; position: absolute; left: -4px; bottom: calc(100% + 10px); z-index: 6;
+        width: 150px !important; height: 40px; padding: 0 14px; opacity: 1 !important; box-sizing: border-box;
+        border-radius: 999px; background: rgba(12, 15, 24, 0.92); box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+        animation: vc-volume-pop 0.18s ease-out;
+    }
 }
+@keyframes vc-volume-pop { from { opacity: 0; transform: translateY(4px); } }
 
 /* ── The player takes the stream's shape (2026-10-26) ──────────────────────────────
    player-shape.js sets --video-ar (the picture's width / height) on #video-container. The box stays the column's width,
