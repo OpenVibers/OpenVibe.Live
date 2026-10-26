@@ -34,7 +34,7 @@ const calls = [];
 const video = { currentTime: 0 };
 const ctx = { Math, Number, calls, video, updateDVRUI: () => {}, switchToDVR: (t, part = null) => calls.push([Math.round(t * 10) / 10, part ? part.vodId : 'rec']) };
 vm.createContext(ctx);
-vm.runInContext(['_dvrSpan', '_dvrBarTime', '_dvrSeekBar', '_dvrNudge'].map(extract).join('\n'), ctx);
+vm.runInContext(['_dvrSpan', '_dvrBarTime', '_dvrSeekBar', '_dvrNudge', '_dvrPartEnded'].map(extract).join('\n'), ctx);
 
 // Stream 2795's shape: part 1 (VOD 6025) from 28 s to 706 s, part 2 recording since 709 s and 900 s long so far.
 const part1 = { vodId: 6025, at: 28, end: 706, src: 'https://media.test/o/med_1/master.m3u8', hls: true };
@@ -66,6 +66,13 @@ assert.strictEqual(calls.length, 0, 'no new source for a move within it');
 video.currentTime = 2;
 vm.runInContext('_dvrNudge(video, -5)', ctx);   // bar 683 - 5 = 678 → stream 706: part 1 at 677.5 (half a second before its end)
 assert.deepStrictEqual(calls.pop(), [677.5, 6025]);
+
+// Part 1 played to its end: on at the start of part 2 (the recording), not back to part 1's end across the gap.
+vm.runInContext('dvrState.isLive = false; dvrState.playingPart = dvrState.earlier[0]; _dvrPartEnded();', ctx);
+assert.deepStrictEqual(calls.pop(), [0, 'rec']);
+// With a part between, the next earlier part.
+vm.runInContext(`dvrState.earlier.push(${JSON.stringify({ vodId: 6027, at: 710, end: 800, src: 'https://media.test/v/6027', hls: false })}); dvrState.activeAt = 805; dvrState.playingPart = dvrState.earlier[0]; _dvrPartEnded();`, ctx);
+assert.deepStrictEqual(calls.pop(), [0, 6027]);
 
 // No history: the bar is the recording part alone, as before.
 set({ duration: 300, seekable: true, hlsUrl: 'https://media.test/v/7/dvr.m3u8', vodFile: null, earlier: [], activeAt: null, playingPart: null });
