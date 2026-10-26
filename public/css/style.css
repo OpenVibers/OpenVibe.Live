@@ -2112,6 +2112,9 @@ a.pulse-card:hover { border-color: var(--accent); transform: translateY(-2px); }
 .unmute-overlay { position: absolute; inset: 0; z-index: 20; cursor: pointer; background: transparent; -webkit-tap-highlight-color: transparent; }
 .unmute-pill { position: absolute; left: 12px; top: 12px; display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px 8px 11px; border-radius: 999px; background: rgba(0,0,0,0.66); color: #fff; font: 650 13px/1 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); box-shadow: 0 4px 18px rgba(0,0,0,0.35); animation: unmute-pop .3s ease-out both; }
 .unmute-overlay:hover .unmute-pill, .unmute-overlay:focus-visible .unmute-pill { background: var(--accent-strong, var(--accent, #3b82f6)); color: var(--on-accent-strong, #fff); }
+/* Muted by the person's own choice (stream-player.js showMutedHint): the same pill as a button, for six seconds. */
+.muted-hint { z-index: 21; border: 0; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.muted-hint:hover, .muted-hint:focus-visible { background: var(--accent-strong, var(--accent, #3b82f6)); color: var(--on-accent-strong, #fff); }
 @keyframes unmute-pop { from { opacity: 0; transform: translateY(-4px) scale(.96); } }
 @media (prefers-reduced-motion: reduce) { .unmute-pill { animation: none; } }
 

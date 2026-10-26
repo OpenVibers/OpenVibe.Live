@@ -149,11 +149,14 @@ class BroadcastServer extends EventEmitter {
 
         // When a WHIP producer is added to the SFU, notify any pending viewers
         webrtcSFU.on('producer-added', ({ roomId, kind }) => {
-            if (kind !== 'video') return; // Notify only on video producer
             const match = roomId.match(/^stream-(\d+)$/);
             if (!match) return;
             const streamId = parseInt(match[1]);
-            this._notifyPendingWatchers(streamId);
+            if (kind === 'video') this._notifyPendingWatchers(streamId);
+            // A broadcaster who reconnected produces again while the old producers stay open on the dead transport.
+            // Viewers already watching kept consuming those (frozen picture, no sound, "refresh to get audio back"):
+            // once the new producer is the one findProducerByKind picks (its ICE up), tell them to watch again.
+            for (const ms of [1500, 5000]) setTimeout(() => this._moveViewersToCurrent(streamId), ms).unref?.();
         });
 
         // When WHIP ICE connects, pending viewers that were queued during ICE negotiation
@@ -698,6 +701,39 @@ class BroadcastServer extends EventEmitter {
     // ── SFU Viewer Path (mediasoup-client signaling) ──────────
 
     /**
+     * Is this viewer consuming something other than the stream's current producers (findProducerByKind: the newest
+     * transport whose ICE is up)? True when a consumer's producer is not the current one of its kind, or a kind the
+     * stream now has (audio arriving later) is missing.
+     */
+    _viewerOnStaleProducers(client) {
+        const room = client._sfuViewerRoomId && webrtcSFU.rooms?.get(client._sfuViewerRoomId);
+        if (!room) return false;
+        const consumed = new Map();
+        for (const cid of client._sfuViewerConsumerIds || []) {
+            const c = room.consumers.get(cid)?.consumer;
+            if (c && !c.closed) consumed.set(c.kind, c.producerId);
+        }
+        if (!consumed.size) return false;
+        for (const kind of ['video', 'audio']) {
+            const cur = webrtcSFU.findProducerByKind(client._sfuViewerRoomId, kind);
+            if (cur && consumed.get(kind) !== cur.id) return true;
+        }
+        return false;
+    }
+
+    /** Ask every viewer of a stream that is on stale producers to watch again (it then gets the current ones). */
+    _moveViewersToCurrent(streamId) {
+        let moved = 0;
+        for (const [viewerWs, client] of this.clients) {
+            if (client.streamId !== streamId || client.role !== 'viewer' || !client._sfuViewerTransportId) continue;
+            if (!this._viewerOnStaleProducers(client)) continue;
+            this.safeSend(viewerWs, { type: 'sfu-source-moved' });
+            moved++;
+        }
+        if (moved) console.log(`[Broadcast] Stream ${streamId}: ${moved} viewer(s) on an old producer asked to watch the current one`);
+    }
+
+    /**
      * Check if SFU producers exist and notify viewer to start mediasoup-client flow.
      * Returns true if an sfu-viewer-ready was sent.
      */
@@ -720,7 +756,12 @@ class BroadcastServer extends EventEmitter {
                         return entry?.consumer && !entry.consumer.closed;
                     });
 
-                    if (activeConsumerIds.length > 0) {
+                    if (activeConsumerIds.length > 0 && this._viewerOnStaleProducers(client)) {
+                        // Alive, but on producers the broadcaster left behind (a reconnect): a keyframe nudge would ask
+                        // the dead producer again. A fresh consume of the current ones below.
+                        console.log(`[Broadcast] Viewer ${client.peerId} re-watch on an old producer — moving it to the current ones`);
+                        this._cleanupSfuViewerTransport(client);
+                    } else if (activeConsumerIds.length > 0) {
                         // Consumers are alive — nudge with keyframe and ack the client so
                         // startWatchOfferTimeout doesn't fire and loop.
                         // Throttle: a looping client (or many viewers re-watching at once) must
@@ -809,14 +850,20 @@ class BroadcastServer extends EventEmitter {
             return false;
         }
 
+        // One producer per kind: the current one (findProducerByKind), never also the one a reconnect left behind. A
+        // viewer given both played the first video track it got, which could be the dead one.
+        const chosen = ['video', 'audio'].map((kind) => {
+            const cur = webrtcSFU.findProducerByKind(roomId, kind);
+            return (cur && liveProducers.find((p) => p.id === cur.id)) || liveProducers.find((p) => p.kind === kind);
+        }).filter(Boolean);
         // Send capabilities + producer list — viewer will use mediasoup-client Device
         this.safeSend(ws, {
             type: 'sfu-viewer-ready',
             rtpCapabilities: caps,
-            producers: liveProducers.map(p => ({ id: p.id, kind: p.kind })),
+            producers: chosen.map(p => ({ id: p.id, kind: p.kind })),
         });
 
-        console.log(`[Broadcast] SFU viewer ready sent to ${client.peerId} for stream ${client.streamId} (${liveProducers.length}/${allProducers.length} live producer(s))`);
+        console.log(`[Broadcast] SFU viewer ready sent to ${client.peerId} for stream ${client.streamId} (${chosen.length} chosen of ${liveProducers.length}/${allProducers.length} live producer(s))`);
         return true;
     }
 
