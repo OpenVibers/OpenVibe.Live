@@ -69,7 +69,9 @@
         return {
             service: 'live', mount: '#navbar-mount', className: 'navbar', auth: 'external', apiBase: 'https://openvibe.network',
             user: user || null, token: (function () { try { return localStorage.getItem('token'); } catch (e) { return null; } })(),
-            loginUrl: '/api/auth/sso/login', accounts: false, networkLinks: 0, history: false, silentLogin: false, fedcm: false, recent: false,
+            // The menu's other accounts and "Add another account" go through the Network's chooser and come back through
+            // this sign-in (Shared 4.13.0), which returns to the page they were on.
+            loginUrl: '/api/auth/sso/login?next={path}', networkLinks: 0, history: false, silentLogin: false, fedcm: false, recent: false,
             notificationsRealtime: true,   // the bell hears new notifications over OpenVibe.Events (Shared 1.22.0)
             links: links(user), menu: menu(user),
             chips: [

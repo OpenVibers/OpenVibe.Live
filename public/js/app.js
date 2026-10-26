@@ -659,13 +659,11 @@ function _checkNetworkSession() {
     timer = setTimeout(done, 4000);
 }
 /** "Switch account": drop this site's session, keep openvibe.network's, open the account chooser. */
+/** Switch account: OpenVibe.Network's chooser (every account this browser holds), back here as the one chosen. Nothing
+ *  is signed out first, so closing the chooser keeps this session. */
 function switchAccount() {
-    fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' }).catch(() => {}).finally(() => {
-        localStorage.removeItem('token'); localStorage.removeItem('ov_token');
-        document.cookie = 'token=;Max-Age=0;path=/'; document.cookie = 'ov_token=;Max-Age=0;path=/';
-        _setSsoHint('account');
-        location.href = '/api/auth/sso/login';
-    });
+    _setSsoHint('account');
+    location.href = '/api/auth/sso/login?prompt=select_account&next=' + encodeURIComponent(location.pathname + location.search);
 }
 /** "Browse as guest": signed out here only — openvibe.network still remembers you, so "Sign in" is one tap. */
 function browseAsGuest() { logout(); try { toast('Browsing as a guest — Sign in brings you straight back.', 'info'); } catch { /* */ } }

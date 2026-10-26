@@ -3,7 +3,7 @@
  * All authentication is via OpenVibe.Tools OAuth2 SSO.
  * No local login/register — users sign in at openvibe.network.
  *
- * GET  /api/auth/sso/login    — Redirect to openvibe.network OAuth
+ * GET  /api/auth/sso/login    — Redirect to openvibe.network OAuth (?silent=1, ?prompt=select_account|login, ?login_hint, ?next)
  * GET  /api/auth/callback     — OAuth callback
  * GET  /api/auth/me           — Current user
  * PUT  /api/auth/profile      — Update profile
@@ -319,6 +319,11 @@ router.get('/sso/login', async (req, res) => {
     // ?silent=1: continue as the account openvibe.network already knows (no chooser); if the
     // network has no session either, it bounces back with error=login_required and we stay quiet.
     if (req.query.silent) params.set('prompt', 'none');
+    // "Switch account" (the chooser) and "use another account" (the sign-in form); login_hint names the account to
+    // continue as when this browser has it (Network docs/sign-in.md).
+    else if (['select_account', 'login'].includes(String(req.query.prompt || ''))) params.set('prompt', String(req.query.prompt));
+    const hint = String(req.query.login_hint || '').trim();
+    if (/^@?[A-Za-z0-9_.-]{1,64}$/.test(hint)) params.set('login_hint', hint);
     res.redirect(`${getNetworkBase()}/oauth/authorize?${params.toString()}`);
 });
 
