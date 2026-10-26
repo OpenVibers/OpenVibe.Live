@@ -103,3 +103,23 @@ Configurable per-stream settings include:
 - TTS mode and voice settings
 - Auto-reconnect behavior
 - Stream title and category
+
+### What the browser encoder is asked for
+A browser broadcast reaches the SFU through mediasoup-client (`public/js/broadcast.js`, `_handleSfuProduceRequest`;
+the options come from `sfuVideoProduceOptions` in `broadcast-state.js`):
+- **Codec:** the settings' Codec Preference (VP8 or H.264). Under Auto, a phone or tablet sends **H.264**, which its
+  hardware encodes, and a computer sends the router's first codec (VP8). Screen shares stay on the router's first codec.
+  The recorder, restreams, live thumbnails and AI vision build their pipelines from the producer's codec, as they do
+  for H.264 from OBS over WHIP.
+- **Limits:** Max Bitrate and FPS are the encoding's `maxBitrate` and `maxFramerate`, and the start bitrate is
+  `min(2500, target)` kbps. A camera keeps its frame rate under pressure (`degradationPreference: maintain-framerate`:
+  resolution drops first); a screen share keeps its detail.
+- **Changed while live:** resolution, frame rate and bitrate apply without a restart (`applyBroadcastQuality`: the
+  camera's `applyConstraints` and the producer's encoding parameters), from the settings or the phone studio's Video
+  quality.
+- **Battery saver** (`openvibe_battery_saver` in localStorage, this device only): 480p, 30 fps, at most 1 Mbps.
+- The browser's own VOD recorder is only a fallback: it starts when `GET /api/vods/stream/:id/recording` says the
+  server is not recording the stream after about 24 seconds, never when the channel records nothing, and it stops when
+  the server refuses a slice (403).
+- On a phone, the frame watchdog reads the camera track's frame count (MediaStreamTrack stats) instead of copying a
+  frame every second (a computer still copies one each second: that keeps PipeWire capture awake).

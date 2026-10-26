@@ -2646,6 +2646,32 @@ body.bc-studio-on .toast-container { z-index: 1500; }
 .bcs-sec { margin-top: 14px; }
 .bcs-sec h3 { margin: 0 0 8px; font-size: 0.9rem; }
 .bcs-sec .bc-rs-control, .bcs-sec .bc-restream-control { display: flex !important; flex-direction: column; gap: 8px; margin: 0 0 8px; }
+/* Battery saver in the slot's Video quality section (public/js/broadcast-workspace.js): this device only. */
+.bc-ws-saver { display: flex; align-items: flex-start; gap: 10px; margin-top: 10px; cursor: pointer; }
+.bc-ws-saver input { flex: none; width: 18px; height: 18px; margin-top: 2px; }
+.bc-ws-saver span { display: grid; gap: 2px; min-width: 0; font-size: 0.86rem; }
+.bc-ws-saver small { color: var(--text-secondary, #a1a1aa); font-size: 0.78rem; }
+
+/* Video quality in the More sheet (public/js/broadcast-studio.js videoSection): resolution, frame rate, battery saver. */
+.bcs-video-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+.bcs-video-head h3 { margin: 0; }
+.bcs-video-now { color: var(--text-secondary, #a1a1aa); font-size: 0.76rem; font-variant-numeric: tabular-nums; text-align: right; }
+.bcs-seg { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 4px; padding: 4px; margin-bottom: 8px; border-radius: 12px; background: var(--surface-raised, rgba(255,255,255,0.05)); }
+.bcs-seg-b {
+    min-height: 40px; border: 0; border-radius: 9px; background: none; color: inherit; cursor: pointer;
+    font: inherit; font-size: 0.86rem; font-weight: 700;
+}
+.bcs-seg-b[aria-pressed="true"] { background: var(--accent-strong, #2563eb); color: var(--on-accent-strong, #fff); }
+.bcs-seg-b:disabled { opacity: 0.45; cursor: default; }
+.bcs-video .bcs-row { margin-top: 4px; }
+.bcs-switch {
+    position: relative; flex: none; width: 52px; height: 32px; padding: 0; border-radius: 999px; cursor: pointer;
+    border: 1px solid var(--border, rgba(255,255,255,0.18)); background: var(--surface-raised, rgba(255,255,255,0.1));
+}
+.bcs-switch-k { position: absolute; top: 3px; left: 3px; width: 24px; height: 24px; border-radius: 50%; background: #fff; transition: transform 0.15s; }
+.bcs-switch[aria-checked="true"] { background: #16a34a; border-color: transparent; }
+.bcs-switch[aria-checked="true"] .bcs-switch-k { transform: translateX(20px); }
+@media (prefers-reduced-motion: reduce) { .bcs-switch-k { transition: none; } }
 .bcs-confirm {
     width: 100%; max-width: 360px; padding: 20px; border-radius: 18px; text-align: center;
     background: var(--bg-secondary, #15151c); color: var(--text-primary, #f4f4f5); box-shadow: 0 20px 60px rgba(0,0,0,0.5);

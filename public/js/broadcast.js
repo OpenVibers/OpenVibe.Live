@@ -1995,6 +1995,8 @@ function syncSettingsUI() {
 
 function updateBroadcastSetting(key, value) {
     broadcastState.settings[key] = value; saveBroadcastSettings();
+    // Size, frame rate and bitrate apply to a live broadcast at once (no restart).
+    if (['broadcastRes', 'broadcastFps', 'broadcastBps'].includes(key) && broadcastState.activeStreamId) applyBroadcastQuality().catch(() => {});
 }
 
 /**
@@ -2431,6 +2433,11 @@ function startVodRecording(streamId) {
     if (!ss || !ss.localStream) return;
     if (ss.vodRecorder && ss.vodRecorder.state !== 'inactive') return;
     if (ss.vodServerRecording) return;   // server ingest is recording this stream — no browser chunks
+    if (ss.vodOff) return;               // the channel records nothing
+    // This recorder is only the fallback for a stream the server does not record itself (Media ingest from the SFU):
+    // a second encode of the camera on the streamer's device, and a 30 s slice uploaded only to be dropped. Ask first;
+    // start it only when the server still is not recording after a short wait, or could not be asked.
+    if (ss.vodAsk !== 'done') { if (!ss.vodAsk) { ss.vodAsk = 'asking'; _vodAskServer(streamId, 0); } return; }
     try {
         const mimeType = ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm'].find(m => MediaRecorder.isTypeSupported(m));
         if (!mimeType) { console.warn('[VOD] No supported codec'); return; }
@@ -2458,6 +2465,22 @@ function startVodRecording(streamId) {
         ss.vodRecorder.start(30000);
         console.log('[VOD] Incremental recording started for stream', streamId, 'segment', ss.vodSegmentId);
     } catch (err) { console.warn('[VOD] Failed to start:', err); }
+}
+
+const VOD_ASK_TRIES = 4;          // 0, 8, 16, 24 s after going live: the server opens its recording within seconds
+const VOD_ASK_EVERY_MS = 8000;
+async function _vodAskServer(streamId, attempt) {
+    const ss = getStreamState(streamId);
+    if (!ss || !ss.localStream || !ss.streamData) return;
+    let st = null;
+    try { st = await api(`/vods/stream/${ss.streamData.id}/recording`); } catch { st = null; }
+    if (getStreamState(streamId) !== ss || !ss.localStream) return;
+    if (st && st.recording === false) { ss.vodOff = true; ss.vodAsk = 'done'; console.log('[VOD] This channel records nothing — no browser recording'); return; }
+    if (st && st.server) { ss.vodServerRecording = true; ss.vodAsk = 'done'; console.log('[VOD] Server-side recording active — no browser recording'); return; }
+    if (st && attempt + 1 < VOD_ASK_TRIES) { setTimeout(() => _vodAskServer(streamId, attempt + 1), VOD_ASK_EVERY_MS); return; }
+    ss.vodAsk = 'done';
+    console.log('[VOD] The server is not recording this stream — recording in the browser');
+    startVodRecording(streamId);
 }
 
 /**
@@ -2512,6 +2535,14 @@ async function uploadVodChunk(streamId) {
                 ss.vodRecorder = null;
                 console.log('[VOD] Server-side recording active — browser chunk upload stopped');
             }
+        } else if (resp.status === 403) {
+            // Recording is off for this channel (or the stream is not this account's): every later slice would be
+            // refused too, so the recorder stops instead of encoding and uploading for the rest of the stream.
+            ss.vodOff = true;
+            ss.vodChunks = [];
+            const old = ss.vodRecorder; ss.vodRecorder = null;
+            if (old && old.state !== 'inactive') { try { old.stop(); } catch {} }
+            console.log('[VOD] The server refuses this recording — browser recording stopped');
         } else if (resp.status === 409) {
             const data = await resp.json().catch(() => ({}));
             if (data.status === 'stream-ended') {
@@ -2599,6 +2630,45 @@ if (typeof window !== 'undefined') {
 
 /* ── Per-Stream Media Capture ────────────────────────────────── */
 
+const BROADCAST_RES_SIZES = { '360': { w: 640, h: 360 }, '480': { w: 854, h: 480 }, '720': { w: 1280, h: 720 }, '1080': { w: 1920, h: 1080 }, '1440': { w: 2560, h: 1440 } };
+
+/**
+ * Apply the quality settings to a live broadcast without restarting it (the phone studio's Video quality): the camera
+ * is asked for the new size and frame rate, and the encoder for the new limits. Returns what is sent now.
+ */
+async function applyBroadcastQuality(streamId = broadcastState.activeStreamId) {
+    const ss = getStreamState(streamId);
+    if (!ss || !ss.localStream) return null;
+    const s = broadcastState.settings;
+    const res = BROADCAST_RES_SIZES[getBroadcastResolution()] || BROADCAST_RES_SIZES['720'];
+    const fps = getBroadcastFrameRate();
+    const track = ss.localStream.getVideoTracks()[0];
+    // A screen share and the audio-only card keep their own capture.
+    if (track && !s.screenShare && !s.micOnly && typeof track.applyConstraints === 'function') {
+        try { await track.applyConstraints({ width: { ideal: res.w }, height: { ideal: res.h }, frameRate: { ideal: fps } }); }
+        catch (err) { console.warn('[Broadcast] The camera kept its size:', err.message || err); }
+    }
+    const state = _sfuProduceStates.get(streamId);
+    if (state && state.videoProducer && typeof state.videoProducer.setRtpEncodingParameters === 'function') {
+        try { await state.videoProducer.setRtpEncodingParameters({ maxBitrate: getTargetVideoBitrate(), maxFramerate: fps }); }
+        catch (err) { console.warn('[Broadcast] The encoder kept its limits:', err.message || err); }
+    }
+    return broadcastVideoInfo(streamId);
+}
+
+/** What the broadcast's video is now: the camera's size and frame rate, and the codec viewers get. */
+function broadcastVideoInfo(streamId = broadcastState.activeStreamId) {
+    const ss = getStreamState(streamId);
+    const track = ss && ss.localStream ? ss.localStream.getVideoTracks()[0] : null;
+    const set = track && track.getSettings ? track.getSettings() : {};
+    const state = _sfuProduceStates.get(streamId);
+    const mime = state && state.videoProducer && state.videoProducer.rtpParameters && state.videoProducer.rtpParameters.codecs && state.videoProducer.rtpParameters.codecs[0] ? state.videoProducer.rtpParameters.codecs[0].mimeType : '';
+    return {
+        width: set.width || 0, height: set.height || 0, fps: Math.round(set.frameRate || 0),
+        codec: mime ? (/h264/i.test(mime) ? 'H.264' : mime.split('/')[1]) : '',
+    };
+}
+
 /**
  * Build getDisplayMedia() constraints from the user's screen share settings.
  * Modular helper — each constraint is independent so partial browser support is fine.
@@ -2675,8 +2745,7 @@ async function startMediaCapture(streamId, opts = {}) {
     const s = broadcastState.settings;
     const forceCamera = opts.cameraId || s.forceCamera;
     const forceAudio = (opts.skipMic) ? null : (opts.audioId || s.forceAudio);
-    const resMap = { '360': { w: 640, h: 360 }, '480': { w: 854, h: 480 }, '720': { w: 1280, h: 720 }, '1080': { w: 1920, h: 1080 }, '1440': { w: 2560, h: 1440 } };
-    const res = resMap[s.broadcastRes] || resMap['720'];
+    const res = BROADCAST_RES_SIZES[getBroadcastResolution()] || BROADCAST_RES_SIZES['720'];
     let videoConstraints, audioConstraints;
 
     // Phones and tablets cannot capture their screen (no getDisplayMedia): a screen-mode slot opened
@@ -4049,8 +4118,19 @@ async function _handleSfuProduceRequest(streamId) {
         const audioTrack = ss.localStream.getAudioTracks()[0];
 
         if (videoTrack) {
-            state.videoProducer = await transport.produce({ track: videoTrack, stopTracks: false });
-            console.log('[SFU Produce] Video producer:', state.videoProducer.id);
+            const opts = sfuVideoProduceOptions(device, videoTrack);
+            try {
+                state.videoProducer = await transport.produce(opts);
+            } catch (err) {
+                // A browser that refuses the chosen codec sends the router's first, as before.
+                if (!opts.codec) throw err;
+                console.warn('[SFU Produce] ' + opts.codec.mimeType + ' refused (' + err.message + ') — sending the default codec');
+                delete opts.codec;
+                state.videoProducer = await transport.produce(opts);
+            }
+            await applyVideoSenderPrefs(state.videoProducer);
+            const sent = state.videoProducer.rtpParameters && state.videoProducer.rtpParameters.codecs ? state.videoProducer.rtpParameters.codecs[0] : null;
+            console.log('[SFU Produce] Video producer:', state.videoProducer.id, sent ? sent.mimeType : '', `≤${Math.round(getTargetVideoBitrate() / 1000)} kbps ≤${getBroadcastFrameRate()} fps`);
         }
         if (audioTrack) {
             state.audioProducer = await transport.produce({ track: audioTrack, stopTracks: false });

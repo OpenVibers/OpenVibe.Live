@@ -419,6 +419,50 @@
     }
 
     // ── More ──
+    // ── Video quality, changed while live (owner, 2026-10-25: "adjustable settings for mobile") ──
+    // Resolution and frame rate apply at once (the camera and the encoder, no restart: broadcast.js
+    // applyBroadcastQuality) and become the slot's defaults. Battery saver is this phone's own setting.
+    const RES_KBPS = { '480': 1200, '720': 2500, '1080': 4500 };
+    const suggestedKbps = (res, fps) => Math.round(((RES_KBPS[res] || 2500) * (Number(fps) >= 50 ? 1.5 : 1)) / 100) * 100;
+    let qualityQueue = Promise.resolve();
+    function videoSection() {
+        const s = broadcastState.settings;
+        const saver = typeof batterySaverOn === 'function' && batterySaverOn();
+        const seg = (label, options, current, key) => el('div', { class: 'bcs-seg', role: 'group', 'aria-label': label },
+            ...options.map(([v, text]) => el('button', {
+                type: 'button', class: 'bcs-seg-b', 'aria-pressed': String(!saver && String(current) === v), disabled: saver,
+                onclick: () => setQuality({ [key]: v }),
+            }, text)));
+        return el('div', { class: 'bcs-sec bcs-video', id: 'bcs-video' },
+            el('div', { class: 'bcs-video-head' }, el('h3', { text: 'Video' }), el('small', { class: 'bcs-video-now', id: 'bcs-video-now', 'aria-live': 'polite' })),
+            seg('Resolution', [['480', '480p'], ['720', '720p'], ['1080', '1080p']], s.broadcastRes, 'broadcastRes'),
+            seg('Frame rate', [['30', '30 fps'], ['60', '60 fps']], s.broadcastFps, 'broadcastFps'),
+            el('div', { class: 'bcs-row' },
+                el('div', null, el('b', { id: 'bcs-saver-t', text: 'Battery saver' }), el('small', { text: '480p at 30 fps: a cooler phone and a longer stream' })),
+                el('button', { type: 'button', class: 'bcs-switch', role: 'switch', 'aria-checked': String(saver), 'aria-labelledby': 'bcs-saver-t',
+                    onclick: () => setQuality({ batterySaver: !saver }) }, el('span', { class: 'bcs-switch-k', 'aria-hidden': 'true' }))));
+    }
+    function showVideoNow(info) {
+        const n = $('bcs-video-now');
+        if (!n || !info || !info.width) return;
+        n.textContent = `Sending ${info.width}×${info.height} · ${info.fps} fps${info.codec ? ` · ${info.codec}` : ''}`;
+    }
+    function setQuality(patch) {
+        const s = broadcastState.settings;
+        if ('batterySaver' in patch) setBatterySaver(patch.batterySaver);
+        else {
+            Object.assign(s, patch);
+            s.broadcastBps = String(suggestedKbps(String(s.broadcastRes), s.broadcastFps));
+            if (typeof saveBroadcastSettings === 'function') saveBroadcastSettings();
+            const ss = streamState();
+            const msId = ss && ss.streamData ? ss.streamData.managed_stream_id : null;
+            if (typeof _wsRememberQuality === 'function') _wsRememberQuality(msId, { resolution: s.broadcastRes, fps: s.broadcastFps, bitrate: s.broadcastBps }).catch(() => {});
+        }
+        const old = $('bcs-video');
+        if (old) old.replaceWith(videoSection());
+        qualityQueue = qualityQueue.then(() => applyBroadcastQuality()).then(showVideoNow, () => {});
+    }
+
     function tile(ico, label, onClick, hint) {
         return el('button', { type: 'button', class: 'bcs-tile', onclick: onClick },
             icon(ico), el('span', { class: 'bcs-tile-t', text: label }), hint ? el('small', { text: hint }) : null);
@@ -481,12 +525,13 @@
                 el('div', { class: 'bcs-sheet-who' }, el('b', { id: 'bcs-sheet-title', text: title }), user ? el('small', { text: `openvibe.live/@${user}` }) : null),
                 el('button', { type: 'button', class: 'bcs-chip bcs-chip-strong', onclick: share }, icon('fa-link'), ' Copy link'),
                 el('button', { type: 'button', class: 'bcs-x', 'aria-label': 'Close', onclick: closeSheet }, icon('fa-xmark'))),
-            grid, voice, st.parked.length ? restreams : null);
+            grid, typeof applyBroadcastQuality === 'function' ? videoSection() : null, voice, st.parked.length ? restreams : null);
         st.sheet = el('div', { class: 'bcs-sheet-wrap', onclick: (e) => { if (e.target === st.sheet) closeSheet(); } }, sheet);
         document.body.append(st.sheet);
         const focus = section === 'restreams' && st.parked.length ? restreams : sheet.querySelector('.bcs-tile');
         if (section === 'restreams' && st.parked.length) restreams.scrollIntoView({ block: 'start' });
         if (focus && focus.focus) focus.focus({ preventScroll: section === 'restreams' });
+        if (typeof broadcastVideoInfo === 'function') showVideoNow(broadcastVideoInfo());
     }
     function closeSheet() {
         for (const { node, mark } of st.parked.splice(0)) { mark.replaceWith(node); }
@@ -550,6 +595,8 @@
 
     // ── Once a second: mount, update or leave ──
     function tick() {
+        // A hidden tab draws nothing: no work until it shows again (visibilitychange below).
+        if (document.hidden) return;
         const has = !!localStream();
         if (has !== st.hadLocal) {
             st.hadLocal = has;
@@ -563,6 +610,7 @@
         syncGoLiveDock();
     }
     setInterval(tick, 1000);
+    document.addEventListener('visibilitychange', tick);
     if (NARROW.addEventListener) NARROW.addEventListener('change', tick);
     ensureReturn();
 

@@ -35,8 +35,14 @@ You don't need any of the following:
 - The top shows LIVE, how long you have been live, how many people are watching, your restreams and your connection.
 - The buttons on the right are Flip (front and back camera), Mute, Camera, Light (a back camera's flash), Chat (hide or
   show it), Clip (the last 30 seconds) and More.
-- **More** opens copy link, watch as a viewer, choose any camera, media requests, a one-minute clip, chat read aloud,
-  your restreams, stream health, all settings and the full page.
+- **More** opens copy link, watch as a viewer, choose any camera, media requests, a one-minute clip,
+  **video quality**, chat read aloud, your restreams, stream health, all settings and the full page.
+- **Video quality** changes while you are live, without restarting the stream: 480p, 720p or 1080p, at 30 or 60 frames
+  a second. It shows what is being sent now, and your choice becomes the stream slot's default for next time.
+  **Battery saver** (480p at 30 fps) keeps the phone cooler and the stream going longer; it is a setting of that phone
+  only.
+- A phone sends H.264, which its hardware encodes, so the stream uses less battery and keeps its frame rate. When the
+  network or the phone gets busy, the picture gets softer before it gets choppy.
 - **End** asks before it ends the stream.
 - Keep the OpenVibe tab open and in front while you are live. A phone pauses the camera in other tabs and apps, and
   the stream ends after a minute away, so "Watch as a viewer" opens over the studio instead of in a new tab.
