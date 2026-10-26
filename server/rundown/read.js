@@ -53,12 +53,17 @@ async function segmentsOut(rows, voter) {
     const ppl = await people(rows.flatMap((r) => [r.user_id, ...(r.mentions || [])]));
     const tps = await topicsById(rows.map((r) => r.topic_id));
     const rx = await reactionsFor('segment', rows.map((r) => r.id), voter);
+    // Segment and quote times are stream time; `sec` links into vod_id, which for a stream recorded in parts (its
+    // broadcaster reconnected) starts later than the stream (streaming/stream-history.js).
+    const history = require('../streaming/stream-history');
+    const offsets = await history.vodOffsets(rows.map((r) => r.vod_id));
+    const inVod = (r, sec) => Math.max(0, Math.floor(history.vodTime(sec, r.vod_id ? offsets.get(Number(r.vod_id)) : 0)));
     return rows.map((r) => ({
         type: 'segment', id: Number(r.id), title: r.title, what: r.what, take: r.take || null, quip: r.quip || null, score: Number(r.score),
-        quotes: parseJson(r.quotes_json, []).map((q) => ({ text: q.text, en: q.en || null, sec: Math.max(0, Math.floor(Number(q.sec) || 0)) })),
+        quotes: parseJson(r.quotes_json, []).map((q) => ({ text: q.text, en: q.en || null, sec: inVod(r, q.sec) })),
         topic: tps.get(Number(r.topic_id)) || null, user: ppl.get(Number(r.user_id)) || null,
         mentions: (r.mentions || []).map((id) => ppl.get(Number(id))).filter(Boolean),
-        stream_id: Number(r.stream_id), vod_id: r.vod_id ? Number(r.vod_id) : null, sec: Math.max(0, Math.floor(Number(r.start_sec) || 0)),
+        stream_id: Number(r.stream_id), vod_id: r.vod_id ? Number(r.vod_id) : null, sec: inVod(r, r.start_sec),
         said_at: r.said_at, reactions: rx.counts.get(Number(r.id)) || {}, my_reaction: rx.mine.get(Number(r.id)) || null,
     }));
 }

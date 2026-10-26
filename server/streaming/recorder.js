@@ -99,7 +99,7 @@ class StreamRecorder {
     /** Stop a WebRTC recording and start its next part a moment later, on the producers there are then. */
     _rollRecording(streamId, rec, why) {
         rec._rolling = true;
-        const next = { mode: rec.mode, part: (rec.part || 1) + 1, baseTitle: rec.baseTitle };
+        const next = { mode: rec.mode, part: (rec.part || 1) + 1, baseTitle: rec.baseTitle, why };
         console.log(`[VOD] Stream ${streamId}: ${why} — rolling recording to part ${next.part}`);
         this.stopRecording(streamId);
         const timer = setTimeout(async () => {
@@ -139,6 +139,7 @@ class StreamRecorder {
             clipsOnly: mode === 'clips',
             startedAt: Date.now(),
             part: opts.part || 1,
+            why: opts.why || null,
             baseTitle: opts.baseTitle || stream.title || 'Stream Recording',
             type: protocol === 'rtmp' ? 'rtmp' : 'rtp',
             webrtcState: null,
@@ -224,6 +225,7 @@ class StreamRecorder {
         if (rec._cancel) return this._abort(streamId, rec);
         const rtmpUrl = `rtmp://127.0.0.1:${config.rtmp.port}/live/${endpoint.streamKey}`;
         await media.ingestRtmp(rec.vodId, rtmpUrl);
+        this._partStarted(stream, rec);
         console.log(`[VOD] Media RTMP ingest started: stream ${streamId} → vod ${rec.vodId} (${rec.mode})`);
     }
 
@@ -314,7 +316,19 @@ class StreamRecorder {
         }
 
         rec.webrtcState = webrtcState;
+        this._partStarted(stream, rec);
         console.log(`[VOD] Media RTP ingest started: stream ${streamId} → vod ${rec.vodId} (v:${videoPort}${audioPort ? ` a:${audioPort}` : ''}, ${rec.mode})`);
+    }
+
+    /**
+     * The recording's footage starts now (Media is ingesting): mediaStartedAt is its time 0, which a live clip measures
+     * from (startedAt is earlier by the VOD creation and the wait for the microphone), and the stream's history notes the
+     * part (stream-history.js), so stream time can be turned into this VOD's time later.
+     */
+    _partStarted(stream, rec) {
+        if (!rec.mediaStartedAt) rec.mediaStartedAt = Date.now();
+        if (rec.clipsOnly) return;
+        require('./stream-history').partStarted(stream, { vodId: rec.vodId, part: rec.part, why: rec.why, atMs: rec.mediaStartedAt }).catch(() => {});
     }
 
     _closePlainConsumers(webrtcState) {
@@ -345,6 +359,8 @@ class StreamRecorder {
             startedAt: Date.now(), part: 1, baseTitle: null, type: 'chunks', webrtcState: null,
         };
         this.activeRecordings.set(streamId, rec);
+        rec.mediaStartedAt = rec.startedAt;
+        db.getStreamById(streamId).then((stream) => { if (stream) this._partStarted(stream, rec); }).catch(() => {});
         return rec;
     }
 
@@ -367,9 +383,11 @@ class StreamRecorder {
         this.activeRecordings.delete(streamId);
         this._finalizing.add(streamId);
 
+        const stoppedAt = Date.now();
         const finish = (async () => {
             this._closePlainConsumers(rec.webrtcState);
             if (!rec.vodId) return;
+            if (rec.mediaStartedAt && !rec.clipsOnly) require('./stream-history').partEnded(streamId, rec.vodId, stoppedAt).catch(() => {});
             if (rec.type === 'rtp') {
                 await media.ingestRtpStop(rec.vodId).catch((e) => console.warn(`[VOD] rtp stop failed (vod ${rec.vodId}):`, e.message));
             } else if (rec.type === 'chunks') {

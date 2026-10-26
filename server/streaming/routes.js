@@ -1800,6 +1800,46 @@ router.post('/managed/:id/regenerate-key', requireAuth, async (req, res) => {
     }
 });
 
+// ── What happened during a stream (stream-history.js) ───────
+// Its recording parts (each its own VOD, with where it starts in stream time), the broadcaster's picture sizes and
+// reconnects, in seconds since the stream started. The player rewinds across parts with it; a part whose VOD the
+// viewer cannot see is listed without its VOD.
+router.get('/:id/history', optionalAuth, async (req, res) => {
+    try {
+        const stream = await db.getStreamById(req.params.id);
+        if (!stream) return res.status(404).json({ error: 'Stream not found' });
+        const history = require('./stream-history');
+        const media = require('../media-client');
+        const access = require('../media-proxy/access');
+        const h = await history.forStream(stream.id);
+        let active = null;
+        try { active = require('./recorder').getActiveRecording(stream.id)?.vodId || null; } catch { /* */ }
+        const parts = await Promise.all(h.parts.map(async (p) => {
+            let vod = null;
+            try { vod = p.vod_id ? await media.getVod(p.vod_id) : null; } catch { /* Media unreachable: listed without it */ }
+            const seen = vod && await access.canView(req.user, vod).catch(() => false);
+            const recording = !!(active && p.vod_id === active && stream.is_live);
+            // A finished part plays from Media's timeline playlist when it has one (one period per shape), else its file.
+            if (seen) media.setPlaybackUrls(vod, 'vod');
+            const src = seen && !recording ? (vod.hls_url || vod.file_url || null) : null;
+            return { part: p.part, vod_id: seen ? p.vod_id : null, at: p.at, end: p.end, recording, src, hls: !!(src && /\.m3u8(\?|$)/.test(src)) };
+        }));
+        res.set('Cache-Control', 'private, max-age=0');
+        res.json({
+            stream_id: stream.id,
+            started_at: stream.started_at || null,
+            is_live: !!stream.is_live,
+            now_sec: stream.is_live ? history.streamSeconds(stream) : null,
+            parts,
+            shapes: h.shapes.map(({ at, width, height }) => ({ at, width, height })),
+            reconnects: h.reconnects,
+        });
+    } catch (err) {
+        console.error('[Streams] history error:', err.message);
+        res.status(500).json({ error: 'Failed to get the stream history' });
+    }
+});
+
 // ── Get Stream Details ───────────────────────────────────────
 router.get('/:id', optionalAuth, async (req, res) => {
     try {

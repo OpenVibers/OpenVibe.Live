@@ -112,8 +112,12 @@ async function clipMoment(stream, ev, settings, deps) {
     const media = deps.media || require('../media-client');
     const rec = recorder.getActiveRecording(stream.id);
     if (!rec || !rec.vodId) return say(stream, 'I can\'t clip right now: this stream isn\'t being recorded.', { speak: settings.speak, deps });
-    const edge = Math.max(0, ((deps.now || Date.now)() - rec.startedAt) / 1000);
-    const end = Math.min(Number(ev.start_sec) + 1, edge - 0.5);
+    const t0 = rec.mediaStartedAt || rec.startedAt;
+    const edge = Math.max(0, ((deps.now || Date.now)() - t0) / 1000);
+    // The phrase's time is stream time; the recording (a later part, when the broadcaster reconnected) starts at t0.
+    const partAt = require('../streaming/stream-history').streamSeconds(stream, t0);
+    const said = Number(ev.start_sec) - (partAt != null && rec.mediaStartedAt ? partAt : 0);
+    const end = Math.min(said + 1, edge - 0.5);
     const start = Math.max(0, end - CLIP_SEC);
     if (end - start < 5) return say(stream, 'Give me a few seconds of the stream first, then ask again.', { speak: settings.speak, deps });
     const title = `${String(stream.title || 'Stream moment').slice(0, 70)} (clipped by voice)`;

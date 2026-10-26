@@ -294,6 +294,7 @@ class BroadcastServer extends EventEmitter {
             }
             room.broadcaster = ws;
             console.log(`[Broadcast] Broadcaster connected: stream ${streamId} (${user.username})`);
+            require('./stream-history').broadcasterBack(streamId).catch(() => {});
             this.emit('broadcaster-connected', { streamId, userId: user.id });
 
             // Notify existing viewers to re-negotiate
@@ -411,6 +412,12 @@ class BroadcastServer extends EventEmitter {
                 }
                 break;
 
+            case 'shape':
+                // The broadcaster's studio: the picture it sends changed size (a phone turned, WebRTC lowered the
+                // resolution). Kept in the stream's history (stream-history.js) for seeks and the record.
+                if (client.role === 'broadcaster') require('./stream-history').shape(client.streamId, msg.width, msg.height);
+                break;
+
             case 'chat-tts':
                 // TTS message from chat to broadcaster
                 if (room.broadcaster && room.broadcaster.readyState === WebSocket.OPEN) {
@@ -504,6 +511,7 @@ class BroadcastServer extends EventEmitter {
                 room.broadcaster = null;
                 room._sfuProduceRequestedAt = 0;
                 console.log(`[Broadcast] Broadcaster disconnected: stream ${client.streamId}`);
+                require('./stream-history').broadcasterLeft(client.streamId);
 
                 // Start a grace timer — if broadcaster doesn't reconnect, end the stream cleanly
                 if (room._disconnectTimer) clearTimeout(room._disconnectTimer);

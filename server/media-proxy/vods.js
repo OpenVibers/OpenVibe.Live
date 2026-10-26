@@ -692,7 +692,8 @@ router.post('/clips', requireAuth, memUpload.single('video'), async (req, res) =
         const parsedVodId = vod_id ? parseInt(vod_id, 10) : null;
         const startTime = Number.parseFloat(req.body?.start_time);
         const endTime = Number.parseFloat(req.body?.end_time);
-        const isLiveClip = !!req.file || ['true', '1', true].includes(req.body.live);
+        const streamTime = ['true', '1', true].includes(req.body?.stream_time);   // the studio's clip panel: a live stream's moment
+        const isLiveClip = !!req.file || ['true', '1', true].includes(req.body.live) || streamTime;
         const sanitizedTitle = sanitizeClipTitle(title);
 
         if (accountTooNew(req.user)) return res.status(403).json({ error: 'Your account is too new to create clips. Please wait a minute.' });
@@ -730,6 +731,39 @@ router.post('/clips', requireAuth, memUpload.single('video'), async (req, res) =
             return res.status(201).json({ clip });
         }
 
+        // ── Stream-time clip (the go-live studio's clip panel): start/end in seconds since the stream started ──
+        // A stream whose broadcaster reconnected is recorded in parts, each its own VOD (stream 2795: VODs 6025 and
+        // 6026). The panel measures from the stream's start, and used to send those times to the VOD it knew first:
+        // "Start time exceeds video duration". The stream's history (streaming/stream-history.js) knows where each
+        // part began, so the window goes to the part recording its end, in that part's own time.
+        if (!req.file && parsedStreamId && !parsedVodId && streamTime) {
+            if (!Number.isFinite(startTime) || !Number.isFinite(endTime)) return res.status(400).json({ error: 'start_time and end_time required' });
+            if (startTime < 0 || endTime < 0) return res.status(400).json({ error: 'Time values cannot be negative' });
+            const maxClipDuration = await db.getSetting('max_clip_duration') || 60;
+            if (endTime - startTime < 1) return res.status(400).json({ error: 'Clip must be at least 1 second' });
+            if (endTime - startTime > maxClipDuration) return res.status(400).json({ error: `Clips are limited to ${maxClipDuration} seconds` });
+            const stream = await db.getStreamById(parsedStreamId);
+            if (!stream) return res.status(404).json({ error: 'Stream not found' });
+            if (!await db.isStreamClipRecordingEnabled(stream)) return res.status(403).json({ error: 'Clipping is disabled for this stream.' });
+            const place = await clipPlace(stream, startTime, endTime);
+            if (!place) return res.status(409).json({ error: 'This stream was not being recorded at that moment, so it cannot be clipped.', no_recording: true });
+            let vod;
+            try { vod = await media.getVod(place.vodId); } catch (err) { return mediaErr(res, err, 'VOD not found'); }
+            if (!vod || !await access.canView(req.user, vod)) return vodNotFound(res);
+            const clip = await media.createClip({
+                vod_id: place.vodId,
+                start_s: place.start,
+                end_s: place.end,
+                title: defaultClipTitle(sanitizedTitle, stream.title),
+                user_id: req.user.id,
+                stream_id: stream.id,
+                visibility: await db.resolveStreamClipVisibility(stream),
+            });
+            noteClip(req.user.id);
+            await _notifyStreamerOfClip(stream.id, req.user, sanitizedTitle, clip?.id);
+            return res.status(201).json({ clip, vod_id: place.vodId, part: place.part });
+        }
+
         // ── LIVE clip — cut server-side from the stream's active Media recording ──
         if (isLiveClip && parsedStreamId && !parsedVodId) {
             const stream = await db.getStreamById(parsedStreamId);
@@ -753,7 +787,7 @@ router.post('/clips', requireAuth, memUpload.single('video'), async (req, res) =
             let dur = parseFloat(req.body.duration);
             if (!Number.isFinite(dur) || dur < 1) dur = 30;
             dur = Math.min(dur, maxDur);
-            const recElapsed = Math.max(0, (Date.now() - rec.startedAt) / 1000);
+            const recElapsed = Math.max(0, (Date.now() - (rec.mediaStartedAt || rec.startedAt)) / 1000);
             const safeEdge = Math.max(0, recElapsed - 1.5); // stay inside flushed footage
             let clipEnd = parseFloat(req.body.at);
             if (!Number.isFinite(clipEnd) || clipEnd <= 0) clipEnd = safeEdge;
@@ -810,6 +844,29 @@ router.post('/clips', requireAuth, memUpload.single('video'), async (req, res) =
         mediaErr(res, err, 'Failed to create clip');
     }
 });
+
+/**
+ * Where a window of stream time (seconds since the stream started) was recorded: the part recording its end, and the
+ * window in that part's own seconds → { vodId, part, start, end }, or null when nothing recorded it. Without a history
+ * row (a part started before the history existed) the active recording is measured from its start.
+ */
+async function clipPlace(stream, startTime, endTime) {
+    const history = require('../streaming/stream-history');
+    let part = await history.partAt(stream.id, endTime);
+    if (!part) {
+        const rec = recorder.getActiveRecording(stream.id);
+        const at = rec && rec.vodId ? history.streamSeconds(stream, rec.mediaStartedAt || rec.startedAt) : null;
+        if (at == null || at > endTime) return null;
+        part = { vod_id: rec.vodId, part: rec.part || 1, at, end: null };
+    }
+    if (!part.vod_id) return null;
+    let end = endTime - part.at;
+    if (part.end != null) end = Math.min(end, part.end - part.at);
+    // A window that begins before its part did (the reconnect's gap): the part's own seconds only, at most as long as asked.
+    const start = Math.max(0, end - (endTime - startTime));
+    if (end - start < 1) return null;
+    return { vodId: part.vod_id, part: part.part, start: Math.round(start * 10) / 10, end: Math.round(end * 10) / 10 };
+}
 
 async function _notifyStreamerOfClip(streamId, clipper, title, clipId) {
     try {

@@ -38,10 +38,10 @@ const els = {
 };
 const ctx = { document: { getElementById: (id) => els[id] || null }, Date, Math, isNaN, isFinite, String };
 vm.createContext(ctx);
-vm.runInContext(`${extract('_dvrFmtTime')}\n${extract('updateDVRUI')}\nthis.run = updateDVRUI;`, ctx);
+vm.runInContext(`${extract('_dvrFmtTime')}\n${extract('_dvrSpan')}\n${extract('_dvrBarTime')}\n${extract('updateDVRUI')}\nthis.run = updateDVRUI;`, ctx);
 
 // At the live edge: no time of its own (the buffer is 1:30:00 while the stream is 1:30:17 old).
-ctx.dvrState = { active: true, isLive: true, duration: 5400, streamStartTime: Date.now() - 5417000, seeking: false };
+ctx.dvrState = { active: true, isLive: true, duration: 5400, streamStartTime: Date.now() - 5417000, seeking: false, earlier: [], activeAt: null, playingPart: null };
 vm.runInContext('var dvrState = this.dvrState;', ctx);
 ctx.run();
 const time = els['dvr-time-display'];

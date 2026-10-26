@@ -2212,6 +2212,19 @@ function setNavLiveIndicator(isLive) {
 
 /* ── Global Display Timers (Stats + Uptime) ──────────────────── */
 
+/**
+ * The picture the encoder sends changed size (the phone turned, WebRTC lowered the resolution): tell the server, which
+ * keeps it in the stream's history (server/streaming/stream-history.js) for seeks and the record. Only what the encoder
+ * really sends counts (its outbound stats), and only a change.
+ */
+function _reportBroadcastShape(ss, resolution) {
+    const m = /^(\d+)x(\d+)$/.exec(resolution || '');
+    if (!m || ss._reportedShape === resolution) return;
+    const ws = ss.signalingWs;
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    try { ws.send(JSON.stringify({ type: 'shape', width: Number(m[1]), height: Number(m[2]) })); ss._reportedShape = resolution; } catch { /* next tick */ }
+}
+
 function startGlobalDisplayTimers() {
     // Stats polling — reads from active stream
     clearInterval(_globalStatsInterval);
@@ -2288,6 +2301,7 @@ function startGlobalDisplayTimers() {
             setT('bc-stat-bitrate', bitrateText);
             setT('bc-stat-fps', `${Math.round(frameRate)} fps`);
             setT('bc-stat-resolution', resolution || '--');
+            _reportBroadcastShape(ss, hasStats ? resolution : '');
             setT('bc-stat-status', connState);
             setT('bc-stat-codec', codec || '--');
 
@@ -3864,6 +3878,7 @@ function connectSignaling(streamId) {
     const wsUrl = `${protocol}://${host}${portSuffix}/ws/broadcast?token=${token}&streamId=${ss.streamData.id}&role=broadcaster`;
     const ws = new WebSocket(wsUrl);
     ss.signalingWs = ws;
+    ss._reportedShape = null;   // a new socket (or a restarted server) hears the current shape again
     ss.signalingIntentionalClose = false;
 
     ws.onopen = () => {
@@ -5513,18 +5528,7 @@ async function createBroadcastClip() {
     const ss = getActiveStreamState();
     if (!ss) { toast('No active stream', 'error'); return null; }
 
-    // Auto-retry if VOD not ready yet (up to 3 attempts, 2s apart)
-    if (!ss.vodId) {
-        const btn = document.getElementById('bc-clip-create-btn');
-        if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Waiting for VOD…'; }
-        for (let attempt = 0; attempt < 3; attempt++) {
-            await new Promise(r => setTimeout(r, 2000));
-            const retry = getActiveStreamState();
-            if (retry?.vodId) { ss.vodId = retry.vodId; break; }
-        }
-        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-scissors"></i> Create Clip'; }
-        if (!ss.vodId) { toast('VOD recording not ready yet — try again in a few seconds', 'error'); return null; }
-    }
+    if (!ss.streamData?.id) { toast('The stream is still starting — try again in a few seconds', 'error'); return null; }
 
     const duration = _bcClipEnd - _bcClipStart;
     if (duration <= 0) { toast('End time must be after start time', 'error'); return null; }
@@ -5541,9 +5545,12 @@ async function createBroadcastClip() {
         const res = await fetch('/api/vods/clips', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
+            // The marks are seconds since the stream started. A broadcaster who reconnects is recorded in parts, each
+            // its own VOD, so the server picks the part that recorded the moment and turns the marks into its time
+            // (stream 2795: these times sent to part 1 were past its end).
             body: JSON.stringify({
-                vod_id: ss.vodId,
-                stream_id: ss.streamData?.id,
+                stream_id: ss.streamData.id,
+                stream_time: true,
                 start_time: _bcClipStart,
                 end_time: _bcClipEnd,
                 title: typed,

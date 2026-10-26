@@ -77,6 +77,34 @@ Viewers can seek backwards in a live stream using the DVR controls:
 
 DVR availability appears after ~30 seconds of recording.
 
+The bar spans the whole stream, not only the part being recorded. A broadcaster who reconnects (a phone dropping its
+connection, a browser tab reloading) is recorded in parts, each its own VOD ("BIRD DRAMA (Part 2)"); the player reads
+the stream's history and plays an earlier part from its own VOD when you seek into it, then carries on into the next.
+Rewinding across a phone turn shows each stretch at its own shape: Media's DVR playlist starts a new period, with its
+own init segment, at each change of shape.
+
+## A stream's history
+
+While a stream is live, Live keeps what happened to it, in stream time (seconds since it started), in
+`stream_history` (`server/streaming/stream-history.js`):
+
+| Kind | What | Kept from |
+|------|------|-----------|
+| `part` | a recording part: its VOD, where it starts and stops, why it rolled | the recorder |
+| `shape` | the picture the broadcaster sends changed size (`WxH`) | the studio's outbound video stats |
+| `reconnect` | the broadcaster came back, and how long it was gone | the broadcast socket |
+
+`GET /api/streams/:id/history` answers `{ started_at, is_live, now_sec, parts, shapes, reconnects }`; a part whose
+VOD the viewer cannot see is listed without it. Stream time minus a part's start is that part's own time, and that is
+how the history is used:
+
+- **Clips from the go-live studio**: the clip panel's marks are stream time; the server cuts the part that recorded the
+  moment, in that part's time (`POST /api/vods/clips` with `stream_id`, `stream_time: true`, `start_time`, `end_time`).
+  Stream 2795's studio sent those times to part 1 and Media refused them ("Start time exceeds video duration").
+- **Transcripts, the Rundown, Vibe's voice clips and AI moments** move stream-time lines into the VOD's own time. The
+  speech capture's offsets are stream time across a capture restart (they used to fall behind by every gap).
+- **The rewind** above.
+
 ## Clips
 
 Viewers can create clips from live streams:
