@@ -136,6 +136,10 @@ const CHAT_SETTINGS_DEFAULTS = {
                                   // Defaults ON so messages aren't dot-prefixed/muted-styled by default.
     streamingTtsEnabled: true,    // Separate TTS toggle while broadcasting live
     channelTtsAlways: false,      // Hear your own channel's chat TTS even while NOT live
+    ttsHearWatching: false,       // Also read TTS aloud in this browser on channels you WATCH. Off by default: the stream's
+                                  // own audio already carries its chat TTS (the streamer plays it), and a second copy in
+                                  // every viewer's browser was read over the stream (owner and Maticus, 2026-10-26).
+                                  // This browser only: not part of the synced chat.tts_defaults record.
     ttsVolume: 80,                // TTS message volume (0–100)
     soundVolume: 80,              // Chat !sound / soundboard clip volume (0–100), independent of TTS
     // Chat sounds (soundboard + channel !sound commands) — independent of TTS
@@ -2298,7 +2302,7 @@ function handleChatMessage(msg) {
                 if (isOwnChannelTtsSpeaker() && _ownChannelTtsWanted() && _isTTSEnabledForSource(msg.source_platform)) {
                     speakTTS(msg.message || msg.text, msg.voiceFX, msg.username);
                 }
-            } else if (isChatTTSEnabled() && !_isOwnTtsMessage(msg) && _isTTSEnabledForSource(msg.source_platform)) {
+            } else if (chatSettings.ttsHearWatching && isChatTTSEnabled() && !_isOwnTtsMessage(msg) && _isTTSEnabledForSource(msg.source_platform)) {
                 speakTTS(msg.message || msg.text, msg.voiceFX, msg.username);
             }
             break;
@@ -2310,7 +2314,7 @@ function handleChatMessage(msg) {
                     && !_ttsRecentlyPlayed(msg)) playBroadcastTTSAudio(msg);
             } else if (_isOwnChannelChat()) {
                 if (isOwnChannelTtsSpeaker() && _ownChannelTtsWanted() && _isTTSEnabledForSource(msg.source_platform)) playTTSAudio(msg);
-            } else if (isChatTTSEnabled() && !_isOwnTtsMessage(msg) && _isTTSEnabledForSource(msg.source_platform)) {
+            } else if (chatSettings.ttsHearWatching && isChatTTSEnabled() && !_isOwnTtsMessage(msg) && _isTTSEnabledForSource(msg.source_platform)) {
                 playTTSAudio(msg);
             }
             break;
@@ -5824,13 +5828,17 @@ function buildSettingsPanelHTML() {
             <div class="csp-title"><i class="fa-solid fa-volume-high"></i> Text-to-Speech</div>
             <!-- No "Enable TTS" row here — the speaker button under the chat input IS
                  that toggle; a second switch for the same thing just confused people. -->
-            <label class="csp-row" title="Controls TTS in your own channel chat while you are live (plays in one tab only, synced across your tabs). TTS on other channels uses the speaker button under the chat input.">
+            <label class="csp-row" title="Controls TTS in your own channel chat while you are live (plays in one tab only, synced across your tabs). Whether your own messages are read aloud is the speaker button under the chat input.">
                 <span>TTS On My Channel When Live</span>
                 <input type="checkbox" data-setting="streamingTtsEnabled" onchange="onChatSettingChange(this)">
             </label>
             <label class="csp-row" title="Also read your channel's chat aloud while you are OFFLINE (same one-tab-per-device + cross-tab sync as the live option).">
                 <span>TTS On My Channel When Offline</span>
                 <input type="checkbox" data-setting="channelTtsAlways" onchange="onChatSettingChange(this)">
+            </label>
+            <label class="csp-row" title="The stream's audio already has its chat read aloud (the streamer plays it). Turn this on to also hear it read in this browser.">
+                <span>Read TTS Aloud On Channels I Watch</span>
+                <input type="checkbox" data-setting="ttsHearWatching" onchange="onChatSettingChange(this)">
             </label>
             <label class="csp-row">
                 <span>TTS Volume</span>
@@ -5883,6 +5891,7 @@ function onChatSettingChange(el) {
     else chatSettings[key] = el.value;
     saveChatSettings();
     if (key === 'ttsEnabled' || key === 'streamingTtsEnabled') syncTTSToggleButtons();
+    if (key === 'ttsHearWatching' && !chatSettings.ttsHearWatching && typeof cancelAllTTS === 'function') cancelAllTTS();
     if (key === 'showFloatingChat') _fcwUpdateVisibility();
     if (key === 'showGlobalInStream' || key === 'showAllStreamsInStream') _syncGlobalFeed();
     if (key === 'friendlyGlobal') { _friendlyEnsureRules().then(() => { if (getChatEl().isGlobal) hydrateActiveChatHistory(chatStreamId).catch(() => { }); }); }
