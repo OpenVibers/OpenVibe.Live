@@ -44,6 +44,8 @@ const strip = src.slice(src.indexOf('const HEADLINE = ['), src.indexOf('];', src
 const stripMetrics = [...strip.matchAll(/metric: '([a-zA-Z]+)'/g)].map((m) => m[1]);
 assert.strictEqual(new Set(stripMetrics).size, stripMetrics.length, 'the strip shows each metric once');
 assert.strictEqual(stripMetrics.length, 9, 'nine chips: three rows of three on a phone');
+// Every site's numbers (openvibe.network/stats, Network#359) under the board and in the chart dialog.
+assert.ok(src.includes('<a class="hero-stat-all-sites" href="https://openvibe.network/stats">'), 'the board links every site\'s numbers');
 
 // The chart dialog: daily headcounts have no running total, and an error answer is never redrawn.
 const nerds = fs.readFileSync(path.join(__dirname, '..', 'public', 'js', 'stats-nerds.js'), 'utf8');
@@ -51,4 +53,5 @@ assert.ok(/const DISTINCT = new Set\(\['active', 'supporters'\]\)/.test(nerds));
 assert.ok(nerds.includes("DISTINCT.has(m.metric) ? [['daily', 'Per day']]"), 'a headcount offers only per day');
 assert.ok(nerds.includes('if (state.data?.points && !state.table) drawChart();'), 'a resize never redraws an error answer');
 assert.ok(nerds.includes('const asked = Number(chip?.dataset?.days);'), 'the 24-hour line opens its own 24 hours');
+assert.ok(nerds.includes('<a class="sn-all" href="https://openvibe.network/stats">'), 'and the dialog links them too');
 console.log('home stat board: all checks passed');
