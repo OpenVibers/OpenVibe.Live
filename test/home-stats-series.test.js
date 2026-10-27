@@ -85,5 +85,32 @@ await db.setSetting('stats_vibes_reset_at', 'garbage');
 assert.strictEqual(await db.vibesStatsSince(), '1970-01-01 00:00:00', 'an unparseable reset value is ignored, not fatal');
 console.log('✅ Vibes reset cutoff applies to counters, deltas and series');
 
+// ── 2026-10-27 review: new streamers, visitors' running total, hours watched per window ──
+// Bob streams three days in a row and Alice once, 2 days ago: the chart counts each person once, on their first
+// stream, so its running total is the chip's headcount (summing each day's streamers counted Bob three times).
+for (const back of [5, 4, 3]) await db.run("INSERT INTO streams (user_id, title, created_at) VALUES (?, 'b', datetime('now', ?))", [b, `-${back} days`]);
+await db.run("INSERT INTO streams (user_id, title, created_at) VALUES (?, 'a', datetime('now', '-2 days'))", [a]);
+const streamers7 = await db.getHomeStatSeries('streamers', 7);
+assert.strictEqual(streamers7.total, 2, 'two new streamers in the week, Bob once');
+assert.strictEqual(streamers7.points[6 - 5].value, 1, 'Bob on his first day only');
+assert.strictEqual(streamers7.points[6 - 4].value, 0);
+assert.strictEqual(streamers7.before + streamers7.total, 2, 'the running total ends at the headcount');
+// Most anon rows predate created_at: they are part of everything before the window, so the running total ends at
+// the chip's number (it said 1,812 against 29,144 on production).
+await db.run("INSERT INTO anon_ip_mappings (ip, anon_num, created_at) VALUES ('10.0.0.1', 901, NULL), ('10.0.0.2', 902, NULL), ('10.0.0.3', 903, datetime('now', '-1 hours'))");
+const visitors7 = await db.getHomeStatSeries('visitors', 7);
+assert.strictEqual(visitors7.total, 1);
+assert.strictEqual(visitors7.before, 2, 'rows with no date count before the window');
+// Hours watched over each window, and distinct streamers this week.
+await db.run("INSERT INTO watch_time (user_id, stream_id, minutes_watched, created_at) SELECT ?, id, 120, datetime('now', '-2 hours') FROM streams WHERE user_id = ? LIMIT 1", [a, b]);
+await db.run("INSERT INTO watch_time (user_id, stream_id, minutes_watched, created_at) SELECT ?, id, 180, datetime('now', '-10 days') FROM streams WHERE user_id = ? LIMIT 1", [b, a]);
+stats = await db._computeHomeStats();
+assert.deepStrictEqual(stats.recent.hoursWatched, { d: 2, w: 2, m: 5, pw: 3 }, 'hours watched per window, and the week before');
+assert.deepStrictEqual(stats.recent.streamers, { d: 0, w: 2, m: 2, pw: 0 }, '"+" on Streamers is new streamers');
+assert.strictEqual(stats.streamedWeek, 2, 'two people went live this week');
+assert.strictEqual((await db.getHomeStatSeries('supporters', 7)).distinct, true, 'supporters per day do not add up');
+assert.strictEqual((await db.getHomeStatSeries('users', 7)).distinct, undefined);
+console.log('✅ new streamers, visitors before the window, hours watched per window');
+
 console.log('\n✅ All home-stats tests passed');
 })().catch((e) => { console.error(e); process.exit(1); });

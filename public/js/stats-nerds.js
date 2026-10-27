@@ -30,6 +30,9 @@
         vibesBought: 'fa-cart-shopping', subs: 'fa-star', points: 'fa-coins', pointsSpent: 'fa-gift', redemptions: 'fa-gift',
         emotes: 'fa-face-grin-squint',
     };
+    // Headcounts per day (people who chatted, people who tipped): the days do not add up, so these have no running
+    // total and no "added" figure; their chart is the daily count, and the chip's own number is the week's.
+    const DISTINCT = new Set(['active', 'supporters']);
     const RANGES = [
         { days: 1, label: '24h', readingOnly: true },
         { days: 7, label: '7d' }, { days: 30, label: '30d' }, { days: 90, label: '90d' }, { days: 365, label: '1y' },
@@ -91,6 +94,9 @@
         state.lastFocus = document.activeElement;
         const isReading = (m) => m.metric === 'liveNow' || m.metric === 'viewersNow';
         state.days = isReading(state.metrics[state.index]) ? 7 : 30;
+        // The 24-hour viewers line opens its own last 24 hours.
+        const asked = Number(chip?.dataset?.days);
+        if (RANGES.some((r) => r.days === asked && (!r.readingOnly || isReading(state.metrics[state.index])))) state.days = asked;
         state.view = isReading(state.metrics[state.index]) ? 'avg' : 'daily';
         state.table = false;
         build();
@@ -184,7 +190,8 @@
             if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5) step(dx < 0 ? 1 : -1);
         }, { passive: true });
         const plot = ov.querySelector('.sn-plot');
-        state.ro = new ResizeObserver(() => { if (state.data && !state.table) drawChart(); });
+        // Only a chart that has points: an error answer has none, and redrawing it threw on every resize.
+        state.ro = new ResizeObserver(() => { if (state.data?.points && !state.table) drawChart(); });
         state.ro.observe(plot);
         renderHead();
         ov.querySelector('.sn-dialog').focus({ preventScroll: true });
@@ -210,7 +217,8 @@
         }));
         const views = m.kind === 'reading'
             ? [['avg', 'Average'], ['peak', 'Peak']]
-            : [['daily', 'Per day'], ['total', 'Running total']];
+            : DISTINCT.has(m.metric) ? [['daily', 'Per day']] : [['daily', 'Per day'], ['total', 'Running total']];
+        if (DISTINCT.has(m.metric)) state.view = 'daily';
         const viewSeg = ov.querySelector('.sn-views');
         viewSeg.replaceChildren(...views.map(([k, label]) => {
             const b = el('button', k === state.view ? 'is-on' : '', label);
@@ -303,6 +311,13 @@
         }
         const best = d.points.reduce((a, p) => (p.value > a.value ? p : a), { value: -1 });
         const avg = d.total / d.points.length;
+        if (DISTINCT.has(m.metric)) {
+            return [
+                ['Last 7 days', exact(m.now, unit)],
+                [`Average day · ${rangeName()}`, exact(avg, unit)],
+                ['Busiest day', best.value > 0 ? exact(best.value, unit) : '—', best.value > 0 ? el('span', 'sn-tile-sub', dayLabel(best.day)) : null],
+            ];
+        }
         const tiles = [
             [`Added · ${rangeName()}`, exact(d.total, unit), deltaPill(d.total, d.prev_total)],
             ['Per day', exact(avg, unit)],
@@ -484,7 +499,8 @@
         const wrap = ov.querySelector('.sn-table');
         const t = el('table');
         const head = el('tr');
-        const cols = d.kind === 'reading' ? [d.bucket === 'hour' ? 'Hour' : 'Day', 'Average', 'Peak'] : ['Day', 'Added', 'Running total'];
+        const distinct = DISTINCT.has(current().metric);
+        const cols = d.kind === 'reading' ? [d.bucket === 'hour' ? 'Hour' : 'Day', 'Average', 'Peak'] : distinct ? ['Day', 'People'] : ['Day', 'Added', 'Running total'];
         cols.forEach((c) => head.append(el('th', null, c)));
         const thead = el('thead'); thead.append(head);
         const tbody = el('tbody');
@@ -494,6 +510,8 @@
             tr.append(el('td', null, bucketLabel(p)));
             if (d.kind === 'reading') {
                 tr.append(el('td', 'num', exact(p.value, unit)), el('td', 'num', exact(p.peak, unit)));
+            } else if (distinct) {
+                tr.append(el('td', 'num', exact(p.value, unit)));
             } else {
                 run += p.value;
                 tr.append(el('td', 'num', exact(p.value, unit)), el('td', 'num', exact(run, unit)));
@@ -508,10 +526,12 @@
     function downloadCsv() {
         const d = state.data; if (!d || !d.points) return;
         const m = current();
-        const lines = [d.kind === 'reading' ? 'bucket,average,peak' : 'day,value,running_total'];
+        const distinct = DISTINCT.has(m.metric);
+        const lines = [d.kind === 'reading' ? 'bucket,average,peak' : distinct ? 'day,people' : 'day,value,running_total'];
         let run = Number(d.before) || 0;
         for (const p of d.points) {
             if (d.kind === 'reading') lines.push(`${p.t},${p.value ?? ''},${p.peak ?? ''}`);
+            else if (distinct) lines.push(`${p.day},${p.value}`);
             else { run += p.value; lines.push(`${p.day},${p.value},${Math.round(run * 100) / 100}`); }
         }
         const blob = new Blob([lines.join('\n') + '\n'], { type: 'text/csv' });

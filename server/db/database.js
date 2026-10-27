@@ -1525,6 +1525,8 @@ async function vibesStatsSince() {
 // One supporter in channel_tips, with or without a Live account (PowerChat and OpenVibe.Tips supporters have a name only).
 const TIP_SUPPORTER = "COALESCE(from_user_id::text, 'n:' || lower(COALESCE(username, '')))";
 const TIP_SUPPORTER_T = "COALESCE(t.from_user_id::text, 'n:' || lower(COALESCE(t.username, '')))";
+// Each person's first stream: when they became a streamer.
+const FIRST_STREAMS = 'SELECT user_id, MIN(created_at) AS created_at FROM streams WHERE user_id IS NOT NULL GROUP BY user_id';
 const HOME_SERIES = {
     users:       { table: 'users',             ts: 'created_at',  agg: 'COUNT(*)',              where: 'COALESCE(is_banned, 0) = 0' },
     anons:       { table: 'anon_ip_mappings',  ts: 'created_at',  agg: 'COUNT(*)' },
@@ -1534,13 +1536,16 @@ const HOME_SERIES = {
     // getHomeStatSeries from Chat's `site-daily` stats read; there is no Live-table fallback any more
     // (since 2026-10-05 Live keeps no copy of Chat's tables), so outside chat mode they answer null.
     sessions:    { table: 'streams',           ts: 'created_at',  agg: 'COUNT(*)' },
-    streamers:   { table: 'streams',           ts: 'created_at',  agg: 'COUNT(DISTINCT user_id)' },
+    // New streamers: each person counted once, on the day of their first stream, so the running total is the chip's
+    // all-time headcount. (Summing each day's distinct streamers counted a regular once per day they streamed.)
+    streamers:   { table: `(${FIRST_STREAMS}) first_streams`, ts: 'created_at', agg: 'COUNT(*)' },
     // vods, clips, hours and pastes are OpenVibe.Media's series (home/routes.js MEDIA_SERIES).
     hoursWatched:{ table: 'watch_time',        ts: 'created_at',  agg: 'COALESCE(SUM(minutes_watched)::float8, 0) / 60.0' },
     aiMoments:   { table: 'stream_memories',   ts: 'created_at',  agg: 'COUNT(*)' },
     // Tips from channel_tips (every rail: on-site Vibes, PowerChat, OpenVibe.Tips), not the money ledger.
     vibes:       { table: 'channel_tips',      ts: 'created_at',  agg: 'COALESCE(SUM(amount)::float8, 0)', vibesReset: true },
-    supporters:  { table: 'channel_tips',      ts: 'created_at',  agg: `COUNT(DISTINCT ${TIP_SUPPORTER})`, vibesReset: true },
+    // A headcount per day (`distinct`): the days do not add up, so the chart offers no running total.
+    supporters:  { table: 'channel_tips',      ts: 'created_at',  agg: `COUNT(DISTINCT ${TIP_SUPPORTER})`, vibesReset: true, distinct: true },
     // vibesBought and subs are OpenVibe.Billing's series (home/routes.js, monetization/billing-stats.js).
     points:      { table: 'coin_transactions', ts: 'created_at',  agg: 'COALESCE(SUM(amount)::float8, 0)', where: 'amount > 0' },
     pointsSpent: { table: 'coin_transactions', ts: 'created_at',  agg: 'COALESCE(-SUM(amount)::float8, 0)', where: 'amount < 0' },
@@ -1579,10 +1584,12 @@ async function homeSeriesLocal(metric, days = 30) {
         const w = [...(def.where ? [def.where] : []), ...(def.vibesReset ? [`${def.ts} >= '${await vibesStatsSince()}'`] : []), extra];
         try { return Number((await get(`SELECT ${def.agg} AS value FROM ${def.table} WHERE ${w.join(' AND ')}`, params))?.value) || 0; } catch { return 0; }
     };
-    const before = await scalar(`${def.ts} < datetime('now', ?)`, [`-${days - 1} days`]);
+    // Rows with no timestamp (most anon_ip_mappings rows predate the column) are part of everything before the window,
+    // so the running total ends at the chip's all-time number.
+    const before = await scalar(`(${def.ts} < datetime('now', ?) OR ${def.ts} IS NULL)`, [`-${days - 1} days`]);
     const prevTotal = await scalar(`${def.ts} >= datetime('now', ?) AND ${def.ts} < datetime('now', ?)`, [`-${2 * days - 1} days`, `-${days - 1} days`]);
     return { metric, kind: 'count', days, points, total, peak: Math.max(0, ...points.map(p => p.value)),
-        before: Number(before.toFixed(2)), prev_total: Number(prevTotal.toFixed(2)) };
+        before: Number(before.toFixed(2)), prev_total: Number(prevTotal.toFixed(2)), ...(def.distinct ? { distinct: true } : {}) };
 }
 
 /**
@@ -1593,9 +1600,11 @@ async function homeSeriesLocal(metric, days = 30) {
  */
 async function getHomeStatSeries(metric, days = 30) {
     if (metric === 'messages' || metric === 'active') {
+        // Awaited, not peeked: a peek is null on every cold key (each range, each new UTC day), and the chart answered
+        // "Unknown metric" for it. `active` is a headcount per day, so its days do not add up (`distinct`).
         try {
-            const s = await require('../chat/chat-reads').homeSeriesPeek(metric, days);
-            if (s) return s;
+            const s = await require('../chat/chat-reads').homeSeries(metric, days);
+            if (s) return metric === 'active' ? { ...s, distinct: true } : s;
         } catch { /* fall through to Live's own tables */ }
     }
     return await homeSeriesLocal(metric, days);
@@ -1675,10 +1684,13 @@ async function _computeHomeStats() {
         const prev = await c(`SELECT COALESCE(SUM(${col})::float8, 0) AS count FROM ${table} WHERE ${tsCol} >= datetime('now', '-14 days') AND ${tsCol} < datetime('now', '-7 days')${extra ? ' AND ' + extra : ''}`);
         return { d: await q('-1 day'), w: await q('-7 days'), m: await q('-30 days'), pw: prev };
     };
-    // Distinct people who went live in a window — "streamers" is a headcount, not a stream count.
-    const streamersWin = async () => {
-        const q = async (a, b) => await c(`SELECT COUNT(DISTINCT user_id) AS count FROM streams WHERE user_id IS NOT NULL AND created_at >= datetime('now', ?)${b ? " AND created_at < datetime('now', ?)" : ''}`, b ? [a, b] : [a]);
-        return { d: await q('-1 day'), w: await q('-7 days'), m: await q('-30 days'), pw: await q('-14 days', '-7 days') };
+    // New streamers in a window: people whose first stream falls in it, so "+N" on the chip adds to its headcount
+    // (and matches the chart). Distinct people who streamed in the window is `streamedWeek`.
+    const streamersWin = async () => await winCount(`(${FIRST_STREAMS}) first_streams`, 'created_at');
+    // Hours watched in a window (watch-time heartbeats are minutes).
+    const hoursWin = async () => {
+        const m = await winSum('watch_time', 'minutes_watched', 'created_at');
+        return { d: Math.round(m.d / 60), w: Math.round(m.w / 60), m: Math.round(m.m / 60), pw: Math.round(m.pw / 60) };
     };
     return {
         // ── Right-now + community-economy metrics ────────────────
@@ -1708,6 +1720,9 @@ async function _computeHomeStats() {
         clips: null,
         liveSessions: await c(`SELECT COUNT(*) AS count FROM streams`),
         streamers: await c(`SELECT COUNT(DISTINCT user_id) AS count FROM streams WHERE user_id IS NOT NULL`),
+        // Distinct people who went live in the last seven days, and the seven before.
+        streamedWeek: await c(`SELECT COUNT(DISTINCT user_id) AS count FROM streams WHERE user_id IS NOT NULL AND created_at >= datetime('now', '-7 days')`),
+        prevStreamedWeek: await c(`SELECT COUNT(DISTINCT user_id) AS count FROM streams WHERE user_id IS NOT NULL AND created_at >= datetime('now', '-14 days') AND created_at < datetime('now', '-7 days')`),
         // OpenVibe.Chat owns chat_messages (roadmap T3): the total comes from Chat's read API.
         // A Chat outage answers the cache, else null — never a 500 for the home page.
         chatMessages: await (async () => { try { const s = await require('../chat/chat-reads').siteStatsPeek(); return s && s.messages != null ? s.messages : null; } catch { return null; } })(),
@@ -1758,6 +1773,7 @@ async function _computeHomeStats() {
             })(),
             hours: null,    // OpenVibe.Media
             streamers: await streamersWin(),
+            hoursWatched: await hoursWin(),
             // Live's `emotes` copy was unread since N+2 and is now dropped, so the
             // deltas are zero. The key stays for the N-1 client, which reads stats.recent.emotes.
             emotes: { d: 0, w: 0, m: 0, pw: 0 },
