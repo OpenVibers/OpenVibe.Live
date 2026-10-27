@@ -142,10 +142,20 @@ function _setSelectValueIfPresent(select, value) {
 let _switchingCamera = false;
 function _syncCameraSelectionUI(cameraId, { persist = true } = {}) {
     const normalized = cameraId || 'default';
+    // The camera chosen on each side is remembered too, so Flip and the Front / Back buttons go back to it.
+    if (persist && normalized !== 'default') {
+        try {
+            const sel = document.getElementById('bc-create-camera');
+            const opt = sel && Array.from(sel.options).find((o) => o.value === normalized);
+            const facing = opt && opt.dataset.facing;
+            if (facing) localStorage.setItem(`bc-last-camera-${facing}`, normalized);
+        } catch { /* */ }
+    }
     _setSelectValueIfPresent(document.getElementById('bc-forceCamera'), normalized);
     _setSelectValueIfPresent(document.getElementById('bc-create-camera'), normalized);
     _setSelectValueIfPresent(document.getElementById('bc-screen-camera'), normalized);
     broadcastState.settings.forceCamera = normalized;
+    _bcRenderCameraChooser();
     if (persist) {
         saveBroadcastSettings();
         try { localStorage.setItem('bc-last-camera', normalized); } catch {}
@@ -250,6 +260,101 @@ function _bcCameraChoices(devices) {
     // Front cameras first, then back, then the rest, each side in the phone's order.
     const rank = (c) => (c.facing === 'user' ? 0 : c.facing === 'environment' ? 1 : 2);
     return list.sort((a, b) => rank(a) - rank(b) || (a.side || 0) - (b.side || 0) || a.order - b.order);
+}
+
+/**
+ * The camera chooser before going live (owner, 2026-10-27: "rather than a drop down … tap a camera button that looks
+ * like the front or back camera … remember whichever you last had selected … default ass shit with unformatted camera
+ * names is trash"). It sits over the go-live camera select (#bc-create-camera), which stays the source of truth.
+ *
+ * On a phone: Front | Back, two big buttons, and when the chosen side has more than one camera, a chip per camera on
+ * it (Main, 2, 3). On a computer: a card per camera with its name. Picking one goes through _syncCameraSelectionUI
+ * (remembered as the last camera, and as the last on its side).
+ */
+function _bcRenderCameraChooser() {
+    const sel = document.getElementById('bc-create-camera');
+    if (!sel) return;
+    const group = document.getElementById('bc-ws-camera-group');
+    let box = document.getElementById('bc-cam-chooser');
+    const options = Array.from(sel.options).filter((o) => o.value && o.value !== 'default');
+    if (!options.length) { if (box) box.hidden = true; sel.closest('.bc-cam-select-row')?.removeAttribute('hidden'); return; }
+    if (!box) {
+        box = document.createElement('div');
+        box.id = 'bc-cam-chooser';
+        box.className = 'bc-cam-chooser';
+        box.setAttribute('role', 'group');
+        box.setAttribute('aria-label', 'Camera');
+        (sel.closest('.bc-cam-select-row') || sel).after(box);
+    }
+    box.hidden = false;
+    const row = sel.closest('.bc-cam-select-row');
+    if (row) row.hidden = true;
+    const choices = options.map((o) => ({ deviceId: o.value, name: o.textContent, facing: o.dataset.facing || null }));
+    const phone = window.matchMedia && window.matchMedia('(max-width: 760px), (pointer: coarse)').matches;
+    const sides = { user: choices.filter((c) => c.facing === 'user'), environment: choices.filter((c) => c.facing === 'environment') };
+    // "Default" is whatever the browser picks: show (and use) a real camera instead, the front one on a phone.
+    if (!choices.some((c) => c.deviceId === sel.value)) {
+        _syncCameraSelectionUI((phone && sides.user[0] ? sides.user[0] : choices[0]).deviceId, { persist: false });
+        return;
+    }
+    const current = choices.find((c) => c.deviceId === sel.value) || null;
+    const pick = (id) => { if (id && id !== sel.value) _syncCameraSelectionUI(id); };
+    const btn = (cls, attrs, html, onClick) => {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = cls;
+        for (const [k, v] of Object.entries(attrs)) b.setAttribute(k, v);
+        b.innerHTML = html;
+        b.addEventListener('click', onClick);
+        return b;
+    };
+    const nodes = [];
+    if (phone && (sides.user.length || sides.environment.length)) {
+        const lastOn = (facing) => { try { return localStorage.getItem(`bc-last-camera-${facing}`); } catch { return null; } };
+        const seg = document.createElement('div');
+        seg.className = 'bc-cam-sides';
+        for (const [facing, label, icon] of [['user', 'Front', 'fa-user'], ['environment', 'Back', 'fa-mountain-sun']]) {
+            const list = sides[facing];
+            if (!list.length) continue;
+            const on = current && current.facing === facing;
+            seg.append(btn(`bc-cam-side${on ? ' is-on' : ''}`, { 'aria-pressed': String(!!on) },
+                `<i class="fa-solid ${icon}" aria-hidden="true"></i><span>${label}</span>`,
+                () => pick((list.find((c) => c.deviceId === lastOn(facing)) || list[0]).deviceId)));
+        }
+        nodes.push(seg);
+        const side = current && current.facing ? sides[current.facing] : [];
+        if (side.length > 1) {
+            const lenses = document.createElement('div');
+            lenses.className = 'bc-cam-lenses';
+            lenses.setAttribute('aria-label', 'Cameras on this side');
+            side.forEach((c, i) => lenses.append(btn(`bc-cam-lens${c.deviceId === sel.value ? ' is-on' : ''}`,
+                { 'aria-pressed': String(c.deviceId === sel.value), 'aria-label': c.name, title: c.name },
+                i === 0 ? 'Main' : String(i + 1), () => pick(c.deviceId))));
+            nodes.push(lenses);
+        }
+        // A computer camera plugged into a phone or tablet (USB) is still choosable.
+        for (const c of choices.filter((x) => !x.facing)) {
+            nodes.push(btn(`bc-cam-card${c.deviceId === sel.value ? ' is-on' : ''}`, { 'aria-pressed': String(c.deviceId === sel.value) },
+                `<i class="fa-solid fa-video" aria-hidden="true"></i><span></span>`, () => pick(c.deviceId)));
+            nodes[nodes.length - 1].querySelector('span').textContent = c.name;
+        }
+    } else {
+        const cards = document.createElement('div');
+        cards.className = 'bc-cam-cards';
+        for (const c of choices) {
+            const on = c.deviceId === sel.value;
+            const icon = c.facing === 'user' ? 'fa-user' : c.facing === 'environment' ? 'fa-mountain-sun' : 'fa-video';
+            const b = btn(`bc-cam-card${on ? ' is-on' : ''}`, { 'aria-pressed': String(on) },
+                `<i class="fa-solid ${icon}" aria-hidden="true"></i><span></span><i class="fa-solid fa-check bc-cam-tick" aria-hidden="true"></i>`, () => pick(c.deviceId));
+            b.querySelector('span').textContent = c.name;
+            cards.append(b);
+        }
+        nodes.push(cards);
+    }
+    const refresh = btn('bc-cam-refresh', { title: 'Look for cameras again', 'aria-label': 'Look for cameras again' },
+        '<i class="fa-solid fa-rotate" aria-hidden="true"></i>', () => { if (typeof refreshDeviceLists === 'function') refreshDeviceLists(); });
+    box.replaceChildren(...nodes, refresh);
+    if (group) group.classList.toggle('bc-cam-has-chooser', true);
 }
 
 async function _enumerateBroadcastVideoInputs({ ensureLabels = false } = {}) {
@@ -448,14 +553,16 @@ function _populateCreateDeviceDropdowns(devices) {
     const audioSelect = document.getElementById('bc-create-audio');
     if (camSelect) {
         camSelect.innerHTML = '<option value="default">Default</option>';
-        devices.filter(d => d.kind === 'videoinput').forEach(d => {
+        for (const c of _bcCameraChoices(devices)) {
             const opt = document.createElement('option');
-            opt.value = d.deviceId;
-            opt.textContent = d.label || `Camera ${d.deviceId.slice(0, 8)}`;
+            opt.value = c.deviceId;
+            opt.textContent = c.name;
+            if (c.facing) opt.dataset.facing = c.facing;
             camSelect.appendChild(opt);
-        });
+        }
         _syncCameraSelectionUI(_getPreferredCameraId(), { persist: false });
         camSelect.onchange = () => _syncCameraSelectionUI(camSelect.value);
+        _bcRenderCameraChooser();
     }
     if (audioSelect) {
         audioSelect.innerHTML = '<option value="default">Default</option>';

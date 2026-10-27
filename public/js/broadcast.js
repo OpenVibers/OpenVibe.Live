@@ -1236,19 +1236,47 @@ async function loadExistingStreams(excludeStreamId) {
     if (!activeListEl) return;
     
     try {
-        // Use the /mine endpoint to get all user's streams
-        const data = await api('/streams/mine');
+        // Use the /mine endpoint to get all user's streams (the newest ended ones with their replays)
+        const data = await api('/streams/mine?limit=30&vods=1');
         // Exclude the just-ended stream (background DELETE may not have fired yet)
         const all = (data.streams || []).filter(s => !excludeStreamId || s.id !== excludeStreamId);
-        
-        // Only show ACTIVE streams in the top section
+
+        // The live ones as cards, then the last few streams with their replays: the tab was one small card on an
+        // empty screen (owner, 2026-10-27).
         const live = all.filter(s => s.is_live);
-        activeListEl.innerHTML = live.map(s => renderStreamItem(s)).join('');
+        const ended = all.filter(s => !s.is_live).slice(0, 4);
+        activeListEl.innerHTML = live.map(s => renderStreamItem(s)).join('')
+            + (ended.length ? `<div class="bc-last-streams"><h3><i class="fa-solid fa-clock-rotate-left"></i> Your last streams</h3>${ended.map(_renderEndedStream).join('')}</div>` : '');
+        window._bcMyLive = live;
+        window._bcMyLoaded = true;
         _updateBroadcastTopTabs(live.length, live);
     } catch (err) {
         console.error('[Broadcast] Failed to load active streams:', err);
+        window._bcMyLoaded = true;
         _updateBroadcastTopTabs(0);
     }
+}
+
+/** How long ago, in words ("3 min", "2 h", "Oct 25"). */
+function _bcAgo(iso) {
+    const t = iso ? Date.parse(String(iso).replace(' ', 'T') + (String(iso).includes('Z') ? '' : 'Z')) : NaN;
+    if (!Number.isFinite(t)) return '';
+    const m = Math.round((Date.now() - t) / 60000);
+    if (m < 1) return 'just now';
+    if (m < 60) return `${m} min ago`;
+    if (m < 24 * 60) return `${Math.round(m / 60)} h ago`;
+    return new Date(t).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+function _renderEndedStream(s) {
+    const len = s.duration_seconds ? formatDuration(s.duration_seconds) : (s.vod_duration ? formatDuration(s.vod_duration) : '');
+    const thumb = s.vod_thumbnail_url
+        ? `<img src="${esc(s.vod_thumbnail_url)}" alt="" loading="lazy" onerror="this.remove()">`
+        : '<i class="fa-solid fa-video" aria-hidden="true"></i>';
+    const replay = s.vod_id
+        ? `<a class="bc-last-replay" href="/vod/${encodeURIComponent(s.vod_id)}"><i class="fa-solid fa-play"></i> Replay</a>`
+        : '';
+    return `<div class="bc-last-item"><span class="bc-last-thumb">${thumb}</span>
+        <span class="bc-last-meta"><b>${esc(s.title || 'Untitled')}</b><small>${esc(_bcAgo(s.ended_at || s.started_at))}${len ? ` · ${esc(len)}` : ''}</small></span>${replay}</div>`;
 }
 
 /** Switch the top-level Go Live tab ('active' | 'mine'). */
@@ -1293,6 +1321,7 @@ function _updateBroadcastTopTabs(activeCount, liveStreams = []) {
 }
 
 function renderStreamItem(s) {
+    if (s.is_live) return _renderLiveStreamCard(s);
     const badge = s.is_live ? '<span class="badge badge-live">LIVE</span>' : '<span class="badge badge-offline">Ended</span>';
     const time = s.started_at ? new Date(s.started_at.replace(' ', 'T') + 'Z').toLocaleString() : '';
     const duration = s.duration_seconds ? formatDuration(s.duration_seconds) : '';
@@ -1306,6 +1335,30 @@ function renderStreamItem(s) {
         <div class="bc-stream-actions">
             ${s.is_live ? `<button class="btn btn-small btn-primary" onclick="resumeStream(${s.id})"><i class="fa-solid fa-play"></i> ${resumeLabel}</button> <button class="btn btn-small btn-danger" onclick="endExistingStream(${s.id})"><i class="fa-solid fa-stop"></i> End</button>` : ''}
             ${badge}
+        </div>
+    </div>`;
+}
+
+/**
+ * A stream that is live right now: how long and how many are watching, and what to do with it — resume it here (this
+ * page lost it: a reload, another device), end it, or open the channel.
+ */
+function _renderLiveStreamCard(s) {
+    const started = s.started_at ? Date.parse(String(s.started_at).replace(' ', 'T') + 'Z') : NaN;
+    const mins = Number.isFinite(started) ? Math.max(0, Math.round((Date.now() - started) / 60000)) : null;
+    const forTime = mins == null ? '' : mins < 60 ? `${mins} min` : `${Math.floor(mins / 60)} h ${mins % 60} min`;
+    const here = broadcastState.streams.has(s.id);
+    const user = typeof currentUser !== 'undefined' && currentUser ? currentUser.username : '';
+    const via = { webrtc: 'from a browser', whip: 'from an app (WHIP)', rtmp: 'from OBS or an app (RTMP)', jsmpeg: 'from a command line' }[s.protocol] || '';
+    return `<div class="bc-live-card">
+        <div class="bc-live-card-top"><span class="bc-live-card-pill"><span class="bc-live-card-dot" aria-hidden="true"></span>Live${forTime ? ` · ${forTime}` : ''}</span>
+            <span class="bc-live-card-watch"><i class="fa-solid fa-eye" aria-hidden="true"></i> ${Number(s.viewer_count) || 0} watching</span></div>
+        <h3 class="bc-live-card-title">${esc(s.title || 'Untitled')}</h3>
+        <p class="bc-live-card-sub">${via ? `Streaming ${esc(via)}` : 'Streaming'}${here ? ' · on this page' : ''}</p>
+        <div class="bc-live-card-acts">
+            <button class="btn btn-primary bc-live-card-main" onclick="resumeStream(${s.id})"><i class="fa-solid fa-play"></i> ${here ? 'Back to the stream' : 'Resume here'}</button>
+            <button class="btn btn-outline" onclick="endExistingStream(${s.id})"><i class="fa-solid fa-stop"></i> End</button>
+            ${user ? `<a class="btn btn-ghost" href="/@${encodeURIComponent(user)}" target="_blank" rel="noopener"><i class="fa-solid fa-arrow-up-right-from-square"></i> Channel</a>` : ''}
         </div>
     </div>`;
 }

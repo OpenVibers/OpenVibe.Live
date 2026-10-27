@@ -736,28 +736,49 @@
     // The slot workspace puts the real Go Live button below the title, method, capture mode, quality and devices,
     // about two screens down on a phone. While it is out of view, a bar at the bottom presses it.
     function goLiveButton() { const b = $('bc-ws-golive-btn'); return b && b.offsetParent ? b : null; }
+    // Nothing until the page knows the streamer's streams (broadcast.js loadExistingStreams): the bar said "Go live" for
+    // a moment on every load, and while a stream of theirs was already live (owner, 2026-10-27). With one live and this
+    // page not holding it, the bar resumes it instead of starting another.
+    function inView(n) { if (!n || !n.offsetParent) return false; const r = n.getBoundingClientRect(); return r.top < window.innerHeight - 8 && r.bottom > 0; }
     function syncGoLiveDock() {
-        const real = NARROW.matches && onBroadcastPage() && !localStream() ? goLiveButton() : null;
-        let inView = false;
-        if (real) { const r = real.getBoundingClientRect(); inView = r.top < window.innerHeight - 8 && r.bottom > 0; }
-        const show = !!real && !inView;
+        const ready = NARROW.matches && onBroadcastPage() && !localStream() && !streamState() && !!window._bcMyLoaded;
+        const liveMine = ready ? (window._bcMyLive || []) : [];
+        let mode = null, real = null;
+        if (ready && liveMine.length) {
+            const card = document.querySelector('#bc-active-list .bc-live-card-main');
+            if (!inView(card)) mode = 'resume';
+        } else if (ready) {
+            real = goLiveButton();
+            if (real && !inView(real)) mode = 'golive';
+        }
         let dock = $('bcs-golive');
-        if (show && !dock) {
+        if (mode && !dock) {
             dock = el('div', { class: 'bcs-golive', id: 'bcs-golive' },
-                el('button', { type: 'button', class: 'bcs-golive-btn', onclick: () => { const b = goLiveButton(); if (b && !b.disabled) b.click(); } },
-                    icon('fa-tower-broadcast'), ' Go live'),
+                el('button', { type: 'button', class: 'bcs-golive-btn', onclick: () => {
+                    if (dock.dataset.mode === 'resume') { const s = (window._bcMyLive || [])[0]; if (s && typeof resumeStream === 'function') resumeStream(s.id); return; }
+                    const b = goLiveButton(); if (b && !b.disabled) b.click();
+                } }, icon('fa-tower-broadcast'), el('span', { class: 'bcs-golive-t', text: 'Go live' })),
                 el('small', { class: 'bcs-golive-where' }));
             document.body.append(dock);
         }
         if (dock) {
-            dock.hidden = !show;
-            if (show) {
+            dock.hidden = !mode;
+            dock.dataset.mode = mode || '';
+            if (mode === 'resume') {
+                const s = liveMine[0];
+                dock.querySelector('.bcs-golive-btn i').className = 'fa-solid fa-play';
+                dock.querySelector('.bcs-golive-t').textContent = liveMine.length > 1 ? 'Resume a live stream' : 'Resume your stream';
+                dock.querySelector('.bcs-golive-where').textContent = liveMine.length > 1 ? `${liveMine.length} of your streams are live` : `"${(s && s.title) || 'Your stream'}" is still live`;
+                dock.querySelector('.bcs-golive-btn').disabled = false;
+            } else if (mode === 'golive') {
+                dock.querySelector('.bcs-golive-btn i').className = 'fa-solid fa-tower-broadcast';
+                dock.querySelector('.bcs-golive-t').textContent = 'Go live';
                 const where = real.parentElement && real.parentElement.querySelector('.bc-create-reassurance');
                 dock.querySelector('.bcs-golive-where').textContent = where ? where.textContent.trim() : '';
                 dock.querySelector('.bcs-golive-btn').disabled = !!real.disabled;
             }
         }
-        document.body.classList.toggle('bc-golive-dock-on', show);
+        document.body.classList.toggle('bc-golive-dock-on', !!mode);
     }
     document.addEventListener('scroll', () => { if ($('bcs-golive') || goLiveButton()) syncGoLiveDock(); }, { capture: true, passive: true });
 

@@ -2867,3 +2867,86 @@ body.bc-golive-dock-on .messenger-toggle { display: none !important; }
     .bc-clip-name { animation: none; }
     .bc-clip-name-timer { animation: none; display: none; }
 }
+
+/* ── The camera chooser before going live (broadcast-devices.js _bcRenderCameraChooser) ──
+   Phones: Front | Back, and a chip per camera when a side has several. Computers: a card per camera. */
+.bc-cam-chooser { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.bc-cam-chooser[hidden], .bc-cam-select-row[hidden] { display: none !important; }
+.bc-cam-sides { display: grid; grid-template-columns: repeat(auto-fit, minmax(0, 1fr)); gap: 8px; flex: 1 1 100%; }
+.bc-cam-side, .bc-cam-card, .bc-cam-lens, .bc-cam-refresh {
+    font: inherit; cursor: pointer; color: var(--text-primary); -webkit-tap-highlight-color: transparent;
+    background: color-mix(in srgb, var(--bg-secondary) 80%, transparent); border: 1px solid var(--border);
+    transition: border-color 0.15s, background 0.15s, transform 0.1s;
+}
+.bc-cam-side {
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
+    min-height: 74px; border-radius: 16px; font-size: 0.92rem; font-weight: 700;
+}
+.bc-cam-side i { font-size: 1.25rem; color: var(--text-muted); }
+.bc-cam-side.is-on, .bc-cam-card.is-on, .bc-cam-lens.is-on {
+    border-color: var(--accent); background: color-mix(in srgb, var(--accent) 16%, var(--bg-secondary));
+}
+.bc-cam-side.is-on i, .bc-cam-card.is-on > i:first-child { color: var(--accent); }
+.bc-cam-side:active, .bc-cam-card:active, .bc-cam-lens:active { transform: scale(0.98); }
+.bc-cam-lenses { display: flex; gap: 6px; flex-wrap: wrap; }
+.bc-cam-lens { min-width: 52px; min-height: 36px; padding: 0 12px; border-radius: 999px; font-size: 0.82rem; font-weight: 700; }
+.bc-cam-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; flex: 1 1 0; min-width: 0; }
+.bc-cam-card {
+    display: flex; align-items: center; gap: 10px; min-height: 46px; padding: 0 12px; border-radius: 12px; text-align: left;
+    font-size: 0.88rem; font-weight: 600;
+}
+.bc-cam-card span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bc-cam-card > i:first-child { width: 18px; text-align: center; color: var(--text-muted); }
+.bc-cam-tick { color: var(--accent); visibility: hidden; }
+.bc-cam-card.is-on .bc-cam-tick { visibility: visible; }
+.bc-cam-refresh { width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; color: var(--text-muted); margin-left: auto; }
+.bc-cam-side:focus-visible, .bc-cam-card:focus-visible, .bc-cam-lens:focus-visible, .bc-cam-refresh:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { .bc-cam-side, .bc-cam-card, .bc-cam-lens { transition: none; } }
+/* With the chooser the camera takes the row's whole width; the microphone goes under it. */
+.bc-ws-device-row #bc-ws-camera-group.bc-cam-has-chooser { flex: 1 1 100% !important; }   /* over its inline flex: 1 */
+
+/* ── Active Streams: a card per live stream, then the last few with their replays (broadcast.js) ── */
+.bc-live-card {
+    position: relative; overflow: hidden; padding: 16px 18px 18px; border-radius: 18px;
+    background: radial-gradient(120% 140% at 0% 0%, color-mix(in srgb, #e11d48 18%, transparent), transparent 60%),
+                color-mix(in srgb, var(--bg-secondary) 88%, transparent);
+    border: 1px solid color-mix(in srgb, #e11d48 45%, var(--border));
+}
+.bc-live-card + .bc-live-card { margin-top: 12px; }
+.bc-live-card-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.bc-live-card-pill {
+    display: inline-flex; align-items: center; gap: 7px; height: 28px; padding: 0 12px; border-radius: 999px;
+    background: #e11d48; color: #fff; font-size: 0.8rem; font-weight: 800; font-variant-numeric: tabular-nums;
+}
+.bc-live-card-dot { width: 7px; height: 7px; border-radius: 50%; background: #fff; animation: bcs-pulse 1.6s ease-in-out infinite; }
+.bc-live-card-watch { font-size: 0.86rem; font-weight: 700; color: var(--text-secondary); }
+.bc-live-card-title { margin: 12px 0 2px; font-size: 1.2rem; line-height: 1.25; overflow-wrap: anywhere; }
+.bc-live-card-sub { margin: 0; font-size: 0.84rem; color: var(--text-muted); }
+.bc-live-card-acts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+.bc-live-card-acts .btn { min-height: 42px; display: inline-flex; align-items: center; gap: 7px; }
+.bc-live-card-main { flex: 1 1 180px; justify-content: center; font-size: 0.98rem; }
+.bc-last-streams { margin-top: 18px; }
+.bc-last-streams h3 { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; font-size: 0.8rem; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase; color: var(--text-muted); }
+.bc-last-item {
+    display: flex; align-items: center; gap: 12px; padding: 8px; border-radius: 12px;
+    background: color-mix(in srgb, var(--bg-secondary) 70%, transparent); border: 1px solid var(--border);
+}
+.bc-last-item + .bc-last-item { margin-top: 6px; }
+.bc-last-thumb {
+    flex: none; width: 76px; aspect-ratio: 16 / 9; border-radius: 8px; overflow: hidden; display: grid; place-items: center;
+    background: color-mix(in srgb, var(--bg-primary) 80%, #000); color: var(--text-muted);
+}
+.bc-last-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.bc-last-meta { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.bc-last-meta b { font-size: 0.9rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bc-last-meta small { font-size: 0.78rem; color: var(--text-muted); }
+.bc-last-replay {
+    flex: none; display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 0 12px; border-radius: 999px;
+    font-size: 0.82rem; font-weight: 700; text-decoration: none; color: var(--text-primary);
+    background: color-mix(in srgb, var(--accent) 14%, transparent); border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+}
+.bc-last-replay:hover, .bc-last-replay:focus-visible { background: color-mix(in srgb, var(--accent) 24%, transparent); outline: none; }
+/* The phone bar fades up instead of appearing (and it no longer shows before the page knows the streams). */
+.bcs-golive:not([hidden]) { animation: bcs-dock-in 0.2s ease-out; }
+@keyframes bcs-dock-in { from { opacity: 0; transform: translateY(8px); } }
+@media (prefers-reduced-motion: reduce) { .bcs-golive:not([hidden]), .bc-live-card-dot { animation: none; } }

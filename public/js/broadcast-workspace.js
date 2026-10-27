@@ -559,9 +559,9 @@ function _wsRenderPanel() {
                 <!-- Class B: Device-local preferences (browser only) -->
                 <div id="bc-ws-device-wrap">
                     <div class="bc-ws-device-local-label">
-                        <i class="fa-solid fa-laptop"></i>
-                        <strong>This Device Only</strong>
-                        <span class="muted">&mdash; camera &amp; mic selection is saved after going live</span>
+                        <i class="fa-solid fa-mobile-screen-button"></i>
+                        <strong>On this device</strong>
+                        <span class="muted">&mdash; your camera and mic are remembered here</span>
                     </div>
                     <div id="bc-perm-request" class="bc-perm-request">
                         <p class="bc-perm-hint"><i class="fa-solid fa-shield-halved"></i>
@@ -585,7 +585,7 @@ function _wsRenderPanel() {
                         <div class="bc-ws-device-row">
                             <div class="form-group" style="margin:0;flex:1" id="bc-ws-camera-group">
                                 <label style="font-size:0.82rem"><i class="fa-solid fa-camera"></i> Camera</label>
-                                <div style="display:flex;gap:4px;align-items:center">
+                                <div class="bc-cam-select-row" style="display:flex;gap:4px;align-items:center">
                                     <select id="bc-create-camera" class="form-input form-input-sm" style="flex:1">
                                         <option value="default">Default</option>
                                     </select>
@@ -1449,6 +1449,7 @@ async function _wsInitDevicePicker(method, browserMode) {
             // Restore persisted device selections for this slot (localStorage first, then server profile)
             _wsRestoreSlotDevices();
             _wsRestoreDevicesFromProfile();
+            if (typeof _bcRenderCameraChooser === 'function') _bcRenderCameraChooser();
         } else {
             if (permReq) permReq.style.display = '';
             if (devSelects) devSelects.style.display = 'none';
