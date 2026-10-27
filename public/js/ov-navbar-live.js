@@ -75,8 +75,9 @@
             notificationsRealtime: true,   // the bell hears new notifications over OpenVibe.Events (Shared 1.22.0)
             links: links(user), menu: menu(user),
             chips: [
-                { id: 'coins', icon: 'fa-coins', tone: 'gold', value: '0', valueId: 'nav-coins-amount', title: 'OpenCoins: click to open your inventory', onClick: () => call('openCosmeticsModal') },
-                { id: 'vibes', icon: 'fa-wallet', tone: 'green', value: '0', valueId: 'nav-balance-amount', title: 'Vibes balance', onClick: () => call('showModal', 'buy-funds') },
+                // On a phone the two fold into one chip (Shared 4.16.0); its panel lists them by label.
+                { id: 'coins', icon: 'fa-coins', tone: 'gold', value: '0', valueId: 'nav-coins-amount', label: 'OpenCoins', title: 'OpenCoins: click to open your inventory', onClick: () => call('openCosmeticsModal') },
+                { id: 'vibes', icon: 'fa-wallet', tone: 'green', value: '0', valueId: 'nav-balance-amount', label: 'Vibes', title: 'Vibes balance', onClick: () => call('showModal', 'buy-funds') },
             ],
             // Same-origin links are routes of this single-page app.
             onNavigate: (href, e) => (typeof handleLinkClick === 'function' ? handleLinkClick(e, href) : true),
