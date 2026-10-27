@@ -103,11 +103,34 @@ console.warn = () => {};
     assert.strictEqual(await titles.titleClips(), 0);
     assert.strictEqual(calls.length, 1, 'nothing left to ask about');
 
+    // ── 2026-10-27: an auto-clip's first-guess title, a clip whose analysis gave up, a clip of an upload ──
+    media.getVod = async (id) => ({ 6010: { id: 6010, title: 'Seattle' }, 7000: { id: 7000, title: 'My upload' } })[Number(id)] || null;
+    put(620, 'A Person Is Standing In A Living Room, Facing', { auto_generated: 1 });
+    await seed(620, 'A triple kill in the final round, clean.');
+    put(621, 'Clip: Seattle', { vod_id: 6010, start_time: 1873.5, end_time: 1903.5 });
+    await seed(621, '');
+    await db.run("UPDATE clip_ai_state SET transcript_status = 'failed' WHERE clip_id = 621");
+    await db.run('INSERT INTO vod_ai_state (vod_id, ai_transcript_json) VALUES (6010, ?) ON CONFLICT (vod_id) DO UPDATE SET ai_transcript_json = excluded.ai_transcript_json',
+        [JSON.stringify([{ start: 100, end: 104, text: 'way before the clip' }, { start: 1880, end: 1884, text: 'we need a rename right now' }])]);
+    put(622, 'Clip: My upload', { stream_id: null, vod_id: 7000 });
+    await seed(622, 'A shotgun rush down the stairs.');
+    put(623, 'Clip: Seattle', { vod_id: 6010 });
+    await seed(623, '');   // analysis still running: waits
+    const before = calls.length;
+    assert.strictEqual(await titles.titleClips(), 3);
+    const asked = calls[before].input.summaries;
+    assert.ok(asked.some((x) => x.includes('Said in the clip: "we need a rename right now"') && !x.includes('way before')), 'the failed one is named from its window of the transcript');
+    assert.strictEqual(clips.get(620).title, 'Triple Kill Final Round Clutch', 'an auto-clip\'s caption title is renamed from its overview');
+    assert.strictEqual(clips.get(621).title, 'Late Game Comeback', '"Clip: <the video\'s title>" with no overview, named from what was said');
+    assert.strictEqual(clips.get(622).title, 'Shotgun Rush Through Hallway', 'a clip of an upload is a placeholder too');
+    assert.strictEqual(await status(623), null, 'a clip still being analysed waits');
+
     // ── A clip whose overview just landed is titled by id; nothing runs while the AI is off ──
     put(609, 'Untitled Clip');            await seed(609, 'A speedrun skip through the castle wall.');
     enabled = false;
+    const callsBefore = calls.length;
     assert.strictEqual(await titles.titleClips({ ids: [609] }), 0);
-    assert.strictEqual(calls.length, 1, 'no AI call with the AI off');
+    assert.strictEqual(calls.length, callsBefore, 'no AI call with the AI off');
     enabled = true;
     assert.strictEqual(await titles.titleClips({ ids: [609] }), 1);
     assert.strictEqual(clips.get(609).title, 'Shotgun Rush Through Hallway');
