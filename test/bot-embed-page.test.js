@@ -320,6 +320,66 @@ async function check(name, fn) {
             assert.strictEqual(listeners.size, 0, 'nothing listens for a url it would not frame');
         });
 
+        await check('listen(): while the panel drives, the keys it names and the gamepad go to it; never typing, never after', async () => {
+            const on = {};
+            const add = (t, f) => { (on[t] = on[t] || new Set()).add(f); };
+            const del = (t, f) => { if (on[t]) on[t].delete(f); };
+            let rafs = [];
+            let pads = [];
+            const doc = { hidden: false, hasFocus: () => true, addEventListener: add, removeEventListener: del };
+            const win = { addEventListener: add, removeEventListener: del, document: doc, navigator: { getGamepads: () => pads },
+                requestAnimationFrame: (f) => { rafs.push(f); return rafs.length; }, cancelAnimationFrame: () => { rafs = []; } };
+            const posted = [];
+            const panel = { postMessage: (msg) => posted.push(msg) };
+            const stop = BotEmbed.listen({ frame: { contentWindow: panel }, botEmbed: SIM, win, requestTicket: async () => ({}) });
+            const msg = async (data, origin = 'https://openvibe.bot') => { for (const f of [...(on.message || [])]) await f({ data, origin, source: panel }); };
+            const key = (type, code, extra = {}) => {
+                const e = { code, key: extra.key || code, target: extra.target || { tagName: 'BODY' }, prevented: false, stopped: false,
+                    preventDefault() { this.prevented = true; }, stopPropagation() { this.stopped = true; }, ...extra };
+                for (const f of [...(on[type] || [])]) f(e);
+                return e;
+            };
+            assert.ok(!(on.keydown && on.keydown.size), 'nothing listens to keys before the panel drives');
+            await msg({ type: 'ov-bot-controls', robot_id: 'rob_sim123', active: true, keys: ['KeyW', 'KeyA', 'Space', 'f'], pad: true }, 'https://evil.example');
+            assert.ok(!(on.keydown && on.keydown.size), 'only Bot\'s origin turns it on');
+            await msg({ type: 'ov-bot-controls', robot_id: 'rob_sim123', active: true, keys: ['KeyW', 'KeyA', 'Space', 'f'], pad: true });
+            const w = key('keydown', 'KeyW', { key: 'w' });
+            assert.ok(w.prevented && w.stopped, 'a key it takes is kept from the player');
+            assert.deepStrictEqual(posted.at(-1), { robot_id: 'rob_sim123', type: 'ov-bot-key', code: 'KeyW', key: 'w', down: true, repeat: false });
+            const n = posted.length;
+            const chat = key('keydown', 'KeyA', { key: 'a', target: { tagName: 'TEXTAREA' } });
+            key('keydown', 'KeyA', { key: 'a', target: { tagName: 'DIV', isContentEditable: true } });
+            key('keydown', 'KeyA', { key: 'a', ctrlKey: true });
+            const other = key('keydown', 'KeyM', { key: 'm' });
+            assert.strictEqual(posted.length, n, 'never typing, never with a modifier, never a key it did not name');
+            assert.ok(!chat.prevented && !other.prevented, 'and those keys stay the page\'s');
+            key('keydown', 'KeyF', { key: 'F' });
+            assert.deepStrictEqual([posted.at(-1).code, posted.at(-1).down], ['KeyF', true], 'a button key matches by its letter');
+            key('keyup', 'KeyW', { key: 'w' });
+            assert.deepStrictEqual([posted.at(-1).code, posted.at(-1).down], ['KeyW', false]);
+            for (const f of [...on.blur]) f();
+            assert.deepStrictEqual([posted.at(-1).code, posted.at(-1).down], ['KeyF', false], 'leaving the window lets go of what is held');
+            // The gamepad: its state goes to the panel while this window is in front.
+            pads = [{ connected: true, axes: [0, -1, 0.1234, 0], buttons: [{ pressed: true }, { pressed: false }] }];
+            for (const f of [...on.gamepadconnected]) f();
+            assert.strictEqual(rafs.length, 1, 'polling starts');
+            rafs.shift()();
+            assert.deepStrictEqual(posted.at(-1), { robot_id: 'rob_sim123', type: 'ov-bot-pad', axes: [0, -1, 0.123, 0], buttons: [true, false] });
+            // Another state for a key it did not name changes nothing; a narrower list lets go of a key no longer named.
+            key('keydown', 'KeyA', { key: 'a' });
+            await msg({ type: 'ov-bot-controls', robot_id: 'rob_sim123', active: true, keys: ['KeyW'], pad: false });
+            assert.deepStrictEqual([posted.at(-1).code, posted.at(-1).down], ['KeyA', false]);
+            // The drive ends: what is held goes up, and nothing listens any more.
+            key('keydown', 'KeyW', { key: 'w' });
+            await msg({ type: 'ov-bot-controls', robot_id: 'rob_sim123', active: false, keys: [] });
+            assert.deepStrictEqual([posted.at(-1).code, posted.at(-1).down], ['KeyW', false]);
+            assert.ok(!on.keydown.size && !on.keyup.size && !on.blur.size && !on.gamepadconnected.size && !on.visibilitychange.size);
+            assert.ok(!key('keydown', 'KeyW').prevented, 'the player has its keys back');
+            await msg({ type: 'ov-bot-controls', robot_id: 'rob_sim123', active: true, keys: ['KeyW'] });
+            stop();
+            assert.ok(!on.keydown.size && !on.message.size, 'stop() removes every listener');
+        });
+
         await check('POST …/bot/ticket: a Drive ticket from Bot as the viewer, for the channel\'s own robot only', async () => {
             const seen = [];
             let reply = { status: 200, body: { ticket: 'K'.repeat(43), robot_id: 'rob_sim123', role: 'queue', expires_in: 120 } };
