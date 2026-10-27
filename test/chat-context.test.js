@@ -1045,9 +1045,11 @@ const waitFor = async (pred, what, ms = 3000) => {
                 req.on('end', () => {
                     res.setHeader('Content-Type', 'application/json');
                     if (req.url === '/oauth/token') return res.end(JSON.stringify({ access_token: 'live-bot-token', token_type: 'Bearer', expires_in: 300 }));
-                    seen.push({ url: req.url, auth: req.headers.authorization, subject: req.headers['x-ov-subject'], body: JSON.parse(raw || '{}') });
-                    res.statusCode = answer.status;
-                    return res.end(JSON.stringify(answer.body));
+                    const body = JSON.parse(raw || '{}');
+                    seen.push({ url: req.url, auth: req.headers.authorization, subject: req.headers['x-ov-subject'], body });
+                    const a = typeof answer === 'function' ? answer(body) : answer;
+                    res.statusCode = a.status;
+                    return res.end(JSON.stringify(a.body));
                 });
             });
             await new Promise((r) => stub.listen(0, '127.0.0.1', r));
@@ -1085,6 +1087,44 @@ const waitFor = async (pred, what, ms = 3000) => {
                 await pause();
                 assert.strictEqual((await hw({ from_user_id: viewer })).body.reason, 'robot_unavailable', 'Bot down is said so');
                 assert.strictEqual((await hw({ from_user_id: viewer, command: 'self_destruct' })).status, 400, 'an unknown command');
+                // A robot made of buttons (Maticus's Cozmo Hobo: forward, turn_left, head_up … ir_light): Bot refuses drive
+                // and actuator before anything is spent, and the chat word is pressed as its button of that name. A hold
+                // button (Bot: "a hold button needs down or up") is pressed down for the pulse and released after it.
+                const NOT_ALLOWED = { status: 422, body: { code: 'bot.command_not_allowed', detail: 'not on this robot' } };
+                const BUTTONS = ['forward', 'turn_left', 'head_up', 'ir_light'];
+                answer = (b) => {
+                    if (b.kind !== 'button' || !BUTTONS.includes(b.value.name)) return NOT_ALLOWED;
+                    if (b.value.name === 'head_up' && !b.value.state) return { status: 422, body: { code: 'bot.invalid_input', detail: 'a hold button needs down or up' } };
+                    return { status: 200, body: { result: 'ack' } };
+                };
+                await pause();
+                const n0 = seen.length;
+                const pressed = await hw({ from_user_id: viewer, command: 'forward' });
+                assert.strictEqual(pressed.body.ok, true, JSON.stringify(pressed.body));
+                assert.deepStrictEqual(seen.slice(n0).map((x) => [x.body.kind, x.body.value, x.body.ms]), [['drive', { throttle: 0.6 }, 600], ['button', { name: 'forward' }, undefined]]);
+                await pause();
+                const n1 = seen.length;
+                assert.strictEqual((await hw({ from_user_id: viewer, command: 'head_up' })).body.ok, true);
+                await new Promise((r) => setTimeout(r, 700));
+                assert.deepStrictEqual(seen.slice(n1).map((x) => [x.body.kind, x.body.value, x.body.ms]), [
+                    ['actuator', { name: 'head', value: 1 }, 600], ['button', { name: 'head_up' }, undefined],
+                    ['button', { name: 'head_up', state: 'down' }, 600], ['button', { name: 'head_up', state: 'up' }, undefined]]);
+                const n2 = seen.length;
+                assert.strictEqual((await hw({ from_user_id: viewer, command: 'head_up' })).body.ok, true);
+                assert.deepStrictEqual(seen.slice(n2, n2 + 2).map((x) => x.body.value), [{ name: 'head', value: 1 }, { name: 'head_up', state: 'down' }], 'a hold button is remembered');
+                await new Promise((r) => setTimeout(r, 700));
+                const n3 = seen.length;
+                assert.strictEqual((await hw({ from_user_id: viewer, command: 'button:ir_light' })).body.ok, true, 'any other button by name');
+                assert.deepStrictEqual(seen.slice(n3).map((x) => x.body.value), [{ name: 'ir_light' }]);
+                await pause();
+                const missing = await hw({ from_user_id: viewer, command: 'turn_right' });
+                assert.deepStrictEqual([missing.body.reason, missing.body.message], ['bot.command_not_allowed', 'This robot does not do that.'], 'no such button: the first refusal stands');
+                await pause();
+                assert.strictEqual((await hw({ from_user_id: viewer, command: 'button:Not A Button!' })).status, 400, 'a button name is a plain word');
+                await pause();
+                const n4 = seen.length;
+                assert.strictEqual((await hw({ from_user_id: viewer, command: 'say:hi' })).body.reason, 'bot.command_not_allowed');
+                assert.strictEqual(seen.length - n4, 1, 'say is never pressed as a button');
                 await d.prepare('UPDATE channels SET bot_robot_id = NULL WHERE id = ?').run(channel.id);
             } finally {
                 stub.close();

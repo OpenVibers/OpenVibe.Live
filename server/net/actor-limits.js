@@ -41,6 +41,8 @@ const ROUTES = [
     ['live.paste.create', /^POST$/, /^\/pastes\/?$/, { minute: 30, hour: 600 }],
     // Binding a channel to a Bot robot (server/bot/routes.js): set once, rarely changed.
     ['live.bot.bind', /^PUT$/, /^\/streams\/channel\/[^/]+\/bot$/, { minute: 10, hour: 60 }],
+    // A Drive ticket for the channel's robot panel: one per press of Drive (a reconnect gets its next one from Bot).
+    ['live.bot.ticket', /^POST$/, /^\/streams\/channel\/[^/]+\/bot\/ticket$/, { minute: 20, hour: 300 }],
     ['live.follow', /^(POST|DELETE)$/, /^\/streams\/(channel\/[^/]+|[^/]+)\/follow$/, { minute: 60, hour: 600 }],
     // A new stream key invalidates the old one; nobody needs it more than a few times.
     ['live.stream.key', /^POST$/, /^\/streams\/managed\/[^/]+\/regenerate-key$/, { minute: 5, hour: 20 }],

@@ -5,6 +5,10 @@
  *
  *   command(robotId, subject, { id, kind, value, ms })  → Bot's command_result ({ result, … }); a refusal throws
  *                                                         a BotRefusal with Bot's code and reason
+ *   controlTicket(robotId, subject)                     → { ticket, robot_id, role, expires_in }: a one-time Drive
+ *                                                         ticket for the robot's panel framed on the channel page,
+ *                                                         so a viewer signed in here drives with no popup or second
+ *                                                         sign-in (Bot's POST /api/v1/robots/:id/control-ticket)
  *
  * The token is Live's client-credentials token for audience openvibe.bot (Network's grant to `live`:
  * bot.robot.control); X-OV-Subject names the viewer, so Bot's roles, queue, cooldowns and e-stop apply to them.
@@ -44,16 +48,17 @@ function serviceTokens() {
     return tokens;
 }
 
-async function command(robotId, subject, { id, kind, value, ms }) {
+/** POST to a robot's route as the viewer: Bot's answer, or a BotRefusal / BotUnavailable. */
+async function post(robotId, route, subject, body) {
     if (drill()) throw new BotUnavailable('restore drill: nothing is sent');
     const client = serviceTokens();
     if (!client) throw new BotUnavailable('OV_OAUTH_CLIENT_SECRET is not set');
     let res;
     try {
-        res = await fetch(`${baseUrl()}/api/v1/robots/${encodeURIComponent(robotId)}/commands`, {
+        res = await fetch(`${baseUrl()}/api/v1/robots/${encodeURIComponent(robotId)}/${route}`, {
             method: 'POST',
             headers: { Accept: 'application/json', 'Content-Type': 'application/json', Authorization: `Bearer ${await client.getToken()}`, 'X-OV-Subject': subject },
-            body: JSON.stringify({ id, kind, value, ms }),
+            body: JSON.stringify(body),
             signal: AbortSignal.timeout(TIMEOUT_MS),
         });
     } catch (err) { note(err); throw new BotUnavailable(err.message); }
@@ -65,4 +70,7 @@ async function command(robotId, subject, { id, kind, value, ms }) {
     return out;
 }
 
-module.exports = { command, BotRefusal, BotUnavailable, AUDIENCE };
+const command = (robotId, subject, { id, kind, value, ms }) => post(robotId, 'commands', subject, { id, kind, value, ms });
+const controlTicket = (robotId, subject) => post(robotId, 'control-ticket', subject, {});
+
+module.exports = { command, controlTicket, BotRefusal, BotUnavailable, AUDIENCE };

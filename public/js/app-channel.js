@@ -762,7 +762,7 @@ async function loadChannelPage(username, managedStreamRef = null, legacySessionI
         _applyChannelLanguage(data.language, ch, liveStreams.length > 0);
         _resetChannelTabs(ch);
         _applyChannelTabMeta(data);
-        _applyBotEmbed(data.bot_embed);
+        _applyBotEmbed(data.bot_embed, username);
         _offerBotBind(username);
         _applyChannelHashTab(); // deep-link: #ai-timeline / #about / #videos … opens that tab
         // Reveal the Media Request tab if the streamer has it enabled (non-blocking).
@@ -2305,13 +2305,35 @@ async function loadChannelAiTimeline(username) {
 // The channel's OpenVibe.Bot robot panel (roadmap T15 R9). `bot_embed` is only in the channel JSON with
 // LIVE_BOT_EMBED on, and public/js/bot-embed.js (feature "botEmbed") only loads for a bound channel, so with
 // the flag off this does nothing. The frame goes when the route ends, closing its socket to Bot.
-function _applyBotEmbed(botEmbed) {
+// The panel's Drive asks this page for a ticket: a viewer signed in here drives with no popup or second sign-in
+// (POST /api/streams/channel/:username/bot/ticket; Bot decides who may). When the robot's owner has not turned the
+// panel on, viewers do not see an empty box; the owner keeps the frame, which links to the switch on openvibe.bot.
+let _botEmbedStop = null;
+function _applyBotEmbed(botEmbed, username) {
     const box = document.getElementById('ch-bot-container');
     if (!box) return;
     const show = () => {
         if (typeof BotEmbed === 'undefined') return;
-        BotEmbed.mount(box, botEmbed);
-        if (window.ov) ov.scope().onDispose(() => BotEmbed.mount(box, null));
+        const frame = BotEmbed.mount(box, botEmbed);
+        if (_botEmbedStop) { _botEmbedStop(); _botEmbedStop = null; }
+        if (frame && username && typeof BotEmbed.listen === 'function') {
+            const robotId = botEmbed.robot_id;
+            _botEmbedStop = BotEmbed.listen({
+                frame, botEmbed,
+                requestTicket: async () => {
+                    if (!currentUser) return { message: 'Sign in on OpenVibe.Live to drive the robot.' };
+                    try {
+                        return await api(`/streams/channel/${encodeURIComponent(username)}/bot/ticket`, { method: 'POST', body: { robot_id: robotId } });
+                    } catch (e) { return { message: (e && e.message) || 'You cannot drive this robot from here.' }; }
+                },
+                onRefused: () => {
+                    if (currentUser && currentUser.username === username) return;
+                    if (_botEmbedStop) { _botEmbedStop(); _botEmbedStop = null; }
+                    BotEmbed.mount(box, null);
+                },
+            });
+        }
+        if (window.ov) ov.scope().onDispose(() => { if (_botEmbedStop) { _botEmbedStop(); _botEmbedStop = null; } BotEmbed.mount(box, null); });
     };
     if (typeof BotEmbed !== 'undefined') return show();
     if (!(botEmbed && botEmbed.url) || !window.ov) return;
@@ -2329,7 +2351,7 @@ function _offerBotBind(username) {
     ov.load('botBind').then(() => {
         if (!ov.isCurrent(gen) || typeof BotBind === 'undefined') return;
         const robotId = BotBind.robotFrom(location.search);
-        if (robotId) BotBind.offer({ username, robotId, api, toast, onBound: _applyBotEmbed });
+        if (robotId) BotBind.offer({ username, robotId, api, toast, onBound: (be) => _applyBotEmbed(be, username) });
     }, (e) => console.warn('[BotBind] load failed', e));
 }
 
