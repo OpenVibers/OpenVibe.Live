@@ -1199,6 +1199,74 @@ async function getPipOverlayForManagedStream(managedStreamId) {
     } catch { return null; }
 }
 
+// ── Picture-in-picture (stream_pips, migration 0021) ─────────
+// A slot shows up to MAX_PIPS other slots over its stream: the streamer's own or anyone's, each starting where the
+// streamer put it (fractions of the player) and moved by every viewer for themselves (public/js/stream-pip.js).
+const MAX_PIPS = 3;
+const pipNum = (v, lo, hi, dflt) => { const n = Number(v); return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : dflt; };
+
+/**
+ * The PIPs of a slot, in its order, each with what a player needs: the source slot, its owner, and its live stream
+ * (null while it is offline). A source marked NSFW never shows over a slot that is not.
+ */
+async function getPipsForManagedStream(managedStreamId) {
+    try {
+        const host = await get('SELECT id, is_nsfw FROM managed_streams WHERE id = ?', [managedStreamId]);
+        if (!host) return [];
+        const rows = await all(`SELECT p.id, p.source_msid, p.position, p.x, p.y, p.w, p.muted,
+                   m.title, m.slug, m.is_nsfw, m.protocol AS slot_protocol, u.username, u.display_name,
+                   (SELECT s.id FROM streams s WHERE s.managed_stream_id = m.id AND s.is_live = 1 ORDER BY s.started_at DESC LIMIT 1) AS stream_id,
+                   (SELECT s.protocol FROM streams s WHERE s.managed_stream_id = m.id AND s.is_live = 1 ORDER BY s.started_at DESC LIMIT 1) AS protocol
+            FROM stream_pips p JOIN managed_streams m ON m.id = p.source_msid JOIN users u ON u.id = m.user_id
+            WHERE p.managed_stream_id = ? AND (u.is_banned IS NULL OR u.is_banned = 0)
+            ORDER BY p.position ASC, p.id ASC LIMIT ${MAX_PIPS}`, [managedStreamId]);
+        return rows.filter((r) => !Number(r.is_nsfw) || Number(host.is_nsfw)).map((r) => ({
+            id: Number(r.id),
+            source_msid: Number(r.source_msid),
+            title: r.title || `${r.display_name || r.username}'s stream`,
+            username: r.username,
+            slug: r.slug || null,
+            stream_id: r.stream_id ? Number(r.stream_id) : null,
+            live: !!r.stream_id,
+            protocol: r.protocol || r.slot_protocol || 'webrtc',
+            defaults: { x: Number(r.x), y: Number(r.y), w: Number(r.w) },
+            muted: Number(r.muted) !== 0,
+        }));
+    } catch { return []; }
+}
+
+/**
+ * Replace a slot's PIPs with `pips` ([{ source_msid, x, y, w, muted }], at most MAX_PIPS, in order). The first is
+ * mirrored into managed_streams.pip_source_msid / pip_defaults for the N-1 release. Returns the saved list.
+ */
+async function setPipsForManagedStream(managedStreamId, pips) {
+    const list = (pips || []).slice(0, MAX_PIPS).map((p, i) => ({
+        source_msid: Number(p.source_msid), position: i,
+        x: pipNum(p.x, 0, 1, 0.72), y: pipNum(p.y, 0, 1, 0.70), w: pipNum(p.w, 0.08, 0.6, 0.25), muted: p.muted === false ? 0 : 1,
+    }));
+    await tx(async () => {
+        await run('DELETE FROM stream_pips WHERE managed_stream_id = ?', [managedStreamId]);
+        for (const p of list) {
+            await run(`INSERT INTO stream_pips (managed_stream_id, source_msid, position, x, y, w, muted) VALUES (?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT (managed_stream_id, source_msid) DO NOTHING`, [managedStreamId, p.source_msid, p.position, p.x, p.y, p.w, p.muted]);
+        }
+        const first = list[0];
+        await run('UPDATE managed_streams SET pip_source_msid = ?, pip_defaults = ?, updated_at = ov_now() WHERE id = ?',
+            [first ? first.source_msid : null, first ? JSON.stringify({ x: first.x, y: first.y, w: first.w }) : '{}', managedStreamId]);
+    });
+    return list;
+}
+
+/** A person's slots, as PIP sources: id, title, slug, and whether each is live now. */
+async function getPipSourceSlots(userId) {
+    try {
+        const rows = await all(`SELECT m.id, m.title, m.slug, m.is_nsfw,
+                   EXISTS (SELECT 1 FROM streams s WHERE s.managed_stream_id = m.id AND s.is_live = 1) AS live
+            FROM managed_streams m WHERE m.user_id = ? ORDER BY m.sort_order ASC, m.id ASC LIMIT 50`, [userId]);
+        return rows.map((r) => ({ id: Number(r.id), title: r.title || null, slug: r.slug || null, nsfw: !!Number(r.is_nsfw), live: !!r.live }));
+    } catch { return []; }
+}
+
 /** Slots that could serve as a PiP source for this user (everything except `excludeId`). */
 async function getPipCandidateSlots(userId, excludeId = null) {
     try {
@@ -3589,7 +3657,7 @@ module.exports = {
     getManagedStreamBySlug, getManagedStreamByStreamKey, getManagedStreamByIdOrSlug,
     updateManagedStream, deleteManagedStream,
     getManagedStreamBroadcastSettings, updateManagedStreamBroadcastSettings,
-    getPipOverlayForManagedStream, getPipCandidateSlots,
+    getPipOverlayForManagedStream, getPipCandidateSlots, getPipsForManagedStream, setPipsForManagedStream, getPipSourceSlots, MAX_PIPS,
     countManagedStreamsByUser, getManagedStreamLimit,
     isValidManagedStreamSlug, isManagedStreamSlugTaken,
     ensureStreamerRoleOnFeed,

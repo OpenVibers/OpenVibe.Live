@@ -636,45 +636,17 @@ function _wsRenderPanel() {
             <div class="bc-ws-profile-section">
 
                 <!-- Picture-in-picture camera -->
-                <details class="bc-ws-slot-settings">
-                    <summary><i class="fa-solid fa-video"></i> Picture-in-picture Camera</summary>
+                <details class="bc-ws-slot-settings" id="bc-ws-pip-details">
+                    <summary><i class="fa-solid fa-clone"></i> Picture-in-picture</summary>
                     <div class="bc-ws-slot-settings-inner">
                         <p class="muted" style="font-size:0.82rem;margin-bottom:10px">
-                            Overlay another of your slots on top of this stream. The camera stays a stream
-                            in its own right — its own VOD, clips and restreams — so it can be your webcam,
-                            a second angle, or a co-host's slot. Viewers can move, resize, mute or hide it
-                            themselves; the values below are only where it starts.
+                            Show up to three other streams over this one: your webcam on a slot of its own, a second
+                            angle, or anyone's stream on OpenVibe.Live. Each stays a stream in its own right, with its own
+                            VOD, clips and restreams, and shows while it is live. Viewers can move, resize, mute or hide
+                            each one; what you set here is where it starts. Changes here save at once.
                         </p>
-                        <div class="form-group">
-                            <label>Camera slot</label>
-                            <select id="bc-ws-pip-source" class="form-input" onchange="_wsSlotSettingChanged();_wsPipDefaultsToggle()">
-                                <option value="">None</option>
-                                ${(_wsState.managedStreams || []).filter(o => o.id !== ms.id).map(o =>
-                                    `<option value="${o.id}"${String(ms.pip_source_msid || '') === String(o.id) ? ' selected' : ''}>${esc(o.title || ('Slot ' + o.id))}</option>`
-                                ).join('')}
-                            </select>
-                        </div>
-                        <div id="bc-ws-pip-defaults" style="display:${ms.pip_source_msid ? '' : 'none'}">
-                            <div class="bc-ws-row">
-                                <div class="form-group" style="flex:1">
-                                    <label>Starting corner</label>
-                                    <select id="bc-ws-pip-corner" class="form-input form-input-sm" onchange="_wsSlotSettingChanged()">
-                                        <option value="br">Bottom Right</option>
-                                        <option value="bl">Bottom Left</option>
-                                        <option value="tr">Top Right</option>
-                                        <option value="tl">Top Left</option>
-                                    </select>
-                                </div>
-                                <div class="form-group" style="flex:1">
-                                    <label>Starting size</label>
-                                    <select id="bc-ws-pip-size" class="form-input form-input-sm" onchange="_wsSlotSettingChanged()">
-                                        <option value="0.18">Small</option>
-                                        <option value="0.25">Medium</option>
-                                        <option value="0.35">Large</option>
-                                    </select>
-                                </div>
-                            </div>
-                        </div>
+                        <div id="bc-ws-pip-list" class="bc-ws-pip-list"></div>
+                        <div id="bc-ws-pip-add" class="bc-ws-pip-add"></div>
                     </div>
                 </details>
 
@@ -907,7 +879,7 @@ function _wsRenderPanel() {
 
     // Async post-render: check device permissions
     // Corner/size selects are derived from the stored {x,y,w} fractions.
-    _wsPipDefaultsRestore(ms);
+    _wsPipLoad(ms.id);
     if (method === 'browser') {
         _wsInitDevicePicker(method, browserMode);
         _wsSyncScreenShareHiddenDefaults(browserMode);
@@ -1721,13 +1693,6 @@ async function _wsSaveAll() {
             weather_zip: ms.weather_zip || null,
             weather_detail: ms.weather_detail || 'basic',
             weather_show_location: ms.weather_show_location || 0,
-            // '' clears the overlay; the server validates ownership and rejects self-reference.
-            pip_source_msid: document.getElementById('bc-ws-pip-source')?.value || null,
-            pip_defaults: (() => {
-                const w = Number(document.getElementById('bc-ws-pip-size')?.value) || 0.25;
-                const corner = document.getElementById('bc-ws-pip-corner')?.value || 'br';
-                return { ...(_wsPipCornerToXY(corner, w)), w };
-            })(),
         };
 
         const profileBlob = {
@@ -2045,34 +2010,120 @@ function _wsPipXYToCorner(x, y) {
     return (y < 0.5 ? 't' : 'b') + (x < 0.5 ? 'l' : 'r');
 }
 
-/** Show the geometry controls only when a camera slot is actually selected. */
-function _wsPipDefaultsToggle() {
-    const on = !!document.getElementById('bc-ws-pip-source')?.value;
-    _wsShowEl('bc-ws-pip-defaults', on);
+/* ── Picture-in-picture: the streams shown over this slot (stream_pips; PUT /streams/managed/:id/pips) ──
+   Up to three, each one of your slots or anyone's, with where it starts (a corner and a size) and whether it starts
+   with sound. The list saves on every change, apart from the slot's other settings. */
+const _PIP_SIZES = [['0.18', 'Small'], ['0.25', 'Medium'], ['0.35', 'Large']];
+const _PIP_CORNERS = [['br', 'Bottom right'], ['bl', 'Bottom left'], ['tr', 'Top right'], ['tl', 'Top left']];
+
+function _wsEl(tag, attrs, ...kids) {
+    const el = document.createElement(tag);
+    for (const [k, v] of Object.entries(attrs || {})) {
+        if (v == null || v === false) continue;
+        if (k === 'text') el.textContent = v;
+        else if (k.startsWith('on')) el.addEventListener(k.slice(2), v);
+        else el.setAttribute(k, v === true ? '' : v);
+    }
+    for (const kid of kids) if (kid != null) el.append(kid);
+    return el;
+}
+function _wsSelect(options, value, onchange, label) {
+    const sel = _wsEl('select', { class: 'form-input form-input-sm', 'aria-label': label, onchange });
+    for (const [v, t] of options) sel.append(_wsEl('option', { value: v, selected: String(v) === String(value), text: t }));
+    return sel;
 }
 
-/** Restore corner/size from the stored fractions when the panel renders. */
-function _wsPipDefaultsRestore(ms) {
-    let d = {};
-    try { d = typeof ms.pip_defaults === 'string' ? JSON.parse(ms.pip_defaults || '{}') : (ms.pip_defaults || {}); }
-    catch { d = {}; }
-    const sizeEl = document.getElementById('bc-ws-pip-size');
-    const cornerEl = document.getElementById('bc-ws-pip-corner');
-    if (sizeEl) {
-        const w = Number(d.w);
-        // Snap to the nearest offered size rather than showing an option that is not there.
-        const opts = [0.18, 0.25, 0.35];
-        const nearest = Number.isFinite(w)
-            ? opts.reduce((a, b) => (Math.abs(b - w) < Math.abs(a - w) ? b : a))
-            : 0.25;
-        sizeEl.value = String(nearest);
+async function _wsPipLoad(msId) {
+    _wsState.pip = { msId, list: [], max: 3, found: null };
+    const box = document.getElementById('bc-ws-pip-list');
+    if (box) box.replaceChildren(_wsEl('div', { class: 'bc-ws-loading', text: 'Loading…' }));
+    try {
+        const d = await api(`/streams/managed/${msId}/pips`);
+        if (!_wsState.pip || _wsState.pip.msId !== msId) return;
+        _wsState.pip.list = d.pips || [];
+        _wsState.pip.max = d.max || 3;
+    } catch (e) {
+        if (box) box.replaceChildren(_wsEl('p', { class: 'muted', text: `Could not load the picture-in-picture streams: ${e.message}` }));
+        return;
     }
-    if (cornerEl) {
-        cornerEl.value = (Number.isFinite(Number(d.x)) && Number.isFinite(Number(d.y)))
-            ? _wsPipXYToCorner(Number(d.x), Number(d.y))
-            : 'br';
+    _wsPipRender();
+}
+
+/** Save `list` (rows of { source_msid, x, y, w, muted }) and redraw from what the server kept. */
+async function _wsPipSave(list) {
+    const st = _wsState.pip;
+    if (!st) return;
+    try {
+        const d = await api(`/streams/managed/${st.msId}/pips`, { method: 'PUT', body: { pips: list } });
+        st.list = d.pips || [];
+        toast('Picture-in-picture saved', 'success');
+    } catch (e) {
+        toast(e.message || 'Could not save the picture-in-picture streams', 'error');
     }
-    _wsPipDefaultsToggle();
+    _wsPipRender();
+}
+
+const _wsPipRow = (p) => ({ source_msid: p.source_msid, x: p.defaults.x, y: p.defaults.y, w: p.defaults.w, muted: p.muted });
+
+function _wsPipRender() {
+    const st = _wsState.pip;
+    const box = document.getElementById('bc-ws-pip-list');
+    const add = document.getElementById('bc-ws-pip-add');
+    if (!st || !box || !add) return;
+    const mine = (_wsState.managedStreams || []);
+    const ownIds = new Set(mine.map((m) => Number(m.id)));
+    box.replaceChildren(...st.list.map((p, i) => {
+        const change = (patch) => _wsPipSave(st.list.map((q, j) => (j === i ? { ..._wsPipRow(q), ...patch(q) } : _wsPipRow(q))));
+        const w = [0.18, 0.25, 0.35].reduce((a, b) => (Math.abs(b - p.defaults.w) < Math.abs(a - p.defaults.w) ? b : a));
+        const name = ownIds.has(p.source_msid) ? p.title : `${p.title} · @${p.username}`;
+        return _wsEl('div', { class: 'bc-ws-pip-row' },
+            _wsEl('div', { class: 'bc-ws-pip-name' },
+                _wsEl('span', { class: `bc-ws-pip-dot${p.live ? ' is-live' : ''}`, title: p.live ? 'Live now' : 'Offline: shows when it goes live' }),
+                _wsEl('span', { text: name })),
+            _wsSelect(_PIP_CORNERS, _wsPipXYToCorner(p.defaults.x, p.defaults.y), (e) => change((q) => ({ ..._wsPipCornerToXY(e.target.value, q.defaults.w) })), `Where ${p.title} starts`),
+            _wsSelect(_PIP_SIZES, String(w), (e) => change((q) => {
+                const nw = Number(e.target.value);
+                return { w: nw, ..._wsPipCornerToXY(_wsPipXYToCorner(q.defaults.x, q.defaults.y), nw) };
+            }), `How big ${p.title} starts`),
+            _wsEl('label', { class: 'bc-ws-pip-sound' },
+                _wsEl('input', { type: 'checkbox', checked: !p.muted, onchange: (e) => change(() => ({ muted: !e.target.checked })) }),
+                ' Sound'),
+            _wsEl('button', { type: 'button', class: 'btn btn-sm btn-ghost', 'aria-label': `Remove ${p.title}`, title: 'Remove',
+                onclick: () => _wsPipSave(st.list.filter((_, j) => j !== i).map(_wsPipRow)) }, _wsEl('i', { class: 'fa-solid fa-xmark' })));
+    }));
+    if (!st.list.length) box.append(_wsEl('p', { class: 'muted', style: 'font-size:0.82rem', text: 'No picture-in-picture streams yet.' }));
+
+    const used = new Set(st.list.map((p) => p.source_msid));
+    const full = st.list.length >= st.max;
+    const append = (sourceMsid) => {
+        const corner = ['br', 'bl', 'tr', 'tl'][st.list.length % 4];
+        _wsPipSave([...st.list.map(_wsPipRow), { source_msid: Number(sourceMsid), w: 0.25, ..._wsPipCornerToXY(corner, 0.25), muted: true }]);
+    };
+    if (full) { add.replaceChildren(_wsEl('p', { class: 'muted', style: 'font-size:0.82rem', text: `That is the most (${st.max}). Remove one to add another.` })); return; }
+    const own = mine.filter((m) => Number(m.id) !== st.msId && !used.has(Number(m.id)));
+    const ownSel = _wsSelect([['', 'One of your slots…'], ...own.map((m) => [m.id, m.title || `Slot ${m.id}`])], '', (e) => { if (e.target.value) append(e.target.value); }, 'Add one of your slots');
+    const who = _wsEl('input', { type: 'text', class: 'form-input form-input-sm', placeholder: '@streamer', 'aria-label': "Another streamer's name", maxlength: '64' });
+    const found = _wsEl('div', { class: 'bc-ws-pip-found' });
+    const find = async () => {
+        const name = who.value.trim().replace(/^@/, '');
+        if (!name) return;
+        found.replaceChildren(_wsEl('span', { class: 'muted', text: 'Looking…' }));
+        try {
+            const d = await api(`/streams/pip-sources?username=${encodeURIComponent(name)}`);
+            const slots = (d.slots || []).filter((sl) => sl.id !== st.msId && !used.has(sl.id));
+            if (!slots.length) { found.replaceChildren(_wsEl('span', { class: 'muted', text: `@${d.username} has no other stream slot to show.` })); return; }
+            found.replaceChildren(...slots.map((sl) => _wsEl('button', { type: 'button', class: 'btn btn-sm btn-secondary', onclick: () => append(sl.id) },
+                `${sl.title || `@${d.username}'s stream`}${sl.live ? ' · live' : ''}${sl.nsfw ? ' · 18+' : ''}`)));
+        } catch (e) {
+            found.replaceChildren(_wsEl('span', { class: 'muted', text: e.message || 'No such streamer' }));
+        }
+    };
+    who.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); find(); } });
+    add.replaceChildren(
+        _wsEl('div', { class: 'bc-ws-pip-add-row' }, _wsEl('span', { class: 'bc-ws-pip-add-label', text: 'Add' }), ownSel),
+        _wsEl('div', { class: 'bc-ws-pip-add-row' }, _wsEl('span', { class: 'bc-ws-pip-add-label', text: 'or' }), who,
+            _wsEl('button', { type: 'button', class: 'btn btn-sm btn-secondary', onclick: find }, 'Find their streams')),
+        found);
 }
 
 function _wsPopulateInlineDevices(selectId, devices) {

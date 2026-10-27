@@ -1926,6 +1926,26 @@
     flex-direction: column;
     gap: 6px;
 }
+/* Picture-in-picture streams (broadcast-workspace.js _wsPipRender): one row each, then the ways to add one. */
+.bc-ws-pip-list { display: flex; flex-direction: column; gap: 6px; }
+.bc-ws-pip-row {
+    display: grid; grid-template-columns: minmax(0, 1fr) auto auto auto auto; align-items: center; gap: 6px;
+    padding: 6px 8px; border: 1px solid var(--border); border-radius: 8px;
+}
+.bc-ws-pip-name { display: flex; align-items: center; gap: 7px; min-width: 0; font-size: 0.85rem; font-weight: 600; }
+.bc-ws-pip-name span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bc-ws-pip-dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--text-muted, #8b93ad); }
+.bc-ws-pip-dot.is-live { background: #ef4444; }
+.bc-ws-pip-sound { display: inline-flex; align-items: center; gap: 4px; font-size: 0.8rem; white-space: nowrap; }
+.bc-ws-pip-add { display: flex; flex-direction: column; gap: 6px; }
+.bc-ws-pip-add-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.bc-ws-pip-add-row .form-input { flex: 1; min-width: 9rem; }
+.bc-ws-pip-add-label { font-size: 0.8rem; color: var(--text-muted, #8b93ad); min-width: 1.6rem; }
+.bc-ws-pip-found { display: flex; flex-wrap: wrap; gap: 6px; }
+@media (max-width: 560px) {
+    .bc-ws-pip-row { grid-template-columns: minmax(0, 1fr) auto auto; }
+    .bc-ws-pip-name { grid-column: 1 / -1; }
+}
 .bc-ws-restream-card {
     border: 1px solid var(--border);
     border-radius: 6px;
