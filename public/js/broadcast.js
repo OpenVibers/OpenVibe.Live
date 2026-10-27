@@ -4646,6 +4646,10 @@ function _refreshVerticalPreview() {
         navigator.mediaDevices.addEventListener('devicechange', async () => {
             console.log('[Broadcast] Device change detected — re-enumerating devices');
             await populateDeviceLists().catch(() => {});
+            // The Go Live card follows too (a camera or headset plugged in or out), so it needs no refresh button.
+            if (document.getElementById('bc-create-camera')) {
+                await navigator.mediaDevices.enumerateDevices().then(_populateCreateDeviceDropdowns).catch(() => {});
+            }
             await _checkActiveDevicePresence();
         });
     }
