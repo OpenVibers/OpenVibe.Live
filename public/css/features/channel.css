@@ -1266,7 +1266,17 @@ button.viewer-badge:focus-visible { outline: 2px solid #93c5fd; outline-offset: 
 .ov-pip-actions { display: flex; gap: 3px; flex-shrink: 0; }
 .ov-pip:hover .ov-pip-resize { opacity: 1; }
 .ov-pip.is-offline .ov-pip-offline { display: flex; }
+/* The bar stays above the offline layer and shows while offline, so a PIP that cannot play can still be hidden (the
+   layer, drawn after the bar over the whole PIP, used to cover it). */
+.ov-pip-bar { z-index: 2; }
+.ov-pip-offline { z-index: 1; }
+.ov-pip.is-offline .ov-pip-bar { opacity: 1; pointer-events: auto; }
 .ov-pip-restore:hover { background: rgba(0,0,0,.8); }
+/* Several PIPs (stream_pips): each hidden one's "Show …" pill, in one row in the corner; a PIP's name opens its channel. */
+.ov-pip-restores { position: absolute; right: 12px; bottom: 12px; z-index: 25; display: flex; flex-wrap: wrap-reverse; justify-content: flex-end; gap: 6px; max-width: calc(100% - 24px); }
+.ov-pip-restores .ov-pip-restore { position: static; }
+.ov-pip-title a { color: inherit; text-decoration: none; }
+.ov-pip-title a:hover, .ov-pip-title a:focus-visible { text-decoration: underline; }
 
 @media (max-width: 640px) {
     .ov-pip-resize { width: 26px; height: 26px; opacity: .8; }

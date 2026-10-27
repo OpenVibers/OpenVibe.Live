@@ -74,6 +74,30 @@ Clip (the last 30 seconds) and More, a sheet with share, watch as viewer, choose
 one-minute clip, chat read aloud, the restream controls, stream health, all settings and **Full page** (the classic
 page, with a button back). The studio drives the same functions as the page and reads its counters.
 
+### Picture-in-picture
+A slot can show up to three other streams over its own:
+- your webcam on a slot of its own while the main slot is a screen share;
+- a second angle;
+- anyone's stream on OpenVibe.Live.
+
+Each stays a stream in its own right, with its own VOD, clips, transcript and restreams. A PIP shows while its stream is
+live, and appears within 30 seconds when that stream goes live after the page opened.
+
+**Setting it up:** open the slot's **Settings → Picture-in-picture**.
+- Add one of your slots, or type another streamer's @name and pick one of theirs.
+- For each PIP, choose where it starts (a corner and a size) and whether it starts with sound.
+- Changes save at once.
+
+**What viewers can do:** move, resize, mute or hide each PIP for themselves, and the page remembers it per stream.
+- A PIP that can't play shows "… is offline" and can still be hidden.
+- A PIP's name opens that streamer's channel.
+
+**Limits:** an 18+ stream shows only over another 18+ stream, and a banned streamer's slot shows nowhere.
+
+API: `GET`/`PUT /api/streams/managed/:id/pips` (`{ pips: [{ source_msid, x, y, w, muted }] }`, fractions of the
+player), `GET /api/streams/pip-sources?username=` (a streamer's slots), and `GET /api/streams/:id/pips` (a live
+stream's PIPs now). The stream objects carry `pip_overlays`.
+
 ### Viewer counts across platforms
 A live stream's viewers are counted wherever it goes out (`server/streaming/viewer-places.js`): OpenVibe itself (the
 larger of Chat's count and the player sockets'), RobotStreamer, and each restream destination of the stream's slot

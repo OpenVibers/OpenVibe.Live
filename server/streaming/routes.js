@@ -114,6 +114,17 @@ async function staffMayModerate(actor, ownerUserId) {
  */
 const cache = require('openvibe-shared/cache-policy');
 
+// The PIPs a player draws over a live stream (stream_pips): every one its slot lists, each live or not (public/js/
+// stream-pip.js shows the live ones and picks up one that goes live), and the first live one as pip_overlay, the shape
+// the N-1 player reads.
+async function attachPips(stream) {
+    const pips = stream && stream.managed_stream_id ? await db.getPipsForManagedStream(stream.managed_stream_id) : [];
+    stream.pip_overlays = pips;
+    const first = pips.find((p) => p.live);
+    stream.pip_overlay = first ? { source_msid: first.source_msid, title: first.title, slug: first.slug, stream_id: first.stream_id, live: true, defaults: first.defaults } : null;
+    return stream;
+}
+
 function hasOwn(obj, key) {
     return Object.prototype.hasOwnProperty.call(obj || {}, key);
 }
@@ -244,6 +255,7 @@ router.get('/channel/:username', optionalAuth, async (req, res) => {
             // Whether this live slot is being recorded server-side — if so, the client can
             // cut clips on the SERVER (no CPU-heavy client-side MediaRecorder buffer).
             try { liveStream.server_clip = !!recorder.getActiveRecording(liveStream.id); } catch { liveStream.server_clip = false; }
+            await attachPips(liveStream);
             delete liveStream.stream_key;
             delete liveStream.managed_stream_key;
         }
@@ -1726,6 +1738,12 @@ router.put('/managed/:id', requireAuth, async (req, res) => {
         }
 
         await db.updateManagedStream(msId, ms.user_id, fields);
+        // The one PIP an older page sets (pip_source_msid, pip_defaults) becomes the slot's whole PIP list (stream_pips).
+        if (hasOwn(req.body, 'pip_source_msid')) {
+            let d = {};
+            try { d = fields.pip_defaults ? JSON.parse(fields.pip_defaults) : {}; } catch { d = {}; }
+            await db.setPipsForManagedStream(msId, fields.pip_source_msid ? [{ source_msid: fields.pip_source_msid, ...d }] : []);
+        }
         const updated = await db.getManagedStreamById(msId);
 
         // If the title changed and this slot has a RobotStreamer integration, mirror the
@@ -1745,6 +1763,60 @@ router.put('/managed/:id', requireAuth, async (req, res) => {
         console.error('[ManagedStreams] Update error:', err.message);
         res.status(500).json({ error: 'Failed to update managed stream' });
     }
+});
+
+// ── Picture-in-picture (stream_pips, migration 0021) ─────────
+// Up to db.MAX_PIPS streams over a slot's stream: the streamer's own slots or anyone's (owner, 2026-10-26: "it should be
+// able to use other streams (maybe not even just that streamer, like any streams on the site)"), each starting where
+// the streamer put it; every viewer moves and resizes them for themselves (public/js/stream-pip.js).
+//   GET /managed/:id/pips                 → { pips, max }
+//   PUT /managed/:id/pips { pips: [{ source_msid, x, y, w, muted }] } → { pips, max }: replaces them, in that order
+//   GET /pip-sources?username=            → { username, slots }: a person's slots to pick from (your own without one)
+async function pipSlotFor(req, res) {
+    const msId = parseInt(req.params.id, 10);
+    const ms = Number.isFinite(msId) ? await db.getManagedStreamById(msId) : null;
+    if (!ms) { res.status(404).json({ error: 'Managed stream not found' }); return null; }
+    if (ms.user_id !== req.user.id && !await staffMayModerate(req.user, ms.user_id)) { res.status(403).json({ error: 'Not your managed stream' }); return null; }
+    return ms;
+}
+router.get('/managed/:id/pips', requireAuth, async (req, res) => {
+    const ms = await pipSlotFor(req, res);
+    if (!ms) return;
+    res.json({ pips: await db.getPipsForManagedStream(ms.id), max: db.MAX_PIPS });
+});
+router.put('/managed/:id/pips', requireAuth, async (req, res) => {
+    try {
+        const ms = await pipSlotFor(req, res);
+        if (!ms) return;
+        const list = req.body && req.body.pips;
+        if (!Array.isArray(list)) return res.status(400).json({ error: 'pips must be a list' });
+        if (list.length > db.MAX_PIPS) return res.status(400).json({ error: `At most ${db.MAX_PIPS} picture-in-picture streams` });
+        const seen = new Set();
+        for (const p of list) {
+            const src = parseInt(p && p.source_msid, 10);
+            if (!Number.isFinite(src)) return res.status(400).json({ error: 'Each picture-in-picture needs a stream slot' });
+            if (src === ms.id) return res.status(400).json({ error: 'A slot cannot show itself as a picture-in-picture' });
+            if (seen.has(src)) return res.status(400).json({ error: 'That stream is already a picture-in-picture here' });
+            seen.add(src);
+            const slot = await db.getManagedStreamById(src);
+            if (!slot) return res.status(404).json({ error: 'That stream slot does not exist' });
+            const owner = slot.user_id === ms.user_id ? null : await db.getUserById(slot.user_id);
+            if (owner && owner.is_banned) return res.status(404).json({ error: 'That stream slot does not exist' });
+            if (Number(slot.is_nsfw) && !Number(ms.is_nsfw)) return res.status(400).json({ error: 'An 18+ stream can only be shown over another 18+ stream' });
+            p.source_msid = src;
+        }
+        await db.setPipsForManagedStream(ms.id, list);
+        res.json({ pips: await db.getPipsForManagedStream(ms.id), max: db.MAX_PIPS });
+    } catch (err) {
+        console.error('[PiP] Save error:', err.message);
+        res.status(500).json({ error: 'Failed to save the picture-in-picture streams' });
+    }
+});
+router.get('/pip-sources', requireAuth, async (req, res) => {
+    const name = String(req.query.username || '').trim().replace(/^@/, '').slice(0, 64);
+    const user = name ? await db.getUserByUsername(name) : req.user;
+    if (!user || user.is_banned) return res.status(404).json({ error: 'No such streamer' });
+    res.json({ username: user.username, slots: await db.getPipSourceSlots(user.id) });
 });
 
 // Delete a managed stream
@@ -1807,6 +1879,16 @@ router.post('/managed/:id/regenerate-key', requireAuth, async (req, res) => {
 // Its recording parts (each its own VOD, with where it starts in stream time), the broadcaster's picture sizes and
 // reconnects, in seconds since the stream started. The player rewinds across parts with it; a part whose VOD the
 // viewer cannot see is listed without its VOD.
+// A live stream's PIPs now (attachPips), for a player already showing it: it asks again every 30 s, so a PIP whose
+// stream goes live later appears, and one that ends goes.
+router.get('/:id/pips', optionalAuth, async (req, res) => {
+    const id = parseInt(req.params.id, 10);
+    const stream = Number.isFinite(id) ? await db.get('SELECT id, managed_stream_id, is_live FROM streams WHERE id = ?', [id]) : null;
+    if (!stream) return res.status(404).json({ error: 'Stream not found' });
+    res.set('Cache-Control', 'public, max-age=15');
+    res.json({ pips: (await attachPips({ managed_stream_id: stream.is_live ? stream.managed_stream_id : null })).pip_overlays });
+});
+
 router.get('/:id/history', optionalAuth, async (req, res) => {
     try {
         const stream = await db.getStreamById(req.params.id);
@@ -1879,9 +1961,7 @@ router.get('/:id', optionalAuth, async (req, res) => {
         // which live stream to put in the overlay and where to start it. Null whenever
         // nothing is configured or the camera slot is not currently live, so the player
         // simply renders no overlay.
-        stream.pip_overlay = stream.managed_stream_id
-            ? await db.getPipOverlayForManagedStream(stream.managed_stream_id)
-            : null;
+        await attachPips(stream);
 
         const networkFollows = require('../social/network-follows');
         if (req.user) stream.isFollowing = await networkFollows.isFollowing(req.user.id, stream.user_id);
