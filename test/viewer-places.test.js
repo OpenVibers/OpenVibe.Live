@@ -88,7 +88,15 @@ assert.match(bc, /for \(const id of \['bc-viewer-count', 'bc-rtmp-viewer-count',
 // ── The phone studio: the pill shows that total, and a tap lists the places under it ──
 const studio = read('public/js/broadcast-studio.js');
 assert.match(studio, /el\('button', \{ type: 'button', class: 'bcs-pill bcs-viewers', id: 'bcs-viewers', 'aria-haspopup': 'dialog', 'aria-expanded': 'false', onclick: toggleViewers \}/);
-assert.match(studio, /OVViewerPlaces\.toggle\(\$\('bcs-viewers'\), viewerPlaces, \{ below: true \}\)/);
+assert.match(studio, /OVViewerPlaces\.toggle\(\$\('bcs-viewers'\), viewerPlaces, \{\s*below: true,/);
+// Restreams are listed under the places (2026-10-27: "Also on 1" was a second chip for the same thing), each with its
+// state, and one connecting or failed marks the pill.
+assert.match(studio, /extra: \(\) => \(\{ title: 'Restreams', rows: restreamRows\(\)/);
+assert.match(studio, /\$\('bcs-viewers'\)\.dataset\.rs = rs \? rs\.cls\.replace\('is-', ''\) : '';/);
+assert.ok(!studio.includes("id: 'bcs-restream'"), 'no separate restream chip');
+const vp = read('public/js/viewer-places.js');
+assert.match(vp, /extra: opts && typeof opts\.extra === 'function' \? opts\.extra : null/, 'the panel takes an extra section');
+assert.match(vp, /el\('li', \{ class: `ovp-row ovp-state is-\$\{r\.state \|\| 'idle'\}` \}/, 'each row says its state');
 
 // ── The channel player: the sum, fed live by the socket and by chat ──
 const ch = read('public/js/app-channel.js');

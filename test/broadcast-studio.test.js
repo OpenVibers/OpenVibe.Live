@@ -248,7 +248,9 @@ function loadStudio({ stream, cameras = [], screenShare = false }) {
         assert.deepStrictEqual(toasts, ['This camera cannot zoom']);
         assert.strictEqual(noZoom.prevented, false);
 
-        assert.ok(/zoom\.level = null;\s*await _switchActiveCamera\(next\.deviceId\)/.test(extract(studioSrc, 'flip')), 'a flip starts the new camera at 1x');
+        // Every camera change (a flip, or a pick from the camera list) goes through useCamera, which starts it at 1x.
+        assert.ok(/zoom\.level = null;\s*\/\/[^\n]*\n\s*await _switchActiveCamera\(choice\.deviceId, \{ quiet: true \}\)/.test(extract(studioSrc, 'useCamera')), 'a flip starts the new camera at 1x');
+        assert.ok(/await useCamera\(next\)/.test(extract(studioSrc, 'flip')));
         assert.ok(/attachZoom\(\)/.test(extract(studioSrc, 'mount')) && /detachZoom\(\)/.test(extract(studioSrc, 'unmount')));
         assert.ok(/body\.bc-studio-on \.bc-video-container \{ touch-action: none; \}/.test(read('public/css/features/broadcast.css')), 'the browser leaves the pinch to the studio');
     });

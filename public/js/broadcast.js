@@ -390,6 +390,11 @@ function attachLocalStreamRecoveryHandlers(streamId) {
 function scheduleMediaRecovery(streamId, reason = 'media interrupted') {
     const ss = getStreamState(streamId);
     if (!ss || ss.mediaRecoveryInProgress || ss.mediaRecoveryTimer || !broadcastState.streams.has(streamId)) return;
+    // A phone cannot open its camera from the background: the resume check runs when the tab is in front again.
+    if (document.hidden && isMobileBroadcaster()) {
+        console.log(`[Broadcast] Recovery waits for the tab to be in front (${reason})`);
+        return;
+    }
 
     // Recovery cooldown — if media was just recovered, spurious track events from
     // the fresh capture pipeline should be ignored. This prevents rapid recovery
@@ -440,6 +445,7 @@ async function recoverStreamMedia(streamId, reason = 'media interrupted') {
     const ss = getStreamState(streamId);
     if (!ss || ss.mediaRecoveryInProgress) return;
     ss.mediaRecoveryInProgress = true;
+    _bcSessionChanged();   // the phone studio stays up and says "Reconnecting" while the media restarts
     await uploadVodRecording(streamId, { finalizeStream: false });
 
     // Stop the RS restream BEFORE nulling localStream — prevents the
@@ -480,6 +486,7 @@ async function recoverStreamMedia(streamId, reason = 'media interrupted') {
     ss.mediaRecoveryAttempts = 0;
     ss.mediaRecoveryInProgress = false;
     ss._lastRecoveryCompletedAt = Date.now();
+    _bcSessionChanged();
     if (broadcastState.activeStreamId === streamId) {
         updateBroadcastStatusFromConnections(streamId);
         // Only show success toast if recovery was slow enough for the user to notice
@@ -1628,6 +1635,7 @@ function showBrowserBroadcast() {
     const ib = document.getElementById('bc-info-bar'); if (ib) ib.style.display = '';
     _startViewerPlacesPoll();
     syncBroadcastLiveButtonVisibility();
+    _bcSessionChanged();
 }
 
 let _rtmpStatusPollTimer = null;
@@ -2116,6 +2124,7 @@ async function stopBroadcast() {
 function cleanupStream(streamId) {
     const ss = broadcastState.streams.get(streamId);
     if (!ss) return;
+    setTimeout(_bcSessionChanged, 0);   // after the state below is gone
 
     // Leave the broadcast call if we're in one for this stream
     if (callState.broadcastMode && callState.streamId === streamId) {
@@ -2303,7 +2312,7 @@ function startGlobalDisplayTimers() {
             setT('bc-stat-fps', `${Math.round(frameRate)} fps`);
             setT('bc-stat-resolution', resolution || '--');
             _reportBroadcastShape(ss, hasStats ? resolution : '');
-            setT('bc-stat-status', connState);
+            setT('bc-stat-status', ({ connected: 'Connected', completed: 'Connected', checking: 'Connecting', new: 'Connecting', disconnected: 'Dropped', failed: 'Failed', closed: 'Closed' })[connState] || connState || '--');
             setT('bc-stat-codec', codec || '--');
 
             // Health classification
@@ -2328,6 +2337,8 @@ function startGlobalDisplayTimers() {
                 }
                 healthEl.textContent = health;
                 healthEl.style.color = color;
+                const card = document.getElementById('bc-stats-overlay');
+                if (card) card.dataset.health = ({ Good: 'good', Fair: 'fair', Poor: 'poor', Offline: 'offline' })[health] || 'checking';
             }
             _checkLowBitrate(ss, hasStats ? bitrateKbps : 0, connState);
         } finally {
@@ -4725,7 +4736,7 @@ async function _switchActiveAudio(audioId) {
     toast('Microphone switched', 'success');
 }
 
-async function _switchActiveCamera(cameraId) {
+async function _switchActiveCamera(cameraId, opts = {}) {
     const ss = getActiveStreamState();
     if (!ss || !ss.localStream) return;
 
@@ -4738,7 +4749,8 @@ async function _switchActiveCamera(cameraId) {
     const videoTrack = ss.localStream.getVideoTracks()[0]; if (!videoTrack) return;
     const oldSettings = videoTrack.getSettings();
     const oldDeviceId = oldSettings.deviceId;
-    if ((cameraId || 'default') === (oldDeviceId || 'default')) return;
+    // `force` reopens the same camera: the phone gave it to another app and this tab's track ended or froze.
+    if (!opts.force && (cameraId || 'default') === (oldDeviceId || 'default')) return;
 
     const devices = await _enumerateBroadcastVideoInputs({ ensureLabels: false });
     const chosenDevice = devices.find(d => d.deviceId === cameraId) || null;
@@ -4802,7 +4814,8 @@ async function _switchActiveCamera(cameraId) {
             _warnDeviceMismatch('camera');
         }
         _syncCameraSelectionUI(appliedDeviceId);
-        toast('Camera switched', 'success');
+        if (typeof _bcSessionChanged === 'function') _bcSessionChanged();
+        if (!opts.quiet) toast('Camera switched', 'success');
     } catch (err) {
         console.error('[Broadcast] switch camera failed:', err);
         try {
@@ -4822,6 +4835,99 @@ async function _switchActiveCamera(cameraId) {
         throw err;
     }
 }
+
+/** Tells the phone studio (broadcast-studio.js) the session changed, so it shows or updates at once, not a second later. */
+function _bcSessionChanged() {
+    try { document.dispatchEvent(new CustomEvent('bc-session')); } catch { /* */ }
+}
+
+/* ── Back in front after another app (owner, 2026-10-27) ─────────────────
+   "It froze after I switched apps real quick": a phone gives the camera to the other app and pauses this tab's
+   video, and the track comes back ended, or live but sending nothing. The frame watchdog only noticed 8–15 s later,
+   restarted the whole stream (restreams included), and a second switch within its 60 s cooldown never recovered.
+
+   Now, the moment the tab is in front again: the preview plays again, the audio mix resumes, and if no camera frame
+   arrives within about a second and a half (or the track ended) the same camera is opened again and swapped into
+   every connection in place (_switchActiveCamera force: viewers, restreams and the recording keep going, nothing
+   restarts). A microphone that ended is opened again into the mix. The stream's signalling socket reconnects at once
+   instead of waiting out its backoff. */
+let _bcHiddenAt = 0;
+let _bcResuming = null;
+/** Whether the camera is sending frames: the preview's next frame, else the track's frame counter; null if unknowable. */
+function _bcFramesFlowing(track, ms = 1500) {
+    const preview = document.getElementById('bc-video-preview');
+    const canWatch = preview && typeof preview.requestVideoFrameCallback === 'function' && preview.srcObject && preview.offsetParent !== null;
+    if (canWatch) {
+        return new Promise((resolve) => {
+            let done = false;
+            const finish = (v) => { if (!done) { done = true; resolve(v); } };
+            try { preview.requestVideoFrameCallback(() => finish(true)); } catch { finish(null); }
+            setTimeout(() => finish(false), ms);
+        });
+    }
+    const first = typeof _trackFrameCount === 'function' ? _trackFrameCount(track) : null;
+    if (first == null) return Promise.resolve(null);
+    return new Promise((resolve) => setTimeout(() => {
+        const next = _trackFrameCount(track);
+        resolve(next == null ? null : next !== first);
+    }, ms));
+}
+async function _bcResumeAfterBackground(awayMs) {
+    const streamId = broadcastState.activeStreamId;
+    const ss = getActiveStreamState();
+    if (!ss || !ss.localStream || ss.mediaRecoveryInProgress) return;
+    // The socket that carries the stream: back now, not after a backoff that grew while the phone was away.
+    if (!ss.signalingIntentionalClose && (!ss.signalingWs || ss.signalingWs.readyState > WebSocket.OPEN)) {
+        if (ss.signalingReconnectTimer) { clearTimeout(ss.signalingReconnectTimer); ss.signalingReconnectTimer = null; }
+        ss.signalingReconnectDelay = 3000;
+        connectSignaling(streamId);
+    }
+    // A paused preview looks exactly like a frozen camera.
+    const preview = document.getElementById('bc-video-preview');
+    if (preview && preview.srcObject && preview.paused) preview.play().catch(() => {});
+    try { if (ss._audioMix && ss._audioMix.ctx.state !== 'running') await ss._audioMix.ctx.resume(); } catch { /* */ }
+    // The microphone, if the other app took it for good.
+    const mic = ss._audioMix && ss._audioMix.mic;
+    const micTrack = mic && mic.stream && mic.stream.getAudioTracks()[0];
+    if (micTrack && micTrack.readyState === 'ended' && ss._micEnabled !== false) {
+        try {
+            const s = broadcastState.settings;
+            const micStream = await _getUserMediaWithTimeout({ audio: buildAudioConstraints(s, micTrack.getSettings?.().deviceId || s.forceAudio), video: false });
+            ss._micStream = micStream;
+            _mixSetSource(ss, 'mic', micStream);
+            console.log('[Broadcast] Microphone opened again after the app was in the background');
+        } catch (err) { console.warn('[Broadcast] Could not reopen the microphone:', err.message); }
+    }
+    // The camera. Screen sharing owns its own track; a camera the streamer turned off sends nothing on purpose.
+    if (broadcastState.settings.screenShare) return;
+    const track = ss.localStream.getVideoTracks()[0];
+    if (!track) return;
+    let stale = track.readyState === 'ended';
+    if (!stale && track.enabled) stale = (await _bcFramesFlowing(track)) === false;
+    if (!stale) return;
+    const deviceId = (track.getSettings && track.getSettings().deviceId) || _getPreferredCameraId() || 'default';
+    console.warn(`[Broadcast] Camera ${track.readyState === 'ended' ? 'ended' : 'sent nothing'} after ${Math.round(awayMs / 1000)} s away: opening it again in place`);
+    if (typeof updateBroadcastStatus === 'function') updateBroadcastStatus('checking');
+    try {
+        await _switchActiveCamera(deviceId, { force: true, quiet: true });
+        updateBroadcastStatusFromConnections(streamId);
+    } catch (err) {
+        console.warn('[Broadcast] Reopening the camera failed, restarting the media:', err.message);
+        ss._lastRecoveryCompletedAt = 0;   // not a spurious event: let the full recovery run now
+        scheduleMediaRecovery(streamId, 'camera lost while away');
+    }
+}
+document.addEventListener('visibilitychange', () => {
+    if (document.hidden) { _bcHiddenAt = Date.now(); return; }
+    const away = _bcHiddenAt ? Date.now() - _bcHiddenAt : 0;
+    _bcHiddenAt = 0;
+    if (!away || !isStreaming() || _bcResuming) return;
+    // A moment for the browser to hand the camera back before judging it.
+    _bcResuming = new Promise((r) => setTimeout(r, 400))
+        .then(() => _bcResumeAfterBackground(away))
+        .catch((err) => console.warn('[Broadcast] Resume after background failed:', err.message))
+        .finally(() => { _bcResuming = null; _bcSessionChanged(); });
+});
 
 async function chooseBroadcastCamera(cameraId, buttonEl = null) {
     const previousCameraId = _getPreferredCameraId();
@@ -5208,7 +5314,7 @@ function syncBroadcastLiveButtonVisibility() {
     // Mic / Cam PiP are further gated by _syncScreenShareLiveControls()
 }
 
-function toggleBroadcastStats() { const el = document.getElementById('bc-stats-overlay'); if (el) el.style.display = el.style.display === 'none' ? 'flex' : 'none'; }
+function toggleBroadcastStats() { const el = document.getElementById('bc-stats-overlay'); if (el) el.style.display = el.style.display === 'none' ? 'grid' : 'none'; }
 
 /* ── Group Call Controls ───────────────────────────────────────── */
 let _broadcastCallMode = null;

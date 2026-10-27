@@ -23,6 +23,7 @@
     const st = {
         root: null, micOff: false, camOff: false, torch: false, chatHidden: false, busy: false, viewer: null, viewerMute: 0,
         dismissedFor: null, hadLocal: false, sheet: null, confirm: null, parked: [], cameras: 0, lastFocus: null,
+        choices: [], startingSince: 0, healthOpen: false,
     };
 
     const $ = (id) => document.getElementById(id);
@@ -50,8 +51,30 @@
     function videoTrack() { const s = localStream(); return s ? s.getVideoTracks()[0] || null : null; }
     function onBroadcastPage() { const p = $('page-broadcast'); return !!(p && p.classList.contains('active')); }
     function browserViewShown() { const v = $('bc-browser-broadcast'); return !!(v && v.style.display !== 'none'); }
-    function liveHere() { return onBroadcastPage() && browserViewShown() && !!localStream(); }
-    function wanted() { return NARROW.matches && liveHere() && st.dismissedFor !== activeId(); }
+    // The studio is up for the whole session: while the camera starts, while a recovery reopens it, and live. Tying it to
+    // "a camera stream exists right now" showed the full page for a moment on every start (it mounted on the next
+    // second's tick) and for the whole of every recovery, with "Error" and a stray Connecting box (owner, 2026-10-27).
+    function sessionHere() { return onBroadcastPage() && browserViewShown() && !!streamState(); }
+    function liveHere() { return sessionHere() && !!localStream(); }
+    /** 'starting' (no camera yet), 'recovering' (the media restarts) or 'live'. */
+    function phase() {
+        const ss = streamState();
+        if (!ss) return null;
+        if (ss.mediaRecoveryInProgress || ss.mediaRecoveryTimer) return 'recovering';
+        return ss.localStream ? 'live' : 'starting';
+    }
+    // A camera that never starts (permission refused) gives the page back after a while, with its error.
+    const STARTING_GIVE_UP_MS = 25000;
+    function wanted() {
+        if (!sessionHere()) { st.startingSince = 0; return false; }
+        if (!NARROW.matches || st.dismissedFor === activeId()) return false;
+        if (phase() === 'starting') {
+            if (!st.startingSince) st.startingSince = Date.now();
+            return Date.now() - st.startingSince < STARTING_GIVE_UP_MS;
+        }
+        st.startingSince = 0;
+        return true;
+    }
 
     // ── Mic, camera and light: the choice holds across replaced tracks ──
     function applyTracks() {
@@ -168,25 +191,27 @@
         refresh();
     }
 
-    /** Front ↔ back in one tap: the first camera facing the other way (a phone's main one), else the next camera. */
-    async function flip() {
-        if (st.busy) return;
+    async function loadCameras() {
+        if (typeof _enumerateBroadcastVideoInputs !== 'function') return st.choices;
+        const cams = await _enumerateBroadcastVideoInputs({ ensureLabels: false });
+        st.cameras = cams.length;
+        st.choices = typeof _bcCameraChoices === 'function' ? _bcCameraChoices(cams) : cams.map((d, i) => ({ deviceId: d.deviceId, name: `Camera ${i + 1}`, facing: _getCameraFacingHint(d) }));
+        return st.choices;
+    }
+    const rememberSide = (facing, id) => { try { if (facing && id) localStorage.setItem(`bc-last-camera-${facing}`, id); } catch { /* */ } };
+    const lastOnSide = (facing) => { try { return localStorage.getItem(`bc-last-camera-${facing}`); } catch { return null; } };
+    async function useCamera(choice) {
+        if (st.busy || !choice) return;
         if (screenSharing()) return say('You are sharing your screen. Stop sharing to use the camera.');
-        if (typeof _switchActiveCamera !== 'function' || typeof _enumerateBroadcastVideoInputs !== 'function') return;
+        if (typeof _switchActiveCamera !== 'function') return;
         st.busy = true;
         refresh();
         try {
-            const cams = await _enumerateBroadcastVideoInputs({ ensureLabels: false });
-            st.cameras = cams.length;
-            if (cams.length < 2) { say('This device has only one camera'); return; }
-            const now = (videoTrack() && videoTrack().getSettings && videoTrack().getSettings()) || {};
-            const was = facing();
-            const other = was && cams.find((d) => d.deviceId !== now.deviceId && _getCameraFacingHint(d) && _getCameraFacingHint(d) !== was);
-            const i = cams.findIndex((d) => d.deviceId === now.deviceId);
-            const next = other || cams[(i + 1) % cams.length];
             st.torch = false;
             zoom.level = null;
-            await _switchActiveCamera(next.deviceId);
+            // Quietly: the picture changing is the answer; a toast on every flip covered the chat.
+            await _switchActiveCamera(choice.deviceId, { quiet: true });
+            rememberSide(choice.facing, choice.deviceId);
             applyTracks();
         } catch (err) {
             say('Could not switch camera: ' + ((err && err.message) || 'unknown error'), 'error');
@@ -194,6 +219,65 @@
             st.busy = false;
             refresh();
         }
+    }
+    /** One tap: the other side, on the camera last used there (a phone's main one the first time); else the next camera. */
+    async function flip() {
+        if (st.busy) return;
+        const choices = await loadCameras();
+        if (choices.length < 2) { say('This device has only one camera'); return; }
+        const nowId = (videoTrack() && videoTrack().getSettings && videoTrack().getSettings().deviceId) || null;
+        const current = choices.find((c) => c.deviceId === nowId);
+        const was = facing() || (current && current.facing);
+        const otherSide = was === 'user' ? 'environment' : was === 'environment' ? 'user' : null;
+        let next = null;
+        if (otherSide) {
+            const side = choices.filter((c) => c.facing === otherSide);
+            next = side.find((c) => c.deviceId === lastOnSide(otherSide)) || side[0] || null;
+        }
+        if (!next) { const i = choices.findIndex((c) => c.deviceId === nowId); next = choices[(i + 1) % choices.length]; }
+        await useCamera(next);
+    }
+    /** Every camera, by side, the one in use ticked: what holding Flip opens when there are more than two. */
+    async function openCameras() {
+        const choices = await loadCameras();
+        closeSheet();
+        st.lastFocus = document.activeElement;
+        const nowId = (videoTrack() && videoTrack().getSettings && videoTrack().getSettings().deviceId) || null;
+        const group = (title, list) => list.length ? el('div', { class: 'bcs-cam-group' }, el('h3', { text: title }),
+            el('div', { class: 'bcs-cam-list' }, ...list.map((c) => el('button', {
+                type: 'button', class: 'bcs-cam', 'aria-pressed': String(c.deviceId === nowId),
+                onclick: () => { closeSheet(); if (c.deviceId !== nowId) useCamera(c); },
+            }, icon(c.facing === 'user' ? 'fa-user' : c.facing === 'environment' ? 'fa-mountain-sun' : 'fa-video'),
+            el('span', { text: c.name }), c.deviceId === nowId ? icon('fa-check') : null)))) : null;
+        const sheet = el('div', { class: 'bcs-sheet bcs-cam-sheet', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'bcs-cam-title' },
+            el('div', { class: 'bcs-grab', 'aria-hidden': 'true' }),
+            el('div', { class: 'bcs-sheet-head' },
+                el('div', { class: 'bcs-sheet-who' }, el('b', { id: 'bcs-cam-title', text: 'Cameras' }), el('small', { text: 'Tap Flip to switch sides; this one is remembered for its side' })),
+                el('button', { type: 'button', class: 'bcs-x', 'aria-label': 'Close', onclick: closeSheet }, icon('fa-xmark'))),
+            group('Front', choices.filter((c) => c.facing === 'user')),
+            group('Back', choices.filter((c) => c.facing === 'environment')),
+            group('Other cameras', choices.filter((c) => !c.facing)));
+        st.sheet = el('div', { class: 'bcs-sheet-wrap', onclick: (e) => { if (e.target === st.sheet) closeSheet(); } }, sheet);
+        document.body.append(st.sheet);
+        const on = sheet.querySelector('.bcs-cam[aria-pressed="true"]') || sheet.querySelector('.bcs-cam');
+        if (on) on.focus();
+    }
+    /** Flip's button: a tap flips; holding it (or a long press) lists every camera when there are more than two. */
+    function flipButton() {
+        const b = railButton('flip', 'fa-camera-rotate', 'Flip', null);
+        b.append(el('span', { class: 'bcs-more-cams', hidden: true, 'aria-hidden': 'true' }));
+        let timer = 0, held = false;
+        const many = () => st.choices.length > 2;
+        b.addEventListener('pointerdown', () => {
+            held = false;
+            clearTimeout(timer);
+            if (!many()) return;
+            timer = setTimeout(() => { held = true; try { navigator.vibrate && navigator.vibrate(12); } catch { /* */ } openCameras(); }, 450);
+        });
+        for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) b.addEventListener(ev, () => clearTimeout(timer));
+        b.addEventListener('contextmenu', (e) => e.preventDefault());
+        b.addEventListener('click', () => { if (held) { held = false; return; } flip(); });
+        return b;
     }
 
     function quickClip(seconds) {
@@ -270,7 +354,12 @@
     function toggleViewers() {
         if (!window.OVViewerPlaces) return;
         closeSheet();
-        OVViewerPlaces.toggle($('bcs-viewers'), viewerPlaces, { below: true });
+        closeHealth();
+        OVViewerPlaces.toggle($('bcs-viewers'), viewerPlaces, {
+            below: true,
+            // Restreams sit with the places they send to ("Also on 1" was a second chip for the same thing).
+            extra: () => ({ title: 'Restreams', rows: restreamRows(), action: restreamRows().length ? { label: 'Manage restreams', onClick: () => { OVViewerPlaces.close(); openSheet('restreams'); } } : null }),
+        });
     }
 
     // ── The overlay ──
@@ -279,27 +368,30 @@
             el('span', { class: 'bcs-ico' }, icon(ico)), el('span', { class: 'bcs-lbl', text: label }));
     }
     function build() {
+        // LIVE and the time were two pills saying one thing (owner, 2026-10-27): one red pill, its dot pulsing, the time in it.
         const top = el('div', { class: 'bcs-top' },
             el('div', { class: 'bcs-top-l' },
-                el('span', { class: 'bcs-live' }, el('span', { class: 'bcs-live-dot', 'aria-hidden': 'true' }), 'LIVE'),
-                el('span', { class: 'bcs-pill', id: 'bcs-time', title: 'Time live' }, '0:00'),
+                el('span', { class: 'bcs-live', id: 'bcs-live', role: 'status' }, el('span', { class: 'bcs-live-dot', 'aria-hidden': 'true' }),
+                    el('span', { class: 'bcs-live-t', id: 'bcs-time', text: '0:00' })),
                 el('button', { type: 'button', class: 'bcs-pill bcs-viewers', id: 'bcs-viewers', 'aria-haspopup': 'dialog', 'aria-expanded': 'false', onclick: toggleViewers },
-                    icon('fa-eye'), el('b', { text: '0' })),
-                el('button', { type: 'button', class: 'bcs-pill bcs-restream', id: 'bcs-restream', hidden: true, onclick: () => openSheet('restreams') })),
+                    icon('fa-eye'), el('b', { text: '0' }))),
             el('div', { class: 'bcs-top-r' },
-                el('button', { type: 'button', class: 'bcs-pill bcs-health', id: 'bcs-health', onclick: toggleHealth },
+                el('button', { type: 'button', class: 'bcs-pill bcs-health', id: 'bcs-health', 'aria-expanded': 'false', 'aria-controls': 'bc-stats-overlay', onclick: toggleHealth },
                     el('span', { class: 'bcs-dot', 'aria-hidden': 'true' }), el('span', { class: 'bcs-health-t', text: 'Connecting' })),
                 el('button', { type: 'button', class: 'bcs-end', id: 'bcs-end', onclick: openConfirm }, 'End')));
         const rail = el('div', { class: 'bcs-rail', role: 'toolbar', 'aria-label': 'Live controls', 'aria-orientation': 'vertical' },
-            railButton('flip', 'fa-camera-rotate', 'Flip', flip),
+            flipButton(),
             railButton('mic', 'fa-microphone', 'Mic', toggleMic),
             railButton('cam', 'fa-video', 'Camera', toggleCamera),
             railButton('light', 'fa-bolt', 'Light', toggleLight),
             railButton('chat', 'fa-comment', 'Chat', () => { st.chatHidden = !st.chatHidden; refresh(); }),
             railButton('clip', 'fa-scissors', 'Clip', () => quickClip(30)),
             railButton('more', 'fa-ellipsis', 'More', () => openSheet()));
+        // While the camera starts or a recovery reopens it, the picture says so instead of freezing on its last frame.
+        const stateCard = el('div', { class: 'bcs-state', id: 'bcs-state', hidden: true, role: 'status' },
+            el('span', { class: 'bcs-state-spin', 'aria-hidden': 'true' }), el('b', { class: 'bcs-state-t' }), el('small', { class: 'bcs-state-d' }));
         return el('div', { class: 'bcs', id: 'bc-studio' }, top, el('div', { class: 'bcs-flags', id: 'bcs-flags', 'aria-live': 'polite' }), rail,
-            el('div', { class: 'bcs-zoom', id: 'bcs-zoom', hidden: true, 'aria-live': 'polite' }));
+            el('div', { class: 'bcs-zoom', id: 'bcs-zoom', hidden: true, 'aria-live': 'polite' }), stateCard);
     }
 
     function mount() {
@@ -315,11 +407,12 @@
         if (v) v.play().catch(() => {});
         const msgs = $('bc-chat-messages');
         if (msgs) msgs.scrollTop = msgs.scrollHeight;
-        if (typeof _enumerateBroadcastVideoInputs === 'function') _enumerateBroadcastVideoInputs({ ensureLabels: false }).then((c) => { st.cameras = c.length; refresh(); }, () => {});
+        loadCameras().then(() => refresh(), () => {});
         refresh();
     }
     function unmount() {
         if (window.OVViewerPlaces) OVViewerPlaces.close();
+        closeHealth();
         closeSheet();
         closeConfirm();
         closeViewer();
@@ -332,6 +425,28 @@
     }
 
     function text(id) { const n = $(id); return n ? n.textContent.trim() : ''; }
+    /** Each restream and its state, read from the page's restream panels: [{ name, state: 'ok'|'warn'|'bad'|'idle', text }]. */
+    function restreamRows() {
+        const rows = [];
+        const stateOf = (n) => n.querySelector('.bc-restream-status-live, .bc-rs-live') ? ['ok', 'Live']
+            : n.querySelector('.bc-restream-status-starting, .bc-rs-connecting') ? ['warn', 'Connecting']
+                : n.querySelector('.bc-restream-status-error, .bc-restream-status-failed, .bc-rs-error') ? ['bad', 'Failed'] : ['idle', 'Off'];
+        const panel = $('bc-restream-control');
+        if (panel && panel.style.display !== 'none') {
+            for (const r of panel.querySelectorAll('.bc-restream-row')) {
+                const nameEl = r.querySelector('.bc-restream-name');
+                const name = nameEl ? (nameEl.firstChild && nameEl.firstChild.nodeType === 3 ? nameEl.firstChild.textContent : nameEl.textContent).trim() : 'Restream';
+                const [state, text] = stateOf(r);
+                rows.push({ name, state, text });
+            }
+        }
+        const rs = $('bc-rs-control');
+        if (rs && rs.style.display !== 'none' && !rows.some((r) => /robotstreamer/i.test(r.name))) {
+            const [state, text] = stateOf(rs);
+            if (state !== 'idle') rows.push({ name: 'RobotStreamer', state, text });
+        }
+        return rows;
+    }
     function restreamSummary() {
         const scope = [$('bc-rs-control'), $('bc-restream-control')].filter((n) => n && n.style.display !== 'none');
         let live = 0, starting = 0, failed = 0;
@@ -356,9 +471,19 @@
         syncDesktopButtons();
         if (!st.root) return;
         document.body.classList.toggle('bc-studio-chat-off', st.chatHidden);
-        // 0:05:07 → 5:07 while under an hour.
+        // 0:05:07 → 5:07 while under an hour; while the camera starts or comes back, the pill says so.
+        const ph = phase();
         const up = /^(\d+):(\d\d):(\d\d)$/.exec(text('bc-uptime'));
-        $('bcs-time').textContent = up ? (up[1] === '0' ? `${Number(up[2])}:${up[3]}` : `${up[1]}:${up[2]}:${up[3]}`) : (text('bc-uptime') || '0:00');
+        const time = up ? (up[1] === '0' ? `${Number(up[2])}:${up[3]}` : `${up[1]}:${up[2]}:${up[3]}`) : (text('bc-uptime') || '0:00');
+        const livePill = $('bcs-live');
+        livePill.dataset.phase = ph || 'live';
+        $('bcs-time').textContent = ph === 'starting' ? 'Starting' : time;
+        livePill.setAttribute('aria-label', ph === 'starting' ? 'Starting your stream' : `Live for ${time}`);
+        const stateCard = $('bcs-state');
+        const stateText = ph === 'starting' ? ['Starting your camera…', 'Viewers see you in a moment']
+            : ph === 'recovering' ? ['Reconnecting your camera…', 'You are still live; viewers wait a few seconds'] : null;
+        stateCard.hidden = !stateText;
+        if (stateText) { stateCard.querySelector('.bcs-state-t').textContent = stateText[0]; stateCard.querySelector('.bcs-state-d').textContent = stateText[1]; }
         const viewers = $('bcs-viewers').querySelector('b');
         viewers.textContent = text('bc-viewer-count') || '0';
         const places = viewerPlaces();
@@ -366,14 +491,16 @@
         $('bcs-viewers').title = `${viewers.textContent} watching now${where}`;
         $('bcs-viewers').setAttribute('aria-label', `${viewers.textContent} watching now${where}. Show where`);
 
+        // A restream connecting or failed marks the viewers pill; its list is in the pill's panel.
         const rs = restreamSummary();
-        const chip = $('bcs-restream');
-        chip.hidden = !rs;
-        if (rs) { chip.className = `bcs-pill bcs-restream ${rs.cls}`; chip.textContent = rs.text; }
+        $('bcs-viewers').dataset.rs = rs ? rs.cls.replace('is-', '') : '';
+        if (rs && rs.cls !== 'is-ok') $('bcs-viewers').setAttribute('aria-label', `${viewers.textContent} watching now${where}. ${rs.text}. Show where`);
+        if (window.OVViewerPlaces && OVViewerPlaces.isOpen()) OVViewerPlaces.update();
 
         const conn = $('bc-connection-status');
         const bad = conn && conn.classList.contains('bc-status-bad');
-        const [cls, label] = bad ? ['is-bad', 'Reconnecting'] : (HEALTH[text('bc-stat-health').toLowerCase()] || ['is-warn', 'Connecting']);
+        const [cls, label] = ph === 'recovering' || bad ? ['is-bad', 'Reconnecting'] : ph === 'starting' ? ['is-warn', 'Starting']
+            : (HEALTH[text('bc-stat-health').toLowerCase()] || ['is-warn', 'Connecting']);
         const health = $('bcs-health');
         health.className = `bcs-pill bcs-health ${cls}`;
         health.querySelector('.bcs-health-t').textContent = label;
@@ -390,6 +517,11 @@
             b.classList.toggle('is-busy', !!busy);
         };
         set('flip', { hidden: st.cameras === 1 || screenSharing(), busy: st.busy, ico: st.busy ? 'fa-spinner fa-spin' : 'fa-camera-rotate' });
+        // More than two cameras: a small "+" on Flip says holding it lists them.
+        const moreCams = st.root.querySelector('.bcs-more-cams');
+        if (moreCams) moreCams.hidden = st.choices.length <= 2;
+        const flipBtn = st.root.querySelector('[data-act="flip"]');
+        if (flipBtn) flipBtn.setAttribute('aria-label', st.choices.length > 2 ? 'Flip camera. Hold to choose a camera' : 'Flip camera');
         set('mic', { on: st.micOff, ico: st.micOff ? 'fa-microphone-slash' : 'fa-microphone', label: st.micOff ? 'Unmute' : 'Mute' });
         set('cam', { on: st.camOff, ico: st.camOff ? 'fa-video-slash' : 'fa-video', label: st.camOff ? 'Camera on' : 'Camera' });
         set('light', { hidden: !torchCapable(), on: st.torch, label: st.torch ? 'Light off' : 'Light' });
@@ -429,7 +561,7 @@
         const fl = $('bc-btn-flip');
         if (fl) fl.style.display = live && !screenSharing() && st.cameras > 1 ? '' : 'none';
         const back = $('bcs-return');
-        if (back) back.hidden = !(NARROW.matches && liveHere() && st.dismissedFor === activeId());
+        if (back) back.hidden = !(NARROW.matches && sessionHere() && st.dismissedFor === activeId());
     }
 
     // ── More ──
@@ -509,12 +641,11 @@
 
         const grid = el('div', { class: 'bcs-grid' },
             tile('fa-tv', 'Watch as a viewer', after(() => openViewerPreview())),
-            tile('fa-camera', 'Choose camera', after(() => openCameraSwitcher())),
+            tile('fa-camera', 'Cameras', after(() => openCameras()), st.choices.length > 2 ? `${st.choices.length} on this phone` : null),
             canScreen ? tile('fa-display', screenSharing() ? 'Stop sharing screen' : 'Share screen', after(() => toggleScreenShare())) : null,
             tile('fa-film', 'Media requests', after(() => toggleMediaPip())),
             tile('fa-scissors', 'Clip last minute', after(() => quickClip(60))),
             tile(previewHidden ? 'fa-eye' : 'fa-eye-slash', previewHidden ? 'Show my preview' : 'Hide my preview', after(() => toggleBroadcastPreview()), previewHidden ? null : 'Saves battery'),
-            tile('fa-chart-line', 'Stream health', after(toggleHealth)),
             tile('fa-sliders', 'All settings', after(() => leave('#bc-live-section .bc-settings-group'))),
             tile('fa-up-right-and-down-left-from-center', 'Full page', after(() => leave())));
 
@@ -553,7 +684,29 @@
         if (st.sheet) { st.sheet.remove(); st.sheet = null; if (st.lastFocus && st.lastFocus.focus) st.lastFocus.focus(); }
     }
 
-    function toggleHealth() { if (typeof toggleBroadcastStats === 'function') toggleBroadcastStats(); }
+    function healthCard() { return $('bc-stats-overlay'); }
+    function closeHealth() {
+        const c = healthCard();
+        if (c && c.style.display !== 'none') c.style.display = 'none';
+        const p = $('bcs-health');
+        if (p) p.setAttribute('aria-expanded', 'false');
+        document.removeEventListener('pointerdown', onHealthOutside, true);
+    }
+    function onHealthOutside(e) {
+        const c = healthCard(), p = $('bcs-health');
+        if ((c && c.contains(e.target)) || (p && p.contains(e.target))) return;
+        closeHealth();
+    }
+    function toggleHealth() {
+        const c = healthCard();
+        if (!c) return;
+        if (c.style.display !== 'none') { closeHealth(); return; }
+        if (window.OVViewerPlaces) OVViewerPlaces.close();
+        c.style.display = 'grid';
+        const p = $('bcs-health');
+        if (p) p.setAttribute('aria-expanded', 'true');
+        if (st.root) document.addEventListener('pointerdown', onHealthOutside, true);
+    }
 
     function openConfirm() {
         closeConfirm();
@@ -617,8 +770,9 @@
             st.hadLocal = has;
             // The camera button was hidden when the live view showed before the camera started.
             if (typeof syncBroadcastLiveButtonVisibility === 'function') syncBroadcastLiveButtonVisibility();
-            if (has && typeof _enumerateBroadcastVideoInputs === 'function') _enumerateBroadcastVideoInputs({ ensureLabels: false }).then((c) => { st.cameras = c.length; syncDesktopButtons(); }, () => {});
-            if (!has) { st.micOff = false; st.camOff = false; st.torch = false; st.dismissedFor = null; }
+            if (has) loadCameras().then(() => { syncDesktopButtons(); refresh(); }, () => {});
+            // A camera gone because the stream ended resets the switches; one gone for a recovery keeps them.
+            if (!has && !streamState()) { st.micOff = false; st.camOff = false; st.torch = false; st.dismissedFor = null; }
         }
         if (wanted()) { if (!st.root) mount(); refresh(); }
         else { if (st.root) unmount(); applyTracks(); syncDesktopButtons(); }
@@ -626,6 +780,7 @@
     }
     setInterval(tick, 1000);
     document.addEventListener('visibilitychange', tick);
+    document.addEventListener('bc-session', tick);
     if (NARROW.addEventListener) NARROW.addEventListener('change', tick);
     ensureReturn();
 

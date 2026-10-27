@@ -212,6 +212,46 @@ function _getCameraFacingHint(device) {
     return null;
 }
 
+/**
+ * The cameras as people know them (owner, 2026-10-27: "camera 1, facing front … unformatted camera names is trash").
+ * A phone's cameras are named by side: "Front camera" / "Back camera", and when a side has more than one, "Back camera 2"…
+ * in the phone's own numbering (Android's "camera 0, facing back" is the main one; the list comes in no useful order).
+ * A computer's camera keeps its name without the USB ids ("HD Pro Webcam C920 (046d:082d)" → "HD Pro Webcam C920").
+ * Entries with the same label are one camera (some phones list a logical camera twice).
+ * Returns [{ deviceId, label, name, facing: 'user'|'environment'|null, side: 1-based index on its side, sides }].
+ */
+function _bcCameraChoices(devices) {
+    const seen = new Set();
+    const list = [];
+    for (const d of devices || []) {
+        if (d.kind && d.kind !== 'videoinput') continue;
+        const key = d.label || d.deviceId;
+        if (!key || seen.has(key)) continue;
+        seen.add(key);
+        const num = /camera2?\s*(\d+)/i.exec(d.label || '');
+        list.push({ deviceId: d.deviceId, label: d.label || '', facing: _getCameraFacingHint(d), order: num ? Number(num[1]) : 1000 + list.length });
+    }
+    const sides = { user: list.filter((c) => c.facing === 'user'), environment: list.filter((c) => c.facing === 'environment') };
+    for (const side of Object.values(sides)) side.sort((a, b) => a.order - b.order);
+    let other = 0;
+    for (const c of list) {
+        if (c.facing) {
+            const mine = sides[c.facing];
+            c.side = mine.indexOf(c) + 1;
+            c.sides = mine.length;
+            const base = c.facing === 'user' ? 'Front camera' : 'Back camera';
+            c.name = c.side === 1 ? base : `${base} ${c.side}`;
+        } else {
+            other += 1;
+            const clean = c.label.replace(/\s*\([0-9a-f]{4}:[0-9a-f]{4}\)\s*$/i, '').trim();
+            c.name = clean || `Camera ${other}`;
+        }
+    }
+    // Front cameras first, then back, then the rest, each side in the phone's order.
+    const rank = (c) => (c.facing === 'user' ? 0 : c.facing === 'environment' ? 1 : 2);
+    return list.sort((a, b) => rank(a) - rank(b) || (a.side || 0) - (b.side || 0) || a.order - b.order);
+}
+
 async function _enumerateBroadcastVideoInputs({ ensureLabels = false } = {}) {
     if (!navigator.mediaDevices?.enumerateDevices) return [];
     let tempStream = null;

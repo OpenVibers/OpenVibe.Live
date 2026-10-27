@@ -137,6 +137,16 @@ function startTrackKeepalive(streamId) {
             watchdogTriggered = false;
         }
 
+        // A phone pauses the camera of a tab in the background: no frames there is expected, and a recovery started
+        // from the background cannot open the camera anyway (it failed four times and gave up while the streamer was in
+        // another app). broadcast.js checks the camera the moment the tab is in front again.
+        if (mobile && typeof document !== 'undefined' && document.hidden) {
+            lastSuccessfulFrame = Date.now();
+            watchdogTriggered = false;
+            lastFrameCount = null;
+            return;
+        }
+
         // If recovery is already in progress or suppressed, just keep ticking
         if (current._suppressRecovery || current.mediaRecoveryInProgress || current.mediaRecoveryTimer) {
             lastSuccessfulFrame = Date.now(); // reset watchdog during recovery

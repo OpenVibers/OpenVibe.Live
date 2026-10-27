@@ -4,7 +4,9 @@
    count that was tapped. Used by the channel player's count (app-channel.js) and the phone live studio's
    (broadcast-studio.js). A place with count null is live there without a number (YouTube without an API key).
 
-   OVViewerPlaces.toggle(anchor, getPlaces, { below })  opens or closes the panel by `anchor`
+   OVViewerPlaces.toggle(anchor, getPlaces, { below, extra })  opens or closes the panel by `anchor`; `extra()` may add a
+                                                        section under the places: { title, rows: [{ name, state, text }],
+                                                        action: { label, onClick } } (the live studio's restreams)
    OVViewerPlaces.update()                              redraws it from getPlaces() (call when counts change)
    OVViewerPlaces.close()
    OVViewerPlaces.total(places), .summary(places)       the sum, and "4 on OpenVibe, 5 on Twitch" */
@@ -61,6 +63,20 @@
         const list = open.panel.querySelector('.ovp-list');
         list.replaceChildren(...places.map(row));
         open.panel.querySelector('.ovp-total-n').textContent = fmt(total(places));
+        const box = open.panel.querySelector('.ovp-extra');
+        const extra = open.extra ? open.extra() : null;
+        if (box) {
+            box.hidden = !(extra && extra.rows && extra.rows.length);
+            if (!box.hidden) {
+                const action = extra.action ? el('button', { type: 'button', class: 'ovp-action' }, extra.action.label) : null;
+                if (action) action.addEventListener('click', extra.action.onClick);
+                box.replaceChildren(el('div', { class: 'ovp-sub', text: extra.title || '' }),
+                    el('ul', { class: 'ovp-list' }, ...extra.rows.map((r) => el('li', { class: `ovp-row ovp-state is-${r.state || 'idle'}` },
+                        el('span', { class: 'ovp-ico' }, el('span', { class: 'ovp-sdot', 'aria-hidden': 'true' })),
+                        el('span', { class: 'ovp-name', text: r.name }), el('span', { class: 'ovp-n', text: r.text || '' })))),
+                    action);
+            }
+        }
         place();
     }
 
@@ -101,11 +117,12 @@
         const panel = el('div', { class: 'ovp', role: 'dialog', 'aria-label': 'Where people are watching' },
             el('div', { class: 'ovp-head' }, el('span', { text: 'Watching now' }),
                 el('span', { class: 'ovp-total' }, el('i', { class: 'fa-solid fa-eye', 'aria-hidden': 'true' }), el('b', { class: 'ovp-total-n', text: '0' }))),
-            el('ul', { class: 'ovp-list' }));
+            el('ul', { class: 'ovp-list' }),
+            el('div', { class: 'ovp-extra', hidden: true }));
         // In fullscreen only the fullscreen element shows: the panel goes inside it.
         const fs = document.fullscreenElement || document.webkitFullscreenElement;
         (fs && fs.contains(anchor) ? fs : document.body).append(panel);
-        open = { panel, anchor, get, below: !!(opts && opts.below) };
+        open = { panel, anchor, get, below: !!(opts && opts.below), extra: opts && typeof opts.extra === 'function' ? opts.extra : null };
         anchor.setAttribute('aria-expanded', 'true');
         document.addEventListener('pointerdown', onOutside, true);
         document.addEventListener('keydown', onKey);

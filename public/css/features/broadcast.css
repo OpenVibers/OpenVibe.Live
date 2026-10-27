@@ -486,10 +486,31 @@
     background: #000;
 }
 
-.bc-stats-overlay .bc-stat-label {
-    color: var(--text-muted);
-    min-width: 70px;
+/* Stream health: a small card over the preview (and under the studio's health pill on a phone). */
+#bc-stats-overlay.bc-stats-overlay {
+    top: 10px; left: 10px; display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 6px 9px;
+    width: max-content; min-width: 210px; max-width: calc(100% - 20px); padding: 11px 13px 12px; border-radius: 14px;
+    font-family: inherit; font-size: 0.8rem; color: #fff; line-height: 1.2;
+    background: rgba(12, 16, 26, 0.82); border: 1px solid rgba(255, 255, 255, 0.12);
+    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+    animation: bcStatsIn 0.16s ease-out;
 }
+#bc-stats-overlay[style*="none"] { animation: none; }
+@keyframes bcStatsIn { from { opacity: 0; transform: translateY(-4px); } }
+#bc-stats-overlay .bc-stats-head {
+    grid-column: 1 / -1; display: flex; align-items: center; gap: 8px; margin-bottom: 3px; padding-bottom: 8px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1); font-weight: 700;
+}
+#bc-stats-overlay .bc-stats-title { flex: 1; }
+#bc-stats-overlay .bc-stats-dot { width: 8px; height: 8px; border-radius: 50%; background: #9ca3af; }
+#bc-stats-overlay[data-health="good"] .bc-stats-dot { background: #22c55e; }
+#bc-stats-overlay[data-health="fair"] .bc-stats-dot, #bc-stats-overlay[data-health="checking"] .bc-stats-dot { background: #f59e0b; }
+#bc-stats-overlay[data-health="poor"] .bc-stats-dot, #bc-stats-overlay[data-health="offline"] .bc-stats-dot { background: #ef4444; }
+#bc-stats-overlay .bc-stat { display: contents; }
+#bc-stats-overlay .bc-stat > i { width: 16px; text-align: center; font-size: 0.72rem; color: rgba(255, 255, 255, 0.55); }
+#bc-stats-overlay .bc-stat-label { color: rgba(255, 255, 255, 0.66); min-width: 0; }
+#bc-stats-overlay .bc-stat-v { font-weight: 700; text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+@media (prefers-reduced-motion: reduce) { #bc-stats-overlay.bc-stats-overlay { animation: none; } }
 
 .bc-status-good { background: var(--success); color: #fff; }
 .bc-status-warn { background: var(--warning); color: #000; }
@@ -2515,13 +2536,14 @@ body.bc-studio-on #bc-video-preview.bcs-mirror { transform: scaleX(-1); }
 body.bc-studio-on .bc-video-container .bc-live-badge,
 body.bc-studio-on .bc-video-container .bc-connection-status,
 body.bc-studio-on .bc-video-container .bc-video-placeholder { display: none !important; }
-body.bc-studio-on .bc-stats-overlay { top: calc(58px + env(safe-area-inset-top, 0px)); left: 12px; z-index: 1205; }
+/* On the phone the card hangs under the health pill it opened from (top right). */
+body.bc-studio-on #bc-stats-overlay.bc-stats-overlay {
+    position: fixed; top: calc(52px + env(safe-area-inset-top, 0px)); left: auto; right: max(12px, env(safe-area-inset-right, 0px)); z-index: 1235;
+}
 body.bc-studio-on .messenger-toggle,
 body.bc-studio-on .bc-mobile-chat-fab,
 body.bc-studio-on #navbar-mount,
 body.bc-studio-on .navbar { display: none !important; }
-/* "Reconnecting…" stays visible, just above the chat instead of over its input. */
-body.bc-studio-on .ov-conn-pill { left: calc(50% - 38px); bottom: calc(min(24vh, 180px) + 10px + env(safe-area-inset-bottom, 0px)); z-index: 1290; }
 
 /* The stream chat over the picture: newest at the bottom, fading out upward, input at the very bottom. */
 body.bc-studio-on #bc-chat-sidebar {
@@ -2549,8 +2571,7 @@ body.bc-studio-on #bc-chat-messages .chat-msg {
 }
 /* Site update cards and chat connection lines are for viewers; a streamer on the camera gets neither (the card's
    reload button would end the stream, and the top bar already shows the connection). */
-body.bc-studio-on #bc-chat-messages .chat-deploy,
-body.bc-studio-on #bc-chat-messages .chat-conn-status { display: none !important; }
+body.bc-studio-on #bc-chat-messages .chat-deploy { display: none !important; }
 body.bc-studio-on #bc-chat-sidebar .chat-input-area { background: none; border: 0; padding: 4px 10px 10px; }
 body.bc-studio-on #bc-chat-input {
     background: rgba(0,0,0,0.45); color: #fff; border: 1px solid rgba(255,255,255,0.2); border-radius: 22px;
@@ -2578,9 +2599,13 @@ body.bc-studio-on .toast-container { z-index: 1500; }
 .bcs-top-l { flex-wrap: wrap; min-width: 0; }
 .bcs-top-r { flex: none; }
 .bcs-live {
-    display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border-radius: 999px;
-    background: #e11d48; font-size: 0.78rem; font-weight: 800; letter-spacing: 0.06em;
+    display: inline-flex; align-items: center; gap: 7px; height: 30px; padding: 0 12px 0 11px; border-radius: 999px;
+    background: #e11d48; font-size: 0.86rem; font-weight: 800; font-variant-numeric: tabular-nums; letter-spacing: 0.01em;
+    box-shadow: 0 2px 10px rgba(225, 29, 72, 0.35); transition: background 0.2s;
 }
+/* Starting and reconnecting: amber, the dot still pulsing. */
+.bcs-live[data-phase="starting"], .bcs-live[data-phase="recovering"] { background: #b45309; box-shadow: none; }
+.bcs-live-t { min-width: 2.6em; }
 .bcs-live-dot { width: 7px; height: 7px; border-radius: 50%; background: #fff; animation: bcs-pulse 1.6s ease-in-out infinite; }
 @keyframes bcs-pulse { 50% { opacity: 0.35; } }
 .bcs-pill {
@@ -2593,11 +2618,57 @@ body.bc-studio-on .toast-container { z-index: 1500; }
 .bcs-viewers { -webkit-tap-highlight-color: transparent; }
 .bcs-viewers[aria-expanded="true"] { background: rgba(255,255,255,0.2); border-color: rgba(255,255,255,0.4); }
 .bcs-dot { width: 8px; height: 8px; border-radius: 50%; background: #9ca3af; }
-.bcs-pill.is-ok .bcs-dot, .bcs-restream.is-ok::before { background: #22c55e; }
-.bcs-pill.is-warn .bcs-dot, .bcs-restream.is-warn::before { background: #f59e0b; }
-.bcs-pill.is-bad .bcs-dot, .bcs-restream.is-bad::before { background: #ef4444; }
-.bcs-restream::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: #9ca3af; }
+.bcs-pill.is-ok .bcs-dot { background: #22c55e; }
+.bcs-pill.is-warn .bcs-dot { background: #f59e0b; }
+.bcs-pill.is-bad .bcs-dot { background: #ef4444; }
 .bcs-pill.is-bad { border-color: rgba(239,68,68,0.7); }
+.bcs-pill { height: 30px; }
+/* A restream connecting or failed: a dot on the viewers pill (its panel lists them). */
+.bcs-viewers { position: relative; }
+.bcs-viewers[data-rs="warn"]::after, .bcs-viewers[data-rs="bad"]::after {
+    content: ''; position: absolute; top: -2px; right: -2px; width: 9px; height: 9px; border-radius: 50%;
+    background: #f59e0b; border: 2px solid rgba(0, 0, 0, 0.6);
+}
+.bcs-viewers[data-rs="bad"]::after { background: #ef4444; }
+/* The studio fades in over the page instead of appearing a frame after it. */
+.bcs { animation: bcs-in 0.22s ease-out; }
+@keyframes bcs-in { from { opacity: 0; } }
+/* Starting or reconnecting the camera: said on the picture, not a frozen last frame. */
+.bcs-state {
+    position: absolute; top: 42%; left: 50%; transform: translate(-50%, -50%); display: flex; flex-direction: column; align-items: center;
+    gap: 6px; width: min(300px, calc(100vw - 120px)); padding: 16px 18px; border-radius: 18px; text-align: center;
+    background: rgba(0, 0, 0, 0.58); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+}
+.bcs-state[hidden] { display: none; }
+.bcs-state b { font-size: 0.98rem; }
+.bcs-state small { font-size: 0.78rem; color: rgba(255, 255, 255, 0.75); }
+.bcs-state-spin { width: 26px; height: 26px; border-radius: 50%; border: 3px solid rgba(255, 255, 255, 0.25); border-top-color: #fff; animation: bcs-spin 0.9s linear infinite; }
+@keyframes bcs-spin { to { transform: rotate(360deg); } }
+/* Flip with more than two cameras: a small "+" (hold it to choose). */
+.bcs-btn[data-act="flip"] { position: relative; }
+.bcs-more-cams {
+    position: absolute; top: -1px; right: 6px; width: 16px; height: 16px; border-radius: 50%; display: grid; place-items: center;
+    background: #fff; color: #111; font-size: 0.7rem; font-weight: 900; line-height: 1; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+}
+.bcs-more-cams::before { content: '+'; }
+.bcs-more-cams[hidden] { display: none; }
+/* The camera list (hold Flip, or More → Cameras). */
+.bcs-cam-group { margin-top: 12px; }
+.bcs-cam-group h3 { margin: 0 0 6px; font-size: 0.72rem; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; color: rgba(255, 255, 255, 0.6); }
+.bcs-cam-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; }
+.bcs-cam {
+    display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 0 14px; border-radius: 14px; text-align: left;
+    font: inherit; font-size: 0.92rem; font-weight: 700; color: #fff; cursor: pointer;
+    background: rgba(255, 255, 255, 0.07); border: 1px solid rgba(255, 255, 255, 0.12);
+}
+.bcs-cam span { flex: 1; }
+.bcs-cam > i:first-child { width: 18px; text-align: center; color: rgba(255, 255, 255, 0.7); }
+.bcs-cam[aria-pressed="true"] { background: rgba(59, 130, 246, 0.22); border-color: rgba(96, 165, 250, 0.7); }
+.bcs-cam[aria-pressed="true"] > i:last-child { color: #93c5fd; }
+/* Chat's own reconnecting line sits with the chat; the site-wide pill would say it twice (and read as the stream). */
+body.bc-studio-on .ov-conn-pill { display: none !important; }
+body.bc-studio-on #bc-chat-messages .chat-conn-status { display: block !important; width: fit-content; background: rgba(180, 83, 9, 0.85); font-style: normal; }
+@media (prefers-reduced-motion: reduce) { .bcs, .bcs-state-spin { animation: none; } }
 .bcs-end { height: 34px; padding: 0 16px; border: 0; border-radius: 999px; background: #e11d48; color: #fff; font-size: 0.9rem; font-weight: 800; }
 .bcs-zoom {
     position: absolute; top: 38%; left: 50%; transform: translate(-50%, -50%); padding: 8px 16px; border-radius: 999px;
