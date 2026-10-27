@@ -18,8 +18,10 @@ const db = require('../server/db/database');
     await db.initDb();
     const mk = async (username) => { await db.createUser({ username, email: `${username}@x`, password_hash: 'x', display_name: username, stream_key: username.padEnd(32, '0') }); const id = (await db.get('SELECT id FROM users WHERE username = ?', [username])).id; await db.ensureChannel(id); return id; };
     const izor = await mk('izor'), quiet1 = await mk('quietone'), first = await mk('firsttimer'), loose = await mk('dreezy');
+    const owner = await mk('goosely'), keyUser = await mk('finditfixit');
     const slot = async (uid, slug) => Number((await db.run('INSERT INTO managed_streams (user_id, slug, title, protocol, stream_key, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ov_now(), ov_now()) RETURNING id', [uid, slug, `${slug} title`, 'webrtc', `${slug}-key-${uid}`])).lastInsertRowid);
     const ranked = await slot(izor, 'ranked'), chill = await slot(izor, 'chill'), q = await slot(quiet1, 'main');
+    const irl = await slot(owner, 'irl'), bench = await slot(keyUser, 'bench');
     const stream = async (uid, ms, { live = false, startedAgo, endedAgo = null, viewers = 0 }) => await db.run(
         `INSERT INTO streams (user_id, managed_stream_id, title, protocol, is_live, viewer_count, started_at, ended_at, thumbnail_url, created_at)
          VALUES (?, ?, ?, 'webrtc', ?, ?, to_char(now() - make_interval(mins => ?), 'YYYY-MM-DD HH24:MI:SS'), ${live ? 'NULL' : "to_char(now() - make_interval(mins => ?), 'YYYY-MM-DD HH24:MI:SS')"}, ?, ov_now())`,
@@ -31,6 +33,11 @@ const db = require('../server/db/database');
     // A first stream, live now and on no slot; and a streamer whose only (ended) stream never had a slot.
     await stream(first, null, { live: true, startedAgo: 3, viewers: 1 });
     await stream(loose, null, { startedAgo: 300, endedAgo: 298 });
+    // Streamers with slots and an account-key stream: one from months before their slots, one from after.
+    await stream(owner, null, { startedAgo: 130000, endedAgo: 129900 });
+    await stream(owner, irl, { startedAgo: 420, endedAgo: 400 });
+    await stream(keyUser, bench, { startedAgo: 5000, endedAgo: 4900 });
+    await stream(keyUser, null, { startedAgo: 700, endedAgo: 650 });
 
     // Media's answer for a slot-less stream's public recording (lookups asks Media by stream id).
     require('../server/media-proxy/lookups').publicVodsForStreams = async (ids) => new Map(ids.map((id) => [Number(id), { id: 9, thumbnail_url: '/t/dreezy-part-2.jpg' }]));
@@ -56,7 +63,13 @@ const db = require('../server/db/database');
         const dz = body.streamers.find((s) => s.username === 'dreezy');
         assert.deepStrictEqual(dz.managed_streams.map((m) => [m.slug, m.title, !!m.last_live_at]), [[null, 'old', true]]);
         assert.ok(String(dz.managed_streams[0].vod_thumbnail).endsWith('/t/dreezy-part-2.jpg'), "with its recording's picture");
-        assert.strictEqual(body.total, 4);
+        // Next to slots, an account-key stream is listed only while it is what they streamed last: Go Live lists slots,
+        // and a months-old one under them read as a slot nobody could find (owner, 2026-10-27).
+        const go = body.streamers.find((s) => s.username === 'goosely');
+        assert.deepStrictEqual(go.managed_streams.map((m) => m.slug), ['irl'], 'an old account-key stream is left out');
+        const fx = body.streamers.find((s) => s.username === 'finditfixit');
+        assert.deepStrictEqual(fx.managed_streams.map((m) => m.slug), [null, 'bench'], 'the newest one is listed, first');
+        assert.strictEqual(body.total, 6);
         console.log('recently-online live: all checks passed');
     } finally { server.close(); }
     process.exit(0);

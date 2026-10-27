@@ -1200,9 +1200,12 @@ router.get('/recently-online', async (req, res) => {
             try {
                 const parsed = JSON.parse(s.managed_streams_json || '[]');
                 // A stream that never had a slot is listed as the channel itself, so someone who streamed is never
-                // "No streams" (Dreezy's first browser stream had no slot, 2026-10-18).
+                // "No streams" (Dreezy's first browser stream had no slot, 2026-10-18). Next to slots it is listed only
+                // while it is live or what they streamed last (the account key, finditfixit): Go Live lists slots, and
+                // a months-old account-key stream under them read as a slot nobody could find (owner, 2026-10-27).
                 const loose = s.loose_stream_json ? JSON.parse(s.loose_stream_json) : null;
-                if (loose) parsed.push({ managed_stream_id: null, stream_id: loose.stream_id || null, slug: null, title: loose.title || null, protocol: null, last_live_at: loose.last_live_at || null, vod_thumbnail: null });
+                const looseCurrent = loose && (!loose.last_live_at || !parsed.some(p => p.last_live_at && p.last_live_at >= loose.last_live_at));
+                if (looseCurrent) parsed.push({ managed_stream_id: null, stream_id: loose.stream_id || null, slug: null, title: loose.title || null, protocol: null, last_live_at: loose.last_live_at || null, vod_thumbnail: null });
                 // Sort by most recently live first; put null last
                 s.managed_streams = parsed.sort((a, b) => {
                     if (!a.last_live_at && !b.last_live_at) return 0;
