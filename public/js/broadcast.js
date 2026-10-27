@@ -2126,6 +2126,7 @@ function cleanupStream(streamId) {
     stopTrackKeepalive(streamId);
     ss._suppressRecovery = true;
     _cleanupComposite(ss);
+    if (window.OVCamPip) OVCamPip.stop(streamId);   // the camera's own stream ends with this one
     if (ss._screenStream) { ss._screenStream.getTracks().forEach(t => t.stop()); ss._screenStream = null; }
     if (ss.localStream) { ss.localStream.getTracks().forEach(t => t.stop()); ss.localStream = null; }
     _teardownAudioMixer(ss);
@@ -2874,7 +2875,16 @@ async function startMediaCapture(streamId, opts = {}) {
             }
             ss._cameraOverlayStream = camStream;
 
-            if (camStream) {
+            if (camStream && window.OVCamPip && OVCamPip.wanted(ss)) {
+                // The camera as a stream of its own (broadcast-cam-pip.js): the screen share goes out alone, and the camera
+                // goes live on its own slot, this slot's picture-in-picture, with its own VOD.
+                const combined = new MediaStream();
+                screenStream.getVideoTracks().forEach(t => combined.addTrack(t));
+                if (finalAudioTrack) combined.addTrack(finalAudioTrack);
+                ss.localStream = combined;
+                ss._cameraOverlayStream = null;   // OVCamPip owns it now, and stops it
+                OVCamPip.start(ss, camStream);
+            } else if (camStream) {
                 _startPipComposite(ss, screenStream, screenTrack, camStream, finalAudioTrack, res);
             } else {
                 // Camera not available — screen-only
@@ -2884,7 +2894,8 @@ async function startMediaCapture(streamId, opts = {}) {
                 ss.localStream = combined;
             }
         } else {
-            // Screen share without camera overlay
+            // Screen share without camera overlay (a camera that was its own stream ends with it)
+            if (window.OVCamPip) OVCamPip.stop(streamId);
             const combined = new MediaStream();
             screenStream.getVideoTracks().forEach(t => combined.addTrack(t));
             if (finalAudioTrack) combined.addTrack(finalAudioTrack);

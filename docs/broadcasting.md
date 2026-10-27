@@ -94,6 +94,18 @@ live, and appears within 30 seconds when that stream goes live after the page op
 
 **Limits:** an 18+ stream shows only over another 18+ stream, and a banned streamer's slot shows nowhere.
 
+**Your camera during a screen share** goes out as a stream of its own by default (screen share settings, **How the
+camera goes out**):
+- It goes live on one of your slots: the first of your idle slots already listed as a PIP here, else a new
+  "<title> camera" slot, added at the corner and size you chose.
+- It gets its own VOD.
+- Viewers can move it or hide it.
+- It plays over the screen share's VOD where it was.
+- It ends with the screen share, or when you turn the camera off.
+
+Restreams to Twitch, YouTube and the like get the screen only. Choose **Drawn into the screen share** to paint the
+camera into the picture as before, so restreams show it too.
+
 API: `GET`/`PUT /api/streams/managed/:id/pips` (`{ pips: [{ source_msid, x, y, w, muted }] }`, fractions of the
 player), `GET /api/streams/pip-sources?username=` (a streamer's slots), and `GET /api/streams/:id/pips` (a live
 stream's PIPs now). The stream objects carry `pip_overlays`.
