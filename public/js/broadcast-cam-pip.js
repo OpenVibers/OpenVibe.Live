@@ -13,7 +13,8 @@
    YouTube …) get the screen share only; "Drawn into the screen" keeps the old composite for them.
 
      OVCamPip.wanted(ss)          → whether this stream's camera goes out on its own (the setting, a slot, the module)
-     OVCamPip.start(ss, camStream) → go live with it (or swap its track when already live); resolves true when live
+     OVCamPip.prepare(ss)          → its slot and live stream, before capture; false → broadcast.js draws it in as before
+     OVCamPip.start(ss, camStream) → publish it (or swap its track when already out); resolves true when live
      OVCamPip.stop(mainStreamId)   → end the camera stream and stop its tracks
    It talks to /ws/broadcast as a broadcaster, like broadcast.js's _handleSfuProduceRequest, with that file's helpers.
    ─────────────────────────────────────────────────────────────── */
@@ -112,21 +113,20 @@
         setTimeout(() => { if (!sess.closing) publish(sess).catch((e) => console.warn('[Camera PiP] reconnect failed:', e.message)); }, 2000 * sess.retries);
     }
 
-    async function start(ss, camStream) {
+    /**
+     * The camera's slot and its live stream, before anything is captured into it: true when the camera can go out on its
+     * own. broadcast.js asks first and draws the camera into the screen share as before when this is false, so a slot or
+     * a go-live that fails never costs the stream its camera.
+     */
+    async function prepare(ss) {
         const mainId = ss && ss.streamData && ss.streamData.id;
-        if (!mainId || !camStream) return false;
-        const cur = sessions.get(mainId);
-        if (cur && !cur.closing) {
-            // Already live (a camera switch, the overlay toggled back on): the same stream, the new track.
-            const track = camStream.getVideoTracks()[0];
-            const old = cur.stream;
-            cur.stream = camStream;
-            try { if (cur.producer && track) await cur.producer.replaceTrack({ track }); } catch (e) { console.warn('[Camera PiP] track swap failed:', e.message); }
-            if (old && old !== camStream) old.getTracks().forEach((t) => t.stop());
-            return true;
+        if (!mainId) return false;
+        let sess = sessions.get(mainId);
+        if (sess && !sess.closing && sess.camStreamId) return true;
+        if (!sess || sess.closing) {
+            sess = { camStreamId: null, camMsid: null, ws: null, transport: null, producer: null, stream: null, closing: false, retries: 0 };
+            sessions.set(mainId, sess);
         }
-        const sess = { camStreamId: null, camMsid: null, ws: null, transport: null, producer: null, stream: camStream, closing: false, retries: 0 };
-        sessions.set(mainId, sess);
         try {
             const title = ss.streamData.title || 'Stream';
             sess.camMsid = await cameraSlot(ss.streamData.managed_stream_id, title);
@@ -137,6 +137,34 @@
             if (!sess.camStreamId) throw new Error('the camera stream did not start');
             // Stopped while it was starting: stop() could not end a stream it did not know yet.
             if (sess.closing) { api(`/streams/${sess.camStreamId}`, { method: 'DELETE' }).catch(() => {}); return false; }
+            return true;
+        } catch (err) {
+            console.warn('[Camera PiP] no stream of its own for the camera:', err.message);
+            if (sessions.get(mainId) === sess) sessions.delete(mainId);
+            return false;
+        }
+    }
+
+    /** Publish the camera into its stream (prepared first if it was not), or swap its track when it already goes out. */
+    async function start(ss, camStream) {
+        const mainId = ss && ss.streamData && ss.streamData.id;
+        if (!mainId || !camStream) return false;
+        let sess = sessions.get(mainId);
+        if (!sess || sess.closing || !sess.camStreamId) {
+            if (!(await prepare(ss))) return false;
+            sess = sessions.get(mainId);
+        }
+        if (sess.producer) {
+            // Already out (a camera switch, the camera turned back on): the same stream, the new track.
+            const track = camStream.getVideoTracks()[0];
+            const old = sess.stream;
+            sess.stream = camStream;
+            try { if (track) await sess.producer.replaceTrack({ track }); } catch (e) { console.warn('[Camera PiP] track swap failed:', e.message); }
+            if (old && old !== camStream) old.getTracks().forEach((t) => t.stop());
+            return true;
+        }
+        sess.stream = camStream;
+        try {
             await publish(sess);
             console.log(`[Camera PiP] camera live as stream ${sess.camStreamId} on slot ${sess.camMsid}`);
             return true;
@@ -160,5 +188,5 @@
         if (sess.camStreamId) api(`/streams/${sess.camStreamId}`, { method: 'DELETE' }).catch(() => {});
     }
 
-    window.OVCamPip = { wanted, start, stop, placeOf, _sessions: sessions };
+    window.OVCamPip = { wanted, prepare, start, stop, placeOf, _sessions: sessions };
 })();

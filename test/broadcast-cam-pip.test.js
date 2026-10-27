@@ -20,7 +20,7 @@ const vm = require('vm');
 const read = (f) => fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
 const SRC = read('public/js/broadcast-cam-pip.js');
 
-function load({ pips = [], max = 3, settings = {}, failSocket = true, onStreamPost = null } = {}) {
+function load({ pips = [], max = 3, settings = {}, failSocket = true, onStreamPost = null, fail = null } = {}) {
     const calls = [];
     const toasts = [];
     let nextSlot = 77;
@@ -28,8 +28,8 @@ function load({ pips = [], max = 3, settings = {}, failSocket = true, onStreamPo
         calls.push([opts.method || 'GET', p, opts.body ? JSON.parse(JSON.stringify(opts.body)) : null]);   // a copy in this realm (the VM's objects compare unequal)
         if (p.endsWith('/pips') && !opts.method) return { pips, max };
         if (p.endsWith('/pips') && opts.method === 'PUT') return { pips: opts.body.pips, max };
-        if (p === '/streams/managed' && opts.method === 'POST') return { managed_stream: { id: nextSlot++ } };
-        if (p === '/streams' && opts.method === 'POST') { if (onStreamPost) onStreamPost(); return { stream: { id: 9001 } }; }
+        if (p === '/streams/managed' && opts.method === 'POST') { if (fail === 'slot') throw new Error('You have reached your slot limit'); return { managed_stream: { id: nextSlot++ } }; }
+        if (p === '/streams' && opts.method === 'POST') { if (onStreamPost) onStreamPost(); if (fail === 'go-live') return {}; return { stream: { id: 9001 } }; }
         if (opts.method === 'DELETE') return { ok: true };
         throw new Error(`unexpected ${p}`);
     };
@@ -95,6 +95,15 @@ const tick = () => new Promise((r) => setTimeout(r, 30));
         assert.deepStrictEqual(calls.find((c) => c[1] === '/streams')[2], { title: 'Coding · camera', protocol: 'webrtc', managed_stream_id: 77 });
     }
 
+    // Its slot or its go-live fails: prepare says false, nothing is left half started (no socket, no stream to end), and
+    // broadcast.js draws the camera into the screen share as before.
+    for (const fail of ['slot', 'go-live']) {
+        const { cam, calls } = load({ fail });
+        assert.strictEqual(await cam.prepare(ss()), false, `${fail} refused`);
+        assert.strictEqual(cam._sessions.size, 0);
+        assert.ok(!calls.some((c) => c[0] === 'WS' || c[0] === 'DELETE'), `${fail}: nothing to undo`);
+    }
+
     // A full list: the newest camera takes the last place.
     {
         const pips = [1, 2, 3].map((i) => ({ source_msid: 20 + i, username: 'other', live: false, defaults: { x: 0, y: 0, w: 0.2 }, muted: true }));
@@ -122,7 +131,8 @@ const tick = () => new Promise((r) => setTimeout(r, 30));
     // broadcast.js: the camera goes out on its own when wanted, the composite otherwise; it ends with the stream.
     {
         const b = read('public/js/broadcast.js');
-        assert.ok(/if \(camStream && window\.OVCamPip && OVCamPip\.wanted\(ss\)\) \{[\s\S]{0,700}OVCamPip\.start\(ss, camStream\);\n\s+\} else if \(camStream\) \{\n\s+_startPipComposite\(/.test(b));
+        assert.ok(/if \(camStream && window\.OVCamPip && OVCamPip\.wanted\(ss\) && await OVCamPip\.prepare\(ss\)\) \{[\s\S]{0,900}OVCamPip\.start\(ss, camStream\);\n\s+\} else if \(camStream\) \{\n\s+_startPipComposite\(/.test(b),
+            'its own stream when its slot and go-live are ready, drawn in as before otherwise');
         assert.ok(/\/\/ Screen share without camera overlay \(a camera that was its own stream ends with it\)\n\s+if \(window\.OVCamPip\) OVCamPip\.stop\(streamId\);/.test(b), 'turning the camera off ends its stream');
         assert.ok(/_cleanupComposite\(ss\);\n\s+if \(window\.OVCamPip\) OVCamPip\.stop\(streamId\);/.test(b), 'ending the stream ends the camera');
         const feats = JSON.parse(read('public/features.json')).features.broadcast.js;

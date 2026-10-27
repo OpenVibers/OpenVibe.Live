@@ -2875,9 +2875,10 @@ async function startMediaCapture(streamId, opts = {}) {
             }
             ss._cameraOverlayStream = camStream;
 
-            if (camStream && window.OVCamPip && OVCamPip.wanted(ss)) {
+            if (camStream && window.OVCamPip && OVCamPip.wanted(ss) && await OVCamPip.prepare(ss)) {
                 // The camera as a stream of its own (broadcast-cam-pip.js): the screen share goes out alone, and the camera
-                // goes live on its own slot, this slot's picture-in-picture, with its own VOD.
+                // goes live on its own slot, this slot's picture-in-picture, with its own VOD. When its slot or its
+                // go-live fails (prepare), it is drawn into the screen share below, as before.
                 const combined = new MediaStream();
                 screenStream.getVideoTracks().forEach(t => combined.addTrack(t));
                 if (finalAudioTrack) combined.addTrack(finalAudioTrack);
