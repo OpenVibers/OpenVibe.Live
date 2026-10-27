@@ -498,6 +498,14 @@ const CHAT_ROBOT_COMMANDS = {
     head_up: { kind: 'actuator', value: { name: 'head', value: 1 } },
     head_down: { kind: 'actuator', value: { name: 'head', value: -1 } },
 };
+// A robot made of buttons (OpenVibe.Bot's generic relay, or a local profile: Maticus's Cozmo Hobo, 2026-10-26, "chat
+// commands do nothing on my button robot") has no drive or actuator, and Bot refuses those as bot.command_not_allowed
+// before anything is spent. The chat word is then pressed as the robot's button of the same name (forward, turn_left,
+// head_up …), and `button:<name>` (OpenVibe.Chat's !<word> that is not a channel sound) presses any other button. A
+// hold button needs a press and a release: Bot says so (bot.invalid_input) to a plain press, the answer is remembered
+// per robot, and the release follows the pulse.
+const BUTTON_NAME_RE = /^[a-z0-9][a-z0-9_.-]{0,39}$/;
+const buttonHold = new Map();   // `${robot}:${name}` → true for a hold button
 const CHAT_ROBOT_MS = 600;
 const HARDWARE_COOLDOWN_MS = 250;
 const SUBJECT_RE = /^usr_[0-9A-HJKMNP-TV-Z]{26}$/;
@@ -514,10 +522,31 @@ const ROBOT_REFUSALS = {
     'bot.unknown_actuator': 'This robot does not do that.',
     'bot.robot_not_found': 'This channel\'s robot no longer exists.',
 };
+async function pressButton(bot, robotId, subject, name) {
+    const key = `${robotId}:${name}`;
+    const press = (hold) => bot.command(robotId, subject, { id: `chat-${require('crypto').randomUUID()}`, kind: 'button', value: hold ? { name, state: 'down' } : { name }, ...(hold ? { ms: CHAT_ROBOT_MS } : {}) });
+    let hold = buttonHold.get(key) === true;
+    let out;
+    try { out = await press(hold); } catch (err) {
+        if (hold || !(err instanceof bot.BotRefusal) || err.code !== 'bot.invalid_input') throw err;
+        hold = true;
+        buttonHold.set(key, true);
+        if (buttonHold.size > 2000) buttonHold.delete(buttonHold.keys().next().value);
+        out = await press(true);
+    }
+    if (hold) {
+        // Bot stops it at the deadline anyway; the release ends it on time and frees the button for the next press.
+        setTimeout(() => bot.command(robotId, subject, { id: `chat-${require('crypto').randomUUID()}`, kind: 'button', value: { name, state: 'up' } }).catch(() => {}), CHAT_ROBOT_MS).unref();
+    }
+    return out;
+}
+
 effectsRouter.post('/hardware', async (req, res) => {
     const command = String(req.body?.command || '');
     const say = /^say:([\s\S]{1,200})$/.exec(command);
-    const mapped = say ? { kind: 'say', value: { text: say[1] } } : CHAT_ROBOT_COMMANDS[command];
+    const button = /^button:(.+)$/.exec(command);
+    if (button && !BUTTON_NAME_RE.test(button[1])) return fail(res, 400, 'unknown command');
+    const mapped = say ? { kind: 'say', value: { text: say[1] } } : button ? { kind: 'button', name: button[1] } : CHAT_ROBOT_COMMANDS[command];
     if (!mapped) return fail(res, 400, 'unknown command');
     const user = await db.getUserById(int(req.body.streamer_user_id));
     if (!user) return res.json({ ok: false, reason: 'no_user' });
@@ -532,8 +561,19 @@ effectsRouter.post('/hardware', async (req, res) => {
     hardwareLast.set(key, now);
     if (hardwareLast.size > 5000) hardwareLast.delete(hardwareLast.keys().next().value);
     const bot = require('../bot/bot-client');
+    const robotId = channel.bot_robot_id;
     try {
-        const out = await bot.command(channel.bot_robot_id, subject, { id: `chat-${require('crypto').randomUUID()}`, ...mapped, ...(mapped.kind === 'say' ? {} : { ms: CHAT_ROBOT_MS }) });
+        let out;
+        if (mapped.kind === 'button') out = await pressButton(bot, robotId, subject, mapped.name);
+        else {
+            try {
+                out = await bot.command(robotId, subject, { id: `chat-${require('crypto').randomUUID()}`, ...mapped, ...(mapped.kind === 'say' ? {} : { ms: CHAT_ROBOT_MS }) });
+            } catch (err) {
+                if (!(err instanceof bot.BotRefusal) || err.code !== 'bot.command_not_allowed' || mapped.kind === 'say') throw err;
+                // No drive or actuator here: its button of the same name, if it has one; else the first refusal stands.
+                out = await pressButton(bot, robotId, subject, command).catch((again) => { throw again instanceof bot.BotRefusal && again.code === 'bot.command_not_allowed' ? err : again; });
+            }
+        }
         return res.json({ ok: true, result: out.result || null });
     } catch (err) {
         if (err instanceof bot.BotRefusal) {

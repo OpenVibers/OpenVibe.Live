@@ -7,6 +7,10 @@
  *     the channel GET carries the url the iframe uses; flag off → no bot_embed, and the page code
  *     (app-channel.js's _applyBotEmbed, run against a fake ov) requests nothing and adds nothing.
  * (c) The dashboard's binding card (dashboard.js) shows only with the flag on, saves, unbinds and shows server errors.
+ * (d) Drive from the framed panel (Maticus, 2026-10-26: driving took a popup and a second sign-in): listen() answers
+ *     the panel's ticket request and refusal only from that frame and Bot's origin, for this robot; and
+ *     POST /api/streams/channel/:username/bot/ticket asks Bot (a stub) for a ticket as the viewer, for the channel's
+ *     own robot only, saying Bot's refusal in plain words.
  *
  *   node test/bot-embed-page.test.js
  */
@@ -124,8 +128,9 @@ async function check(name, fn) {
         assert.match(frag, /<div id="ch-bot-container"><\/div>/);
         assert.ok(!/<iframe/i.test(frag), 'no iframe in the markup');
         const app = fs.readFileSync(path.join(__dirname, '..', 'public', 'js', 'app-channel.js'), 'utf8');
-        assert.strictEqual((app.match(/_applyBotEmbed\(/g) || []).length, 2, 'defined once, called once');
-        assert.ok(app.includes('_applyBotEmbed(data.bot_embed);'));
+        assert.strictEqual((app.match(/_applyBotEmbed\(/g) || []).length, 3, 'defined once, called for the channel and after binding');
+        assert.ok(app.includes('_applyBotEmbed(data.bot_embed, username);'));
+        assert.ok(app.includes('onBound: (be) => _applyBotEmbed(be, username)'));
     });
 
     // ── (b) end to end through the real channel routes ──
@@ -154,14 +159,14 @@ async function check(name, fn) {
     app.use('/api/streams', require('../server/streaming/routes'));
     const server = http.createServer(app).listen(0, '127.0.0.1');
     if (!server.listening) await new Promise((r) => server.once('listening', r));
-    const call = (method, p, body) => new Promise((resolve, reject) => {
+    const call = (method, p, body, user = '1') => new Promise((resolve, reject) => {
         const data = body === undefined ? null : JSON.stringify(body);
-        const headers = { 'x-test-user': '1' };
+        const headers = user ? { 'x-test-user': user } : {};
         if (data) { headers['content-type'] = 'application/json'; headers['content-length'] = Buffer.byteLength(data); }
         const req = http.request({ host: '127.0.0.1', port: server.address().port, method, path: p, headers }, (res) => {
             let text = '';
             res.on('data', (c) => { text += c; });
-            res.on('end', () => { let json = null; try { json = JSON.parse(text); } catch { /* */ } resolve({ status: res.statusCode, body: json, text }); });
+            res.on('end', () => { let json = null; try { json = JSON.parse(text); } catch { /* */ } resolve({ status: res.statusCode, body: json, text, headers: res.headers }); });
         });
         req.on('error', reject);
         if (data) req.write(data);
@@ -173,7 +178,7 @@ async function check(name, fn) {
     const page = () => {
         const dom = fakeDom();
         const loads = [];
-        const env = { BotEmbed: undefined, document: { getElementById: (id) => (id === 'ch-bot-container' ? dom.container : null) } };
+        const env = { BotEmbed: undefined, _botEmbedStop: null, currentUser: null, api: async () => ({}), document: { getElementById: (id) => (id === 'ch-bot-container' ? dom.container : null) } };
         const disposers = [];
         env.window = { ov: true };
         env.ov = {
@@ -186,9 +191,9 @@ async function check(name, fn) {
     // app-channel.js's _applyBotEmbed run on its own; `with` lets it see the fake document/ov/BotEmbed globals.
     const runApply = (p, botEmbed) => {
         const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'js', 'app-channel.js'), 'utf8');
-        const fn = src.match(/\nfunction _applyBotEmbed\(botEmbed\) \{[\s\S]*?\n\}\n/)[0];
+        const fn = src.match(/\nfunction _applyBotEmbed\(botEmbed, username\) \{[\s\S]*?\n\}\n/)[0];
         // eslint-disable-next-line no-new-func
-        new Function('env', 'botEmbed', `with (env) { ${fn}; _applyBotEmbed(botEmbed); }`)(p.env, botEmbed);
+        new Function('env', 'botEmbed', `with (env) { ${fn}; _applyBotEmbed(botEmbed, 'rover'); }`)(p.env, botEmbed);
         return new Promise((r) => setImmediate(r));
     };
 
@@ -281,6 +286,83 @@ async function check(name, fn) {
             await d.saveBotEmbedSetting();
             assert.strictEqual((await db.getChannelByUserId(1)).bot_robot_id, 'rob_sim123');
             assert.strictEqual(d.els['dash-bot-robot-status'].textContent, 'Bound to rob_sim123');
+        });
+
+        await check('listen(): the panel\'s ticket request is answered to Bot\'s origin; refusals and strangers are not', async () => {
+            const listeners = new Set();
+            const win = { addEventListener: (t, f) => listeners.add(f), removeEventListener: (t, f) => listeners.delete(f) };
+            const posted = [];
+            const panel = { postMessage: (msg, origin) => posted.push([msg, origin]) };
+            const frame = { contentWindow: panel };
+            let answer = { ticket: 'T'.repeat(43) };
+            let asked = 0;
+            let refused = 0;
+            const stop = BotEmbed.listen({ frame, botEmbed: SIM, win, requestTicket: async () => { asked++; return answer; }, onRefused: () => { refused++; } });
+            const send = async (data, { origin = 'https://openvibe.bot', source = panel } = {}) => {
+                for (const f of [...listeners]) await f({ data, origin, source });
+            };
+            await send({ type: 'ov-bot-ticket-request', robot_id: 'rob_sim123' }, { origin: 'https://evil.example' });
+            await send({ type: 'ov-bot-ticket-request', robot_id: 'rob_sim123' }, { source: {} });
+            await send({ type: 'ov-bot-ticket-request', robot_id: 'rob_other' });
+            assert.strictEqual(asked, 0, 'another origin, another window or another robot is ignored');
+            await send({ type: 'ov-bot-ticket-request', robot_id: 'rob_sim123' });
+            assert.deepStrictEqual(posted.at(-1), [{ robot_id: 'rob_sim123', type: 'ov-bot-ticket', ticket: 'T'.repeat(43) }, 'https://openvibe.bot']);
+            answer = { message: 'Sign in on OpenVibe.Live to drive the robot.' };
+            await send({ type: 'ov-bot-ticket-request', robot_id: 'rob_sim123' });
+            assert.deepStrictEqual(posted.at(-1)[0], { robot_id: 'rob_sim123', type: 'ov-bot-ticket-none', message: 'Sign in on OpenVibe.Live to drive the robot.' });
+            await send({ type: 'ov-bot-embed-refused', robot_id: 'rob_sim123' }, { origin: 'https://evil.example' });
+            assert.strictEqual(refused, 0);
+            await send({ type: 'ov-bot-embed-refused', robot_id: 'rob_sim123' });
+            assert.strictEqual(refused, 1);
+            stop();
+            assert.strictEqual(listeners.size, 0, 'stop() removes the listener');
+            assert.strictEqual(typeof BotEmbed.listen({ frame, botEmbed: { url: 'javascript:alert(1)' }, win, requestTicket: async () => ({}) }), 'function');
+            assert.strictEqual(listeners.size, 0, 'nothing listens for a url it would not frame');
+        });
+
+        await check('POST …/bot/ticket: a Drive ticket from Bot as the viewer, for the channel\'s own robot only', async () => {
+            const seen = [];
+            let reply = { status: 200, body: { ticket: 'K'.repeat(43), robot_id: 'rob_sim123', role: 'queue', expires_in: 120 } };
+            const stub = http.createServer((req, res) => {
+                let body = '';
+                req.on('data', (c) => { body += c; });
+                req.on('end', () => {
+                    res.setHeader('Content-Type', 'application/json');
+                    if (req.url === '/oauth/token') return res.end(JSON.stringify({ access_token: 'live-bot-token', token_type: 'Bearer', expires_in: 300 }));
+                    seen.push({ url: req.url, method: req.method, auth: req.headers.authorization, subject: req.headers['x-ov-subject'] });
+                    res.statusCode = reply.status;
+                    res.end(JSON.stringify(reply.body));
+                });
+            });
+            await new Promise((r) => stub.listen(0, '127.0.0.1', r));
+            const stubUrl = `http://127.0.0.1:${stub.address().port}`;
+            const ENV = ['OV_OAUTH_CLIENT_SECRET', 'OV_NETWORK_INTERNAL_URL', 'LIVE_BOT_INTERNAL_URL'];
+            const before = Object.fromEntries(ENV.map((k) => [k, process.env[k]]));
+            Object.assign(process.env, { OV_OAUTH_CLIENT_SECRET: 'test-secret', OV_NETWORK_INTERNAL_URL: stubUrl, LIVE_BOT_INTERNAL_URL: stubUrl });
+            const ticket = (body, user) => call('POST', '/api/streams/channel/rover/bot/ticket', body, user);
+            try {
+                delete process.env.LIVE_BOT_EMBED;
+                assert.strictEqual((await ticket({ robot_id: 'rob_sim123' })).status, 404, 'flag off: no such route');
+                process.env.LIVE_BOT_EMBED = '1';
+                assert.strictEqual((await ticket({ robot_id: 'rob_sim123' }, null)).status, 401, 'signed in only');
+                assert.strictEqual((await ticket({ robot_id: 'rob_other1' })).status, 404, 'not the channel\'s robot');
+                assert.strictEqual((await ticket({ robot_id: 'rob_sim123' })).status, 409, 'no Network subject linked');
+                await raw.prepare("INSERT INTO linked_accounts (user_id, service, service_user_id, subject_id) VALUES (1, 'network', '901', 'usr_01J9ZZZZZZZZZZZZZZZZZZZZZZ')").run();
+                const ok = await ticket({ robot_id: 'rob_sim123' });
+                assert.strictEqual(ok.status, 200, ok.text);
+                assert.deepStrictEqual(ok.body, { ticket: 'K'.repeat(43), robot_id: 'rob_sim123', role: 'queue', expires_in: 120 });
+                assert.strictEqual(ok.headers['cache-control'], 'no-store');
+                assert.deepStrictEqual(seen.at(-1), { url: '/api/v1/robots/rob_sim123/control-ticket', method: 'POST', auth: 'Bearer live-bot-token', subject: 'usr_01J9ZZZZZZZZZZZZZZZZZZZZZZ' });
+                reply = { status: 403, body: { code: 'bot.not_an_operator', detail: 'the owner decides who may drive this robot' } };
+                const no = await ticket({ robot_id: 'rob_sim123' });
+                assert.deepStrictEqual([no.status, no.body.code, no.body.error], [403, 'bot.not_an_operator', 'The robot\'s owner decides who may drive it.']);
+                reply = { status: 503, body: {} };
+                assert.strictEqual((await ticket({ robot_id: 'rob_sim123' })).status, 503, 'Bot down is said so');
+            } finally {
+                stub.close();
+                await raw.prepare("DELETE FROM linked_accounts WHERE user_id = 1 AND service_user_id = '901'").run();
+                for (const k of ENV) { if (before[k] === undefined) delete process.env[k]; else process.env[k] = before[k]; }
+            }
         });
 
         await check('dashboard, flag off: the binding card stays hidden', async () => {

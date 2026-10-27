@@ -8,6 +8,13 @@
      mount(container, botEmbed)  → puts one iframe in container and unhides its section; removes it and hides
                                    the section when there is nothing to show. Same url twice keeps the frame
                                    (an operator's session survives a channel refresh).
+     listen({ frame, botEmbed, requestTicket, onRefused })  → stop(): answers the framed panel (OpenVibe.Bot
+                                   public/panel.js and refused.js), only from that frame and Bot's origin, for
+                                   this robot only:
+                                     ov-bot-ticket-request → await requestTicket() ({ ticket } or { message }) →
+                                       ov-bot-ticket { ticket } or ov-bot-ticket-none { message }: Drive without a
+                                       popup or a second sign-in on openvibe.bot
+                                     ov-bot-embed-refused  → onRefused(): the owner has not turned the panel on
 
    Plain script for the browser (window.BotEmbed) and require() for the tests.
 */
@@ -69,5 +76,33 @@
         return frame;
     }
 
-    return { iframeAttrs, mount };
+    function listen({ frame, botEmbed, requestTicket, onRefused = () => {}, win = typeof window !== 'undefined' ? window : null }) {
+        const src = embedSrc(botEmbed);
+        if (!frame || !src || !win || typeof requestTicket !== 'function') return () => {};
+        const origin = new URL(src).origin;
+        const robotId = botEmbed.robot_id;
+        let asking = false;
+        const reply = (msg) => {
+            try { if (frame.contentWindow) frame.contentWindow.postMessage(Object.assign({ robot_id: robotId }, msg), origin); } catch { /* the frame went away */ }
+        };
+        const onMessage = async (e) => {
+            if (e.origin !== origin || !frame.contentWindow || e.source !== frame.contentWindow) return;
+            const d = e.data || {};
+            if (!d || d.robot_id !== robotId) return;
+            if (d.type === 'ov-bot-embed-refused') { onRefused(); return; }
+            if (d.type !== 'ov-bot-ticket-request' || asking) return;
+            asking = true;
+            try {
+                const out = await requestTicket();
+                if (out && typeof out.ticket === 'string') reply({ type: 'ov-bot-ticket', ticket: out.ticket });
+                else reply({ type: 'ov-bot-ticket-none', message: String((out && out.message) || 'You cannot drive this robot from here.').slice(0, 200) });
+            } catch (err) {
+                reply({ type: 'ov-bot-ticket-none', message: String((err && err.message) || 'You cannot drive this robot from here.').slice(0, 200) });
+            } finally { asking = false; }
+        };
+        win.addEventListener('message', onMessage);
+        return () => win.removeEventListener('message', onMessage);
+    }
+
+    return { iframeAttrs, mount, listen };
 });
