@@ -797,6 +797,7 @@ async function loadChannelPage(username, managedStreamRef = null, legacySessionI
             // ── LIVE STATE ──
             document.getElementById('ch-live-area').style.display = '';
             document.getElementById('ch-offline-area').style.display = 'none';
+            _channelFooter(true);
             _placeBelowFold();
 
             // Populate streamer info bar (below video). Avatar image (letter fallback)
@@ -877,6 +878,7 @@ async function loadChannelPage(username, managedStreamRef = null, legacySessionI
             }
             document.getElementById('ch-live-area').style.display = 'none';
             document.getElementById('ch-offline-area').style.display = '';
+            _channelFooter(false);
             _placeBelowFold();
 
             // Populate offline header
@@ -2299,6 +2301,22 @@ async function loadChannelAiTimeline(username) {
         }
     } catch (err) {
         wrap.innerHTML = `<div class="ai-tl-empty"><i class="fa-solid fa-triangle-exclamation"></i><p>Couldn't load the AI timeline.</p><button class="btn btn-small btn-outline" onclick="loadChannelAiTimeline('${esc(username)}')">Retry</button></div>`;
+    }
+}
+
+// The footer while the stream plays is the quiet one-line footer; an offline channel gets the whole footer, where someone
+// looks for where to go next (owner, 2026-10-27). The shared footer's claim (openvibe-shared 4.15): it holds while the
+// stream is live and is released when the stream ends or the page is left (public/js/footer-live.js keeps channels full).
+let _footerRelease = null;
+function _channelFooter(live) {
+    const F = window.OpenVibeFooter;
+    if (!F || typeof F.claim !== 'function') return;
+    if (live && !_footerRelease) {
+        _footerRelease = F.claim('compact', 'channel-live');
+        if (window.ov) ov.scope().onDispose(() => _channelFooter(false));
+    } else if (!live && _footerRelease) {
+        _footerRelease();
+        _footerRelease = null;
     }
 }
 

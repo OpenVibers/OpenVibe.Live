@@ -5,9 +5,11 @@
  * openvibe-shared/footer.js, which every OpenVibe property loads. This file supplies only the
  * links that belong to Live, and decides which variant a page should use.
  *
- * Variant policy: a streamer's channel, a player and the broadcast desk are places people are
- * *doing* something, so they get the one-line compact footer. Browse and landing pages, where
- * someone may be looking for where to go next, get the full one.
+ * Variant policy: a player and the broadcast desk are places people are *doing* something, so they
+ * get the one-line compact footer. Browse and landing pages, where someone may be looking for where
+ * to go next, get the full one. A streamer's channel is full while offline and compact while its
+ * stream plays: the channel page claims compact for as long as the stream is live (app-channel.js
+ * _channelFooter, openvibe-shared 4.15 claim()); with an older footer it stays compact.
  */
 (function () {
     'use strict';
@@ -39,7 +41,7 @@
     function variantForPage() {
         const p = location.pathname;
         if (p === '/' || p === '') return 'full';
-        if (/^\/@/.test(p)) return 'compact';                       // streamer channels
+        if (/^\/@/.test(p)) return window.OpenVibeFooter && typeof OpenVibeFooter.claim === 'function' ? 'full' : 'compact';   // channels: full, compact while live
         const seg = p.split('/').filter(Boolean)[0] || '';
         if (COMPACT_PAGES.includes(seg)) return 'compact';
         if (seg === 'vod' || seg === 'clip' || seg === 'recap') return 'compact';
