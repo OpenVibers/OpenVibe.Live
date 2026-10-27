@@ -1273,7 +1273,7 @@ function _renderEndedStream(s) {
         ? `<img src="${esc(s.vod_thumbnail_url)}" alt="" loading="lazy" onerror="this.remove()">`
         : '<i class="fa-solid fa-video" aria-hidden="true"></i>';
     const replay = s.vod_id
-        ? `<a class="bc-last-replay" href="/vod/${encodeURIComponent(s.vod_id)}"><i class="fa-solid fa-play"></i> Replay</a>`
+        ? `<a class="bc-last-replay" href="${esc(videoHref('vod', s.vod_id))}"><i class="fa-solid fa-play"></i> Replay</a>`
         : '';
     return `<div class="bc-last-item"><span class="bc-last-thumb">${thumb}</span>
         <span class="bc-last-meta"><b>${esc(s.title || 'Untitled')}</b><small>${esc(_bcAgo(s.ended_at || s.started_at))}${len ? ` · ${esc(len)}` : ''}</small></span>${replay}</div>`;
