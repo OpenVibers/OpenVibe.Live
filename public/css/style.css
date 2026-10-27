@@ -2060,6 +2060,16 @@ a.pulse-card:hover { border-color: var(--accent); transform: translateY(-2px); }
 .vc-btn:active { transform: scale(0.92); }
 .vc-btn.active { color: var(--accent); }
 .vc-spacer { flex: 1; }
+/* The fullscreen button never leaves the bar (Maticus, 2026-10-26: on a phone the bar was cut off right after the clip
+   button, so the scissors got tapped for fullscreen; it happened at 360 px with larger text while rewinding). Buttons
+   keep their size; the readouts in the middle give way first, and on a narrow phone the stats gauge steps aside. */
+.video-controls > * { flex-shrink: 0; }
+.video-controls > .dvr-time-display,
+.video-controls > .viewer-badge,
+.video-controls > .uptime-badge { flex-shrink: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 420px) {
+    .video-controls > #btn-stats { display: none; }
+}
 
 /* Volume group */
 .vc-volume-group {
