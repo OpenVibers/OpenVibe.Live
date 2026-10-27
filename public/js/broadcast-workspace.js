@@ -352,32 +352,34 @@ function _wsRenderPanel() {
                 <!-- ═══ Streaming Method ═══ -->
                 <div class="form-group">
                     <label>Streaming Method</label>
-                    <div class="bc-method-picker bc-method-picker-sm" id="bc-ws-method-picker">
+                    <div class="bc-method-picker bc-method-picker-sm" id="bc-ws-method-picker" role="radiogroup" aria-label="Streaming method">
                         ${_wsRenderMethodCards(method)}
                     </div>
+                    <p class="bc-pick-hint" id="bc-ws-method-hint">${esc(_wsPickHint('method', method))}</p>
                 </div>
 
                 <!-- ═══ Browser Sub-mode (only when method is browser) ═══ -->
                 <div id="bc-ws-browser-submodes" style="${method === 'browser' ? '' : 'display:none'}">
                     <div class="form-group">
                         <label>Browser Capture Mode</label>
-                        <div class="bc-method-picker bc-method-picker-sm" id="bc-ws-browser-mode-picker">
+                        <div class="bc-method-picker bc-method-picker-sm" id="bc-ws-browser-mode-picker" role="radiogroup" aria-label="Browser capture mode">
                             ${_wsRenderBrowserModeCards(browserMode)}
                         </div>
+                        <p class="bc-pick-hint" id="bc-ws-mode-hint">${esc(_wsPickHint('mode', browserMode))}</p>
                     </div>
 
                     <!-- Microphone Only: image upload -->
                     <div id="bc-ws-mic-only-opts" style="${browserMode === 'mic_only' ? '' : 'display:none'}">
                         <div class="form-group">
-                            <label><i class="fa-solid fa-image"></i> Placeholder Image</label>
-                            <p class="muted" style="font-size:0.82rem;margin-bottom:6px">
-                                Displayed to viewers instead of video. Recommended: square, 400\u00d7400+.
-                            </p>
-                            <input type="file" id="bc-ws-mic-image" accept="image/*" class="form-input form-input-sm"
+                            <label class="bc-file-pick" for="bc-ws-mic-image">
+                                <span id="bc-ws-mic-image-preview" class="bc-ws-mic-image-preview">
+                                    ${p.micOnlyImage ? `<img src="${esc(p.micOnlyImage)}" alt="">` : '<i class="fa-solid fa-image" aria-hidden="true"></i>'}
+                                </span>
+                                <span class="bc-file-pick-text"><b>Picture viewers see</b><small>Shown instead of video. Square, 400\u00d7400 or larger, up to 2 MB.</small></span>
+                                <span class="bc-file-pick-btn">${p.micOnlyImage ? 'Change' : 'Choose'}</span>
+                            </label>
+                            <input type="file" id="bc-ws-mic-image" accept="image/*" class="bc-visually-hidden"
                                 onchange="_wsMicImageChanged(this)">
-                            <div id="bc-ws-mic-image-preview" class="bc-ws-mic-image-preview">
-                                ${p.micOnlyImage ? `<img src="${esc(p.micOnlyImage)}" alt="Mic-only placeholder">` : ''}
-                            </div>
                         </div>
                     </div>
 
@@ -483,7 +485,7 @@ function _wsRenderPanel() {
                         </div>
 
                         <details class="bc-ws-quality bc-ws-screen-quality">
-                            <summary><i class="fa-solid fa-film"></i> Screen Share Quality</summary>
+                            <summary><i class="fa-solid fa-film"></i><span class="bc-sum-title">Screen quality</span><small class="bc-sum-val">${esc(p.screenResolution || '1080')}p · ${esc(p.screenFps || '30')} fps<span class="bc-sum-more"> · ${esc(p.screenBitrate || 3000)} kbps</span></small><i class="fa-solid fa-chevron-down bc-sum-chev" aria-hidden="true"></i></summary>
                             <div class="bc-ws-quality-inner bc-ws-row">
                                 <div class="form-group" style="margin:0;flex:1">
                                     <label style="font-size:0.82rem">Resolution</label>
@@ -513,7 +515,7 @@ function _wsRenderPanel() {
                 <!-- Video quality defaults (Class A blob, browser method only) -->
                 <div id="bc-ws-quality-wrap" style="${method === 'browser' ? '' : 'display:none'}">
                 <details class="bc-ws-quality">
-                    <summary><i class="fa-solid fa-film"></i><span class="bc-sum-title">Video quality</span><small class="bc-sum-val">${esc(p.resolution || '720')}p · ${esc(p.fps || '30')} fps · ${esc(p.bitrate || 2500)} kbps</small><i class="fa-solid fa-chevron-down bc-sum-chev" aria-hidden="true"></i></summary>
+                    <summary><i class="fa-solid fa-film"></i><span class="bc-sum-title">Video quality</span><small class="bc-sum-val">${_wsQualitySummaryHTML(p.resolution || '720', p.fps || '30', p.bitrate || 2500)}</small><i class="fa-solid fa-chevron-down bc-sum-chev" aria-hidden="true"></i></summary>
                     <div class="bc-ws-quality-inner bc-ws-row">
                         <div class="form-group" style="margin:0;flex:1">
                             <label style="font-size:0.82rem">Resolution</label>
@@ -553,22 +555,15 @@ function _wsRenderPanel() {
             </div>
 
             <!-- ── Go Live / Auto-detect section ── -->
-            <div class="bc-ws-golive-section" id="bc-ws-golive-section"${liveSessionId ? ' style="display:none"' : ''}>
+            <div class="bc-ws-golive-section${method === 'browser' ? ' is-browser' : ''}" id="bc-ws-golive-section"${liveSessionId ? ' style="display:none"' : ''}>
 
                 ${method === 'browser' ? `
-                <!-- Class B: Device-local preferences (browser only) -->
+                <!-- Class B: device-local choices (browser only): one card, a row each for the camera, its lens and
+                     the microphone; remembered on this device, never saved with the slot. -->
                 <div id="bc-ws-device-wrap">
-                    <div class="bc-ws-device-local-label">
-                        <i class="fa-solid fa-mobile-screen-button"></i>
-                        <strong>On this device</strong>
-                        <span class="muted">&mdash; your camera and mic are remembered here</span>
-                    </div>
                     <div id="bc-perm-request" class="bc-perm-request">
-                        <p class="bc-perm-hint"><i class="fa-solid fa-shield-halved"></i>
-                            <span id="bc-perm-hint-text">${browserMode === 'mic_only' ? 'Browser needs microphone access to stream.'
-                                : browserMode === 'camera_only' ? 'Browser needs camera access to stream.'
-                                : browserMode === 'screen' ? 'Browser needs screen capture access to stream.'
-                                : 'Browser needs camera &amp; mic access to stream.'}</span></p>
+                        <p class="bc-perm-hint"><i class="fa-solid fa-shield-halved" aria-hidden="true"></i>
+                            <span id="bc-perm-hint-text">${_wsPermHint(browserMode)}</span></p>
                         <button id="bc-perm-btn" class="btn btn-outline" type="button"
                             onclick="requestMediaPermissions()">
                             <i class="fa-solid ${browserMode === 'mic_only' ? 'fa-microphone'
@@ -582,23 +577,36 @@ function _wsRenderPanel() {
                         <p id="bc-perm-debug" style="display:none;font-size:0.75rem;color:var(--text-secondary);margin-top:6px"></p>
                     </div>
                     <div id="bc-device-selects" style="display:none">
-                        <div class="bc-ws-device-row">
-                            <div class="form-group" style="margin:0;flex:1" id="bc-ws-camera-group">
-                                <label style="font-size:0.82rem"><i class="fa-solid fa-camera"></i> Camera</label>
-                                <div class="bc-cam-select-row" style="display:flex;gap:4px;align-items:center">
-                                    <select id="bc-create-camera" class="form-input form-input-sm" style="flex:1">
-                                        <option value="default">Default</option>
-                                    </select>
-                                    <button type="button" class="btn btn-small btn-ghost" title="Refresh device list" onclick="refreshDeviceLists()" style="flex-shrink:0;padding:4px 7px"><i class="fa-solid fa-rotate"></i></button>
+                        <div class="bc-setup-card">
+                            <div class="bc-setup-item" id="bc-ws-camera-group">
+                                <div class="bc-setup-row">
+                                    <span class="bc-setup-label"><i class="fa-solid fa-camera" aria-hidden="true"></i>Camera</span>
+                                    <div class="bc-cam-select-row bc-setup-pick">
+                                        <span class="bc-setup-val" data-pick-for="bc-create-camera">Default</span>
+                                        <i class="fa-solid fa-chevron-down bc-setup-chev" aria-hidden="true"></i>
+                                        <select id="bc-create-camera" class="bc-setup-native" aria-label="Camera">
+                                            <option value="default">Default</option>
+                                        </select>
+                                    </div>
                                 </div>
                             </div>
-                            <div class="form-group" style="margin:0;flex:1" id="bc-ws-audio-group">
-                                <label style="font-size:0.82rem"><i class="fa-solid fa-microphone"></i> Microphone</label>
-                                <select id="bc-create-audio" class="form-input form-input-sm">
-                                    <option value="default">Default</option>
-                                </select>
+                            <div class="bc-setup-item" id="bc-ws-audio-group">
+                                <div class="bc-setup-row">
+                                    <span class="bc-setup-label"><i class="fa-solid fa-microphone" aria-hidden="true"></i>Microphone</span>
+                                    <div class="bc-setup-pick">
+                                        <span class="bc-setup-val" data-pick-for="bc-create-audio">Default</span>
+                                        <i class="fa-solid fa-chevron-down bc-setup-chev" aria-hidden="true"></i>
+                                        <select id="bc-create-audio" class="bc-setup-native" aria-label="Microphone">
+                                            <option value="default">Default</option>
+                                        </select>
+                                    </div>
+                                </div>
                             </div>
                         </div>
+                        <p class="bc-setup-note">
+                            <span>Remembered on this device</span>
+                            <button type="button" class="bc-setup-link" onclick="refreshDeviceLists()"><i class="fa-solid fa-rotate" aria-hidden="true"></i> Refresh devices</button>
+                        </p>
                     </div>
                 </div>
 
@@ -1021,9 +1029,21 @@ async function _wsRememberQuality(managedStreamId, { resolution, fps, bitrate })
     _wsState.profile = profile;
     const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = String(v); };
     set('bc-ws-resolution', profile.resolution); set('bc-ws-fps', profile.fps); set('bc-ws-bitrate', profile.bitrate);
-    const sum = document.querySelector('.bc-ws-quality .bc-sum-val');
-    if (sum) sum.textContent = `${profile.resolution}p · ${profile.fps} fps · ${profile.bitrate} kbps`;
+    _wsSyncQualitySummary();
     return true;
+}
+
+/** Video quality's row says what is set: "720p · 30 fps · 2500 kbps" (the bitrate drops off on the narrowest phones). */
+function _wsQualitySummaryHTML(resolution, fps, bitrate) {
+    return `${esc(String(resolution))}p · ${esc(String(fps))} fps<span class="bc-sum-more"> · ${esc(String(bitrate))} kbps</span>`;
+}
+
+function _wsSyncQualitySummary() {
+    const val = (id) => document.getElementById(id)?.value;
+    for (const [sel, pre, bitrate] of [['.bc-ws-quality:not(.bc-ws-screen-quality)', 'bc-ws-', 2500], ['.bc-ws-screen-quality', 'bc-ws-screen-', 3000]]) {
+        const sum = document.querySelector(`${sel} .bc-sum-val`);
+        if (sum && val(`${pre}resolution`)) sum.innerHTML = _wsQualitySummaryHTML(val(`${pre}resolution`), val(`${pre}fps`) || '30', val(`${pre}bitrate`) || bitrate);
+    }
 }
 
 /* ── Live stats timer ────────────────────────────────────────── */
@@ -1101,36 +1121,56 @@ function _wsOpenPopoutChat() {
 
 /* ── Method cards ────────────────────────────────────────────── */
 
-function _wsRenderMethodCards(selected) {
-    const methods = [
-        { id: 'browser', icon: 'globe', label: 'Browser', hint: 'Camera, mic, or screen from your browser' },
-        { id: 'whip', icon: 'satellite-dish', label: 'WHIP', hint: 'OBS WHIP encoder / external WebRTC' },
-        { id: 'rtmp', icon: 'server', label: 'RTMP', hint: 'OBS / Streamlabs / IRL Pro' },
-        { id: 'cli', icon: 'terminal', label: 'CLI / FFmpeg', hint: 'FFmpeg, Pi, RTSP cameras' },
-    ];
-    return methods.map(m => `
-        <div class="bc-method-card-sm${selected === m.id ? ' selected' : ''}"
-            data-wsmethod="${m.id}" onclick="_wsSelectMethod('${m.id}')">
-            <i class="fa-solid fa-${m.icon}"></i>
+const _WS_METHODS = [
+    { id: 'browser', icon: 'globe', label: 'Browser', hint: 'Camera, mic, or screen from your browser' },
+    { id: 'whip', icon: 'satellite-dish', label: 'WHIP', hint: 'OBS WHIP encoder / external WebRTC' },
+    { id: 'rtmp', icon: 'server', label: 'RTMP', hint: 'OBS / Streamlabs / IRL Pro' },
+    { id: 'cli', icon: 'terminal', label: 'CLI / FFmpeg', hint: 'FFmpeg, Pi, RTSP cameras' },
+];
+const _WS_BROWSER_MODES = [
+    { id: 'camera', icon: 'video', label: 'Camera & Mic', hint: 'Webcam + microphone' },
+    { id: 'camera_only', icon: 'camera', label: 'Camera Only', hint: 'Video only, no audio' },
+    { id: 'mic_only', icon: 'microphone', label: 'Mic Only', hint: 'Audio-only with image' },
+    { id: 'screen', icon: 'display', label: 'Screen Share', hint: 'Tab, window, or display' },
+];
+
+// Phones (and some browsers) cannot capture a screen at all.
+function _wsCanShareScreen() {
+    return !!(navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia);
+}
+
+/** What the chosen card is, in a line: under the pickers on a phone, where the cards show only their names. */
+function _wsPickHint(kind, id) {
+    if (kind === 'mode' && id === 'screen' && !_wsCanShareScreen()) return 'This browser cannot share a screen: go live from a computer for that';
+    const m = (kind === 'method' ? _WS_METHODS : _WS_BROWSER_MODES).find((x) => x.id === id);
+    return m ? m.hint : '';
+}
+
+/** The line over Allow …, before the browser may use the camera or microphone. */
+function _wsPermHint(mode) {
+    return mode === 'mic_only' ? 'Let your browser use the microphone to choose one.'
+        : mode === 'camera_only' ? 'Let your browser use the camera to choose one.'
+        : mode === 'screen' ? 'Your browser asks which screen to share when you go live.'
+        : 'Let your browser use the camera and microphone to choose them.';
+}
+
+// The cards are buttons in a radio group: a tap or a key chooses one, and a screen reader says which is chosen.
+function _wsRenderPickCards(list, selected, attr, handler) {
+    return list.map(m => `
+        <button type="button" role="radio" aria-checked="${selected === m.id}" class="bc-method-card-sm${selected === m.id ? ' selected' : ''}${m.id === 'screen' && !_wsCanShareScreen() ? ' is-unavailable' : ''}"
+            ${attr}="${m.id}" onclick="${handler}('${m.id}')">
+            <i class="fa-solid fa-${m.icon}" aria-hidden="true"></i>
             <strong>${m.label}</strong>
             <span class="bc-card-sm-hint">${m.hint}</span>
-        </div>`).join('');
+        </button>`).join('');
+}
+
+function _wsRenderMethodCards(selected) {
+    return _wsRenderPickCards(_WS_METHODS, selected, 'data-wsmethod', '_wsSelectMethod');
 }
 
 function _wsRenderBrowserModeCards(selected) {
-    const modes = [
-        { id: 'camera', icon: 'video', label: 'Camera & Mic', hint: 'Webcam + microphone' },
-        { id: 'camera_only', icon: 'camera', label: 'Camera Only', hint: 'Video only, no audio' },
-        { id: 'mic_only', icon: 'microphone', label: 'Mic Only', hint: 'Audio-only with image' },
-        { id: 'screen', icon: 'display', label: 'Screen Share', hint: 'Tab, window, or display' },
-    ];
-    return modes.map(m => `
-        <div class="bc-method-card-sm${selected === m.id ? ' selected' : ''}"
-            data-wsbrowsermode="${m.id}" onclick="_wsSelectBrowserMode('${m.id}')">
-            <i class="fa-solid fa-${m.icon}"></i>
-            <strong>${m.label}</strong>
-            <span class="bc-card-sm-hint">${m.hint}</span>
-        </div>`).join('');
+    return _wsRenderPickCards(_WS_BROWSER_MODES, selected, 'data-wsbrowsermode', '_wsSelectBrowserMode');
 }
 
 /* ── Method-specific endpoint info ───────────────────────────── */
@@ -1634,6 +1674,7 @@ async function _wsRegenerateKey(managedStreamId) {
 function _wsMarkDirty() {
     _wsState.dirty = true;
     _wsUpdateSaveButton();
+    _wsSyncQualitySummary();
 }
 
 function _wsUpdateSaveButton() {
@@ -1782,9 +1823,12 @@ function _wsSelectBrowserMode(mode) {
     if (_wsState.selectedMs) _wsState.selectedMs.browser_mode = mode;
     _wsMarkDirty();
 
-    document.querySelectorAll('[data-wsbrowsermode]').forEach(el =>
-        el.classList.toggle('selected', el.dataset.wsbrowsermode === mode)
-    );
+    document.querySelectorAll('[data-wsbrowsermode]').forEach(el => {
+        el.classList.toggle('selected', el.dataset.wsbrowsermode === mode);
+        el.setAttribute('aria-checked', String(el.dataset.wsbrowsermode === mode));
+    });
+    const modeHint = document.getElementById('bc-ws-mode-hint');
+    if (modeHint) modeHint.textContent = _wsPickHint('mode', mode);
 
     // Show/hide sub-mode options
     const micOpts = document.getElementById('bc-ws-mic-only-opts');
@@ -1807,15 +1851,13 @@ function _wsSelectBrowserMode(mode) {
         if (devSelects) devSelects.style.display = 'none';
         _wsCheckScreenInlinePermissions();
     } else {
+        _wsInitDevicePicker('browser', mode).catch(() => {});
         // Update permission button text/icon per mode
         const permHintText = document.getElementById('bc-perm-hint-text');
         const permBtnText = document.getElementById('bc-perm-btn-text');
         const permBtn = document.getElementById('bc-perm-btn');
         if (permHintText) {
-            const hints = { mic_only: 'Browser needs microphone access to stream.',
-                camera_only: 'Browser needs camera access to stream.',
-                camera: 'Browser needs camera & mic access to stream.' };
-            permHintText.textContent = hints[mode] || hints.camera;
+            permHintText.textContent = _wsPermHint(mode);
         }
         if (permBtnText) {
             const labels = { mic_only: 'Allow Microphone', camera_only: 'Allow Camera',
@@ -1862,7 +1904,14 @@ function _wsMicImageChanged(input) {
     reader.onload = function (e) {
         _wsState.profile.micOnlyImage = e.target.result;
         const preview = document.getElementById('bc-ws-mic-image-preview');
-        if (preview) preview.innerHTML = `<img src="${e.target.result}" alt="Mic-only placeholder">`;
+        if (preview) {
+            const img = document.createElement('img');
+            img.src = e.target.result;
+            img.alt = '';
+            preview.replaceChildren(img);
+            const btn = preview.parentElement && preview.parentElement.querySelector('.bc-file-pick-btn');
+            if (btn) btn.textContent = 'Change';
+        }
         _wsMarkDirty();
     };
     reader.readAsDataURL(file);

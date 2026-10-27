@@ -1803,18 +1803,6 @@
     padding-top: 8px;
     border-top: 1px solid var(--border);
 }
-.bc-ws-device-local-label {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 0.82rem;
-    margin-bottom: 10px;
-    padding: 6px 10px;
-    background: color-mix(in srgb, var(--accent) 6%, transparent);
-    border-radius: 6px;
-    color: var(--text-secondary);
-    flex-wrap: wrap;
-}
 .bc-ws-save-status {
     font-size: 0.8rem;
     color: var(--text-muted);
@@ -2870,40 +2858,136 @@ body.bc-golive-dock-on .messenger-toggle { display: none !important; }
 
 /* ── The camera chooser before going live (broadcast-devices.js _bcRenderCameraChooser) ──
    Phones: Front | Back, and a chip per camera when a side has several. Computers: a card per camera. */
-.bc-cam-chooser { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-.bc-cam-chooser[hidden], .bc-cam-select-row[hidden] { display: none !important; }
-.bc-cam-sides { display: grid; grid-template-columns: repeat(auto-fit, minmax(0, 1fr)); gap: 8px; flex: 1 1 100%; }
-.bc-cam-side, .bc-cam-card, .bc-cam-lens, .bc-cam-refresh {
-    font: inherit; cursor: pointer; color: var(--text-primary); -webkit-tap-highlight-color: transparent;
-    background: color-mix(in srgb, var(--bg-secondary) 80%, transparent); border: 1px solid var(--border);
-    transition: border-color 0.15s, background 0.15s, transform 0.1s;
+/* ── Go Live setup (owner, 2026-10-27: "the camera design conflicts with the microphone section … cluttered … needs
+   total overhaul"). One card with a row each for the camera, its lens and the microphone, the same surface, height
+   and type as Video quality above; a row opens its list (the native picker on a phone), or holds a Front | Back
+   switch. Rows are split by 1px of the card's border colour, so a hidden row (Mic Only, Camera Only) leaves no line. ── */
+.bc-setup-card {
+    display: flex; flex-direction: column; gap: 1px; overflow: hidden;
+    border: 1px solid var(--border); border-radius: 12px; background: var(--border);
 }
-.bc-cam-side {
-    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
-    min-height: 74px; border-radius: 16px; font-size: 0.92rem; font-weight: 700;
+.bc-setup-item { background: var(--bg-card); }
+.bc-setup-row { position: relative; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; min-height: 52px; padding: 7px 12px; }
+.bc-setup-row[hidden], .bc-cam-sides[hidden], .bc-cam-select-row[hidden] { display: none !important; }
+.bc-setup-label { display: inline-flex; align-items: center; gap: 8px; flex: 0 0 auto; font-size: 0.86rem; font-weight: 650; color: var(--text-primary); }
+.bc-setup-label i { width: 16px; text-align: center; color: var(--accent); }
+.bc-setup-pick { flex: 1 1 0; min-width: 0; display: flex; align-items: center; justify-content: flex-end; gap: 8px; font-size: 0.8rem; color: var(--text-muted); }
+.bc-setup-val { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bc-setup-chev { flex: 0 0 auto; font-size: 0.72rem; }
+/* The select lies over the whole row, unseen: a tap anywhere on it opens the list. 16px keeps iOS from zooming. */
+.bc-setup-native { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; font-size: 16px; border: 0; -webkit-appearance: none; appearance: none; }
+.bc-setup-row:has(> .bc-setup-pick > .bc-setup-native) { transition: background-color 0.15s; }
+.bc-setup-row:has(> .bc-setup-pick > .bc-setup-native):hover { background: color-mix(in srgb, var(--accent) 7%, transparent); }
+.bc-setup-row:has(.bc-setup-native:focus-visible) { outline: 2px solid var(--accent); outline-offset: -2px; }
+/* The lens row belongs to the camera's: no line between them, its label under the camera's name. */
+.bc-setup-sub { min-height: 44px; padding-top: 0; padding-left: 36px; }
+.bc-setup-sub .bc-setup-label { font-size: 0.8rem; font-weight: 600; color: var(--text-secondary); }
+/* Front | Back and the lenses: a segmented switch, the chosen side filled. */
+.bc-cam-sides, .bc-cam-lenses {
+    flex: 0 0 auto; max-width: 100%; margin-left: auto; display: inline-flex; gap: 2px; padding: 3px; border-radius: 999px;
+    background: color-mix(in srgb, var(--text-primary) 8%, transparent); overflow-x: auto; scrollbar-width: none;
 }
-.bc-cam-side i { font-size: 1.25rem; color: var(--text-muted); }
-.bc-cam-side.is-on, .bc-cam-card.is-on, .bc-cam-lens.is-on {
-    border-color: var(--accent); background: color-mix(in srgb, var(--accent) 16%, var(--bg-secondary));
+.bc-cam-sides::-webkit-scrollbar, .bc-cam-lenses::-webkit-scrollbar { display: none; }
+.bc-cam-side, .bc-cam-lens {
+    font: inherit; cursor: pointer; -webkit-tap-highlight-color: transparent; touch-action: manipulation;
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px; flex: 0 0 auto;
+    min-height: 36px; padding: 0 14px; border: 0; border-radius: 999px; background: transparent;
+    color: var(--text-secondary); font-size: 0.82rem; font-weight: 700; white-space: nowrap;
+    transition: background-color 0.15s, color 0.15s;
 }
-.bc-cam-side.is-on i, .bc-cam-card.is-on > i:first-child { color: var(--accent); }
-.bc-cam-side:active, .bc-cam-card:active, .bc-cam-lens:active { transform: scale(0.98); }
-.bc-cam-lenses { display: flex; gap: 6px; flex-wrap: wrap; }
-.bc-cam-lens { min-width: 52px; min-height: 36px; padding: 0 12px; border-radius: 999px; font-size: 0.82rem; font-weight: 700; }
-.bc-cam-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; flex: 1 1 0; min-width: 0; }
-.bc-cam-card {
-    display: flex; align-items: center; gap: 10px; min-height: 46px; padding: 0 12px; border-radius: 12px; text-align: left;
-    font-size: 0.88rem; font-weight: 600;
+.bc-cam-side i { font-size: 0.82rem; }
+.bc-cam-lens { min-height: 32px; padding: 0 12px; font-size: 0.78rem; }
+/* An iPhone has up to five (Wide, Ultra wide, Telephoto and its two automatic ones): then they take the row's width
+   as an even grid under "Lens", rather than scroll out of sight. */
+.bc-cam-lenses:has(> :nth-child(4)) {
+    flex: 1 1 100%; display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); border-radius: 18px; overflow: visible;
 }
-.bc-cam-card span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.bc-cam-card > i:first-child { width: 18px; text-align: center; color: var(--text-muted); }
-.bc-cam-tick { color: var(--accent); visibility: hidden; }
-.bc-cam-card.is-on .bc-cam-tick { visibility: visible; }
-.bc-cam-refresh { width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; color: var(--text-muted); margin-left: auto; }
-.bc-cam-side:focus-visible, .bc-cam-card:focus-visible, .bc-cam-lens:focus-visible, .bc-cam-refresh:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-@media (prefers-reduced-motion: reduce) { .bc-cam-side, .bc-cam-card, .bc-cam-lens { transition: none; } }
-/* With the chooser the camera takes the row's whole width; the microphone goes under it. */
-.bc-ws-device-row #bc-ws-camera-group.bc-cam-has-chooser { flex: 1 1 100% !important; }   /* over its inline flex: 1 */
+.bc-cam-side:hover, .bc-cam-lens:hover { color: var(--text-primary); }
+.bc-cam-side.is-on, .bc-cam-lens.is-on {
+    background: var(--accent-strong, var(--accent)); color: var(--on-accent-strong, var(--on-accent, #fff));
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+}
+.bc-cam-side:focus-visible, .bc-cam-lens:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.bc-cam-sides:has(> :nth-child(3)) .bc-cam-side { padding: 0 11px; }
+.bc-cam-sides:has(> :nth-child(3)) .bc-cam-side i { display: none; }   /* Front · Back · USB: words only */
+@media (prefers-reduced-motion: reduce) { .bc-cam-side, .bc-cam-lens, .bc-setup-row { transition: none; } }
+.bc-setup-note { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 12px; margin: 8px 2px 0; font-size: 0.74rem; color: var(--text-muted); }
+.bc-setup-link { font: inherit; font-weight: 600; color: var(--accent); background: none; border: 0; padding: 6px 0; cursor: pointer; }
+.bc-setup-link:hover { text-decoration: underline; }
+.bc-setup-link i { margin-right: 3px; font-size: 0.9em; }
+
+/* Video quality, the row above the card, matches its rows. */
+.bc-ws-quality { background: var(--bg-card); }
+.bc-ws-quality > summary { min-height: 52px; padding-top: 7px; padding-bottom: 7px; }
+.bc-ws-quality > summary > i:first-child { width: 16px; text-align: center; }
+.bc-ws-quality > summary .bc-sum-title { white-space: nowrap; }
+.bc-ws-quality > summary .bc-sum-val { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+@container bcws (max-width: 340px) { .bc-sum-more { display: none; } }
+
+/* Before the browser may use them: the same card, a line and its button. */
+.bc-ws-golive-section .bc-perm-request {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 10px 12px; margin: 0; padding: 12px; text-align: left;
+    border: 1px solid var(--border); border-radius: 12px; background: var(--bg-card);
+}
+.bc-ws-golive-section .bc-perm-hint { flex: 1 1 200px; display: flex; align-items: flex-start; gap: 8px; margin: 0; font-size: 0.84rem; }
+.bc-ws-golive-section .bc-perm-hint i { color: var(--accent); margin-top: 3px; }
+.bc-ws-golive-section #bc-perm-btn { flex: 1 0 auto; justify-content: center; min-height: 44px; border-radius: 12px; font-weight: 650; }
+.bc-ws-golive-section #bc-perm-debug { flex: 1 1 100%; margin: 0 !important; }
+
+/* Go Live: centred, as tall as a thumb, rounded like the cards. */
+.bc-ws-golive-section .bc-ws-golive-btn {
+    display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%;
+    min-height: 52px; margin-top: 14px; padding: 12px 20px; border-radius: 14px; font-size: 1.02rem; font-weight: 700;
+}
+.bc-ws-golive-section .bc-create-reassurance { margin: 10px 0 0 !important; text-align: center; font-size: 0.78rem !important; color: var(--text-muted); overflow-wrap: anywhere; }
+/* A wide panel keeps the setup and the button a readable width, centred under the two columns. */
+@container bcws (min-width: 960px) {
+    .bc-ws-golive-section.is-browser > * { max-width: 680px; margin-left: auto; margin-right: auto; }
+}
+/* On a phone the chat bubble sits in the bottom corner: the page ends below it, so the address under Go Live shows. */
+@media (max-width: 680px) { .bc-ws-golive-section.is-browser { padding-bottom: 76px; } }
+
+/* How you stream / what you capture: real buttons in a radio group. On a phone they are one row of four with their
+   names only, and the chosen one's line goes under the row (two grids of tall cards took a whole screen). */
+.bc-method-card-sm { font: inherit; color: inherit; width: 100%; -webkit-tap-highlight-color: transparent; }
+.bc-method-card-sm:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.bc-pick-hint { display: none; margin: 6px 2px 0; font-size: 0.76rem; color: var(--text-muted); }
+/* Screen Share where the browser cannot capture a screen (phones): still choosable for the slot, dimmed, and it says so. */
+.bc-method-card-sm.is-unavailable:not(.selected) { opacity: 0.55; }
+@container bcws (max-width: 640px) {
+    .bc-ws-col--method .bc-method-picker-sm { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+    .bc-ws-col--method .bc-method-card-sm {
+        display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px;
+        min-height: 64px; padding: 10px 4px 9px; border-width: 1px; border-radius: 12px;
+    }
+    .bc-ws-col--method .bc-method-card-sm.selected { box-shadow: 0 0 0 1px var(--accent); }
+    .bc-ws-col--method .bc-method-card-sm i { font-size: 1.05rem; margin: 0; }
+    .bc-ws-col--method .bc-method-card-sm strong { margin: 0; font-size: 0.72rem; line-height: 1.2; }
+    .bc-ws-col--method .bc-method-card-sm .bc-card-sm-hint { display: none; }
+    .bc-ws-col--method .bc-pick-hint { display: block; }
+}
+
+/* Mic Only's picture: a picker with its preview, not the browser's bare file input. */
+.bc-visually-hidden { position: absolute !important; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+.form-group > .bc-file-pick {
+    display: flex; align-items: center; gap: 12px; margin: 0; padding: 10px 12px; cursor: pointer;
+    border: 1px dashed color-mix(in srgb, var(--accent) 45%, var(--border)); border-radius: 12px;
+    background: var(--bg-card); transition: background-color 0.15s;
+}
+.form-group > .bc-file-pick:hover { background: color-mix(in srgb, var(--accent) 7%, var(--bg-card)); }
+.form-group > .bc-file-pick:has(+ input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
+.bc-file-pick .bc-ws-mic-image-preview {
+    flex: 0 0 52px; width: 52px; height: 52px; max-width: none; margin: 0; overflow: hidden; display: grid; place-items: center;
+    border-radius: 10px; background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--accent); font-size: 1.2rem;
+}
+.bc-file-pick .bc-ws-mic-image-preview img { width: 100%; height: 100%; object-fit: cover; border: 0; border-radius: 0; }
+.bc-file-pick-text { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.bc-file-pick-text b { font-size: 0.86rem; font-weight: 650; color: var(--text-primary); }
+.bc-file-pick-text small { font-size: 0.74rem; line-height: 1.35; color: var(--text-muted); }
+.bc-file-pick-btn {
+    flex: 0 0 auto; padding: 6px 12px; border-radius: 999px; font-size: 0.8rem; font-weight: 700; color: var(--accent);
+    border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
+}
 
 /* ── Active Streams: a card per live stream, then the last few with their replays (broadcast.js) ── */
 .bc-live-card {
