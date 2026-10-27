@@ -447,6 +447,14 @@ function _wsRenderPanel() {
                                 </div>
                             </div>
                             <div id="bc-ws-screen-pip-opts" style="${p.screenCam ? '' : 'display:none'}">
+                                <div class="form-group" style="margin:6px 0 0">
+                                    <label style="font-size:0.78rem" for="bc-ws-screen-cam-mode">How the camera goes out</label>
+                                    <select id="bc-ws-screen-cam-mode" class="form-input form-input-sm" onchange="_wsMarkDirty()">
+                                        <option value="stream"${(p.screenCamMode || 'stream') === 'stream' ? ' selected' : ''}>Its own stream: its own VOD, viewers move or hide it</option>
+                                        <option value="overlay"${p.screenCamMode === 'overlay' ? ' selected' : ''}>Drawn into the screen share: restreams show it too</option>
+                                    </select>
+                                    <small class="muted" style="font-size:0.74rem">As its own stream, the camera goes live on a slot of its own, shown over this one where you put it below. Twitch, YouTube and other restreams get the screen only.</small>
+                                </div>
                                 <div class="bc-ws-row" style="margin-top:6px">
                                     <div class="form-group" style="margin:0;flex:1">
                                         <label style="font-size:0.78rem">Position</label>
@@ -1553,9 +1561,11 @@ function _wsSyncScreenShareHiddenDefaults(browserMode) {
     // Sync PiP position/size to broadcastState for use in _startPipComposite
     const pipPos = document.getElementById('bc-ws-screen-pip-pos')?.value || 'bottom-right';
     const pipSize = document.getElementById('bc-ws-screen-pip-size')?.value || 'small';
+    const camMode = document.getElementById('bc-ws-screen-cam-mode')?.value || 'stream';
     if (typeof broadcastState !== 'undefined') {
         broadcastState.settings.screenPipPos = pipPos;
         broadcastState.settings.screenPipSize = pipSize;
+        broadcastState.settings.screenCamMode = camMode;   // broadcast-cam-pip.js: its own stream, or drawn in
     }
 }
 
@@ -1707,6 +1717,7 @@ async function _wsSaveAll() {
             screenSysAudio: document.getElementById('bc-ws-screen-sysaudio')?.checked ?? true,
             screenPipPos: document.getElementById('bc-ws-screen-pip-pos')?.value || 'bottom-right',
             screenPipSize: document.getElementById('bc-ws-screen-pip-size')?.value || 'small',
+            screenCamMode: document.getElementById('bc-ws-screen-cam-mode')?.value || 'stream',
             screenResolution: document.getElementById('bc-ws-screen-resolution')?.value || '1080',
             screenFps: document.getElementById('bc-ws-screen-fps')?.value || '30',
             screenBitrate: parseInt(document.getElementById('bc-ws-screen-bitrate')?.value) || 3000,

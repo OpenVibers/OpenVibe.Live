@@ -1257,6 +1257,21 @@ async function setPipsForManagedStream(managedStreamId, pips) {
     return list;
 }
 
+/**
+ * Slots live right now as a PIP over another live stream of their own streamer (a screen share's camera,
+ * public/js/broadcast-cam-pip.js): the live list leaves them out, since they show inside that stream. A co-host's stream
+ * shown as a PIP is not among them: it is someone else's channel and keeps its own place.
+ */
+async function getLiveOwnPipSourceSlots() {
+    try {
+        const rows = await all(`SELECT DISTINCT p.source_msid FROM stream_pips p
+            JOIN managed_streams src ON src.id = p.source_msid
+            JOIN streams host ON host.managed_stream_id = p.managed_stream_id AND host.is_live = 1
+            WHERE host.user_id = src.user_id`);
+        return new Set(rows.map((r) => Number(r.source_msid)));
+    } catch { return new Set(); }
+}
+
 /** A person's slots, as PIP sources: id, title, slug, and whether each is live now. */
 async function getPipSourceSlots(userId) {
     try {
@@ -3657,7 +3672,7 @@ module.exports = {
     getManagedStreamBySlug, getManagedStreamByStreamKey, getManagedStreamByIdOrSlug,
     updateManagedStream, deleteManagedStream,
     getManagedStreamBroadcastSettings, updateManagedStreamBroadcastSettings,
-    getPipOverlayForManagedStream, getPipCandidateSlots, getPipsForManagedStream, setPipsForManagedStream, getPipSourceSlots, MAX_PIPS,
+    getPipOverlayForManagedStream, getPipCandidateSlots, getPipsForManagedStream, setPipsForManagedStream, getPipSourceSlots, getLiveOwnPipSourceSlots, MAX_PIPS,
     countManagedStreamsByUser, getManagedStreamLimit,
     isValidManagedStreamSlug, isManagedStreamSlugTaken,
     ensureStreamerRoleOnFeed,

@@ -214,6 +214,7 @@
         "/js/call.js",
         "/js/broadcast-workspace.js",
         "/js/broadcast.js",
+        "/js/broadcast-cam-pip.js",
         "/js/broadcast-studio.js"
       ]
     },
