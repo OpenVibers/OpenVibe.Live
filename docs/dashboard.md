@@ -30,6 +30,26 @@ OpenVibe's live captions on (`ai_timeline_enabled`) and a recording for clips. I
 of stream time, never describes anyone's looks, and its lines are AI lines in your chat. Settings: `GET/PUT
 /api/vibe/settings` `{ enabled, call_word, speak }` (`server/ai/vibe-voice.js`, table `channel_vibe_settings`).
 
+## AI chat viewers: what they think with
+
+The **Chat AI** tab's **AI Chat Viewers** card, under **Key & Budget**, **AI source**:
+
+- **OpenVibe.Live shared AI.** It has a daily budget you set; when today's spend reaches it, the viewers go quiet until
+  tomorrow.
+- **My own API key.** OpenAI, Anthropic, or any OpenAI-compatible endpoint (OpenRouter, Groq), with no cap from us.
+  The key is kept encrypted in OpenVibe.AI, never in Live, and **Test connection** tries it.
+- **A model on my own computer (free).** Ollama, LM Studio or llama.cpp's server on your own PC, through the OpenVibe
+  Node, with no port opened.
+  - **Set it up.** Install it with `--ai` from [openvibe.bot/machines](https://openvibe.bot/machines), then turn on
+    "Let my AI use this computer's models" for that computer there.
+  - **Fill in the card.** Name the computer (its `dev_` id from that page) or tick **Any of my computers that is on**
+    (the fastest first, the next when one is busy), name the model as your model server does, save, then
+    **Test my computer**.
+  - **What it does.** Your computer writes the chat lines. Frames from the stream are described by the site's shared
+    vision when it is on.
+  - **Only yours.** It is never used for anyone else's channel. When your computer is off, the viewers wait: nothing
+    else answers in its place.
+
 ## Chat Logs
 
 View and manage chat messages from your streams:
