@@ -219,7 +219,7 @@ async function recapItem(r) {
 const SOURCES = {
     vods: {
         async load(offset, n, { sort, since }) {
-            const r = await media.listVods({ limit: n, offset, order: sort === 'top' ? 'views' : 'newest', since: since || undefined }, { timeoutMs: SOURCE_TIMEOUT_MS });
+            const r = await media.listVods({ limit: n, offset, order: sort === 'top' ? 'views' : 'newest', since: since || undefined }, { whole: true, timeoutMs: SOURCE_TIMEOUT_MS });
             return { rows: mediaRows(r, 'vods'), total: mediaTotal(r) };
         },
         item: vodItem,

@@ -215,9 +215,27 @@ async function signedMediaUrl(kind, id, ttlS = 3600, opts = {}) {
     return await request('GET', `/${kind === 'clip' ? 'clips' : 'vods'}/${id}/signed-url`, { query: { ttl: ttlS }, ...opts });
 }
 
-/** GET /vods?limit&offset (+ pass-through filters like username/user_id/stream_id) */
+/**
+ * GET /vods?limit&offset (+ pass-through filters like username/user_id/stream_id). Media lists a stream recorded in parts
+ * once, by its first part, which names the recording; `whole: true` (lists people see) gives that card the whole
+ * video's length (`part_duration_seconds` keeps the part's). Jobs that work inside a part's file leave it off.
+ */
 async function listVods(query = {}, opts = {}) {
-    return await request('GET', '/vods', { query, ...opts });
+    const { whole = false, ...rest } = opts;
+    const out = await request('GET', '/vods', { query, ...rest });
+    if (whole && out && Array.isArray(out.vods)) out.vods.forEach(wholeVideo);
+    return out;
+}
+
+/** A listed first part of a recording, made to read as the whole video (its length). */
+function wholeVideo(v) {
+    const r = v && v.recording;
+    if (r && Number(r.parts) > 1 && Number(r.duration_ms) > 0 && Number(r.first_vod_id) === Number(v.id)) {
+        v.part_duration_seconds = v.duration_seconds;
+        v.duration_seconds = Math.round(Number(r.duration_ms) / 1000);
+        v.duration = v.duration_seconds;
+    }
+    return v;
 }
 
 /** PUT /vods/:id { title?, is_public?, visibility?, ... } — metadata update (inherited shape). */
@@ -230,6 +248,25 @@ async function updateVod(vodId, fields, opts = {}) {
 /** DELETE /vods/:id */
 async function deleteVod(vodId, opts = {}) {
     return await request('DELETE', `/vods/${vodId}`, opts);
+}
+
+// ── Recordings (OpenVibe.Media docs/recordings.md) ──────────────────────────
+// A stream recorded in parts is one video: Media joins the parts' timelines, lists the first part for the whole and
+// lets a clip cross a join. Live names the parts (server/streaming/recordings.js).
+
+/** PUT /recordings/:key { parts: [{ vod_id, gap_before_ms, stream_offset_ms }], title?, state? } → the recording, or { recording: null } */
+async function putRecording(key, body, opts = {}) {
+    return await request('PUT', `/recordings/${encodeURIComponent(key)}`, { body, ...opts });
+}
+
+/** GET /recordings/:key → { id, key, state, duration_ms, vod_id, parts[], hls_url? } (404 when none) */
+async function getRecording(key, opts = {}) {
+    return await request('GET', `/recordings/${encodeURIComponent(key)}`, opts);
+}
+
+/** POST /recordings/:key/close: the stream ended, no more parts. */
+async function closeRecording(key, opts = {}) {
+    return await request('POST', `/recordings/${encodeURIComponent(key)}/close`, opts);
 }
 
 // ── Clips ────────────────────────────────────────────────────────────────────
@@ -426,7 +463,9 @@ module.exports = {
     // vods
     createVod, ingestRtmp, ingestRtpStart, ingestRtpStop,
     uploadVodChunk, finalizeVod,
-    getVod, listVods, updateVod, deleteVod,
+    getVod, listVods, wholeVideo, updateVod, deleteVod,
+    // recordings
+    putRecording, getRecording, closeRecording,
     // clips
     createClip, getClip, listClips, updateClip, deleteClip, recutClip, trimClip, getJob,
     // files + thumbnails

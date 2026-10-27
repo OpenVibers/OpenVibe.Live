@@ -58,7 +58,7 @@ const MEDIA_POOL_TTL_MS = 30_000;
 async function _mediaContent() {
     if (Date.now() - _mediaPool.at < MEDIA_POOL_TTL_MS) return _mediaPool;
     const [vods, clips, pastes] = await Promise.all([
-        media.listVods({ limit: 12 }).then(r => r?.vods || (Array.isArray(r) ? r : [])).catch(() => _mediaPool.vods),
+        media.listVods({ limit: 12 }, { whole: true }).then(r => r?.vods || (Array.isArray(r) ? r : [])).catch(() => _mediaPool.vods),
         media.listClips({ limit: 12 }).then(r => r?.clips || (Array.isArray(r) ? r : [])).catch(() => _mediaPool.clips),
         require('../pastes-client').listPastes({ limit: 12, visibility: 'public' }).then(r => r?.pastes || (Array.isArray(r) ? r : [])).catch(() => _mediaPool.pastes),
     ]);

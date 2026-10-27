@@ -1458,6 +1458,8 @@ async function start() {
         try { require('./ai/ai-moments-job').start(); } catch (e) { console.warn('[AI] moments job not started:', e.message); }
         try { require('./ai/auto-clip-job').start(); } catch (e) { console.warn('[AI] auto-clip job not started:', e.message); }
         try { require('./ai/clip-title').start(); } catch (e) { console.warn('[AI] clip-title job not started:', e.message); }
+        // A stream recorded in parts is one video on Media (streaming/recordings.js): synced, closed, backfilled.
+        try { require('./streaming/recordings').start(); } catch (e) { console.warn('[Recordings] sweep not started:', e.message); }
         try { require('./ai/easter-egg-job').start(); } catch (e) { console.warn('[AI] easter-egg job not started:', e.message); }
         // The Rundown's desk replaced the Arena's jobs (the drama desk, the beef listener and judges, 2026-10-19).
         try { require('./rundown/desk').start(); } catch (e) { console.warn('[Rundown] desk not started:', e.message); }

@@ -171,7 +171,7 @@ async function vodsForManagedStream(managedStreamId) {
  */
 async function userVods(userId, { includePrivate = false, limit = 20 } = {}) {
     let rows;
-    try { rows = rowsOf(await media.listVods({ user_id: userId, include_private: includePrivate ? 1 : undefined, limit }, { timeoutMs: TIMEOUT_MS }), 'vods'); }
+    try { rows = rowsOf(await media.listVods({ user_id: userId, include_private: includePrivate ? 1 : undefined, limit }, { timeoutMs: TIMEOUT_MS, whole: true }), 'vods'); }
     catch { return []; }
     const keep = rows.filter((v) => finished(v) && (includePrivate || isPublic(v)));
     return Promise.all(keep.map(async (v) => withAiState(v, await aiState(db.getVodAiState, v.id))));
