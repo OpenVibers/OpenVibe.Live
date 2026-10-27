@@ -168,7 +168,7 @@
                     <div class="sn-table" hidden></div>
                     <div class="sn-tip" role="status" aria-live="polite" hidden></div>
                 </div>
-                <footer class="sn-foot"><span class="sn-note"></span><span class="sn-swipe-hint">Swipe for more stats</span><button type="button" class="sn-csv"><i class="fa-solid fa-download"></i> CSV</button></footer>
+                <footer class="sn-foot"><span class="sn-note"></span><span class="sn-swipe-hint">Swipe for more stats</span><a class="sn-all" href="https://openvibe.network/stats"><i class="fa-solid fa-chart-column" aria-hidden="true"></i> Every site</a><button type="button" class="sn-csv"><i class="fa-solid fa-download"></i> CSV</button></footer>
             </div>`;
         document.body.appendChild(ov);
         state.overlay = ov;

@@ -462,6 +462,7 @@ function _renderHeroStats(stats) {
                 <span class="hero-stat-kicker"><i class="fa-solid ${g.icon}"></i>${g.kicker}</span>
                 <div class="hero-stat-row">${g.rows.map(chip).join('')}</div>
             </div>`).join('')}
+            <a class="hero-stat-all-sites" href="https://openvibe.network/stats"><i class="fa-solid fa-chart-column" aria-hidden="true"></i><span>Stats for every OpenVibe site</span><i class="fa-solid fa-arrow-right" aria-hidden="true"></i></a>
         </div>`;
 
     const btn = wrap.querySelector('#hero-stat-more');
