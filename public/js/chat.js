@@ -1757,6 +1757,15 @@ window.addEventListener('online', () => {
     clearTimeout(_chatReconnectTimer); _chatReconnectTimer = null;
     _reconnectChatWs(chatStreamId ?? null);
 });
+// Back in front: a socket that dropped while the phone was in another app reconnects now, not after a backoff that
+// kept growing in the background (up to 30 s of "Reconnecting…" on the live studio, 2026-10-27).
+document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible' || _chatIntentionalClose || !_chatActive) return;
+    if (chatWs && chatWs.readyState <= WebSocket.OPEN) return;
+    if (_chatReconnectTimer) { clearTimeout(_chatReconnectTimer); _chatReconnectTimer = null; }
+    _chatReconnectDelay = CHAT_RECONNECT_BASE;
+    _reconnectChatWs(chatStreamId ?? null);
+});
 // Mobile browsers freeze the page (and often the socket) in the background; on return, the widget
 // asks for what it missed rather than trusting rows that may be an hour old.
 document.addEventListener('visibilitychange', () => {

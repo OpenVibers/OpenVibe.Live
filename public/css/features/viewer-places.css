@@ -28,3 +28,19 @@
 .ovp-n { margin-left: auto; padding-left: 12px; font-weight: 700; }
 .ovp-n.is-live { font-size: 0.72rem; font-weight: 700; color: #fca5a5; text-transform: uppercase; letter-spacing: 0.05em; }
 @media (prefers-reduced-motion: reduce) { .ovp { animation: none; } }
+/* A section under the places (the live studio's restreams): each with a state dot, and a way to manage them. */
+.ovp-extra { margin-top: 4px; padding-top: 4px; border-top: 1px solid rgba(255, 255, 255, 0.1); }
+.ovp-extra[hidden] { display: none; }
+.ovp-sub { padding: 4px 14px 0; font-size: 0.7rem; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: rgba(255, 255, 255, 0.55); }
+.ovp-sdot { width: 8px; height: 8px; border-radius: 50%; background: #9ca3af; }
+.ovp-state.is-ok .ovp-sdot { background: #22c55e; }
+.ovp-state.is-warn .ovp-sdot { background: #f59e0b; }
+.ovp-state.is-bad .ovp-sdot { background: #ef4444; }
+.ovp-state .ovp-n { font-size: 0.78rem; font-weight: 600; color: rgba(255, 255, 255, 0.7); }
+.ovp-state.is-bad .ovp-n { color: #fca5a5; }
+.ovp-action {
+    display: block; width: calc(100% - 20px); margin: 6px 10px 2px; min-height: 36px; border-radius: 10px; cursor: pointer;
+    font: inherit; font-size: 0.82rem; font-weight: 700; color: #fff;
+    background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.14);
+}
+.ovp-action:hover, .ovp-action:focus-visible { background: rgba(255, 255, 255, 0.14); outline: none; }

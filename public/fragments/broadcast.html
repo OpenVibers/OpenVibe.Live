@@ -644,13 +644,15 @@ WantedBy=multi-user.target</code>
                             <span>Camera preview will appear here</span>
                         </div>
                         <!-- Stats overlay (hidden by default) -->
-                        <div class="bc-stats-overlay" id="bc-stats-overlay" style="display:none">
-                            <span><span class="bc-stat-label">Bitrate</span> <span id="bc-stat-bitrate">-- kbps</span></span>
-                            <span><span class="bc-stat-label">FPS</span> <span id="bc-stat-fps">--</span></span>
-                            <span><span class="bc-stat-label">Resolution</span> <span id="bc-stat-resolution">--</span></span>
-                            <span><span class="bc-stat-label">Codec</span> <span id="bc-stat-codec">--</span></span>
-                            <span><span class="bc-stat-label">Status</span> <span id="bc-stat-status">--</span></span>
-                            <span><span class="bc-stat-label">Health</span> <span id="bc-stat-health">--</span></span>
+                        <!-- Stream health: a small card of what the stream is sending (owner, 2026-10-27: the green terminal text
+                             was confusing). The ids are what broadcast.js fills. -->
+                        <div class="bc-stats-overlay" id="bc-stats-overlay" style="display:none" role="group" aria-label="Stream health">
+                            <div class="bc-stats-head"><span class="bc-stats-dot" aria-hidden="true"></span><span class="bc-stats-title">Stream health</span><b id="bc-stat-health">--</b></div>
+                            <span class="bc-stat"><i class="fa-solid fa-arrow-up-from-bracket" aria-hidden="true"></i><span class="bc-stat-label">Upload</span><span class="bc-stat-v" id="bc-stat-bitrate">-- kbps</span></span>
+                            <span class="bc-stat"><i class="fa-solid fa-expand" aria-hidden="true"></i><span class="bc-stat-label">Picture</span><span class="bc-stat-v" id="bc-stat-resolution">--</span></span>
+                            <span class="bc-stat"><i class="fa-solid fa-film" aria-hidden="true"></i><span class="bc-stat-label">Frame rate</span><span class="bc-stat-v" id="bc-stat-fps">--</span></span>
+                            <span class="bc-stat"><i class="fa-solid fa-microchip" aria-hidden="true"></i><span class="bc-stat-label">Codec</span><span class="bc-stat-v" id="bc-stat-codec">--</span></span>
+                            <span class="bc-stat"><i class="fa-solid fa-signal" aria-hidden="true"></i><span class="bc-stat-label">Connection</span><span class="bc-stat-v" id="bc-stat-status">--</span></span>
                         </div>
                         <!-- Live badge (hidden until live) -->
                         <div class="bc-live-badge" id="bc-live-badge" style="display:none">
