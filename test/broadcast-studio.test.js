@@ -169,7 +169,8 @@ function loadStudio({ stream, cameras = [], screenShare = false }) {
     await check('before going live on a phone, a "Go live" bar presses the slot\'s own button while it is off screen', async () => {
         const dock = extract(studioSrc, 'syncGoLiveDock');
         assert.ok(/NARROW\.matches && onBroadcastPage\(\) && !localStream\(\)/.test(dock), 'phones, on /broadcast, not live yet');
-        assert.ok(/getBoundingClientRect\(\)/.test(dock) && /const show = !!real && !inView/.test(dock), 'only while the real button is out of view');
+        assert.ok(/real = goLiveButton\(\);\s*if \(real && !inView\(real\)\) mode = 'golive';/.test(dock), 'only while the real button is out of view');
+        assert.ok(/function inView\(n\) \{[^}]*getBoundingClientRect\(\)/.test(studioSrc));
         assert.ok(/b && !b\.disabled\) b\.click\(\)/.test(dock), 'it clicks the real Go Live button (same checks, same settings)');
         assert.ok(/id="bc-ws-golive-btn"/.test(read('public/js/broadcast-workspace.js')), 'the button it presses exists');
     });

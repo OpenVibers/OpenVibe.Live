@@ -1178,6 +1178,11 @@ router.get('/mine', requireAuth, async (req, res) => {
     try {
         const limit = Math.min(parseInt(req.query.limit || '50'), 200);
         const streams = await db.getStreamsByUserId(req.user.id, limit);
+        // ?vods=1: the newest ended streams carry their public VOD (the Go Live page's "Your last streams" replays).
+        if (req.query.vods === '1') {
+            const ended = streams.filter((s) => !s.is_live).slice(0, 8);
+            try { await require('../media-proxy/lookups').attachPublicVods(ended); } catch { /* the list still shows, without replays */ }
+        }
         res.json({ streams });
     } catch (err) {
         console.error('[Streams] My streams error:', err.message);
