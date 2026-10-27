@@ -11,6 +11,10 @@
  *
  * moveLocal(userId) moves a key still stored in Live the same way (scripts/move-byo-keys-to-ai.js runs it for every
  * channel once). The key is never logged.
+ *
+ * Or a model on the streamer's own computer (settings_json.byo.provider node, machine dev_… or any; contracts
+ * 0.220.0/0.221.0): OpenVibe.AI reaches it through OpenVibe.Bot and their OpenVibe Node, only for them, where they let
+ * their AI use that computer's models. There is no key, no address and nothing spent; byo_in_ai is set the same way.
  */
 const db = require('../db/database');
 
@@ -21,10 +25,13 @@ async function subjectOf(userId) {
     return r ? r.subject_id : null;
 }
 
-/** openai | anthropic, from the streamer's settings (settings_json.byo.provider) or the address. */
+const MACHINE_RE = /^(dev_[0-9A-HJKMNP-TV-Z]{26}|any)$/;
+
+/** openai | anthropic | node, from the streamer's settings (settings_json.byo.provider) or the address. */
 function providerOf(cfg) {
     let extra = {};
     try { extra = (JSON.parse(cfg.settings_json || '{}') || {}).byo || {}; } catch { extra = {}; }
+    if (extra.provider === 'node') return 'node';
     if (extra.provider === 'anthropic' || /anthropic\.com/i.test(String(cfg.byo_base_url || extra.base_url || ''))) return 'anthropic';
     return 'openai';
 }
@@ -39,6 +46,13 @@ function modelsOf(cfg) {
         if (m) models[role] = String(m).slice(0, 120);
     }
     return models;
+}
+
+/** The streamer's own computer for provider node: its dev_ id, or any of theirs. */
+function machineOf(cfg) {
+    let extra = {};
+    try { extra = (JSON.parse(cfg.settings_json || '{}') || {}).byo || {}; } catch { extra = {}; }
+    return MACHINE_RE.test(String(extra.machine || '')) ? String(extra.machine) : null;
 }
 
 /** The https address to send with the key (the provider's own when none was set). */
@@ -76,6 +90,11 @@ async function store(userId, cfg, { apiKey = null } = {}) {
     const subject = await subjectOf(userId);
     if (!subject) return { ok: false, status: 409, body: { code: 'credentials.no_subject', detail: 'this channel has no Network account linked' } };
     const provider = providerOf(cfg);
+    if (provider === 'node') {
+        const machine = machineOf(cfg);
+        if (!machine) return { ok: false, status: 400, body: { code: 'credentials.machine', detail: 'Name your computer (its dev_ id on openvibe.bot/machines), or choose any of yours' } };
+        return await call('PUT', subject, { provider: 'node', machine, models: modelsOf(cfg) });
+    }
     const put = { provider, base_url: addressOf(cfg, provider), models: modelsOf(cfg) };
     if (apiKey) put.api_key = String(apiKey);
     return await call('PUT', subject, put);
@@ -92,8 +111,18 @@ async function remove(userId) {
  * one, undefined to keep it. A new key, or a new address or model while the key is in AI, goes to AI; `fields` then
  * gets byo_key '' and byo_in_ai. → null when Live may save, else { status, error, code } to answer with.
  */
-async function applyConfig(userId, before, byoKey, fields) {
+async function applyConfig(userId, before, byoKey, fields, byoSettings = null) {
     const newKey = typeof byoKey === 'string' && byoKey.trim() !== '' ? byoKey.trim() : null;
+    // A model on the streamer's own computer: stored in AI with its machine, no key (the saved settings carry both).
+    if (byoSettings && byoSettings.provider === 'node') {
+        let settings = {};
+        try { settings = JSON.parse(before.settings_json || '{}') || {}; } catch { settings = {}; }
+        const next = { ...before, ...fields, settings_json: JSON.stringify({ ...settings, byo: { ...(settings.byo || {}), ...byoSettings } }) };
+        const r = await store(userId, next);
+        if (!r.ok) return { status: r.status >= 500 ? 502 : 400, error: (r.body && r.body.detail) || 'Could not use your computer through OpenVibe.AI', code: (r.body && r.body.code) || null };
+        fields.byo_key = ''; fields.byo_in_ai = 1;
+        return null;
+    }
     if (byoKey === null && (before.byo_in_ai || before.byo_key)) {
         const r = await remove(userId);
         if (!r.ok && r.status !== 404) return { status: 502, error: 'Could not remove your key from OpenVibe.AI; try again', code: 'credentials.unavailable' };
@@ -122,4 +151,4 @@ async function moveLocal(userId) {
     return 'moved';
 }
 
-module.exports = { store, remove, moveLocal, applyConfig, subjectOf, providerOf, modelsOf, addressOf };
+module.exports = { store, remove, moveLocal, applyConfig, subjectOf, providerOf, modelsOf, addressOf, machineOf };

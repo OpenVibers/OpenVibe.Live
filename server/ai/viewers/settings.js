@@ -58,7 +58,7 @@ const SCHEMA = {
     channel_memory:        { def: '',        type: 'str',    max_len: 600, help: 'Running bits the bots share (maintained automatically; editable)' },
     // Object-valued (validated separately)
     slots:                 { def: {},        type: 'obj',    help: 'Per-slot enable: { "<managed_stream_id>": true|false }' },
-    byo:                   { def: {},        type: 'obj',    help: '{ provider, base_url, model, model_chat, model_vision, model_director, model_summary }' },
+    byo:                   { def: {},        type: 'obj',    help: '{ provider, base_url, model, model_chat, model_vision, model_director, model_summary, machine }' },
     runtime:               { def: {},        type: 'obj',    help: 'Live mod state: { paused, muted:[bot usernames] }' },
 };
 
@@ -111,8 +111,10 @@ function sanitize(input, limits = { maxRoster: 12, maxLinesPerMin: 12 }) {
     if (out.slots) { const s = {}; for (const [id, en] of Object.entries(out.slots)) if (/^\d+$/.test(id)) s[id] = !!en; out.slots = s; }
     if (out.byo) {
         const b = out.byo; const clean = {};
-        for (const k of ['provider', 'base_url', 'model', 'model_chat', 'model_vision', 'model_director', 'model_summary']) if (b[k] != null) clean[k] = String(b[k]).trim().slice(0, 300);
-        if (clean.provider && !['openai', 'anthropic'].includes(clean.provider)) delete clean.provider;
+        for (const k of ['provider', 'base_url', 'model', 'model_chat', 'model_vision', 'model_director', 'model_summary', 'machine']) if (b[k] != null) clean[k] = String(b[k]).trim().slice(0, 300);
+        // node: a model on the streamer's own computer (byo-credentials.js); machine is its dev_ id or any of theirs.
+        if (clean.provider && !['openai', 'anthropic', 'node'].includes(clean.provider)) delete clean.provider;
+        if (clean.machine !== undefined && !/^(dev_[0-9A-HJKMNP-TV-Z]{26}|any)$/.test(clean.machine)) delete clean.machine;
         out.byo = clean;
     }
     if (out.runtime) { out.runtime = { paused: !!out.runtime.paused, muted: Array.isArray(out.runtime.muted) ? out.runtime.muted.map(String).slice(0, 24) : [] }; }
