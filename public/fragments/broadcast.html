@@ -664,9 +664,9 @@ WantedBy=multi-user.target</code>
 
                     <!-- Info bar -->
                     <div class="bc-info-bar" id="bc-info-bar" style="display:none">
-                        <div class="bc-info-item">
-                            <i class="fa-solid fa-eye"></i> <strong id="bc-viewer-count">0</strong> watching
-                        </div>
+                        <button type="button" class="bc-info-item bc-info-viewers" id="bc-info-viewers" onclick="toggleBroadcastViewerPlaces(this)" aria-haspopup="dialog" aria-expanded="false" title="Where people are watching">
+                            <i class="fa-solid fa-eye"></i> <strong id="bc-viewer-count">0</strong> watching <i class="fa-solid fa-chevron-down bc-info-more" aria-hidden="true"></i>
+                        </button>
                         <div class="bc-info-item" id="bc-rs-viewer-count" style="display:none">
                             <i class="fa-solid fa-robot"></i> <strong>0</strong> on RS
                         </div>

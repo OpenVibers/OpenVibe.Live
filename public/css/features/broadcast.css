@@ -2948,5 +2948,39 @@ body.bc-golive-dock-on .messenger-toggle { display: none !important; }
 .bc-last-replay:hover, .bc-last-replay:focus-visible { background: color-mix(in srgb, var(--accent) 24%, transparent); outline: none; }
 /* The phone bar fades up instead of appearing (and it no longer shows before the page knows the streams). */
 .bcs-golive:not([hidden]) { animation: bcs-dock-in 0.2s ease-out; }
+.bcs-golive-t { margin-left: 8px; }
 @keyframes bcs-dock-in { from { opacity: 0; transform: translateY(8px); } }
 @media (prefers-reduced-motion: reduce) { .bcs-golive:not([hidden]), .bc-live-card-dot { animation: none; } }
+
+/* RobotStreamer, at every width: its state and Stop on one line, the details under them in full (on a phone the Stop
+   button stood between them as a tall tile and the details ran off the right; on a computer the state sat at the far
+   right with its details under the left). */
+#bc-rs-control.bc-rs-control { flex-direction: column; flex-wrap: nowrap; align-items: stretch; gap: 6px; padding: 10px 12px; }
+#bc-rs-control .bc-rs-status-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: nowrap; margin-left: 0; }
+#bc-rs-control .bc-rs-status { min-width: 0; }
+#bc-rs-control .bc-ctrl-btn-sm { flex: none; flex-direction: row; width: auto; min-height: 36px; padding: 0 14px; gap: 6px; font-size: 0.82rem; }
+#bc-rs-control .bc-ctrl-btn-sm i { font-size: 0.8rem; }
+#bc-rs-control .bc-restream-detail { white-space: normal; overflow-wrap: anywhere; font-size: 0.76rem; line-height: 1.35; text-align: left; flex-basis: auto; }
+
+/* ── The live view's full page on a phone (owner, 2026-10-27: "huge wasted space", cut-off cards, a Stop button floating
+   in the RobotStreamer box). One scroll: the settings under the buttons were their own 414 px scroll box inside the
+   page's, with 4,000 px in it, so the Text To Speech card was cut off and the rest of the screen looked empty. */
+@media (max-width: 768px) {
+    #bc-browser-broadcast { flex: none; }
+    #bc-browser-broadcast .bc-controls { overflow: visible; }
+    /* The buttons: two to a row, icon beside the words (three tall tiles to a row wrapped "Skip spoken message"). */
+    .bc-ctrl-buttons { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .bc-ctrl-btn:not(.bc-ctrl-btn-danger) {
+        flex-direction: row; justify-content: flex-start; gap: 10px; min-height: 48px; padding: 8px 12px; text-align: left; font-size: 0.84rem;
+    }
+    .bc-ctrl-btn:not(.bc-ctrl-btn-danger) i { width: 18px; flex: none; text-align: center; font-size: 0.95rem; }
+}
+
+/* The info bar's count is a button: a tap lists where people are watching. On a phone that list replaces the badges. */
+.bc-info-viewers { font: inherit; color: inherit; background: none; border: 0; padding: 4px 8px; margin: -4px -8px; border-radius: 999px; cursor: pointer; }
+.bc-info-viewers:hover, .bc-info-viewers[aria-expanded="true"] { background: color-mix(in srgb, var(--text-primary) 8%, transparent); }
+.bc-info-viewers:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.bc-info-more { font-size: 0.62rem; opacity: 0.6; margin-left: 2px; }
+@media (max-width: 768px) {
+    #bc-info-bar #bc-rs-viewer-count, #bc-info-bar #bc-platform-viewer-badges { display: none !important; }
+}

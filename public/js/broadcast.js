@@ -4537,6 +4537,11 @@ function broadcastViewerPlaces() {
     return [{ key: 'openvibe', name: 'OpenVibe', count: here }, ..._serverViewerPlaces.filter((p) => p.key !== 'openvibe')];
 }
 
+/** The info bar's count opens where people are watching (viewer-places.js), as the phone studio's pill does. */
+function toggleBroadcastViewerPlaces(anchor) {
+    if (window.OVViewerPlaces) OVViewerPlaces.toggle(anchor, broadcastViewerPlaces, { below: true });
+}
+
 function _updateTotalViewerCount() {
     const places = broadcastViewerPlaces();
     const total = places.reduce((n, p) => n + (Number(p.count) || 0), 0);
