@@ -6578,7 +6578,8 @@ body.theme-light .btn-outline:hover {
     justify-content: flex-end;
     gap: 8px;
 }
-.paste-textarea {
+/* textarea.* beats `textarea.form-input`'s 60px minimum, which had shrunk the paste box to two lines (2026-10-27). */
+textarea.paste-textarea {
     min-height: 240px;
     resize: vertical;
     font-family: 'Fira Code', 'Cascadia Code', 'JetBrains Mono', monospace;

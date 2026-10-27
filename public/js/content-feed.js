@@ -471,8 +471,9 @@
         else if (b.dataset.cfSort && b.dataset.cfSort !== S.sort) { S.sort = b.dataset.cfSort === 'top' ? 'top' : 'new'; refilter(); }
         else if (b.dataset.cfWindow && b.dataset.cfWindow !== S.win && WINDOWS.includes(b.dataset.cfWindow)) { S.win = b.dataset.cfWindow; refilter(); }
         else if (b.hasAttribute('data-cf-new-paste')) {
-            const go = () => { if (typeof openNewPasteModal === 'function') openNewPasteModal(); };
-            if (window.ov) ov.load('pastes').then(go, () => {}); else go();
+            // The paste form comes with the pastes feature; should it fail to load, the pastes page has the form too.
+            const go = () => { if (typeof openNewPasteModal === 'function') openNewPasteModal(); else if (typeof navigate === 'function') navigate('/pastes'); };
+            if (window.ov) ov.load('pastes').then(go, go); else go();
         }
     }
 
@@ -518,7 +519,10 @@
         scope.listen(st.feedEl, 'click', onFeedClick);
         scope.listen(wrap.querySelector('.cf-head'), 'click', (e) => {
             const a = e.target.closest('a[data-cf-link]');
-            if (a && typeof handleLinkClick === 'function') handleLinkClick(e, a.getAttribute('href'));
+            if (a) { if (typeof handleLinkClick === 'function') handleLinkClick(e, a.getAttribute('href')); return; }
+            // New paste sits in the header beside AI Moments, outside the filter bar: its button goes through the same
+            // controls (only .cf-bar was listened to, so it did nothing, owner 2026-10-27).
+            onControl(e);
         });
         let resizeRaf = 0;
         scope.listen(window, 'resize', () => { cancelAnimationFrame(resizeRaf); resizeRaf = requestAnimationFrame(relayout); }, { passive: true });
