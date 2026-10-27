@@ -855,11 +855,16 @@ const waitFor = async (pred, what, ms = 3000) => {
             const activeSeries = chatReads.homeSeriesPeek('active', 7);
             assert.strictEqual(activeSeries.points[4].value, 2, 'two days ago: two distinct chatters');
             assert.strictEqual(activeSeries.points[5].value, 2, 'yesterday: two distinct chatters');
-            // getHomeStatSeries routes the two chat metrics through the chat series.
-            const realSeriesPeek = chatReads.homeSeriesPeek;
-            chatReads.homeSeriesPeek = () => ({ metric: 'messages', sentinel: true });
-            try { assert.strictEqual((await d2.getHomeStatSeries('messages', 7)).sentinel, true, 'getHomeStatSeries reads the chat series in chat mode'); }
-            finally { chatReads.homeSeriesPeek = realSeriesPeek; }
+            // getHomeStatSeries routes the two chat metrics through the chat series, awaited: a peek was null on every
+            // cold key (each range, each new UTC day), and the chart answered "Unknown metric". `active` is a daily
+            // headcount, marked `distinct` (its days do not add up).
+            const realSeries = chatReads.homeSeries;
+            chatReads.homeSeries = async (metric) => ({ metric, sentinel: true });
+            try {
+                assert.strictEqual((await d2.getHomeStatSeries('messages', 7)).sentinel, true, 'getHomeStatSeries reads the chat series in chat mode');
+                assert.strictEqual((await d2.getHomeStatSeries('messages', 7)).distinct, undefined, 'messages add up');
+                assert.strictEqual((await d2.getHomeStatSeries('active', 7)).distinct, true, 'active is a daily headcount');
+            } finally { chatReads.homeSeries = realSeries; }
             // A cold cache during a Chat outage answers null (Live keeps no chat series to fall back to).
             chatReads._reset();
             readState.down = true;

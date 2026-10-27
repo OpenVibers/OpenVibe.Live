@@ -236,6 +236,30 @@ function _baselineDeltaHTML(now, avg, peak, window = '24h') {
         + `<b>${pct > 0 ? '+' : ''}${pct}%</b><em>vs ${window}</em></span>`;
 }
 
+/**
+ * The change against the seven days before, as a small arrow and a percentage ('' when there is no previous week).
+ * The triangle is drawn in CSS rather than set as an icon glyph, so it stays crisp and tiny at this size.
+ */
+function _heroTrendBits(w, pw) {
+    if (!Number.isFinite(pw)) return '';
+    if (pw === 0) return w > 0 ? '<span class="hero-stat-trend is-new">new</span>' : '';
+    const pct = Math.round(((w - pw) / pw) * 100);
+    if (pct === 0) return '<span class="hero-stat-trend is-flat"><i></i>flat</span>';
+    return `<span class="hero-stat-trend ${pct > 0 ? 'is-up' : 'is-down'}"><i></i>${Math.abs(pct)}%</span>`;
+}
+/**
+ * The pill of a number that already is a seven-day window (people who chatted this week): only how it compares with
+ * the week before. "+66 7d" under a chip reading 66 said the same number twice.
+ */
+function _heroWindowDeltaHTML(w, pw) {
+    w = Number(w); pw = Number(pw);
+    if (!Number.isFinite(w) || !Number.isFinite(pw)) return '';
+    const trend = _heroTrendBits(w, pw);
+    if (!trend) return '';
+    const cls = pw === 0 ? 'is-up' : w > pw ? 'is-up' : w < pw ? 'is-down' : 'is-flat';
+    return `<span class="hero-stat-delta is-window ${cls}" title="${esc(`${_fmtCount(w)} in the last 7 days, against ${_fmtCount(pw)} the seven days before`)}"><em>7d</em>${trend}</span>`;
+}
+
 function _heroStatFmt(n) {
     n = Math.max(0, Math.round(n || 0));
     if (n >= 1000000) return (n / 1000000).toFixed(n >= 10000000 ? 0 : 1).replace(/\.0$/, '') + 'M';
@@ -276,23 +300,31 @@ function _renderHeroStats(stats) {
     const groups = [];
 
     // ── Right now ────────────────────────────────────────────────
+    // Every number appears once on the board. Visitors and "anons" were the same table (each new address is given an
+    // anon name) shown twice, so they are one chip; the weekly figures say only how they compare with the week before.
     const now = [
         { key: 'liveNow', metric: 'liveNow', deltaHTML: _baselineDeltaHTML(stats.liveNow, CC.liveAvg24h, CC.livePeak24h), cls: stats.liveNow > 0 ? 'hero-stat--live' : '', icon: stats.liveNow > 0 ? 'fa-circle' : 'fa-circle-dot', num: stats.liveNow, label: 'Live', title: stats.liveNow > 0 ? 'Streams live right now' : 'Nobody is live right now — check Recently Online below' },
         { key: 'viewersNow', metric: 'viewersNow', deltaHTML: _baselineDeltaHTML(stats.viewersNow, CC.viewersAvg24h, CC.viewersPeak24h), cls: stats.viewersNow > 0 ? 'hero-stat--live' : '', icon: 'fa-eye', num: stats.viewersNow, label: 'Watching', title: 'Viewers watching right now' },
-        { key: 'weeklyActive', icon: 'fa-fire', num: stats.weeklyActive, label: 'Active', title: 'People who chatted in the last 7 days', desc: 'Distinct chatters in the last 7 days — signed-in users, anonymous chatters and relayed (Twitch/Kick/YouTube) chatters, each counted once.', metric: 'active' },
-        { key: 'weeklyVisitors', icon: 'fa-user-plus', num: stats.weeklyVisitors, label: 'Visitors', title: 'First-time visitors in the last 7 days', desc: 'Browsers seen on the site for the first time in the last 7 days (a privacy-safe fingerprint, no account needed). A proxy for new people showing up, not just chatting.', metric: 'visitors' },
+        { key: 'weeklyActive', icon: 'fa-fire', num: stats.weeklyActive, label: 'Chatted', title: 'People who chatted in the last 7 days', desc: 'Distinct chatters in the last 7 days: signed-in people, anonymous chatters and chatters relayed from Twitch, Kick and YouTube, each counted once.', metric: 'active', deltaHTML: _heroWindowDeltaHTML(stats.weeklyActive, stats.prevWeeklyActive) },
+        ...(stats.streamedWeek != null ? [{ key: 'streamedWeek', icon: 'fa-tower-broadcast', num: stats.streamedWeek, label: 'Went live', title: 'People who went live in the last 7 days', deltaHTML: _heroWindowDeltaHTML(stats.streamedWeek, stats.prevStreamedWeek) }] : []),
     ];
-    // 24h viewer sparkline (5-minute samples) — trends read better than a snapshot.
+    // Viewers over the last 24 hours (5-minute samples): trends read better than a snapshot. It opens the
+    // Watching chart on its last 24 hours.
     const trend = Array.isArray(stats.viewerTrend) ? stats.viewerTrend : [];
     if (trend.length >= 2 && trend.some(t => (t.viewers || 0) > 0)) {
         const max = Math.max(...trend.map(t => t.viewers || 0), 1);
-        const W = 220, H = 30;
-        const pts = trend.map((t, i) => `${(i / (trend.length - 1) * W).toFixed(1)},${(H - 2 - ((t.viewers || 0) / max) * (H - 4)).toFixed(1)}`).join(' ');
+        const W = 220, H = 34;
+        const xy = trend.map((t, i) => [(i / (trend.length - 1) * W).toFixed(1), (H - 2 - ((t.viewers || 0) / max) * (H - 6)).toFixed(1)]);
+        const line = xy.map(p => p.join(',')).join(' ');
+        const area = `M0,${H} L${xy.map(p => p.join(',')).join(' L')} L${W},${H} Z`;
+        const tip = { label: 'Viewers, last 24 hours', title: `People watching over the last 24 hours, sampled every 5 minutes · peak ${max}`, metric: 'viewersNow' };
         now.push({
-            html: `<div class="hero-stat hero-stat--spark" title="Viewers over the last 24h (peak ${max})">
+            spark: true,
+            html: `<div class="hero-stat hero-stat--spark hero-stat--clickable" data-metric="viewersNow" data-days="1" data-tip="${esc(JSON.stringify(tip))}" role="button" tabindex="0" aria-label="Viewers over the last 24 hours, peak ${max} — show over time">
                 <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">
-                    <polyline points="${pts}" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
-                </svg><span class="hero-stat-label">24h viewers · peak ${max}</span></div>`,
+                    <path d="${area}" class="hero-spark-area"/>
+                    <polyline points="${line}" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>
+                </svg><span class="hero-stat-label">Viewers · 24h · peak ${max}</span></div>`,
         });
     }
     groups.push({ kicker: 'Right now', icon: 'fa-bolt', rows: now });
@@ -300,32 +332,31 @@ function _renderHeroStats(stats) {
     // ── Community ────────────────────────────────────────────────
     groups.push({
         kicker: 'Community', icon: 'fa-people-group', rows: [
-            { key: 'streamers', recent: R.streamers, icon: 'fa-satellite-dish', num: stats.streamers, label: 'Streamers', metric: 'streamers', title: 'People who have gone live' },
-            { key: 'users', icon: 'fa-users', num: stats.users, label: 'Users', metric: 'users', title: 'Registered users', recent: R.users },
-            { key: 'anons', icon: 'fa-user-secret', num: stats.anons, label: 'Anons', metric: 'anons', title: 'Anonymous chatters ever seen', recent: R.anons },
+            { key: 'anons', icon: 'fa-user-plus', num: stats.anons, label: 'Visitors', metric: 'visitors', title: 'Addresses that have visited Live', desc: 'Each new address that visits Live is given an anonymous name (anon1234), so this counts visits from new addresses: no account, no tracking. A phone that changes networks counts again, so it is more than the number of people.', recent: R.anons },
+            { key: 'users', icon: 'fa-users', num: stats.users, label: 'Accounts', metric: 'users', title: 'People with an account on OpenVibe.Live', recent: R.users },
+            { key: 'streamers', recent: R.streamers, icon: 'fa-satellite-dish', num: stats.streamers, label: 'Streamers', metric: 'streamers', title: 'People who have gone live here', desc: `People who have gone live here. "+" is new streamers: people whose first stream was in that window.${stats.streamedWeek != null ? ` ${_fmtCount(stats.streamedWeek)} went live in the last 7 days.` : ''}` },
             { icon: 'fa-heart', num: stats.follows, label: 'Follows', metric: 'follows', title: 'Channel follows', recent: R.follows },
             { key: 'chatMessages', icon: 'fa-comments', num: stats.chatMessages, label: 'Messages', metric: 'messages', title: 'Chat messages sent', recent: R.messages },
-            { key: 'hoursWatched', recent: R.hours, unit: 'h', icon: 'fa-couch', num: stats.hoursWatched, label: 'Hrs Watched', metric: 'hoursWatched', title: 'Hours the community has spent watching streams', unit: 'h' },
+            { key: 'hoursWatched', recent: R.hoursWatched, unit: 'h', icon: 'fa-couch', num: stats.hoursWatched, label: 'Hours watched', metric: 'hoursWatched', title: 'Hours people have spent watching streams here' },
         ],
     });
 
     // ── Economy ──────────────────────────────────────────────────
     groups.push({
         kicker: 'Economy', icon: 'fa-coins', rows: [
-            { icon: 'fa-hand-holding-dollar', num: stats.vibesTipped, label: 'Vibes Tipped', metric: 'vibes', title: 'Vibes donated between people (100 Vibes = $1)', recent: R.vibes },
-            { recent: R.supporters, icon: 'fa-hand-holding-heart', num: stats.supporters, label: 'Supporters', metric: 'supporters', title: 'People who have tipped Vibes to a streamer' },
-            { icon: 'fa-cart-shopping', num: stats.vibesBought, label: 'Vibes Bought', metric: 'vibesBought', title: 'Vibes purchased with real money (PowerChat, card, PayPal, crypto)', recent: R.vibesBought },
+            { icon: 'fa-hand-holding-dollar', num: stats.vibesTipped, label: 'Vibes tipped', metric: 'vibes', title: 'Vibes tipped to streamers (100 Vibes = $1), on Live, PowerChat and OpenVibe.Tips', recent: R.vibes },
+            { recent: R.supporters, icon: 'fa-hand-holding-heart', num: stats.supporters, label: 'Supporters', metric: 'supporters', title: 'People who have tipped a streamer' },
+            { icon: 'fa-cart-shopping', num: stats.vibesBought, label: 'Vibes bought', metric: 'vibesBought', title: 'Vibes bought with real money (PowerChat, card, PayPal, crypto)', recent: R.vibesBought },
             { icon: 'fa-star', num: stats.activeSubs, label: 'Subs', metric: 'subs', title: 'Active channel subscriptions', recent: R.subs },
-            // OpenCoins are network-wide; channel points below are per channel. Shown only when
-            // the wallet service answered — four zeroed chips would read as "nobody has any".
+            // OpenCoins are network-wide; channel points below are per channel. Shown only when the wallet service
+            // answered: zeroed chips would read as "nobody has any". (Coins held was coins earned less 50 spent: gone.)
             ...(stats.coinsEarned != null ? [
-                { recent: R.coinsEarned, icon: 'fa-circle-dollar-to-slot', num: stats.coinsEarned, label: 'Coins Earned', title: 'OpenCoins earned across the whole network — the site-wide currency you get for watching, chatting and using the tools' },
-                { recent: R.coinsSpent, icon: 'fa-basket-shopping', num: stats.coinsSpent, label: 'Coins Spent', title: 'OpenCoins spent on emotes, themes, cosmetics and sounds' },
-                { icon: 'fa-vault', num: stats.coinsCirculating, label: 'Coins Held', title: 'OpenCoins sitting in wallets right now, across every OpenVibe site' },
+                { recent: R.coinsEarned, icon: 'fa-circle-dollar-to-slot', num: stats.coinsEarned, label: 'Coins earned', title: 'OpenCoins earned across the whole network — the site-wide currency you get for watching, chatting and using the tools', desc: `OpenCoins earned across the whole network: the site-wide currency you get for watching, chatting and using the tools.${stats.coinsCirculating != null ? ` ${_fmtCount(stats.coinsCirculating)} are in wallets right now.` : ''}` },
+                { recent: R.coinsSpent, icon: 'fa-basket-shopping', num: stats.coinsSpent, label: 'Coins spent', title: 'OpenCoins spent on emotes, themes, cosmetics and sounds' },
                 { recent: R.coinHolders, icon: 'fa-wallet', num: stats.coinHolders, label: 'Wallets', title: 'People holding OpenCoins' },
             ] : []),
-            { icon: 'fa-coins', num: stats.pointsEarned, label: 'Points Earned', metric: 'points', title: 'Channel points earned by viewers (watching, chatting, following) — per channel, unlike OpenCoins', recent: R.points },
-            { icon: 'fa-gift', num: stats.pointsSpent, label: 'Points Spent', metric: 'pointsSpent', title: `Channel points spent on rewards · ${_fmtCount(stats.redemptions || 0)} rewards redeemed`, recent: R.pointsSpent, sub: stats.redemptions ? `${_fmtCount(stats.redemptions)} rewards` : '' },
+            { icon: 'fa-coins', num: stats.pointsEarned, label: 'Points earned', metric: 'points', title: 'Channel points earned by viewers (watching, chatting, following) — per channel, unlike OpenCoins', recent: R.points },
+            { icon: 'fa-gift', num: stats.pointsSpent, label: 'Points spent', metric: 'pointsSpent', title: `Channel points spent on rewards · ${_fmtCount(stats.redemptions || 0)} rewards redeemed`, recent: R.pointsSpent, sub: stats.redemptions ? `${_fmtCount(stats.redemptions)} rewards` : '' },
             { recent: R.goals, icon: 'fa-bullseye', num: stats.goalsActive, label: 'Goals', title: `Donation goals running now · ${stats.goalsReached || 0} reached so far`, sub: stats.goalsReached ? `${_fmtCount(stats.goalsReached)} reached` : '' },
         ],
     });
@@ -333,11 +364,11 @@ function _renderHeroStats(stats) {
     // ── Archive ──────────────────────────────────────────────────
     groups.push({
         kicker: 'Archive', icon: 'fa-box-archive', rows: [
-            { icon: 'fa-tower-broadcast', num: stats.liveSessions, label: 'Sessions', metric: 'sessions', title: 'Total stream sessions', recent: R.sessions },
+            { key: 'liveSessions', icon: 'fa-tower-broadcast', num: stats.liveSessions, label: 'Streams', metric: 'sessions', title: 'Streams started here, all time', recent: R.sessions },
             { icon: 'fa-film', num: stats.vods, label: 'VODs', metric: 'vods', title: 'Recorded videos', recent: R.vods },
             { icon: 'fa-scissors', num: stats.clips, label: 'Clips', metric: 'clips', title: 'Clips created', recent: R.clips },
-            { icon: 'fa-clock', num: stats.streamHours, label: 'Hours', metric: 'hours', title: 'Hours of video archived', recent: R.hours, unit: 'h' },
-            { icon: 'fa-brain', num: stats.aiMemories, label: 'AI Moments', metric: 'aiMoments', title: 'Moments the AI remembers across every stream', recent: R.aiMoments },
+            { icon: 'fa-clock', num: stats.streamHours, label: 'Hours archived', metric: 'hours', title: 'Hours of video kept in the archive', recent: R.hours, unit: 'h' },
+            { icon: 'fa-brain', num: stats.aiMemories, label: 'AI moments', metric: 'aiMoments', title: 'Moments the AI remembers across every stream', recent: R.aiMoments },
             // The emotes series is gone (OpenVibe.Chat owns the table; Live stopped reading it in T3
             // N+2), so the chip and its chart are skipped — `stats.emotes` is null, the same "no series"
             // signal the OpenCoins chips use. No other markup changes.
@@ -363,14 +394,7 @@ function _renderHeroStats(stats) {
      * `rec` is { w, pw }: this window and the one before it. Either may be absent, and the pill
      * degrades to whichever half it has rather than disappearing.
      */
-    const trendBits = (w, pw) => {
-        if (!Number.isFinite(pw)) return '';
-        if (pw === 0) return w > 0 ? '<span class="hero-stat-trend is-new">new</span>' : '';
-        const pct = Math.round(((w - pw) / pw) * 100);
-        if (pct === 0) return '<span class="hero-stat-trend is-flat"><i></i>flat</span>';
-        const up = pct > 0;
-        return `<span class="hero-stat-trend ${up ? 'is-up' : 'is-down'}"><i></i>${Math.abs(pct)}%</span>`;
-    };
+    const trendBits = _heroTrendBits;
     /**
      * The two instantaneous readings — streams live and people watching — against what's normal.
      *
@@ -392,7 +416,7 @@ function _renderHeroStats(stats) {
             + '</span>';
     };
     const chip = (r) => {
-        if (r.html) return r.html; // pre-rendered chips (sparkline)
+        if (r.html) return r.html; // pre-rendered chips (the sparkline)
         const sub = r.sub || recSub(r.recent, r.unit || '');
         const tip = {
             label: r.label, title: r.title || '', desc: r.desc || '',
@@ -415,13 +439,13 @@ function _renderHeroStats(stats) {
     const HEADLINE = [
         { key: 'liveNow', metric: 'liveNow', icon: stats.liveNow > 0 ? 'fa-circle' : 'fa-circle-dot', cls: stats.liveNow > 0 ? 'hero-stat--live' : '', num: stats.liveNow, label: 'Live', title: 'Streams live right now', deltaHTML: _baselineDeltaHTML(stats.liveNow, CC.liveAvg24h, CC.livePeak24h) },
         { key: 'viewersNow', metric: 'viewersNow', icon: 'fa-eye', cls: stats.viewersNow > 0 ? 'hero-stat--live' : '', num: stats.viewersNow, label: 'Watching', title: 'Viewers watching right now', deltaHTML: _baselineDeltaHTML(stats.viewersNow, CC.viewersAvg24h, CC.viewersPeak24h) },
-        { key: 'weeklyActive', metric: 'active', icon: 'fa-fire', num: stats.weeklyActive, label: 'Active', title: 'People who chatted in the last 7 days', recent: { w: stats.weeklyActive, pw: stats.prevWeeklyActive } },
-        { key: 'users', metric: 'users', icon: 'fa-user-group', num: stats.users, label: 'Users', title: 'Accounts on OpenVibe.Live', recent: R.users },
-        { key: 'weeklyVisitors', metric: 'visitors', icon: 'fa-user-plus', num: stats.weeklyVisitors, label: 'Visitors', title: 'First-time visitors in the last 7 days', recent: { w: stats.weeklyVisitors, pw: stats.prevWeeklyVisitors } },
-        { key: 'anons', metric: 'anons', icon: 'fa-user-secret', num: stats.anons, label: 'Anons', title: 'Anonymous chatters who have been given a name', recent: R.anons },
+        { key: 'weeklyActive', metric: 'active', icon: 'fa-fire', num: stats.weeklyActive, label: 'Chatted', title: 'People who chatted in the last 7 days', deltaHTML: _heroWindowDeltaHTML(stats.weeklyActive, stats.prevWeeklyActive) },
+        { key: 'anons', metric: 'visitors', icon: 'fa-user-plus', num: stats.anons, label: 'Visitors', title: 'Addresses that have visited Live (each is given an anon name)', recent: R.anons },
         { key: 'chatMessages', metric: 'messages', icon: 'fa-comments', num: stats.chatMessages, label: 'Messages', title: 'Chat messages sent, all time', recent: R.messages },
-        { key: 'streamers', metric: 'streamers', icon: 'fa-satellite-dish', num: stats.streamers, label: 'Streamers', title: 'People who have gone live here', recent: R.streamers },
-        { key: 'hoursWatched', metric: 'hoursWatched', icon: 'fa-couch', num: stats.hoursWatched, label: 'Hours', title: 'Hours the community has spent watching', recent: R.hours },
+        { key: 'streamers', metric: 'streamers', icon: 'fa-satellite-dish', num: stats.streamers, label: 'Streamers', title: 'People who have gone live here ("+" is new streamers)', recent: R.streamers },
+        { key: 'liveSessions', metric: 'sessions', icon: 'fa-tower-broadcast', num: stats.liveSessions, label: 'Streams', title: 'Streams started here, all time', recent: R.sessions },
+        { key: 'users', metric: 'users', icon: 'fa-user-group', num: stats.users, label: 'Accounts', title: 'People with an account on OpenVibe.Live', recent: R.users },
+        { key: 'hoursWatched', metric: 'hoursWatched', icon: 'fa-couch', num: stats.hoursWatched, label: 'Watch hrs', title: 'Hours people have spent watching streams here', recent: R.hoursWatched, unit: 'h' },
     ];
     // Always starts collapsed. Persisting "expanded" meant every reload rendered and counted up
     // two dozen extra chips before the page had finished loading, for a view the reader asked for
@@ -443,7 +467,7 @@ function _renderHeroStats(stats) {
     const btn = wrap.querySelector('#hero-stat-more');
     const full = wrap.querySelector('#hero-stat-full');
     const strip = wrap.querySelector('.hero-stat-strip');
-    const total = groups.reduce((n, g) => n + g.rows.length, 0);
+    const total = groups.reduce((n, g) => n + g.rows.filter(r => !r.spark).length, 0);
     const label = () => { btn.querySelector('.hero-stat-more-text').textContent = full.hidden ? `Show all ${total} stats` : 'Show fewer stats'; };
     const sync = () => { strip.hidden = !full.hidden; btn.classList.toggle('is-open', !full.hidden); label(); };
     sync();
@@ -537,12 +561,16 @@ function _startHeroStatsLive() {
                 users: d.recent?.users, anons: d.recent?.anons,
                 chatMessages: d.recent?.messages,
                 streamers: d.recent?.streamers,
-                // hoursWatched is deliberately absent: its 7-day figure comes from OpenVibe.Media
-                // (that is where VODs live now), and this endpoint only knows the local number,
-                // which is zero. Overwriting it here would wipe a correct value with a wrong one.
-                weeklyActive: { w: d.weeklyActive, pw: d.prevWeeklyActive },
-                weeklyVisitors: { w: d.weeklyVisitors, pw: d.prevWeeklyVisitors },
+                liveSessions: d.recent?.sessions,
+                hoursWatched: d.recent?.hoursWatched,
             };
+            // A seven-day figure's pill is only its comparison with the week before: rebuilt whole when it changes.
+            const WINDOWED = { weeklyActive: [d.weeklyActive, d.prevWeeklyActive] };
+            for (const [key, [w, pw]] of Object.entries(WINDOWED)) {
+                const html = _heroWindowDeltaHTML(w, pw);
+                if (!html) continue;
+                wrap.querySelectorAll(`[data-stat="${key}"] .hero-stat-delta`).forEach(el => { if (el.outerHTML !== html) el.outerHTML = html; });
+            }
             // The two instantaneous readings are re-rendered whole: their pill is a percentage
             // against a moving baseline, not a running total, so patching one number isn't enough.
             const cc = d.concurrency || {};

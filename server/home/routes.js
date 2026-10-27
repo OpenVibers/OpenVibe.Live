@@ -197,6 +197,8 @@ router.get('/stats/series/:metric', async (req, res) => {
     } else {
         series = await db.getReadingSeries(metric, days) || await db.getHomeStatSeries(metric, days);
     }
+    // A metric this route knows that has no answer right now (Chat's two, while Chat is away) is unavailable, not unknown.
+    if (!series && db.HOME_SERIES_KEYS.includes(metric)) return res.status(503).json({ error: 'This stat is unavailable right now. Try again in a minute.' });
     if (!series) return res.status(404).json({ error: 'Unknown metric', metrics: [...db.HOME_SERIES_KEYS, ...MEDIA_SERIES, 'pastes', 'vibesBought', 'subs'] });
     if (_seriesCache.size > 200) _seriesCache.clear();
     _seriesCache.set(key, { at: Date.now(), data: series });
@@ -297,7 +299,7 @@ router.get('/stats-live', async (req, res) => {
         const data = {
             liveNow: s.liveNow, viewersNow: s.viewersNow, weeklyActive: s.weeklyActive,
             users: s.users, weeklyVisitors: s.weeklyVisitors, anons: s.anons, chatMessages: s.chatMessages,
-            streamers: s.streamers, hoursWatched: s.hoursWatched,
+            streamers: s.streamers, hoursWatched: s.hoursWatched, liveSessions: s.liveSessions,
             // The 7-day deltas the hero chips show under their numbers. Same shape as the full
             // board's `recent`, trimmed to the four that have one.
             prevWeeklyVisitors: s.prevWeeklyVisitors, prevWeeklyActive: s.prevWeeklyActive,
@@ -308,9 +310,9 @@ router.get('/stats-live', async (req, res) => {
                 users: s.recent?.users, anons: s.recent?.anons,
                 messages: s.recent?.messages,
                 streamers: s.recent?.streamers,
-                // No `hours` here on purpose — the real figure comes from OpenVibe.Media and is
-                // merged into the hero payload; the local number is zero and would be wrong.
-                
+                sessions: s.recent?.sessions,
+                hoursWatched: s.recent?.hoursWatched,
+                // No `hours` (hours archived) here: that one is OpenVibe.Media's, merged into the hero payload only.
             },
         };
         _liveStats = { at: Date.now(), data };

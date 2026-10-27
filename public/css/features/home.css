@@ -1186,3 +1186,36 @@ body.egg-rainbow { animation: eggRainbow 2.6s linear; }
     #page-home .hero .hero-quip { font-size: 14px; margin: 0 0 8px; }
     #page-home .hero .hero-slogan-timer { display: none; }
 }
+
+/* ── Stat board, 2026-10-27 review ──────────────────────────────────────────
+   A seven-day figure's pill is only its comparison with the week before ("7d ▼3%"), so the trend needs no
+   divider of its own. */
+.hero-stat-delta.is-window .hero-stat-trend { margin-left: 3px; padding-left: 0; border-left: 0; }
+.hero-stat-strip .hero-stat-delta.is-window .hero-stat-trend { margin-left: 0; }
+/* The 24-hour viewers line has an area under it, and opens the Watching chart. */
+.hero-stat--spark .hero-spark-area { fill: currentColor; opacity: 0.16; stroke: none; }
+.hero-stat--spark .hero-stat-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Phones: three chips to a row leave a label ~60 px beside its icon, and "WATCHING" broke as "WATCHIN G". The icon
+   now sits beside the number and the label takes the chip's whole width under them. */
+@media (max-width: 640px) {
+    .hero-stat-full .hero-stat:not(.hero-stat--spark) { grid-template-columns: auto minmax(0, 1fr); align-items: center; }
+    .hero-stat-full .hero-stat:not(.hero-stat--spark) .hero-stat-meta { display: contents; }
+    .hero-stat-full .hero-stat:not(.hero-stat--spark) > i { grid-row: 1; grid-column: 1; }
+    .hero-stat-full .hero-stat-num { grid-row: 1; grid-column: 2; }
+    .hero-stat-full .hero-stat-label { grid-column: 1 / -1; overflow-wrap: normal; word-break: normal; }
+    .hero-stat-full .hero-stat-sub, .hero-stat-full .hero-stat-delta { grid-column: 1 / -1; }
+}
+/* Under the board: every site's numbers on openvibe.network. */
+.hero-stat-all-sites {
+    display: flex; align-items: center; justify-content: center; gap: 9px; white-space: nowrap;
+    margin: 10px auto 2px; padding: 9px 16px; width: fit-content; max-width: 100%;
+    border-radius: 999px; text-decoration: none; font-size: 0.8rem; font-weight: 700; text-align: center;
+    color: var(--text-primary); background: color-mix(in srgb, var(--accent) 10%, transparent);
+    border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+    transition: border-color 0.2s, background 0.2s, transform 0.18s;
+}
+.hero-stat-all-sites > i:first-child { color: var(--accent); }
+.hero-stat-all-sites > i:last-child { font-size: 0.7rem; color: var(--text-muted); transition: transform 0.18s; }
+.hero-stat-all-sites:hover, .hero-stat-all-sites:focus-visible { border-color: color-mix(in srgb, var(--accent) 60%, transparent); background: color-mix(in srgb, var(--accent) 16%, transparent); outline: none; }
+.hero-stat-all-sites:hover > i:last-child { transform: translateX(3px); }
+@media (prefers-reduced-motion: reduce) { .hero-stat-all-sites, .hero-stat-all-sites > i { transition: none; } }
