@@ -9939,4 +9939,5 @@ body.ov-nav-overlay .openvibe-navbar.navbar.ovnav-top { background: transparent;
 .openvibe-navbar.navbar .openvibe-navbar-links a.ovnav-link.active { color: var(--text-primary); background: color-mix(in srgb, var(--accent) 16%, transparent); }
 .openvibe-navbar.navbar .openvibe-navbar-dropdown { position: fixed; top: calc(var(--navbar-h) + 6px); right: 8px; }
 .openvibe-navbar.navbar .openvibe-navbar-avatar { width: 36px; height: 36px; border-radius: 50%; cursor: pointer; object-fit: cover; box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 50%, transparent); }
-@media (max-width: 560px) { .openvibe-navbar.navbar .ovnav-chip { padding: 0 8px; } .openvibe-navbar.navbar .ovnav-launch { display: none; } }
+/* The site switcher stays beside the logo on a phone: the two balance chips fold into one there (Shared 4.16.0). */
+@media (max-width: 560px) { .openvibe-navbar.navbar .ovnav-chip { padding: 0 8px; } }
