@@ -47,6 +47,68 @@ function summaryOf(state, stream) {
     return parts.join(' ').slice(0, 1000);
 }
 
+/**
+ * The titles a placeholder may name: the stream's, and the video the clip was cut from (a clip of an upload, or of a
+ * stream's part, is "Clip: <that video's title>").
+ */
+async function sourceTitles(clip, stream) {
+    const out = [stream && stream.title];
+    if (clip.vod_id) {
+        try { const v = await media.getVod(clip.vod_id); if (v && v.title) out.push(v.title, String(v.title).replace(/\s*\(part \d+\)\s*$/i, '')); } catch { /* gone */ }
+    }
+    return out.filter(Boolean);
+}
+
+/**
+ * Whether the AI may name a clip: nobody chose its title (a placeholder), or it is an auto-clip whose title was a first
+ * guess written before the clip existed (a frame caption: "A Person Is Standing In A Living Room, Facing"); the clip's own
+ * overview names it better. Each clip is decided once (title_status).
+ */
+function renamable(clip, sources) {
+    return isPlaceholder(clip.title, sources) || !!clip.auto_generated;
+}
+
+/**
+ * What was said inside a clip's window, for a clip with no overview: the transcript of the video it was cut from (its
+ * full pass, else the captions heard live), the lines overlapping the window, and the stream it came from. A clip in a
+ * recording's time (time_base 'recording') is read from the part its window starts in.
+ */
+async function windowSummary(clip, stream) {
+    let vodId = clip.vod_id;
+    let a = Number(clip.start_time) || 0;
+    let b = Number(clip.end_time) || a + (Number(clip.duration_seconds) || 30);
+    if (clip.time_base === 'recording' && vodId) {
+        try {
+            const first = await media.getVod(vodId);
+            const parts = (first && first.recording && first.recording.parts) || [];
+            const p = parts.find((x) => a * 1000 >= Number(x.start_ms) && a * 1000 < Number(x.start_ms) + Number(x.duration_ms));
+            if (p) { vodId = p.vod_id; a -= Number(p.start_ms) / 1000; b -= Number(p.start_ms) / 1000; }
+        } catch { /* read as the first part */ }
+    }
+    let lines = [];
+    if (vodId) {
+        try {
+            const st = await db.getVodAiState(vodId);
+            lines = st && st.ai_transcript_json ? JSON.parse(st.ai_transcript_json) : [];
+        } catch { lines = []; }
+        if (!lines.length) {
+            try {
+                const history = require('../streaming/stream-history');
+                const offset = (await history.vodOffsets([vodId])).get(Number(vodId)) || 0;
+                lines = (await db.getTimelineByVod(vodId)).filter((r) => r.kind === 'speech')
+                    .map((r) => ({ start: history.vodTime(r.start_sec, offset), end: r.end_sec == null ? null : history.vodTime(r.end_sec, offset), text: r.text }));
+            } catch { lines = []; }
+        }
+    }
+    const said = (Array.isArray(lines) ? lines : [])
+        .filter((l) => l && String(l.text || '').trim() && Number(l.start) < b && (l.end == null ? Number(l.start) + 5 : Number(l.end)) > a)
+        .map((l) => String(l.text).trim()).join(' ').replace(/\s+/g, ' ').slice(0, 400);
+    return [
+        said ? `Said in the clip: "${said}"` : 'A short moment with nothing said.',
+        stream && stream.title ? `From the stream "${String(stream.title).replace(/\s+/g, ' ').slice(0, 80)}"${stream.category ? ` (${stream.category})` : ''}.` : '',
+    ].filter(Boolean).join(' ').slice(0, 1000);
+}
+
 let running = false;
 async function titleClips({ ids = null } = {}) {
     if (running) return 0;
@@ -54,9 +116,12 @@ async function titleClips({ ids = null } = {}) {
     if (!(await ai.isEnabled()) || !(await ai.withinBudget())) return 0;
     running = true;
     try {
+        // A clip waits for its overview; one whose analysis gave up (failed, or nothing heard) is named from what was said in
+        // its window of the recording instead (2026-10-27: clips 494-498 kept "Clip: Seattle" for good).
+        const READY = "(btrim(COALESCE(ai_overview, '')) <> '' OR transcript_status IN ('failed', 'empty'))";
         const rows = ids && ids.length
-            ? await db.all(`SELECT * FROM clip_ai_state WHERE clip_id = ANY(?) AND title_status IS NULL AND btrim(COALESCE(ai_overview, '')) <> ''`, [ids.map(Number)])
-            : await db.all(`SELECT * FROM clip_ai_state WHERE title_status IS NULL AND btrim(COALESCE(ai_overview, '')) <> '' ORDER BY clip_id DESC LIMIT ?`, [LOOK]);
+            ? await db.all(`SELECT * FROM clip_ai_state WHERE clip_id = ANY(?) AND title_status IS NULL AND ${READY}`, [ids.map(Number)])
+            : await db.all(`SELECT * FROM clip_ai_state WHERE title_status IS NULL AND ${READY} ORDER BY clip_id DESC LIMIT ?`, [LOOK]);
         const todo = [];
         for (const state of rows) {
             if (todo.length >= BATCH) break;
@@ -68,8 +133,12 @@ async function titleClips({ ids = null } = {}) {
             }
             if (!clip) continue;
             const stream = clip.stream_id ? await db.getStreamById(clip.stream_id).catch(() => null) : null;
-            if (!isPlaceholder(clip.title, [stream && stream.title])) { await db.run("UPDATE clip_ai_state SET title_status = 'kept' WHERE clip_id = ?", [state.clip_id]); continue; }
-            todo.push({ state, clip, stream, summary: summaryOf(state, stream) });
+            const sources = await sourceTitles(clip, stream);
+            if (!renamable(clip, sources)) { await db.run("UPDATE clip_ai_state SET title_status = 'kept' WHERE clip_id = ?", [state.clip_id]); continue; }
+            const summary = String(state.ai_overview || state.ai_overview_short || '').trim()
+                ? summaryOf(state, stream)
+                : await windowSummary(clip, stream);
+            todo.push({ state, clip, stream, sources, summary });
         }
         if (!todo.length) return 0;
         // The prompt is OpenVibe.AI's versioned template live.stream.titles; Live sends one summary per clip.
@@ -91,7 +160,7 @@ async function titleClips({ ids = null } = {}) {
             // The maker may have named it while the AI was writing: their title wins.
             let fresh = null;
             try { fresh = await media.getClip(t.clip.id); } catch { fresh = null; }
-            if (!title || !fresh || !isPlaceholder(fresh.title, [t.stream && t.stream.title])) {
+            if (!title || !fresh || fresh.title !== t.clip.title || !renamable(fresh, t.sources)) {
                 await db.run('UPDATE clip_ai_state SET title_status = ? WHERE clip_id = ?', [title ? 'kept' : 'failed', t.clip.id]);
                 continue;
             }
@@ -118,4 +187,4 @@ function start() {
     require('../utils/jobs').every('ai-clip-titles', SWEEP_MS, () => titleClips(), { initialDelayMs: 90_000, jitterMs: 20_000 });
 }
 
-module.exports = { isPlaceholder, summaryOf, titleClips, soon, start, BATCH };
+module.exports = { isPlaceholder, renamable, sourceTitles, summaryOf, windowSummary, titleClips, soon, start, BATCH };
