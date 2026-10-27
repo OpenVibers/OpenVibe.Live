@@ -89,7 +89,7 @@ function harness({ track, frames, mic, switchFails = false }) {
 
     // The phone watchdog sits out the background, and a recovery waits for the tab to be in front.
     const state = fs.readFileSync(path.join(__dirname, '..', 'public', 'js', 'broadcast-state.js'), 'utf8');
-    assert.ok(/if \(mobile && document\.hidden\) \{\s*lastSuccessfulFrame = Date\.now\(\);/.test(state), 'the watchdog pauses while hidden on a phone');
+    assert.ok(/if \(mobile && typeof document !== 'undefined' && document\.hidden\) \{\s*lastSuccessfulFrame = Date\.now\(\);/.test(state), 'the watchdog pauses while hidden on a phone');
     assert.ok(src.includes("if (document.hidden && isMobileBroadcaster()) {"), 'a recovery is not started from the background');
     // Chat reconnects the moment the tab is in front.
     const chat = fs.readFileSync(path.join(__dirname, '..', 'public', 'js', 'chat.js'), 'utf8');

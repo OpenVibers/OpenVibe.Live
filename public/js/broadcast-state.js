@@ -140,7 +140,7 @@ function startTrackKeepalive(streamId) {
         // A phone pauses the camera of a tab in the background: no frames there is expected, and a recovery started
         // from the background cannot open the camera anyway (it failed four times and gave up while the streamer was in
         // another app). broadcast.js checks the camera the moment the tab is in front again.
-        if (mobile && document.hidden) {
+        if (mobile && typeof document !== 'undefined' && document.hidden) {
             lastSuccessfulFrame = Date.now();
             watchdogTriggered = false;
             lastFrameCount = null;

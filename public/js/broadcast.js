@@ -4814,7 +4814,7 @@ async function _switchActiveCamera(cameraId, opts = {}) {
             _warnDeviceMismatch('camera');
         }
         _syncCameraSelectionUI(appliedDeviceId);
-        _bcSessionChanged();
+        if (typeof _bcSessionChanged === 'function') _bcSessionChanged();
         if (!opts.quiet) toast('Camera switched', 'success');
     } catch (err) {
         console.error('[Broadcast] switch camera failed:', err);
