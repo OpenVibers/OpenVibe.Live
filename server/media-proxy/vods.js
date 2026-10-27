@@ -348,7 +348,7 @@ router.get('/:id/live-info', optionalAuth, async (req, res) => {
 
 router.get('/', optionalAuth, async (req, res) => {
     try {
-        const out = await media.listVods(await usernameToUserId(req.query));
+        const out = await media.listVods(await usernameToUserId(req.query), { whole: true });
         const vods = (await Promise.all((out?.vods || (Array.isArray(out) ? out : [])).filter(v => !isGhostVod(v)).map(withUserFields)));
         res.json({
             vods,
@@ -431,6 +431,15 @@ router.get('/:id/memories', optionalAuth, async (req, res) => {
             description: db.publicMemoryText(m.description),
             tags: m.tags ? (() => { try { return JSON.parse(m.tags); } catch { return []; } })() : [],
         }));
+        // The first part of a joined recording answers for the whole video: every moment that was recorded, in the
+        // video's time (streaming/recordings.js; the gaps between parts were not).
+        if (vod.recording && Number(vod.recording.vod_id) === Number(vod.id) && vod.recording.hls_url && (vod.recording.parts || []).length > 1) {
+            const recordings = require('../streaming/recordings');
+            const parts = await recordings.presentParts(vod.recording);
+            memories = memories.map((m) => ({ ...m, offset_seconds: recordings.toRecordingTime(parts, m.offset_seconds) }))
+                .filter((m) => m.offset_seconds != null).map((m) => ({ ...m, offset_seconds: Math.round(m.offset_seconds) }));
+            return res.json({ memories });
+        }
         // A VOD that is one part of its stream (the broadcaster reconnected): the moments inside it, in its own time.
         // Its chapters (OpenVibe.Video) pointed eleven minutes late on part 2 of stream 2795.
         const part = await require('../streaming/stream-history').partForVod(vod.id);
@@ -576,6 +585,9 @@ router.get('/:id', optionalAuth, async (req, res) => {
                 }
             }
         } catch { /* */ }
+
+        // One video over a stream recorded in parts (streaming/recordings.js; OpenVibe.Media docs/recordings.md).
+        try { await presentRecording(vod); } catch (err) { console.warn('[VOD] recording:', err.message); }
 
         const clips = co?.clips || (Array.isArray(co) ? co : []);
         try {
@@ -872,6 +884,9 @@ router.post('/clips', requireAuth, memUpload.single('video'), async (req, res) =
             user_id: req.user.id,
             stream_id: effStreamId || undefined,
             visibility: effStream ? await db.resolveStreamClipVisibility(effStream) : 'public',
+            // Times in the whole video of a stream recorded in parts (its watch page plays them as one): Media places
+            // the clip on the recording, across a join too (docs/recordings.md).
+            ...(['1', 'true', true, 1].includes(req.body && req.body.recording_time) ? { recording_time: 1 } : {}),
         });
         noteClip(req.user.id);
         await _notifyStreamerOfClip(effStreamId, req.user, sanitizedTitle, clip?.id);
@@ -908,6 +923,52 @@ async function clipPlace(stream, startTime, endTime) {
  * The speech heard while a VOD's stream was live (the timeline rows stamped with this VOD), as transcript segments in
  * the VOD's own time ([{ start, end, text }]); [] when there are none.
  */
+/**
+ * A VOD that is part of a recording (Media's answer names it): its first part answers for the whole video once Media has
+ * joined the parts (`recording.joined`, an `hls_url` over all of them):
+ *   - the whole length (`duration_seconds`; the part's own stays in `part_duration_seconds`) and the joined playlist;
+ *   - `recording.parts` [{ vod_id, start_sec, duration_sec, gap_before_sec, stream_offset_sec }] for chat replay and links;
+ *   - the transcript of every part in the video's time (each part's full pass, else its live captions).
+ * Until then, and for every later part, it answers as a part with `recording` naming the whole (`vod_id` of its first
+ * part and `start_sec`, where this part starts in it), so a page can send people to the whole video at that second.
+ */
+async function presentRecording(vod) {
+    const rec = vod.recording;
+    if (!rec || !Array.isArray(rec.parts) || rec.parts.length < 2) { delete vod.recording; return; }
+    const recordings = require('../streaming/recordings');
+    const parts = await recordings.presentParts(rec);
+    const mine = parts.find((p) => p.vod_id === Number(vod.id)) || null;
+    const joined = !!rec.hls_url;
+    const first = Number(rec.vod_id) === Number(vod.id);
+    vod.recording = { id: rec.id, vod_id: Number(rec.vod_id), joined, duration_seconds: Math.round(Number(rec.duration_ms) / 1000),
+        start_sec: mine ? mine.start_sec : 0, parts };
+    if (!first || !joined) return;
+    vod.part_duration_seconds = vod.duration_seconds;
+    vod.duration_seconds = vod.recording.duration_seconds;
+    vod.duration = vod.recording.duration_seconds;
+    vod.hls_url = rec.hls_url;
+    if (rec.hls_expires_at) vod.hls_expires_at = rec.hls_expires_at;
+    delete vod.part;
+    const segs = [];
+    let live = false;
+    for (const p of parts) {
+        let rows = [];
+        const st = Number(p.vod_id) === Number(vod.id) ? null : await db.getVodAiState(p.vod_id).catch(() => null);
+        const own = Number(p.vod_id) === Number(vod.id) && vod.transcript_source !== 'live' ? vod.ai_transcript_json : (st && st.ai_transcript_json);
+        try { rows = own ? JSON.parse(own) : []; } catch { rows = []; }
+        if (!rows.length) { rows = await liveTranscript(p.vod_id); if (rows.length) live = true; }
+        for (const r of rows) {
+            if (!r || !String(r.text || '').trim()) continue;
+            segs.push({ start: Math.round((p.start_sec + Number(r.start || 0)) * 100) / 100, end: r.end == null ? null : Math.round((p.start_sec + Number(r.end)) * 100) / 100, text: String(r.text).trim() });
+        }
+    }
+    if (segs.length) {
+        vod.ai_transcript_json = JSON.stringify(segs);
+        vod.ai_transcript = segs.map((x) => x.text).join(' ');
+        if (live) vod.transcript_source = 'live';
+    }
+}
+
 async function liveTranscript(vodId) {
     const rows = (await db.getTimelineByVod(vodId)).filter((r) => r.kind === 'speech' && String(r.text || '').trim());
     if (!rows.length) return [];

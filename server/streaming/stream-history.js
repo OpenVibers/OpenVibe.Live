@@ -81,7 +81,10 @@ async function partStarted(stream, { vodId, part = 1, why = null, atMs = Date.no
     const at = streamSeconds(stream, atMs);
     if (at == null) return false;
     entry(stream.id).started = epochMs(stream.started_at);
-    return add({ stream_id: stream.id, kind: 'part', at_sec: at, vod_id: vodId, detail: { part, ...(why ? { why } : {}) } });
+    const ok = await add({ stream_id: stream.id, kind: 'part', at_sec: at, vod_id: vodId, detail: { part, ...(why ? { why } : {}) } });
+    // A second part: the stream's parts become one video on Media (recordings.js).
+    if (ok && part >= 2) require('./recordings').soon(stream.id);
+    return ok;
 }
 
 async function partEnded(streamId, vodId, atMs = Date.now()) {
@@ -91,6 +94,7 @@ async function partEnded(streamId, vodId, atMs = Date.now()) {
     try {
         await db.run(`UPDATE stream_history SET end_sec = ? WHERE stream_id = ? AND kind = 'part' AND vod_id = ? AND end_sec IS NULL`,
             [Math.max(0, Math.round((atMs - start) / 100) / 10), streamId, vodId]);
+        require('./recordings').soon(streamId);   // the gap before the next part is known now
         return true;
     } catch { return false; }
 }

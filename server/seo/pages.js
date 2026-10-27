@@ -38,7 +38,7 @@ async function _cached(key, fn) {
     if (_mc.size > 300) _mc.delete(_mc.keys().next().value);
     return v;
 }
-const _vodList = async (limit, offset = 0) => await _cached(`vl:${limit}:${offset}`, async () => (await media.listVods({ limit, offset }))?.vods || []);
+const _vodList = async (limit, offset = 0) => await _cached(`vl:${limit}:${offset}`, async () => (await media.listVods({ limit, offset }, { whole: true }))?.vods || []);
 // People's clips and pastes: the AI's are listed on /moments (server/content/feed.js).
 const _clipList = async (limit, offset = 0) => await _cached(`cl:${limit}:${offset}`, async () => (await media.listClips({ limit, offset, auto_generated: 0 }))?.clips || []);
 const _pasteList = async (limit, offset = 0) => await _cached(`pl:${limit}:${offset}`, async () => (await require('../pastes-client').listPastes({ limit, offset, visibility: 'public', origin: 'user' }))?.pastes || []);
@@ -272,7 +272,7 @@ async function _channelMeta(username, page = 1) {
     const track = { partial: false };
     const offset = (page - 1) * CHANNEL_PAGE_SIZE;
     const [vr, cr, ar] = acct.banned ? [null, null, null] : await Promise.all([
-        _listWithin(`chv:${acct.userId}:${offset}`, async () => await media.listVods({ user_id: acct.userId, order: 'newest', limit: CHANNEL_PAGE_SIZE, offset }, { timeoutMs: 5000 }), track),
+        _listWithin(`chv:${acct.userId}:${offset}`, async () => await media.listVods({ user_id: acct.userId, order: 'newest', limit: CHANNEL_PAGE_SIZE, offset }, { timeoutMs: 5000, whole: true }), track),
         page === 1 ? _listWithin(`chc:${acct.userId}`, async () => await media.listClips({ channel_user_id: acct.userId, auto_generated: 0, limit: 8 }, { timeoutMs: 5000 }), track) : null,
         page === 1 ? _listWithin(`cha:${acct.userId}`, async () => await media.listClips({ channel_user_id: acct.userId, auto_generated: 1, limit: 6 }, { timeoutMs: 5000 }), track) : null,
     ]);
@@ -660,7 +660,7 @@ async function _pasteMeta(slug) {
 
 /** The VOD recorded from a stream (the longest public one), for items that know only their stream. */
 const _vodOfStream = async (streamId) => await _cached(`vs:${streamId}`, async () => {
-    const r = await media.listVods({ stream_id: streamId, limit: 3 });
+    const r = await media.listVods({ stream_id: streamId, limit: 3 }, { whole: true });
     const rows = (r && r.vods) || [];
     return rows.filter((v) => v && !isPrivate(v) && Number(v.is_public) !== 0)
         .sort((a, b) => (Number(b.duration_seconds ?? b.duration) || 0) - (Number(a.duration_seconds ?? a.duration) || 0))[0] || null;
