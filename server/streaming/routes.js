@@ -1143,7 +1143,9 @@ router.get('/', optionalAuth, async (req, res) => {
         // the poll period so a card can never look stale for a whole cycle.
         res.set('Cache-Control', 'public, max-age=5');
         const restreamManager = require('./restream-manager');
-        const streams = await db.getLiveStreams();
+        // A streamer's camera that is the PIP of their own live stream shows inside it, not as a stream of its own.
+        const insidePip = await db.getLiveOwnPipSourceSlots();
+        const streams = (await db.getLiveStreams()).filter((s) => !(s.managed_stream_id && insidePip.has(Number(s.managed_stream_id))));
         const channelMap = await db.getChannelsByUserIds(streams.map(s => s.user_id)); // one query, not N
         const enriched = await Promise.all(streams.map(async (s) => {
             const channel = channelMap[s.user_id] || null;

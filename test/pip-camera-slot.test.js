@@ -259,6 +259,21 @@ console.log('OK I: geometry persists, hide is recoverable, audio defaults to mut
     console.log('OK O: the viewer draws every live PIP, polls, and plays WebRTC and RTMP sources');
 }
 
+// ── P: the live list: a streamer's camera that is the PIP of their own live stream shows inside it, not as a tile ──
+{
+    // Slot 10 (owner, live as 502) lists 11 (owner's webcam, live as 500) and 12 (someone else's, live as 501).
+    const app = express();
+    app.use('/api/streams', require('../server/streaming/routes'));
+    const server = await new Promise((r) => { const s = http.createServer(app).listen(0, '127.0.0.1', () => r(s)); });
+    try {
+        const ids = async () => (await (await fetch(`http://127.0.0.1:${server.address().port}/api/streams`)).json()).streams.map((x) => Number(x.id)).sort();
+        assert.deepStrictEqual(await ids(), [501, 502], "the owner's webcam (500) is inside the screen share; the co-host (501) keeps a tile");
+        await db.run('UPDATE streams SET is_live = 0 WHERE id = 502');
+        assert.deepStrictEqual(await ids(), [500, 501], 'once the screen share ends, the webcam is a stream like any other');
+        console.log("OK P: the live list leaves out a streamer's own camera as long as it is the PIP of their live stream");
+    } finally { server.close(); }
+}
+
 console.log('✅ PiP camera slot test passed');
 process.exit(0);
 })().catch((e) => { console.error(e); process.exit(1); });
