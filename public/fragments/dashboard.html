@@ -183,8 +183,23 @@
                                 <select id="aiv-keymode" class="form-input" style="max-width:320px" onchange="_aivToggleKeyMode()">
                                     <option value="shared">OpenVibe.Live shared AI (daily budget)</option>
                                     <option value="byo">My own API key (no cap)</option>
+                                    <option value="computer">A model on my own computer (free)</option>
                                 </select>
                             </label>
+                            <div id="aiv-node-fields" style="display:none">
+                                <p class="ai-bot-hint">Your viewers think with Ollama, LM Studio or llama.cpp on your own computer, through the OpenVibe Node: free, and no port is opened. Install it with <code>--ai</code> from <a href="https://openvibe.bot/machines" target="_blank" rel="noopener">openvibe.bot/machines</a>, then turn on "Let my AI use this computer's models" there.</p>
+                                <label>
+                                    <span>Computer</span>
+                                    <input type="text" id="aiv-node-machine" class="form-input" placeholder="dev_… (from openvibe.bot/machines)" maxlength="30" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" style="max-width:320px">
+                                </label>
+                                <label class="vibe-switch"><input type="checkbox" id="aiv-node-any" onchange="_aivToggleKeyMode()"> <span>Any of my computers that is on (the fastest first, the next when one is busy)</span></label>
+                                <label>
+                                    <span>Model</span>
+                                    <input type="text" id="aiv-node-model" class="form-input" placeholder="llama3.1:8b" autocomplete="off" autocapitalize="off" spellcheck="false" style="max-width:220px;">
+                                    <span class="ai-bot-hint">As your model server names it. Frames are described by the site's shared vision when it is on; your computer writes the chat lines.</span>
+                                </label>
+                                <div class="ai-bot-actions"><button class="btn btn-small btn-outline" onclick="testAivNode(this)"><i class="fa-solid fa-plug-circle-check"></i> Test my computer</button><span id="aiv-node-test-out" class="muted" style="font-size:0.8rem"></span></div>
+                            </div>
                             <label id="aiv-budget-wrap">
                                 <span>Daily budget</span>
                                 <span style="display:flex;align-items:center;gap:6px">$<input type="number" id="aiv-budget" class="form-input" min="0" max="100" step="0.05" value="0.20" style="max-width:120px;"></span>

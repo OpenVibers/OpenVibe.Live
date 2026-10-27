@@ -157,7 +157,8 @@ router.put('/config', requireAuth, async (req, res) => {
         // The key goes to OpenVibe.AI, never into Live's database (WS-O task 2, byo-credentials.js). A real new key
         // (not blank, not the mask) is sent with the address and models; a change of model alone keeps AI's stored key;
         // byo_key: null removes it.
-        const refused = await require('../byo-credentials').applyConfig(req.user.id, await db.getChannelAiConfig(req.user.id), body.byo_key === KEY_SENTINEL ? undefined : body.byo_key, fields);
+        const byoSettings = body.settings && body.settings.byo && typeof body.settings.byo === 'object' ? body.settings.byo : null;
+        const refused = await require('../byo-credentials').applyConfig(req.user.id, await db.getChannelAiConfig(req.user.id), body.byo_key === KEY_SENTINEL ? undefined : body.byo_key, fields, byoSettings);
         if (refused) return res.status(refused.status).json({ error: refused.error, code: refused.code });
         await db.upsertChannelAiConfig(req.user.id, fields);
         // The daily budget on the site's AI is also a cap in OpenVibe.AI (viewer-quota.js): kept in step on every save

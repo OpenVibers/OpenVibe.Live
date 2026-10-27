@@ -53,9 +53,12 @@
 
     function _aivToggleKeyMode() {
         const mode = $('aiv-keymode')?.value || 'shared';
-        const byo = $('aiv-byo-fields'); const budgetWrap = $('aiv-budget-wrap');
+        const byo = $('aiv-byo-fields'); const budgetWrap = $('aiv-budget-wrap'); const node = $('aiv-node-fields');
         if (byo) byo.style.display = mode === 'byo' ? '' : 'none';
-        if (budgetWrap) budgetWrap.style.display = mode === 'byo' ? 'none' : '';
+        if (node) node.style.display = mode === 'computer' ? '' : 'none';
+        if (budgetWrap) budgetWrap.style.display = mode === 'shared' ? '' : 'none';
+        // Any of their computers: no id to type.
+        const machine = $('aiv-node-machine'); if (machine) machine.disabled = !!$('aiv-node-any')?.checked;
     }
     window._aivToggleKeyMode = _aivToggleKeyMode;
 
@@ -193,7 +196,11 @@
             const c = _cfg.config || {}, s = _cfg.settings || {};
             renderSettings();
             const set = (id, v) => { const el = $(id); if (el) el.value = v; };
-            set('aiv-keymode', c.use_shared_key ? 'shared' : 'byo');
+            const onComputer = !c.use_shared_key && s.byo && s.byo.provider === 'node';
+            set('aiv-keymode', c.use_shared_key ? 'shared' : onComputer ? 'computer' : 'byo');
+            set('aiv-node-machine', s.byo && s.byo.machine && s.byo.machine !== 'any' ? s.byo.machine : '');
+            const anyBox = $('aiv-node-any'); if (anyBox) anyBox.checked = !!(s.byo && s.byo.machine === 'any');
+            set('aiv-node-model', onComputer ? (c.byo_model || '') : '');
             set('aiv-budget', ((c.daily_budget_cents ?? 20) / 100).toFixed(2));
             set('aiv-byo-url', c.byo_base_url || ''); set('aiv-byo-model', c.byo_model || 'gpt-4o-mini');
             for (const role of ['chat', 'vision', 'director', 'summary']) set(`aiv-byo-model-${role}`, (s.byo && s.byo[`model_${role}`]) || '');
@@ -218,6 +225,16 @@
         };
         for (const role of ['chat', 'vision', 'director', 'summary']) body.settings.byo[`model_${role}`] = val(`aiv-byo-model-${role}`)?.value || '';
         const keyVal = val('aiv-byo-key')?.value || ''; if (keyVal) body.byo_key = keyVal;
+        if (mode === 'computer') {
+            // A model on their own computer: the machine (or any of theirs) and the model; no key, no address.
+            const model = (val('aiv-node-model')?.value || '').trim();
+            const machine = val('aiv-node-any')?.checked ? 'any' : (val('aiv-node-machine')?.value || '').trim();
+            if (!model || !machine) { toast('Name your computer (or choose any of yours) and the model', 'error'); return; }
+            body.byo_model = model;
+            body.byo_base_url = '';
+            body.settings.byo = { provider: 'node', machine, model_chat: '', model_vision: '', model_director: '', model_summary: '' };
+            delete body.byo_key;
+        }
         if (btn) btn.disabled = true;
         try {
             const data = await api('/ai-viewers/config', { method: 'PUT', body });
@@ -233,6 +250,15 @@
         try {
             const d = await api('/ai-viewers/byo/test', { method: 'POST', body: { byo_key: $('aiv-byo-key')?.value || '', byo_base_url: $('aiv-byo-url')?.value || '', byo_model: $('aiv-byo-model')?.value || '' } });
             if (out) out.innerHTML = d.ok ? `<span style="color:#4ade80">● OK — ${esc(d.model || '')} answered in ${d.latencyMs} ms</span>` : `<span style="color:#f87171">● ${esc(d.error || 'failed')}</span>`;
+        } catch (e) { if (out) out.innerHTML = `<span style="color:#f87171">${esc(e.message)}</span>`; } finally { if (btn) btn.disabled = false; }
+    };
+
+    // The saved computer, through OpenVibe.AI and OpenVibe.Bot (save first: the test uses what is stored).
+    window.testAivNode = async function testAivNode(btn) {
+        const out = $('aiv-node-test-out'); if (btn) btn.disabled = true; if (out) out.textContent = 'Asking your computer…';
+        try {
+            const d = await api('/ai-viewers/byo/test', { method: 'POST', body: {} });
+            if (out) out.innerHTML = d.ok ? `<span style="color:#4ade80">● OK — ${esc(d.model || '')} answered in ${d.latencyMs} ms</span>` : `<span style="color:#f87171">● ${esc(d.error || 'failed')} (save first, and check the computer is on)</span>`;
         } catch (e) { if (out) out.innerHTML = `<span style="color:#f87171">${esc(e.message)}</span>`; } finally { if (btn) btn.disabled = false; }
     };
 

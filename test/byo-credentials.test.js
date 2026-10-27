@@ -41,6 +41,11 @@ const ai = http.createServer((req, res) => {
         calls.push({ method: req.method, url: req.url, body });
         res.setHeader('Content-Type', 'application/json');
         const m = /^\/api\/v1\/credentials\/(usr_[0-9A-Z]+)$/.exec(req.url);
+        if (m && req.method === 'PUT' && body.provider === 'node') {
+            if (body.api_key || body.base_url || !/^(dev_[0-9A-Z]{26}|any)$/.test(body.machine || '')) { res.statusCode = 422; return res.end(JSON.stringify({ code: 'input.invalid' })); }
+            stored.set(m[1], body);
+            return res.end(JSON.stringify({ subject: m[1], owner: 'live', provider: 'node', machine: body.machine, models: body.models }));
+        }
         if (m && req.method === 'PUT') {
             const prev = stored.get(m[1]);
             if (!body.api_key && (!prev || prev.base_url !== body.base_url)) { res.statusCode = 400; return res.end(JSON.stringify({ code: 'credential.key_required', detail: 'enter the key again' })); }
@@ -113,6 +118,36 @@ const ai = http.createServer((req, res) => {
         assert.strictEqual(await byo.applyConfig(30, await db.getChannelAiConfig(30), null, fields), null);
         assert.deepStrictEqual([calls[calls.length - 1].method, fields.byo_in_ai], ['DELETE', 0]);
         assert.ok(!stored.has(SUBJECT));
+
+        // ── A model on the streamer's own computer (provider node): the machine, no key, no address ──
+        const MACHINE = 'dev_01M5YGM39VC2RRGDQPRD6D4SHD';
+        fields = { byo_model: 'llama3.1:8b', byo_base_url: '' };
+        assert.deepStrictEqual(await byo.applyConfig(30, await db.getChannelAiConfig(30), undefined, fields, { provider: 'node', machine: 'nope' }).then((r) => r && r.code), 'credentials.machine', 'a computer named');
+        fields = { byo_model: 'llama3.1:8b', byo_base_url: '' };
+        assert.strictEqual(await byo.applyConfig(30, await db.getChannelAiConfig(30), undefined, fields, { provider: 'node', machine: MACHINE }), null);
+        const nodePut = calls[calls.length - 1];
+        assert.deepStrictEqual([nodePut.method, nodePut.body], ['PUT', { provider: 'node', machine: MACHINE, models: { chat: 'llama3.1:8b' } }], 'no key, no address');
+        assert.deepStrictEqual([fields.byo_key, fields.byo_in_ai], ['', 1]);
+        await db.upsertChannelAiConfig(30, { ...fields, use_shared_key: 0 });
+        await require('../server/ai/viewers/settings').updateSettings(30, { byo: { provider: 'node', machine: 'any' } });
+        assert.strictEqual(byo.providerOf(await db.getChannelAiConfig(30)), 'node');
+        assert.strictEqual(byo.machineOf(await db.getChannelAiConfig(30)), 'any', 'any of their computers is kept');
+        // A model change keeps the computer; the viewers run on AI with the credential as before.
+        fields = { byo_model: 'qwen2.5:7b' };
+        assert.strictEqual(await byo.applyConfig(30, await db.getChannelAiConfig(30), undefined, fields), null);
+        assert.deepStrictEqual(calls[calls.length - 1].body, { provider: 'node', machine: 'any', models: { chat: 'qwen2.5:7b' } });
+        const k = calls.length;
+        const fromComputer = await director.quickReply({ stableText: 'roster', situationText: '', bot: { username: 'goosebot' }, streamerLine: 'say hi', provider: await budget.byoProvider(await db.getChannelAiConfig(30)), ownerUserId: 30 });
+        assert.ok(fromComputer && fromComputer.text, 'an answer');
+        assert.deepStrictEqual(calls.slice(k).find((c) => c.url.startsWith('/api/v1/runs')).body.credential, { subject: SUBJECT });
+        // The dashboard (public/js/ai-viewers.js, public/fragments/dashboard.html): the third source and what it saves.
+        const fs = require('fs');
+        const path = require('path');
+        const ui = fs.readFileSync(path.join(__dirname, '../public/js/ai-viewers.js'), 'utf8');
+        assert.ok(ui.includes("body.settings.byo = { provider: 'node', machine,") && ui.includes("? 'any' :"), 'computer mode saves provider node with the machine or any');
+        assert.ok(ui.includes("onComputer ? 'computer'"), 'and loads back as computer mode');
+        const frag = fs.readFileSync(path.join(__dirname, '../public/fragments/dashboard.html'), 'utf8');
+        assert.ok(frag.includes('<option value="computer">A model on my own computer (free)</option>') && frag.includes('id="aiv-node-machine"') && frag.includes('id="aiv-node-any"'));
     } finally {
         network.close(); ai.close();
     }
