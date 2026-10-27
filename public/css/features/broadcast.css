@@ -2607,6 +2607,21 @@ body.bc-studio-on .toast-container { z-index: 1500; }
 .bcs-btn[data-act="light"][aria-pressed="true"] .bcs-ico { background: #fde047; color: #111; border-color: transparent; }
 .bcs-btn.is-busy { opacity: 0.75; }
 .bcs-lbl { font-size: 0.7rem; font-weight: 700; line-height: 1.1; text-align: center; text-shadow: 0 1px 2px rgba(0,0,0,0.9); }
+/* A phone on its side is about 330 px tall: seven buttons in one column ran 150 px off the top of the screen and over
+   the top bar (Maticus, 2026-10-26: buttons on top of each other). Sideways the rail is two columns under the top bar
+   (three on the shortest screens), Flip nearest the edge, words kept, and the chat stops short of it. */
+@media (orientation: landscape) and (max-height: 520px) {
+    .bcs-rail { display: grid; grid-template-columns: repeat(2, 56px); gap: 6px 4px; direction: rtl; }
+    .bcs-btn { width: 56px; direction: ltr; }
+    .bcs-ico { width: 40px; height: 40px; font-size: 1rem; }
+    body.bc-studio-on #bc-chat-sidebar { right: 128px; }
+    body.bc-studio-on #bc-chat-sidebar::before { right: -128px; }
+}
+@media (orientation: landscape) and (max-height: 300px) {
+    .bcs-rail { grid-template-columns: repeat(3, 56px); }
+    body.bc-studio-on #bc-chat-sidebar { right: 188px; }
+    body.bc-studio-on #bc-chat-sidebar::before { right: -188px; }
+}
 
 .bcs-sheet-wrap {
     position: fixed; inset: 0; z-index: 1300; display: flex; align-items: flex-end; justify-content: center;
