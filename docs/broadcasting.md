@@ -15,6 +15,11 @@ OpenVibe.Live supports four live broadcast methods, each suited to different use
 - **Latency**: 2-5 seconds
 - **Setup**: Copy Server URL and Stream Key into OBS
 - **Features**: Full OBS feature set, live thumbnail preview on broadcast page
+- **If viewers hear an echo:** look at OBS's audio monitoring (Edit → Advanced Audio Properties, *Audio Monitoring*).
+  A microphone set to *Monitor and Output* plays itself back out of the speakers, the microphone picks that up again,
+  and the stream gets a loud echo (Maticus's "920 mic", 2026-10-26). Set microphones to *Monitor Off*, or monitor
+  on headphones only. A browser source that plays chat voice or channel sounds can stay on *Monitor and Output* if you
+  want to hear it, but only when no microphone can hear your speakers.
 
 ### WHIP (OBS, FFmpeg, GStreamer — or any web page)
 - **Best for**: WebRTC-native encoders and custom publishers, including browser-only sites

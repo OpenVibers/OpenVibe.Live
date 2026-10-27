@@ -259,6 +259,19 @@ function loadStudio({ stream, cameras = [], screenShare = false }) {
         assert.ok(/body\.bc-studio-on \.bc-video-container \{[^}]*position: fixed/.test(read('public/css/features/broadcast.css')));
     });
 
+    await check('sideways the rail is two columns under the top bar (three on the shortest), and the chat stops short of it', async () => {
+        // Seven buttons in one column are about 470 px: on a phone on its side (about 330 px) they ran 150 px off the top
+        // of the screen and over the top bar (Maticus, 2026-10-26). Measured in Chrome: 844x340 and 740x330 fit in two
+        // columns below the bar, 667x290 in three.
+        const css = read('public/css/features/broadcast.css');
+        const side = /@media \(orientation: landscape\) and \(max-height: 520px\) \{([^@]*)\}\n@media \(orientation: landscape\) and \(max-height: 300px\) \{([^@]*)\}/.exec(css);
+        assert.ok(side, 'the sideways rules');
+        assert.ok(/\.bcs-rail \{ display: grid; grid-template-columns: repeat\(2, 56px\);[^}]*direction: rtl; \}/.test(side[1]), 'two columns, Flip nearest the edge');
+        assert.ok(/\.bcs-btn \{ width: 56px; direction: ltr; \}/.test(side[1]) && /\.bcs-ico \{ width: 40px; height: 40px;/.test(side[1]));
+        assert.ok(side[1].includes('body.bc-studio-on #bc-chat-sidebar { right: 128px; }'), 'the chat clears two columns');
+        assert.ok(side[2].includes('.bcs-rail { grid-template-columns: repeat(3, 56px); }') && side[2].includes('body.bc-studio-on #bc-chat-sidebar { right: 188px; }'));
+    });
+
     if (failures) { console.log(`\n${failures} failed`); process.exit(1); }
     console.log('\nall passed');
 })();

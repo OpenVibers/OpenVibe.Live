@@ -83,6 +83,17 @@ Authorization: Bearer hbt_YOUR_TOKEN_HERE
 
 The token works everywhere a JWT would — the server auto-detects the `hbt_` prefix and validates accordingly. A token in the WebSocket URL (`?token=`) no longer signs a socket in (removed 2026-10-10): URLs end up in proxy logs and browser history. Use the header or the `join` message.
 
+Two frames a bot should handle (OpenVibe.Chat, 2026-10-26, from Maticus's bot):
+
+- **`{ "type": "system", "code": "token_in_url", … }`.** You put the token in the address. The socket stays signed out,
+  and this frame says how to send it instead. Before, the bot stayed anonymous with no word why.
+- **`{ "type": "stream_changed", "stream_id", "previous_stream_id", "channel_user_id" }`.** The channel went live again
+  on the same slot, and your socket, still joined to the ended stream, was moved to the new one. You stay in the viewer
+  list, and chat voice, sounds and robot buttons keep working, with no re-join. Use the new `stream_id` from here on.
+
+A `!word` that is not one of the channel's sounds presses the channel robot's button of that name, for a signed-in
+viewer. It says nothing when the robot has no such button.
+
 ## Managing Tokens
 
 ### List tokens
