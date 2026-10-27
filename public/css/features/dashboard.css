@@ -56,6 +56,11 @@
 
 .ai-bot-grid { display: flex; flex-direction: column; gap: 12px; margin-top: 8px; }
 .ai-bot-grid > label > span:first-child { font-weight: 600; }
+/* Under "AI source": the key fields and the computer fields stack each label above its field, like the grid's own. */
+#aiv-byo-fields, #aiv-node-fields { display: grid; gap: 12px; }
+#aiv-byo-fields > label, #aiv-node-fields > label:not(.vibe-switch) { display: flex; flex-direction: column; gap: 4px; font-size: 0.85rem; }
+#aiv-byo-fields > label > span:first-child, #aiv-node-fields > label:not(.vibe-switch) > span:first-child { font-weight: 600; }
+#aiv-node-fields > p { margin: 0; }
 .ai-bot-row { display: flex; gap: 16px; flex-wrap: wrap; }
 #dash-pastes-list.pastes-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr)); gap: 14px; }
 .dash-bucks-badge {
