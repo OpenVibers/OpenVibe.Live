@@ -1243,6 +1243,8 @@ router.get('/recently-online', async (req, res) => {
                     for (const ms of (s.managed_streams || [])) {
                         const t = thumbs[ms.managed_stream_id];
                         if (t && !ms.vod_thumbnail) ms.vod_thumbnail = media.publicUrl(t.thumbnail_url);
+                        // The recording the row's picture is from: the row opens its replay (with the chat in time).
+                        if (t && t.vod_id && !ms.vod_id) ms.vod_id = t.vod_id;
                     }
                 }
             }
@@ -1255,7 +1257,11 @@ router.get('/recently-online', async (req, res) => {
             if (loose.length) {
                 const media = require('../media-client');
                 const vods = await require('../media-proxy/lookups').publicVodsForStreams(loose.map(ms => ms.stream_id), { budgetMs: 3000 });
-                loose.forEach((ms) => { const v = vods.get(Number(ms.stream_id)); if (v && v.thumbnail_url) ms.vod_thumbnail = media.publicUrl(v.thumbnail_url); });
+                loose.forEach((ms) => {
+                    const v = vods.get(Number(ms.stream_id));
+                    if (v && v.thumbnail_url) ms.vod_thumbnail = media.publicUrl(v.thumbnail_url);
+                    if (v && v.id) ms.vod_id = v.id;
+                });
             }
         } catch (err) {
             console.warn('[Streaming] recently-online slot-less thumbnails failed:', err.message);

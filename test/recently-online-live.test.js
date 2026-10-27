@@ -63,6 +63,7 @@ const db = require('../server/db/database');
         const dz = body.streamers.find((s) => s.username === 'dreezy');
         assert.deepStrictEqual(dz.managed_streams.map((m) => [m.slug, m.title, !!m.last_live_at]), [[null, 'old', true]]);
         assert.ok(String(dz.managed_streams[0].vod_thumbnail).endsWith('/t/dreezy-part-2.jpg'), "with its recording's picture");
+        assert.strictEqual(dz.managed_streams[0].vod_id, 9, 'and the recording itself: the row opens its replay (2026-10-27)');
         // Next to slots, an account-key stream is listed only while it is what they streamed last: Go Live lists slots,
         // and a months-old one under them read as a slot nobody could find (owner, 2026-10-27).
         const go = body.streamers.find((s) => s.username === 'goosely');
@@ -74,3 +75,15 @@ const db = require('../server/db/database');
     } finally { server.close(); }
     process.exit(0);
 })().catch((e) => { console.error(e); process.exit(1); });
+
+// The card (public/js/app-home.js renderRecentlyOnline): an offline row with a recording opens its replay on
+// openvibe.video, with a play mark; a live row, or one with no recording, is the channel (owner, 2026-10-27).
+{
+    const fs = require('fs');
+    const path = require('path');
+    const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'js', 'app-home.js'), 'utf8');
+    const body = src.slice(src.indexOf('function renderRecentlyOnline('), src.indexOf('async function loadHomeRecentVods('));
+    assert.ok(body.includes("const replay = !ms.is_live && ms.vod_id ? videoHref('vod', ms.vod_id) : null;"));
+    assert.ok(body.includes('const href = replay || channelPath(s.username, ms.slug || ms.managed_stream_id);'));
+    assert.ok(body.includes('<span class="sg-play" aria-hidden="true">') && body.includes('<span class="sg-replay">Replay</span>'));
+}

@@ -1219,3 +1219,19 @@ body.egg-rainbow { animation: eggRainbow 2.6s linear; }
 .hero-stat-all-sites:hover, .hero-stat-all-sites:focus-visible { border-color: color-mix(in srgb, var(--accent) 60%, transparent); background: color-mix(in srgb, var(--accent) 16%, transparent); outline: none; }
 .hero-stat-all-sites:hover > i:last-child { transform: translateX(3px); }
 @media (prefers-reduced-motion: reduce) { .hero-stat-all-sites, .hero-stat-all-sites > i { transition: none; } }
+
+/* Recently Online: a stream that has a recording opens its replay (openvibe.video, the chat in time beside it), and
+   its picture says so with a play mark (2026-10-27). */
+.streamer-group-stream-thumb { position: relative; }
+.sg-play {
+    position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none;
+    background: linear-gradient(rgba(0, 0, 0, 0.05), rgba(0, 0, 0, 0.25));
+}
+.sg-play i {
+    display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; padding-left: 2px; box-sizing: border-box;
+    font-size: 0.72rem; color: #fff; background: rgba(0, 0, 0, 0.55); border: 1px solid rgba(255, 255, 255, 0.35);
+    transition: transform 0.15s, background 0.15s;
+}
+.streamer-group-stream.has-replay:hover .sg-play i, .streamer-group-stream.has-replay:focus-visible .sg-play i { transform: scale(1.08); background: var(--accent); border-color: transparent; }
+.sg-replay { color: var(--accent-light, var(--accent)); font-weight: 700; }
+@media (prefers-reduced-motion: reduce) { .sg-play i { transition: none; } }

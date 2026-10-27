@@ -1444,7 +1444,11 @@ function renderRecentlyOnline(containerId, streamers, append) {
         const avatar = _avatarSpan(s.avatar_url, s.username, s.profile_color);
         const channelHref = `/@${s.username}`;
         const streamsHtml = msList.length ? msList.map(ms => {
-            const href = channelPath(s.username, ms.slug || ms.managed_stream_id);
+            // An offline stream opens its replay on openvibe.video, the chat playing in time beside it: the row showed a
+            // picture of the stream and led to an offline channel (owner, 2026-10-27). Live, or with no recording, the
+            // row is the channel; the card's name always is.
+            const replay = !ms.is_live && ms.vod_id ? videoHref('vod', ms.vod_id) : null;
+            const href = replay || channelPath(s.username, ms.slug || ms.managed_stream_id);
             // A live slot shows its current frame; otherwise the latest recording's. A picture that fails to load
             // becomes the placeholder (_sgThumbFail) instead of a broken image.
             const src = _sgThumbSrc(ms.is_live && ms.live_thumbnail ? ms.live_thumbnail : ms.vod_thumbnail);
@@ -1453,10 +1457,11 @@ function renderRecentlyOnline(containerId, streamers, append) {
                 : _SG_THUMB_PLACEHOLDER;
             const when = ms.is_live
                 ? `<span class="sg-live"><span class="sg-live-dot"></span> Live now</span>${ms.live_started_at ? ` · ${formatUptime(ms.live_started_at)}` : ''}`
-                : `<i class="fa-solid fa-clock"></i> ${ms.last_live_at ? timeAgo(ms.last_live_at) : 'long ago'}`;
+                : `<i class="fa-solid fa-clock"></i> ${ms.last_live_at ? timeAgo(ms.last_live_at) : 'long ago'}${replay ? ' · <span class="sg-replay">Replay</span>' : ''}`;
+            const label = replay ? `Watch the replay of ${ms.title || 'this stream'}` : ms.is_live ? `Watch ${ms.title || 'the stream'} live` : `${ms.title || 'Stream'} on ${s.display_name || s.username}'s channel`;
             return `
-                <a class="streamer-group-stream${ms.is_live ? ' is-live' : ''}" href="${href}" onclick="return handleLinkClick(event, '${href}')">
-                    <div class="streamer-group-stream-thumb">${thumb}</div>
+                <a class="streamer-group-stream${ms.is_live ? ' is-live' : ''}${replay ? ' has-replay' : ''}" href="${href}" aria-label="${esc(label)}" onclick="return handleLinkClick(event, '${href}')">
+                    <div class="streamer-group-stream-thumb">${thumb}${replay ? '<span class="sg-play" aria-hidden="true"><i class="fa-solid fa-play"></i></span>' : ''}</div>
                     <div class="streamer-group-stream-info">
                         <div class="streamer-group-stream-title">${esc(ms.title || 'Stream')}</div>
                         <div class="streamer-group-stream-time muted">${when}</div>
