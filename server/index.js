@@ -1460,6 +1460,8 @@ async function start() {
         try { require('./ai/clip-title').start(); } catch (e) { console.warn('[AI] clip-title job not started:', e.message); }
         // A stream recorded in parts is one video on Media (streaming/recordings.js): synced, closed, backfilled.
         try { require('./streaming/recordings').start(); } catch (e) { console.warn('[Recordings] sweep not started:', e.message); }
+        // When each picture-in-picture was on screen, so a VOD draws it again (streaming/pip-history.js).
+        try { require('./streaming/pip-history').start(); } catch (e) { console.warn('[PiP history] not started:', e.message); }
         try { require('./ai/easter-egg-job').start(); } catch (e) { console.warn('[AI] easter-egg job not started:', e.message); }
         // The Rundown's desk replaced the Arena's jobs (the drama desk, the beef listener and judges, 2026-10-19).
         try { require('./rundown/desk').start(); } catch (e) { console.warn('[Rundown] desk not started:', e.message); }

@@ -588,6 +588,8 @@ router.get('/:id', optionalAuth, async (req, res) => {
 
         // One video over a stream recorded in parts (streaming/recordings.js; OpenVibe.Media docs/recordings.md).
         try { await presentRecording(vod); } catch (err) { console.warn('[VOD] recording:', err.message); }
+        // The streams that were drawn over it, to play over it again (streaming/pip-history.js).
+        try { vod.pips = await pipsForVod(vod, stream); } catch (err) { console.warn('[VOD] pips:', err.message); vod.pips = []; }
 
         const clips = co?.clips || (Array.isArray(co) ? co : []);
         try {
@@ -932,6 +934,66 @@ async function clipPlace(stream, startTime, endTime) {
  * Until then, and for every later part, it answers as a part with `recording` naming the whole (`vod_id` of its first
  * part and `start_sec`, where this part starts in it), so a page can send people to the whole video at that second.
  */
+/**
+ * The picture-in-pictures that were on screen during this VOD (streaming/pip-history.js), each as its stream's public
+ * VOD to play over this one (owner, 2026-10-26: "the VODs system should support and handle the PIPs a streamer had
+ * configured during that vod"): [{ vod_id, title, username, from, to, offset, x, y, w, muted }]. `from` and `to` are
+ * this VOD's seconds (its whole recording's, when it answers for one), `offset` the PIP VOD's second at `from`, so a
+ * player shows it while from <= t < to at offset + (t - from). A PIP whose stream has no public recording is left out.
+ */
+async function pipsForVod(vod, stream) {
+    if (!vod.stream_id || !stream) return [];
+    const spans = await require('../streaming/pip-history').spansOf(vod.stream_id);
+    if (!spans.length) return [];
+    const history = require('../streaming/stream-history');
+    const recordings = require('../streaming/recordings');
+    const hostStart = history.epochMs(stream.started_at);
+    if (hostStart == null) return [];
+    const whole = vod.recording && vod.recording.joined && Number(vod.recording.vod_id) === Number(vod.id) ? vod.recording.parts : null;
+    const hostTime = (sec) => (whole ? recordings.toRecordingTime(whole, sec) : sec - (Number(vod.stream_offset_sec) || 0));
+    const duration = Number(vod.duration_seconds) || Infinity;
+    const vods = await require('./lookups').publicVodsForStreams(spans.map((sp) => sp.source_stream_id), { budgetMs: 3000 });
+    // Each source stream once: when it started, and its stream seconds → its VOD's seconds (whole recording or one part).
+    const sources = new Map();
+    const sourceOf = async (streamId, sv) => {
+        if (sources.has(streamId)) return sources.get(streamId);
+        let out = null;
+        try {
+            const s = await db.getStreamById(streamId);
+            const startMs = history.epochMs(s && s.started_at);
+            if (startMs != null) {
+                if (sv.recording && Number(sv.recording.parts) > 1) {
+                    const parts = await recordings.presentParts(await media.getRecording(recordings.keyOf(streamId)));
+                    out = { startMs, toVod: (sec) => recordings.toRecordingTime(parts, sec) };
+                } else {
+                    const part = await history.partForVod(sv.id).catch(() => null);
+                    const at = part ? Number(part.at) || 0 : 0;
+                    out = { startMs, toVod: (sec) => sec - at };
+                }
+            }
+        } catch { out = null; }
+        sources.set(streamId, out);
+        return out;
+    };
+    const round = (n) => Math.round(n * 100) / 100;
+    const out = [];
+    for (const sp of spans) {
+        const sv = vods.get(sp.source_stream_id);
+        if (!sv) continue;
+        const start = hostTime(sp.at), end = hostTime(sp.end);
+        if (start == null || end == null) continue;
+        const from = Math.max(0, start), to = Math.min(duration, end);
+        if (to - from < 1) continue;
+        const src = await sourceOf(sp.source_stream_id, sv);
+        const atSource = src && src.toVod((hostStart + sp.at * 1000 - src.startMs) / 1000);
+        if (atSource == null) continue;
+        out.push({ vod_id: Number(sv.id), title: sp.title || sv.title || null, username: sp.username || sv.username || null,
+            from: round(from), to: round(to), offset: round(Math.max(0, atSource + (from - start))),
+            x: sp.x, y: sp.y, w: sp.w, muted: sp.muted });
+    }
+    return out.slice(0, 200);
+}
+
 async function presentRecording(vod) {
     const rec = vod.recording;
     if (!rec || !Array.isArray(rec.parts) || rec.parts.length < 2) { delete vod.recording; return; }
@@ -1017,3 +1079,4 @@ router.post('/clips/:id/trim', requireAuth, (req, res) => {
 module.exports = router;
 module.exports.isGhostVod = isGhostVod;
 module.exports.chunkOpensVod = chunkOpensVod;
+module.exports.pipsForVod = pipsForVod;
