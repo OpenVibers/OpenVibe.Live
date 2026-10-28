@@ -789,6 +789,7 @@ app.use('/api/clips', searchMedia.afterChange('clip'), clipRoutes);
 app.use('/api/chat-ai', require('./ai/chat-ai-routes'));
 app.use('/api/easter-egg', require('./ai/easter-egg-routes'));
 app.use('/api/rundown', require('./rundown/routes'));        // what streamers talked about, written up (docs/rundown.md)
+app.use('/api/today', require('./today/routes').createTodayRoutes());   // a channel's schedule, read from OpenVibe.Today
 app.use('/api/recap', require('./recap/routes'));            // after-show reports (docs/recap.md)
 app.use('/api/social', require('./social/routes').router);   // channel social links and their previews (server/social/)
 app.get('/embed/x-timeline', require('./social/routes').xTimelinePage);

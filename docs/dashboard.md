@@ -2,6 +2,14 @@
 
 The dashboard is your control center for managing your channel. Access it by logging in and clicking your username.
 
+## Schedule
+
+The home tab's Schedule card lists your next streams from [OpenVibe.Today](https://openvibe.today/) and links to its
+schedule form. A scheduled stream shows on your channel while you are offline ("Next stream", with Remind me), in your
+followers' bells (at most three new schedules a day) and in calendars that subscribe to `openvibe.today/ics/@you.ics`;
+going live marks it live. Live keeps no copy: `GET /api/today/channel/:username` reads Today's public API and keeps the
+answer a minute.
+
 ## Stream Key
 
 Your RTMP stream key is shown (hidden by default) for use with OBS, Streamlabs, or other RTMP software. You can regenerate it at any time — this invalidates the old key.
