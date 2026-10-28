@@ -1632,7 +1632,8 @@ async function createNewStream() {
             startRestreamStatusPolling();
             // Show/hide screen share live controls
             _syncScreenShareLiveControls(ss);
-            toast('You are now LIVE!', 'success');
+            // You're live: a card hands over the link to share (broadcast-studio.js celebrate); the plain toast without it.
+            if (!(window.bcStudio && typeof bcStudio.celebrate === 'function' && bcStudio.celebrate(streamData.id))) toast('You are now LIVE!', 'success');
         } else if (method === 'webrtc' && broadcastState.selectedWebRTCSub === 'obs') {
             showWHIPInstructions(streamData); startHeartbeat(streamData.id);
             ensureBroadcastChat(streamData.id);

@@ -82,6 +82,8 @@
                 { id: 'coins', icon: 'fa-coins', tone: 'gold', value: '0', valueId: 'nav-coins-amount', label: 'OpenCoins', title: 'OpenCoins: click to open your inventory', onClick: () => call('openCosmeticsModal') },
                 { id: 'vibes', icon: 'fa-wallet', tone: 'green', value: '0', valueId: 'nav-balance-amount', label: 'Vibes', title: 'Vibes balance', onClick: () => call('showModal', 'buy-funds') },
             ],
+            // DMs beside the bell (Shared 4.25): the button opens the messenger panel; without it, Chat's inbox.
+            messages: { onOpen: () => { if (window.messengerWidget && window.messengerWidget.toggle) window.messengerWidget.toggle(); else location.href = 'https://openvibe.chat/messages'; }, href: 'https://openvibe.chat/messages' },
             // Same-origin links are routes of this single-page app.
             onNavigate: (href, e) => (typeof handleLinkClick === 'function' ? handleLinkClick(e, href) : true),
             onLogout: () => call('logout'),

@@ -228,7 +228,26 @@
     }
 
     // ── Inject HTML ──────────────────────────────────────────────
+    // The navbar's messages button (Shared 4.25; the owner, 2026-10-28: the floating DM button was "buggy as hell on
+    // mobile… app style"): the unread count goes there and it opens this panel; an older navbar keeps the bubble.
+    const inBar = () => !!(window.OpenVibeNavbar && typeof window.OpenVibeNavbar.setMessages === 'function');
+    function dropBubble() {
+        if (!$toggle || !inBar()) return;
+        $toggle.remove(); $toggle = null; $badge = null;
+        if ($panel) $panel.classList.add('from-bar');
+        updateBadge();
+    }
+
     function injectWidget() {
+        if (inBar()) {
+            $panel = document.createElement('div');
+            $panel.className = 'messenger-panel from-bar';
+            $panel.id = 'messenger-panel';
+            document.body.appendChild($panel);
+            renderInbox();
+            return;
+        }
+        setTimeout(dropBubble, 1500);   // the navbar may finish loading after this widget
         // Toggle button
         $toggle = document.createElement('button');
         $toggle.className = 'messenger-toggle';
@@ -867,6 +886,7 @@
     }
 
     function updateBadge() {
+        if (inBar()) window.OpenVibeNavbar.setMessages(unreadTotal);
         if (!$badge) return;
         $badge.textContent = unreadTotal > 0 ? (unreadTotal > 99 ? '99+' : String(unreadTotal)) : '';
         $badge.dataset.count = unreadTotal;
@@ -1256,6 +1276,7 @@
     // Expose for programmatic access
     window.messengerWidget = {
         open: () => { if (!panelOpen) togglePanel(); },
+        toggle: () => togglePanel(),
         close: closePanel,
         openDm: window.openMessengerDm,
     };
