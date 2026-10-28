@@ -54,6 +54,8 @@ const ROUTES = [
     ['live.money', /^POST$/, /^\/(payments\/(bucks\/checkout|subscribe|subscriptions\/[^/]+\/cancel)|funds\/(purchase|donate|cashout|recycle))$/, { minute: 10, hour: 60 }],
     // Testing an AI provider key calls that provider.
     ['live.ai.test', /^POST$/, /^\/ai-viewers\/byo\/test$/, { minute: 5, hour: 30 }],
+    // The cam button fetches Media's frame and uploads a still to Pics as the viewer.
+    ['live.cam.still', /^POST$/, /^\/cam\/stills$/, { minute: 6, hour: 60 }],
 ];
 
 function createLiveActorLimits({ env = process.env, registry = null, now } = {}) {

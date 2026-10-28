@@ -68,6 +68,14 @@
                             </div>
                             <div class="ssp-body" id="stream-stats-body"></div>
                         </div>
+                        <!-- Cam still overlay (the cam button's result: link + picture, with an optional chat post) -->
+                        <div class="cam-still-panel" id="cam-still-panel" style="display:none">
+                            <div class="ssp-header">
+                                <span><i class="fa-solid fa-camera"></i> Still</span>
+                                <button class="ssp-close" id="btn-cam-close" title="Close"><i class="fa-solid fa-xmark"></i></button>
+                            </div>
+                            <div class="cam-still-body" id="cam-still-body"></div>
+                        </div>
                         <div class="fullscreen-chat-overlay" id="fullscreen-chat-overlay" aria-hidden="true">
                             <div class="fullscreen-chat-messages" id="fullscreen-chat-messages"></div>
                             <div class="fullscreen-chat-chrome" id="fullscreen-chat-chrome">
@@ -120,6 +128,7 @@
                         <div class="ch-info-bar-right">
                             <span class="ch-follower-count" id="ch-follower-count">0 followers</span>
                             <a class="ch-game-badge" id="ch-game-badge" href="https://openvibe.games/" target="_blank" rel="noopener" hidden></a>
+                            <button class="btn btn-outline" id="btn-cam" title="Take a still" style="display:none"><i class="fa-solid fa-camera"></i> Still</button>
                             <button class="btn btn-follow" id="ch-btn-follow">
                                 <i class="fa-solid fa-heart"></i> Follow
                             </button>
