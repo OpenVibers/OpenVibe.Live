@@ -507,3 +507,11 @@
 .vibe-word .form-input { max-width: 280px; }
 .vibe-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 #dash-card-vibe [data-vibe-word] { color: var(--accent-light, var(--accent)); }
+
+/* Schedule card (OpenVibe.Today). */
+.dash-schedule-list { list-style: none; margin: 0 0 12px; padding: 0; display: grid; gap: 8px; }
+.dash-schedule-list li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; }
+.dash-schedule-list time { font-weight: 700; font-variant-numeric: tabular-nums; color: var(--text-primary); }
+.dash-schedule-list a { color: var(--text-secondary); text-decoration: none; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dash-schedule-list a:hover { color: var(--text-primary); text-decoration: underline; }
+.dash-schedule-actions { display: flex; flex-wrap: wrap; gap: 8px; }

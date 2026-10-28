@@ -679,6 +679,55 @@ function _channelReady(ready = true) {
     clearTimeout(_channelReadyTimer);
 }
 
+/* The channel's next scheduled stream, from OpenVibe.Today (/api/today/channel/:username): "Next stream · Fri, Oct 30,
+   8:00 PM · Robot build, part 2 · Remind me". DOM nodes only; hidden when nothing is scheduled or Today is unreachable. */
+async function _loadNextStream(username) {
+    const box = document.getElementById('ch-next-offline');
+    if (!box) return;
+    box.hidden = true;
+    box.replaceChildren();
+    let events = [];
+    try {
+        const r = await fetch(`/api/today/channel/${encodeURIComponent(username)}`);
+        if (r.ok) events = (await r.json()).events || [];
+    } catch { /* nothing to show */ }
+    if (username !== currentChannelUsername) return;
+    const next = events.find((e) => e.status === 'scheduled' || e.status === 'live');
+    if (!next) return;
+    const when = new Date(next.starts_at);
+    let label = '';
+    try { label = new Intl.DateTimeFormat(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }).format(when); } catch { label = when.toLocaleString(); }
+    const icon = document.createElement('i');
+    icon.className = 'fa-regular fa-calendar';
+    icon.setAttribute('aria-hidden', 'true');
+    const kicker = document.createElement('span');
+    kicker.className = 'ch-next-k';
+    kicker.textContent = next.status === 'live' ? 'On now' : 'Next stream';
+    const time = document.createElement('time');
+    time.dateTime = next.starts_at;
+    time.textContent = label;
+    const title = document.createElement('span');
+    title.className = 'ch-next-t';
+    title.textContent = next.title;
+    const remind = document.createElement('a');
+    remind.className = 'ch-next-a';
+    remind.href = next.url;
+    remind.target = '_blank';
+    remind.rel = 'noopener';
+    remind.textContent = 'Remind me';
+    box.append(icon, kicker, time, title, remind);
+    if (events.length > 1) {
+        const more = document.createElement('a');
+        more.className = 'ch-next-more';
+        more.href = `https://openvibe.today/@${encodeURIComponent(username)}`;
+        more.target = '_blank';
+        more.rel = 'noopener';
+        more.textContent = `+${events.length - 1} more`;
+        box.append(more);
+    }
+    box.hidden = false;
+}
+
 async function loadChannelPage(username, managedStreamRef = null, legacySessionId = null) {
     _restoreChannelChat();
     _watchTabsClip();
@@ -888,6 +937,7 @@ async function loadChannelPage(username, managedStreamRef = null, legacySessionI
             document.getElementById('ch-username-offline').textContent = '@' + ch.username;
             document.getElementById('ch-description-offline').textContent = ch.description || '';
             if (window.ChannelSocials) ChannelSocials.pills(document.getElementById('ch-socials-offline'), ch.social_links || []);
+            _loadNextStream(ch.username);
             document.getElementById('ch-follower-count-offline').textContent = `${ch.follower_count || 0} followers`;
             _loadGameBadge(ch.username);
             _setCategoryBadge(document.getElementById('ch-category-badge-offline'), ch.ai_category || ch.category || 'Offline', !!ch.ai_category);

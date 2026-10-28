@@ -1606,3 +1606,13 @@ button.viewer-badge:focus-visible { outline: 2px solid #93c5fd; outline-offset: 
     #page-channel .mobile-chat-toggle { top: 10px; bottom: auto; right: 10px; width: 42px; height: 42px; font-size: 0.95rem; }
     body:has(#page-channel.active) #messenger-toggle { display: none !important; }
 }
+
+/* The next scheduled stream, from OpenVibe.Today (offline header). */
+.ch-next { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin: 8px 0 2px; padding: 8px 12px; border-radius: 12px; font-size: .9rem; background: color-mix(in srgb, var(--accent) 9%, var(--bg-card)); border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--border)); }
+.ch-next[hidden] { display: none; }
+.ch-next > i { color: var(--accent-light, var(--accent)); }
+.ch-next-k { font-size: .72rem; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: var(--text-muted); }
+.ch-next time { font-weight: 700; color: var(--text-primary); font-variant-numeric: tabular-nums; }
+.ch-next-t { min-width: 0; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.ch-next-a, .ch-next-more { margin-left: auto; font-weight: 700; text-decoration: none; color: var(--accent-light, var(--accent)); white-space: nowrap; }
+.ch-next-more { margin-left: 0; font-weight: 600; color: var(--text-muted); }

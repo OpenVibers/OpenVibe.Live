@@ -11,7 +11,7 @@ let activeStreams = [];
    (so the dashboard paints instantly and only does the work you look at). Other
    modules (e.g. moderation) register their loader on window._dashTabLoaders. */
 const _DASH_TAB_CARDS = {
-    home:       ['dash-card-profile', 'dash-card-ai-derivation', 'dash-card-offline'],
+    home:       ['dash-card-profile', 'dash-card-schedule', 'dash-card-ai-derivation', 'dash-card-offline'],
     chatai:     ['dash-card-vibe', 'dash-aibot-card', 'dash-card-overlay', 'dash-card-chatlogs'],
     moderation: [],  // injected by dashboard-moderation.js into #dash-grid-moderation
     controls:   ['dash-card-bot-embed', 'dash-card-tokens'],
@@ -138,12 +138,46 @@ window._dashTabLoaders.content = () => { switchDashContentTab('videos', document
 /**
  * Load the dashboard page — build the tab layout, then load only the default (Home) tab.
  */
+/* The Schedule card: this channel's next streams from OpenVibe.Today (/api/today/channel/:username). DOM nodes only. */
+async function loadDashSchedule() {
+    const list = document.getElementById('dash-schedule-list');
+    if (!list || !currentUser || !currentUser.username) return;
+    const cal = document.getElementById('dash-schedule-cal');
+    if (cal) cal.href = `https://openvibe.today/@${encodeURIComponent(currentUser.username)}`;
+    let events = [];
+    try {
+        const r = await fetch(`/api/today/channel/${encodeURIComponent(currentUser.username)}`);
+        if (r.ok) events = (await r.json()).events || [];
+    } catch { /* Today unreachable: the empty line below */ }
+    list.replaceChildren();
+    if (!events.length) {
+        const li = document.createElement('li');
+        li.className = 'muted';
+        li.textContent = 'Nothing scheduled yet.';
+        list.append(li);
+        return;
+    }
+    for (const e of events) {
+        const li = document.createElement('li');
+        const a = document.createElement('a');
+        a.href = e.url; a.target = '_blank'; a.rel = 'noopener';
+        a.textContent = e.title;
+        const time = document.createElement('time');
+        time.dateTime = e.starts_at;
+        try { time.textContent = new Intl.DateTimeFormat(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }).format(new Date(e.starts_at)); } catch { time.textContent = e.starts_at; }
+        li.append(time, a);
+        if (e.status === 'live') { const b = document.createElement('span'); b.className = 'badge'; b.textContent = 'Live'; li.append(b); }
+        list.append(li);
+    }
+}
+
 async function loadDashboard() {
     if (!currentUser) {
         toast('Login required', 'error');
         return navigate('/');
     }
     loadDashChannel();
+    loadDashSchedule();
     _dashRelocateCards();
     _dashLoadedTabs.clear();
     const fromUrl = (location.pathname.match(/^\/dashboard\/([a-z]+)/) || [])[1];
