@@ -344,6 +344,7 @@ async function check(name, fn) {
             'server/lineage/media-source.js': 'OpenVibe.Media (configured)',
             'server/pastes-client.js': 'OpenVibe.Community (configured)',
             'server/comments-client.js': 'OpenVibe.Community (configured)',
+            'server/today/routes.js': 'OpenVibe.Today public events API (OV_TODAY_INTERNAL_URL, configured; the channel is a checked username)',
             'server/chat/moderation-client.js': 'OpenVibe.Chat internal read API (configured)',
             'server/social/preview.js': 'OpenVibe.Network public profile API (configured OV_NETWORK_INTERNAL_URL, fixed path, username checked); every other preview goes through egress',
             'server/monetization/inventory-client.js': 'OpenVibe.Inventory API for Live cosmetics (configured INVENTORY_URL)',
