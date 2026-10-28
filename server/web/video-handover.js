@@ -28,11 +28,14 @@ function secondsOf(t) {
 // which put any link it was handed under '/', and the API now hands it these absolute links.
 const GLUED_RE = /^\/https?:\/\/?([^/?#]+)(\/[^?#]*)?$/i;
 
-/** Where a glued path really points, on one of the two sites Live hands pages to; null for anything else. */
-function unglue(pathname, search = '') {
+/** Where a glued path really points, on one of the two sites Live hands pages to, or Live's own page (its path, when
+ *  ownHost names the host it was glued onto: a router that put a full openvibe.live link under '/'); null otherwise. */
+function unglue(pathname, search = '', ownHost = null) {
     const m = GLUED_RE.exec(String(pathname || ''));
     if (!m) return null;
     const host = m[1].toLowerCase();
+    // One leading slash: //evil.example/x would leave the site.
+    if (ownHost && host === String(ownHost).toLowerCase()) return `/${(m[2] || '/').replace(/^\/+/, '')}${search}`;
     const origin = [VIDEO_BASE, communityUrl()].find((o) => { try { return new URL(o).host === host; } catch { return false; } });
     return origin ? `${origin}${m[2] || '/'}${search}` : null;
 }
@@ -42,7 +45,7 @@ function unglue(pathname, search = '') {
 function register(app) {
     app.get(/^\/https?:\//i, (req, res, next) => {
         const q = req.originalUrl.indexOf('?');
-        const to = unglue(req.path, q >= 0 ? req.originalUrl.slice(q) : '');
+        const to = unglue(req.path, q >= 0 ? req.originalUrl.slice(q) : '', req.get('host'));
         return to ? res.redirect(301, to) : next();
     });
     for (const [prefix, kind] of [['vod', 'vod'], ['clip', 'clip']]) {
