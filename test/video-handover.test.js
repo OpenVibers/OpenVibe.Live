@@ -47,6 +47,30 @@ process.env.NODE_ENV = 'test';
         assert.strictEqual((await get('/https:openvibe.video/v/1')).status, 404);
     });
 
+    await check('Live\'s own full address glued onto Live\'s (the navbar\'s "My channel" through the old router) goes to its path, never off the site', async () => {
+        const { unglue } = require('../server/web/video-handover');
+        assert.strictEqual(unglue('/https://openvibe.live/@goosely', '', 'openvibe.live'), '/@goosely');
+        assert.strictEqual(unglue('/https:/openvibe.live/@goosely', '?tab=videos', 'openvibe.live'), '/@goosely?tab=videos');
+        assert.strictEqual(unglue('/https://openvibe.live', '', 'openvibe.live'), '/');
+        assert.strictEqual(unglue('/https://openvibe.live//evil.example/x', '', 'openvibe.live'), '/evil.example/x', 'one leading slash: it stays on Live');
+        assert.strictEqual(unglue('/https://openvibe.live/@goosely', '', null), null, 'no own host: not a redirect');
+        assert.strictEqual(unglue('/https://evil.example/@x', '', 'openvibe.live'), null);
+        const host = `127.0.0.1:${server.address().port}`;
+        assert.deepStrictEqual(await get(`/https://${host}/@goosely`), { status: 301, location: '/@goosely' });
+    });
+
+    await check('the SPA router takes a full address on Live as its path (public/js/app.js sameSitePath)', async () => {
+        const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'js', 'app.js'), 'utf8');
+        const fn = /function sameSitePath\(url\) \{[\s\S]*?\n\}/.exec(src);
+        assert.ok(fn, 'sameSitePath is in app.js');
+        assert.match(src, /urlPath = sameSitePath\(urlPath\);/, 'navigate() uses it');
+        const sameSitePath = new Function('location', `${fn[0]}; return sameSitePath;`)({ origin: 'https://openvibe.live' });
+        assert.strictEqual(sameSitePath('https://openvibe.live/@goosely'), '/@goosely');
+        assert.strictEqual(sameSitePath('https://openvibe.live/@goosely?tab=videos#top'), '/@goosely?tab=videos#top');
+        assert.strictEqual(sameSitePath('/content'), '/content');
+        assert.strictEqual(sameSitePath('https://openvibe.video/v/1'), 'https://openvibe.video/v/1', 'another site is left alone');
+    });
+
     await check('what is not an id stays Live\'s 404', async () => {
         assert.strictEqual((await get('/vod/abc')).status, 404);
         assert.strictEqual((await get('/vod/0')).status, 404);

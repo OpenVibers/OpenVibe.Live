@@ -945,8 +945,15 @@ function _ovHoldsMedia() {
 /** A URL that leaves Live (an OpenVibe.Video watch page, another OpenVibe site): the browser goes there, not the SPA. */
 const isOffSite = (url) => /^https?:\/\//i.test(String(url || '')) && !String(url).startsWith(`${location.origin}/`);
 
+/** A full address on Live itself (the shared navbar's "My channel" is https://openvibe.live/@name) as its path. */
+function sameSitePath(url) {
+    if (!/^https?:\/\//i.test(String(url || ''))) return url;
+    try { const u = new URL(url); return u.origin === location.origin ? `${u.pathname}${u.search}${u.hash}` : url; } catch { return url; }
+}
+
 function navigate(urlPath, replace = false) {
     if (isOffSite(urlPath)) { if (replace) location.replace(urlPath); else location.href = urlPath; return; }
+    urlPath = sameSitePath(urlPath);
     if (_ovRelease.stale && !_ovHoldsMedia()) {
         const to = urlPath.startsWith('/') ? urlPath : `/${urlPath}`;
         try { sessionStorage.setItem('ov-release-load', _ovRelease.stale); } catch { /* */ }
