@@ -23,7 +23,7 @@ const BUDGETS = {
     htmlBrotliKB: 30,
     jsFiles: 26,             // measured 23 (incl. route scripts for "/")
     jsRawKB: 1150,           // measured ~1000
-    jsBrotliKB: 270,         // measured 269.6 (2026-10-28: openvibe-shared 4.19.0, the account menu's gear and people-group icons inline; 268 on 2026-10-27: openvibe-shared 4.16.0, the folded balance chip, Across OpenVibe with site marks and the icon preload in the navbar); 265.3 (2026-10-27: openvibe-shared 4.15.0, the compact footer opens into the whole one, and the pulse line); 263.3 on 10-23 (openvibe-shared 4.9.0, status text twins in every theme); 262.5 on 10-17 (openvibe-shared 4.4.0, every site in the launcher)
+    jsBrotliKB: 272,         // measured 270.5 (2026-10-28: openvibe-shared 4.22.0, the navbar's search magnifier with / and Ctrl+K and the More menu; search.js and loading.js load only when used); 269.6 (2026-10-28: openvibe-shared 4.19.0, the account menu's gear and people-group icons inline; 268 on 2026-10-27: openvibe-shared 4.16.0, the folded balance chip, Across OpenVibe with site marks and the icon preload in the navbar); 265.3 (2026-10-27: openvibe-shared 4.15.0, the compact footer opens into the whole one, and the pulse line); 263.3 on 10-23 (openvibe-shared 4.9.0, status text twins in every theme); 262.5 on 10-17 (openvibe-shared 4.4.0, every site in the launcher)
     cssRawKB: 270,           // measured ~243 since the first-paint subset (style.core.css) replaced style.css (~717 before)
     cssBrotliKB: 55,         // measured ~47.5 (was ~130)
 };
