@@ -9477,7 +9477,10 @@ label.staff-inline-toggle.aiv-field { flex-direction:row; align-items:center; }
     .hero-stat { padding: 7px 8px; gap: 6px; }
     /* Scroll performance: no hover transforms/shadows and no blur on phones — a blurred
        fixed nav over an animated hero is the most expensive thing a phone can paint. */
-    .navbar { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; background: var(--bg-secondary) !important; }
+    /* …and the solid bar only once the page has scrolled: at the very top it stays clear (.ovnav-top), as on every other
+       site (the owner, 2026-10-28: the bar's at-the-top effect "doesn't work on mobile"; this rule painted it always). */
+    .navbar { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
+    .navbar:not(.ovnav-top) { background: var(--bg-secondary) !important; }
     /* content-visibility was here to keep the stat board off the phone's paint path. The board is
        now collapsed by default and removed from layout entirely until someone opens it, which is
        a stronger saving — and leaving this on made the expand animation impossible to measure:
