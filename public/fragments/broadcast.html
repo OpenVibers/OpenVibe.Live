@@ -724,6 +724,9 @@ WantedBy=multi-user.target</code>
                             <button class="bc-ctrl-btn" id="bc-btn-toggle-preview" onclick="toggleBroadcastPreview()" title="Hide your own preview (you stay live; it saves battery)">
                                 <i class="fa-solid fa-eye-slash"></i> Hide preview
                             </button>
+                            <button class="bc-ctrl-btn" onclick="window.bcStudio && bcStudio.copyLink(this)" title="Copy your stream's link (openvibe.live/@you): it always opens your stream">
+                                <i class="fa-solid fa-link"></i><span> Copy link</span>
+                            </button>
                             <button class="bc-ctrl-btn" onclick="openViewerPreview()" title="Open your channel the way viewers see it">
                                 <i class="fa-solid fa-tv"></i> Watch as viewer
                             </button>

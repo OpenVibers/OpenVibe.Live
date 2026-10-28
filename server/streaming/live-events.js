@@ -71,6 +71,30 @@ function announceGoLive(stream, streamer) {
         });
         console.log(`[LiveEvents] Announced go-live: ${(streamer && streamer.username) || stream.username} (${clients.size} subscribers)`);
     } catch (e) { console.warn('[LiveEvents] announce failed:', e.message); }
+    if (!repeat) postLiveLink(stream, streamer);
+}
+
+/**
+ * The channel's own chat says where to watch, the moment a stream goes live: openvibe.live/@name, plain and easy to copy
+ * (the owner, 2026-10-28: "maybe it says it in chat… their live URL… not the slug… easier to copy paste"). Not on a
+ * quick reconnect within the hour (the repeat above), and once per stream (Chat keeps the key).
+ */
+function postLiveLink(stream, streamer) {
+    const username = (streamer && streamer.username) || stream.username;
+    const channelUserId = stream.user_id || (streamer && streamer.id);
+    if (!username || !channelUserId || !stream.id) return;
+    let base = 'https://openvibe.live';
+    try { base = String(require('../config').baseUrl || base).replace(/\/$/, ''); } catch { /* the public address */ }
+    const url = `${base}/@${encodeURIComponent(username)}`;
+    const name = (streamer && streamer.display_name) || stream.display_name || username;
+    try {
+        const delivery = require('../chat/chat-delivery');
+        delivery.after(delivery.message({
+            stream_id: stream.id, channel_user_id: channelUserId, user_id: null, username: 'OpenVibe.Live',
+            message: `\u{1F534} ${name} is live. Share the stream: ${url}`.slice(0, 480), message_type: 'system',
+            metadata: { kind: 'live_link', url }, key: `live:link:${stream.id}`,
+        }), () => {});
+    } catch (e) { console.warn('[LiveEvents] live link line failed:', e.message); }
 }
 
 /** End every open SSE stream. Without this, server.close() never called back on shutdown. */
@@ -79,4 +103,4 @@ function closeAll() {
     clients.clear();
 }
 
-module.exports = { subscribe, broadcast, announceGoLive, closeAll, clientCount: () => clients.size };
+module.exports = { subscribe, broadcast, announceGoLive, postLiveLink, closeAll, clientCount: () => clients.size };

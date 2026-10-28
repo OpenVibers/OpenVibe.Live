@@ -303,14 +303,76 @@
         Promise.resolve(createBroadcastClip()).catch(() => null).finally(() => look(false));
     }
 
-    /** Copies the channel link. (The system share sheet takes a phone away from this tab, which pauses the camera.) */
-    function share() {
+    /** Your stream's address, the one to share: openvibe.live/@name (never a stream's slug, never /broadcast). */
+    function streamLink() {
         const user = typeof currentUser !== 'undefined' && currentUser ? currentUser.username : null;
-        if (!user) return;
-        const url = `${location.origin}/@${encodeURIComponent(user)}`;
-        if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(url).then(() => say('Link copied. Paste it anywhere to share your stream.', 'success'), () => say(url));
-        else if (typeof copyToClipboard === 'function') copyToClipboard(url);
-        else say(url);
+        return user ? `${location.origin}/@${encodeURIComponent(user)}` : null;
+    }
+
+    /** Copies the channel link, and says so on the button that asked. (The system share sheet takes a phone away from
+     *  this tab, which pauses the camera, so a phone copies.) → whether it was copied. */
+    function copyLink(btn, { quiet = false } = {}) {
+        const url = streamLink();
+        if (!url) return Promise.resolve(false);
+        const label = btn && btn.querySelector ? btn.querySelector('span') : null;
+        const done = (ok) => {
+            if (label) {
+                const was = label.dataset.was || label.textContent;
+                label.dataset.was = was;
+                if (ok) { btn.classList.add('is-copied'); label.textContent = ' Copied'; setTimeout(() => { btn.classList.remove('is-copied'); label.textContent = was; }, 2200); }
+            }
+            if (!quiet) say(ok ? 'Link copied. Paste it anywhere to share your stream.' : url, ok ? 'success' : 'info');
+            return ok;
+        };
+        if (navigator.clipboard && navigator.clipboard.writeText) return navigator.clipboard.writeText(url).then(() => done(true), () => done(false));
+        if (typeof copyToClipboard === 'function') { copyToClipboard(url); return Promise.resolve(done(true)); }
+        return Promise.resolve(done(false));
+    }
+    function share() { copyLink(null); }
+
+    /**
+     * The moment a stream from this browser goes live (the owner, 2026-10-28: "I've seen them struggle to share the
+     * URL… they try and copy the URL that's in the browser"): a card says you're live and hands over the link,
+     * openvibe.live/@name, with one tap to copy (never the system share sheet, which takes a phone off this tab). It goes by itself after 20 seconds, a hand
+     * or focus on it holds it, and it shows once per stream.
+     */
+    const CARD_MS = 20000;
+    function celebrate(streamId) {
+        const url = streamLink();
+        if (!url) return false;
+        try { const key = `ov-golive-card:${streamId || 'x'}`; if (streamId && sessionStorage.getItem(key)) return false; sessionStorage.setItem(key, '1'); } catch { /* still show it */ }
+        document.querySelectorAll('.bcs-livecard').forEach((n) => n.remove());
+        const copy = el('button', { type: 'button', class: 'bcs-gl-copy' }, icon('fa-copy'), el('span', { text: ' Copy link' }));
+        const close = el('button', { type: 'button', class: 'bcs-gl-x', 'aria-label': 'Close' }, icon('fa-xmark'));
+        const sub = el('p', { class: 'bcs-gl-sub', text: 'Share this link. It always opens your stream:' });
+        const code = el('code', { text: url.replace(/^https?:\/\//, '') });
+        const bar = el('i');
+        const card = el('div', { class: 'bcs-livecard', role: 'status', 'aria-live': 'polite' },
+            el('div', { class: 'bcs-gl-burst', 'aria-hidden': 'true' }, ...Array.from({ length: 10 }, (_, i) => el('i', { style: `--a:${i * 36}deg;--d:${(i % 3) * 50}ms` }))),
+            el('div', { class: 'bcs-gl-head' }, el('span', { class: 'bcs-gl-dot', 'aria-hidden': 'true' }), el('b', { text: 'You\u2019re live!' }), close),
+            sub,
+            el('div', { class: 'bcs-gl-link' }, code, copy),
+            el('div', { class: 'bcs-gl-bar', 'aria-hidden': 'true' }, bar));
+        document.body.append(card);
+        let left = CARD_MS, last = Date.now(), held = false;
+        const end = () => { clearInterval(timer); card.classList.add('is-out'); setTimeout(() => card.remove(), 260); };
+        const timer = setInterval(() => {
+            const now = Date.now();
+            if (!held) left -= now - last;
+            last = now;
+            bar.style.transform = `scaleX(${Math.max(0, left / CARD_MS)})`;
+            if (left <= 0 || !card.isConnected) end();
+        }, 200);
+        for (const ev of ['pointerenter', 'touchstart', 'focusin']) card.addEventListener(ev, () => { held = true; }, { passive: true });
+        for (const ev of ['pointerleave', 'focusout']) card.addEventListener(ev, () => { held = false; last = Date.now(); });
+        close.addEventListener('click', end);
+        copy.addEventListener('click', () => copyLink(copy, { quiet: true }).then((ok) => {
+            if (ok) { sub.textContent = 'Copied. Paste it in a group chat, on Discord or in a post.'; left = Math.min(left, 4000); return; }
+            // No clipboard here: the link is selected, so a long press or Ctrl+C copies it.
+            try { const r = document.createRange(); r.selectNodeContents(code); const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r); } catch { /* */ }
+            sub.textContent = 'Press and hold the link to copy it.';
+        }));
+        return true;
     }
 
     // ── Staying on this tab ──
@@ -805,5 +867,5 @@
     if (NARROW.addEventListener) NARROW.addEventListener('change', tick);
     ensureReturn();
 
-    window.bcStudio = { toggleMic, toggleCamera, flip, showViewer, phone: () => NARROW.matches, open: () => { st.dismissedFor = null; tick(); }, _state: st };
+    window.bcStudio = { toggleMic, toggleCamera, flip, showViewer, copyLink, celebrate, streamLink, phone: () => NARROW.matches, open: () => { st.dismissedFor = null; tick(); }, _state: st };
 })();

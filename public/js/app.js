@@ -945,6 +945,17 @@ function _ovHoldsMedia() {
 /** A URL that leaves Live (an OpenVibe.Video watch page, another OpenVibe site): the browser goes there, not the SPA. */
 const isOffSite = (url) => /^https?:\/\//i.test(String(url || '')) && !String(url).startsWith(`${location.origin}/`);
 
+/**
+ * The studio shows its address as /@name/studio, not /broadcast (the owner, 2026-10-28: streamers copied the address
+ * bar to share their stream, and /broadcast opened nobody's). Copied and shared, it opens the channel for everyone
+ * else; for its owner, a reload or a phone bringing the tab back opens the studio again. A slot's own path
+ * (/broadcast/<slot>) stays as it is.
+ */
+function showStudioAddress() {
+    if (location.pathname !== '/broadcast' || !currentUser || !currentUser.username) return;
+    try { history.replaceState(history.state, '', `/@${encodeURIComponent(currentUser.username)}/studio${location.search}${location.hash}`); } catch { /* the address stays /broadcast */ }
+}
+
 /** A full address on Live itself (the shared navbar's "My channel" is https://openvibe.live/@name) as its path. */
 function sameSitePath(url) {
     if (!/^https?:\/\//i.test(String(url || ''))) return url;
@@ -1123,7 +1134,7 @@ function routeFromURL() {
     } else if (segments[0] === 'broadcast') {
         // Show the shell first so the route feels instant, then fill it once its bundle is in.
         showPage('broadcast');
-        whenRouteReady('broadcast', () => { if (typeof loadBroadcastPage === 'function') loadBroadcastPage(); });
+        whenRouteReady('broadcast', () => { if (typeof loadBroadcastPage === 'function') loadBroadcastPage(); showStudioAddress(); });
     } else if (segments[0] === 'admin') {
         window.location.href = `${getOpenVibeToolsUrl()}/admin`;
         return;
@@ -1185,6 +1196,12 @@ function routeFromURL() {
         // Legacy stream URL: /stream/:id
         showPage('stream');
         whenRouteReady('stream', () => openStream(segments[1]));
+    } else if (segments.length === 2 && segments[0].startsWith('@') && segments[1] === 'studio') {
+        // The studio's own address (showStudioAddress): its owner's studio, and the channel for anyone it was shared with.
+        const username = normalizeChannelUsername(segments[0]);
+        const mine = !!(currentUser && String(currentUser.username || '').toLowerCase() === username.toLowerCase());
+        navigate(mine ? `/broadcast${location.search}` : `/@${username}`, true);
+        return;
     } else if (segments.length >= 1 && segments[0].startsWith('@')) {
         // Channel page: /@username or /@username/:managedStreamIdOrSlug
         // Backward compat: /@username?stream=sessionId

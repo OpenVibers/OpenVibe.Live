@@ -3068,3 +3068,43 @@ body.bc-golive-dock-on .messenger-toggle { display: none !important; }
 @media (max-width: 768px) {
     #bc-info-bar #bc-rs-viewer-count, #bc-info-bar #bc-platform-viewer-badges { display: none !important; }
 }
+
+/* The go-live card (broadcast-studio.js celebrate; the owner, 2026-10-28: streamers copied the studio's address to
+   share their stream): you're live, and the link to share, one tap to copy. Over the studio on a phone, at the top on a
+   computer; it goes by itself after 20 seconds. */
+.bcs-livecard { position: fixed; z-index: 1600; top: calc(64px + env(safe-area-inset-top, 0px)); left: 50%; width: min(420px, calc(100vw - 24px)); box-sizing: border-box; padding: 14px 14px 14px 16px; border-radius: 18px;
+    background: color-mix(in srgb, var(--bg-secondary, #0f1626) 92%, transparent); -webkit-backdrop-filter: blur(16px) saturate(1.4); backdrop-filter: blur(16px) saturate(1.4);
+    border: 1px solid color-mix(in srgb, var(--live-red, #ef4444) 42%, var(--border, #1f2d47)); box-shadow: 0 24px 60px rgba(0,0,0,.55); color: var(--text-primary); overflow: hidden;
+    transform: translateX(-50%); animation: bcs-gl-in .45s cubic-bezier(.2,1.3,.3,1) both; }
+.bcs-livecard.is-out { animation: bcs-gl-out .25s ease-in forwards; }
+@keyframes bcs-gl-in { from { opacity: 0; transform: translate(-50%, -14px) scale(.94); } to { opacity: 1; transform: translate(-50%, 0) scale(1); } }
+@keyframes bcs-gl-out { to { opacity: 0; transform: translate(-50%, -10px) scale(.97); } }
+.bcs-gl-head { display: flex; align-items: center; gap: 10px; }
+.bcs-gl-head b { flex: 1; font-size: 1.15rem; font-weight: 800; letter-spacing: -.2px; }
+.bcs-gl-dot { position: relative; flex: none; width: 12px; height: 12px; border-radius: 50%; background: var(--live-red, #ef4444); }
+.bcs-gl-dot::after { content: ""; position: absolute; inset: -6px; border-radius: 50%; border: 2px solid var(--live-red, #ef4444); animation: bcs-gl-ping 1.4s ease-out infinite; }
+@keyframes bcs-gl-ping { from { transform: scale(.5); opacity: .9; } to { transform: scale(1.6); opacity: 0; } }
+.bcs-gl-x { all: unset; box-sizing: border-box; cursor: pointer; display: grid; place-items: center; width: 34px; height: 34px; border-radius: 10px; color: var(--text-secondary); }
+.bcs-gl-x:hover, .bcs-gl-x:focus-visible { background: rgba(255,255,255,.08); color: var(--text-primary); }
+.bcs-gl-sub { margin: 6px 0 10px; font-size: .92rem; color: var(--text-secondary); }
+.bcs-gl-link { display: flex; align-items: center; gap: 8px; padding: 6px 6px 6px 12px; border-radius: 14px; background: var(--bg-primary, #0a0f1c); border: 1px solid var(--border, #1f2d47); }
+.bcs-gl-link code { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 700 1rem/1.3 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: var(--text-primary); background: none; user-select: all; -webkit-user-select: all; }
+.bcs-gl-copy, .bcs-gl-share { all: unset; box-sizing: border-box; cursor: pointer; flex: none; display: inline-flex; align-items: center; gap: 4px; height: 42px; padding: 0 16px; border-radius: 11px; font-weight: 700; font-size: .95rem;
+    background: var(--accent-strong, var(--accent, #3472d8)); color: var(--on-accent-strong, var(--on-accent, #fff)); transition: transform .15s, background .2s; }
+.bcs-gl-copy:active, .bcs-gl-share:active { transform: scale(.96); }
+.bcs-gl-copy.is-copied, .bc-ctrl-btn.is-copied { background: var(--success, #16a34a); color: #fff; }
+.bcs-gl-copy:focus-visible, .bcs-gl-share:focus-visible { outline: 2px solid var(--accent-light, #60a5fa); outline-offset: 2px; }
+.bcs-gl-more { display: flex; justify-content: flex-end; margin-top: 8px; }
+.bcs-gl-share { height: 34px; background: rgba(255,255,255,.08); color: var(--text-primary); }
+.bcs-gl-bar { position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: rgba(255,255,255,.06); }
+.bcs-gl-bar i { display: block; height: 100%; background: linear-gradient(90deg, var(--live-red, #ef4444), var(--accent, #3b82f6)); transform-origin: left; transition: transform .2s linear; }
+.bcs-gl-burst { position: absolute; left: 22px; top: 21px; width: 0; height: 0; pointer-events: none; }
+.bcs-gl-burst i { position: absolute; width: 5px; height: 5px; margin: -2.5px; border-radius: 50%; background: hsl(var(--a), 90%, 66%); opacity: 0; animation: bcs-gl-spark .9s cubic-bezier(.2,.8,.3,1) var(--d) forwards; }
+@keyframes bcs-gl-spark { 0% { opacity: 1; transform: rotate(var(--a)) translateX(0); } 100% { opacity: 0; transform: rotate(var(--a)) translateX(48px) scale(.4); } }
+@media (prefers-reduced-motion: reduce) { .bcs-livecard, .bcs-gl-dot::after, .bcs-gl-burst i { animation: none !important; } .bcs-gl-burst { display: none; } }
+/* A phone: the link on its own line, whole, and Copy the width of the card (an easy tap while holding the phone). */
+@media (max-width: 480px) {
+    .bcs-livecard .bcs-gl-link { flex-wrap: wrap; padding: 10px; gap: 10px; }
+    .bcs-livecard .bcs-gl-link code { flex-basis: 100%; white-space: normal; overflow-wrap: anywhere; text-align: center; font-size: 1.05rem; }
+    .bcs-livecard .bcs-gl-copy { flex: 1; justify-content: center; height: 46px; }
+}

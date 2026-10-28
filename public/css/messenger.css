@@ -922,3 +922,8 @@
     background: var(--bg-tertiary);
     color: var(--text-primary);
 }
+
+/* Opened from the navbar's messages button (Shared 4.25): under the bar on the right; on a phone the whole screen. */
+.messenger-panel.from-bar { top: calc(var(--navbar-h, 56px) + 8px); right: 12px; left: auto; bottom: auto; max-height: calc(100vh - var(--navbar-h, 56px) - 24px); max-height: calc(100dvh - var(--navbar-h, 56px) - 24px); }
+@media (max-width: 480px) { .messenger-panel.from-bar { top: 0; right: 0; bottom: 0; left: 0; max-height: none; height: 100%; height: 100dvh; } }
+@media (max-width: 768px) and (min-width: 481px) { .messenger-panel.from-bar { right: 8px; } }
