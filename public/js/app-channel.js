@@ -927,9 +927,9 @@ async function loadChannelPage(username, managedStreamRef = null, legacySessionI
             }
             document.getElementById('ch-live-area').style.display = 'none';
             document.getElementById('ch-offline-area').style.display = '';
+            _channelFooter(false);
             _wireCamButton();
             _updateCamButton(null);
-            _channelFooter(false);
             _placeBelowFold();
 
             // Populate offline header
