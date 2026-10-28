@@ -33,34 +33,23 @@
         ];
     }
 
+    // The account menu (the owner, 2026-10-28: "duplicated things … could just be organized better"): Live's own rows in
+    // one section, then the network's (You: account, notifications, channel, history, Vibe, admin; Display), as on every
+    // OpenVibe site. Nothing here repeats the bar: the balances are its chips (whose clicks open the inventory and the
+    // Vibes shop), Dashboard is also under Go Live, and other accounts and "Add another account" sit at the menu's top.
     function menu(user) {
-        const isAdmin = !!(user && (user.role === 'admin' || (user.capabilities && user.capabilities.is_owner)));
         const act = (fn, ...a) => (e) => { if (e && e.preventDefault) e.preventDefault(); call(fn, ...a); return false; };
         return {
-            label: 'Live', defaults: false,
-            headerChips: [
-                { id: 'coins', icon: 'fa-coins', tone: 'gold', value: '0', title: 'OpenCoins', onClick: () => call('openCosmeticsModal') },
-                { id: 'vibes', icon: 'fa-wallet', tone: 'green', value: '0', title: 'Vibes balance', onClick: () => call('showModal', 'buy-funds') },
-            ],
+            label: 'Live',
             sections: [
-                { id: 'you', label: 'You', items: [
-                    { id: 'dash', label: 'My Dashboard', icon: 'fa-gauge-high', href: '/dashboard' },
-                    { id: 'channel', label: 'My Channel', icon: 'fa-user', href: user ? (typeof channelPath === 'function' ? channelPath(user.username) : '/@' + user.username) : '#' },
+                { id: 'live', label: 'Live', items: [
+                    { id: 'dash', label: 'Dashboard', icon: 'fa-gauge-high', href: '/dashboard' },
                     { id: 'setup', label: 'Streamer setup', icon: 'fa-list-check', onClick: act('openSetupHub') },
-                    { id: 'account', label: 'My Account', icon: 'fa-id-card', href: 'https://openvibe.network/my' },
-                    { id: 'adminpanel', label: 'Admin Panel', icon: 'fa-shield-halved', href: 'https://openvibe.network/admin', hidden: !isAdmin },
-                ] },
-                { id: 'live', label: 'On Live', items: [
-                    { id: 'support', label: 'Support Us', icon: 'fa-coins', onClick: act('showModal', 'buy-funds') },
                     { id: 'cosmetics', label: 'Cosmetics', icon: 'fa-shirt', onClick: act('openCosmeticsModal') },
-                    { id: 'shot', label: 'Screenshot', icon: 'fa-camera', onClick: act('captureScreenshot') },
-                    { id: 'docs', label: 'Documentation', icon: 'fa-book', href: '/documentation' },
+                    { id: 'shot', label: 'Screenshot this page', icon: 'fa-camera', onClick: act('captureScreenshot') },
+                    { id: 'docs', label: 'Help & docs', icon: 'fa-book', href: '/documentation' },
+                    { id: 'guest', label: 'Browse as guest', icon: 'fa-user-secret', onClick: act('browseAsGuest'), hidden: !user },
                 ] },
-            ],
-            after: [
-                { id: 'history', label: 'History', icon: 'fa-clock-rotate-left', href: 'https://openvibe.network/my#history' },
-                { id: 'switch', label: 'Switch account', icon: 'fa-people-arrows', onClick: act('switchAccount') },
-                { id: 'guest', label: 'Browse as guest', icon: 'fa-user-secret', onClick: act('browseAsGuest') },
             ],
         };
     }
