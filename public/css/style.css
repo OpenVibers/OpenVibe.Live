@@ -1837,6 +1837,16 @@ a.pulse-card:hover { border-color: var(--accent); transform: translateY(-2px); }
         linear-gradient(180deg, rgba(5, 8, 14, 0.95), rgba(7, 11, 18, 0.86));
 }
 
+/* The shared loader (Shared 4.21 loading.js, stream-player.js _renderSharedLoader) fills the player edge to edge with
+   the stream's own picture: the old card's padding, gradient and blurred ::before step aside. */
+.video-placeholder.ovld-host { padding: 0; background: #000; }
+.video-placeholder.ovld-host::before, .video-placeholder.ovld-host::after { display: none; }
+.video-placeholder.ovld-host > .ovld { position: absolute; inset: 0; z-index: 1; }
+/* An ended stream: the same overlay, still. */
+.ovld.is-still .ovld-ring::before, .ovld.is-still .ovld-ring::after { animation: none; }
+.ovld.is-still .ovld-ring::before { opacity: .3; }
+.ovld.is-still .ovld-line { display: none; }
+
 /* ── Themed blurred-thumbnail loading screen ─────────────────── */
 .video-placeholder.has-thumb::before {
     inset: 0;
@@ -9942,3 +9952,11 @@ body.ov-nav-overlay .openvibe-navbar.navbar.ovnav-top { background: transparent;
 .openvibe-navbar.navbar .openvibe-navbar-avatar { width: 36px; height: 36px; border-radius: 50%; cursor: pointer; object-fit: cover; box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 50%, transparent); }
 /* The site switcher stays beside the logo on a phone: the two balance chips fold into one there (Shared 4.16.0). */
 @media (max-width: 560px) { .openvibe-navbar.navbar .ovnav-chip { padding: 0 8px; } }
+
+/* Phones with the app bar (Shared 4.20, js/ov-navbar-live.js): Chat is a tab, so the global chat button steps aside; the
+   messages button sits above the bar and the page keeps room for it (it covered a channel's followers and buttons). */
+@media (max-width: 760px) {
+    html.ov-has-appbar #floating-chat-fab { display: none !important; }
+    html.ov-has-appbar .messenger-toggle { bottom: calc(var(--ovnav-appbar-h, 58px) + 14px); }
+    html.ov-has-appbar body { padding-bottom: calc(var(--ovnav-appbar-h, 58px) + 64px); }
+}

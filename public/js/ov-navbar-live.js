@@ -16,20 +16,32 @@
     const nav = () => window.OpenVibeNavbar;
     let booted = false;
 
+    // The bar's places, most used first (the owner, 2026-10-28: "move search after the Rundown and the drop-down… reanalyze
+    // the nav bars… redundant options"). Search is the navbar's magnifier now (Shared 4.21: Live's results first, then all
+    // of OpenVibe; config.search below); Admin is in the account menu (Admin Panel) and was here twice for staff.
     function links(user) {
-        const staff = !!(user && ((user.capabilities && user.capabilities.admin_panel) || (typeof hasCapability === 'function' && hasCapability('can_access_staff_console'))));
         return [
             { id: 'home', page: 'home', label: 'Home', href: '/', icon: 'fa-house' },
             // VODs, clips and pastes people made are one feed; what the AI made is the other.
             { id: 'content', page: 'content', label: 'Content', href: '/content', icon: 'fa-photo-film' },
             { id: 'moments', page: 'moments', label: 'Moments', href: '/moments', icon: 'fa-wand-magic-sparkles' },
-            { id: 'search', page: 'search', label: 'Search', href: '/search', icon: 'fa-magnifying-glass' },
             { id: 'chat', page: 'chat', label: 'Chat', href: '/chat', icon: 'fa-comments' },
             { id: 'rundown', page: 'rundown', label: 'Rundown', href: '/rundown', icon: 'fa-newspaper' },
             { id: 'broadcast', page: 'broadcast', elId: 'nav-broadcast', label: 'Go Live', href: '/broadcast', icon: 'fa-tower-broadcast', dot: false, dotId: 'nav-live-dot',
                 onClick: (e) => call('goLiveNav', e),
                 children: user ? [{ id: 'dashboard', label: 'Dashboard', href: '/dashboard', icon: 'fa-gauge-high', onClick: (e) => call('dashNav', e) }] : [] },
-            { id: 'admin', page: 'admin', label: 'Admin', href: 'https://openvibe.network/admin', icon: 'fa-shield-halved', hidden: !staff },
+        ];
+    }
+
+    // Phones: the bottom tab bar (Shared 4.20's appBar). Home, what people made, going live in the middle, chat, and the
+    // Rundown; everything else is in More (the drawer).
+    function appBar() {
+        return [
+            { id: 'home', page: 'home', label: 'Home', href: '/', icon: 'fa-house' },
+            { id: 'content', page: 'content', label: 'Videos', href: '/content', icon: 'fa-photo-film' },
+            { id: 'broadcast', page: 'broadcast', label: 'Go Live', href: '/broadcast', icon: 'fa-tower-broadcast', onClick: (e) => call('goLiveNav', e) },
+            { id: 'chat', page: 'chat', label: 'Chat', href: '/chat', icon: 'fa-comments' },
+            { id: 'rundown', page: 'rundown', label: 'Rundown', href: '/rundown', icon: 'fa-newspaper' },
         ];
     }
 
@@ -62,7 +74,9 @@
             // this sign-in (Shared 4.13.0), which returns to the page they were on.
             loginUrl: '/api/auth/sso/login?next={path}', networkLinks: 0, history: false, silentLogin: false, fedcm: false, recent: false,
             notificationsRealtime: true,   // the bell hears new notifications over OpenVibe.Events (Shared 1.22.0)
-            links: links(user), menu: menu(user),
+            links: links(user), menu: menu(user), appBar: appBar(), adminLink: false,   // Admin Panel is in the account menu
+            // The magnifier (Shared 4.21): Live's streams, recordings and clips first, Live's own search page, then OpenVibe.
+            search: { owner: 'live', label: 'OpenVibe.Live', page: '/search' },
             chips: [
                 // On a phone the two fold into one chip (Shared 4.16.0); its panel lists them by label.
                 { id: 'coins', icon: 'fa-coins', tone: 'gold', value: '0', valueId: 'nav-coins-amount', label: 'OpenCoins', title: 'OpenCoins: click to open your inventory', onClick: () => call('openCosmeticsModal') },

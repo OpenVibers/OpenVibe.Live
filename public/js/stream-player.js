@@ -471,6 +471,35 @@ function _ensurePlayerLoaderStructure(placeholder) {
     return placeholder._playerLoaderEls;
 }
 
+// The network's one loading look (Shared 4.21 loading.js; the owner, 2026-10-28, of the old card: "old and outdated…
+// consider the latest frames of the stream… no borders and wasted space and padding… minimalistic… a better animation").
+// It covers the player edge to edge: the stream's own thumbnail blurred behind, the phase in a word with one line under
+// it, a thin line that fills step by step; help (Try again, Copy details) only when it is slow or fails. Live's phases,
+// timers and diagnostics are unchanged; without loading.js the card above is still drawn.
+function _renderSharedLoader(placeholder, state, progress, briefCopy, showExpanded) {
+    let l = placeholder._ovLoader;
+    if (!l || !placeholder.contains(l.element)) {
+        placeholder.textContent = '';
+        placeholder._playerLoaderEls = null;
+        placeholder.classList.add('ovld-host');
+        l = placeholder._ovLoader = window.OpenVibeLoading.mount(placeholder, { poster: placeholder.dataset.thumb || '', steps: progress.totalSteps });
+    }
+    const actions = [
+        { label: 'Try again', onClick: () => reloadPlayerPage() },
+        { label: 'Copy details', onClick: () => copyPlayerDiagnostics() },
+    ];
+    if (state.severity === 'error') {
+        l.fail({ title: state.title || 'Playback stopped', detail: state.detail || briefCopy, actions });
+        return;
+    }
+    // An ended stream is not loading: the same picture and words, still (no ring turning, no line filling).
+    const ended = state.phase === 'ended';
+    l.element.classList.toggle('is-still', ended);
+    l.update({ label: ended ? (state.title || 'Stream has ended') : _getPlayerPhaseDisplayLabel(state.phase), sub: ended ? (state.detail || briefCopy) : briefCopy,
+        ...(ended ? {} : { step: progress.currentIndex, steps: progress.totalSteps }) });
+    if (showExpanded && !ended) l.slow({ hint: state.hint || state.detail || 'This is taking longer than usual.', actions });
+}
+
 function _animatePlayerLoaderStatus(shell) {
     if (!shell) return;
     shell.classList.remove('is-phase-changing');
@@ -511,6 +540,10 @@ function _renderPlayerPlaceholder() {
     placeholder.dataset.phase = state.phase || 'signal';
     placeholder.dataset.severity = state.severity || 'info';
 
+    if (window.OpenVibeLoading) {
+        _renderSharedLoader(placeholder, state, progress, briefCopy, showExpanded);
+        return;
+    }
     const els = _ensurePlayerLoaderStructure(placeholder);
     if (placeholder.dataset.renderSignature !== renderSignature) {
         _animatePlayerLoaderStatus(els.shell);
@@ -861,10 +894,13 @@ function _applyLoaderThumb(stream) {
     const thumb = stream && stream.thumbnail_url;
     // Reset any previous stream's theming.
     placeholder.classList.remove('has-thumb');
-    ['--loader-thumb', '--loader-a', '--loader-c'].forEach(v => placeholder.style.removeProperty(v));
+    ['--loader-thumb', '--loader-a', '--loader-c', '--accent-light'].forEach(v => placeholder.style.removeProperty(v));
+    delete placeholder.dataset.thumb;
     if (!thumb) return;
     placeholder.style.setProperty('--loader-thumb', `url("${thumb}")`);
     placeholder.classList.add('has-thumb');
+    placeholder.dataset.thumb = thumb;   // the shared loader's picture (loading.js), now or when it mounts
+    if (placeholder._ovLoader && placeholder.contains(placeholder._ovLoader.element)) placeholder._ovLoader.update({ poster: thumb });
     try {
         const img = new Image();
         img.crossOrigin = 'anonymous';
@@ -904,6 +940,7 @@ function _applyLoaderThumb(stream) {
                     const c = cols[1] || cols[0];
                     const mid = { r: (a.r + c.r) / 2, g: (a.g + c.g) / 2, b: (a.b + c.b) / 2 };
                     placeholder.style.setProperty('--loader-a', rgb(a));
+                    placeholder.style.setProperty('--accent-light', rgb(a));   // the shared loader's ring and line take the stream's colour
                     placeholder.style.setProperty('--loader-b', rgb(mid));
                     placeholder.style.setProperty('--loader-c', rgb(c));
                 }
