@@ -905,6 +905,9 @@ function startSloganCountdown(nextAt) {
 // a first-time visitor (within 30 min of their first visit) so they're more likely to read it.
 function _homeAboutDefaultExpanded() {
     try {
+        // Phones always start collapsed (2026-10-29): opened, the section is 2.7 screens of reading between the
+        // go-live button and the network, and "See what makes it different" sits right under that button.
+        if (window.matchMedia('(max-width: 759px)').matches) return false;
         // Once they've scrolled past it (i.e. actually seen it), always collapse by default.
         if (localStorage.getItem('openvibe_about_seen') === '1') return false;
         const KEY = 'openvibe_first_visit';

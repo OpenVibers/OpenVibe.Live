@@ -132,6 +132,17 @@ body.egg-rainbow { animation: eggRainbow 2.6s linear; }
     .network-hub-grid { grid-template-columns: 1fr; gap: 8px; }
     .network-hub { padding: 16px 10px; }
 }
+/* Phones (2026-10-29): the fourteen services are two rows that scroll sideways, not a screen and a half of tiles;
+   every one is still a tap away, and the footer lists them too. */
+@media (max-width: 599px) {
+    .network-hub-grid {
+        grid-template-columns: none; grid-template-rows: repeat(2, auto); grid-auto-flow: column; grid-auto-columns: 66%;
+        overflow-x: auto; scroll-snap-type: x mandatory; scroll-padding-inline: 12px; scrollbar-width: none;
+        margin: 0 -12px; padding: 0 12px 4px;
+    }
+    .network-hub-grid::-webkit-scrollbar { display: none; }
+    .network-hub-grid > .network-card { scroll-snap-align: start; min-width: 0; }
+}
 .stream-card-nsfw-blur img,
 .stream-card-nsfw-blur .thumb-placeholder {
     filter: blur(16px);
