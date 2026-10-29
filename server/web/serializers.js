@@ -57,6 +57,15 @@ function publicUserProfile(u) {
         'openvibe_coins_balance', 'last_seen', 'is_owner']);
 }
 
+/** The watch page's Bench poll: local ownership and voter records stay private. */
+function publicBenchPoll(row) {
+    if (!row) return null;
+    const entries = typeof row.entries === 'string' ? JSON.parse(row.entries) : row.entries;
+    const voteCounts = typeof row.vote_counts === 'string' ? JSON.parse(row.vote_counts) : row.vote_counts;
+    return { round_id: row.round_id, stream_id: Number(row.stream_id), kind_id: row.kind_id, prompt: row.prompt, status: row.status,
+        closes_at: row.closes_at, entries: entries || null, vote_counts: voteCounts || null, judgement_id: row.judgement_id || null };
+}
+
 // ── Feed items (server/content/feed.js) ───────────────────────────────────────────────────────
 // Built from Media, Community and Live rows that carry far more than a card needs (file paths,
 // storage keys, owner subjects, AI state). Copied through an allow-list, so a field a source adds
@@ -110,4 +119,4 @@ function findSecrets(value, path = '$', out = []) {
     return out;
 }
 
-module.exports = { ALWAYS_SECRET, omit, publicManagedStream, publicChannel, publicStream, publicUserProfile, publicFeedItem, findSecrets };
+module.exports = { ALWAYS_SECRET, omit, publicManagedStream, publicChannel, publicStream, publicUserProfile, publicBenchPoll, publicFeedItem, findSecrets };

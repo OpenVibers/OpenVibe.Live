@@ -14,7 +14,28 @@
                 <button class="ch-tab" role="tab" aria-selected="false" data-dtab="points" onclick="switchDashTab('points', this)"><i class="fa-solid fa-star"></i> Points</button>
             </div>
 
-            <div class="ch-tab-panel dash-tab-panel active" id="dash-panel-home" role="tabpanel"><div class="dash-grid" id="dash-grid-home"></div></div>
+            <div class="ch-tab-panel dash-tab-panel active" id="dash-panel-home" role="tabpanel"><div class="dash-grid" id="dash-grid-home">
+            <section class="dash-card" id="dash-bench-stream" aria-labelledby="dash-bench-title">
+                <h3 id="dash-bench-title">Bench on stream</h3>
+                <form id="dash-bench-form">
+                    <label for="dash-bench-kind">Kind</label>
+                    <select class="form-input" id="dash-bench-kind" name="kind" required>
+                        <option value="design.page">Design page</option><option value="design.component">Design component</option>
+                        <option value="meme.caption">Meme caption</option><option value="chat.reply">Chat reply</option>
+                        <option value="games.fun">Games fun</option><option value="vision.pair">Vision pair</option>
+                        <option value="codes.review">Codes review</option><option value="surf.desk">Surf desk</option>
+                        <option value="speech.tts">Speech TTS</option><option value="translate.ja">Translate Japanese</option>
+                        <option value="search.answer">Search answer</option>
+                    </select>
+                    <label for="dash-bench-prompt">Prompt</label>
+                    <textarea class="form-input" id="dash-bench-prompt" name="prompt" maxlength="4000" required></textarea>
+                    <label for="dash-bench-duration">Vote time (seconds)</label>
+                    <input class="form-input" id="dash-bench-duration" name="duration" type="number" min="15" max="600" value="60" required>
+                    <button class="btn" type="submit">Start round</button>
+                </form>
+                <p id="dash-bench-status" role="status"></p>
+            </section>
+            </div></div>
             <div class="ch-tab-panel dash-tab-panel" id="dash-panel-chatai" role="tabpanel"><div class="dash-grid" id="dash-grid-chatai"></div></div>
             <div class="ch-tab-panel dash-tab-panel" id="dash-panel-moderation" role="tabpanel"><div class="dash-grid" id="dash-grid-moderation"></div></div>
             <div class="ch-tab-panel dash-tab-panel" id="dash-panel-controls" role="tabpanel"><div class="dash-grid" id="dash-grid-controls"></div></div>
