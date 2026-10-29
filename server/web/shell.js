@@ -1,4 +1,5 @@
 'use strict';
+const { setRobotsHeader } = require('./robots-header');
 
 /**
  * sendShell for the SPA fallback (server/web/page-status.js spaFallback): the page shell from seo.shellHtml for a URL,
@@ -15,6 +16,7 @@ function createSendShell({ shellHtml, sendDocument, assets }) {
         try { html = shellHtml ? await shellHtml(urlPath, res.statusCode) : null; } catch { html = null; }
         if (typeof html !== 'string' || !html) return sendDocument(res, 'index.html', urlPath);
         if (!res.getHeader('Cache-Control')) assets.setNoCache(res);
+        setRobotsHeader(res, html);
         try { res.setHeader('Content-Security-Policy-Report-Only', assets.cspReportOnly(html)); } catch { /* the header is optional */ }
         res.type('html').send(html);
         return true;

@@ -17,6 +17,7 @@
 'use strict';
 const seo = require('openvibe-shared/seo');
 const { esc } = seo;
+const { setRobotsHeader } = require('../web/robots-header');
 const db = require('../db/database');
 const media = require('../media-client');
 let config = null; try { config = require('../config'); } catch { /* */ }
@@ -618,8 +619,9 @@ function _authorLd(name) { return name ? { '@type': 'Person', name: clean(name, 
 // as AI-made, attributed to no person, kept out of search (noindex,follow: the page still passes
 // its links on) and made canonical to its source: the VOD at the moment it came from, when that
 // VOD is known and public. The store decides what is AI (Media's auto_generated, Community's
-// origin, the recap's own ai flag); nothing is inferred here. People's clips and pastes keep their
-// normal, indexable pages.
+// origin, the recap's own ai flag); nothing is inferred here. People's clips keep their normal,
+// indexable pages; pastes are link-shared and noindex (SEO-29), and their canonical page is
+// OpenVibe.Community's.
 const AI_ROBOTS = 'noindex,follow';
 const AI_KEYWORDS = 'AI-generated';
 const VOD_MOMENT_RE = /^\/vod\/(\d+)(?:\?t=(\d+(?:\.\d+)?))?$/;
@@ -656,8 +658,9 @@ async function _pasteMeta(slug) {
     if (!p) return null;
     if (isAiPaste(p)) return await _aiPasteMeta(p, slug);
     const isScreenshot = p.type === 'screenshot';
-    // Only public, non-NSFW, non-burn pastes are indexable.
-    const indexable = (p.visibility === 'public' || p.visibility == null) && !Number(p.is_nsfw) && !Number(p.burn_after_read);
+    // A paste is link-shared content, not a page meant to be found (SEO-29): noindex whether or
+    // not it is public. In production /p/:slug 301s to OpenVibe.Community before this runs; this
+    // keeps the answer right if the mount order ever changes.
     const author = p.display_name || p.username;
     const title = clean(p.title || (isScreenshot ? 'Screenshot' : 'Paste'), 80);
     const desc = clean(p.ai_summary || (isScreenshot ? `A screenshot shared on ${SITE_NAME}.` : String(p.content || '').slice(0, 220)) || `A paste on ${SITE_NAME}.`, 200);
@@ -676,7 +679,7 @@ async function _pasteMeta(slug) {
     });
     return {
         title: `${title} — paste | ${SITE_NAME}`, description: desc,
-        canonicalPath, image, ogType: isScreenshot ? 'article' : 'article', robots: indexable ? 'index,follow' : 'noindex,follow',
+        canonicalPath, image, ogType: isScreenshot ? 'article' : 'article', robots: 'noindex',
         jsonLd: [ld, _breadcrumb([{ name: 'Home', url: '/' }, { name: 'Pastes', url: '/pastes' }, { name: title, url: canonicalPath }])],
         snapshot,
     };
@@ -946,6 +949,7 @@ async function middleware(req, res, next) {
     // This renderer and the SPA fallback's status check share one wait on upstreams (page-status.js).
     req.ovLookupDeadlineAt = Date.now() + pageStatus.LOOKUP_DEADLINE_MS;
     const send = (html, ttl) => {
+        setRobotsHeader(res, html);
         res.set('Cache-Control', `public, max-age=${Math.max(0, Math.round(ttl / 1000))}, must-revalidate`);
         res.set('Link', seo.linkHeaderTags(abs(key), `${baseUrl()}/llms.txt`).header);
         res.set('Vary', 'Accept');

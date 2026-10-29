@@ -126,9 +126,9 @@ console.log('AI Moments pages');
         assertNoPerson(m, 'live AI paste');
     });
 
-    await check("a person's paste stays indexable and credited", async () => {
+    await check("a person's paste is still credited but noindex (link-shared, canonical at Community)", async () => {
         const m = await seo._pageMeta('/p/human');
-        assert.strictEqual(m.robots, 'index,follow');
+        assert.strictEqual(m.robots, 'noindex');
         assert.strictEqual(m.canonicalPath, '/p/human');
         assert.deepStrictEqual(mainLd(m).author, { '@type': 'Person', name: 'Bob' });
     });
