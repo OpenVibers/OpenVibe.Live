@@ -142,6 +142,10 @@ body.egg-rainbow { animation: eggRainbow 2.6s linear; }
     }
     .network-hub-grid::-webkit-scrollbar { display: none; }
     .network-hub-grid > .network-card { scroll-snap-align: start; min-width: 0; }
+    /* The pulse (goals, the latest activity, the week's leaders) is one row that scrolls sideways, not five stacked cards. */
+    .pulse-grid { display: flex; flex-wrap: nowrap; overflow-x: auto; scroll-snap-type: x mandatory; scroll-padding-inline: 16px; scrollbar-width: none; gap: 10px; margin-left: -16px; margin-right: -16px; padding: 0 16px 4px; }
+    .pulse-grid::-webkit-scrollbar { display: none; }
+    .pulse-grid > .pulse-card { flex: 0 0 78%; min-width: 0; scroll-snap-align: start; }
 }
 .stream-card-nsfw-blur img,
 .stream-card-nsfw-blur .thumb-placeholder {
