@@ -497,8 +497,9 @@ router.get('/:id/context', optionalAuth, async (req, res) => {
 
         const hit = _ctxCache.get(id);
         if (hit && Date.now() - hit.at < 120000) {
-            res.set('Cache-Control', cacheHeader);
             const priv = await privateStreamClips(req, vod);
+            // An answer with someone's private clips in it is theirs alone: never a shareable cache entry.
+            res.set('Cache-Control', priv.length ? cache.htmlHeaders({ private: true }) : cacheHeader);
             return res.json(priv.length ? { ...hit.data, clips: (hit.data.clips || []).concat(priv) } : hit.data);
         }
         const stream = vod.stream_id ? await db.getStreamById(vod.stream_id) : null;

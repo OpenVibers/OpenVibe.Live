@@ -234,13 +234,16 @@ const ok = (name) => { pass++; console.log('  ok -', name); };
 // ── A private VOD's context must be authorised before the cache is consulted ──
 {
     const src = fs.readFileSync(path.join(ROOT, 'server/media-proxy/vods.js'), 'utf8');
-    const h = src.match(/router\.get\('\/:id\/context'[\s\S]*?res\.json\(data\);/);
+    const h = src.match(/router\.get\('\/:id\/context'[\s\S]*?\} catch \(err\) \{/);
     assert(h, 'the VOD context route should exist');
     const checkAt = h[0].indexOf('access.canView(req.user, vod)');
     const cacheAt = h[0].indexOf('_ctxCache.get(id)');
     assert(checkAt > 0 && cacheAt > 0, 'both the visibility check and the cache read should be present');
     assert(checkAt < cacheAt, 'the visibility check must run before the cache is read');
     assert(/cache\.htmlHeaders\(\{ private: true \}\)/.test(h[0]) && require('openvibe-shared/cache-policy').htmlHeaders({ private: true }) === 'private, no-store', 'a private VOD context must not be sent with a shareable Cache-Control');
+    // A public VOD's answer that carries the viewer's private clips (the streamer, staff) is private too, from the cache or not.
+    const priv = h[0].match(/privateStreamClips\(req, vod\)[\s\S]*?res\.set\('Cache-Control', ([^;]+)\);/g) || [];
+    assert(priv.length === 2 && priv.every((x) => /\.length \? cache\.htmlHeaders\(\{ private: true \}\)/.test(x)), 'an answer with private clips is never shareable (cache hit and miss)');
     ok('private VOD context is authorised before the cache, and never shareable');
 }
 
