@@ -132,6 +132,13 @@
     .tour-node-text small { display: none; }
     .tour-core { max-width: 340px; }
 }
+/* Phones (2026-10-29): the feature chips are two rows that scroll sideways (all of them still there), not a 320 px
+   block of wrapped labels between the diagram and the sign-up panel. */
+@media (max-width: 599px) {
+    .tour-features { display: grid; grid-template-rows: repeat(2, auto); grid-auto-flow: column; grid-auto-columns: max-content; justify-content: start;
+        overflow-x: auto; scrollbar-width: none; margin-left: -14px; margin-right: -14px; padding: 0 14px 2px; scroll-padding-inline: 14px; }
+    .tour-features::-webkit-scrollbar { display: none; }
+}
 @media (prefers-reduced-motion: reduce) { .tour-wire, .tour-node-dot, .tour-core-ring, .tour-feat, .tour-core::before, .tour-core b, .tour-core-logo { animation: none; } .tour-feat { opacity: 1; transform: none; } }
 .rs-lite .tour::before, .rs-lite .tour-core-ring { display: none; }
 /* Phones keep the glow but not the repainting gradients. */
