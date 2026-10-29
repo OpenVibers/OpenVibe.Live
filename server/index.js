@@ -794,6 +794,7 @@ app.use('/api/today', require('./today/routes').createTodayRoutes());   // a cha
 app.use('/api/recap', require('./recap/routes'));            // after-show reports (docs/recap.md)
 app.use('/api/social', require('./social/routes').router);   // channel social links and their previews (server/social/)
 app.get('/embed/x-timeline', require('./social/routes').xTimelinePage);
+app.use('/api/cam', require('./cam/routes'));                // the cam button: a viewer takes a still of a live stream
 app.use('/api/comments', commentRoutes);
 app.use('/api/admin/openre', require('./openre/routes'));
 app.use('/api/admin', adminRoutes);

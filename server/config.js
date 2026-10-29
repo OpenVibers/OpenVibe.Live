@@ -185,6 +185,9 @@ function buildConfig(registryValues) {
             publicUrl: process.env.MEDIA_PUBLIC_URL || 'https://openvibe.media',
             appId: process.env.MEDIA_APP_ID || 'live',
         },
+        cam: {
+            url: process.env.CAM_URL || 'https://openvibe.cam',
+        },
         turn: {
             url: turnUrl,
             username: process.env.TURN_USERNAME || '',

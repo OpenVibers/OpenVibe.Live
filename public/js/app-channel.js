@@ -928,6 +928,8 @@ async function loadChannelPage(username, managedStreamRef = null, legacySessionI
             document.getElementById('ch-live-area').style.display = 'none';
             document.getElementById('ch-offline-area').style.display = '';
             _channelFooter(false);
+            _wireCamButton();
+            _updateCamButton(null);
             _placeBelowFold();
 
             // Populate offline header
@@ -1687,6 +1689,105 @@ function switchToLiveStream(username, streamId, btn) {
       .finally(() => { if (myToken === _streamSwitchToken) showStreamSwitchOverlay(false); });
 }
 
+// ── Cam button: a signed-in viewer takes a still of the live stream ─────────
+// The result is an overlay over the picture (not a block below it), so a phone viewer can
+// keep watching while the still is open (controls-keep-video-in-view).
+let _camBusy = false;
+
+function _camSlotFor(stream) {
+    if (!stream) return null;
+    return stream.managed_stream_slug || (stream.managed_stream_id != null ? String(stream.managed_stream_id) : null);
+}
+
+function _updateCamButton(stream) {
+    const btn = document.getElementById('btn-cam');
+    if (!btn) return;
+    const signedIn = !!(typeof currentUser !== 'undefined' && currentUser);
+    const slot = _camSlotFor(stream);
+    btn.style.display = (signedIn && stream && stream.is_live && slot) ? '' : 'none';
+}
+
+window.addEventListener('openvibe-auth-changed', () => {
+    const stream = (typeof currentStreamData !== 'undefined' && currentStreamData) || null;
+    _updateCamButton(stream && stream.is_live ? stream : null);
+});
+
+function _camShowPanel(html) {
+    const panel = document.getElementById('cam-still-panel');
+    if (!panel) return;
+    document.getElementById('cam-still-body').innerHTML = html;
+    const stats = document.getElementById('stream-stats-panel');
+    if (stats) stats.style.display = 'none';
+    panel.style.display = '';
+}
+
+function _camStillImageAndLink(data) {
+    const still = data && data.still;
+    const share = data && data.share;
+    const img = still && (still.pics_direct || still.pics_url);
+    const url = (share && share.url) || (still && still.pics_url);
+    return { img, url, share };
+}
+
+async function takeCamStill() {
+    if (_camBusy) return;
+    const stream = (typeof currentStreamData !== 'undefined' && currentStreamData) || null;
+    if (!currentUser) return showModal('login');
+    if (!stream || !stream.is_live) return toast('The stream is offline', 'error');
+    const slot = _camSlotFor(stream);
+    if (!slot) return toast('This stream has no cam slot', 'error');
+
+    _camBusy = true;
+    const btn = document.getElementById('btn-cam');
+    if (btn) btn.disabled = true;
+    _camShowPanel('<p class="muted">Taking a still…</p>');
+    try {
+        const data = await api('/cam/stills', { method: 'POST', body: { slot, stream_id: stream.id } });
+        const { img, url, share } = _camStillImageAndLink(data);
+        if (!img && !url) {
+            _camShowPanel('<p class="muted">No still came back.</p>');
+            return;
+        }
+        const imgHtml = img ? `<img src="${esc(img)}" alt="Your still from the stream" loading="lazy">` : '';
+        const linkHtml = url ? `<a class="cam-still-link" href="${esc(url)}" target="_blank" rel="noopener">Open still</a>` : '';
+        const postHtml = (share && share.text) ? '<button class="btn btn-small btn-outline" id="btn-cam-post">Post to chat</button>' : '';
+        _camShowPanel(`${imgHtml}<div class="cam-still-actions">${linkHtml}${postHtml}</div>`);
+        const postBtn = document.getElementById('btn-cam-post');
+        if (postBtn && share && share.text) {
+            postBtn.addEventListener('click', async () => {
+                postBtn.disabled = true;
+                try {
+                    await api('/cam/post-share', { method: 'POST', body: { stream_id: stream.id, text: share.text } });
+                    postBtn.textContent = 'Posted to chat';
+                } catch (err) {
+                    toast((err && err.message) || 'Could not post to chat', 'error');
+                    postBtn.disabled = false;
+                }
+            });
+        }
+    } catch (err) {
+        const msg = (err && err.message) || 'Could not take a still';
+        _camShowPanel(`<p class="muted">${esc(msg)}</p>`);
+        toast(msg, 'error');
+    } finally {
+        _camBusy = false;
+        if (btn) btn.disabled = false;
+    }
+}
+
+function _wireCamButton() {
+    const btn = document.getElementById('btn-cam');
+    if (btn && !btn.dataset.wired) {
+        btn.dataset.wired = '1';
+        btn.addEventListener('click', takeCamStill);
+    }
+    const close = document.getElementById('btn-cam-close');
+    if (close && !close.dataset.wired) {
+        close.dataset.wired = '1';
+        close.addEventListener('click', () => { document.getElementById('cam-still-panel').style.display = 'none'; });
+    }
+}
+
 function activateChannelStream(stream) {
     // NSFW age gate — block player init until viewer confirms
     if (stream.is_nsfw && !sessionStorage.getItem('nsfw-ok-stream-' + stream.id)) {
@@ -1788,6 +1889,10 @@ function activateChannelStream(stream) {
 
     // Start polling for stream status changes
     startStreamStatusPoll(stream);
+
+    // The cam button appears only on a live slot for a signed-in viewer.
+    _wireCamButton();
+    _updateCamButton(stream);
 }
 const STREAM_POLL_INTERVAL = 15000; // 15 seconds
 // After the player reports the stream ended (or we otherwise know the channel just
