@@ -479,6 +479,24 @@ function recentChatText(streamId, sinceSec = 120, limit = 40) {
     }, () => []);
 }
 
+/** How many different people wrote in a stream's chat in the last `sinceSec` seconds (the auto-clipper's "did a crowd
+ *  react": a public clip needs ≥ 3). Counted by user id, else name; null when Chat does not answer. Cached like the rest. */
+function recentChatters(streamId, sinceSec = 30, limit = 200) {
+    const id = Number(streamId) || 0;
+    if (!id) return Promise.resolve(null);
+    const key = `rcp:${id}:${sinceSec}:${limit}`;
+    return load(key, async () => {
+        const out = await client.readMessages({ stream_id: id, limit });
+        if (!out || !Array.isArray(out.messages)) throw unavailable('recent messages');
+        const floor = Date.now() - Math.max(1, sinceSec) * 1000;
+        const people = new Set(out.messages
+            .filter((m) => m.message && Date.parse(String(m.timestamp).replace(' ', 'T') + 'Z') >= floor)
+            .map((m) => (m.user_id != null ? `u${m.user_id}` : m.username ? `n${String(m.username).toLowerCase()}` : null))
+            .filter(Boolean));
+        return people.size;
+    }, () => null);
+}
+
 /** The busiest `bucketSec` time-buckets of a stream between `sinceMs` and `untilMs` (default now), as offsets from
  *  `sinceMs`: [{ offset, count }]. Chat answers at most 10,000 buckets, so a stream that ended gives its end: up to
  *  now, a stream from two months ago asked for 184,000 and got a 400 (2026-10-23). */
@@ -735,7 +753,7 @@ module.exports = {
     siteStats, siteStatsPeek, topChatters, homeSeries, homeSeriesPeek,
     windowStats, windowStatsPeek, streamStats, streamStatsPeek, channelMaxId, channelMaxIdPeek, userMessageCountPeek,
     messageById, channelMessages, channelMessagesPeek, userHistory, relayHistory, channelSamples, searchMessages,
-    liveChatBuckets, recentChatText, spikeOffsets, firstChat, firstChatPeek,
+    liveChatBuckets, recentChatText, recentChatters, spikeOffsets, firstChat, firstChatPeek,
     pendingIp, relayUsers, relayUser, ttsOverride, ttsOverridePeek, isRelayUserHidden,
     soundCount, soundByCommand, soundByCommandPeek, dmBlocked, pendingSounds, recordSoundAsset, invalidate,
     _reset, _age, _size, _cacheMax, CACHE_TTL_MS, CACHE_KEEP_MS,

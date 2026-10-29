@@ -29,6 +29,21 @@ const { trim } = require('../server/ai/clip-trim');
     assert.strictEqual(music.parts.sound, 0, 'music and speech are not a moment by themselves');
     assert.strictEqual(score({ spike: { peak: 20, avg: 5 }, ai: { clip: true } }).parts.breadth, score({ spike: { peak: 20, avg: 5 }, ai: { clip: true } }).parts.spike, 'unknown chatters follow the spike');
     assert.strictEqual(score().verdict, 'skip', 'nothing is nothing');
+
+    // Calibrated by the C01 audit: evidence first, public only from the reacted bucket, every cut says its bucket.
+    const yesOnly = score({ spike: { peak: 9, avg: 4 }, chatters: 6, sounds: [{ label: 'Laughter', confidence: 0.4 }], speechWords: 12, ai: { clip: true } });
+    assert.strictEqual(yesOnly.verdict, 'skip', `the AI's yes alone keeps nothing (${JSON.stringify(yesOnly)})`);
+    assert.ok(yesOnly.reasons.some((r) => /nothing but the AI/.test(r)) && yesOnly.evidence === false);
+    const loud = score({ spike: { peak: 9, avg: 4 }, chatters: 6, sounds: [{ label: 'Explosion', confidence: 0.9 }], speechWords: 0, ai: { clip: true } });
+    assert.ok(loud.evidence && loud.verdict !== 'skip', 'a strong sound is evidence on its own');
+    const unknownCrowd = score({ spike: { peak: 34, avg: 5 }, sounds: [{ label: 'Laughter', confidence: 0.9 }], speechWords: 35, ai: { clip: true } });
+    assert.strictEqual(unknownCrowd.verdict, 'unlisted', 'without knowing how many reacted, never public');
+    assert.ok(unknownCrowd.reasons.some((r) => /how many people reacted is unknown/.test(r)));
+    const fewPeople = score({ spike: { peak: 34, avg: 5 }, chatters: 2, sounds: [{ label: 'Laughter', confidence: 0.9 }], speechWords: 35, ai: { clip: true } });
+    assert.strictEqual(fewPeople.verdict, 'unlisted', 'two excited people are not a crowd');
+    assert.strictEqual(strong.bucket, 'D');
+    assert.deepStrictEqual([score({ spike: { peak: 0 } }).bucket, score({ spike: { peak: 4 } }).bucket, score({ spike: { peak: 8 }, chatters: 9 }).bucket, score({ spike: { peak: 20 }, chatters: 2 }).bucket], ['A', 'B', 'C', 'C']);
+    assert.strictEqual(BARS.public, 0.7);
 }
 
 // ── Trimming ──

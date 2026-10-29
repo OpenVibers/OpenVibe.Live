@@ -152,7 +152,8 @@ async function _checkLiveStream(stream) {
         const speech = _speechNear(verdict.transcript, streamSec);
         // The score: no clip beats a bad clip; a fair one is kept unlisted for the streamer; a clear one is public.
         const near = _speechNear(verdict.transcript, streamSec, 20);
-        const rated = clipScore.score({ spike: { peak: peak.count, avg }, sounds: verdict.sounds, speechWords: near ? near.split(/\s+/).length : 0, ai: { clip: verdict.clip } });
+        const chatters = await chatReads.recentChatters(streamId, BUCKET_SEC * 2).catch(() => null);
+        const rated = clipScore.score({ spike: { peak: peak.count, avg }, chatters, sounds: verdict.sounds, speechWords: near ? near.split(/\s+/).length : 0, ai: { clip: verdict.clip } });
         if (rated.verdict === 'skip') { console.log(`[AutoClip] stream ${streamId}: skipped a weak moment (score ${rated.score}${rated.reasons.length ? `: ${rated.reasons.join('; ')}` : ''})`); return; }
         const why = await registry.usedReason({ vod_id: rec.vodId, stream_id: streamId, offset: momentOffset, desc: verdict.desc, title, speech });
         if (why) { console.log(`[AutoClip] stream ${streamId}: ${why}`); return; }
@@ -169,7 +170,7 @@ async function _checkLiveStream(stream) {
         if (clip) {
             // deduplicated: Media handed back a clip someone already cut of this window. It stays in
             // the log for the caps, but it is theirs, not the AI's (syncAutoClipFlags skips it).
-            await _logClip({ stream_id: streamId, vod_id: rec.vodId, start_time: clipStart, title, clip_id: clip.id, dedup: !!clip.deduplicated || undefined, desc: verdict.desc || '', speech, sig: _sceneSig(verdict.desc || title), score: rated.score, visibility: rated.verdict === 'public' ? 'public' : 'unlisted' });
+            await _logClip({ stream_id: streamId, vod_id: rec.vodId, start_time: clipStart, title, clip_id: clip.id, dedup: !!clip.deduplicated || undefined, desc: verdict.desc || '', speech, sig: _sceneSig(verdict.desc || title), score: rated.score, visibility: rated.verdict === 'public' ? 'public' : 'unlisted', bucket: rated.bucket, peak: peak.count, chatters: chatters == null ? undefined : chatters });
             console.log(`[AutoClip] LIVE clip for stream ${streamId} @${Math.round(momentOffset)}s ("${title}") — spike ${peak.count} msgs, score ${rated.score} → ${rated.verdict}${cut.snapped ? ', on sentences' : ''}`);
         }
     } catch (e) {
