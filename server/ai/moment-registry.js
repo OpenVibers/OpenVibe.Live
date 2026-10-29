@@ -14,6 +14,7 @@
 'use strict';
 
 const db = require('../db/database');
+const dedupe = require('./clip-dedupe');
 
 const KEY = 'ai_used_moments';
 const MAX = 800;
@@ -39,26 +40,58 @@ async function _importLegacy() {
     return out.slice(0, MAX);
 }
 
-/** Coarse scene signature — the first five significant words of a description/title. */
+/** Coarse scene signature — the first five significant tokens of a description/title. */
 function sig(text) {
-    return String(text || '').toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim().split(' ').filter(Boolean).slice(0, 5).join(' ');
+    return dedupe.shortSignature(text, 5);
 }
 
-async function record({ kind, vod_id = null, stream_id = null, offset = null, sig: s = null, title = null, desc = null }) {
+/** A caller's frame embedding, kept only when it is a usable finite vector. */
+function _embedding(v) {
+    if (!Array.isArray(v) || !v.length || v.length > 1024) return null;
+    const out = v.map(Number);
+    return out.every(Number.isFinite) ? out : null;
+}
+
+async function record({ kind, vod_id = null, stream_id = null, offset = null, sig: s = null, title = null, desc = null, speech = null, embedding = null }) {
     const list = await _load();
-    list.unshift({ kind: kind || 'moment', vod_id: vod_id || null, stream_id: stream_id || null, offset: offset == null ? null : Math.floor(offset), sig: s || sig(desc || title), title: title ? String(title).slice(0, 120) : null, ts: Date.now() });
+    const scene = dedupe.normalize(desc || title);
+    list.unshift({
+        kind: kind || 'moment', vod_id: vod_id || null, stream_id: stream_id || null,
+        offset: offset == null ? null : Math.floor(offset),
+        sig: s || sig(desc || title),
+        // Full normalized scene + what was said, so a re-worded description still matches and a
+        // static webcam with a NEW conversation does not. Legacy entries keep only `sig`.
+        scene: scene ? scene.slice(0, 600) : null,
+        speech: speech ? dedupe.normalize(speech).slice(0, 600) : null,
+        // Optional frame embedding: the same footage in another upload scores near 1.
+        embedding: _embedding(embedding),
+        title: title ? String(title).slice(0, 120) : null, ts: Date.now(),
+    });
     await _save(list);
 }
 
 /** Why a moment is blocked, or null when it is free. */
-async function usedReason({ vod_id = null, stream_id = null, offset = null, sig: s = null, desc = null, title = null } = {}, { gapSec = GAP_SEC } = {}) {
+async function usedReason({ vod_id = null, stream_id = null, offset = null, sig: s = null, desc = null, title = null, speech = null, embedding = null } = {}, { gapSec = GAP_SEC } = {}) {
     const now = Date.now();
     const scene = s || sig(desc || title);
+    const full = dedupe.normalize(desc || title);
+    const said = dedupe.normalize(speech);
+    const emb = _embedding(embedding);
     for (const e of await _load()) {
         const age = now - (e.ts || 0);
         if (age > OFFSET_TTL_MS) continue;
         if (offset != null && e.offset != null && ((vod_id && e.vod_id === vod_id) || (stream_id && e.stream_id === stream_id)) && Math.abs(e.offset - offset) < gapSec) return `${e.kind} already made at ${Math.floor(e.offset)}s of this ${e.vod_id === vod_id ? 'VOD' : 'stream'}`;
-        if (scene && e.sig && e.sig === scene && age <= SIG_TTL_MS) return `same scene as a recent ${e.kind} ("${scene}")`;
+        if (age > SIG_TTL_MS) continue;
+        const shortMatch = scene && e.sig && e.sig === scene;
+        const sceneMatch = full && e.scene && dedupe.isSameScene(e.scene, full);
+        // Frame embeddings (when both sides have them) are independent evidence: the same footage
+        // is a repeat even if it was re-described or re-uploaded.
+        const visualMatch = emb && e.embedding && dedupe.isSameEmbedding(e.embedding, emb);
+        if (!shortMatch && !sceneMatch && !visualMatch) continue;
+        if (visualMatch) return `same footage as a recent ${e.kind}`;
+        // Same camera/description but a different conversation is a new moment, not a repeat.
+        if (said && e.speech && !dedupe.isSameSpeech(e.speech, said)) continue;
+        return `same scene as a recent ${e.kind} ("${scene || e.sig}")`;
     }
     return null;
 }
