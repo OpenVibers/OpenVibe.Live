@@ -306,6 +306,17 @@ async function _channelMeta(username, page = 1) {
     };
     const profile = { ...seo.jsonLd.webPage({ type: 'ProfilePage', name: `${name} (${handle})`, url: abs(canonicalPath) }), mainEntity: person };
     const ld = [profile];
+    const liveStart = liveNow && isoDate(liveNow.started_at);
+    if (page === 1 && liveNow && liveStart && !acct.banned) {
+        ld.push({
+            '@type': 'VideoObject', name: clean(liveNow.title || `${name} is streaming`, 110),
+            description: desc, url: abs(basePath), embedUrl: abs(basePath),
+            ...(liveNow.thumbnail_url ? { thumbnailUrl: [abs(liveNow.thumbnail_url)] } : {}),
+            uploadDate: liveStart, startDate: liveStart, isLiveBroadcast: true,
+            author: { '@type': 'Person', name: clean(name, 80), url: abs(basePath) },
+            creator: { '@type': 'Person', name: clean(name, 80), url: abs(basePath) },
+        });
+    }
     if (vods.length) {
         ld.push({
             '@context': 'https://schema.org', '@type': 'ItemList', name: `${name}'s videos${page > 1 ? `, page ${page}` : ''}`,
@@ -768,6 +779,10 @@ function _base() {
     return doc.html;
 }
 
+function oneGraph(nodes) {
+    return { '@context': 'https://schema.org', '@graph': nodes.map(({ '@context': _context, ...node }) => node) };
+}
+
 function _headBlock(meta) {
     const canonical = abs(meta.canonicalPath || '/');
     let tags = seo.headTags({
@@ -776,7 +791,7 @@ function _headBlock(meta) {
         // (Only when the canonical is on this site: a recording's or clip's canonical is on OpenVibe.Video.)
         alternates: canonical.startsWith(`${baseUrl()}/`) || canonical === baseUrl() ? [{ hreflang: 'en', href: canonical }, { hreflang: 'x-default', href: canonical }] : [],
         image: abs(meta.image || DEFAULT_OG_IMAGE), type: meta.ogType || 'website', siteName: SITE_NAME,
-        robots: meta.robots || 'index,follow', jsonLd: meta.jsonLd || [],
+        robots: meta.robots || 'index,follow', jsonLd: meta.jsonLd && meta.jsonLd.length ? oneGraph(meta.jsonLd) : [],
     });
     // og:url is the page itself: a shared AI clip previews as that clip, while its canonical names the source.
     if (meta.ogUrlPath) tags = tags.replace(`<meta property="og:url" content="${esc(canonical)}">`, `<meta property="og:url" content="${esc(abs(meta.ogUrlPath))}">`);
@@ -834,7 +849,8 @@ function render(meta, urlPath) {
         .replace(/\s*<meta\s+name=["']robots["'][^>]*>/ig, '')
         .replace(/\s*<link\s+rel=["']canonical["'][^>]*>/ig, '')
         .replace(/\s*<meta\s+property=["']og:[^"']*["'][^>]*>/ig, '')
-        .replace(/\s*<meta\s+name=["']twitter:[^"']*["'][^>]*>/ig, '');
+        .replace(/\s*<meta\s+name=["']twitter:[^"']*["'][^>]*>/ig, '')
+        .replace(/\s*<script type="application\/ld\+json">[\s\S]*?<\/script>/ig, '');
 
     // Insert the fresh head block just before </head>.
     html = headEnd === -1
@@ -942,14 +958,17 @@ async function middleware(req, res, next) {
         // skip the check and keep serving pages that point at the previous asset versions.
         _base();
         const cached = _cacheGet(key);
-        if (cached) return send(cached.html, cached.ttl);
+        if (cached) {
+            if (!cached.html.includes('"isLiveBroadcast":true')) return send(cached.html, cached.ttl);
+            _cache.delete(key);
+        }
         const meta = await _pageMeta(p, { page });
         if (!meta) return next(); // unknown, private or not found: the SPA fallback answers (404 when it names nothing)
         const html = render(meta, p);
         if (!html) return next();
         const ttl = meta.cacheTtlMs || CACHE_TTL_MS;
         _cacheSet(key, html, ttl);
-        return send(html, ttl);
+        return send(html, html.includes('"isLiveBroadcast":true') ? 0 : ttl);
     } catch (e) {
         console.warn('[SEO] render failed for', p, '-', e.message);
         return next();
