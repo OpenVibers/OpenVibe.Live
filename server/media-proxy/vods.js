@@ -462,6 +462,23 @@ router.get('/:id/memories', optionalAuth, async (req, res) => {
  * and cards. Cached 2 min.
  */
 const _ctxCache = new Map();
+
+/**
+ * The private clips of a stream's recording, for someone who may see them (its streamer, staff). Media's public
+ * clip list leaves private rows out, so a clip cut from a later part of a multi-part stream (stream 2795: VODs
+ * 6025 and 6026) was missing from the recording's page for everyone but the app that owns it.
+ */
+async function privateStreamClips(req, vod) {
+    if (!vod || !vod.stream_id) return [];
+    if (!await access.canSeePrivate(req.user, vod)) return [];
+    try {
+        const co = await media.listClips({ stream_id: vod.stream_id, include_private: 1, order: 'views', limit: 24 });
+        return (co?.clips || (Array.isArray(co) ? co : []))
+            .filter((c) => c.visibility === 'private' && (c.status === 'ready' || !c.status))
+            .map((c) => ({ id: c.id, title: c.title, thumbnail_url: c.thumbnail_url ? media.publicUrl(c.thumbnail_url) : null, duration_seconds: c.duration_seconds || c.duration || 0, start_time: c.start_time, view_count: Number(c.view_count) || 0, by: c.display_name || c.username || null, created_at: c.created_at }));
+    } catch { return []; }
+}
+
 router.get('/:id/context', optionalAuth, async (req, res) => {
     try {
         if (!/^\d+$/.test(req.params.id)) return res.status(404).json({ error: 'VOD not found' });
@@ -479,7 +496,11 @@ router.get('/:id/context', optionalAuth, async (req, res) => {
         const cacheHeader = isPrivate ? cache.htmlHeaders({ private: true }) : 'public, max-age=60';
 
         const hit = _ctxCache.get(id);
-        if (hit && Date.now() - hit.at < 120000) { res.set('Cache-Control', cacheHeader); return res.json(hit.data); }
+        if (hit && Date.now() - hit.at < 120000) {
+            res.set('Cache-Control', cacheHeader);
+            const priv = await privateStreamClips(req, vod);
+            return res.json(priv.length ? { ...hit.data, clips: (hit.data.clips || []).concat(priv) } : hit.data);
+        }
         const stream = vod.stream_id ? await db.getStreamById(vod.stream_id) : null;
         const streamer = await db.getUserById(vod.user_id || (stream && stream.user_id));
         const safe = async (fn, d) => { try { const v = await fn(); return v == null ? d : v; } catch { return d; } };
@@ -506,9 +527,15 @@ router.get('/:id/context', optionalAuth, async (req, res) => {
         }
         let clips = [];
         try {
-            const co = await media.listClips({ vod_id: id, order: 'views', limit: 12 });
+            // The whole stream's clips, not only this VOD's: a stream recorded in parts is one video whose
+            // page is its first part's VOD, and a clip cut from a later part (stream 2795: VOD 6025 and 6026)
+            // belongs to that page (the same list the VOD detail route answers, by stream).
+            const co = await media.listClips(vod.stream_id ? { stream_id: vod.stream_id, order: 'views', limit: 12 } : { vod_id: id, order: 'views', limit: 12 });
             clips = (co?.clips || (Array.isArray(co) ? co : [])).filter(c => c.status === 'ready' || !c.status).map(c => ({ id: c.id, title: c.title, thumbnail_url: c.thumbnail_url ? media.publicUrl(c.thumbnail_url) : null, duration_seconds: c.duration_seconds || c.duration || 0, start_time: c.start_time, view_count: Number(c.view_count) || 0, by: c.display_name || c.username || null, created_at: c.created_at }));
         } catch { clips = []; }
+        // The recording's private clips: Media's public list has none of them, and the streamer (or staff)
+        // must still find them on the recording's page. They never go into the shared cache below.
+        const privateClips = await privateStreamClips(req, vod);
         let recap = null;
         try { const r = stream ? await require('../recap/recap').getRecap(stream.id) : null; if (r) recap = { stream_id: stream.id, grade: r.write.grade, headline: r.write.headline, moment: r.write.moment || null }; } catch { recap = null; }
         const data = {
@@ -519,8 +546,8 @@ router.get('/:id/context', optionalAuth, async (req, res) => {
         };
         _ctxCache.set(id, { at: Date.now(), data });
         if (_ctxCache.size > 500) { const k = _ctxCache.keys().next().value; _ctxCache.delete(k); }
-        res.set('Cache-Control', cacheHeader);
-        res.json(data);
+        res.set('Cache-Control', privateClips.length ? cache.htmlHeaders({ private: true }) : cacheHeader);
+        res.json(privateClips.length ? { ...data, clips: (data.clips || []).concat(privateClips) } : data);
     } catch (err) {
         console.error('[VODs] context error:', err.message);
         res.status(500).json({ error: 'Failed to load context' });

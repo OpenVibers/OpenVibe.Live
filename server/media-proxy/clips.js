@@ -83,6 +83,22 @@ async function withUserFields(clip) {
     return clip;
 }
 
+/**
+ * A private clip's playback URL, signed: Media answers an unsigned /c/:id with the missing-clip 404 (only the
+ * owning app, the owner's JWT or a signed URL may read a private clip's bytes), so the player had nothing to load.
+ */
+async function signedPlayback(clip) {
+    try {
+        const signed = await media.signedMediaUrl('clip', clip.id, 900);
+        if (signed && signed.url) {
+            const url = media.publicUrl(signed.url);
+            clip.playback_url = url;
+            clip.file_url = url;
+        }
+    } catch { /* best effort: the plain URL still serves a public clip */ }
+    return clip;
+}
+
 // The clipped channel's owner (Live user id), from the canonical resolver (server/lineage): the
 // clip's stream, else its VOD's lineage; null when neither answers or Media is down. Kept to those
 // two links as before, so the channel Media recorded on the clip (legacy_metadata) does not decide
@@ -211,10 +227,22 @@ router.get('/', async (req, res) => {
 
 // ── Clip detail ──────────────────────────────────────────────
 // The player's file source: 302 to Media's clip route by id (Media applies the clip's visibility there).
-router.get('/:id/file', (req, res) => {
+router.get('/:id/file', optionalAuth, async (req, res) => {
     const id = Number(req.params.id);
     if (!Number.isSafeInteger(id) || id <= 0) return res.status(400).json({ error: 'Bad clip id' });
     res.set('Cache-Control', 'private, max-age=0');
+    // A private clip's bytes are signed for whoever may see it. Media answers an unsigned /c/:id with the
+    // missing-clip 404 (its private rule: only the owning app, the owner's JWT or a signed URL may read it),
+    // so the clip's own player URL 404ed for its owner and for staff too.
+    let clip = null;
+    try { clip = await media.getClip(id); } catch { /* missing, or Media is down */ }
+    if (clip && access.isPrivate(clip)) {
+        if (!await access.canView(req.user, clip)) return clipNotFound(res);
+        try {
+            const signed = await media.signedMediaUrl('clip', id, 900);
+            if (signed && signed.url) return res.redirect(302, media.publicUrl(signed.url));
+        } catch { /* fall back to the plain URL */ }
+    }
     res.redirect(302, media.clipUrl(id));
 });
 
@@ -268,6 +296,9 @@ router.get('/:id', optionalAuth, async (req, res) => {
                 clip.view_count = Math.max(Number(clip.view_count) || 0, count.c);
             }
         } catch { /* */ }
+
+        // A private clip's bytes are signed (see signedPlayback): the plain /c/:id is a 404 for everyone.
+        if (access.isPrivate(clip)) await signedPlayback(clip);
 
         if (clip.stream_id) {
             if (stream) {
