@@ -15,10 +15,10 @@ const DOCS_DIR = process.env.OV_APP_ROOT ? path.join(process.env.OV_APP_ROOT, 'd
 const DISCOVERY_MAX_AGE = 3600;   // seconds, for every file here
 
 // ── Dynamic sitemap.xml (cached ~1h) ────────────────────────────────────────────────────────
-let _sitemap = null, _sitemapAt = 0;
+let _sitemap = null, _sitemapAt = 0, _sitemapLiveSignature = '';
 const SITEMAP_TTL_MS = 60 * 60 * 1000;
 const SITEMAP_CAP = 5000; // per content type
-async function buildSitemap() {
+async function buildSitemap(liveStreams = []) {
     const b = baseUrl();
     const urls = [];
     const entry = (loc, lastmod, changefreq, priority) => urls.push({ loc: b + loc, lastmod: lastmod || undefined, changefreq, priority });
@@ -84,13 +84,33 @@ async function buildSitemap() {
     // No /p/ here: pastes are OpenVibe.Community's, and its sitemap lists them under their canonical URL.
     const lists = { '/': later(newest.vod, newest.clip), '/content': later(newest.vod, newest.clip), '/vods': newest.vod, '/clips': newest.clip };
     for (const [u, cf, pr] of statics) entry(u, lists[u] || releasedAt, cf, pr);
-    for (const u of seenChannels) if (u) entry(`/@${u}`, channelNewest.get(u) || null, 'daily', 0.6);
+    const onAir = new Map();
+    for (const stream of liveStreams) {
+        if (!stream || !stream.is_live || stream.is_nsfw || !stream.username || !stream.started_at) continue;
+        const thumb = stream.thumbnail_url && (String(stream.thumbnail_url).startsWith('http') ? stream.thumbnail_url : `${b}${stream.thumbnail_url}`);
+        if (!thumb) continue;
+        seenChannels.add(stream.username);
+        onAir.set(stream.username, {
+            thumbnail_loc: thumb, title: stream.title || `${stream.display_name || stream.username} is live`,
+            description: `${stream.display_name || stream.username} is live on ${SITE_NAME}.`,
+            player_loc: `${b}/@${stream.username}`, publication_date: isoTime(stream.started_at),
+            uploader: stream.display_name || stream.username, uploader_info: `${b}/@${stream.username}`, live: true,
+        });
+    }
+    for (const u of seenChannels) if (u) {
+        const row = { loc: `${b}/@${u}`, lastmod: channelNewest.get(u) || null, changefreq: 'daily', priority: 0.6 };
+        if (onAir.has(u)) row.videos = [onAir.get(u)];
+        urls.push(row);
+    }
     return seo.sitemapXml(urls);
 }
 async function sitemapHandler(req, res) {
-    if (!_sitemap || (Date.now() - _sitemapAt) > SITEMAP_TTL_MS) {
-        try { _sitemap = await buildSitemap(); _sitemapAt = Date.now(); }
-        catch (e) { console.warn('[SEO] sitemap build failed:', e.message); if (!_sitemap) return res.status(500).end(); }
+    const liveStreams = await db.getLiveStreams();
+    const liveSignature = liveStreams.filter(s => s && s.is_live && !s.is_nsfw).map(s => `${s.id}:${s.started_at}`).sort().join('|');
+    const liveChanged = liveSignature !== _sitemapLiveSignature;
+    if (!_sitemap || (Date.now() - _sitemapAt) > SITEMAP_TTL_MS || liveChanged) {
+        try { _sitemap = await buildSitemap(liveStreams); _sitemapAt = Date.now(); _sitemapLiveSignature = liveSignature; }
+        catch (e) { console.warn('[SEO] sitemap build failed:', e.message); if (!_sitemap || liveChanged) return res.status(500).end(); }
     }
     res.set('Content-Type', 'application/xml; charset=utf-8');
     res.set('Cache-Control', cache.htmlHeaders({ maxAge: DISCOVERY_MAX_AGE }));

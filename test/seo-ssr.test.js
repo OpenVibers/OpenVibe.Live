@@ -106,7 +106,11 @@ const titleOf = (html) => ((head(html).match(/<title>([^<]*)<\/title>/) || [])[1
 const descOf = (html) => ((head(html).match(/<meta name="description" content="([^"]*)">/) || [])[1] || '');
 const canonicalsOf = (html) => [...head(html).matchAll(/<link rel="canonical" href="([^"]+)">/g)].map((m) => m[1]);
 const robotsOf = (html) => [...head(html).matchAll(/<meta name="robots" content="([^"]+)">/g)].map((m) => m[1]);
-const ldOf = (html) => [...head(html).matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)].map((m) => { try { return JSON.parse(m[1]); } catch { return null; } }).filter(Boolean);
+const ldOf = (html) => {
+    const scripts = [...head(html).matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)];
+    assert.ok(scripts.length <= 1, 'one JSON-LD script');
+    return scripts.flatMap((m) => JSON.parse(m[1])['@graph'] || []);
+};
 const bodyOf = (html) => ((html.match(/<div id="seo-prerender"[^>]*>([\s\S]*?)<\/div>\n/) || [])[1] || '');
 const CLIENTS = [
     { name: 'no Accept (curl, monitors)', headers: {} },
@@ -256,6 +260,17 @@ const server = http.createServer(app).listen(0, '127.0.0.1', async () => {
         assert.ok(p, 'a Person node');
         assert.strictEqual(p.image, 'https://openvibe.media/avatars/carol.png', 'the person is still pictured by their avatar');
         assert.strictEqual(p.description, 'I paint.', 'and described by their bio');
+        const video = ldOf(html).find((n) => n['@type'] === 'VideoObject');
+        assert.ok(video, 'the currently live channel carries a VideoObject');
+        assert.strictEqual(video.isLiveBroadcast, true);
+        assert.ok(video.startDate);
+        assert.deepStrictEqual(video.creator, { '@type': 'Person', name: 'Carol', url: 'https://openvibe.live/@carol' });
+        assert.deepStrictEqual(video.author, video.creator);
+        assert.match((await get('/sitemap.xml')).body, /<video:live>yes<\/video:live>/);
+        await db.run('UPDATE streams SET is_live = 0, ended_at = ov_now() WHERE user_id = 6');
+        const ended = (await get('/@carol')).body;
+        assert.ok(!ldOf(ended).some((n) => n['@type'] === 'VideoObject'), 'ended stream is absent even when the live page was cached');
+        assert.ok(!(await get('/sitemap.xml')).body.includes('<video:live>'), 'ended stream is absent from the sitemap');
     });
 
     await check('the home page\'s JSON-LD lists are named by the snapshot\'s visible headings', async () => {
