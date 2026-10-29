@@ -2,7 +2,7 @@
  * Freshness + dedupe policy for automated clips (owner, 2026-10-29: "the AI clipping system
  * seems to clip old videos. Maybe only make clips of fresh stuff, unless the site's dead").
  *
- *   - footage from the last 48 hours is eligible;
+ *   - footage from the last 48 hours is eligible, counting from when the stream ENDED;
  *   - the archive (≤ 90 days) opens only after 72h with no new footage AND no human pageviews,
  *     and then at most one archival clip per UTC day;
  *   - an upstream outage is never quietness;
@@ -46,6 +46,52 @@ assert.ok(archive.ok && archive.archival, '5 days old is archival on a quiet sit
 const tooOld = policy.classifySource({ vod: { captured_at: text(now - 100 * DAY) }, now, site: { quiet: true } });
 assert.ok(!tooOld.ok, 'older than the 90-day archive window is never eligible');
 
+// The 48h clock is the stream's END, not the VOD's creation: a five-day stream that finished an
+// hour ago is fresh even with no part row; one that ended 49h ago is stale.
+const endedFresh = policy.classifySource({
+    vod: { created_at: text(now - 5 * DAY) },
+    stream: { started_at: text(now - 5 * DAY), ended_at: text(now - HOUR) },
+    now,
+    site: { quiet: false },
+});
+assert.ok(endedFresh.ok && !endedFresh.archival, 'a long stream that ended an hour ago is fresh without a part row');
+assert.ok(endedFresh.ageHours < 2, 'its freshness age comes from ended_at, not created_at');
+const endedStale = policy.classifySource({
+    vod: { created_at: text(now - 5 * DAY) },
+    stream: { started_at: text(now - 5 * DAY), ended_at: text(now - 49 * HOUR) },
+    now,
+    site: { quiet: false },
+});
+assert.ok(!endedStale.ok && !endedStale.archival, 'a stream that ended 49h ago is stale');
+const stillLive = policy.classifySource({
+    vod: { created_at: text(now - 5 * DAY) },
+    stream: { started_at: text(now - 5 * DAY), is_live: 1 },
+    now,
+    site: { quiet: false },
+});
+assert.ok(stillLive.ok && !stillLive.archival, 'a still-running stream is fresh');
+
+// An old imported recording is judged by its capture time, never by a recent upload.
+const imported = policy.classifySource({
+    vod: { created_at: text(now - HOUR), captured_at: text(now - 10 * DAY) },
+    now,
+    site: { quiet: false },
+});
+assert.ok(!imported.ok && !imported.archival, 'old recording uploaded an hour ago is stale, not fresh');
+const importedArchive = policy.classifySource({
+    vod: { created_at: text(now - HOUR), captured_at: text(now - 10 * DAY) },
+    now,
+    site: { quiet: true },
+});
+assert.ok(importedArchive.ok && importedArchive.archival, 'on a quiet site it is archival, still not fresh');
+const importedLinked = policy.classifySource({
+    vod: { created_at: text(now - HOUR) },
+    stream: { started_at: text(now - 10 * DAY), ended_at: text(now - 10 * DAY) },
+    now,
+    site: { quiet: false },
+});
+assert.ok(!importedLinked.ok, 'a recent upload of an old stream is still stale');
+
 const quiet = policy.siteStatus({ now, lastFootageAt: now - 73 * HOUR, lastHumanActivityAt: now - 73 * HOUR, upstreamHealthy: true });
 assert.strictEqual(quiet.quiet, true, '72h without footage or pageviews is quiet');
 assert.strictEqual(policy.siteStatus({ now, lastFootageAt: now - 73 * HOUR, lastHumanActivityAt: now - 73 * HOUR, upstreamHealthy: false }).quiet, false, 'an outage is not quietness');
@@ -54,6 +100,14 @@ assert.strictEqual(policy.siteStatus({ now, lastFootageAt: now - 73 * HOUR, last
 
 assert.strictEqual(policy.archiveAllowed([{ archival: true, ts: Date.now() }]), false, 'one archive clip per day');
 assert.strictEqual(policy.archiveAllowed([{ archival: true, ts: Date.now() - DAY }]), true, "yesterday's archive clip does not block today");
+// Both candidate pools can pass the gate before either writes auto_clip_log. The in-process
+// reservation is a synchronous check-and-set, so the second cutter loses even with an empty log.
+policy._resetArchiveReservation();
+assert.strictEqual(policy.reserveArchive([], now), true, 'first simultaneous archive cut claims the slot');
+assert.strictEqual(policy.archiveAllowed([], now), false, 'the reservation closes the gate before the log write');
+assert.strictEqual(policy.reserveArchive([], now), false, 'a second simultaneous archive cut is refused');
+policy.releaseArchive(now);
+assert.strictEqual(policy.archiveAllowed([], now), true, 'a failed cut gives the slot back');
 
 // A stale VOD is also allowed when its own channel has been quiet for 48h (the brief's channel
 // exception) — but only its newest VODs, and never outside the 90-day window.
@@ -77,7 +131,7 @@ const mkStream = async (startedMs, { live = false, endedMs = null } = {}) => {
     await db.run('UPDATE streams SET started_at = ?, is_live = ?, ended_at = ? WHERE id = ?', [text(startedMs), live ? 1 : 0, endedMs == null ? null : text(endedMs), id]);
     return id;
 };
-const vod = (id, streamId) => ({ id, stream_id: streamId, user_id: 3, title: `VOD ${id}`, visibility: 'public', is_public: true, view_count: 5, duration_seconds: 600, status: 'ready' });
+const vod = (id, streamId, extra = {}) => ({ id, stream_id: streamId, user_id: 3, title: `VOD ${id}`, visibility: 'public', is_public: true, view_count: 5, duration_seconds: 600, status: 'ready', ...extra });
 let currentVods = [];
 media.listVods = async () => ({ vods: currentVods });
 const addMemory = async (streamId) => await db.addStreamMemory({ stream_id: streamId, user_id: 3, offset_seconds: 60, description: 'a scene' });
@@ -90,6 +144,7 @@ async function reset() {
     await db.setState('auto_clip_log', '[]');
     await db.setState('ai_used_moments', '[]');
     require('../server/ai/moment-registry')._reset();
+    require('../server/ai/clip-policy')._resetArchiveReservation();
     currentVods = [];
 }
 
@@ -106,6 +161,35 @@ assert.deepStrictEqual(pool.map(v => v.vod_id), [10], 'active site: only fresh f
 assert.strictEqual(pool[0].archival, false);
 console.log('✅ backfill pool: old popular VODs are not clipped while the site is active');
 
+// Review case: VOD created when a long stream started five days ago, stream.ended_at one hour
+// ago, no part row. The ended_at clock makes it fresh; one that ended 49h ago stays stale.
+await reset();
+const sEndedRecent = await mkStream(now - 5 * DAY, { endedMs: now - HOUR });
+const sEndedStale = await mkStream(now - 5 * DAY, { endedMs: now - 49 * HOUR });
+await addMemory(sEndedRecent); await addMemory(sEndedStale);
+await db.run(`INSERT INTO analytics_events (service, event_type, is_bot, created_at) VALUES ('live', 'pageview', 0, ?)`, [text(now - HOUR)]);
+currentVods = [
+    vod(14, sEndedRecent, { created_at: text(now - 5 * DAY) }),
+    vod(15, sEndedStale, { created_at: text(now - 5 * DAY) }),
+];
+pool = await autoClip._internals.backfillPool(10);
+assert.deepStrictEqual(pool.map(v => v.vod_id), [14], 'a stream that ended an hour ago is eligible; 49h old is not');
+assert.strictEqual(pool[0].archival, false);
+console.log('✅ backfill pool: 48h runs from stream end, not VOD creation');
+
+// A channel live now has no new VOD yet. The old VOD must not reopen the quiet-channel exception
+// just because Media's newest row for that channel is the old stream.
+await reset();
+const sChannelOld = await mkStream(now - 10 * DAY, { endedMs: now - 10 * DAY });
+const sChannelLive = await mkStream(now - HOUR, { live: true });
+await addMemory(sChannelOld);
+await db.run(`INSERT INTO analytics_events (service, event_type, is_bot, created_at) VALUES ('live', 'pageview', 0, ?)`, [text(now - HOUR)]);
+currentVods = [vod(30, sChannelOld)];
+assert.deepStrictEqual(await autoClip._internals.backfillPool(10), [], 'a current live stream closes the quiet-channel exception (backfill)');
+assert.deepStrictEqual(await moments._internals.momentPool(10), [], 'a current live stream closes the quiet-channel exception (moments)');
+assert.ok(sChannelLive, 'the live stream exists without a listed VOD');
+console.log('✅ candidate pools: latest stream activity comes from Live streams, not the newest VOD');
+
 // Long/reconnected stream: capture time is streams.started_at + its part offset.
 await reset();
 const sLong = await mkStream(now - 5 * DAY, { live: true });
@@ -114,7 +198,8 @@ await addMemory(sLong);
 currentVods = [vod(13, sLong)];
 pool = await autoClip._internals.backfillPool(10);
 assert.deepStrictEqual(pool.map(v => v.vod_id), [13], 'a five-day stream still recording is fresh');
-assert.ok(pool[0].age_hours < 2, 'its VOD part captured one hour ago, not five days ago');
+assert.strictEqual(pool[0].captured_at, now - HOUR, 'its VOD part captured one hour ago, not five days ago');
+assert.ok(pool[0].age_hours < 2, 'a still-running stream has a now-based freshness age');
 console.log('✅ backfill pool: long/reconnected streams use the part capture time');
 
 // Quiet site: the archive opens, up to the daily cap.
@@ -147,6 +232,45 @@ assert.ok(mpool.every(v => v.archival));
 await db.setState('auto_clip_log', JSON.stringify([{ archival: true, ts: Date.now(), vod_id: 999 }]));
 assert.deepStrictEqual(await moments._internals.momentPool(10), [], 'moments pool: archive cap is shared with the clip job');
 console.log('✅ moments pool: one freshness policy for every automated cutter');
+
+// Both cutters (AI moments and VOD backfill) can see an empty auto_clip_log before either writes.
+// The in-process reservation lets exactly one reach Media; a failed cut releases the slot.
+await reset();
+const cutCalls = [];
+let releaseFirst = null;
+media.createClip = async (body) => {
+    cutCalls.push(body);
+    if (cutCalls.length === 1) await new Promise((resolve) => { releaseFirst = resolve; });
+    return { id: 7000 + cutCalls.length };
+};
+const archiveCut = (id) => autoClip.clipVodMoment({
+    vod: { vod_id: id, user_id: 3, stream_id: id, title: 'archive' },
+    offset: 60,
+    title: `Archive moment ${id}`,
+    desc: `A distinct archival scene number ${id} with enough words`,
+    archival: true,
+});
+const firstCut = archiveCut(70);
+const secondCut = archiveCut(71);
+for (let i = 0; i < 200 && !releaseFirst; i++) await new Promise((r) => setTimeout(r, 5));
+assert.ok(releaseFirst, 'the first archival cutter reached Media');
+assert.strictEqual(cutCalls.length, 1, 'the second simultaneous archival cutter never reaches Media');
+releaseFirst();
+const cuts = await Promise.all([firstCut, secondCut]);
+assert.strictEqual(cuts.filter(Boolean).length, 1, 'exactly one archival clip is cut');
+const clipLog = JSON.parse(await db.getState('auto_clip_log') || '[]');
+assert.strictEqual(clipLog.filter((e) => e.archival).length, 1, 'exactly one archival clip is logged');
+assert.strictEqual(policy.archiveAllowed(clipLog, Date.now()), false, "today's archive slot stays closed");
+
+// A cut that fails must not burn the day.
+policy._resetArchiveReservation();
+await db.setState('auto_clip_log', '[]');
+await db.setState('ai_used_moments', '[]');
+registry._reset();
+media.createClip = async () => null;
+assert.strictEqual(await archiveCut(72), null, 'the failed archival cut returns nothing');
+assert.strictEqual(policy.archiveAllowed([], Date.now()), true, 'its reservation was released');
+console.log('✅ archive gate: simultaneous cutters share one atomic slot');
 
 registry._reset();
 console.log('\n✅ All clip-freshness tests passed');

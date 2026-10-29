@@ -210,18 +210,18 @@ async function _backfillPool(limit) {
         if (!rows.length) return [];
         const history = require('../streaming/stream-history');
         const site = clipPolicy.siteStatus({ now, ...await clipPolicy.siteActivity(db, { now }), upstreamHealthy: true });
-        // The newest listed VOD per channel decides whether that channel is quiet. A channel with
-        // no new stream in 48h may still get clips from its newest VODs (the brief's exception).
+        // The newest listed VOD per channel gives us the row (for `newest`), but the channel's
+        // latest ACTIVITY comes from Live's streams: a channel can be live right now without a new
+        // VOD, and that live stream must keep it out of the quiet/archive exception.
         const firstByUser = new Map();
         for (const v of rows) if (v.user_id != null && !firstByUser.has(v.user_id)) firstByUser.set(v.user_id, v);
         const channelByUser = new Map();
-        for (const first of firstByUser.values()) {
-            let firstStream = null;
-            try { if (first.stream_id) firstStream = await db.get('SELECT started_at, ended_at, is_live FROM streams WHERE id = ?', [first.stream_id]); } catch { /* unknown age */ }
-            const lastAt = clipPolicy.streamEndedAt({ vod: first, stream: firstStream, now });
-            channelByUser.set(first.user_id, {
+        for (const [userId, first] of firstByUser) {
+            const latest = await clipPolicy.latestStreamForUser(db, userId);
+            const lastAt = clipPolicy.streamActivityAt(latest, now);
+            channelByUser.set(userId, {
                 quiet: clipPolicy.channelStatus({ now, lastStreamAt: lastAt }).quiet,
-                stream_id: first.stream_id || null, vod_id: first.id,
+                stream_id: latest ? latest.id : null, vod_id: first.id,
             });
         }
         const anyQuiet = site.quiet || [...channelByUser.values()].some((c) => c.quiet);
@@ -304,6 +304,7 @@ async function backfillVodClips({ limit = BACKFILL_PER_RUN, force = false } = {}
             } catch { /* probe optional */ }
             const clip = await clipVodMoment({ vod: v, offset: moment.offset, title: moment.title, desc: moment.desc, speech: moment.speech, archival: v.archival, source });
             if (clip) { made++; if (v.archival) archiveMade++; console.log(`[AutoClip] Backfilled VOD ${v.vod_id}${v.archival ? ' (archive)' : ''} ("${String(moment.title || '').slice(0, 60)}")`); }
+            else if (v.archival && !clipPolicy.archiveAllowed(await _clipLog(), Date.now())) continue; // another cutter took today's archive slot: not this VOD's fault, don't skip it forever
             else newSkip.push(v.vod_id); // cut failed (e.g. unseekable/short) — don't retry forever
         } catch (e) { newSkip.push(v.vod_id); console.warn(`[AutoClip] backfill VOD ${v.vod_id} failed:`, e.message); }
     }
@@ -333,6 +334,7 @@ async function _isDuplicateAutoClip(vod, offset, desc, title, speech) {
 }
 
 async function clipVodMoment(o) {
+    let archiveHeld = false;
     try {
         const { vod, offset, title, desc, speech, archival } = o || {};
         if (!vod || !(offset >= 0)) return null;
@@ -347,14 +349,28 @@ async function clipVodMoment(o) {
         }
         const vodId = vod.vod_id || vod.id;
         const start = Math.max(0, Math.floor(offset) - CLIP_PRE);
+        // One archive clip per UTC day is shared with the AI moments job. Both may pass the pool
+        // gate before either writes auto_clip_log, so claim the slot atomically before cutting and
+        // give it back if no clip results.
+        if (archival) {
+            if (!clipPolicy.reserveArchive(await _clipLog(), Date.now())) {
+                console.log(`[AutoClip] VOD ${vodId}: today's archival clip is already taken`);
+                return null;
+            }
+            archiveHeld = true;
+        }
         const clip = await media.createClip({
             vod_id: vodId, start_s: start, end_s: start + CLIP_PRE + CLIP_POST,
             title: title || 'Standout Moment', user_id: vod.user_id,
             stream_id: vod.stream_id || undefined, auto_generated: true, description: db.noLooks(desc || ''),
         });
-        if (clip) await _logClip({ stream_id: vod.stream_id || null, vod_id: vodId, start_time: start, title: title || 'Standout Moment', clip_id: clip.id, dedup: !!clip.deduplicated || undefined, desc: desc || '', speech, archival: archival || undefined, sig: _sceneSig(desc || title) });
+        if (clip) {
+            archiveHeld = false;   // the clip exists: keep the day reserved even if the log write fails
+            await _logClip({ stream_id: vod.stream_id || null, vod_id: vodId, start_time: start, title: title || 'Standout Moment', clip_id: clip.id, dedup: !!clip.deduplicated || undefined, desc: desc || '', speech, archival: archival || undefined, sig: _sceneSig(desc || title) });
+        }
         return clip || null;
     } catch { return null; }
+    finally { if (archiveHeld) clipPolicy.releaseArchive(); }
 }
 
 // ── Tell Media which clips the AI cut ────────────────────────────────────────────────────

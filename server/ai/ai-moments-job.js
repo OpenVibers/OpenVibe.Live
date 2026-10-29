@@ -301,18 +301,18 @@ async function _momentPool(limit) {
         const site = clipPolicy.siteStatus({ now, ...await clipPolicy.siteActivity(db, { now }), upstreamHealthy: true });
         let clipLog = [];
         try { const l = JSON.parse(await db.getState('auto_clip_log') || '[]'); if (Array.isArray(l)) clipLog = l; } catch { /* */ }
-        // The newest listed VOD per channel decides whether that channel is quiet. A channel with
-        // no new stream in 48h may still get clips from its newest VODs (the brief's exception).
+        // The newest listed VOD per channel gives us the row (for `newest`), but the channel's
+        // latest ACTIVITY comes from Live's streams: a channel can be live right now without a new
+        // VOD, and that live stream must keep it out of the quiet/archive exception.
         const firstByUser = new Map();
         for (const v of all) if (v.user_id != null && !firstByUser.has(v.user_id)) firstByUser.set(v.user_id, v);
         const channelByUser = new Map();
-        for (const first of firstByUser.values()) {
-            let firstStream = null;
-            try { if (first.stream_id) firstStream = await db.get('SELECT started_at, ended_at, is_live FROM streams WHERE id = ?', [first.stream_id]); } catch { /* unknown age */ }
-            const lastAt = clipPolicy.streamEndedAt({ vod: first, stream: firstStream, now });
-            channelByUser.set(first.user_id, {
+        for (const [userId, first] of firstByUser) {
+            const latest = await clipPolicy.latestStreamForUser(db, userId);
+            const lastAt = clipPolicy.streamActivityAt(latest, now);
+            channelByUser.set(userId, {
                 quiet: clipPolicy.channelStatus({ now, lastStreamAt: lastAt }).quiet,
-                stream_id: first.stream_id || null, vod_id: first.id,
+                stream_id: latest ? latest.id : null, vod_id: first.id,
             });
         }
         const anyQuiet = site.quiet || [...channelByUser.values()].some((c) => c.quiet);

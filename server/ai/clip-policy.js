@@ -5,23 +5,27 @@
  * clips of fresh stuff, unless the site's dead." Both the live clip job and the AI moments job
  * mined the most-VIEWED back catalogue with no age cutoff, so old VODs kept being clipped.
  *
- *   fresh      footage captured in the last 48 hours
+ *   fresh      the producing stream ended (or is still running) in the last 48 hours
  *   archive    only when the site has been quiet for 72 hours (no new footage AND no human
  *              pageviews) OR the channel itself has had no new stream in 48 hours (then only its
  *              newest VODs), and the upstream service is healthy; then at most one archival clip
  *              per UTC day, from the previous 90 days, newest first, labelled archival.
  *
- * Footage time is the CAPTURE time, not the upload/import time: a VOD that is one part of a
- * long stream (or of a broadcaster who reconnected) starts at streams.started_at + part.at
- * (stream_history), so a five-day stream that is still recording is still fresh.
+ * The 48-hour clock starts when the producing STREAM ended, not when it started and not when
+ * the VOD was uploaded: a five-day stream that finished an hour ago is fresh even with no part
+ * row. A still-running stream is fresh; a source with no ended_at falls back to its capture/part
+ * time, and an old imported recording is never fresh just because it was uploaded recently.
  *
  *   footageStart({ vod, stream, part })            → epoch ms of the source's first frame, or null
  *   streamEndedAt({ vod, stream, now })            → epoch ms the producing stream last had footage
  *   classifySource({ vod, stream, part, now, site, channel }) → { ok, archival, ageHours, … }
  *   siteActivity(db, { now })                       → { lastFootageAt, lastHumanActivityAt }
  *   siteStatus({ now, … })                          → { quiet, hours, why }
+ *   latestStreamForUser(db, userId)                 → the user's newest stream row (live first)
+ *   streamActivityAt(stream, now)                   → epoch ms of that stream's latest activity
  *   channelStatus({ now, lastStreamAt })            → { quiet, hours, why }
  *   archiveAllowed(log, now)                        → one archival clip per UTC day
+ *   reserveArchive(log, now) / releaseArchive(now)  → atomic in-process reservation of that slot
  *
  * An outage is never quietness: without a healthy upstream (`upstreamHealthy: false`) or a known
  * activity timestamp, the archive stays closed.
@@ -69,21 +73,26 @@ function footageStart({ vod, stream, part } = {}) {
 }
 
 /**
- * When the stream that produced a VOD last had footage. This is what the brief calls "the stream
- * ended": a finished stream's ended_at, a still-live stream's now, or the VOD's own creation time
- * when Live has no stream row (an imported recording).
+ * When the stream that produced a VOD last had footage — the reference for the 48-hour window.
+ * A finished stream's ended_at governs; a still-live stream is "now". Without a trusted end
+ * (an import or a stream row that never got ended_at), the capture/part time stands in, and only
+ * then the VOD's created_at: an old file uploaded today must not look fresh because of upload time.
  */
 function streamEndedAt({ vod, stream, now = Date.now() } = {}) {
     if (stream) {
         if (Number(stream.is_live) > 0) return now;
         const ended = parseTs(stream.ended_at);
         if (ended != null) return ended;
+    }
+    // Capture metadata before created_at: created_at is the upload/import time for a recording
+    // Live did not open itself.
+    const captured = parseTs(vod && (vod.captured_at || vod.recorded_at || vod.recording_started_at));
+    if (captured != null) return captured;
+    if (stream) {
         const started = parseTs(stream.started_at);
         if (started != null) return started;
     }
-    const created = parseTs(vod && (vod.created_at || vod.createdAt));
-    if (created != null) return created;
-    return parseTs(vod && (vod.captured_at || vod.recorded_at || vod.recording_started_at));
+    return parseTs(vod && (vod.created_at || vod.createdAt));
 }
 
 /**
@@ -127,6 +136,24 @@ async function siteActivity(db, { now = Date.now() } = {}) {
     return { lastFootageAt, lastHumanActivityAt };
 }
 
+/** A user's newest stream row (an active one wins), for the channel-quiet exception. */
+async function latestStreamForUser(db, userId) {
+    try {
+        return await db.get(`SELECT id, started_at, ended_at, is_live
+                             FROM streams WHERE user_id = ?
+                             ORDER BY (CASE WHEN is_live = 1 THEN 1 ELSE 0 END) DESC,
+                                      COALESCE(ended_at, started_at, created_at) DESC, id DESC
+                             LIMIT 1`, [userId]);
+    } catch { return null; }   // unknown activity is not quietness
+}
+
+/** Epoch ms of a stream's latest activity: now while it is live, otherwise its last end/start. */
+function streamActivityAt(stream, now = Date.now()) {
+    if (!stream) return null;
+    if (Number(stream.is_live) > 0) return now;
+    return Math.max(parseTs(stream.ended_at) || 0, parseTs(stream.started_at) || 0) || null;
+}
+
 /**
  * Fresh, or archival when the site (or this channel) is quiet and the source is inside the
  * archive window. A channel exception applies only to the channel's newest VODs (`channel.newest`),
@@ -134,27 +161,53 @@ async function siteActivity(db, { now = Date.now() } = {}) {
  */
 function classifySource({ vod, stream, part, now = Date.now(), site = { quiet: false }, channel = null } = {}) {
     const capturedAt = footageStart({ vod, stream, part });
-    const ageHours = capturedAt == null ? null : (now - capturedAt) / HOUR_MS;
-    if (ageHours == null) return { ok: false, archival: false, capturedAt, ageHours, why: 'unknown source age' };
-    if (ageHours <= FRESH_HOURS) return { ok: true, archival: false, capturedAt, ageHours, why: 'fresh' };
+    const endedAt = streamEndedAt({ vod, stream, now });
+    // Freshness follows the stream's end (see streamEndedAt), not the first frame: a long stream
+    // that finished recently is eligible even when its VOD was opened five days ago.
+    const ageHours = endedAt == null ? null : (now - endedAt) / HOUR_MS;
+    if (ageHours == null) return { ok: false, archival: false, capturedAt, endedAt, ageHours, why: 'unknown source age' };
+    if (ageHours <= FRESH_HOURS) return { ok: true, archival: false, capturedAt, endedAt, ageHours, why: 'fresh' };
+    // The 90-day archive window is about the footage itself, not an upload that happened later.
+    const archiveHours = capturedAt == null ? ageHours : (now - capturedAt) / HOUR_MS;
     const channelQuiet = !!(channel && channel.quiet && channel.newest !== false);
     const quiet = !!(site && site.quiet) || channelQuiet;
-    if (quiet && ageHours <= ARCHIVE_DAYS * 24) {
-        return { ok: true, archival: true, capturedAt, ageHours, why: site && site.quiet ? 'quiet site: archive' : 'quiet channel: archive' };
+    if (quiet && archiveHours <= ARCHIVE_DAYS * 24) {
+        return { ok: true, archival: true, capturedAt, endedAt, ageHours, why: site && site.quiet ? 'quiet site: archive' : 'quiet channel: archive' };
     }
-    return { ok: false, archival: false, capturedAt, ageHours, why: quiet ? 'older than the archive window' : 'stale source' };
+    return { ok: false, archival: false, capturedAt, endedAt, ageHours, why: quiet ? 'older than the archive window' : 'stale source' };
 }
 
 const _day = (ms) => new Date(ms).toISOString().slice(0, 10);
 
-/** The clip log has already spent today's one archival clip? */
+// One archive clip per UTC day, shared by the AI moments job and the VOD backfill. Both can pass
+// archiveAllowed() before either writes auto_clip_log, so the slot is reserved synchronously here:
+// reserveArchive() is a single check-and-set (no await between), and archiveAllowed() sees the
+// reservation before the clip log is written.
+let _archiveReservedDay = null;
+
+/** The clip log (or a reservation this process already holds) has spent today's archive clip? */
 function archiveAllowed(log, now = Date.now()) {
     const day = _day(now);
+    if (_archiveReservedDay === day) return false;
     const used = (Array.isArray(log) ? log : []).filter((e) => e && e.archival && e.ts && _day(e.ts) === day).length;
     return used < ARCHIVE_PER_DAY;
 }
 
+/** Atomically claim today's archival clip slot for this process; false when it is taken. */
+function reserveArchive(log, now = Date.now()) {
+    if (!archiveAllowed(log, now)) return false;
+    _archiveReservedDay = _day(now);
+    return true;
+}
+
+/** Give the slot back after a cut that did not happen. */
+function releaseArchive(now = Date.now()) {
+    if (_archiveReservedDay === _day(now)) _archiveReservedDay = null;
+}
+
 module.exports = {
     FRESH_HOURS, QUIET_HOURS, CHANNEL_QUIET_HOURS, ARCHIVE_DAYS, ARCHIVE_PER_DAY,
-    parseTs, footageStart, streamEndedAt, siteStatus, siteActivity, channelStatus, classifySource, archiveAllowed,
+    parseTs, footageStart, streamEndedAt, siteStatus, siteActivity, latestStreamForUser, streamActivityAt,
+    channelStatus, classifySource, archiveAllowed, reserveArchive, releaseArchive,
+    _resetArchiveReservation: () => { _archiveReservedDay = null; },
 };
