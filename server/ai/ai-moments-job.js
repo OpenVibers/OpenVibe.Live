@@ -21,6 +21,8 @@ const ai = require('./ai-analysis');
 const aiService = require('./ai-service');
 const media = require('../media-client');
 const registry = require('./moment-registry');
+const clipPolicy = require('./clip-policy');
+const dedupe = require('./clip-dedupe');
 const explicit = require('./explicit');
 let cfg = null; try { cfg = require('../config'); } catch { /* */ }
 let thumb = null; try { thumb = require('../media-proxy/live-thumbs'); } catch { /* optional */ }
@@ -195,6 +197,14 @@ function _nearestMemory(memories, offset) {
     for (const m of memories) { const d = Math.abs((m.offset_seconds || 0) - offset); if (d < bestD) { bestD = d; best = m; } }
     return best;
 }
+/** Transcript text around a moment, so dedupe can tell a new conversation from a repeated scene. */
+function _speechNear(transcript, offset, windowSec = 45) {
+    try {
+        return (transcript || [])
+            .filter(x => Math.abs(Number(x.start || 0) - Number(offset || 0)) <= windowSec)
+            .map(x => String(x.text || '')).join(' ').replace(/\s+/g, ' ').trim().slice(0, 600);
+    } catch { return ''; }
+}
 // flavor: 'paste' → a frame that is striking on its own; 'clip' → a beat that plays out over ~25 s.
 // avoid: offsets (seconds) already turned into something — the picker must stay ≥ 2 min away.
 async function _findBestMoment(vod, { flavor = 'paste', avoid = [] } = {}) {
@@ -225,7 +235,7 @@ async function _findBestMoment(vod, { flavor = 'paste', avoid = [] } = {}) {
                 t = clamp(t);
                 if (!farFromUsed(t)) { console.log(`[AI-Moments] VOD ${vod.vod_id}: pick at ${_mmss(t)} is next to a used moment — trying the objective signals instead`); throw new Error('near used'); }
                 const near = _nearestMemory(ctx.memories, t);
-                const result = { offset: t, title: _publicTitle(j.title, vod, t, j.desc), desc: db.noLooks(_cleanText(_deJson(j.desc), 400) || (near && _deJson(near.description)) || ''), tags: _memTags(near) };
+                const result = { offset: t, title: _publicTitle(j.title, vod, t, j.desc), desc: db.noLooks(_cleanText(_deJson(j.desc), 400) || (near && _deJson(near.description)) || ''), speech: _speechNear(ctx.transcript, t), tags: _memTags(near) };
                 if (explicit.isExplicit(j.desc, j.title, near && near.description, result.desc)) { console.log(`[AI-Moments] VOD ${vod.vod_id}: the pick at ${_mmss(t)} shows sexual content — no moment from it`); return null; }
                 return _isEmptyScene(result.desc) ? null : result;
             }
@@ -244,7 +254,7 @@ async function _findBestMoment(vod, { flavor = 'paste', avoid = [] } = {}) {
     const near = _nearestMemory(ctx.memories, offset);
     const desc = near ? db.noLooks(_deJson(near.description)) : '';
     if (near && explicit.isExplicit(near.description)) return null;   // never a moment of sexual content (server/ai/explicit.js)
-    return _isEmptyScene(desc) ? null : { offset, title: _fallbackTitle(vod, offset, desc), desc, tags: _memTags(near) };
+    return _isEmptyScene(desc) ? null : { offset, title: _fallbackTitle(vod, offset, desc), desc, speech: _speechNear(ctx.transcript, offset), tags: _memTags(near) };
 }
 // True when a description says the frame is essentially empty — black/dark/loading/blank — so we
 // never turn "nothing" into a clip or paste.
@@ -273,27 +283,54 @@ async function _frameTooDark(imgPath) {
     } catch { return false; }
 }
 
-// Coarse content signature for dedup — the first few significant words of a scene description.
-// Near-identical scenes ("A split-image close-up of an older man…") collapse to one signature.
-function _sig(desc) {
-    return String(desc || '').toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim().split(' ').filter(Boolean).slice(0, 5).join(' ');
-}
-
 // TODO(contract): the old duplicate-paste sweep pruned the local pastes table, which is
 // frozen for the OpenVibe.Media migration; Media has no metadata-filtered paste listing
 // yet, so scene-dedup is handled purely via the usedSigs log below.
 function _dedupePastes() { /* moved to Media — sig-dedup happens pre-post */ }
 
-// Build the moment-ranking VOD pool: Media list (most-viewed public VODs) joined with
-// local AI state + stream memories. Media down → an empty pool (the run makes nothing).
+// Build the moment-ranking VOD pool: newest public VODs from Media joined with local AI state +
+// stream memories, filtered by the shared freshness policy (clip-policy.js): footage from the
+// last 48h normally; the archive only after 72h of site quietness, one archival clip per UTC day.
+// Media down → an empty pool (and never "quiet": an outage does not open the archive).
 async function _momentPool(limit) {
     try {
-        const r = await media.listVods({ limit, order: 'views' });
-        // A channel that turned AI Moments off (channels.ai_derivation_enabled) is never picked from.
+        const now = Date.now();
+        const r = await media.listVods({ limit: Math.max(24, limit * 2), order: 'newest' });
+        const all = r?.vods || (Array.isArray(r) ? r : []);
+        const history = require('../streaming/stream-history');
+        const site = clipPolicy.siteStatus({ now, ...await clipPolicy.siteActivity(db, { now }), upstreamHealthy: true });
+        let clipLog = [];
+        try { const l = JSON.parse(await db.getState('auto_clip_log') || '[]'); if (Array.isArray(l)) clipLog = l; } catch { /* */ }
+        // The newest listed VOD per channel gives us the row (for `newest`), but the channel's
+        // latest ACTIVITY comes from Live's streams: a channel can be live right now without a new
+        // VOD, and that live stream must keep it out of the quiet/archive exception.
+        const firstByUser = new Map();
+        for (const v of all) if (v.user_id != null && !firstByUser.has(v.user_id)) firstByUser.set(v.user_id, v);
+        const channelByUser = new Map();
+        for (const [userId, first] of firstByUser) {
+            const latest = await clipPolicy.latestStreamForUser(db, userId);
+            const lastAt = clipPolicy.streamActivityAt(latest, now);
+            channelByUser.set(userId, {
+                quiet: clipPolicy.channelStatus({ now, lastStreamAt: lastAt }).quiet,
+                stream_id: latest ? latest.id : null, vod_id: first.id,
+            });
+        }
+        const anyQuiet = site.quiet || [...channelByUser.values()].some((c) => c.quiet);
+        const archivalAllowed = anyQuiet && clipPolicy.archiveAllowed(clipLog, now);
         const rows = [];
-        for (const v of r?.vods || (Array.isArray(r) ? r : [])) {
-            try { if (await db.isAiDerivationEnabled(v.user_id)) rows.push(v); }
-            catch { rows.push(v); }
+        for (const v of all) {
+            try { if (!await db.isAiDerivationEnabled(v.user_id)) continue; } catch { /* opt-out unreadable: keep it */ }
+            let stream = null, part = null;
+            if (v.stream_id) {
+                try { stream = await db.get('SELECT started_at, ended_at, is_live, peak_viewers FROM streams WHERE id = ?', [v.stream_id]); } catch { /* unknown age */ }
+                try { part = await history.partForVod(v.id); } catch { /* no part row */ }
+            }
+            const ch = channelByUser.get(v.user_id);
+            const channel = ch ? { quiet: ch.quiet, newest: ch.stream_id ? v.stream_id === ch.stream_id : v.id === ch.vod_id } : null;
+            const verdict = clipPolicy.classifySource({ vod: v, stream, part, now, site, channel });
+            if (!verdict.ok || (verdict.archival && !archivalAllowed)) continue;
+            rows.push({ ...v, archival: verdict.archival, captured_at: verdict.capturedAt, age_hours: verdict.ageHours, peak_viewers: stream ? stream.peak_viewers : 0 });
+            if (rows.length >= limit) break;
         }
         if (rows.length) {
             return (await Promise.all(rows.map(async (v) => {
@@ -302,10 +339,9 @@ async function _momentPool(limit) {
                 // (pastes read "@null's stream" without it).
                 let username = v.username || null;
                 if (!username && v.user_id) { try { username = (await db.getUserById(v.user_id))?.username || null; } catch { /* */ } }
-                let memory_count = 0, peak_viewers = 0;
+                let memory_count = 0;
                 if (v.stream_id) {
                     try { memory_count = (await db.get('SELECT COUNT(*) AS c FROM stream_memories WHERE stream_id = ?', [v.stream_id]))?.c || 0; } catch { /* */ }
-                    try { peak_viewers = (await db.getStreamById(v.stream_id))?.peak_viewers || 0; } catch { /* */ }
                 }
                 return {
                     vod_id: v.id, stream_id: v.stream_id || null, user_id: v.user_id || null,
@@ -314,9 +350,10 @@ async function _momentPool(limit) {
                     ai_overview_short: state.ai_overview_short || v.ai_overview_short || '',
                     view_count: Number(v.view_count) || 0,
                     duration: Number(v.duration_seconds ?? v.duration) || 0,
-                    peak_viewers, created_at: v.created_at || null,
+                    peak_viewers: Number(v.peak_viewers) || 0, created_at: v.created_at || null,
                     clip_count: Number(v.clip_count) || 0,
-                    memory_count,
+                    memory_count, archival: !!v.archival,
+                    captured_at: v.captured_at, age_hours: v.age_hours,
                 };
             })));
         }
@@ -336,10 +373,12 @@ async function tick(opts = {}) {
     try {
         const prev = await _load();
         const usedVods = new Set(ignoreUsed ? [] : (prev.usedVods || []));
-        // Content-signature dedup: even different VODs from the same streamer (same setup) yield
-        // near-identical scenes → we skip a moment whose description signature was used recently,
-        // so the hero/pastes never show visual duplicates. Respected even on --fresh.
-        const thisSigs = new Set();   // scenes picked in THIS run (cross-run dedupe lives in moment-registry)
+        // Content dedupe inside THIS run: even different VODs from the same streamer (same setup)
+        // can yield near-identical scenes. The registry is the only durable "used" log; this
+        // per-run list is the reservation for moments accepted before the next registry write.
+        const thisMoments = [];   // { desc, speech } picked in THIS run (cross-run dedupe lives in moment-registry)
+        const seenThisRun = (desc, speech) => thisMoments.some((m) =>
+            dedupe.isSameScene(m.desc, desc) && (!(m.speech && speech) || dedupe.isSameSpeech(m.speech, speech)));
 
         // Stage 1: consider every eligible VOD, ranked by its AI overview + popularity prior.
         // The VOD pool comes from OpenVibe.Media (most-viewed public VODs), overlaid with
@@ -380,14 +419,13 @@ async function tick(opts = {}) {
             // Stage 2: find the best moment within this VOD.
             const moment = await _findBestMoment(v);
             if (!moment) continue;
-            // Skip near-duplicate scenes / spots — the registry is shared with the clip job.
-            const sig = _sig(moment.desc || v.ai_overview_short || v.title);
-            const why0 = await registry.usedReason({ vod_id: v.vod_id, stream_id: v.stream_id, offset: moment.offset, sig });
-            if (why0 || (sig && thisSigs.has(sig))) {
-                console.log(`[AI-Moments] Skipped VOD ${v.vod_id} — ${why0 || `duplicate scene ("${sig}")`}`);
+            // Skip near-duplicate scenes / spots — the registry is shared with the clip job, and
+            // seenThisRun closes the gap before this run's first registry write.
+            const why0 = await registry.usedReason({ vod_id: v.vod_id, stream_id: v.stream_id, offset: moment.offset, desc: moment.desc, title: moment.title, speech: moment.speech });
+            if (why0 || seenThisRun(moment.desc, moment.speech)) {
+                console.log(`[AI-Moments] Skipped VOD ${v.vod_id} — ${why0 || 'duplicate scene in this run'}`);
                 continue;
             }
-            if (sig) thisSigs.add(sig);
             const offset = Math.floor(moment.offset || 0);
             let desc = moment.desc || '';
             let title = moment.title || _fallbackTitle(v, offset, desc);
@@ -455,14 +493,13 @@ async function tick(opts = {}) {
             }
 
             if (!desc) desc = _cleanText(v.ai_overview_short || v.ai_overview, 400) || 'A standout moment from this stream.';
-            // Re-check the signature against the FINAL (vision-verified) description — this is
-            // what actually catches same-scene duplicates (e.g. a split-image close-up re-picked).
-            const finalSig = _sig(desc);
-            if (finalSig && finalSig !== sig && (await registry.isUsed({ sig: finalSig }) || thisSigs.has(finalSig))) {
-                console.log(`[AI-Moments] Skipped VOD ${v.vod_id} — duplicate scene after vision ("${finalSig}")`);
+            // Re-check against the FINAL (vision-verified) description — this is what actually
+            // catches same-scene duplicates (e.g. a split-image close-up re-picked).
+            if ((await registry.isUsed({ desc, title, speech: moment.speech })) || seenThisRun(desc, moment.speech)) {
+                console.log(`[AI-Moments] Skipped VOD ${v.vod_id} — duplicate scene after vision`);
                 continue;
             }
-            if (finalSig) thisSigs.add(finalSig);
+            thisMoments.push({ desc, speech: moment.speech });
             const content = `${desc}\n\n▶ Watch this moment on ${v.username ? `@${v.username}'s stream` : 'the stream'}: ${vodLink}`;
             const metadata = JSON.stringify({ ai_moment: true, vod_id: v.vod_id, offset, vod_link: vodPath, username: v.username, why: r.why || null });
             let pasteSlug = slug;
@@ -497,15 +534,15 @@ async function tick(opts = {}) {
             try { fs.unlinkSync(screenshotPath); } catch { /* tmp frame */ }
 
             moments.push({ vodId: v.vod_id, offset, title: title.slice(0, 80), thumbnail: img, username: v.username, pasteSlug });
-            await registry.record({ kind: 'paste', vod_id: v.vod_id, stream_id: v.stream_id, offset, sig: finalSig || sig, title });
+            await registry.record({ kind: 'paste', vod_id: v.vod_id, stream_id: v.stream_id, offset, title, desc, speech: moment.speech });
 
             // Also cut a VOD clip from the SAME VOD — but a DIFFERENT beat (clip flavor, ≥ 2 min away),
             // so the clip and the paste never show the identical second with the identical title.
             if (opts.clip !== false && momentSource) {
                 try {
                     const second = await _findBestMoment(v, { flavor: 'clip', avoid: [offset] });
-                    if (second && !await registry.isUsed({ vod_id: v.vod_id, stream_id: v.stream_id, offset: second.offset, desc: second.desc, title: second.title })) {
-                        const clip = await require('./auto-clip-job').clipVodMoment({ vod: v, offset: second.offset, title: second.title, desc: second.desc, source: momentSource });
+                    if (second && !await registry.isUsed({ vod_id: v.vod_id, stream_id: v.stream_id, offset: second.offset, desc: second.desc, title: second.title, speech: second.speech })) {
+                        const clip = await require('./auto-clip-job').clipVodMoment({ vod: v, offset: second.offset, title: second.title, desc: second.desc, speech: second.speech, archival: v.archival, source: momentSource });
                         if (clip) console.log(`[AI-Moments] Auto-clip cut for VOD ${v.vod_id} at ${_mmss(second.offset)} ("${String(second.title || '').slice(0, 60)}") — paste was at ${_mmss(offset)}`);
                     } else console.log(`[AI-Moments] VOD ${v.vod_id}: no second, distinct beat for a clip — skipped`);
                 } catch { /* clipping is best-effort */ }
