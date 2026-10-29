@@ -24,6 +24,8 @@ const recorder = require('../streaming/recorder');
 const registry = require('./moment-registry');
 const clipPolicy = require('./clip-policy');
 const dedupe = require('./clip-dedupe');
+const clipScore = require('./clip-score');
+const clipTrim = require('./clip-trim');
 
 // ── Tunables ────────────────────────────────────────────────
 const CHECK_INTERVAL_MS = 90 * 1000;
@@ -32,8 +34,6 @@ const MIN_SPACING_MIN = 12;
 const WINDOW_SEC = 150;      // chunk of time considered each check
 const BUCKET_SEC = 15;
 const SPIKE_MIN_MSGS = 6;    // a spike bucket must have at least this many messages
-const SPIKE_MULT = 2.5;      // …and be this many× the window average
-const SPIKE_MULT_NOAI = 4;   // stricter when we can't get AI agreement
 const CLIP_PRE = 16, CLIP_POST = 9;   // seconds cut before/after the moment
 
 const CLIP_LOG_SETTING = 'auto_clip_log';   // rolling log of auto-clips (caps + dedup)
@@ -76,7 +76,7 @@ async function _confirmLiveMoment(stream) {
     const memories = (await db.getStreamMemories(stream.id) || []).filter(m => m.description).slice(-5);
     const transcript = (await db.getStreamTranscriptSegments(stream.id) || []).slice(-14);
     const chat = await chatReads.recentChatText(stream.id, WINDOW_SEC, 40) || [];
-    if (!await _aiOn()) return { clip: null, transcript }; // caller decides via the stricter no-AI threshold
+    if (!await _aiOn()) return { clip: null, transcript, sounds: [] }; // the score treats the AI as neutral and raises its bars
     // Sound events are a strong clip signal on their own — a burst of gunfire, an explosion or laughter is exactly
     // the kind of thing viewers clip, and it is often the reason chat spiked in the first place.
     let sounds = [];
@@ -94,9 +94,9 @@ async function _confirmLiveMoment(stream) {
             sounds: sounds.map(e => ({ t: Math.max(0, Number(e.start_sec) || 0), label: String(e.label || '').slice(0, 120), confidence: Number(e.confidence || 0) })),
             chat: chat.slice(-30).map(c => _clean(c, 100)).filter(Boolean),
         }, { target: { service: 'live', type: 'stream', id: String(stream.id) }, meter: { kind: 'auto_clip_confirm', role: 'legacy', ownerUserId: stream.user_id } });
-        if (!j) return { clip: false, transcript };
-        return { clip: j.clip === true, title: _clean(j.title, 80), desc: _clean(j.desc, 400), transcript };
-    } catch { return { clip: false, transcript }; }
+        if (!j) return { clip: false, transcript, sounds };
+        return { clip: j.clip === true, title: _clean(j.title, 80), desc: _clean(j.desc, 400), transcript, sounds };
+    } catch { return { clip: false, transcript, sounds }; }
 }
 
 /** What was said around a stream second: the registry uses it so a static camera alone is not a repeat. */
@@ -129,15 +129,10 @@ async function _checkLiveStream(stream) {
         const peak = buckets.reduce((mx, b) => (b.count > mx.count ? b : mx), buckets[0]);
         if (peak.count < SPIKE_MIN_MSGS) return;
 
-        // AI agreement (or a much stronger spike when AI is unavailable).
+        // Below the old floor the AI is not even asked (it costs a call). Above it, one score decides (server/ai/clip-score.js).
+        if (peak.count < Math.max(SPIKE_MIN_MSGS, 1.5 * avg)) return;
         const verdict = await _confirmLiveMoment(stream);
-        if (verdict.clip === true) {
-            if (peak.count < Math.max(SPIKE_MIN_MSGS, SPIKE_MULT * avg)) return;
-        } else if (verdict.clip === null) { // AI off → stricter chat-only gate
-            if (peak.count < Math.max(SPIKE_MIN_MSGS, SPIKE_MULT_NOAI * avg)) return;
-        } else {
-            return; // AI said not clip-worthy
-        }
+        if (verdict.clip === false) return; // the AI's no is a veto
 
         // Locate the spike in recording time: how long ago it happened vs the live edge.
         const nowEpoch = Math.floor(Date.now() / 1000);
@@ -145,8 +140,7 @@ async function _checkLiveStream(stream) {
         const recEdge = Math.max(0, (Date.now() - rec.startedAt) / 1000);
         const momentOffset = Math.max(1, recEdge - secondsAgo);
         const start = Math.max(0, momentOffset - CLIP_PRE);
-        const end = Math.min(momentOffset + CLIP_POST, Math.max(0, recEdge - 0.5));
-        if (end - start < 5) return; // not enough flushed footage around the moment yet
+        if (Math.min(momentOffset + CLIP_POST, Math.max(0, recEdge - 0.5)) - start < 5) return; // not enough flushed footage around the moment yet
 
         // A moment the AI describes as sexual content is never clipped (server/ai/explicit.js).
         if (require('./explicit').isExplicit(verdict.desc, verdict.title)) { console.log(`[AutoClip] stream ${streamId}: skipped a moment the AI describes as sexual content`); return; }
@@ -156,18 +150,27 @@ async function _checkLiveStream(stream) {
         let streamSec = momentOffset;   // transcripts are in stream time; momentOffset is in the VOD's time
         try { const part = await require('../streaming/stream-history').partForVod(rec.vodId); if (part && Number.isFinite(Number(part.at))) streamSec = momentOffset + Number(part.at); } catch { /* one-part recording */ }
         const speech = _speechNear(verdict.transcript, streamSec);
+        // The score: no clip beats a bad clip; a fair one is kept unlisted for the streamer; a clear one is public.
+        const near = _speechNear(verdict.transcript, streamSec, 20);
+        const rated = clipScore.score({ spike: { peak: peak.count, avg }, sounds: verdict.sounds, speechWords: near ? near.split(/\s+/).length : 0, ai: { clip: verdict.clip } });
+        if (rated.verdict === 'skip') { console.log(`[AutoClip] stream ${streamId}: skipped a weak moment (score ${rated.score}${rated.reasons.length ? `: ${rated.reasons.join('; ')}` : ''})`); return; }
         const why = await registry.usedReason({ vod_id: rec.vodId, stream_id: streamId, offset: momentOffset, desc: verdict.desc, title, speech });
         if (why) { console.log(`[AutoClip] stream ${streamId}: ${why}`); return; }
+        // Start and end on sentences (server/ai/clip-trim.js): rows are in stream time, the cut in recording time.
+        const shift = streamSec - momentOffset;
+        const cut = clipTrim.trim({ moment: streamSec, segments: verdict.transcript, pre: CLIP_PRE, post: CLIP_POST, limit: Math.max(0, recEdge - 0.5) + shift });
+        const clipStart = Math.max(0, cut.start - shift), clipEnd = cut.end - shift;
         const clip = await media.createClip({
-            vod_id: rec.vodId, start_s: start, end_s: end,
+            vod_id: rec.vodId, start_s: clipStart, end_s: clipEnd,
             title, user_id: stream.user_id,
             stream_id: streamId, auto_generated: true, description: db.noLooks(verdict.desc || ''),
+            visibility: rated.verdict === 'public' ? 'public' : 'unlisted',
         }).catch((e) => { console.warn(`[AutoClip] Media createClip failed for stream ${streamId}:`, e.message); return null; });
         if (clip) {
             // deduplicated: Media handed back a clip someone already cut of this window. It stays in
             // the log for the caps, but it is theirs, not the AI's (syncAutoClipFlags skips it).
-            await _logClip({ stream_id: streamId, vod_id: rec.vodId, start_time: start, title, clip_id: clip.id, dedup: !!clip.deduplicated || undefined, desc: verdict.desc || '', speech, sig: _sceneSig(verdict.desc || title) });
-            console.log(`[AutoClip] LIVE clip for stream ${streamId} @${Math.round(momentOffset)}s ("${title}") — spike ${peak.count} msgs`);
+            await _logClip({ stream_id: streamId, vod_id: rec.vodId, start_time: clipStart, title, clip_id: clip.id, dedup: !!clip.deduplicated || undefined, desc: verdict.desc || '', speech, sig: _sceneSig(verdict.desc || title), score: rated.score, visibility: rated.verdict === 'public' ? 'public' : 'unlisted' });
+            console.log(`[AutoClip] LIVE clip for stream ${streamId} @${Math.round(momentOffset)}s ("${title}") — spike ${peak.count} msgs, score ${rated.score} → ${rated.verdict}${cut.snapped ? ', on sentences' : ''}`);
         }
     } catch (e) {
         console.warn(`[AutoClip] live check failed for stream ${streamId}:`, e.message);
