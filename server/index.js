@@ -653,6 +653,14 @@ app.use('/fragments', assets.versionedStatic('/fragments'), express.static(path.
 require('./web/paste-handover').register(app);
 require('./web/video-handover').register(app);
 try { require('./seo').register(app); } catch (e) { console.warn('[SEO] not registered:', e.message); }
+// The agent layer (openvibe-shared/agent-layer): /.well-known/agent.json, and the Markdown twins of the home,
+// channel pages and VOD/clip lists. Mounted after the SEO middleware, so a browser keeps the page's own head and
+// cache (which now names the twin) and only a twin request reaches this renderer; before the static files and the
+// SPA fallback, so an unknown .md is a 404 rather than a page.
+require('openvibe-shared/agent-layer').mount(app, {
+    descriptor: require('./agent-descriptor'),
+    render: require('./agent-pages').createAgentPages().renderPublicPage,
+});
 // Standalone HTML pages (popout chat, kiosk, legal, OBS overlays…) go through the same asset rewrite
 // as the SPA shell, so their script and stylesheet URLs can never drift out of date again.
 app.use((req, res, next) => {

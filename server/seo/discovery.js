@@ -99,7 +99,8 @@ async function sitemapHandler(req, res) {
 
 // ── /robots.txt: every crawler welcome, search and AI alike, pointed at the sitemap ────────
 function robotsTxt() {
-    return seo.robotsTxt({ sitemaps: [`${baseUrl()}/sitemap.xml`] });
+    return seo.robotsTxt({ sitemaps: [`${baseUrl()}/sitemap.xml`] })
+        + `# Agent manifest: ${baseUrl()}/.well-known/agent.json\n`;
 }
 
 // ── /llms.txt: what this site is, for language models and other automated readers ─────────

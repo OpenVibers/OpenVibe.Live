@@ -399,7 +399,7 @@
   "html",
   "img",
   "input",
-  "main#app",
+  "#app",
   "select",
   "select.form-input",
   "textarea"
