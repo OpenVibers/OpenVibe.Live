@@ -67,9 +67,10 @@ media.createClip = async (body) => { created.push(body); return { id: 900 + crea
 const recorder = require('../server/streaming/recorder');
 recorder.getActiveRecording = () => ({ vodId: 60, startedAt: Date.now() - 100_000 });
 const chatReads = require('../server/chat/chat-reads');
+// A spike clip-score keeps (40 messages; 10 scores as a weak moment and is skipped before the registry is asked).
 chatReads.liveChatBuckets = async () => [
     { count: 1, tsEpoch: Math.floor(Date.now() / 1000) },
-    { count: 1 }, { count: 10, tsEpoch: Math.floor(Date.now() / 1000) }, { count: 1 },
+    { count: 1 }, { count: 40, tsEpoch: Math.floor(Date.now() / 1000) }, { count: 1 },
 ];
 chatReads.recentChatText = async () => [];
 const ai = require('../server/ai/ai-analysis');
