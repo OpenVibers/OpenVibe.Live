@@ -241,6 +241,10 @@ async function _channelAccount(username) {
     let user = null;
     try { user = await db.getUserById(ch ? ch.user_id : (await db.getUserByUsername(username) || {}).id); } catch { user = null; }
     if (!ch && !user) return null;
+    // The links a viewer can follow the channel on (its OpenVibe profile, the platforms it restreams to, and
+    // the links the streamer saved): the same list the channel page renders as pills, for the Markdown twin.
+    let followLinks = [];
+    try { if (ch) followLinks = (await require('../social/links').channelSocialLinks(ch, db)).links || []; } catch { followLinks = []; }
     return {
         userId: ch ? ch.user_id : user.id,
         username: (ch && ch.username) || user.username,
@@ -248,6 +252,7 @@ async function _channelAccount(username) {
         avatarUrl: (ch && ch.avatar_url) || (user && user.avatar_url) || null,
         bio: (ch && ch.bio) || (user && user.bio) || '',
         banned: !!(user && (user.is_banned === 1 || user.is_banned === true)),
+        followLinks,
     };
 }
 
@@ -312,7 +317,10 @@ async function _channelMeta(username, page = 1) {
     // The page body, for crawlers and for anyone reading without JavaScript.
     let body = `<article><h1>${esc(`${name} (${handle})`)}</h1>`;
     const facts = [followers ? `${followers} follower${followers === 1 ? '' : 's'} on ${SITE_NAME}` : null];
-    if (live.length) facts.push(`Live now: ${clean(live[0].title || 'streaming', 100)}`);
+    if (live.length) {
+        const category = clean(live[0].ai_category || live[0].category || '', 40);
+        facts.push(`Live now: ${clean(live[0].title || 'streaming', 100)}${category ? ` · ${category}` : ''}`);
+    }
     if (facts.filter(Boolean).length) body += `<p class="byline">${esc(facts.filter(Boolean).join(' · '))}</p>`;
     if (acct.banned) body += '<p>This account is suspended.</p>';
     if (bio) body += `<p>${esc(bio)}</p>`;
@@ -328,6 +336,11 @@ async function _channelMeta(username, page = 1) {
     if (aiClips.length) {
         body += _itemSection('AI Moments', aiClips.map((c) => ({ url: videoUrl('clip', c.id), name: c.title || 'AI clip', meta: ['AI clip', _fmtDur(c.duration_seconds ?? c.duration)].filter(Boolean).join(' · ') })),
             null, `<p class="ai-disclosure">Clips OpenVibe's AI cut from ${esc(name)}'s streams when chat reacted. No one clipped these.</p>`);
+    }
+    if (acct.followLinks.length) {
+        body += `<section><h2>Follow ${esc(name)}</h2><ul>`
+            + acct.followLinks.map((l) => `<li><a href="${esc(l.url)}">${esc(l.label || l.name || l.kind)}</a></li>`).join('')
+            + '</ul></section>';
     }
     body += `<p><a href="${esc(abs(basePath))}">Visit ${esc(name)}'s channel</a> on ${SITE_NAME}.</p></article>`;
 
@@ -767,7 +780,7 @@ function _headBlock(meta) {
     });
     // og:url is the page itself: a shared AI clip previews as that clip, while its canonical names the source.
     if (meta.ogUrlPath) tags = tags.replace(`<meta property="og:url" content="${esc(canonical)}">`, `<meta property="og:url" content="${esc(abs(meta.ogUrlPath))}">`);
-    const parts = [PASTES_META, VIDEO_META, ...tags.split('\n')];
+    const parts = [PASTES_META, VIDEO_META, ...tags.split('\n'), seo.linkHeaderTags(canonical, `${baseUrl()}/llms.txt`).head];
     if (meta.video && meta.video.duration) {
         parts.push(`<meta property="og:video:duration" content="${meta.video.duration}">`);
         parts.push(`<meta property="video:duration" content="${meta.video.duration}">`);
@@ -784,7 +797,12 @@ const NOJS_STYLE = '<noscript><style>#seo-prerender{position:static!important;wi
 // The site's own links, for a reader without JavaScript (the navbar is built by a script).
 const NOJS_NAV = `<nav aria-label="${SITE_NAME}"><a href="/">${SITE_NAME}</a> · <a href="/content">Content</a> · <a href="/moments">AI Moments</a> · <a href="/chat">Chat</a> · <a href="/documentation">API docs</a></nav>`;
 function _prerender(html, snapshot) {
-    return html.replace(/(<body[^>]*>)/i, `$1\n<div id="seo-prerender" style="${PRERENDER_STYLE}">${NOJS_NAV}${snapshot}</div>`);
+    // The snapshot is the page's <main> on the server, so openvibe-shared/agent-layer's Markdown twin (which
+    // reads <main>) carries the page's own headings, links and language, and the SPA's empty placeholders stay
+    // out of it. The app keeps its id and gets role="main"; the SPA removes #seo-prerender when it boots.
+    html = html.replace(/<main id="app">/i, '<div id="app" role="main">').replace(/<\/main>/i, '</div>');
+    const block = `<div id="seo-prerender" style="${PRERENDER_STYLE}">${NOJS_NAV}<main>${snapshot}</main></div>`;
+    return html.replace(/(<body[^>]*>)/i, `$1\n${block}`);
 }
 // The page's one-paragraph summary (openvibe-shared/seo pageSummary): a hidden, machine-readable
 // <section data-ov-summary> after the snapshot, the same on every OpenVibe site.
@@ -896,6 +914,8 @@ function _pageParam(p, query) {
 
 async function middleware(req, res, next) {
     if (req.method !== 'GET') return next();
+    // A Markdown twin request (openvibe-shared/agent-layer answers it after this middleware).
+    if ((req.query && req.query.format === 'markdown') || req.accepts(['html', 'text/markdown']) === 'text/markdown') return next();
     const p = (req.path || '/').replace(/\/+$/, '') || '/';
     if (!SEO_ROUTE_RE.test(p)) return next();
     // A paste Community owns is never rendered here (the handover answers it first; this keeps it
@@ -911,6 +931,8 @@ async function middleware(req, res, next) {
     req.ovLookupDeadlineAt = Date.now() + pageStatus.LOOKUP_DEADLINE_MS;
     const send = (html, ttl) => {
         res.set('Cache-Control', `public, max-age=${Math.max(0, Math.round(ttl / 1000))}, must-revalidate`);
+        res.set('Link', seo.linkHeaderTags(abs(key), `${baseUrl()}/llms.txt`).header);
+        res.set('Vary', 'Accept');
         res.set('Content-Security-Policy-Report-Only', assets.cspReportOnly(html));
         res.type('html');
         return res.send(html);

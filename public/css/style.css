@@ -136,7 +136,7 @@ a:hover { color: var(--accent-light); }
 img { max-width: 100%; }
 button { cursor: pointer; font-family: inherit; }
 input, select, textarea { font-family: inherit; }
-main#app { position: relative; z-index: 1; }
+#app { position: relative; z-index: 1; }
 
 /* ── Scrollbar ────────────────────────────────────────────────── */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
