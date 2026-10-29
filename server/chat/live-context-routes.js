@@ -25,7 +25,7 @@
  * /internal/chat-effects/*   capability live.chat_effects.write — side effects
  *   anon, ip-log, viewer-counts, viewer-snapshots, user-color, ban, approve-ip, channel-settings,
  *   alert-sound, ensure-channel, site-settings, chat-message, ai/mod-command, arena-command,
- *   media-queue, hardware, paste, translate, notify/dm, notify/dm-read, notify/call-invite, asset-sync
+ *   media-queue, hardware, bench-vote, paste, translate, notify/dm, notify/dm-read, notify/call-invite, asset-sync
  *
  * Every effect that acts for a person re-checks that person here (moderator, owner, admin) — Chat
  * checked first; Live does not take its word for it.
@@ -510,6 +510,18 @@ const CHAT_ROBOT_MS = 600;
 const HARDWARE_COOLDOWN_MS = 250;
 const SUBJECT_RE = /^usr_[0-9A-HJKMNP-TV-Z]{26}$/;
 const hardwareLast = new Map();   // `${streamer}:${viewer}` → last command ms
+effectsRouter.post('/bench-vote', async (req, res) => {
+    const streamId = int(req.body?.stream_id);
+    const userId = int(req.body?.viewer_user_id);
+    const choice = String(req.body?.choice || '');
+    try {
+        const out = await require('../bench-stream/service').vote({ streamId, userId, choice });
+        res.json(out);
+    } catch (err) {
+        console.warn('[BenchStream] vote:', err.message);
+        res.status(503).json({ ok: false, message: 'Bench could not count that vote.' });
+    }
+});
 // What a refusal from Bot means, in chat words (Bot's codes, OpenVibe.Bot docs/protocol.md §2).
 const ROBOT_REFUSALS = {
     'bot.not_an_operator': 'You cannot drive this robot. Its owner decides who may.',

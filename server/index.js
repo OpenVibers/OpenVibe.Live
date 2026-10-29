@@ -770,6 +770,7 @@ app.use('/data/offline', express.static(paths.data('offline'), {
 
 // ── API Routes ───────────────────────────────────────────────
 app.use('/api/auth', authRoutes);
+app.use('/api/bench-stream', require('./bench-stream/routes'));
 // Channel ↔ OpenVibe.Bot robot binding (LIVE_BOT_EMBED, off by default: the route answers 404).
 app.use('/api/streams', require('./bot/routes'));
 app.use('/api/streams', streamRoutes);
@@ -1466,6 +1467,7 @@ async function start() {
         try { require('./ai/easter-egg-job').start(); } catch (e) { console.warn('[AI] easter-egg job not started:', e.message); }
         // The Rundown's desk replaced the Arena's jobs (the drama desk, the beef listener and judges, 2026-10-19).
         try { require('./rundown/desk').start(); } catch (e) { console.warn('[Rundown] desk not started:', e.message); }
+        try { require('./bench-stream/service').startJobs(); } catch (e) { console.warn('[BenchStream] poll job not started:', e.message); }
         try { require('./recap/recap').start(); } catch (e) { console.warn('[Recap] job not started:', e.message); }
         // Continuous audio → stream_timeline_events. Gated behind ai_timeline_enabled
         // (default off), so starting it is a no-op until switched on in admin.

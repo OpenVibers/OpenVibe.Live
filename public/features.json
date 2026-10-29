@@ -114,7 +114,8 @@
         "/js/channel-socials.js",
         "/js/channel-chat-resize.js",
         "/js/channel-support.js",
-        "/js/app-channel.js"
+        "/js/app-channel.js",
+        "/js/bench-stream-watch.js"
       ],
       "stubs": [
         "toggleChannelChat"
@@ -240,7 +241,8 @@
         "/js/settings.js",
         "/js/dashboard-moderation.js",
         "/js/powerchat.js",
-        "/js/dashboard.js"
+        "/js/dashboard.js",
+        "/js/bench-stream-dashboard.js"
       ],
       "stubs": [
         "regenerateDashStreamKey"
