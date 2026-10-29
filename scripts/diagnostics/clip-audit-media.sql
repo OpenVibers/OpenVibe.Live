@@ -50,7 +50,7 @@ WHERE auto_generated = 1;
 
 -- 4. Never watched by a person. A person is a visitor row (content_visits counts visitors, never
 --    names one); a play counter alone is not a person. 7 and 30 days after the clip was cut.
-WITH clips AS (
+WITH auto_clips AS (
     SELECT c.id,
            c.created_at::timestamptz AS cut_at,
            extract(epoch from now() - c.created_at::timestamptz) / 86400 AS age_days,
@@ -72,7 +72,7 @@ SELECT 'auto_clips_never_watched' AS section,
        count(*) FILTER (WHERE age_days >= 7 AND visitors_7d = 0) AS never_watched_after_7d,
        count(*) FILTER (WHERE age_days >= 30) AS clips_at_least_30d_old,
        count(*) FILTER (WHERE age_days >= 30 AND visitors_30d = 0) AS never_watched_after_30d
-FROM clips;
+FROM auto_clips;
 
 -- 5. Overlap: two automatic cuts of the same source that cover the same seconds.
 SELECT 'auto_clip_overlap' AS section,
