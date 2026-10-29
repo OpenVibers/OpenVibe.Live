@@ -73,6 +73,20 @@ async function check(name, fn) {
             assert.ok(!/<html/i.test(r.text));
         });
 
+        await check('/.well-known/security.txt is RFC 9116, canonical to this site, valid for a year', async () => {
+            const r = await get('/.well-known/security.txt');
+            assert.strictEqual(r.status, 200);
+            assert.match(r.headers['content-type'], /^text\/plain/);
+            assert.strictEqual(r.headers['cache-control'], 'public, max-age=86400');
+            const field = (k) => (r.text.match(new RegExp('^' + k + ': (.+)$', 'm')) || [])[1];
+            assert.strictEqual(field('Contact'), 'mailto:security@openvibe.network');
+            const expires = new Date(field('Expires'));
+            assert.ok(!Number.isNaN(expires.getTime()) && expires.getTime() > Date.now(), `Expires ${field('Expires')} is in the future`);
+            assert.strictEqual(field('Canonical'), 'https://openvibe.live/.well-known/security.txt');
+            assert.strictEqual(field('Preferred-Languages'), 'en');
+            assert.strictEqual(field('Policy'), 'https://openvibe.network/security');
+        });
+
         await check('a /shared/ file is immutable under its current ?v=, short-cached under any other', async () => {
             const assets = require('../server/web/assets');
             const v = assets.hashOf('/shared/shipped.js');

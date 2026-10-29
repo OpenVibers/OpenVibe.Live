@@ -181,12 +181,34 @@ const textHandler = (build) => (req, res) => {
     res.send(build());
 };
 
+// ── /.well-known/security.txt: the security contact (RFC 9116) ────────────────────────────
+// Contact, Expires and Canonical are required; the canonical URL is this site's own origin, from
+// the config, never a constant. Expires is the date a person must re-read and re-commit the file:
+// one year on. Policy is listed while https://openvibe.network/security answers 200 (checked 2026-10-29).
+const SECURITY_EXPIRES = '2027-10-29T00:00:00.000Z';
+function securityTxt() {
+    return [
+        'Contact: mailto:security@openvibe.network',
+        `Expires: ${SECURITY_EXPIRES}`,
+        'Preferred-Languages: en',
+        `Canonical: ${baseUrl()}/.well-known/security.txt`,
+        'Policy: https://openvibe.network/security',
+        '',
+    ].join('\n');
+}
+function securityTxtHandler(req, res) {
+    res.set('Content-Type', 'text/plain; charset=utf-8');
+    res.set('Cache-Control', 'public, max-age=86400');
+    res.send(securityTxt());
+}
+
 /** Mounted before express.static, so /robots.txt here wins over any file in public/. */
 function register(app) {
     app.get('/sitemap.xml', sitemapHandler);
     app.get('/robots.txt', textHandler(robotsTxt));
     app.get('/llms.txt', textHandler(llmsTxt));
     app.get('/llms-full.txt', textHandler(llmsFullTxt));
+    app.get('/.well-known/security.txt', securityTxtHandler);
 }
 
 /** The release's commit time (server/index.js, from openvibe-shared/release), for static pages' lastmod. */
@@ -198,4 +220,4 @@ function isoTime(v) {
     return Number.isNaN(d.getTime()) ? null : d.toISOString();
 }
 
-module.exports = { register, sitemapHandler, buildSitemap, robotsTxt, llmsTxt, llmsFullTxt, setReleasedAt };
+module.exports = { register, sitemapHandler, buildSitemap, robotsTxt, llmsTxt, llmsFullTxt, securityTxt, setReleasedAt };
