@@ -146,6 +146,8 @@ body.egg-rainbow { animation: eggRainbow 2.6s linear; }
     .pulse-grid { display: flex; flex-wrap: nowrap; overflow-x: auto; scroll-snap-type: x mandatory; scroll-padding-inline: 16px; scrollbar-width: none; gap: 10px; margin-left: -16px; margin-right: -16px; padding: 0 16px 4px; }
     .pulse-grid::-webkit-scrollbar { display: none; }
     .pulse-grid > .pulse-card { flex: 0 0 78%; min-width: 0; scroll-snap-align: start; }
+    /* Recently online: each channel shows its two newest recordings; its name opens the channel and the rest. */
+    #stream-grid-recent .streamer-group-streams > .streamer-group-stream:nth-child(n+3) { display: none; }
 }
 .stream-card-nsfw-blur img,
 .stream-card-nsfw-blur .thumb-placeholder {
