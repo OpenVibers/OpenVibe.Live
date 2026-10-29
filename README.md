@@ -176,6 +176,6 @@ Minimum `.env`: `BASE_URL`, `JWT_SECRET`, `OV_NETWORK_URL`, `OV_NETWORK_INTERNAL
 
 <!-- versions:start -->
 - openvibe-contracts: v0.222.0
-- openvibe-sdk: v0.67.0
-- openvibe-shared: v4.33.0
+- openvibe-sdk: v0.71.0
+- openvibe-shared: v4.36.1
 <!-- versions:end -->
