@@ -82,12 +82,12 @@ const pageStatus = require('../server/web/page-status');
 const app = express();
 require('../server/web/video-handover').register(app);   // before SEO, as server/index.js mounts it
 seo.register(app);
-app.get('*', pageStatus.spaFallback(async (res, urlPath) => {
-    const html = await seo.shellHtml(urlPath, res.statusCode);
-    if (!html) return false;
-    res.type('html').send(html);
-    return true;
-}));
+const sendShell = require('../server/web/shell').createSendShell({
+    shellHtml: seo.shellHtml,
+    sendDocument: async () => false,
+    assets: { setNoCache: (res) => res.setHeader('Cache-Control', 'no-cache'), cspReportOnly: () => '' },
+});
+app.get('*', pageStatus.spaFallback((res, urlPath) => sendShell(res, urlPath)));
 
 let base;
 function get(p, headers = {}) {
@@ -143,6 +143,7 @@ const server = http.createServer(app).listen(0, '127.0.0.1', async () => {
             assert.ok(r.body.includes('<meta property="og:url" content="https://openvibe.live/@alice">'), c.name);
             assert.ok(r.body.includes('<meta property="og:type" content="profile">'), c.name);
             assert.deepStrictEqual(robotsOf(r.body), ['index,follow'], c.name);
+            assert.strictEqual(r.headers['x-robots-tag'], undefined, `${c.name}: an indexable page sends no X-Robots-Tag`);
             assert.ok(ldOf(r.body).some((n) => n['@type'] === 'ProfilePage' && n.mainEntity.name === 'Alice'), c.name);
         }
     });
@@ -184,8 +185,10 @@ const server = http.createServer(app).listen(0, '127.0.0.1', async () => {
         assert.ok(!b2.includes('<h2>AI Moments</h2>'), 'clips are on page 1 only');
         const b3 = bodyOf((await get('/@alice?page=3')).body);
         assert.ok(b3.includes('/v/129"') && !b3.includes('rel="next"'), 'the last page has no next link');
-        const past = (await get('/@alice?page=9')).body;
+        const pastRes = await get('/@alice?page=9');
+        const past = pastRes.body;
         assert.deepStrictEqual(robotsOf(past), ['noindex,follow']);
+        assert.strictEqual(pastRes.headers['x-robots-tag'], 'noindex,follow');
         assert.deepStrictEqual(canonicalsOf(past), ['https://openvibe.live/@alice']);
         const junk = (await get('/@alice?page=abc')).body;
         assert.deepStrictEqual(canonicalsOf(junk), ['https://openvibe.live/@alice'], 'a non-number is page 1');
@@ -210,6 +213,7 @@ const server = http.createServer(app).listen(0, '127.0.0.1', async () => {
                 assert.strictEqual(r.status, 404, `${p} ${c.name}`);
                 assert.deepStrictEqual(canonicalsOf(r.body), [], `${p}: no canonical`);
                 assert.deepStrictEqual(robotsOf(r.body), ['noindex'], `${p}: noindex`);
+                assert.strictEqual(r.headers['x-robots-tag'], 'noindex', `${p}: X-Robots-Tag`);
                 assert.strictEqual(titleOf(r.body), 'Page not found — OpenVibe.Live', p);
                 assert.ok(!/og:url|og:title|application\/ld\+json/.test(head(r.body)), `${p}: home OG/JSON-LD left in`);
                 assert.ok(bodyOf(r.body).includes('<h1>Page not found</h1>'), `${p}: a not-found body`);
@@ -225,6 +229,7 @@ const server = http.createServer(app).listen(0, '127.0.0.1', async () => {
         const search = (await get('/search?q=minecraft')).body;
         assert.deepStrictEqual(canonicalsOf(search), ['https://openvibe.live/search'], 'every query is the one search page');
         assert.ok(/<meta name="robots" content="noindex,follow">/.test(head(search)));
+        assert.strictEqual((await get('/search?q=minecraft')).headers['x-robots-tag'], 'noindex,follow');
     });
 
     await check('/documentation and /updates have their own title, description and canonical (they repeated the home page\'s)', async () => {
