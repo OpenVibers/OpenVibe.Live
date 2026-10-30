@@ -101,11 +101,21 @@
         </div>
     </div>
 
+    <!-- Around OpenVibe (2026-10-30, the short-pages rule): the digest, the star spotlight and the pulse are
+         three different things to look at. On a phone they share one place — a row of tabs and one of them at a
+         time — so the page stays a couple of screens tall. Wider screens hide the tabs and show all three.
+         A tab shows once its section has something: each loader hides a section that has not (initHomeTabs). -->
+    <div class="home-tabbox" id="home-around" data-tab="lately">
+    <div class="home-tabs" role="tablist" aria-label="Around OpenVibe">
+        <button type="button" role="tab" id="ha-tab-lately" data-tab="lately" aria-selected="true" aria-controls="home-digest" style="--sc:#60a5fa"><i class="fa-solid fa-chart-line" aria-hidden="true"></i><span>Lately</span></button>
+        <button type="button" role="tab" id="ha-tab-star" data-tab="star" aria-selected="false" aria-controls="home-star-section" tabindex="-1" style="--sc:#f59e0b"><i class="fa-solid fa-star" aria-hidden="true"></i><span>Star</span></button>
+        <button type="button" role="tab" id="ha-tab-happening" data-tab="happening" aria-selected="false" aria-controls="home-pulse-section" tabindex="-1" hidden style="--sc:#fbbf24"><i class="fa-solid fa-bolt" aria-hidden="true"></i><span>Happening</span></button>
+    </div>
     <!-- "While you were away" (signed-in, returning) / "Lately on OpenVibe" (everyone) — site activity digest -->
-    <div class="home-digest" id="home-digest"><div class="ovsk ovsk-panel" aria-hidden="true"><div class="ovsk-bar" style="height:14px;width:45%"></div><div class="ovsk-bar" style="height:10px;width:92%"></div><div class="ovsk-bar" style="height:10px;width:68%"></div></div></div>
+    <div class="home-digest" id="home-digest" data-panel="lately"><div class="ovsk ovsk-panel" aria-hidden="true"><div class="ovsk-bar" style="height:14px;width:45%"></div><div class="ovsk-bar" style="height:10px;width:92%"></div><div class="ovsk-bar" style="height:10px;width:68%"></div></div></div>
 
     <!-- Star of OpenVibe — featured streamer spotlight (star_streamer setting / STAR_STREAMER env) -->
-    <div class="home-star-section" id="home-star-section"><div class="ovsk ovsk-panel" aria-hidden="true"><div class="ovsk-bar" style="height:14px;width:45%"></div><div class="ovsk-bar" style="height:10px;width:92%"></div><div class="ovsk-bar" style="height:10px;width:68%"></div><div class="ovsk-bar" style="height:10px;width:80%"></div></div></div>
+    <div class="home-star-section" id="home-star-section" data-panel="star"><div class="ovsk ovsk-panel" aria-hidden="true"><div class="ovsk-bar" style="height:14px;width:45%"></div><div class="ovsk-bar" style="height:10px;width:92%"></div><div class="ovsk-bar" style="height:10px;width:68%"></div><div class="ovsk-bar" style="height:10px;width:80%"></div></div></div>
 
         <div class="hero-egg" id="hero-egg" style="display:none">
             <button class="hero-egg-head" type="button" onclick="toggleHeroEgg()">
@@ -139,12 +149,13 @@
         </div>
 
     <!-- Community pulse: goals near completion, latest activity, weekly leaders -->
-    <div class="home-section-lazy" id="home-pulse-section" style="display:none">
+    <div class="home-section-lazy" id="home-pulse-section" style="display:none" data-panel="happening">
         <div class="section-header" style="--sc:#f59e0b">
             <h2><i class="fa-solid fa-bolt"></i> Happening Now<small class="section-kicker">the pulse</small></h2>
         </div>
         <div class="pulse-grid" id="pulse-grid"></div>
     </div>
+    </div><!-- /home-around -->
 
     <!-- What people made, above the introduction to the site (roadmap 32.7: the home leads with live
          content and creators): channels that were just on, their recordings, the clips people took
@@ -205,12 +216,20 @@
     </div>
     </div><!-- /home-catchup -->
 
-    <!-- The two introductions travel together: what OpenVibe does (the restream diagram), then
-         why it exists (the About banner). demoteHomeIntroSections() moves them as a pair. -->
+    <!-- New here? (2026-10-30, the short-pages rule): the tour, the About banner and the network hub are
+         three introductions to the place. On a phone they share one place — a row of tabs and one of them at a
+         time. Wider screens hide the tabs and show all three. demoteHomeIntroSections() moves this whole
+         block to the end of the page once the reader has seen it often enough. -->
+    <div class="home-tabbox home-intro" id="home-intro" data-tab="tour">
+    <div class="home-tabs" role="tablist" aria-label="New here?">
+        <button type="button" role="tab" id="hi-tab-tour" data-tab="tour" aria-selected="true" aria-controls="home-tour-mount" style="--sc:#22d3ee"><i class="fa-solid fa-diagram-project" aria-hidden="true"></i><span>How it works</span></button>
+        <button type="button" role="tab" id="hi-tab-about" data-tab="about" aria-selected="false" aria-controls="home-cta-banner" tabindex="-1" style="--sc:#f472b6"><i class="fa-solid fa-book-open" aria-hidden="true"></i><span>About</span></button>
+        <button type="button" role="tab" id="hi-tab-network" data-tab="network" aria-selected="false" aria-controls="home-network-hub" tabindex="-1" style="--sc:#38bdf8"><i class="fa-solid fa-network-wired" aria-hidden="true"></i><span>The network</span></button>
+    </div>
     <!-- One stream, everywhere — restream pipeline + feature tour (public/js/home-tour.js) -->
-    <div class="home-tour-mount home-section-lazy" id="home-tour-mount" data-fx-viewport></div>
+    <div class="home-tour-mount home-section-lazy" id="home-tour-mount" data-panel="tour" data-fx-viewport></div>
     <!-- Streaming CTA -->
-    <div class="home-cta-banner" id="home-cta-banner" data-fx-viewport>
+    <div class="home-cta-banner" id="home-cta-banner" data-panel="about" data-fx-viewport>
         <div class="cta-ambient" aria-hidden="true"></div>
         <div class="cta-embers" aria-hidden="true">
             <span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span>
@@ -358,11 +377,8 @@
             </div><!-- /home-about-body -->
         </div>
     </div>
-
-</div>
-
-<div class="container">
-    <div class="network-hub">
+    <!-- The network: the fourteen services one account reaches. -->
+    <div class="network-hub" id="home-network-hub" data-panel="network">
         <div class="network-hub-header">
             <i class="fa-solid fa-network-wired"></i>
             <div>
@@ -493,7 +509,11 @@
             </a>
         </div>
     </div>
+    </div><!-- /home-intro -->
 
+</div>
+
+<div class="container">
     <!-- OpenVibe.Live Changelog -->
     <div class="section-header" style="--sc:#94a3b8;margin-top:32px;">
         <h2><i class="fa-solid fa-code-commit"></i> Recent Changes<small class="section-kicker">built in the open</small></h2>
