@@ -22,6 +22,7 @@ console.warn = () => {};
 const express = require('express');
 const { ids, validate } = require('openvibe-contracts');
 const { signDeliveryHeaders } = require('openvibe-sdk/events');
+const { uncovered } = require('openvibe-sdk/account-data');
 const db = require('../server/db/database');
 
 const DANA = ids.newId('user'), XENA = ids.newId('user'), NOBODY = ids.newId('user');
@@ -62,6 +63,18 @@ const ulid = () => ids.ulid();
     try {
         assert.ok(NETWORK_TOPICS.includes('network.account.export_requested') && NETWORK_TOPICS.includes('network.account.deleted'), 'the subscription asks for both');
         const cols = await accountData.personColumns(d);
+        {
+            const exempt = {};
+            for (const t of accountData.FROZEN) exempt[t] = 'a frozen table Media or Community owns and erases itself';
+            for (const t of accountData.RETAIN) exempt[t] = 'a ledger the law keeps: money, moderation or an audit trail';
+            const chatTables = ['channel_moderators', 'channel_moderation_settings', 'user_tags', 'chat_ai_summaries', 'chat_timeline_events'];
+            for (const t of chatTables) exempt[t] = 'Chat owns and erases it';
+            exempt.hidden_relay_users = 'a moderation record of a relay account hidden from a channel, kept for accountability';
+            // Every other table with a person column is handled by the schema-driven export and erase below.
+            const handled = [...cols.keys()].filter((t) => !chatTables.includes(t));
+            const missing = await uncovered(d, { taskKeyed: handled, exempt });
+            assert.deepStrictEqual(missing, [], `a table with a person column is neither covered nor exempted: ${missing.join(', ')}`);
+        }
         for (const t of accountData.FROZEN) assert.ok(!cols.has(t), `${t} is never touched`);
         const existing = new Set((await d.prepare("SELECT table_name AS name FROM information_schema.tables WHERE table_schema = current_schema()").all()).map((r) => r.name));
         for (const t of cols.keys()) assert.ok(existing.has(t), `account export/deletion references missing table ${t}`);
