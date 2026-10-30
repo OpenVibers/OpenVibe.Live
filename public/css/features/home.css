@@ -1252,3 +1252,17 @@ body.egg-rainbow { animation: eggRainbow 2.6s linear; }
 .streamer-group-stream.has-replay:hover .sg-play i, .streamer-group-stream.has-replay:focus-visible .sg-play i { transform: scale(1.08); background: var(--accent); border-color: transparent; }
 .sg-replay { color: var(--accent-light, var(--accent)); font-weight: 700; }
 @media (prefers-reduced-motion: reduce) { .sg-play i { transition: none; } }
+
+/* Touch screens (2026-10-29, tap-target audit): every control on the home reaches 44 px where it has room, and an
+   invisible hit area (::after) where growing it would move the layout. Nothing changes on a mouse. */
+@media (pointer: coarse) {
+    #page-home .digest-chip, #page-home .star-act, #page-home .hero-stat-more, #page-home .home-about-toggle { min-height: 44px; }
+    #page-home .star-act.star-expand { min-width: 44px; }
+    #page-home .streamer-group-identity, #page-home .hf-who { min-height: 44px; display: flex; align-items: center; }
+    #page-home .section-action, #page-home .digest-recap, #page-home .hf-hide, #page-home .hero-philosophy-btn, #page-home .hero-philosophy-link, #page-home .star-name a, #page-home .hero-golive-note a { position: relative; }
+    #page-home .section-action::after { content: ''; position: absolute; inset: -9px -4px; }
+    #page-home .digest-recap::after { content: ''; position: absolute; inset: -7px; }
+    #page-home .hf-hide::after { content: ''; position: absolute; inset: -11px; }
+    /* Text links in a row: taller only, so neighbours never take each other's taps. */
+    #page-home .hero-philosophy-btn::after, #page-home .hero-philosophy-link::after, #page-home .star-name a::after, #page-home .hero-golive-note a::after { content: ''; position: absolute; left: 0; right: 0; top: -12px; bottom: -12px; }
+}
