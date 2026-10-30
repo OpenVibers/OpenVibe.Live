@@ -1266,3 +1266,40 @@ body.egg-rainbow { animation: eggRainbow 2.6s linear; }
     /* Text links in a row: taller only, so neighbours never take each other's taps. */
     #page-home .hero-philosophy-btn::after, #page-home .hero-philosophy-link::after, #page-home .star-name a::after, #page-home .hero-golive-note a::after { content: ''; position: absolute; left: 0; right: 0; top: -12px; bottom: -12px; }
 }
+
+/* Catch up (2026-10-30, the short-pages rule): on a phone the five rails (recently online, VODs, clips, pastes, AI
+   moments) share one place, a row of tabs and one rail at a time; the tab names the rail, so its header keeps only
+   its actions. Wider screens never see the tabs. The breakpoint is app-home.js's _narrow. */
+.home-catchup-tabs { display: none; }
+@media (max-width: 759px) {
+    .home-catchup-tabs {
+        display: flex; gap: 6px; margin: 30px -16px 6px; padding: 2px 16px 4px;
+        overflow-x: auto; scrollbar-width: none; overscroll-behavior-x: contain; scroll-padding-inline: 16px;
+    }
+    .home-catchup-tabs::-webkit-scrollbar { display: none; }
+    .home-catchup-tabs [role="tab"] {
+        --sc-on: color-mix(in srgb, var(--sc) 45%, var(--accent));
+        flex: none; display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 16px;
+        font: inherit; font-size: 0.86rem; font-weight: 750; white-space: nowrap; cursor: pointer;
+        color: var(--text-secondary); background: transparent;
+        border: 1px solid var(--border); border-radius: 999px;
+        transition: color 0.18s, background 0.18s, border-color 0.18s;
+    }
+    .home-catchup-tabs [role="tab"][hidden] { display: none; }
+    .home-catchup-tabs [role="tab"] i { font-size: 0.78rem; color: var(--sc-on); }
+    .home-catchup-tabs [role="tab"][aria-selected="true"] {
+        color: color-mix(in srgb, var(--sc-on) 30%, var(--text-primary));
+        background: color-mix(in srgb, var(--sc-on) 14%, transparent);
+        border-color: color-mix(in srgb, var(--sc-on) 48%, transparent);
+    }
+    .home-catchup-tabs [role="tab"]:focus-visible { outline: 2px solid var(--sc-on); outline-offset: 2px; }
+    .home-catchup:not([data-tab="recent"]) [data-catchup="recent"],
+    .home-catchup:not([data-tab="vods"]) [data-catchup="vods"],
+    .home-catchup:not([data-tab="clips"]) [data-catchup="clips"],
+    .home-catchup:not([data-tab="pastes"]) [data-catchup="pastes"],
+    .home-catchup:not([data-tab="moments"]) [data-catchup="moments"] { display: none !important; }
+    .home-catchup .section-header[data-catchup], .home-catchup [data-catchup] > .section-header { margin: 6px 0 10px; justify-content: flex-end; min-height: 0; }
+    .home-catchup .section-header[data-catchup] > h2, .home-catchup [data-catchup] > .section-header > h2,
+    .home-catchup .section-header[data-catchup]::after, .home-catchup [data-catchup] > .section-header::after { display: none; }
+}
+@media (max-width: 759px) and (prefers-reduced-motion: reduce) { .home-catchup-tabs [role="tab"] { transition: none; } }

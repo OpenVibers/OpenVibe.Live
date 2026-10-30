@@ -5915,8 +5915,10 @@ body.theme-light .btn-outline:hover {
     pointer-events: none;
     border-radius: 0 0 12px 12px;
 }
+/* A phone shows the newest day only (2026-10-30, the short-pages rule): the hero and the footer already carry the
+   latest change, and "Show all" or "View all" opens the rest. */
 @media (max-width: 560px) {
-    .home-changelog-wrapper.collapsed { max-height: 360px; }
+    .home-changelog-wrapper.collapsed { max-height: 200px; }
 }
 
 /* ═══════════════════════════════════════════════════════════════
