@@ -149,49 +149,61 @@
     <!-- What people made, above the introduction to the site (roadmap 32.7: the home leads with live
          content and creators): channels that were just on, their recordings, the clips people took
          and their pastes. What the AI made follows it (AI Moments; 33.6: made, then derived). -->
+    <!-- Catch up. On a phone the five rails below share one place: a row of tabs and one rail at a time, so the
+         home stays a couple of screens tall (the owner's short-pages rule, 2026-10-28). Wider screens hide the tabs and
+         show every rail. A tab shows once its rail has something (initHomeCatchup in app-home.js). -->
+    <div class="home-catchup" id="home-catchup" data-tab="recent">
+    <div class="home-catchup-tabs" role="tablist" aria-label="Catch up">
+        <button type="button" role="tab" id="hc-tab-recent" data-tab="recent" aria-selected="true" aria-controls="stream-grid-recent" style="--sc:#60a5fa"><i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i><span>Recently online</span></button>
+        <button type="button" role="tab" id="hc-tab-vods" data-tab="vods" aria-selected="false" aria-controls="home-recent-vods-grid" tabindex="-1" style="--sc:#a78bfa" hidden><i class="fa-solid fa-video" aria-hidden="true"></i><span>VODs</span></button>
+        <button type="button" role="tab" id="hc-tab-clips" data-tab="clips" aria-selected="false" aria-controls="home-clips-grid" tabindex="-1" style="--sc:#f472b6" hidden><i class="fa-solid fa-scissors" aria-hidden="true"></i><span>Clips</span></button>
+        <button type="button" role="tab" id="hc-tab-pastes" data-tab="pastes" aria-selected="false" aria-controls="home-pastes-list" tabindex="-1" style="--sc:#2dd4bf" hidden><i class="fa-solid fa-paste" aria-hidden="true"></i><span>Pastes</span></button>
+        <button type="button" role="tab" id="hc-tab-moments" data-tab="moments" aria-selected="false" aria-controls="home-moments-row" tabindex="-1" style="--sc:#22d3ee" hidden><i class="fa-solid fa-brain" aria-hidden="true"></i><span>AI Moments</span></button>
+    </div>
     <!-- Recently Online -->
-    <div class="section-header" style="--sc:#60a5fa">
+    <div class="section-header" style="--sc:#60a5fa" data-catchup="recent">
         <h2><i class="fa-solid fa-clock-rotate-left"></i> Recently Online<small class="section-kicker">just missed them</small></h2>
     </div>
-    <div class="stream-grid" id="stream-grid-recent">
+    <div class="stream-grid" id="stream-grid-recent" data-catchup="recent">
         <div class="empty-state">
             <p class="muted">No recent streams</p>
         </div>
     </div>
-    <div id="stream-grid-recent-pagination" class="pastes-pagination" style="display:none"></div>
+    <div id="stream-grid-recent-pagination" class="pastes-pagination" style="display:none" data-catchup="recent"></div>
 
     <!-- Recent VODs -->
-    <div class="section-header" style="--sc:#a78bfa;display:none" id="home-recent-vods-header">
+    <div class="section-header" style="--sc:#a78bfa;display:none" id="home-recent-vods-header" data-catchup="vods">
         <h2><i class="fa-solid fa-video"></i> Recent VODs<small class="section-kicker">full streams</small></h2>
         <a href="/content?type=vods" onclick="return handleLinkClick(event, '/content?type=vods')" class="section-action">View all</a>
     </div>
-    <div class="stream-grid" id="home-recent-vods-grid"></div>
-    <div id="home-recent-vods-pagination" class="pastes-pagination" style="display:none"></div>
+    <div class="stream-grid" id="home-recent-vods-grid" data-catchup="vods"></div>
+    <div id="home-recent-vods-pagination" class="pastes-pagination" style="display:none" data-catchup="vods"></div>
 
     <!-- Recent Clips -->
-    <div class="section-header" style="--sc:#f472b6;display:none" id="home-clips-header">
+    <div class="section-header" style="--sc:#f472b6;display:none" id="home-clips-header" data-catchup="clips">
         <h2><i class="fa-solid fa-scissors"></i> Recent Clips<small class="section-kicker">the good bits</small></h2>
         <a href="/content?type=clips" onclick="return handleLinkClick(event, '/content?type=clips')" class="section-action">View all</a>
     </div>
-    <div class="stream-grid home-clips-grid" id="home-clips-grid"></div>
-    <div id="home-clips-pagination" class="pastes-pagination" style="display:none"></div>
+    <div class="stream-grid home-clips-grid" id="home-clips-grid" data-catchup="clips"></div>
+    <div id="home-clips-pagination" class="pastes-pagination" style="display:none" data-catchup="clips"></div>
 
     <!-- Recent Pastes -->
-    <div class="section-header" style="--sc:#2dd4bf;display:none" id="home-pastes-header">
+    <div class="section-header" style="--sc:#2dd4bf;display:none" id="home-pastes-header" data-catchup="pastes">
         <h2><i class="fa-solid fa-paste"></i> Recent Pastes<small class="section-kicker">shots & snippets</small></h2>
         <a href="/content?type=pastes" onclick="return handleLinkClick(event, '/content?type=pastes')" class="section-action">View all</a>
     </div>
-    <div class="home-pastes-list" id="home-pastes-list"></div>
-    <div id="home-pastes-pagination" class="pastes-pagination" style="display:none"></div>
+    <div class="home-pastes-list" id="home-pastes-list" data-catchup="pastes"></div>
+    <div id="home-pastes-pagination" class="pastes-pagination" style="display:none" data-catchup="pastes"></div>
 
     <!-- AI Moments showcase -->
-    <div class="home-section-lazy" id="home-moments-section" style="display:none">
+    <div class="home-section-lazy" id="home-moments-section" style="display:none" data-catchup="moments">
         <div class="section-header" style="--sc:#22d3ee">
             <h2><i class="fa-solid fa-brain"></i> AI Moments<small class="section-kicker">picked by AI</small></h2>
             <a href="/moments" onclick="return handleLinkClick(event, '/moments')" class="section-action">See all</a>
         </div>
         <div class="moments-row ov-rail-track" id="home-moments-row"></div>
     </div>
+    </div><!-- /home-catchup -->
 
     <!-- The two introductions travel together: what OpenVibe does (the restream diagram), then
          why it exists (the About banner). demoteHomeIntroSections() moves them as a pair. -->

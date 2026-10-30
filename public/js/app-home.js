@@ -1232,7 +1232,66 @@ function demoteHomeIntroSections() {
     }
 }
 
+/**
+ * Catch up: on a phone the five rails share one place, one rail at a time (the tabs and the CSS are in the home
+ * fragment and features/home.css). A tab shows once its rail has something: each loader already hides its header
+ * or section when it has nothing, so the tabs follow those. The person's last tab is kept for their next visit.
+ */
+const HOME_CATCHUP_KEY = 'ov_home_catchup';
+const _HOME_CATCHUP_SHOWN = { vods: 'home-recent-vods-header', clips: 'home-clips-header', pastes: 'home-pastes-header', moments: 'home-moments-section' };
+function initHomeCatchup() {
+    const box = document.getElementById('home-catchup');
+    if (!box || box._ovCatchup) return;
+    box._ovCatchup = true;
+    const tabs = [...box.querySelectorAll('.home-catchup-tabs [role="tab"]')];
+    const has = (key) => { const el = _HOME_CATCHUP_SHOWN[key] && document.getElementById(_HOME_CATCHUP_SHOWN[key]); return !el || el.style.display !== 'none'; };
+    let wanted = 'recent';
+    try { wanted = localStorage.getItem(HOME_CATCHUP_KEY) || 'recent'; } catch { /* */ }
+    const pick = (key, { remember = false, focus = false } = {}) => {
+        box.dataset.tab = key;
+        for (const t of tabs) {
+            const on = t.dataset.tab === key;
+            t.setAttribute('aria-selected', on ? 'true' : 'false');
+            t.tabIndex = on ? 0 : -1;
+            if (on && focus) t.focus();
+        }
+        if (remember) { wanted = key; try { localStorage.setItem(HOME_CATCHUP_KEY, key); } catch { /* */ } }
+    };
+    // The kept tab opens if its rail arrives in the first few seconds; later, a rail arriving never moves the page
+    // under the reader. A rail that empties out falls back to the first one.
+    const settleBy = Date.now() + 3000;
+    const sync = () => {
+        for (const t of tabs) t.hidden = !has(t.dataset.tab);
+        const cur = box.dataset.tab;
+        if (!has(cur)) pick(has(wanted) ? wanted : 'recent');
+        else if (cur !== wanted && has(wanted) && Date.now() < settleBy) pick(wanted);
+    };
+    box.querySelector('.home-catchup-tabs').addEventListener('click', (e) => {
+        const t = e.target.closest('[role="tab"]');
+        if (t) pick(t.dataset.tab, { remember: true });
+    });
+    // Arrow keys, Home and End move between the tabs that are showing (the tabs pattern).
+    box.querySelector('.home-catchup-tabs').addEventListener('keydown', (e) => {
+        const shown = tabs.filter((t) => !t.hidden);
+        const i = shown.indexOf(document.activeElement);
+        if (i < 0) return;
+        const to = { ArrowRight: i + 1, ArrowLeft: i - 1, Home: 0, End: shown.length - 1 }[e.key];
+        if (to == null) return;
+        e.preventDefault();
+        const t = shown[(to + shown.length) % shown.length];
+        pick(t.dataset.tab, { remember: true, focus: true });
+        t.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    });
+    const watch = new MutationObserver(sync);
+    for (const id of Object.values(_HOME_CATCHUP_SHOWN)) {
+        const el = document.getElementById(id);
+        if (el) watch.observe(el, { attributes: true, attributeFilter: ['style'] });
+    }
+    sync();
+}
+
 async function loadHome() {
+    initHomeCatchup();
     demoteHomeIntroSections();
     void loadHomeChangelog();
     _initHomeAbout();
