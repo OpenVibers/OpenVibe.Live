@@ -1179,19 +1179,30 @@ function _homeIntroSeenCount() {
     } catch { return 0; }
 }
 let _introSightingArmed = false;
+let _introCounted = false;
+const _introSeen = new Set();
+/**
+ * One sighting of the introductions: the reader has seen both of them during this visit.
+ *
+ * The tour and the About banner are two panels of the same "New here?" block now, and on a phone only one of
+ * them is on screen at a time — so the About banner is seen when its tab is opened (initHomeIntro), not only
+ * when it scrolls past.
+ */
+function _introSeenNow(id) {
+    if (_introCounted) return;
+    _introSeen.add(id);
+    if (_introSeen.size < 2) return;
+    _introCounted = true;
+    try { localStorage.setItem(_INTRO_SEEN_KEY, String(Math.min(_homeIntroSeenCount() + 1, 9999))); } catch { /* */ }
+}
 function _watchIntroSighting() {
     if (_introSightingArmed || !('IntersectionObserver' in window)) return;
     const tour = document.getElementById('home-tour-mount');
     const about = document.getElementById('home-cta-banner');
     if (!tour || !about) return;
     _introSightingArmed = true;
-    const seen = new Set();
     const io = new IntersectionObserver((entries) => {
-        for (const en of entries) if (en.isIntersecting) seen.add(en.target.id);
-        if (seen.size === 2) {
-            io.disconnect();
-            try { localStorage.setItem(_INTRO_SEEN_KEY, String(Math.min(_homeIntroSeenCount() + 1, 9999))); } catch { /* */ }
-        }
+        for (const en of entries) if (en.isIntersecting) _introSeenNow(en.target.id);
     }, { threshold: 0.25 });
     io.observe(tour); io.observe(about);
 }
@@ -1199,19 +1210,31 @@ function _watchIntroSighting() {
 /**
  * Once both introductions have been seen enough times, they go to the very end of the page.
  *
- * They move as a pair, in order, after the changelog. The old version appended to the *first*
- * .container on the home page — but the changelog lives in a later one, so "moved to the bottom"
- * actually landed them in the middle of the page, above Recently Online.
+ * They are one block now — the tour, the About banner and the network hub behind one row of tabs — and
+ * they move as that block, in order, after the changelog. The old version appended to the *first* .container on
+ * the home page — but the changelog lives in a later one, so "moved to the bottom" actually landed them in the
+ * middle of the page, above Recently Online.
  */
-/** The restream tour (public/js/home-tour.js, feature homeTour) sits below the fold: its code loads when the mount nears the viewport. */
+/**
+ * The restream tour (public/js/home-tour.js, feature homeTour) sits below the fold: its code loads when the mount
+ * nears the viewport. The mount is a panel of the "New here?" block now, so it can be hidden while another tab is
+ * open — force=true loads it at once, which is what opening its tab does.
+ */
 let _homeTourArmed = false;
-function _lazyHomeTour() {
+let _homeTourLoading = false;
+function _loadHomeTour() {
+    if (_homeTourLoading || !window.ov) return;
+    _homeTourLoading = true;
+    window.ov.load('homeTour').catch(() => { _homeTourLoading = false; _homeTourArmed = false; });
+}
+function _lazyHomeTour(force) {
     const el = document.getElementById('home-tour-mount');
-    if (_homeTourArmed || !el || !window.ov) return;
+    if (!el || !window.ov) return;
+    if (force) { _loadHomeTour(); return; }
+    if (_homeTourArmed) return;
     _homeTourArmed = true;
-    const go = () => window.ov.load('homeTour').catch(() => { _homeTourArmed = false; });
-    if (!('IntersectionObserver' in window)) return go();
-    const io = new IntersectionObserver((ents) => { if (ents.some((e) => e.isIntersecting)) { io.disconnect(); go(); } }, { rootMargin: '800px 0px' });
+    if (!('IntersectionObserver' in window)) return _loadHomeTour();
+    const io = new IntersectionObserver((ents) => { if (ents.some((e) => e.isIntersecting)) { io.disconnect(); _loadHomeTour(); } }, { rootMargin: '800px 0px' });
     io.observe(el);
 }
 
@@ -1219,34 +1242,45 @@ function demoteHomeIntroSections() {
     _lazyHomeTour();
     _watchIntroSighting();
     if (_homeIntroSeenCount() < HOME_INTRO_VIEWS_BEFORE_DEMOTING) return;
+    const block = document.getElementById('home-intro');
+    if (!block || block.dataset.ovDemoted) return;
     const containers = document.querySelectorAll('#page-home > .container, #page-home .container');
     const changelog = document.getElementById('home-changelog-wrapper');
     const last = (changelog && changelog.closest('.container')) || containers[containers.length - 1];
     if (!last) return;
-    for (const id of ['home-tour-mount', 'home-cta-banner']) {
-        const el = document.getElementById(id);
-        if (!el || el.dataset.ovDemoted) continue;
-        el.dataset.ovDemoted = '1';
-        el.classList.add('home-intro-demoted');
-        try { last.appendChild(el); } catch { /* */ }
-    }
+    block.dataset.ovDemoted = '1';
+    block.classList.add('home-intro-demoted');
+    try { last.appendChild(block); } catch { /* */ }
 }
 
 /**
- * Catch up: on a phone the five rails share one place, one rail at a time (the tabs and the CSS are in the home
- * fragment and features/home.css). A tab shows once its rail has something: each loader already hides its header
- * or section when it has nothing, so the tabs follow those. The person's last tab is kept for their next visit.
+ * Tabs for a block of home sections (2026-10-30, the owner's short-pages rule: a phone page is one or two screens).
+ * On a phone a block shows one of its sections at a time behind a row of tabs; wider screens never see the tabs
+ * and show every section. The tabs and the CSS live in the home fragment and features/home.css.
+ *
+ *   initHomeTabs(boxId, shownIds, storageKey, onOpen)
+ *     boxId      the block's element id. It carries data-tab — the section that is open — and its tab row.
+ *     shownIds   tab key → the id of the element that says the section has something. Each loader already hides
+ *                that element when its section is empty, so the tab goes with it.
+ *     storageKey where the reader's last tab is kept for their next visit.
+ *     onOpen     called with the key of the section that just opened (the tour loads when its tab opens).
+ *
+ * A tab shows once its section has something; arrow keys, Home and End move between the tabs that show; the kept
+ * tab opens in the first few seconds only, so a section that arrives later never moves the page under the reader;
+ * a section that empties out falls back to one that has something, and a block with nothing left in it drops its
+ * tab row.
  */
-const HOME_CATCHUP_KEY = 'ov_home_catchup';
-const _HOME_CATCHUP_SHOWN = { vods: 'home-recent-vods-header', clips: 'home-clips-header', pastes: 'home-pastes-header', moments: 'home-moments-section' };
-function initHomeCatchup() {
-    const box = document.getElementById('home-catchup');
-    if (!box || box._ovCatchup) return;
-    box._ovCatchup = true;
-    const tabs = [...box.querySelectorAll('.home-catchup-tabs [role="tab"]')];
-    const has = (key) => { const el = _HOME_CATCHUP_SHOWN[key] && document.getElementById(_HOME_CATCHUP_SHOWN[key]); return !el || el.style.display !== 'none'; };
-    let wanted = 'recent';
-    try { wanted = localStorage.getItem(HOME_CATCHUP_KEY) || 'recent'; } catch { /* */ }
+function initHomeTabs(boxId, shownIds, storageKey, onOpen) {
+    const box = document.getElementById(boxId);
+    if (!box || box._ovTabs) return;
+    const list = box.querySelector('[role="tablist"]');
+    const tabs = list ? [...list.querySelectorAll('[role="tab"]')] : [];
+    if (!list || !tabs.length) return;
+    box._ovTabs = true;
+    const fallback = box.dataset.tab || tabs[0].dataset.tab;
+    const has = (key) => { const el = shownIds[key] && document.getElementById(shownIds[key]); return !el || el.style.display !== 'none'; };
+    let wanted = fallback;
+    try { wanted = localStorage.getItem(storageKey) || fallback; } catch { /* */ }
     const pick = (key, { remember = false, focus = false } = {}) => {
         box.dataset.tab = key;
         for (const t of tabs) {
@@ -1255,23 +1289,27 @@ function initHomeCatchup() {
             t.tabIndex = on ? 0 : -1;
             if (on && focus) t.focus();
         }
-        if (remember) { wanted = key; try { localStorage.setItem(HOME_CATCHUP_KEY, key); } catch { /* */ } }
+        if (remember) { wanted = key; try { localStorage.setItem(storageKey, key); } catch { /* */ } }
+        if (onOpen) { try { onOpen(key); } catch { /* */ } }
     };
-    // The kept tab opens if its rail arrives in the first few seconds; later, a rail arriving never moves the page
-    // under the reader. A rail that empties out falls back to the first one.
+    // The kept tab opens if its section arrives in the first few seconds; later, a section arriving never moves the
+    // page under the reader. A section that empties out falls back to one that has something.
     const settleBy = Date.now() + 3000;
     const sync = () => {
         for (const t of tabs) t.hidden = !has(t.dataset.tab);
+        const shown = tabs.filter((t) => !t.hidden);
+        list.hidden = !shown.length;
+        if (!shown.length) return;
         const cur = box.dataset.tab;
-        if (!has(cur)) pick(has(wanted) ? wanted : 'recent');
+        if (!has(cur)) pick(shown[0].dataset.tab);
         else if (cur !== wanted && has(wanted) && Date.now() < settleBy) pick(wanted);
     };
-    box.querySelector('.home-catchup-tabs').addEventListener('click', (e) => {
+    list.addEventListener('click', (e) => {
         const t = e.target.closest('[role="tab"]');
         if (t) pick(t.dataset.tab, { remember: true });
     });
     // Arrow keys, Home and End move between the tabs that are showing (the tabs pattern).
-    box.querySelector('.home-catchup-tabs').addEventListener('keydown', (e) => {
+    list.addEventListener('keydown', (e) => {
         const shown = tabs.filter((t) => !t.hidden);
         const i = shown.indexOf(document.activeElement);
         if (i < 0) return;
@@ -1283,14 +1321,45 @@ function initHomeCatchup() {
         t.scrollIntoView({ block: 'nearest', inline: 'nearest' });
     });
     const watch = new MutationObserver(sync);
-    for (const id of Object.values(_HOME_CATCHUP_SHOWN)) {
+    for (const id of Object.values(shownIds)) {
         const el = document.getElementById(id);
         if (el) watch.observe(el, { attributes: true, attributeFilter: ['style'] });
     }
     sync();
 }
 
+/**
+ * Catch up: the five rails after Live Now share one place, one rail at a time. A tab shows once its rail has
+ * something: each loader already hides its header or section when it has nothing, so the tabs follow those.
+ */
+const HOME_CATCHUP_KEY = 'ov_home_catchup';
+const _HOME_CATCHUP_SHOWN = { vods: 'home-recent-vods-header', clips: 'home-clips-header', pastes: 'home-pastes-header', moments: 'home-moments-section' };
+function initHomeCatchup() {
+    initHomeTabs('home-catchup', _HOME_CATCHUP_SHOWN, HOME_CATCHUP_KEY);
+}
+
+/** Around OpenVibe: the digest, the star spotlight and the pulse share one place on a phone. */
+const HOME_AROUND_KEY = 'ov_home_around';
+const _HOME_AROUND_SHOWN = { lately: 'home-digest', star: 'home-star-section', happening: 'home-pulse-section' };
+function initHomeAround() {
+    initHomeTabs('home-around', _HOME_AROUND_SHOWN, HOME_AROUND_KEY);
+}
+
+/** New here?: the tour, the About banner and the network hub share one place on a phone. */
+const HOME_INTRO_KEY = 'ov_home_intro';
+const _HOME_INTRO_SHOWN = { tour: 'home-tour-mount', about: 'home-cta-banner', network: 'home-network-hub' };
+function initHomeIntro() {
+    initHomeTabs('home-intro', _HOME_INTRO_SHOWN, HOME_INTRO_KEY, (key) => {
+        // The tour's code loads when its mount nears the viewport; opening its tab is that moment.
+        if (key === 'tour') _lazyHomeTour(true);
+        // The About banner is behind a tab on a phone, so opening that tab is the reader seeing it.
+        if (key === 'about') _introSeenNow('home-cta-banner');
+    });
+}
+
 async function loadHome() {
+    initHomeAround();     // the digest, the star spotlight and the pulse share one place on a phone
+    initHomeIntro();      // the tour, the About banner and the network hub share one place on a phone
     initHomeCatchup();
     demoteHomeIntroSections();
     void loadHomeChangelog();

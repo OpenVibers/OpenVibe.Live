@@ -698,8 +698,9 @@ body.egg-rainbow { animation: eggRainbow 2.6s linear; }
     .home-cta-features { grid-template-columns: 1fr; gap: 9px; }
     .home-cta-feature { padding: 13px 14px; }
 }
-.home-intro-demoted { margin-top: 26px; }
-#home-tour-mount.home-intro-demoted { border-top: 1px solid var(--border); padding-top: 30px; margin-top: 34px; }
+/* Demoted (a reader who has seen the introductions enough times): the whole "New here?" block goes to the
+   end of the page, so it needs a rule of its own to start a section there. */
+.home-intro-demoted { margin-top: 26px; border-top: 1px solid var(--border); padding-top: 26px; }
 .home-pastes-list { grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr)); gap: 14px; }
 @media (max-width: 640px) {
     .home-pastes-list { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
@@ -1267,17 +1268,20 @@ body.egg-rainbow { animation: eggRainbow 2.6s linear; }
     #page-home .hero-philosophy-btn::after, #page-home .hero-philosophy-link::after, #page-home .star-name a::after, #page-home .hero-golive-note a::after { content: ''; position: absolute; left: 0; right: 0; top: -12px; bottom: -12px; }
 }
 
-/* Catch up (2026-10-30, the short-pages rule): on a phone the five rails (recently online, VODs, clips, pastes, AI
-   moments) share one place, a row of tabs and one rail at a time; the tab names the rail, so its header keeps only
-   its actions. Wider screens never see the tabs. The breakpoint is app-home.js's _narrow. */
+/* Catch up, Around OpenVibe and New here? (2026-10-30, the short-pages rule): on a phone a block of home
+   sections shares one place — a row of tabs and one of them at a time — so the page stays a couple of screens tall.
+   The tab names the section, so the section's own heading goes and its header keeps only what it does. Wider
+   screens never see the tabs and show every section. The breakpoint is app-home.js's _narrow. */
 .home-catchup-tabs { display: none; }
+.home-tabs { display: none; }
 @media (max-width: 759px) {
-    .home-catchup-tabs {
+    .home-catchup-tabs, .home-tabs {
         display: flex; gap: 6px; margin: 30px -16px 6px; padding: 2px 16px 4px;
         overflow-x: auto; scrollbar-width: none; overscroll-behavior-x: contain; scroll-padding-inline: 16px;
     }
-    .home-catchup-tabs::-webkit-scrollbar { display: none; }
-    .home-catchup-tabs [role="tab"] {
+    .home-catchup-tabs::-webkit-scrollbar, .home-tabs::-webkit-scrollbar { display: none; }
+    .home-catchup-tabs[hidden], .home-tabs[hidden] { display: none !important; }
+    .home-catchup-tabs [role="tab"], .home-tabs [role="tab"] {
         --sc-on: color-mix(in srgb, var(--sc) 45%, var(--accent));
         flex: none; display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 16px;
         font: inherit; font-size: 0.86rem; font-weight: 750; white-space: nowrap; cursor: pointer;
@@ -1285,14 +1289,14 @@ body.egg-rainbow { animation: eggRainbow 2.6s linear; }
         border: 1px solid var(--border); border-radius: 999px;
         transition: color 0.18s, background 0.18s, border-color 0.18s;
     }
-    .home-catchup-tabs [role="tab"][hidden] { display: none; }
-    .home-catchup-tabs [role="tab"] i { font-size: 0.78rem; color: var(--sc-on); }
-    .home-catchup-tabs [role="tab"][aria-selected="true"] {
+    .home-catchup-tabs [role="tab"][hidden], .home-tabs [role="tab"][hidden] { display: none; }
+    .home-catchup-tabs [role="tab"] i, .home-tabs [role="tab"] i { font-size: 0.78rem; color: var(--sc-on); }
+    .home-catchup-tabs [role="tab"][aria-selected="true"], .home-tabs [role="tab"][aria-selected="true"] {
         color: color-mix(in srgb, var(--sc-on) 30%, var(--text-primary));
         background: color-mix(in srgb, var(--sc-on) 14%, transparent);
         border-color: color-mix(in srgb, var(--sc-on) 48%, transparent);
     }
-    .home-catchup-tabs [role="tab"]:focus-visible { outline: 2px solid var(--sc-on); outline-offset: 2px; }
+    .home-catchup-tabs [role="tab"]:focus-visible, .home-tabs [role="tab"]:focus-visible { outline: 2px solid var(--sc-on); outline-offset: 2px; }
     .home-catchup:not([data-tab="recent"]) [data-catchup="recent"],
     .home-catchup:not([data-tab="vods"]) [data-catchup="vods"],
     .home-catchup:not([data-tab="clips"]) [data-catchup="clips"],
@@ -1301,5 +1305,24 @@ body.egg-rainbow { animation: eggRainbow 2.6s linear; }
     .home-catchup .section-header[data-catchup], .home-catchup [data-catchup] > .section-header { margin: 6px 0 10px; justify-content: flex-end; min-height: 0; }
     .home-catchup .section-header[data-catchup] > h2, .home-catchup [data-catchup] > .section-header > h2,
     .home-catchup .section-header[data-catchup]::after, .home-catchup [data-catchup] > .section-header::after { display: none; }
+    /* The two other blocks: one section at a time behind their own tabs. */
+    .home-tabbox:not([data-tab="lately"]) [data-panel="lately"],
+    .home-tabbox:not([data-tab="star"]) [data-panel="star"],
+    .home-tabbox:not([data-tab="happening"]) [data-panel="happening"],
+    .home-tabbox:not([data-tab="tour"]) [data-panel="tour"],
+    .home-tabbox:not([data-tab="about"]) [data-panel="about"],
+    .home-tabbox:not([data-tab="network"]) [data-panel="network"] { display: none !important; }
+    /* The tab names the section, so the section's own heading goes. What its header does stays. */
+    .home-tabbox [data-panel="star"] > .section-header > h2,
+    .home-tabbox [data-panel="lately"] .digest-title,
+    .home-tabbox [data-panel="network"] .network-hub-header h3 { display: none; }
+    .home-tabbox [data-panel="star"] > .section-header { margin: 6px 0 10px; min-height: 0; }
+    /* The rule the header draws across the page is the slack the note used to take; without the
+       heading there is nothing to rule out to, and the note would run past the section. */
+    .home-tabbox [data-panel="star"] > .section-header::after { display: none; }
+    /* The sentence under a phone header is indented to line up with the title it belongs to; with the
+       title gone it starts at the left and takes the width it needs. */
+    .home-tabbox [data-panel="star"] > .section-header > span.muted { margin-left: 0; flex: 1 1 auto; }
+    .home-tabbox [data-panel="happening"] > .section-header { display: none; }
 }
-@media (max-width: 759px) and (prefers-reduced-motion: reduce) { .home-catchup-tabs [role="tab"] { transition: none; } }
+@media (max-width: 759px) and (prefers-reduced-motion: reduce) { .home-catchup-tabs [role="tab"], .home-tabs [role="tab"] { transition: none; } }
