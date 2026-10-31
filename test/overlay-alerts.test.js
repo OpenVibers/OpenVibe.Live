@@ -176,6 +176,21 @@ console.warn = () => {};
     assert.strictEqual(subAlert.frame.amount, null);
     assert.strictEqual(subAlert.frame.text, null);
 
+    // A subscription (the Vibes route): "X subscribed".
+    sent.length = 0;
+    const billing = require('../server/monetization/billing-client');
+    billing.subjectFor = async () => 'usr_01JAB2C3D4E5F6G7H8J9K0MNA1';
+    billing.request = async () => ({ transaction: { id: 'txn_sub_1' }, subscription: { id: 'sub_1', current_period_end: null } });
+    billing.api.entitlement = async () => null;
+    const billingActions = require('../server/monetization/billing-actions');
+    const subscription = await billingActions.subscribe({ user: await db.getUserById(2), headers: {} }, { streamer: await db.getUserById(3), provider: 'bucks' });
+    assert.strictEqual(subscription.status, 200, JSON.stringify(subscription.body));
+    const subFrame = sent.find((s) => s.frame.kind === 'sub');
+    assert.ok(subFrame, 'a subscription is announced');
+    assert.deepStrictEqual(subFrame.target, { kind: 'channel', id: 3 }, 'in the subscribed channel’s room');
+    assert.strictEqual(subFrame.frame.who.name, 'Ann');
+    assert.strictEqual(subFrame.frame.amount, null);
+
     // ── The streamer's own test alert ──────────────────────────────────────────
     const overlayRoutes = require('../server/overlay/routes');
     overlayRoutes._reset();
