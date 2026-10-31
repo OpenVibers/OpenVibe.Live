@@ -74,7 +74,13 @@ class StreamRecorder {
             if (!m) return;
             const streamId = Number(m[1]);
             const rec = this.activeRecordings.get(streamId);
-            if (!rec || rec.type !== 'rtp' || !rec.videoProducerId || rec._rolling) return;
+            if (!rec || rec.type !== 'rtp' || rec._rolling) return;
+            if (rec.audioOnly) {
+                // The recording has only sound so far: the camera that just arrived rolls it to a part with the picture.
+                if (kind === 'video' && rec.vodId) this._rollRecording(streamId, rec, 'a camera arrived while the recording had only sound');
+                return;
+            }
+            if (!rec.videoProducerId) return;
             const room = webrtcSFU.rooms?.get(roomId);
             const alive = (id) => { const e = id && room?.producers?.get(id); return !!(e && e.producer && !e.producer.closed); };
             if (kind === 'audio') {
@@ -163,6 +169,9 @@ class StreamRecorder {
     }
 
     static get AUDIO_WAIT_MS() { return Number(process.env.VOD_AUDIO_WAIT_MS) || 5000; }
+    // How long a recording waits for the camera before it records the sound alone (it rolls to a part with the picture
+    // when the camera arrives). Was 60 s with no fallback, so a stream whose camera never arrived had no VOD at all.
+    static get VIDEO_WAIT_MS() { return Number(process.env.VOD_VIDEO_WAIT_MS) || 20000; }
     /** How often a WebRTC recording asks the broadcaster for a keyframe (webrtc-sfu.js createPlainConsumer); 0 turns it off. */
     static get KEYFRAME_SEC() { const v = process.env.VOD_KEYFRAME_SEC; const n = Number(v); return v != null && v !== '' && Number.isFinite(n) && n >= 0 ? n : 4; }
     static get DISK_RETRY_DELAY_MS() { return 5 * 60 * 1000; }
@@ -233,17 +242,26 @@ class StreamRecorder {
         const webrtcSFU = require('./webrtc-sfu');
         const roomId = `stream-${streamId}`;
 
-        // Wait for the broadcaster's video producer (up to 60s — same as the old recorder).
-        let videoProducer;
+        // Wait for the broadcaster's video producer. Without one, a stream that has sound records its sound (stream
+        // 2827, 2026-10-30, had no VOD at all: the camera never reached the server, and this gave up), and the
+        // recording rolls to a part with the picture when a camera arrives (_installProducerWatch).
+        let videoProducer = null;
         try {
-            videoProducer = await webrtcSFU.waitForProducer(roomId, 'video', 60000);
+            videoProducer = await webrtcSFU.waitForProducer(roomId, 'video', StreamRecorder.VIDEO_WAIT_MS);
         } catch {
-            console.warn(`[VOD] No video producer for stream ${streamId} within timeout — recording not started`);
+            videoProducer = null;
+        }
+        if (rec._cancel || !this.activeRecordings.has(streamId)) return;
+        if (!videoProducer && !webrtcSFU.findProducerByKind(roomId, 'audio')) {
+            console.warn(`[VOD] No video or audio producer for stream ${streamId} within timeout: recording not started`);
             this.activeRecordings.delete(streamId);
             return;
         }
-        if (rec._cancel || !this.activeRecordings.has(streamId)) return;
-        rec.videoProducerId = videoProducer.id;
+        if (!videoProducer) {
+            console.warn(`[VOD] No video producer for stream ${streamId} within timeout: recording its sound alone until a camera arrives`);
+            rec.audioOnly = true;
+        }
+        rec.videoProducerId = videoProducer ? videoProducer.id : null;
         // A browser produces its audio a moment after its video. Asked once, the instant the video arrived, the answer
         // was "no audio" and the whole recording was silent (VOD 5986, 2026-10-25: both producers in the same second).
         // So wait a few seconds for it: a stream with no microphone then records video only, and a microphone that
@@ -275,10 +293,15 @@ class StreamRecorder {
                 ...(kind === 'audio' && pCodec.channels ? { channels: pCodec.channels } : {}),
             };
         };
-        const video = codecInfo(videoProducer, 'video');
+        const video = videoProducer ? codecInfo(videoProducer, 'video') : null;
         const audio = codecInfo(audioProducer, 'audio');
-        if (!video) {
+        if (videoProducer && !video) {
             console.warn(`[VOD] Could not resolve video codec info for stream ${streamId} — recording not started`);
+            this.activeRecordings.delete(streamId);
+            return;
+        }
+        if (!video && !audio) {
+            console.warn(`[VOD] Stream ${streamId} has neither a picture nor sound to record — recording not started`);
             this.activeRecordings.delete(streamId);
             return;
         }
@@ -286,20 +309,22 @@ class StreamRecorder {
         await this._createVod(streamId, stream, rec, rec);
         if (rec._cancel) return this._abort(streamId, rec);
 
-        const { videoPort, audioPort } = await media.ingestRtpStart(rec.vodId, { video, audio: audio || undefined });
+        const { videoPort, audioPort } = await media.ingestRtpStart(rec.vodId, { video: video || undefined, audio: audio || undefined });
         if (rec._cancel) return this._abort(streamId, rec);
 
         const webrtcState = { roomId, videoTransportId: null, audioTransportId: null };
         try {
             // Media listens on 127.0.0.1:<port> (RTCP on port+1 — Media allocates its
             // ingest pool in rtp/rtcp pairs, mirroring the inherited recorder).
-            const videoConsumer = await webrtcSFU.createPlainConsumer(
-                roomId, videoProducer.id, '127.0.0.1', videoPort, videoPort + 1,
-                { keyframeEverySec: StreamRecorder.KEYFRAME_SEC }
-            );
-            webrtcState.videoTransportId = videoConsumer.transportId;
-            if (video.payloadType !== videoConsumer.payloadType) {
-                console.warn(`[VOD] stream ${streamId}: predicted video PT ${video.payloadType} != consumer PT ${videoConsumer.payloadType} — Media ingest may mis-map`);
+            if (videoProducer && videoPort) {
+                const videoConsumer = await webrtcSFU.createPlainConsumer(
+                    roomId, videoProducer.id, '127.0.0.1', videoPort, videoPort + 1,
+                    { keyframeEverySec: StreamRecorder.KEYFRAME_SEC }
+                );
+                webrtcState.videoTransportId = videoConsumer.transportId;
+                if (video.payloadType !== videoConsumer.payloadType) {
+                    console.warn(`[VOD] stream ${streamId}: predicted video PT ${video.payloadType} != consumer PT ${videoConsumer.payloadType} — Media ingest may mis-map`);
+                }
             }
             if (audio && audioPort) {
                 const audioConsumer = await webrtcSFU.createPlainConsumer(
@@ -317,7 +342,7 @@ class StreamRecorder {
 
         rec.webrtcState = webrtcState;
         this._partStarted(stream, rec);
-        console.log(`[VOD] Media RTP ingest started: stream ${streamId} → vod ${rec.vodId} (v:${videoPort}${audioPort ? ` a:${audioPort}` : ''}, ${rec.mode})`);
+        console.log(`[VOD] Media RTP ingest started: stream ${streamId} → vod ${rec.vodId} (${videoPort ? `v:${videoPort}` : 'audio only'}${audioPort ? ` a:${audioPort}` : ''}, ${rec.mode})`);
     }
 
     /**
