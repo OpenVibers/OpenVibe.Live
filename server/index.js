@@ -595,8 +595,10 @@ console.log(`[Server] /shared: serving ${SHARED_BROWSER_FILES.length} browser fi
     });
     // The share cards (og:image on every page), before the browser-file allowlist below.
     require('./web/share-cards').register(app);
-    // Serve only the whitelisted browser files — don't expose the entire package
-    const sharedFileSet = new Set(SHARED_BROWSER_FILES);
+    // Serve only the whitelisted browser files — don't expose the entire package — and the brand face the navbar
+    // declares beside itself (files.FONTS, Shared 4.59.0).
+    const SHARED_FONTS = sharedFiles.FONTS || [];
+    const sharedFileSet = new Set([...SHARED_BROWSER_FILES, ...SHARED_FONTS]);
     app.use('/shared', (req, res, next) => {
         const fileName = path.basename(req.path);
         if (!sharedFileSet.has(fileName)) {
@@ -609,7 +611,7 @@ console.log(`[Server] /shared: serving ${SHARED_BROWSER_FILES.length} browser fi
         const hashed = Boolean(req.query.v) && req.query.v === assets.hashOf('/shared/' + fileName);
         res.setHeader('Cache-Control', cache.assetHeaders(req.originalUrl, { hashed }));
         if (hashed) res.setHeader('CDN-Cache-Control', cache.IMMUTABLE);
-        res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+        res.setHeader('Content-Type', SHARED_FONTS.includes(fileName) ? 'font/woff2' : 'application/javascript; charset=utf-8');
         res.sendFile(filePath, (err) => {
             // A listed file that cannot be read is this server's fault, and passing: never a cacheable answer
             // (its headers above said immutable; Cloudflare kept a 404 navbar through a deploy on 2026-10-17).
