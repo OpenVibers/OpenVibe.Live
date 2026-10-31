@@ -12,7 +12,7 @@ let activeStreams = [];
    modules (e.g. moderation) register their loader on window._dashTabLoaders. */
 const _DASH_TAB_CARDS = {
     home:       ['dash-card-profile', 'dash-card-schedule', 'dash-card-ai-derivation', 'dash-card-offline'],
-    chatai:     ['dash-card-vibe', 'dash-aibot-card', 'dash-card-overlay', 'dash-card-chatlogs'],
+    chatai:     ['dash-card-vibe', 'dash-aibot-card', 'dash-card-overlay', 'dash-card-scenes', 'dash-card-chatlogs'],
     moderation: [],  // injected by dashboard-moderation.js into #dash-grid-moderation
     controls:   ['dash-card-bot-embed', 'dash-card-tokens'],
     money:      ['dash-card-bucks', 'dash-card-goals', 'dash-card-tips-page', 'dash-powerchat-card'],
@@ -101,7 +101,7 @@ window.switchDashTab = switchDashTab;
 // Per-tab loaders (guarded so a missing fn never breaks the tab).
 function _call(name) { try { if (typeof window[name] === 'function') window[name](); } catch (e) { console.warn('[dash]', name, e); } }
 window._dashTabLoaders.home = () => { _call('loadSettingsProfile'); _call('loadAiDerivationSetting'); _call('loadSettingsOffline'); _call('loadDashFunds'); };
-window._dashTabLoaders.chatai = () => { _call('updateDashObsOverlayUrl'); _call('loadAiViewers'); loadDashVibe(); };
+window._dashTabLoaders.chatai = () => { _call('updateDashObsOverlayUrl'); _call('updateDashScenes'); _call('loadAiViewers'); loadDashVibe(); };
 
 /* ── Vibe on stream (server/ai/vibe-voice.js, /api/vibe/settings) ─────────────────── */
 async function loadDashVibe() {
@@ -213,6 +213,44 @@ function copyStreamKey() {
 function getDashObsOverlayUrl() {
     if (!currentUser?.username) return '';
     return `${window.location.origin}/overlay/chat/${encodeURIComponent(currentUser.username)}`;
+}
+
+/* ── Scenes in your look (plan L45): /obs/scene/<kind>/<username>?theme=…&in=… ── */
+const DASH_SCENES = [['starting', 'Starting soon', 'fa-hourglass-start'], ['brb', 'Be right back', 'fa-mug-hot'], ['ending', 'Thanks for watching', 'fa-hand']];
+function dashSceneUrl(kind) {
+    if (!currentUser?.username) return '';
+    const q = new URLSearchParams();
+    const theme = document.getElementById('dash-scene-theme')?.value;
+    const mins = document.getElementById('dash-scene-in')?.value;
+    if (theme && theme !== 'vibe') q.set('theme', theme);
+    if (mins && kind !== 'ending') q.set('in', mins);
+    const s = q.toString();
+    return `${window.location.origin}/obs/scene/${kind}/${encodeURIComponent(currentUser.username)}${s ? `?${s}` : ''}`;
+}
+function updateDashScenes() {
+    const list = document.getElementById('dash-scenes');
+    const pick = document.getElementById('dash-scene-theme');
+    if (!list || !pick) return;
+    if (!pick.options.length) {
+        const themes = (window.OpenVibeThemeLoader && window.OpenVibeThemeLoader.THEMES) || { vibe: {} };
+        const mine = (window.OpenVibeThemeLoader && window.OpenVibeThemeLoader.getCurrent && window.OpenVibeThemeLoader.getCurrent()) || 'vibe';
+        Object.keys(themes).sort().forEach((id) => { const o = document.createElement('option'); o.value = id; o.textContent = id.split('-').map((w) => w[0].toUpperCase() + w.slice(1)).join(' '); pick.appendChild(o); });
+        pick.value = themes[mine] ? mine : 'vibe';
+    }
+    list.replaceChildren(...DASH_SCENES.map(([kind, label, icon]) => {
+        const li = document.createElement('li');
+        const name = document.createElement('span'); name.className = 'dash-scene-name';
+        const i = document.createElement('i'); i.className = `fa-solid ${icon}`; i.setAttribute('aria-hidden', 'true');
+        name.append(i, ` ${label}`);
+        const row = document.createElement('div'); row.className = 'key-display';
+        const input = document.createElement('input'); input.type = 'text'; input.readOnly = true; input.className = 'form-input'; input.value = dashSceneUrl(kind); input.setAttribute('aria-label', `${label} scene URL`);
+        const copy = document.createElement('button'); copy.className = 'btn btn-small'; copy.title = `Copy the ${label} URL`; copy.innerHTML = '<i class="fa-solid fa-copy"></i>';
+        copy.addEventListener('click', () => navigator.clipboard.writeText(input.value).then(() => toast(`${label} URL copied`, 'success')));
+        const open = document.createElement('a'); open.className = 'btn btn-small'; open.href = input.value; open.target = '_blank'; open.rel = 'noopener'; open.title = `Preview ${label}`; open.innerHTML = '<i class="fa-solid fa-arrow-up-right-from-square"></i>';
+        row.append(input, copy, open);
+        li.append(name, row);
+        return li;
+    }));
 }
 
 function updateDashObsOverlayUrl() {
