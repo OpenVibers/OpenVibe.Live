@@ -683,6 +683,22 @@
         syncDesktopButtons();
         if (target) { const n = document.querySelector(target); if (n) n.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
     }
+    /* "● You're live · Back to the studio" (plan L23 R5, owner 2026-10-31): moving around the site never stops the
+       broadcast, so on every other page a pill under the navbar says the stream is still on and takes the streamer
+       back in one tap. */
+    function syncLivePill() {
+        const show = !!localStream() && !onBroadcastPage();
+        let pill = $('bc-live-pill');
+        if (!show) { if (pill) pill.hidden = true; return; }
+        if (!pill) {
+            pill = el('button', { type: 'button', class: 'bc-live-pill', id: 'bc-live-pill',
+                onclick: () => { if (typeof navigate === 'function') navigate('/broadcast'); else location.href = '/broadcast'; } },
+            el('span', { class: 'bc-live-pill-dot', 'aria-hidden': 'true' }), el('b', { text: "You're live" }), el('span', { text: 'Back to the studio' }));
+            document.body.append(pill);
+        }
+        pill.hidden = false;
+    }
+
     function ensureReturn() {
         if ($('bcs-return')) return;
         document.body.append(el('button', { type: 'button', class: 'bcs-return', id: 'bcs-return', hidden: true,
@@ -860,6 +876,7 @@
         if (wanted()) { if (!st.root) mount(); refresh(); }
         else { if (st.root) unmount(); applyTracks(); syncDesktopButtons(); }
         syncGoLiveDock();
+        syncLivePill();
     }
     setInterval(tick, 1000);
     document.addEventListener('visibilitychange', tick);

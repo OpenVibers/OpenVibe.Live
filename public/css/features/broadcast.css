@@ -2788,6 +2788,19 @@ body.bc-studio-on #bc-chat-messages .chat-conn-status { display: block !importan
     background: #e11d48; color: #fff; font-weight: 700; box-shadow: 0 8px 24px rgba(0,0,0,0.35); cursor: pointer;
 }
 .bcs-return[hidden] { display: none; }
+/* "You're live · Back to the studio" on every other page while the broadcast runs (broadcast-studio.js syncLivePill). */
+.bc-live-pill {
+    position: fixed; top: calc(var(--navbar-h, 56px) + 8px + env(safe-area-inset-top, 0px)); left: 50%; transform: translateX(-50%); z-index: 1001;
+    display: inline-flex; align-items: center; gap: 8px; min-height: 40px; max-width: calc(100vw - 32px); padding: 0 16px; border: 0; border-radius: 999px;
+    background: #e11d48; color: #fff; font: inherit; font-size: 0.86rem; white-space: nowrap; box-shadow: 0 8px 24px rgba(0,0,0,0.3); cursor: pointer;
+}
+.bc-live-pill[hidden] { display: none; }
+.bc-live-pill b { font-weight: 800; }
+.bc-live-pill span:last-child { opacity: 0.9; }
+.bc-live-pill-dot { width: 8px; height: 8px; border-radius: 50%; background: #fff; animation: bcLivePillPulse 1.6s ease-in-out infinite; }
+@keyframes bcLivePillPulse { 50% { opacity: 0.35; } }
+.bc-live-pill:focus-visible { outline: 3px solid #93c5fd; outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { .bc-live-pill-dot { animation: none; } }
 @media (prefers-reduced-motion: reduce) {
     .bcs-live-dot, .bcs-sheet, .bcs-sheet-wrap { animation: none; }
 }
