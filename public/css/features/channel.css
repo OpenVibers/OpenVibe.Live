@@ -785,9 +785,8 @@ button.viewer-badge:focus-visible { outline: 2px solid #93c5fd; outline-offset: 
 
 .stream-switch-spinner::before {
     inset: 18%;
-    border: 2px solid rgba(255,255,255,0.2);
-    border-top-color: rgba(255,255,255,0.9);
-    animation: spin 1s linear infinite reverse;
+    border: 2px solid rgba(255,255,255,0.9);
+    animation: spin 1.2s ease-in-out infinite;   /* "spin" breathes now (style.css): nothing spins */
 }
 
 .stream-switch-spinner::after {

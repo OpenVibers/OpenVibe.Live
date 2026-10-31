@@ -2635,8 +2635,8 @@ body.bc-studio-on .toast-container { z-index: 1500; }
 .bcs-state[hidden] { display: none; }
 .bcs-state b { font-size: 0.98rem; }
 .bcs-state small { font-size: 0.78rem; color: rgba(255, 255, 255, 0.75); }
-.bcs-state-spin { width: 26px; height: 26px; border-radius: 50%; border: 3px solid rgba(255, 255, 255, 0.25); border-top-color: #fff; animation: bcs-spin 0.9s linear infinite; }
-@keyframes bcs-spin { to { transform: rotate(360deg); } }
+.bcs-state-spin { width: 26px; height: 26px; border-radius: 50%; border: 3px solid #fff; animation: bcs-pulse 1.4s ease-out infinite; }   /* a ring that pulses out: nothing spins */
+@keyframes bcs-pulse { from { box-shadow: 0 0 0 0 rgba(255,255,255,.5); } to { box-shadow: 0 0 0 10px rgba(255,255,255,0); } }
 /* Flip with more than two cameras: a small "+" (hold it to choose). */
 .bcs-btn[data-act="flip"] { position: relative; }
 .bcs-more-cams {

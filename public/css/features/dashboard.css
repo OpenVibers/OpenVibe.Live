@@ -15,7 +15,7 @@
 .pc-fade-in { animation: pcFadeIn .22s ease-out; }
 .pc-card-in { animation: pcCardIn .4s cubic-bezier(.34,1.4,.64,1); }
 #dash-powerchat-card.pc-busy { border-color: color-mix(in srgb, var(--accent) 50%, transparent); box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 25%, transparent), 0 6px 24px color-mix(in srgb, var(--accent) 12%, transparent); }
-.pc-spinner { width: 15px; height: 15px; border-radius: 50%; flex-shrink: 0; border: 2px solid color-mix(in srgb, var(--accent) 25%, transparent); border-top-color: var(--accent, var(--accent)); display: inline-block; animation: pcSpin .7s linear infinite; }
+.pc-spinner { width: 15px; height: 15px; border-radius: 50%; flex-shrink: 0; border: 2px solid var(--accent); display: inline-block; animation: pcSpin 1.2s ease-in-out infinite; }
 .pc-ellipsis span { animation: pcBlink 1.2s infinite both; }
 .pc-ellipsis span:nth-child(2) { animation-delay: .2s; }
 .pc-ellipsis span:nth-child(3) { animation-delay: .4s; }

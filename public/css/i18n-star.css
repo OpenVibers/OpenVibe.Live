@@ -47,7 +47,7 @@
     position: relative; border-radius: 22px; padding: 2px; overflow: hidden; isolation: isolate;
     animation: starCardIn 0.8s cubic-bezier(.2,1.3,.3,1) both;
 }
-@keyframes starSpin { to { transform: rotate(360deg); } }
+@keyframes starSpin { 50% { filter: hue-rotate(50deg) brightness(1.15); } }   /* the ring shimmers in colour; it never turns */
 @keyframes starCardIn { from { opacity: 0; transform: translateY(24px) scale(0.97); } to { opacity: 1; transform: none; } }
 .star-card {
     position: relative; border-radius: 20px; overflow: hidden;
@@ -164,9 +164,9 @@
 /* Expanded (non-compact) card: both blocks run the full width under the avatar and text. */
 @keyframes starMoreIn { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: none; } }
 
-/* The avatar ring: a slow conic sweep rather than a static rainbow, so the card has one moving
-   element instead of several competing ones. Paused off-screen by the viewport gate. */
-@keyframes starRingSpin { to { transform: rotate(360deg); } }
+/* The avatar ring: its colours shimmer slowly rather than a static rainbow, so the card has one moving
+   element instead of several competing ones; it never turns. Paused off-screen by the viewport gate. */
+@keyframes starRingSpin { 50% { filter: hue-rotate(50deg) brightness(1.15); } }
 
 /* The gold border sweep is the card's one loud effect; calm it down when compact so it frames
    the card instead of shouting over it. */

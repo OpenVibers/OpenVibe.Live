@@ -2022,11 +2022,6 @@ a.pulse-card:hover { border-color: var(--accent); transform: translateY(-2px); }
     color: rgba(191, 219, 254, 0.94);
 }
 
-@keyframes playerLoaderDrift {
-    from { transform: rotate(0deg) translate3d(0, 0, 0); }
-    to { transform: rotate(360deg) translate3d(0, 0, 0); }
-}
-
 @keyframes playerLoaderMorph {
     0% { border-radius: 42% 58% 53% 47% / 45% 44% 56% 55%; transform: scale(0.96) rotate(0deg); }
     50% { border-radius: 58% 42% 46% 54% / 40% 60% 40% 60%; transform: scale(1.04) rotate(8deg); }
@@ -2038,8 +2033,9 @@ a.pulse-card:hover { border-color: var(--accent); transform: translateY(-2px); }
     50% { transform: translateY(-10px) translateX(6px); }
 }
 
+/* The owner: nothing spins. The loader's arc breathes where it once turned. */
 @keyframes playerLoaderRotate {
-    to { transform: rotate(360deg); }
+    50% { opacity: 0.45; transform: scale(0.94); }
 }
 
 @keyframes playerLoaderPulse {
@@ -3500,7 +3496,7 @@ a.pulse-card:hover { border-color: var(--accent); transform: translateY(-2px); }
 @keyframes pcDotPulse { 0%,100% { box-shadow: 0 0 5px rgba(83,252,24,0.5); } 50% { box-shadow: 0 0 11px rgba(83,252,24,0.9); } }
 
 /* Connecting state */
-@keyframes pcSpin { to { transform: rotate(360deg); } }
+@keyframes pcSpin { 50% { opacity: 0.4; transform: scale(0.85); } }
 .pc-connecting-text { color: var(--text-secondary); }
 @keyframes pcBlink { 0%,80%,100% { opacity: .2; } 40% { opacity: 1; } }
 
@@ -4469,9 +4465,10 @@ body :is(.modal-overlay, .bc-ws-confirm-overlay, .bc-modal, .bc-perm-overlay, .b
         0 0 0 1px rgba(255,255,255,0.1),
         0 18px 32px rgba(0,0,0,0.3),
         inset 0 0 26px rgba(255,255,255,0.08);
-    animation: playerLoaderMorph 5.8s ease-in-out infinite alternate, spin 1.9s linear infinite;
+    animation: playerLoaderMorph 5.8s ease-in-out infinite alternate;
 }
-@keyframes spin { to { transform: rotate(360deg); } }
+/* "spin" is kept as a name for older rules, but it breathes: nothing spins (design lint, plan L45). */
+@keyframes spin { 50% { opacity: 0.45; transform: scale(0.85); } }
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 
 /* ── Cumulative Viewers (below video info bar) ──────────── */
@@ -9547,17 +9544,17 @@ label.staff-inline-toggle.aiv-field { flex-direction:row; align-items:center; }
 .nav-brand:hover .ov-v, .hero h1:hover .ov-v { animation: ovDraw 0.7s cubic-bezier(.2,.8,.2,1) both; }
 @keyframes ovFloat { 0%, 100% { transform: translateY(0) rotate(0deg); } 50% { transform: translateY(-1px) rotate(2deg); } }
 @keyframes ovGlow { 0%, 100% { opacity: 0.08; transform: scale(0.92); } 50% { opacity: 0.2; transform: scale(1.06); } }
-@keyframes ovComet { to { transform: rotate(360deg); } }
+@keyframes ovComet { 50% { opacity: 0.35; } }
 @keyframes ovDraw { from { stroke-dashoffset: 46; } to { stroke-dashoffset: 0; } }
 @keyframes ovDot { 0%, 100% { transform: scale(1); opacity: 0.85; } 50% { transform: scale(1.5); opacity: 1; } }
-@keyframes ovSpin { from { transform: rotate(0deg) scale(1); } 40% { transform: rotate(200deg) scale(1.18); } to { transform: rotate(360deg) scale(1); } }
-/* One spin as the route lands, on a spring-ish curve that overshoots past 360 and eases back. */
+@keyframes ovSpin { 40% { transform: scale(1.18); } }
+/* One spring as the route lands: it grows past its size and settles (it no longer turns). */
 .brand-mark.is-spin svg { animation: ovSpinIn 1.05s cubic-bezier(.16, 1.16, .3, 1) 1 both; animation-play-state: running; }
 @keyframes ovSpinIn {
-    0%   { transform: rotate(0deg) scale(0.86); }
-    45%  { transform: rotate(228deg) scale(1.2); }
-    72%  { transform: rotate(348deg) scale(0.97); }
-    100% { transform: rotate(360deg) scale(1); }
+    0%   { transform: scale(0.86); }
+    45%  { transform: scale(1.2); }
+    72%  { transform: scale(0.97); }
+    100% { transform: scale(1); }
 }
 /* And a short overshoot as it comes to rest, so going still reads as deliberate. */
 .brand-mark.is-settling svg { animation: ovSettle 0.68s cubic-bezier(.26, 1.32, .42, 1) 1 both; animation-play-state: running; }
