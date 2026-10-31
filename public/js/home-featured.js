@@ -26,7 +26,7 @@
     const POLL_MS = 30000;
     const FRAME_MS = 10000;
 
-    const st = { el: null, current: null, poll: 0, frame: 0, player: null, unmuted: false, visible: true, io: null, gen: 0, skip: null };
+    const st = { el: null, current: null, poll: 0, frame: 0, player: null, unmuted: false, visible: true, io: null, gen: 0, skip: null, retryTimer: 0, retries: 0, broken: false };
     const $ = (sel) => st.el && st.el.querySelector(sel);
     const escText = (v) => (typeof esc === 'function' ? esc(String(v == null ? '' : v)) : String(v == null ? '' : v));
     const constrained = () => {
@@ -72,6 +72,13 @@
         const player = flvjs.createPlayer({ type: 'flv', url, isLive: true }, { enableStashBuffer: false, stashInitialSize: 128, lazyLoad: false, autoCleanupSourceBuffer: true, autoCleanupMaxBackwardDuration: 20, autoCleanupMinBackwardDuration: 8 });
         player.attachMediaElement(video);
         player.load();
+        // A dropped network or a source that went quiet leaves the picture standing still: the
+        // player picks itself up (the owner's rule, 2026-10-31) instead of asking for a reload.
+        player.on('error', (errType, errDetail) => {
+            console.warn('[Featured] The live feed failed:', errType, errDetail);
+            scheduleRetry();
+        });
+        video.addEventListener('error', () => { console.warn('[Featured] The live video failed'); scheduleRetry(); });
         video.play().catch(() => { /* muted autoplay is allowed; a refusal only means no sound */ });
         return {
             video,
@@ -179,7 +186,31 @@
         }
         if (gen !== st.gen) { try { p.destroy(); } catch { /* */ } return; }
         st.player = p;
+        st.broken = false;
         if (!st.visible || document.hidden) p.pause();
+    }
+
+    /**
+     * The live feed failed (a dropped network, a source that went away): try again by ourselves,
+     * and fall back to the live frames when it keeps failing — a picture that stands still is
+     * better than a broken player, and the reader can always open the channel.
+     */
+    function scheduleRetry(delay = 4000) {
+        if (st.retryTimer) return;
+        st.broken = true;
+        st.retryTimer = setTimeout(() => {
+            st.retryTimer = 0;
+            if (!st.current || !st.el || st.el.hidden) return;
+            st.retries++;
+            if (st.retries > 4) {
+                console.warn('[Featured] The live feed keeps failing — showing the live frames instead');
+                destroyPlayer();
+                st.player = playFrames(st.current, $('.hf-media'));
+                return;
+            }
+            console.warn(`[Featured] Trying the live feed again (${st.retries}/4)`);
+            startPlayer(st.current);
+        }, delay);
     }
 
     /** Only the parts that change between polls; the player stays put unless the stream changed. */
@@ -215,6 +246,7 @@
             const media = $('.hf-media');
             if (media) { media.classList.add('is-switching'); await new Promise((r) => setTimeout(r, 220)); }
             st.current = d.stream;
+            st.retries = 0;      // a new stream starts with a clean sheet
             render(d);
         } else update(d);
         st.el.hidden = false;
@@ -230,6 +262,8 @@
             st.io.observe(st.el);
         } catch { st.io = { disconnect() { } }; }
         document.addEventListener('ov:page', (e) => { if (!e.detail || e.detail.page !== 'home') stop(); });
+        // The network came back: a feed that had failed tries again by itself.
+        window.addEventListener('online', () => { if (st.broken) scheduleRetry(500); });
     }
 
     /**
@@ -257,6 +291,7 @@
     }
     function stop() {
         clearInterval(st.poll); st.poll = 0;
+        if (st.retryTimer) { clearTimeout(st.retryTimer); st.retryTimer = 0; }
         destroyPlayer();
         st.current = null;
         if (st.el) { st.el.hidden = true; st.el.innerHTML = ''; }

@@ -6,7 +6,8 @@
  *   GET /metrics    Prometheus text, direct loopback callers only (404 through nginx or any proxy):
  *                   http_requests_total{method,route,status_class}, http_request_duration_seconds,
  *                   http_requests_in_flight, process/event-loop metrics, release_info{service,release},
- *                   live_streams_live, live_ws_connections{server}, live_events_outbox{status}
+ *                   live_streams_live, live_ws_connections{server}, live_events_outbox{status},
+ *                   live_viewer_freezes_total{codec} (a viewer's picture that stopped moving)
  *   GET /api/ready  200 while Live can serve (boot finished, the database answers); 503 otherwise.
  *                   Media, the WebRTC SFU and the Network signing key are optional: when one is
  *                   missing the answer stays 200 with status "degraded" and names it, because Live
@@ -17,6 +18,7 @@
  */
 const metrics = require('openvibe-shared/metrics');
 const { createReadiness } = require('openvibe-shared/ready');
+const viewerHealth = require('../streaming/viewer-health');
 
 // Long-lived responses whose "duration" is a viewing session, not a request.
 const STREAMING_PATHS = [/^\/api\/live-events$/, /^\/api\/streams\/rtmp-proxy\//];
@@ -51,6 +53,8 @@ function mountMetrics(app, { release }) {
  */
 function registerDomainGauges(registry, { liveStreams, wsServers = {}, outboxStatus }) {
     registry.gauge({ name: 'live_streams_live', help: 'Streams currently marked live (the list /api/streams serves)', collect: () => liveStreams() });
+    // A viewer's picture that stopped moving while its packets kept arriving (plan L23).
+    viewerHealth.attachCounter(registry);
     registry.gauge({
         name: 'live_ws_connections', help: 'Open WebSocket connections per WebSocket server', labelNames: ['server'],
         collect: () => Object.entries(wsServers)

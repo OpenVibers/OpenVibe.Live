@@ -55,6 +55,8 @@
       "js": [
         "/shared/loading.js",
         "/js/player-shape.js",
+        "/js/ov-viewer-health.js",
+        "/js/ov-mini-player.js",
         "/js/stream-player.js",
         "/js/stream-pip.js"
       ]

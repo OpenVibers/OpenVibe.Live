@@ -22,9 +22,13 @@ const MAX_VIEWER_SOCKETS_PER_IP = 16;
 const config = require('../config');
 const { turnEntries } = require('../net/turn');
 const whipHandler = require('./whip-handler');
+const viewerHealth = require('./viewer-health');
 
 const WS_HEARTBEAT_MS = 30000;
 const MAX_SEND_BACKPRESSURE = 512 * 1024;
+// A keyframe ask from a viewer costs every viewer of that stream a large I-frame: one per
+// consumer every 2 s (the viewer's own recovery ladder asks at that pace too).
+const VIEWER_KEYFRAME_ASK_MS = 2000;
 
 class BroadcastServer extends EventEmitter {
     constructor() {
@@ -496,6 +500,17 @@ class BroadcastServer extends EventEmitter {
                 }
                 break;
 
+            // ── Viewer health (plan L23): telemetry, keyframe asks, transport restarts ──
+            case 'sfu-viewer-telemetry':
+                if (client.role === 'viewer') this._handleSfuViewerTelemetry(ws, client, msg);
+                break;
+            case 'sfu-viewer-keyframe':
+                if (client.role === 'viewer') this._handleSfuViewerKeyframe(ws, client);
+                break;
+            case 'sfu-viewer-restart':
+                if (client.role === 'viewer') this._handleSfuViewerRestart(ws, client);
+                break;
+
             default:
                 break;
         }
@@ -924,6 +939,87 @@ class BroadcastServer extends EventEmitter {
             rtpParameters: result.rtpParameters,
         });
         console.log(`[Broadcast] SFU viewer ${client.peerId} consuming ${result.kind} for stream ${client.streamId}`);
+    }
+
+    /**
+     * A viewer's telemetry (plan L23): the decoder's own numbers, every 5 s.
+     *
+     * The freeze test lives in server/streaming/viewer-health.js: no new decoded frame for 2 s
+     * while packets keep arriving, or the player's own freezeCount went up. A freeze is logged
+     * once — the stream, the peer, the codec — and counted for the metric.
+     */
+    _handleSfuViewerTelemetry(ws, client, msg, now = Date.now()) {
+        const payload = msg && typeof msg.data === 'object' && msg.data ? msg.data : {};
+        // A viewer may send these faster than the 5 s the player uses; one every 2 s is plenty.
+        if (client._lastViewerTelemetryAt && now - client._lastViewerTelemetryAt < 2000) return;
+        client._lastViewerTelemetryAt = now;
+
+        if (!client._viewerTracker) client._viewerTracker = new viewerHealth.ViewerTracker();
+        const seen = client._viewerTracker.observe(payload, now);
+        // One freeze, one line, one count — the same freeze seen again in the next sample is
+        // not a second freeze.
+        if (!seen.freeze || !seen.first) return;
+
+        const codec = seen.codec || 'unknown';
+        const total = viewerHealth.noteFreeze({
+            streamId: client.streamId,
+            peerId: client.peerId,
+            codec,
+            decoder: seen.decoder,
+            reason: seen.reason,
+            detail: seen.detail,
+        });
+        console.log(`[Broadcast] Viewer ${client.peerId} froze on stream ${client.streamId} — ${seen.reason} | codec=${codec} decoder=${seen.decoder || 'unknown'} | ${seen.detail} | ${total} freeze(s) on this stream`);
+    }
+
+    /**
+     * A viewer asks for a keyframe (the first step of its recovery ladder).
+     *
+     * The ask goes to the broadcaster's encoder as a PLI. Every PLI forces a large I-frame, so it
+     * is expensive for every viewer of that stream: one ask per consumer every 2 s, and only for
+     * this viewer's own video consumer.
+     */
+    _handleSfuViewerKeyframe(ws, client) {
+        const roomId = client._sfuViewerRoomId || `stream-${client.streamId}`;
+        const room = webrtcSFU.rooms?.get(roomId);
+        if (!room) { this.safeSend(ws, { type: 'sfu-keyframe-requested', asked: 0, throttled: 0 }); return; }
+        const now = Date.now();
+        if (!client._lastKeyframeAskAt) client._lastKeyframeAskAt = new Map();
+        let asked = 0;
+        let throttled = 0;
+        for (const cid of (client._sfuViewerConsumerIds || [])) {
+            const entry = room.consumers.get(cid);
+            if (!entry?.consumer || entry.consumer.closed || entry.consumer.kind !== 'video') continue;
+            const last = client._lastKeyframeAskAt.get(cid) || 0;
+            if (now - last < VIEWER_KEYFRAME_ASK_MS) { throttled++; continue; }
+            client._lastKeyframeAskAt.set(cid, now);
+            asked++;
+            entry.consumer.requestKeyFrame().catch(err => {
+                console.warn(`[Broadcast] Keyframe ask failed for consumer ${cid} (${client.peerId}): ${err.message}`);
+            });
+        }
+        console.log(`[Broadcast] Viewer ${client.peerId} asked for a keyframe on stream ${client.streamId} — asked=${asked} throttled=${throttled}`);
+        this.safeSend(ws, { type: 'sfu-keyframe-requested', asked, throttled });
+    }
+
+    /**
+     * A viewer asks for a fresh receive transport (the second step of its recovery ladder): the
+     * picture froze, the keyframes did not unstick it. The old transport is dropped and a new
+     * sfu-viewer-ready goes out, so the media session is rebuilt without the page reloading.
+     */
+    _handleSfuViewerRestart(ws, client) {
+        console.log(`[Broadcast] Viewer ${client.peerId} asked for a fresh transport on stream ${client.streamId}`);
+        // The new transport starts a new decoder: its framesDecoded counts from zero. A tracker
+        // carried over would read that reset as "no new frames" and invent a freeze.
+        client._viewerTracker = null;
+        client._lastViewerTelemetryAt = 0;
+        this._cleanupSfuViewerTransport(client);
+        this._tryCreateSfuViewer(ws, client).then((handled) => {
+            if (!handled) this.safeSend(ws, { type: 'sfu-source-unavailable', reason: 'ingest_stale' });
+        }).catch(err => {
+            console.error(`[Broadcast] SFU viewer restart failed for ${client.peerId}: ${err.message}`);
+            this.safeSend(ws, { type: 'sfu-viewer-error', error: err.message });
+        });
     }
 
     _cleanupSfuViewerTransport(client) {

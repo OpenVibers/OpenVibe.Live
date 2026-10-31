@@ -1184,7 +1184,7 @@ async function initWebRTC(stream) {
         const wsUrl = `${protocol}://${host}${portSuffix}/ws/broadcast?streamId=${streamRef.id}&role=viewer&token=${token}`;
 
         const ws = new WebSocket(wsUrl);
-        player = { ws, video, myPeerId: null, watchSent: false, _wsUrl: wsUrl, _serverIceServers: null };
+        player = { ws, video, myPeerId: null, watchSent: false, _wsUrl: wsUrl, _serverIceServers: null, _viewerRestarts: 0 };
         const _myGen = _playerGen; // this session's generation; stale once destroyPlayer bumps it
         let _broadcasterDisconnectTimer = null;
         let _viewerReconnectTimer = null;
@@ -1243,6 +1243,35 @@ async function initWebRTC(stream) {
                 startWatchOfferTimeout();
             }, delay);
         };
+
+        // A player that comes back to the front, or a network that comes back, recovers by itself
+        // (the owner's rule, 2026-10-31): never a reload, never "refresh the page".
+        //
+        // When the signaling socket is gone we cannot do anything here — the socket's own close
+        // handler reconnects it. When it is open but the media transport died (a phone that moved
+        // from Wi-Fi to cellular, a laptop that woke up), we watch again and the server hands us
+        // a fresh transport. When the transport still looks fine, the monitor's poll decides
+        // whether the picture is actually moving; a frozen picture is the ladder's business.
+        const _resumeIfNeeded = (why) => {
+            if (!player || _myGen !== _playerGen || _viewerIntentionalClose) return;
+            if (!player.ws || player.ws.readyState !== WebSocket.OPEN) return;
+            const state = player._sfuRecvTransport?.connectionState;
+            if (state !== 'connected') {
+                console.warn(`[Player] SFU viewer resuming after ${why} (transport=${state || 'none'}) — watching again`);
+                player.watchSent = false;
+                sendPlayerSignal({ type: 'watch' });
+                player.watchSent = true;
+                return;
+            }
+            // The transport looks alive: ask the monitor to look at the decoder's numbers now.
+            if (player._viewerHealth) { try { player._viewerHealth.poll(); } catch { /* */ } }
+        };
+        const _onOnline = () => _resumeIfNeeded('the network came back');
+        const _onVisible = () => { if (!document.hidden) _resumeIfNeeded('the tab came back to the front'); };
+        window.addEventListener('online', _onOnline);
+        document.addEventListener('visibilitychange', _onVisible);
+        player._onOnline = _onOnline;
+        player._onVisibility = _onVisible;
 
         ws.onopen = () => {
             console.log('[Player] Broadcast signaling connected');
@@ -1494,6 +1523,9 @@ async function handleSfuViewerReady(msg, ws, video, updateStatus, scheduleRewatc
     if (player._playRetryTimer) { clearTimeout(player._playRetryTimer); player._playRetryTimer = null; }
     // Clear any post-play frozen-video checker from the previous SFU session
     if (player._sfuFrozenInterval) { clearInterval(player._sfuFrozenInterval); player._sfuFrozenInterval = null; }
+    // The viewer-health monitor (telemetry + the recovery ladder) of the previous session
+    if (player._viewerHealth) { try { player._viewerHealth.stop(); } catch { /* */ } player._viewerHealth = null; }
+    player._viewerHealthFor = null;
     // Cancel pending ICE/DTLS connect timeout for any prior SFU transport
     if (player._sfuTransportConnectTimeout) {
         clearTimeout(player._sfuTransportConnectTimeout);
@@ -1600,6 +1632,9 @@ async function handleSfuViewerReady(msg, ws, video, updateStatus, scheduleRewatc
             if (!player || player._sfuRecvTransport !== recvTransport) return;
             console.log(`[Player] SFU recv transport state: ${state}`);
             if (state === 'connected') {
+                // The ladder only escalates while the transport is up; the first frame (or the
+                // first 1.5 s without one) decides what happens next.
+                if (player._viewerHealth) { try { player._viewerHealth.connected(); } catch { /* */ } }
                 updateStatus('Almost there', {
                     phase: 'buffer',
                     detail: 'ICE and DTLS are up. Waiting for the next keyframe and live media packets.',
@@ -1636,6 +1671,7 @@ async function handleSfuViewerReady(msg, ws, video, updateStatus, scheduleRewatc
             }
             if (state === 'failed' || state === 'closed') {
                 // Transport is dead — clear both timers before re-watching
+                if (player._viewerHealth) { try { player._viewerHealth.disconnected(); } catch { /* */ } }
                 if (player._sfuTransportConnectTimeout) {
                     clearTimeout(player._sfuTransportConnectTimeout);
                     player._sfuTransportConnectTimeout = null;
@@ -1713,6 +1749,7 @@ async function handleSfuViewerReady(msg, ws, video, updateStatus, scheduleRewatc
         };
 
         let consumedCount = 0;
+        let videoCodec = '';   // what the SFU negotiated for this viewer's video (e.g. "video/H264")
         for (const prod of producers) {
             const consumerParams = await _sfuViewerRequest(ws, 'sfu-viewer-consume', 'sfu-viewer-consumed', {
                 transportId: recvTransport.id,
@@ -1748,7 +1785,10 @@ async function handleSfuViewerReady(msg, ws, video, updateStatus, scheduleRewatc
 
             // Keep a handle on the VIDEO receiver so the freeze watchdog can read framesDecoded
             // when requestVideoFrameCallback isn't available.
-            if (consumer.kind === 'video') player._sfuVideoReceiver = consumer.rtpReceiver || null;
+            if (consumer.kind === 'video') {
+                player._sfuVideoReceiver = consumer.rtpReceiver || null;
+                videoCodec = consumerParams?.rtpParameters?.codecs?.[0]?.mimeType || videoCodec;
+            }
 
             mediaStream.addTrack(consumer.track);
             console.log(`[Player] SFU consumed ${consumer.kind} track — enabled=${consumer.track.enabled} muted=${consumer.track.muted} readyState=${consumer.track.readyState} paused=${consumer.paused} id=${consumer.id}`);
@@ -1777,6 +1817,77 @@ async function handleSfuViewerReady(msg, ws, video, updateStatus, scheduleRewatc
         // Set video source
         video.srcObject = mediaStream;
         video.style.display = 'block';
+
+        // Start the viewer-health monitor with the media, not on the first painted frame: a
+        // transport that connects but never delivers a decoded frame is exactly the freeze we
+        // must catch (the old watchdog only started on 'playing', so a black picture waited for
+        // the 20 s first-frame timer). The monitor asks for a keyframe after 1.5 s without a
+        // decoded frame, restarts the transport after three asks (or 8 s of asking), then
+        // rebuilds the whole viewer session. Telemetry goes to the server every 5 s.
+        let health = null;
+        const startViewerHealth = () => {
+            if (!window.OVViewerHealth || !player || player._sfuRecvTransport !== recvTransport) return;
+            if (player._viewerHealthFor === recvTransport) return;
+            player._viewerHealthFor = recvTransport;
+            health = OVViewerHealth.createMonitor({
+                streamId: streamRef?.id,
+                codec: videoCodec,
+                // A transport that was restarted by the previous ladder starts at stage 2: the
+                // keyframe asks were already spent, so a picture that stays frozen rebuilds the
+                // session after the grace period instead of asking the same encoder again.
+                startStage: player._viewerRestarts ? 2 : 0,
+                getReceiver: () => player?._sfuVideoReceiver || null,
+                send: (m) => sendPlayerSignal(m),
+                notice: () => document.getElementById('ov-mini-player') || document.getElementById('video-container') || document.body,
+                onFrame: () => { if (player) player._viewerRestarts = 0; },
+                onStage: (stage) => {
+                    if (stage === 1) console.warn('[Player] SFU video frozen — asking for a keyframe');
+                    if (stage === 2) console.warn('[Player] SFU video still frozen — restarting the receive transport');
+                    if (stage === 3) console.warn('[Player] SFU video still frozen — rebuilding the viewer session');
+                },
+                // Step 2: a fresh receive transport. The server drops this viewer's old one and
+                // sends a new sfu-viewer-ready, so the media session is rebuilt without a reload.
+                restartTransport: () => {
+                    if (!player || player._sfuRecvTransport !== recvTransport) return;
+                    player._viewerRestarts = (Number(player._viewerRestarts) || 0) + 1;
+                    player._sfuRecvTransport = null;
+                    try { recvTransport.close(); } catch { /* */ }
+                    sendPlayerSignal({ type: 'sfu-viewer-restart' });
+                },
+                // Step 3: the whole viewer session — a new signaling socket and a new SFU session.
+                rebuild: () => {
+                    const stream = streamRef;
+                    try { if (player?.ws) player.ws.close(); } catch { /* */ }
+                    try { if (player?._sfuRecvTransport) player._sfuRecvTransport.close(); } catch { /* */ }
+                    player = null;
+                    _playerGen++;          // the old session's callbacks must not act any more
+                    _sfuViewerSetupInProgress = false;
+                    if (stream) initWebRTC(stream);
+                },
+            });
+            player._viewerHealth = health;
+            health.start();
+            // The monitor's 1.5 s rule replaces the 20 s first-frame timer.
+            if (player._stallTimer) { clearTimeout(player._stallTimer); player._stallTimer = null; }
+            if (recvTransport.connectionState === 'connected') health.connected();
+
+            // Hidden tabs never PAINT frames, so requestVideoFrameCallback goes silent even though
+            // the decoder keeps running. The monitor's primary signal is the decoded-frame count,
+            // which keeps rising in a background tab; rVFC is only an extra, faster "a frame was
+            // presented" signal.
+            if (typeof video.requestVideoFrameCallback === 'function') {
+                const _onFrame = () => {
+                    if (!player || player._viewerHealth !== health) return;
+                    health.markFrame();
+                    if (player._sfuRecvTransport === recvTransport && video.srcObject) {
+                        try { video.requestVideoFrameCallback(_onFrame); } catch { /* */ }
+                    }
+                };
+                try { video.requestVideoFrameCallback(_onFrame); } catch { /* not supported */ }
+            }
+        };
+        startViewerHealth();
+
         startClipRecordingIfNeeded(mediaStream, streamRef?.id);
 
         const _onVideoPlaybackProgress = () => {
@@ -1802,112 +1913,16 @@ async function handleSfuViewerReady(msg, ws, video, updateStatus, scheduleRewatc
             _hidePlayerPlaceholder();
             if (!video.muted) document.getElementById('unmute-overlay')?.remove();
 
-            // Post-play VIDEO-freeze watchdog.
-            //
-            // The old detector watched video.currentTime — but for a WebRTC MediaStream that
-            // clock keeps advancing as long as the AUDIO track renders. So when only the VIDEO
-            // decoder stalls (a lost keyframe after packet loss, a decode hiccup), the screen goes
-            // black yet currentTime never stops → the stall was invisible → viewers had to refresh.
-            //
-            // Instead we watch actual VIDEO frame PRESENTATION via requestVideoFrameCallback
-            // (falling back to getStats framesDecoded). On a video-only stall we recover in two
-            // stages: (1) a cheap keyframe request via re-watch — the server responds with
-            // consumer.requestKeyFrame(), which unsticks a missing-keyframe black frame without a
-            // rebuild; (2) if that doesn't help within a few seconds, rebuild the receive transport
-            // (full re-consume). No manual refresh needed.
-            const _nowMs = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
-            const STALL_CHECK_MS = 1500;
-            const STALL_TRIGGER_MS = 3500;   // no new video frame for this long (while playing) = frozen
-            const STALL_ESCALATE_MS = 6000;  // still frozen this long after a keyframe nudge = rebuild
-            let _lastFrameAt = _nowMs();
-            let _lastFramesDecoded = -1;
-            let _recoverStage = 0;           // 0 = healthy, 1 = keyframe requested
-            let _recoverAt = 0;
-            let _usingRVFC = false;
-            const _startedAt = _nowMs();
-            // Hidden tabs never PAINT frames, so rVFC goes silent even though the decoder keeps
-            // running. Treating that silence as "frozen" produced an endless nudge → rebuild →
-            // reconnect loop (every ~12s, all night, per background tab) that also hammered the
-            // broadcaster with keyframe requests. When the tab becomes visible again, restart
-            // the clock instead of judging the time it spent hidden.
-            const _onVisibility = () => { if (!document.hidden) _lastFrameAt = _nowMs(); };
-            document.addEventListener('visibilitychange', _onVisibility);
-
-            // Primary signal: rVFC fires only when a NEW frame is actually presented.
-            if (typeof video.requestVideoFrameCallback === 'function') {
-                _usingRVFC = true;
-                const _onFrame = () => {
-                    _lastFrameAt = _nowMs();
-                    if (player?._sfuRecvTransport === recvTransport && video.srcObject) {
-                        try { video.requestVideoFrameCallback(_onFrame); } catch { /* */ }
-                    }
-                };
-                try { video.requestVideoFrameCallback(_onFrame); } catch { _usingRVFC = false; }
-            }
-
-            const _frozenInterval = setInterval(async () => {
-                if (!player || player._sfuRecvTransport !== recvTransport) { clearInterval(_frozenInterval); return; }
-                if (video.paused || !(video.srcObject?.active)) { clearInterval(_frozenInterval); document.removeEventListener('visibilitychange', _onVisibility); return; }
-
-                // Decoded-frame count from getStats is the PRIMARY progress signal: it keeps
-                // rising in background tabs, where rVFC (a paint signal) never fires. rVFC is
-                // kept as an extra, faster signal when it is available.
-                if (player._sfuVideoReceiver?.getStats) {
-                    try {
-                        const stats = await player._sfuVideoReceiver.getStats();
-                        let fd = null;
-                        stats.forEach((r) => { if (r.type === 'inbound-rtp' && (r.kind === 'video' || r.mediaType === 'video') && typeof r.framesDecoded === 'number') fd = r.framesDecoded; });
-                        if (fd != null && fd !== _lastFramesDecoded) { _lastFrameAt = _nowMs(); _lastFramesDecoded = fd; }
-                    } catch { /* */ }
-                }
-
-                const stalledFor = _nowMs() - _lastFrameAt;
-
-                if (stalledFor <= STALL_TRIGGER_MS) {
-                    // Video is progressing — healthy (or recovered after a nudge).
-                    if (_recoverStage !== 0) { console.log('[Player] SFU video recovered'); _recoverStage = 0; }
-                    // Frames have flowed for a while on this transport → forget rebuild backoff.
-                    if (player._sfuRebuilds && _nowMs() - _startedAt > 15000) player._sfuRebuilds = 0;
-                    return;
-                }
-
-                // Never escalate while the page is hidden: nothing is painted, nobody is watching,
-                // and a rebuild just churns the SFU. The visibility handler restarts the clock.
-                if (document.hidden) return;
-
-                if (_recoverStage === 0) {
-                    // Stage 1: cheap keyframe request (server calls consumer.requestKeyFrame() on re-watch).
-                    console.warn(`[Player] SFU video frozen ~${(stalledFor / 1000).toFixed(1)}s (audio may still be playing) — requesting keyframe via re-watch`);
-                    _recoverStage = 1; _recoverAt = _nowMs();
-                    player.watchSent = false;
-                    sendPlayerSignal({ type: 'watch' });
-                    player.watchSent = true;
-                    // Intentionally NOT calling _startWatchOfferTimeout() — SFU mode.
-                } else if (_recoverStage === 1 && (_nowMs() - _recoverAt) > STALL_ESCALATE_MS) {
-                    // Stage 2: keyframe didn't unstick it — rebuild the receive transport.
-                    console.warn('[Player] SFU video still frozen after keyframe nudge — rebuilding receive transport');
-                    clearInterval(_frozenInterval);
-                    if (player._sfuFrozenInterval === _frozenInterval) player._sfuFrozenInterval = null;
-                    _hasVideoFrames = false;
-                    if (player._sfuRecvTransport === recvTransport) player._sfuRecvTransport = null;
-                    try { recvTransport.close(); } catch { /* */ }
-                    document.removeEventListener('visibilitychange', _onVisibility);
-                    // Exponential backoff between rebuilds (1s, 2s, 4s … 60s) so a transport
-                    // that genuinely never delivers frames can't loop at full speed.
-                    const rebuilds = player._sfuRebuilds = (player._sfuRebuilds || 0) + 1;
-                    const delay = Math.min(60000, 1000 * Math.pow(2, rebuilds - 1));
-                    console.warn(`[Player] SFU rebuild #${rebuilds} in ${delay}ms`);
-                    scheduleRewatch(delay);
-                }
-            }, STALL_CHECK_MS);
-            player._sfuFrozenInterval = _frozenInterval;
+            // The viewer-health monitor is already running (it starts with the media above);
+            // this event only records that the first frame reached the screen.
+            player?._viewerHealth?.markFrame();
         };
         video.addEventListener('playing', onPlaying);
 
-        // NOTE: the first-frame stall timer is now armed in the 'connected'
-        // connectionstatechange handler above, not here. Arming it here (before transport
-        // connects) was the root cause of the 8-second re-watch loop: the timer fired before
-        // ICE + DTLS completed AND before the first H.264 keyframe could arrive.
+        // NOTE: the first-frame stall timer is armed in the 'connected'
+        // connectionstatechange handler above. The health monitor takes over as soon as the
+        // media is attached, so a connected transport with no frame is recovered in 1.5 s
+        // rather than waiting out that 20 s grace window.
 
         // Start playback after all tracks consumed
         if (consumedCount >= 2) {
@@ -3586,6 +3601,8 @@ function getSavedPlayerAudioState() {
 /* ── Cleanup ──────────────────────────────────────────────────── */
 function destroyPlayer() {
     _playerGen++; // invalidate any in-flight WebRTC reconnect/rewatch closures from the old session
+    // The mini player holds this session's video element: give it back before the player dies.
+    try { window.OVMiniPlayer?.release(); } catch { /* */ }
     // The overlay owns a websocket and a mediasoup transport of its own, so it has to be
     // torn down explicitly — leaving it running would keep consuming a second stream.
     try { window.streamPip?.detach(); } catch { /* */ }
@@ -3610,6 +3627,9 @@ function destroyPlayer() {
         window._jsmpegDrawInterval = null;
     }
     if (player) {
+        if (player._onOnline) { window.removeEventListener('online', player._onOnline); player._onOnline = null; }
+        if (player._onVisibility) { document.removeEventListener('visibilitychange', player._onVisibility); player._onVisibility = null; }
+        if (player._viewerHealth) { try { player._viewerHealth.stop(); } catch { /* */ } player._viewerHealth = null; }
         if (playerType === 'jsmpeg' && player.destroy) player.destroy();
         if (playerType === 'webrtc') {
             if (player.ws) player.ws.close();

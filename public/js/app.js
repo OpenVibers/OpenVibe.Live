@@ -880,7 +880,12 @@ function teardownRoute(nextPath) {
     // released, and loaders still awaiting data for it see they are stale.
     if (window.ov) ov.nextRoute();
     ovClearStrandedOverlays();
-    if (typeof destroyPlayer === 'function') destroyPlayer();
+    if (typeof destroyPlayer === 'function') {
+        // A live picture follows the viewer into the mini player instead of dying with the page
+        // (the owner's rule, 2026-10-31). Every other case tears the player down as before.
+        const kept = typeof window.OVMiniPlayer !== 'undefined' && window.OVMiniPlayer.keepAlive(nextPath);
+        if (!kept) destroyPlayer();
+    }
     if (typeof destroyChat === 'function') destroyChat();
     if (typeof stopCoinHeartbeat === 'function') stopCoinHeartbeat();
     if (typeof updateChannelPointsNav === 'function') updateChannelPointsNav(null);
@@ -941,6 +946,7 @@ document.addEventListener('visibilitychange', ovCheckRelease);
 window.addEventListener('pageshow', (e) => { if (e.persisted) ovCheckRelease(); });
 function _ovHoldsMedia() {
     try { if ([...broadcastState.streams.values()].some((s) => s.localStream || s.signalingWs || s.vodUploading)) return true; } catch { /* */ }
+    try { if (window.OVMiniPlayer && window.OVMiniPlayer.isMini()) return true; } catch { /* */ }
     try { return !!(callState.joined || callState.connecting); } catch { return false; }
 }
 
