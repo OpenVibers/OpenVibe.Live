@@ -304,6 +304,7 @@ class BroadcastServer extends EventEmitter {
             }
             room.broadcaster = ws;
             console.log(`[Broadcast] Broadcaster connected: stream ${streamId} (${user.username})`);
+            this._startIngestHealth(streamId, room);
             require('./stream-history').broadcasterBack(streamId).catch(() => {});
             this.emit('broadcaster-connected', { streamId, userId: user.id });
 
@@ -522,6 +523,41 @@ class BroadcastServer extends EventEmitter {
         }
     }
 
+    /**
+     * Every 5 s while a broadcaster is connected: what the SFU really receives (plan L23 R2), sent to that broadcaster
+     * as ingest-health { video: { present, kbps, score }, audio: { present, kbps } }. The studio shows "No picture"
+     * when its camera is on and the server gets none, instead of a sender-side "Good".
+     */
+    _startIngestHealth(streamId, room) {
+        this._stopIngestHealth(room);
+        const roomId = `stream-${streamId}`;
+        let last = null;
+        room._ingestTimer = setInterval(async () => {
+            const ws = room.broadcaster;
+            if (!ws || ws.readyState !== WebSocket.OPEN) return;
+            let h;
+            try { h = await webrtcSFU.ingestHealth(roomId); } catch { return; }
+            const at = Date.now();
+            const kbps = (kind) => {
+                if (!last || !h[kind].present || !last[kind].present) return null;
+                const bytes = h[kind].bytes - last[kind].bytes;
+                return bytes >= 0 ? Math.round((bytes * 8) / Math.max(1, at - last.at)) : null;   // a new producer starts from 0
+            };
+            const report = {
+                type: 'ingest-health',
+                video: { present: h.video.present, kbps: kbps('video'), score: h.video.score },
+                audio: { present: h.audio.present, kbps: kbps('audio') },
+            };
+            last = { at, video: h.video, audio: h.audio };
+            this.safeSend(ws, report);
+        }, 5000);
+        if (room._ingestTimer.unref) room._ingestTimer.unref();
+    }
+
+    _stopIngestHealth(room) {
+        if (room && room._ingestTimer) { clearInterval(room._ingestTimer); room._ingestTimer = null; }
+    }
+
     handleDisconnect(ws) {
         const client = this.clients.get(ws);
         if (!client) return;
@@ -529,6 +565,7 @@ class BroadcastServer extends EventEmitter {
         const room = this.rooms.get(client.streamId);
         if (room) {
             if (client.role === 'broadcaster') {
+                if (room.broadcaster === ws) this._stopIngestHealth(room);
                 room.broadcaster = null;
                 room._sfuProduceRequestedAt = 0;
                 console.log(`[Broadcast] Broadcaster disconnected: stream ${client.streamId}`);
@@ -1121,6 +1158,7 @@ class BroadcastServer extends EventEmitter {
             try { room.broadcaster.close(4020, 'Stream ended'); } catch {}
             room.broadcaster = null;
         }
+        this._stopIngestHealth(room);
 
         // Notify all viewers
         for (const [, viewerWs] of room.viewers) {

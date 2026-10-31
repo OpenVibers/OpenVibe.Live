@@ -2389,10 +2389,14 @@ function startGlobalDisplayTimers() {
                 } else if (connState === 'checking' || connState === 'new') {
                     health = 'Connecting'; color = '#f59e0b';
                 }
+                // The server's word wins: a camera that is on while no picture reaches the server (ingest-health).
+                if (ss.ingestNoPicture) { health = 'No picture'; color = '#ef4444'; }
                 healthEl.textContent = health;
                 healthEl.style.color = color;
+                const ing = ss.ingestHealth && ss.ingestHealth.video;
+                healthEl.title = ing && ing.kbps != null ? `The server receives ${ing.kbps >= 1000 ? (ing.kbps / 1000).toFixed(1) + ' Mbps' : ing.kbps + ' kbps'} of video` : '';
                 const card = document.getElementById('bc-stats-overlay');
-                if (card) card.dataset.health = ({ Good: 'good', Fair: 'fair', Poor: 'poor', Offline: 'offline' })[health] || 'checking';
+                if (card) card.dataset.health = ({ Good: 'good', Fair: 'fair', Poor: 'poor', Offline: 'offline', 'No picture': 'poor' })[health] || 'checking';
             }
             _checkLowBitrate(ss, hasStats ? bitrateKbps : 0, connState);
         } finally {
@@ -4460,10 +4464,33 @@ async function _rebuildScreenShareAudio(audioId, streamId) {
     toast(newMicStream ? 'Microphone updated (screen share mode)' : 'Microphone off (screen share mode)', 'success');
 }
 
+/**
+ * What the server really receives (ingest-health, every 5 s; plan L23 R2). The sender's own stats can look fine while
+ * no picture reaches the server (stream 2827: the camera was never produced), so two reports in a row with the camera
+ * on and no video arriving mark the stream "No picture" (the health pill and card) and say once what to do.
+ */
+function _applyIngestHealth(streamId, ss, msg) {
+    ss.ingestHealth = msg;
+    const vt = ss.localStream && ss.localStream.getVideoTracks()[0];
+    const camOn = !!(vt && vt.readyState === 'live' && vt.enabled);
+    const video = msg.video || {};
+    const noPicture = camOn && (!video.present || video.kbps === 0);
+    ss._ingestBad = noPicture ? (ss._ingestBad || 0) + 1 : 0;
+    ss.ingestNoPicture = ss._ingestBad >= 2;
+    if (ss.ingestNoPicture && !ss._ingestWarned && broadcastState.activeStreamId === streamId) {
+        ss._ingestWarned = true;
+        toast('Viewers aren\'t getting your camera. Switch the camera off and on, or close any other app that uses it.', 'warning');
+    }
+    if (!ss.ingestNoPicture) ss._ingestWarned = false;
+}
+
 async function handleSignalingMessage(streamId, msg) {
     const ss = getStreamState(streamId);
     if (!ss) return;
     switch (msg.type) {
+        case 'ingest-health':
+            _applyIngestHealth(streamId, ss, msg);
+            break;
         case 'viewer-count':
             _perStreamViewerCounts.set(streamId, msg.count || 0);
             _updateTabViewerCount(streamId, msg.count || 0);

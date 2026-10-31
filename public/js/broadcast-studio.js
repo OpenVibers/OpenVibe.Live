@@ -525,6 +525,7 @@
     const HEALTH = {
         good: ['is-ok', 'Good'], fair: ['is-warn', 'Weak'], poor: ['is-bad', 'Poor'], offline: ['is-bad', 'Offline'],
         connecting: ['is-warn', 'Connecting'], measuring: ['is-warn', 'Checking'],
+        'no picture': ['is-bad', 'No picture'],   // the server gets no video while the camera is on (ingest-health)
     };
 
     /** Brings the overlay up to date with the page (once a second, and after every action). */
