@@ -48,6 +48,7 @@ check('A1 the ladder asks for a keyframe after 1.5 s of a still picture', () => 
     let t = 10000;
     const ladder = VH.createLadder({ now: () => t });
     ladder.setConnected(true);
+    ladder.markPackets();   // video packets keep arriving: a still picture is a decoder stall
     assert.equal(ladder.tick().action, 'none', 'a moving picture asks for nothing');
     t += 1600;
     const step = ladder.tick();
@@ -59,6 +60,7 @@ check('A2 the ladder asks three times, then restarts the transport, then rebuild
     let t = 10000;
     const ladder = VH.createLadder({ now: () => t });
     ladder.setConnected(true);
+    ladder.markPackets();   // video packets keep arriving: a still picture is a decoder stall
     t += 1600;
     assert.equal(ladder.tick().action, 'keyframe');
     t += 2000;
@@ -81,6 +83,7 @@ check('A3 the ladder restarts the transport after 8 s of asking, even with fewer
     let t = 10000;
     const ladder = VH.createLadder({ now: () => t });
     ladder.setConnected(true);
+    ladder.markPackets();   // video packets keep arriving: a still picture is a decoder stall
     t += 1600;
     assert.equal(ladder.tick().action, 'keyframe');
     // The player asks again only every 2 s, so the asks are few: the 8 s rule must still fire.
@@ -93,6 +96,7 @@ check('A4 the ladder asks again no more often than every 2 s', () => {
     let t = 10000;
     const ladder = VH.createLadder({ now: () => t });
     ladder.setConnected(true);
+    ladder.markPackets();   // video packets keep arriving: a still picture is a decoder stall
     t += 1600;
     assert.equal(ladder.tick().action, 'keyframe');
     t += 500;                       // too soon for another ask
@@ -110,6 +114,7 @@ check('A5 a transport that is not connected never escalates', () => {
     t += 60000;
     assert.equal(ladder.tick().action, 'none');
     ladder.setConnected(true);
+    ladder.markPackets();   // video packets keep arriving: a still picture is a decoder stall
     t += 1600;
     assert.equal(ladder.tick().action, 'keyframe');
 });
@@ -118,6 +123,7 @@ check('A6 a transport restarted by the ladder starts at the rebuild step', () =>
     let t = 10000;
     const ladder = VH.createLadder({ now: () => t, startStage: 2 });
     ladder.setConnected(true);
+    ladder.markPackets();   // video packets keep arriving: a still picture is a decoder stall
     t += 1600;
     assert.equal(ladder.tick().action, 'wait', 'the keyframe asks were already spent on the old transport');
     t += 7000;
@@ -129,10 +135,41 @@ check('A6 a transport restarted by the ladder starts at the rebuild step', () =>
 });
 
 // ── B: a frame that arrives ──────────────────────────────────────────────────────────────────────
+
+check('A7 a quiet sender is not a freeze: no packets and no frames for a while asks for nothing', () => {
+    let t = 10000;
+    const ladder = VH.createLadder({ now: () => t });
+    ladder.setConnected(true);
+    t += 5000;
+    assert.equal(ladder.tick().action, 'none', 'a static screen share sends nothing until something changes');
+    t += 10000;
+    assert.equal(ladder.tick().action, 'none', 'still nothing at 15 s');
+    assert.equal(ladder.stage, 0);
+});
+
+check('A8 twenty seconds with no video packets at all climbs the ladder (the transport may be dead)', () => {
+    let t = 10000;
+    const ladder = VH.createLadder({ now: () => t });
+    ladder.setConnected(true);
+    t += 20500;
+    assert.equal(ladder.tick().action, 'keyframe');
+});
+
+check('A9 packets after a frame, then no frame: the stall is caught from the packets', () => {
+    let t = 10000;
+    const ladder = VH.createLadder({ now: () => t });
+    ladder.setConnected(true);
+    t += 500; ladder.markFrame();
+    t += 300; ladder.markPackets();
+    t += 1600;
+    assert.equal(ladder.tick().action, 'keyframe', 'packets arrived and nothing decoded');
+});
+
 check('B1 a new frame puts the ladder back to zero and closes the freeze', () => {
     let t = 10000;
     const ladder = VH.createLadder({ now: () => t });
     ladder.setConnected(true);
+    ladder.markPackets();   // video packets keep arriving: a still picture is a decoder stall
     t += 1600;
     ladder.tick();
     assert.equal(ladder.stage, 1);
@@ -141,6 +178,7 @@ check('B1 a new frame puts the ladder back to zero and closes the freeze', () =>
     ladder.markFrame();
     assert.equal(ladder.stage, 0, 'the picture moved: the ladder is back to zero');
     assert.ok(ladder.freezeMs >= 1000, 'the freeze duration is counted');
+    ladder.markPackets();
     t += 1600;
     ladder.tick();
     assert.equal(ladder.freezeCount, 2, 'a second freeze is a second freeze');
@@ -150,6 +188,7 @@ check('B2 the duration counts the freeze that is still running', () => {
     let t = 10000;
     const ladder = VH.createLadder({ now: () => t });
     ladder.setConnected(true);
+    ladder.markPackets();   // video packets keep arriving: a still picture is a decoder stall
     t += 1600;
     ladder.tick();
     assert.ok(ladder.freezeMs >= 1600, 'the running freeze is already part of the total');

@@ -40,6 +40,7 @@
         keyframeIntervalMs: 2000,// the server takes one keyframe ask per consumer every 2 s
         restartAfterMs: 8000,    // eight seconds of asking = restart the transport anyway
         rebuildAfterMs: 8000,    // a restarted transport gets eight seconds before a full rebuild
+        silentMs: 20000,         // no video packets at all for this long = the transport may be dead: climb the ladder
         telemetryMs: 5000,       // one telemetry message every five seconds
         pollMs: 1000,            // how often the decoder's numbers are read
     };
@@ -74,6 +75,11 @@
         let freezeMs = 0;
         let freezeStartedAt = 0;
         let connected = false;
+        // Video packets since the last decoded frame, and when the last one came. A still picture with no packets is a
+        // quiet sender (a static screen share sends frames only when something changes), not a frozen decoder: the
+        // ladder climbs only when packets arrive and no frame decodes, or when nothing at all has arrived for silentMs.
+        let packetsSinceFrame = false;
+        let lastPacketAt = now();
 
         const closeFreeze = (at) => {
             if (!freezeStartedAt) return;
@@ -96,15 +102,21 @@
                 const next = !!v;
                 if (next === connected) return;
                 connected = next;
-                if (connected) lastFrameAt = now();
+                if (connected) { lastFrameAt = now(); lastPacketAt = now(); packetsSinceFrame = false; }
                 else { stage = 0; stageAt = 0; keyframeAsks = 0; lastAskAt = 0; }
             },
             /** A new decoded frame: the picture moved. */
             markFrame(at) {
                 const t0 = typeof at === 'number' ? at : now();
                 lastFrameAt = t0;
+                packetsSinceFrame = false;
                 if (stage !== 0) { stage = 0; stageAt = 0; keyframeAsks = 0; lastAskAt = 0; }
                 closeFreeze(t0);
+            },
+            /** Video packets arrived (the inbound packet count rose). */
+            markPackets(at) {
+                lastPacketAt = typeof at === 'number' ? at : now();
+                packetsSinceFrame = true;
             },
             /** One step of the ladder. Returns what the caller should do now. */
             tick() {
@@ -114,6 +126,11 @@
                 if (stalledFor < th.freezeMs) {
                     closeFreeze(t0);
                     return { action: 'none', stage, stalledFor };
+                }
+                // Nothing arrived since the last frame and not for long: a quiet sender, not a freeze.
+                if (!packetsSinceFrame && t0 - lastPacketAt < th.silentMs) {
+                    closeFreeze(t0);
+                    return { action: 'none', stage, stalledFor, reason: 'quiet' };
                 }
                 // A freeze lasts from the moment the picture stopped. The 2 s threshold is the
                 // server's rule for calling it a freeze; the duration is measured from the stop.
@@ -305,6 +322,7 @@
         let timer = null;
         let lastStats = null;
         let lastFramesDecoded = null;
+        let lastPacketsReceived = null;
         let lastSampleAt = 0;
         let stopped = false;
         let polling = false;
@@ -345,13 +363,16 @@
             try {
                 const sample = await readReceiverStats();
                 if (stopped) return;
-                if (sample) {
-                    lastStats = sample;
-                    const fd = num(sample.framesDecoded);
-                    if (fd !== null && fd !== lastFramesDecoded) {
-                        lastFramesDecoded = fd;
-                        noteFrame();
-                    }
+                // No video receiver (an audio-only stream) or no stats yet: nothing to judge, so the ladder waits.
+                if (!sample) return;
+                lastStats = sample;
+                const pr = num(sample.packetsReceived);
+                if (pr !== null && lastPacketsReceived !== null && pr > lastPacketsReceived) ladder.markPackets();
+                if (pr !== null) lastPacketsReceived = pr;
+                const fd = num(sample.framesDecoded);
+                if (fd !== null && fd !== lastFramesDecoded) {
+                    lastFramesDecoded = fd;
+                    noteFrame();
                 }
                 const step = ladder.tick();
                 if (step.action === 'keyframe') {
