@@ -721,7 +721,7 @@ function _showReconnectingIndicator() {
     const el = document.createElement('div');
     el.id = 'reconnecting-indicator';
     el.style.cssText = 'position:absolute;top:12px;right:12px;z-index:25;background:rgba(0,0,0,0.7);color:#fbbf24;padding:6px 14px;border-radius:8px;font-size:0.85rem;display:flex;align-items:center;gap:8px;pointer-events:none;';
-    el.innerHTML = '<i class="fa-solid fa-spinner fa-spin" style="font-size:0.9rem"></i> Reconnecting...';
+    el.innerHTML = '<i class="fa-solid fa-spinner fa-spin" style="font-size:0.9rem"></i> The streamer is reconnecting…';
     container.appendChild(el);
 }
 
@@ -1371,8 +1371,9 @@ async function initWebRTC(stream) {
                         // Show a subtle indicator — the WebRTC PeerConnection is independent
                         // of the signaling WS so video likely still works
                         _showReconnectingIndicator();
-                        // Start a grace timer matching the server's 60s disconnect window.
-                        // Only show "ended" if both the signaling AND PeerConnection are dead.
+                        // Wait as long as the server keeps the stream (graceMs, 5 min by default: a phone that
+                        // reboots comes back on the same stream). Only show "ended" if both the signaling AND
+                        // the PeerConnection are dead by then.
                         if (_broadcasterDisconnectTimer) clearTimeout(_broadcasterDisconnectTimer);
                         _broadcasterDisconnectTimer = setTimeout(() => {
                             _broadcasterDisconnectTimer = null;
@@ -1386,7 +1387,7 @@ async function initWebRTC(stream) {
                             console.log('[Player] Broadcaster did not reconnect and SFU transport is dead, stream ended');
                             _hideReconnectingIndicator();
                             showStreamEnded();
-                        }, 60000);
+                        }, Math.max(30000, Number(msg.graceMs) || 300000) + 5000);
                         break;
                     case 'stream-ended':
                         console.log('[Player] Stream ended by server');
