@@ -1,8 +1,8 @@
 /**
- * Catch up (2026-10-30, the owner's short-pages rule: a phone page is one or two screens): on a phone the five rails
- * after Live Now (Recently Online, Recent VODs, Recent Clips, Recent Pastes, AI Moments) share one place, a row of
- * tabs and one rail at a time. Wider screens never see the tabs and show every rail. Nothing was removed: every
- * rail is still in the page, in the same order.
+ * Catch up: the five rails after Live Now (Recently Online, Recent VODs, Recent Clips, Recent Pastes, AI Moments)
+ * show on every screen, each with its own heading. For a day they were phone tabs (2026-10-30), and the owner could
+ * no longer see the videos and clips on the home page (2026-10-31: "don't reduce size by removing features"). On a
+ * phone each rail is one row of cards that scrolls sideways, so the page stays short without hiding anything.
  *
  *   node test/home-catchup.test.js
  */
@@ -16,6 +16,7 @@ try { assets.setSharedDir(require('openvibe-shared/files').dir); } catch { /* */
 const html = assets.renderRoute(assets.document('index.html').html, '/');
 const home = html.slice(html.indexOf('<section id="page-home"'), html.indexOf('</section>', html.indexOf('<section id="page-home"')));
 const css = fs.readFileSync(path.join(__dirname, '../public/css/features/home.css'), 'utf8');
+const style = fs.readFileSync(path.join(__dirname, '../public/css/style.css'), 'utf8');
 const js = fs.readFileSync(path.join(__dirname, '../public/js/app-home.js'), 'utf8');
 
 let failures = 0;
@@ -26,45 +27,35 @@ function check(name, fn) {
 
 console.log('Home catch up');
 
-const start = home.indexOf('<div class="home-catchup" id="home-catchup" data-tab="recent">');
+const start = home.indexOf('<div class="home-catchup" id="home-catchup">');
 const end = home.indexOf('</div><!-- /home-catchup -->');
-const box = home.slice(start, end);
-const TABS = ['recent', 'vods', 'clips', 'pastes', 'moments'];
+const block = home.slice(start, end);
 
-check('the five rails sit inside one Catch up block, in their order', () => {
+check('every rail is in the block, in its order, with its own heading', () => {
     assert.ok(start > 0 && end > start, 'the block opens and closes on the home page');
-    const order = ['id="stream-grid-recent"', 'id="home-recent-vods-grid"', 'id="home-clips-grid"', 'id="home-pastes-list"', 'id="home-moments-row"'].map((n) => box.indexOf(n));
-    assert.ok(order.every((i) => i > 0), 'every rail is inside it');
-    assert.deepStrictEqual([...order].sort((a, b) => a - b), order, 'in the same order as before');
-});
-
-check('one tab per rail, named for screen readers, pointing at its rail; only Recently online starts shown', () => {
-    assert.match(box, /<div class="home-catchup-tabs" role="tablist" aria-label="Catch up">/);
-    for (const key of TABS) {
-        const tab = (new RegExp(`<button type="button" role="tab" id="hc-tab-${key}" data-tab="${key}"[^>]*>`).exec(box) || [])[0];
-        assert.ok(tab, `the ${key} tab`);
-        const controls = (/aria-controls="([^"]+)"/.exec(tab) || [])[1];
-        assert.ok(controls && box.includes(`id="${controls}"`), `${key} controls a rail inside the block`);
-        assert.strictEqual(/ hidden\b/.test(tab), key !== 'recent', `${key} starts ${key === 'recent' ? 'shown' : 'hidden until its rail has something'}`);
-        assert.ok(new RegExp(`data-catchup="${key}"`).test(box), `${key}'s rail is marked`);
+    const order = ['Recently Online', 'Recent VODs', 'Recent Clips', 'Recent Pastes', 'AI Moments'].map((h) => block.indexOf(h));
+    assert.ok(order.every((i) => i > 0), 'every heading is there');
+    assert.deepStrictEqual([...order].sort((a, b) => a - b), order, 'in the same order');
+    for (const id of ['stream-grid-recent', 'home-recent-vods-grid', 'home-clips-grid', 'home-pastes-list', 'home-moments-row']) {
+        assert.ok(block.includes(`id="${id}"`), `${id} is in the block`);
     }
 });
 
-check('the tabs and the one-rail-at-a-time rule exist only under 760 px', () => {
-    assert.match(css, /\.home-catchup-tabs \{ display: none; \}/, 'no tabs by default');
-    const phone = css.slice(css.indexOf('.home-catchup-tabs { display: none; }'));
-    const block = phone.slice(phone.indexOf('@media (max-width: 759px) {'));
-    for (const key of TABS) assert.ok(block.includes(`.home-catchup:not([data-tab="${key}"]) [data-catchup="${key}"]`), `${key} hides when another tab is open`);
-    assert.match(block, /min-height: 44px/, 'a tab is a 44 px target');
-    assert.match(js, /const _narrow = typeof window !== 'undefined' && window\.matchMedia\('\(max-width: 759px\)'\)/, 'the same breakpoint as the rails\' phone sizing');
+check('no tabs and nothing that hides a rail on a phone', () => {
+    assert.ok(!block.includes('role="tablist"') && !block.includes('data-catchup'), 'no tab row and no per-rail switch');
+    assert.ok(!/home-catchup-tabs|data-catchup|\.home-catchup:not\(/.test(css), 'no CSS hides a rail');
+    assert.ok(!/initHomeCatchup|_HOME_CATCHUP_SHOWN/.test(js), 'no script sets tabs up');
 });
 
-check('a tab shows once its rail does: the ids the script watches are the rails\' own', () => {
-    const watched = /const _HOME_CATCHUP_SHOWN = \{([^}]+)\}/.exec(js);
-    assert.ok(watched, 'the map of watched elements');
-    for (const id of watched[1].match(/'([a-z-]+)'/g).map((s) => s.slice(1, -1))) assert.ok(box.includes(`id="${id}"`), `${id} is in the block`);
-    assert.match(js, /initHomeCatchup\(\);\s*\n\s*demoteHomeIntroSections\(\);/, 'loadHome starts it');
+check('on a phone each rail is one row that scrolls sideways', () => {
+    const phone = css.slice(css.indexOf('/* Catch up on a phone'));
+    assert.match(phone, /#home-catchup \.stream-grid \{[^}]*grid-auto-flow: column;[^}]*overflow-x: auto;[^}]*scroll-snap-type: x mandatory;/);
+    assert.match(phone, /#home-catchup \.stream-grid > \* \{ scroll-snap-align: start; min-width: 0; \}/);
 });
 
-console.log(failures ? `\n${failures} failed` : '\nall passed');
-process.exit(failures ? 1 : 0);
+check('the changelog preview keeps its full height on a phone', () => {
+    assert.ok(!/\.home-changelog-wrapper\.collapsed \{ max-height: 200px; \}/.test(style), 'the newest-day-only cut is gone');
+});
+
+if (failures) { console.log(`\n${failures} failed`); process.exit(1); }
+console.log('\nAll home catch up checks passed');

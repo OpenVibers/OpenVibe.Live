@@ -1268,20 +1268,19 @@ body.egg-rainbow { animation: eggRainbow 2.6s linear; }
     #page-home .hero-philosophy-btn::after, #page-home .hero-philosophy-link::after, #page-home .star-name a::after, #page-home .hero-golive-note a::after { content: ''; position: absolute; left: 0; right: 0; top: -12px; bottom: -12px; }
 }
 
-/* Catch up, Around OpenVibe and New here? (2026-10-30, the short-pages rule): on a phone a block of home
-   sections shares one place — a row of tabs and one of them at a time — so the page stays a couple of screens tall.
-   The tab names the section, so the section's own heading goes and its header keeps only what it does. Wider
-   screens never see the tabs and show every section. The breakpoint is app-home.js's _narrow. */
-.home-catchup-tabs { display: none; }
+/* New here? (2026-10-30, the short-pages rule): on a phone the explainer at the foot of the home is a row of tabs and
+   one section at a time. The content blocks above it (Catch up, Around OpenVibe) are never tabbed: every section shows
+   on every screen (the owner, 2026-10-31: "now I can't see the videos and clips on the homepage"). The breakpoint is
+   app-home.js's _narrow. */
 .home-tabs { display: none; }
 @media (max-width: 759px) {
-    .home-catchup-tabs, .home-tabs {
+    .home-tabs {
         display: flex; gap: 6px; margin: 30px -16px 6px; padding: 2px 16px 4px;
         overflow-x: auto; scrollbar-width: none; overscroll-behavior-x: contain; scroll-padding-inline: 16px;
     }
-    .home-catchup-tabs::-webkit-scrollbar, .home-tabs::-webkit-scrollbar { display: none; }
-    .home-catchup-tabs[hidden], .home-tabs[hidden] { display: none !important; }
-    .home-catchup-tabs [role="tab"], .home-tabs [role="tab"] {
+    .home-tabs::-webkit-scrollbar { display: none; }
+    .home-tabs[hidden] { display: none !important; }
+    .home-tabs [role="tab"] {
         --sc-on: color-mix(in srgb, var(--sc) 45%, var(--accent));
         flex: none; display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 16px;
         font: inherit; font-size: 0.86rem; font-weight: 750; white-space: nowrap; cursor: pointer;
@@ -1289,43 +1288,31 @@ body.egg-rainbow { animation: eggRainbow 2.6s linear; }
         border: 1px solid var(--border); border-radius: 999px;
         transition: color 0.18s, background 0.18s, border-color 0.18s;
     }
-    .home-catchup-tabs [role="tab"][hidden], .home-tabs [role="tab"][hidden] { display: none; }
-    .home-catchup-tabs [role="tab"] i, .home-tabs [role="tab"] i { font-size: 0.78rem; color: var(--sc-on); }
-    .home-catchup-tabs [role="tab"][aria-selected="true"], .home-tabs [role="tab"][aria-selected="true"] {
+    .home-tabs [role="tab"][hidden] { display: none; }
+    .home-tabs [role="tab"] i { font-size: 0.78rem; color: var(--sc-on); }
+    .home-tabs [role="tab"][aria-selected="true"] {
         color: color-mix(in srgb, var(--sc-on) 30%, var(--text-primary));
         background: color-mix(in srgb, var(--sc-on) 14%, transparent);
         border-color: color-mix(in srgb, var(--sc-on) 48%, transparent);
     }
-    .home-catchup-tabs [role="tab"]:focus-visible, .home-tabs [role="tab"]:focus-visible { outline: 2px solid var(--sc-on); outline-offset: 2px; }
-    .home-catchup:not([data-tab="recent"]) [data-catchup="recent"],
-    .home-catchup:not([data-tab="vods"]) [data-catchup="vods"],
-    .home-catchup:not([data-tab="clips"]) [data-catchup="clips"],
-    .home-catchup:not([data-tab="pastes"]) [data-catchup="pastes"],
-    .home-catchup:not([data-tab="moments"]) [data-catchup="moments"] { display: none !important; }
-    .home-catchup .section-header[data-catchup], .home-catchup [data-catchup] > .section-header { margin: 6px 0 10px; justify-content: flex-end; min-height: 0; }
-    .home-catchup .section-header[data-catchup] > h2, .home-catchup [data-catchup] > .section-header > h2,
-    .home-catchup .section-header[data-catchup]::after, .home-catchup [data-catchup] > .section-header::after { display: none; }
-    /* The two other blocks: one section at a time behind their own tabs. */
-    .home-tabbox:not([data-tab="lately"]) [data-panel="lately"],
-    .home-tabbox:not([data-tab="star"]) [data-panel="star"],
-    .home-tabbox:not([data-tab="happening"]) [data-panel="happening"],
+    .home-tabs [role="tab"]:focus-visible { outline: 2px solid var(--sc-on); outline-offset: 2px; }
     .home-tabbox:not([data-tab="tour"]) [data-panel="tour"],
     .home-tabbox:not([data-tab="about"]) [data-panel="about"],
     .home-tabbox:not([data-tab="network"]) [data-panel="network"] { display: none !important; }
-    /* The tab names the section, so the section's own heading goes. What its header does stays. */
-    .home-tabbox [data-panel="star"] > .section-header > h2,
-    .home-tabbox [data-panel="lately"] .digest-title,
     .home-tabbox [data-panel="network"] .network-hub-header h3 { display: none; }
-    .home-tabbox [data-panel="star"] > .section-header { margin: 6px 0 10px; min-height: 0; }
-    /* The rule the header draws across the page is the slack the note used to take; without the
-       heading there is nothing to rule out to, and the note would run past the section. */
-    .home-tabbox [data-panel="star"] > .section-header::after { display: none; }
-    /* The sentence under a phone header is indented to line up with the title it belongs to; with the
-       title gone it starts at the left and takes the width it needs. */
-    .home-tabbox [data-panel="star"] > .section-header > span.muted { margin-left: 0; flex: 1 1 auto; }
-    .home-tabbox [data-panel="happening"] > .section-header { display: none; }
+
+    /* Catch up on a phone: each rail is one row of cards that scrolls sideways, so all five fit in a few screens
+       and nothing is behind a tab. */
+    #home-catchup .stream-grid {
+        display: grid; grid-auto-flow: column; grid-template-columns: none; grid-auto-columns: minmax(232px, 74%); align-items: start;
+        gap: 12px; margin-inline: -16px; padding: 2px 16px 10px; scroll-padding-inline: 16px;
+        overflow-x: auto; overscroll-behavior-x: contain; scroll-snap-type: x mandatory; scrollbar-width: none;
+    }
+    #home-catchup .stream-grid::-webkit-scrollbar { display: none; }
+    #home-catchup .stream-grid > * { scroll-snap-align: start; min-width: 0; }
+    #home-catchup .stream-grid > .empty-state { grid-column: auto; min-width: calc(100vw - 32px); }
 }
-@media (max-width: 759px) and (prefers-reduced-motion: reduce) { .home-catchup-tabs [role="tab"], .home-tabs [role="tab"] { transition: none; } }
+@media (max-width: 759px) and (prefers-reduced-motion: reduce) { .home-tabs [role="tab"] { transition: none; } }
 
 /* 2026-10-31, the phone home, shorter again: the featured stream's card leaves the Live Now grid on a phone (the
    featured block above already shows it), and when it was the only stream there the grid's header goes too; the
