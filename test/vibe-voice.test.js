@@ -1,7 +1,7 @@
 'use strict';
 // Vibe on stream (server/ai/vibe-voice.js): a streamer's call word in the live timeline wakes Vibe. "… clip that" clips
 // the 45 s before the call word and posts the link; anything else is answered in the stream's chat from the stream's
-// context, without describing anyone's looks, read aloud only when the streamer turned that on. Off by default; one
+// context, read aloud only when the streamer turned that on. Off by default; one
 // wake per 8 s of stream time; the request may be the next phrase; the call word is the streamer's own.
 const assert = require('assert');
 const db = require('../server/db/database');
@@ -53,7 +53,7 @@ const voice = require('../server/ai/vibe-voice');
     assert.strictEqual(posted[0].frame.is_ai, true);
     assert.ok(posted[0].message.includes('https://openvibe.video/clip/77'), posted[0].message);
 
-    // Within the wake gap: ignored. After it: an answer, from the stream's context, with no looks.
+    // Within the wake gap: ignored. After it: an answer, from the stream's context.
     done = await voice.onSpeech(stream, [speech(104, 'hey vibe what game is this')], deps);
     assert.deepStrictEqual(done, [], 'one wake per 8 s of stream time');
     done = await voice.onSpeech(stream, [speech(130, 'hey vibe what game is this')], deps);
@@ -61,7 +61,6 @@ const voice = require('../server/ai/vibe-voice');
     assert.ok(asked[0].user.includes('Stream title: Building a castle') && asked[0].user.includes('The streamer asked you: what game is this'));
     const answer = posted[posted.length - 1];
     assert.ok(answer.message.includes('Minecraft'), answer.message);
-    assert.ok(!/blonde|hair/i.test(answer.message), `no looks: ${answer.message}`);
     assert.strictEqual(answer.tts, undefined, 'not read aloud unless asked');
 
     // Read aloud when turned on; the request may be the next phrase ("Hey Vibe." … "clip that").

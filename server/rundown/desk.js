@@ -15,7 +15,7 @@
  *
  * What is kept (server/rundown/filters.js): a game's announcer lines never reach the AI; a quote survives only when it
  * is in the transcript word for word; a headline, account or take that uses an accusing word the transcript never used
- * drops the segment (a quip, only the quip); every text passes db.noLooks(). Streamers in arena_opt_outs (the Arena's
+ * drops the segment (a quip, only the quip). Streamers in arena_opt_outs (the Arena's
  * opt-out, kept for the Rundown) are never read. A streamer named in a segment is named by their whole username or
  * display name in the segment's own lines (server/rundown/names.js, wholeOnly), never a sound-alike.
  */
@@ -71,8 +71,7 @@ async function ai(workflow, input, userId) {
 }
 const clean = (t, n) => {
     const s = String(t == null ? '' : t).replace(/\s+/g, ' ').trim();
-    const out = s ? (db.noLooks ? db.noLooks(s) : s) : '';
-    return String(out || '').trim().slice(0, n) || null;
+    return s.slice(0, n) || null;
 };
 
 // ── Who can be named ─────────────────────────────────────────
