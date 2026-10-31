@@ -32,4 +32,11 @@ const app = read('public/js/app.js');
 const teardown = app.slice(app.indexOf('function teardownRoute('), app.indexOf('\n}\n', app.indexOf('function teardownRoute(')));
 assert.ok(!/stopBroadcast|cleanupStream|endStream|stopAllStreams/.test(teardown), 'a page change leaves the broadcast running');
 
-console.log('always live: 5 min grace, viewers wait and say so, the studio reconnects at once, leave asks first');
+// On every other page while live: "You're live · Back to the studio", one tap back.
+const studio = read('public/js/broadcast-studio.js');
+assert.match(studio, /function syncLivePill\(\) \{\s*const show = !!localStream\(\) && !onBroadcastPage\(\);/, 'the pill shows off the studio page while live');
+assert.match(studio, /navigate\('\/broadcast'\)/, 'and takes the streamer back');
+assert.match(studio, /syncGoLiveDock\(\);\s*syncLivePill\(\);/, 'checked every second with the rest of the studio');
+assert.match(read('public/css/features/broadcast.css'), /\.bc-live-pill \{[^}]*position: fixed;[^}]*min-height: 40px;/);
+
+console.log('always live: 5 min grace, viewers wait and say so, the studio reconnects at once, leave asks first, a pill back to the studio');
