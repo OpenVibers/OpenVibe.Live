@@ -77,12 +77,11 @@ code { background: rgba(255,255,255,.08); padding: 2px 6px; border-radius: 6px; 
 
 .mp-spinner {
     width: 40px; height: 40px;
-    border: 3px solid rgba(139,92,246, 0.2);
-    border-top-color: var(--mp-accent);
+    border: 3px solid var(--mp-accent);
     border-radius: 50%;
-    animation: mp-spin 0.8s linear infinite;
+    animation: mp-pulse 1.4s ease-out infinite;   /* a ring that pulses out: nothing spins */
 }
-@keyframes mp-spin { to { transform: rotate(360deg); } }
+@keyframes mp-pulse { from { box-shadow: 0 0 0 0 color-mix(in srgb, var(--mp-accent) 55%, transparent); } to { box-shadow: 0 0 0 12px transparent; } }
 
 /* ── Custom player controls ──────────────────────────────── */
 .mp-controls {

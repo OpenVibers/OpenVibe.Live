@@ -915,7 +915,7 @@ body.egg-rainbow { animation: eggRainbow 2.6s linear; }
 .star-card.is-compact .star-avatar-ring {
     inset: -3px; border-radius: 50%;
     background: conic-gradient(from 0deg, var(--star-gold), #f472b6, var(--accent), var(--star-gold));
-    animation: starRingSpin 6s linear infinite;
+    animation: starRingSpin 6s ease-in-out infinite;
     opacity: 0.9;
 }
 .star-card.is-compact:hover .star-avatar-ring { opacity: 1; }
