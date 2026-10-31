@@ -2805,10 +2805,17 @@ body.bc-studio-on #bc-chat-messages .chat-conn-status { display: block !importan
     .bcs-live-dot, .bcs-sheet, .bcs-sheet-wrap { animation: none; }
 }
 
+/* The studio is a going-live screen, so on a phone it owns the screen (OpenVibe.Design "media-owns-the-screen";
+   owner 2026-10-31: the Go live button sat under the app's bottom bar). The bar steps aside on the broadcast page;
+   it comes back on every other page. */
+@media (max-width: 760px) {
+    html:has(#page-broadcast.active) { --ovnav-appbar-h: 0px; }
+    html:has(#page-broadcast.active) .ovnav-appbar { display: none; }
+}
 /* "Go live" in reach on a phone before going live (public/js/broadcast-studio.js): pinned while the slot's own Go Live
-   button is below the fold. */
+   button is below the fold, and always above anything else at the bottom edge (--ovnav-appbar-h). */
 .bcs-golive {
-    position: fixed; left: 0; right: 0; bottom: 0; z-index: 1050; display: grid; gap: 4px; justify-items: center;
+    position: fixed; left: 0; right: 0; bottom: var(--ovnav-appbar-h, 0px); z-index: 1050; display: grid; gap: 4px; justify-items: center;
     padding: 10px max(14px, env(safe-area-inset-right, 0px)) calc(10px + env(safe-area-inset-bottom, 0px)) max(14px, env(safe-area-inset-left, 0px));
     background: linear-gradient(to bottom, transparent, var(--bg-primary, #0b0b10) 34%);
 }
@@ -2822,6 +2829,8 @@ body.bc-studio-on #bc-chat-messages .chat-conn-status { display: block !importan
 .bcs-golive-btn:focus-visible { outline: 3px solid #93c5fd; outline-offset: 2px; }
 .bcs-golive-where { color: var(--text-secondary, #a1a1aa); font-size: 0.76rem; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 body.bc-golive-dock-on .messenger-toggle { display: none !important; }
+/* The page keeps room at its foot for the dock, so its last fields are never under it. */
+body.bc-golive-dock-on #page-broadcast { padding-bottom: calc(104px + env(safe-area-inset-bottom, 0px)); }
 
 /* What viewers see, over the studio (bcStudio.showViewer): a phone stays on this tab. */
 .bcs-viewer {
