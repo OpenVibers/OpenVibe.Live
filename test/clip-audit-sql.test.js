@@ -87,20 +87,20 @@ async function main() {
         CREATE TABLE public.chat_messages (
             id bigint PRIMARY KEY, stream_id bigint, user_id bigint, anon_id text, message text,
             message_type text, is_deleted bigint, is_filtered bigint, timestamp text);
-        -- Created a few days ago, whatever the day the suite runs (fixed October dates fell out of the audit's 30 days).
+        -- Dated a few days before the run, whatever the day (fixed October dates fell out of the audit's 30 days).
         INSERT INTO public.clips VALUES
             (1, 10, 100, 7, 'MARKER-title', 'MARKER-description', 0, 25, 25, 1, 'public', 'ready', 12, 1, to_char(now() - interval '5 days', 'YYYY-MM-DD HH24:MI:SS'), 12, 'hello there friends', 'a short clip'),
             (2, 10, 100, 7, 'MARKER-title', 'MARKER-description', 20, 45, 25, 1, 'public', 'ready', 3, 1, to_char(now() - interval '4 days', 'YYYY-MM-DD HH24:MI:SS'), 3, 'hello there friends', 'a short clip'),
             (3, 11, 101, 8, 'MARKER-title', 'MARKER-description', 0, 25, 25, 1, 'public', 'ready', 0, 1, to_char(now() - interval '3 days', 'YYYY-MM-DD HH24:MI:SS'), 0, NULL, NULL),
             (4, 12, 102, 9, 'MARKER-title', 'MARKER-description', 0, 30, 30, 1, 'public', 'ready', 5, 0, to_char(now() - interval '2 days', 'YYYY-MM-DD HH24:MI:SS'), 5, NULL, NULL);
         INSERT INTO public.content_visits VALUES
-            ('clip', 1, 'visitor-1', '2026-10-01 11:00:00', '2026-10-02 11:00:00', 2),
-            ('clip', 1, 'visitor-2', '2026-10-02 11:00:00', '2026-10-02 12:00:00', 1),
-            ('clip', 4, 'visitor-3', '2026-10-04 11:00:00', '2026-10-05 11:00:00', 1);
+            ('clip', 1, 'visitor-1', to_char(now() - interval '5 days' + interval '1 hour', 'YYYY-MM-DD HH24:MI:SS'), to_char(now() - interval '4 days' + interval '1 hour', 'YYYY-MM-DD HH24:MI:SS'), 2),
+            ('clip', 1, 'visitor-2', to_char(now() - interval '4 days' + interval '1 hour', 'YYYY-MM-DD HH24:MI:SS'), to_char(now() - interval '4 days' + interval '2 hours', 'YYYY-MM-DD HH24:MI:SS'), 1),
+            ('clip', 4, 'visitor-3', to_char(now() - interval '2 days' + interval '1 hour', 'YYYY-MM-DD HH24:MI:SS'), to_char(now() - interval '1 days' + interval '1 hour', 'YYYY-MM-DD HH24:MI:SS'), 1);
         INSERT INTO public.chat_messages VALUES
-            (1, 100, 7, 'anon-1', 'hi', 'message', 0, 0, '2026-10-01 10:00:00'),
-            (2, 100, 8, 'anon-2', 'MARKER-message', 'message', 0, 0, '2026-10-01 10:00:05'),
-            (3, 101, 9, 'anon-3', 'yo', 'message', 1, 0, '2026-10-01 10:00:10');
+            (1, 100, 7, 'anon-1', 'hi', 'message', 0, 0, to_char(now() - interval '5 days', 'YYYY-MM-DD HH24:MI:SS')),
+            (2, 100, 8, 'anon-2', 'MARKER-message', 'message', 0, 0, to_char(now() - interval '5 days' + interval '5 seconds', 'YYYY-MM-DD HH24:MI:SS')),
+            (3, 101, 9, 'anon-3', 'yo', 'message', 1, 0, to_char(now() - interval '5 days' + interval '10 seconds', 'YYYY-MM-DD HH24:MI:SS'));
         INSERT INTO app_state (key, value) VALUES ('auto_clip_log',
             '[{"ts": 1767225600000, "vod_id": 10, "stream_id": 100, "start_time": 0, "title": "MARKER-title", "clip_id": 1},
               {"ts": 1767225600000, "vod_id": 11, "stream_id": 101, "start_time": 0, "title": "MARKER-title", "clip_id": 2}]')
@@ -113,7 +113,7 @@ async function main() {
             SELECT 'clip-audit-fixture', 'not-a-password'
             WHERE NOT EXISTS (SELECT 1 FROM users WHERE username = 'clip-audit-fixture');
         INSERT INTO streams (user_id, title, is_live, viewer_count, peak_viewers, started_at)
-            SELECT id, 'MARKER-title', 0, 2, 5, '2026-10-01 09:00:00' FROM users WHERE username = 'clip-audit-fixture';
+            SELECT id, 'MARKER-title', 0, 2, 5, to_char(now() - interval '5 days' - interval '1 hour', 'YYYY-MM-DD HH24:MI:SS') FROM users WHERE username = 'clip-audit-fixture';
         INSERT INTO stream_analytics (stream_id, avg_viewers, peak_viewers, unique_chatters, total_messages, clips_created)
             SELECT id, 2, 5, 3, 120, 1 FROM streams WHERE title = 'MARKER-title' LIMIT 1
             ON CONFLICT (stream_id) DO NOTHING;
