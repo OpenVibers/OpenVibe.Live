@@ -1045,6 +1045,11 @@ app.get('/obs/chat/:username', (req, res) => {
     sendDocument(res, 'obs/chat.html');
 });
 
+// Scenes in the streamer's look (plan L45): Starting soon, Be right back and Thanks for watching, as browser sources.
+app.get(/^\/obs\/scene\/(starting|brb|ending)\/[A-Za-z0-9_.-]{1,40}\/?$/, (req, res) => {
+    sendDocument(res, 'obs/scene.html');
+});
+
 // New overlay routes — per-slot and global
 app.get('/overlay/chat/:username/:slotIdOrSlug', (req, res) => {
     sendDocument(res, 'obs/chat.html');
