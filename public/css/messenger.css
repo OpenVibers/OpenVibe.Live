@@ -927,3 +927,22 @@
 .messenger-panel.from-bar { top: calc(var(--navbar-h, 56px) + 8px); right: 12px; left: auto; bottom: auto; max-height: calc(100vh - var(--navbar-h, 56px) - 24px); max-height: calc(100dvh - var(--navbar-h, 56px) - 24px); }
 @media (max-width: 480px) { .messenger-panel.from-bar { top: 0; right: 0; bottom: 0; left: 0; max-height: none; height: 100%; height: 100dvh; } }
 @media (max-width: 768px) and (min-width: 481px) { .messenger-panel.from-bar { right: 8px; } }
+
+/* On a phone the panel is a full-screen sheet over everything, the navbar included (owner, 2026-10-31: "this gets
+   all screwed up when you have DMs open"). Under the bar (9999 < the navbar's 10000) its header showed through the
+   bar, which is see-through at the top of a page: "Messages" under the brand, the gear under the bell, the close
+   button under the menu. Its own header carries the title and the close button; an incoming call (10035, 10040)
+   still shows above it. The sheet keeps clear of the notch and the home bar, and its scrolling never moves the page. */
+@media (max-width: 480px) {
+    .messenger-panel, .messenger-panel.from-bar {
+        z-index: 10030;
+        border: 0;
+        padding-top: env(safe-area-inset-top, 0px);
+        padding-bottom: env(safe-area-inset-bottom, 0px);
+        background: var(--bg-secondary);
+        overscroll-behavior: contain;
+    }
+    .messenger-panel .msg-header { min-height: 56px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(10px, env(safe-area-inset-right, 0px)); }
+    .messenger-panel .msg-header-title { font-size: 17px; }
+    .messenger-panel .msg-header-btn { min-width: 44px; min-height: 44px; }
+}
