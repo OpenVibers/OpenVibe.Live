@@ -1326,3 +1326,15 @@ body.egg-rainbow { animation: eggRainbow 2.6s linear; }
     .home-tabbox [data-panel="happening"] > .section-header { display: none; }
 }
 @media (max-width: 759px) and (prefers-reduced-motion: reduce) { .home-catchup-tabs [role="tab"], .home-tabs [role="tab"] { transition: none; } }
+
+/* 2026-10-31, the phone home, shorter again: the featured stream's card leaves the Live Now grid on a phone (the
+   featured block above already shows it), and when it was the only stream there the grid's header goes too; the
+   intro at the foot starts closed (app-home.js: initHomeTabs { closable }). */
+@media (max-width: 640px) {
+    #stream-grid-live .stream-card.is-featured { display: none; }
+    @supports selector(:has(*)) {
+        #stream-grid-live:not(:has(.stream-card:not(.is-featured))):has(.stream-card) { display: none; }
+        .section-header:has(+ #stream-grid-live:not(:has(.stream-card:not(.is-featured))):has(.stream-card)) { display: none; }
+    }
+    .home-tabbox[data-tab=""] .home-tabs { margin-bottom: 0; }
+}

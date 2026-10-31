@@ -326,7 +326,9 @@ function streamTypeBadge(browserMode, streamingMethod) {
     };
     const t = types[browserMode];
     if (!t || browserMode === 'camera') return '';
-    return `<span class="stream-type-badge stream-type-${browserMode}"><i class="fa-solid ${t.icon}"></i> ${t.label}</span>`;
+    // On a thumbnail the badge is a small icon (features/style.css), so it never covers the picture; the label stays for
+    // screen readers and as the tooltip, and shows in full beside a channel's title.
+    return `<span class="stream-type-badge stream-type-${browserMode}" title="${t.label}"><i class="fa-solid ${t.icon}" aria-hidden="true"></i> <span class="stb-label">${t.label}</span></span>`;
 }
 
 /* ── Toast ────────────────────────────────────────────────────── */

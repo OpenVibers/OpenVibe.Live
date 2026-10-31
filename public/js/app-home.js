@@ -1258,40 +1258,50 @@ function demoteHomeIntroSections() {
  * On a phone a block shows one of its sections at a time behind a row of tabs; wider screens never see the tabs
  * and show every section. The tabs and the CSS live in the home fragment and features/home.css.
  *
- *   initHomeTabs(boxId, shownIds, storageKey, onOpen)
+ *   initHomeTabs(boxId, shownIds, storageKey, onOpen, { closable })
  *     boxId      the block's element id. It carries data-tab — the section that is open — and its tab row.
  *     shownIds   tab key → the id of the element that says the section has something. Each loader already hides
  *                that element when its section is empty, so the tab goes with it.
  *     storageKey where the reader's last tab is kept for their next visit.
  *     onOpen     called with the key of the section that just opened (the tour loads when its tab opens).
+ *     closable   the block may have no section open: it starts closed (data-tab="") unless the reader left one open,
+ *                and pressing the open tab closes it again (2026-10-31: the intro at the foot of the home was 1.5
+ *                phone screens open by default, under everything a returning viewer came for).
  *
  * A tab shows once its section has something; arrow keys, Home and End move between the tabs that show; the kept
  * tab opens in the first few seconds only, so a section that arrives later never moves the page under the reader;
  * a section that empties out falls back to one that has something, and a block with nothing left in it drops its
  * tab row.
  */
-function initHomeTabs(boxId, shownIds, storageKey, onOpen) {
+function initHomeTabs(boxId, shownIds, storageKey, onOpen, { closable = false } = {}) {
     const box = document.getElementById(boxId);
     if (!box || box._ovTabs) return;
     const list = box.querySelector('[role="tablist"]');
     const tabs = list ? [...list.querySelectorAll('[role="tab"]')] : [];
     if (!list || !tabs.length) return;
     box._ovTabs = true;
-    const fallback = box.dataset.tab || tabs[0].dataset.tab;
+    const fallback = closable ? '' : (box.dataset.tab || tabs[0].dataset.tab);
     const has = (key) => { const el = shownIds[key] && document.getElementById(shownIds[key]); return !el || el.style.display !== 'none'; };
     let wanted = fallback;
-    try { wanted = localStorage.getItem(storageKey) || fallback; } catch { /* */ }
+    try { const kept = localStorage.getItem(storageKey); if (kept !== null && (kept || closable)) wanted = kept; } catch { /* */ }
     const pick = (key, { remember = false, focus = false } = {}) => {
         box.dataset.tab = key;
         for (const t of tabs) {
             const on = t.dataset.tab === key;
             t.setAttribute('aria-selected', on ? 'true' : 'false');
-            t.tabIndex = on ? 0 : -1;
             if (on && focus) t.focus();
         }
+        focusStop();
         if (remember) { wanted = key; try { localStorage.setItem(storageKey, key); } catch { /* */ } }
-        if (onOpen) { try { onOpen(key); } catch { /* */ } }
+        if (key && onOpen) { try { onOpen(key); } catch { /* */ } }
     };
+    // The row's one focus stop: the open tab, or with nothing open the first tab that shows, so it can be reached.
+    function focusStop() {
+        const key = box.dataset.tab;
+        const first = tabs.find((x) => !x.hidden);
+        for (const t of tabs) t.setAttribute('tabindex', (key ? t.dataset.tab === key : t === first) ? '0' : '-1');
+    }
+    if (closable) pick(wanted && has(wanted) ? wanted : '');
     // The kept tab opens if its section arrives in the first few seconds; later, a section arriving never moves the
     // page under the reader. A section that empties out falls back to one that has something.
     const settleBy = Date.now() + 3000;
@@ -1301,12 +1311,15 @@ function initHomeTabs(boxId, shownIds, storageKey, onOpen) {
         list.hidden = !shown.length;
         if (!shown.length) return;
         const cur = box.dataset.tab;
-        if (!has(cur)) pick(shown[0].dataset.tab);
+        if (closable && !cur) { focusStop(); return; }   // closed stays closed until the reader opens a section
+        if (!has(cur)) pick(closable ? '' : shown[0].dataset.tab);
         else if (cur !== wanted && has(wanted) && Date.now() < settleBy) pick(wanted);
     };
     list.addEventListener('click', (e) => {
         const t = e.target.closest('[role="tab"]');
-        if (t) pick(t.dataset.tab, { remember: true });
+        if (!t) return;
+        // A closable block: pressing the open tab closes it again.
+        pick(closable && box.dataset.tab === t.dataset.tab ? '' : t.dataset.tab, { remember: true });
     });
     // Arrow keys, Home and End move between the tabs that are showing (the tabs pattern).
     list.addEventListener('keydown', (e) => {
@@ -1349,12 +1362,13 @@ function initHomeAround() {
 const HOME_INTRO_KEY = 'ov_home_intro';
 const _HOME_INTRO_SHOWN = { tour: 'home-tour-mount', about: 'home-cta-banner', network: 'home-network-hub' };
 function initHomeIntro() {
+    // On a phone the intro starts closed: three tabs at the foot of the page, each opening its section.
     initHomeTabs('home-intro', _HOME_INTRO_SHOWN, HOME_INTRO_KEY, (key) => {
         // The tour's code loads when its mount nears the viewport; opening its tab is that moment.
         if (key === 'tour') _lazyHomeTour(true);
         // The About banner is behind a tab on a phone, so opening that tab is the reader seeing it.
         if (key === 'about') _introSeenNow('home-cta-banner');
-    });
+    }, { closable: window.matchMedia('(max-width: 640px)').matches });
 }
 
 async function loadHome() {
@@ -1397,6 +1411,7 @@ async function loadHome() {
             if (noLiveEl) noLiveEl.style.display = streams.length ? 'none' : '';
             renderStreamGrid('stream-grid-live', streams, true);
             _homeFeaturedSync(streams.length > 0);
+            if (window.homeFeatured && homeFeatured.markGrid) homeFeatured.markGrid();
         }, { ttl: 20000 });
     } catch (e) {
         console.error('Failed to load live streams', e);

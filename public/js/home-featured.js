@@ -218,6 +218,7 @@
             render(d);
         } else update(d);
         st.el.hidden = false;
+        markGrid();
     }
 
     function watchVisibility() {
@@ -229,6 +230,16 @@
             st.io.observe(st.el);
         } catch { st.io = { disconnect() { } }; }
         document.addEventListener('ov:page', (e) => { if (!e.detail || e.detail.page !== 'home') stop(); });
+    }
+
+    /**
+     * The featured stream's card in the Live Now grid carries .is-featured, so a phone shows that stream once, in
+     * the featured block (2026-10-31: with one stream live the phone home drew it twice, 1,000 px apart). Wider
+     * screens keep the card (features/home.css).
+     */
+    function markGrid() {
+        const id = st.current && !st.el?.hidden ? String(st.current.id) : '';
+        for (const c of document.querySelectorAll('#stream-grid-live .stream-card[data-stream-id]')) c.classList.toggle('is-featured', !!id && c.dataset.streamId === id);
     }
 
     /** Called by the home page once the live list has arrived. */
@@ -249,7 +260,8 @@
         destroyPlayer();
         st.current = null;
         if (st.el) { st.el.hidden = true; st.el.innerHTML = ''; }
+        markGrid();
     }
 
-    window.homeFeatured = { boot, stop, setOff, isOff };
+    window.homeFeatured = { boot, stop, setOff, isOff, markGrid };
 })();

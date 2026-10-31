@@ -217,6 +217,25 @@ check('the tour loads when its tab opens, not only when the mount nears the view
         assert.deepStrictEqual(p.loaded, ['homeTour'], 'opening the tab loads the tour');
     });
 
+    await check('on a phone the intro starts closed; a tap opens a section, a second tap closes it, and that is kept', async () => {
+        const p = openHome();
+        p.run('initHomeIntro();');
+        await tick();
+        const block = p.el('home-intro');
+        assert.strictEqual(block.dataset.tab, '', 'nothing open at first: three tabs at the foot of the page');
+        assert.ok(['tour', 'about', 'network'].every((k) => p.el(`hi-tab-${k}`).getAttribute('aria-selected') === 'false'), 'no tab says it is open');
+        const first = ['tour', 'about', 'network'].map((k) => p.el(`hi-tab-${k}`)).find((t) => !t.hidden);
+        assert.ok(first && first.getAttribute('tabindex') === '0', 'the first tab that shows still takes the focus stop');
+        p.click('hi-tab-about');
+        await tick();
+        assert.strictEqual(block.dataset.tab, 'about', 'a tap opens its section');
+        p.click('hi-tab-about');
+        await tick();
+        assert.strictEqual(block.dataset.tab, '', 'the same tab again closes it');
+        assert.strictEqual(p.store.get('ov_home_intro'), '', 'closed is kept for the next visit');
+        assert.match(css, /\.home-tabbox:not\(\[data-tab="tour"\]\) \[data-panel="tour"\]/, 'with nothing open, the CSS hides every section');
+    });
+
     await check('a first visit leaves the block where it is', async () => {
         const p = openHome();
         p.run('initHomeIntro(); demoteHomeIntroSections();');
