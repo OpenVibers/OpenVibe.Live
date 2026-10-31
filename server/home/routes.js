@@ -108,8 +108,10 @@ async function heroMedia() {
             });
         }
     } catch { /* */ }
-    // Interleave types so the collage isn't clumped, then shuffle for variety per request.
-    return _shuffle(items).slice(0, 28);
+    // The front page keeps its titles clean (owner, 2026-10-31: profanity is fine everywhere but the home page); an item
+    // with a sweary title is simply not in the collage. Then shuffle for variety per request.
+    const { frontPageOk } = require('./front-page-text');
+    return _shuffle(items.filter((it) => frontPageOk(it.title))).slice(0, 28);
 }
 
 // The full set of AI "crazy moment" frames (not subject to the collage shuffle/slice) — used
@@ -118,7 +120,7 @@ async function heroMoments() {
     try {
         const hm = JSON.parse(await db.getState('home_hero_moments') || '{}');
         return (hm.moments || [])
-            .filter(m => m && m.vodId && m.thumbnail)
+            .filter(m => m && m.vodId && m.thumbnail && require('./front-page-text').frontPageOk(m.title || ''))
             .map(m => ({ title: m.title || 'AI Moment', thumbnail: m.thumbnail, href: videoUrl('vod', m.vodId, m.offset || 0), username: m.username }));
     } catch { return []; }
 }
