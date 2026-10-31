@@ -246,3 +246,40 @@ in each idle moment (`_historyPieces`), keeping the reader where they are. All o
 2.7 s freeze on a phone-speed CPU (2026-10-17). The last 200 rows of a room are cached in localStorage per
 user for an instant paint on reload (its newest 50 render). The view follows new messages unless the
 reader scrolled back (`_watchChatPin`).
+
+## The overlay alert feed (2026-10-31)
+
+The moments a streamer wants on their OBS overlay — "X followed", "X tipped 5 Vibes: message",
+"X subscribed", "X raided with 12 viewers", "Goal reached" — arrive as one typed frame in the
+channel's own chat room, so an OBS browser source on `openvibe.live` can show them as they
+happen. The page itself is the streamer's own; Live sends the feed.
+
+One frame per moment, on Chat's typed ingress (`server/overlay/overlay-alerts.js`):
+
+```
+{ type: 'overlay-alert', kind, id, at, who: { name, avatar }|null, amount: { value, unit }|null, text }
+```
+
+- `kind` — `follow`, `tip`, `sub`, `raid`, `goal`.
+- `id` — unique per moment, for de-duplication on the overlay. It is a hash of the moment's own
+  key (a Billing transaction, a follow revision): the same moment twice is the same id, and the id
+  says nothing about who or how much.
+- `at` — when it happened (ISO 8601).
+- `who` — the public person: a name and an avatar, or `null` (an anonymous tip).
+- `amount` — what it was worth: a number and its unit (`vibes`, `usd`, `viewers`), or `null`.
+- `text` — the tipper's own words, plain text, at most 200 characters, or `null`.
+
+Live announces a moment where it already happens: a follow (`server/social/network-follows.js`),
+a tip (the on-site donation route, an OpenVibe.Tips delivery, a PowerChat tip), a subscription
+(Billing's settled transaction), and a goal reached (`server/monetization/goal-announce.js`).
+Live has no raid feature yet, so `raid` is only ever a test sample.
+
+Nothing private is in the frame: no email, no account id, no Network subject, no Billing or
+Network internals. The tipper's words pass Chat's own moderation the way a chat line does (the
+blocked-word filter censors them, the channel's own filters drop them) — Chat does that when it
+delivers the frame.
+
+`POST /api/overlay/test-alert { kind }` fires a sample of that kind into the streamer's own room,
+so they can line up OBS before the real thing happens. It is the streamer's own session only
+(the route takes no target), it is rate-limited (ten a minute), and it moves no money and credits
+no goal.

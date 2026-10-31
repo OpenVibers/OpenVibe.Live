@@ -124,6 +124,18 @@ router.post('/deliveries', guard('live.tips_delivery.write'), express.json({ lim
                 await require('../monetization/channel-tips').record({ toUserId: userId, fromUserId: supporterId, username: name, streamId, amount, source: 'tips', ref: `tips:${key}` });
             }
             await require('../monetization/alerts').playAlertSound(userId, streamId, 'donation');
+            // The overlay alert feed: "X tipped 500 Vibes: message". A tip whose amount the supporter
+            // hid carries no amount, and a tip in another currency carries it in that currency.
+            try {
+                await require('../overlay/overlay-alerts').emit({
+                    streamerId: userId,
+                    kind: 'tip',
+                    who: { name, avatar: null },
+                    amount: amount == null ? null : { value: amount, unit: /^vibes/i.test(String(i.currency || 'vibes')) ? 'vibes' : 'usd' },
+                    text: message || null,
+                    naturalKey: `tips:${key}`,
+                });
+            } catch (e) { console.warn('[Tips delivery] overlay alert:', e.message); }
             // A settled tip in Vibes counts toward the channel's donation goal, like an on-site donation (a test, or a
             // tip whose amount the supporter hid, does not). The claim above makes this once per Idempotency-Key.
             let goal = null;

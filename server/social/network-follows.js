@@ -27,7 +27,8 @@
  *       (follow_projection_revisions), and an older one is `stale`. A pair whose side has no Live account is
  *       `ignored:unmapped`. An applied event that agrees with Network's remembered answer retires the answer.
  *
- * Network tells the followed person (FOLLOW) itself; Live sends no follow notification.
+ * Network tells the followed person (FOLLOW) itself; Live sends no follow notification. Live does
+ * announce the moment on the channel's own overlay feed (server/overlay/overlay-alerts.js): "X followed".
  */
 const db = require('../db/database');
 
@@ -146,11 +147,13 @@ async function apply(ev) {
     const p = ev && ev.payload && typeof ev.payload === 'object' ? ev.payload : {};
     if (p.target_type !== 'channel' || !SUBJECT_RE.test(String(p.follower || '')) || !SUBJECT_RE.test(String(p.target_id || '')) || !Number.isInteger(p.revision)) { stats.ignored++; return 'ignored:payload'; }
     const d = db.getDb();
-    return await d.tx(async () => {
+    let followerId = null;
+    let streamerId = null;
+    const outcome = await d.tx(async () => {
         const prev = await d.prepare('SELECT revision FROM follow_projection_revisions WHERE follower_subject = ? AND target_subject = ?').get(p.follower, p.target_id);
         if (prev && prev.revision >= p.revision) { stats.stale++; return 'stale'; }
-        const followerId = await userOf(p.follower);
-        const streamerId = await userOf(p.target_id);
+        followerId = await userOf(p.follower);
+        streamerId = await userOf(p.target_id);
         if (followerId == null || streamerId == null) { stats.ignored++; return 'ignored:unmapped'; }
         await d.prepare('INSERT INTO follow_projection_revisions (follower_subject, target_subject, revision) VALUES (?, ?, ?) ON CONFLICT (follower_subject, target_subject) DO UPDATE SET revision = excluded.revision')
             .run(p.follower, p.target_id, p.revision);
@@ -162,6 +165,25 @@ async function apply(ev) {
         counts.delete(p.target_id);
         return following ? 'followed' : 'unfollowed';
     });
+    // The overlay alert goes out after the projection is committed (a network call never inside the
+    // transaction): "X followed", in the follower's own name and avatar, nothing else.
+    if (outcome === 'followed') await announceFollow(followerId, streamerId, p);
+    return outcome;
+}
+
+/** Tell the followed channel that someone followed it (the overlay feed). Never throws. */
+async function announceFollow(followerId, streamerId, p) {
+    try {
+        const follower = await db.getUserById(followerId);
+        await require('../overlay/overlay-alerts').emit({
+            streamerId,
+            kind: 'follow',
+            who: follower ? { name: follower.display_name || follower.username, avatar: follower.avatar_url } : null,
+            amount: null,
+            text: null,
+            naturalKey: `follow:${p.follower}:${p.revision}`,
+        });
+    } catch (e) { console.warn('[Follows] follow alert not sent:', e.message); }
 }
 
 module.exports = { set, apply, isFollowing, followerCount, stats, _reset: () => { answers.clear(); counts.clear(); } };

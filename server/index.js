@@ -818,6 +818,7 @@ app.use('/api/themes', themeRoutes);
 app.use('/api/ai-viewers', require('./ai/viewers/routes'));
 app.use('/api/vibe', require('./ai/vibe-routes'));
 app.use('/api/powerchat', require('./integrations/powerchat-routes'));
+app.use('/api/overlay', require('./overlay/routes'));        // the overlay alert feed: the streamer's own test alert
 app.use('/api/meta', metaRoutes);
 app.use('/api/pastes', pasteRoutes);
 app.use('/api/content', require('./content/routes'));    // Content (people's work) + Moments (AI) feeds
