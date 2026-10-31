@@ -641,6 +641,27 @@ class WebRTCSFU extends EventEmitter {
     }
 
     /**
+     * What the SFU really receives from a room's broadcaster, per kind (plan L23 R2): whether a producer exists, the
+     * bytes it has received so far (mediasoup Producer.getStats byteCount, summed over its streams; the caller turns
+     * two readings into a bitrate) and its score (0-10, the lowest of its streams). The studio trusts this over the
+     * browser's own sender stats: a sender can look healthy while nothing reaches the server (stream 2827, 2026-10-30).
+     */
+    async ingestHealth(roomId) {
+        const out = { video: { present: false, bytes: 0, score: null }, audio: { present: false, bytes: 0, score: null } };
+        const room = this.rooms.get(roomId);
+        if (!room) return out;
+        for (const { producer } of room.producers.values()) {
+            if (!producer || producer.closed || !out[producer.kind]) continue;
+            const k = out[producer.kind];
+            k.present = true;
+            try { for (const st of await producer.getStats()) k.bytes += Number(st.byteCount) || 0; } catch { /* closed meanwhile */ }
+            const scores = Array.isArray(producer.score) ? producer.score.map((x) => Number(x && x.score)).filter(Number.isFinite) : [];
+            if (scores.length) k.score = Math.min(k.score == null ? 10 : k.score, ...scores);
+        }
+        return out;
+    }
+
+    /**
      * Get viewer count for a room
      */
     getViewerCount(roomId) {
