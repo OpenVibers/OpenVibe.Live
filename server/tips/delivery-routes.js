@@ -125,13 +125,14 @@ router.post('/deliveries', guard('live.tips_delivery.write'), express.json({ lim
             }
             await require('../monetization/alerts').playAlertSound(userId, streamId, 'donation');
             // The overlay alert feed: "X tipped 500 Vibes: message". A tip whose amount the supporter
-            // hid carries no amount, and a tip in another currency carries it in that currency.
+            // hid carries no amount, and so does a tip in any currency but Vibes (its minor units are not
+            // something the overlay can name; Tips sends "vibes-bits" today).
             try {
                 await require('../overlay/overlay-alerts').emit({
                     streamerId: userId,
                     kind: 'tip',
                     who: { name, avatar: null },
-                    amount: amount == null ? null : { value: amount, unit: /^vibes/i.test(String(i.currency || 'vibes')) ? 'vibes' : 'usd' },
+                    amount: amount == null || !/^vibes/i.test(String(i.currency || 'vibes')) ? null : { value: amount, unit: 'vibes' },
                     text: message || null,
                     naturalKey: `tips:${key}`,
                 });
