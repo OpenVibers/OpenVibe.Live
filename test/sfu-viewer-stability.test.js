@@ -206,33 +206,24 @@ assert.ok(
     playerSrc.includes('_sfuFrozenInterval'),
     'stream-player.js must have a frozen-video detector (_sfuFrozenInterval)'
 );
-// The detector used to tick to 30s and log. It now escalates in two stages, because a
-// frozen picture with audio still playing is usually one missing keyframe: ask for one
-// first, and only rebuild the transport if that does not unstick it. Assert the two
-// stages rather than the old tick counter and its wording.
-assert.ok(
-    /STALL_TRIGGER_MS\s*=\s*\d+/.test(playerSrc) && /STALL_ESCALATE_MS\s*=\s*\d+/.test(playerSrc),
-    'frozen detector must have a trigger threshold and a later escalation threshold'
-);
-assert.ok(
-    /requesting keyframe via re-watch/.test(playerSrc),
-    'stage 1 must ask for a keyframe before anything more disruptive'
-);
-assert.ok(
-    /still frozen after keyframe nudge — rebuilding receive transport/.test(playerSrc),
-    'stage 2 must rebuild the receive transport when the keyframe did not help'
-);
+// The freeze ladder (public/js/ov-viewer-health.js, plan L23 R3, 2026-10-31): a picture that stops while video packets
+// still arrive asks for a keyframe, then restarts the receive transport, then rebuilds the viewer session; never a
+// page reload. test/viewer-health.test.js drives the ladder itself; here, the player wires each step.
+assert.ok(/OVViewerHealth\.createMonitor\(/.test(playerSrc), 'the player runs the viewer-health monitor');
+assert.ok(/sendPlayerSignal\(\{ type: 'sfu-viewer-restart' \}\)/.test(playerSrc), 'step 2 restarts the receive transport');
+assert.ok(/rebuild: \(\) => \{[\s\S]{0,900}initWebRTC\(stream\)/.test(playerSrc), 'step 3 rebuilds the viewer session');
+assert.ok(!/location\.reload\(/.test(playerSrc.slice(playerSrc.indexOf('createMonitor('), playerSrc.indexOf('createMonitor(') + 4000)), 'never a page reload');
 assert.ok(
     playerSrc.includes('player._sfuFrozenInterval = null') &&
     playerSrc.includes('clearInterval(player._sfuFrozenInterval)'),
     'stream-player.js must clear the frozen interval when transport changes'
 );
-// Frozen re-watch must NOT start P2P offer timeout
-assert.ok(
-    playerSrc.includes('Intentionally NOT calling _startWatchOfferTimeout()'),
-    'stream-player.js frozen-video re-watch must NOT call _startWatchOfferTimeout()'
-);
-console.log('OK I: frozen-video detector nudges with a keyframe, then rebuilds the transport');
+// The freeze ladder never starts the P2P offer timeout: the SFU never answers with an 'offer'.
+{
+    const at = playerSrc.indexOf('OVViewerHealth.createMonitor(');
+    assert.ok(!/_startWatchOfferTimeout\(\)/.test(playerSrc.slice(at, at + 3000).replace(/\/\/.*$/gm, '')), 'the freeze ladder must NOT call _startWatchOfferTimeout()');
+}
+console.log('OK I: the freeze ladder asks for a keyframe, restarts the transport, then rebuilds the session');
 
 // ── J: broadcaster auto-publishes into SFU (SFU is the only media path) ──
 assert.ok(

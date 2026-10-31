@@ -435,6 +435,31 @@ function retryPlayback() {
     loadPlayer(current);
 }
 
+/**
+ * A dropped network, or a tab that comes back to the front, must not leave the viewer with a
+ * picture that stands still (the owner's rule, 2026-10-31): the player picks itself up.
+ *   • the media is ready again → play it (a tab that was hidden comes back paused),
+ *   • the media errored     → start it over,
+ *   • the media is stuck     → load the source again.
+ */
+function mpRecover(reason) {
+    const media = mpMedia;
+    if (!media || !mpCurrentRequestId) return;
+    if (media.ended) return;
+    if (media.error) { console.warn(`[MediaPlayer] The media failed (${reason}) — starting it over`); retryPlayback(); return; }
+    if (media.readyState >= 3) {
+        if (media.paused) media.play().catch(() => {});
+        return;
+    }
+    console.warn(`[MediaPlayer] The media stalled (${reason}) — loading the source again`);
+    try { media.load(); } catch { /* the browser will try anyway */ }
+    media.play().catch(() => {});
+}
+
+// The network came back, or the tab came back to the front: look at the media now.
+window.addEventListener('online', () => mpRecover('the network came back'));
+document.addEventListener('visibilitychange', () => { if (!document.hidden) mpRecover('the tab came back to the front'); });
+
 async function reportFailure(requestId, errorMsg) {
     try {
         await mpApi(`/api/media/queue/${requestId}/fail`, {
