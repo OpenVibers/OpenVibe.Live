@@ -74,6 +74,18 @@ async function _handleDonation(userId, data, { fromUserId = null } = {}) {
     // 2) Donation sound.
     try { await alerts.playAlertSound(userId, streamId, 'donation'); } catch { /* */ }
 
+    // 2b) The overlay alert feed: "X tipped 500 Vibes: message" for the streamer's OBS overlay.
+    try {
+        await require('../overlay/overlay-alerts').emit({
+            streamerId: userId,
+            kind: 'tip',
+            who: { name: donor, avatar: null },
+            amount: { value: amount, unit: 'vibes' },
+            text: message || null,
+            naturalKey: eventKey || `powerchat:${crypto.randomUUID()}`,
+        });
+    } catch { /* non-critical */ }
+
     // 3) Goal progress + 4) goal reached.
     try { await announceGoal({ userId, streamId, goalResult, by: donor, key: eventKey && `${eventKey}:goal` }); } catch { /* */ }
 

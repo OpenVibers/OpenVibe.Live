@@ -11,6 +11,7 @@
  *   settled subscription           "Subscribed!" to the subscriber when a provider paid it (a Vibes-paid one was bought
  *                                  on the page, which said so); a PowerChat-paid one also fires the sub alert on the
  *                                  streamer's PowerChat overlay (Live's subscribe route does that for Vibes-paid ones)
+ *                                  and the overlay feed's sub alert (server/overlay/overlay-alerts.js)
  *   settled site-routed tip        a PowerChat tip paid to the site account for a creator: the channel's celebration
  *                                  (chat line, sound, goal, tip history), as integrations/powerchat-webhook.js does
  *   entitlement renewal_insufficient_credit / renewal_failed / expired / grace_ended / stripe_not_renewed
@@ -75,6 +76,19 @@ async function plan(ev) {
                 if (p.provider === 'powerchat') {
                     await require('../integrations/powerchat-platform').forwardSubscription(streamer.id, {
                         subscriberName: nameOf(subscriber), externalId: `billing:${p.transaction_id}`, isResub: !!meta.renewal,
+                    });
+                }
+                // The overlay alert feed: "X subscribed", keyed by the Billing transaction. A Vibes-paid
+                // subscription is announced where it is bought (monetization/billing-actions.js), so only
+                // a provider subscription is announced here; a renewal is not a new subscription.
+                if (!meta.renewal && p.provider !== 'credit') {
+                    await require('../overlay/overlay-alerts').emit({
+                        streamerId: streamer.id,
+                        kind: 'sub',
+                        who: { name: nameOf(subscriber), avatar: subscriber.avatar_url || null },
+                        amount: null,
+                        text: null,
+                        naturalKey: `sub:${p.transaction_id}`,
                     });
                 }
             };

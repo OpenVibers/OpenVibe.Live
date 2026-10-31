@@ -90,6 +90,18 @@ router.post('/donate', requireAuth, money.guardWrite, async (req, res) => {
         // 2) Donation sound (streamer-configured).
         await alerts.playAlertSound(streamer_id, stream_id, 'donation');
 
+        // 2b) The overlay alert feed: "X tipped 500 Vibes: message", for the streamer's OBS overlay.
+        try {
+            await require('../overlay/overlay-alerts').emit({
+                streamerId: streamer_id,
+                kind: 'tip',
+                who: { name: donor, avatar: donorUser?.avatar_url || null },
+                amount: { value: result.amount, unit: 'vibes' },
+                text: message || null,
+                naturalKey: result.transactionId ? `donation:${result.transactionId}` : null,
+            });
+        } catch (e) { console.warn('[Overlay] tip alert not sent:', e.message); }
+
         // Mirror the donation onto the streamer's PowerChat overlay as a monetary tip
         // (tips:write). Vibes ARE the declared currency units (100 = $1); PowerChat
         // converts server-side. externalId is the ledger id, so a retry can't double-alert.
