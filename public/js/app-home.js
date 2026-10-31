@@ -1643,6 +1643,7 @@ async function loadHomeRecentVods(opts) {
                     <a class="stream-card" href="${href}" onclick="return handleLinkClick(event, '${href}')">
                         <div class="stream-card-thumb">
                             ${thumbImg(v.thumbnail_url, 'fa-video', v.title, `/api/thumbnails/generate/vod/${v.id}`)}
+                            ${audioChip(v)}
                             ${v.duration_seconds ? `<span class="stream-card-duration">${formatDuration(v.duration_seconds)}</span>` : ''}
                             ${ovViewsBadge(v.view_count)}
                         </div>
@@ -1680,6 +1681,7 @@ async function loadHomeClips(opts) {
                 <a class="stream-card" href="${videoHref('clip', c.id)}" onclick="return handleLinkClick(event, '${videoHref('clip', c.id)}')">
                     <div class="stream-card-thumb">
                         ${thumbImg(c.thumbnail_url, 'fa-scissors', c.title, `/api/thumbnails/generate/clip/${c.id}`)}
+                        ${audioChip(c)}
                         ${ovViewsBadge(c.view_count)}
                         ${c.duration_seconds ? `<span class="stream-card-duration">${formatDuration(c.duration_seconds)}</span>` : ''}
                     </div>

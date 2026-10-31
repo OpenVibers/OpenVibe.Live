@@ -315,13 +315,16 @@ async function _transcribeSpan(src, duration, { resumeFromSec = 0, priorSegments
  * descriptions (optionally stored as memories) + sampled transcript → overview.
  * @returns {{ overview, transcript, segments, transcriptOk, frames, duration }}
  */
-async function analyzeMedia(src, { streamId = null, userId = null, numFrames = null, storeMemories = false, offsetBase = 0 } = {}) {
+async function analyzeMedia(src, { streamId = null, userId = null, numFrames = null, storeMemories = false, offsetBase = 0, audioOnly = false } = {}) {
     if (!src) return { overview: null, transcript: '', frames: [], duration: 0 };
     // Lazy require (avoids a load-time circular dep with ai-analysis, which pulls us in).
     const ai = require('./ai-analysis');
     const duration = await _ffprobeDuration(src);
     let frames = [];
-    if (duration <= 2) {
+    // An audio-only recording has no frame to take (Media#240/R4): skip frame extraction entirely instead of asking
+    // ffmpeg for pictures that do not exist on every retry. The transcript is the whole analysis.
+    if (audioOnly) frames = [];
+    else if (duration <= 2) {
         // Tiny media — one frame.
         const one = await captureFrameMemories(src, [1], { streamId, userId, offsetBase, store: storeMemories });
         frames = one;
