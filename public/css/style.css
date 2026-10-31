@@ -924,12 +924,28 @@ body.ov-nav-overlay .navbar.ovnav-top {
     background: rgba(255,255,255,.12);
     color: #fff;
 }
+/* On a thumbnail: a small round icon in the corner, not a purple label over the picture (owner, 2026-10-31: the
+   "Screen Share" pill covered a live stream's preview). The label is kept for screen readers and the tooltip. */
 .stream-card-thumb .stream-type-badge {
     position: absolute;
     top: 8px;
     right: 8px;
     z-index: 2;
+    width: 26px;
+    height: 26px;
+    padding: 0;
+    justify-content: center;
+    border-radius: 50%;
+    background: rgba(10, 15, 28, .62);
+    color: #e9d5ff;
+    font-size: .72rem;
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, .12);
 }
+.stream-card-thumb .stream-type-badge .stb-label {
+    position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+.stream-card-thumb .stream-type-mic_only { color: #fbcfe8; }
+.stream-card-thumb .stream-type-camera_only { color: #bfdbfe; }
 .stream-type-screen { background: rgba(139,92,246,.85); }
 .stream-type-mic_only { background: rgba(236,72,153,.85); }
 .stream-type-camera_only { background: rgba(59,130,246,.85); }
