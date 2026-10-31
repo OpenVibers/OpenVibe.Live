@@ -319,12 +319,19 @@ async function fireStreamLifecycle(kind, streamId) {
     try { await getDb().tx(() => streamLifecycleHook(kind, streamId)); } catch (err) { console.warn(`[Events] stream ${kind} event for ${streamId} not queued:`, err.message); }
 }
 
-async function createStream({ user_id, channel_id, managed_stream_id, title, description, category, protocol, is_nsfw, thumbnail_url }) {
+async function createStream({ user_id, channel_id, managed_stream_id, title, description, category, protocol, is_nsfw, thumbnail_url, content_labels = null }) {
     return await getDb().tx(async () => {
+        // The live session starts with the slot's creator labels; the AI's suggestions stay on the session.
+        let labels = content_labels;
+        if (!labels && managed_stream_id) {
+            const slot = await get('SELECT content_labels FROM managed_streams WHERE id = ?', [managed_stream_id]);
+            if (slot && slot.content_labels) labels = slot.content_labels;
+        }
+        const labelJson = typeof labels === 'string' ? labels : JSON.stringify(labels || { labels: [], suggested: [] });
         const result = await run(
-            `INSERT INTO streams (user_id, channel_id, managed_stream_id, title, description, category, protocol, is_nsfw, thumbnail_url, is_live, started_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ov_now()) RETURNING id`,
-            [user_id, channel_id || null, managed_stream_id || null, title || 'Untitled Stream', description || '', category || null, protocol || 'webrtc', is_nsfw ? 1 : 0, thumbnail_url || null]
+            `INSERT INTO streams (user_id, channel_id, managed_stream_id, title, description, category, protocol, is_nsfw, thumbnail_url, content_labels, is_live, started_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ov_now()) RETURNING id`,
+            [user_id, channel_id || null, managed_stream_id || null, title || 'Untitled Stream', description || '', category || null, protocol || 'webrtc', is_nsfw ? 1 : 0, thumbnail_url || null, labelJson]
         );
         await fireStreamLifecycle('started', result.lastInsertRowid);
         return result;
@@ -1076,11 +1083,11 @@ async function updateViewerCount(streamId, count) {
 
 // ── Managed Stream helpers ───────────────────────────────────
 
-async function createManagedStream({ user_id, channel_id, slug, title, description, category, protocol, streaming_method, stream_key, is_nsfw }) {
+async function createManagedStream({ user_id, channel_id, slug, title, description, category, protocol, streaming_method, stream_key, is_nsfw, content_labels = null }) {
     return await run(
-        `INSERT INTO managed_streams (user_id, channel_id, slug, title, description, category, protocol, streaming_method, stream_key, is_nsfw)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
-        [user_id, channel_id || null, slug || null, title || 'Untitled Stream', description || '', category || null, protocol || 'webrtc', streaming_method || null, stream_key, is_nsfw ? 1 : 0]
+        `INSERT INTO managed_streams (user_id, channel_id, slug, title, description, category, protocol, streaming_method, stream_key, is_nsfw, content_labels)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
+        [user_id, channel_id || null, slug || null, title || 'Untitled Stream', description || '', category || null, protocol || 'webrtc', streaming_method || null, stream_key, is_nsfw ? 1 : 0, typeof content_labels === 'string' ? content_labels : JSON.stringify(content_labels || { labels: [], suggested: [] })]
     );
 }
 
@@ -1147,14 +1154,14 @@ async function updateManagedStream(managedStreamId, userId, fields) {
         'default_vod_visibility', 'default_clip_visibility', 'slot_vod_recording_enabled', 'slot_clip_recording_enabled',
         'slot_clip_notify_enabled', 'slot_powerchat_relay', 'slot_powerchat_count_rs_views',
         'weather_zip', 'weather_detail', 'weather_show_location', 'mic_only_image',
-        'pip_source_msid', 'pip_defaults',
+        'pip_source_msid', 'pip_defaults', 'content_labels',
     ]);
     const updates = [];
     const params = [];
     for (const [key, val] of Object.entries(fields)) {
         if (val !== undefined && allowed.has(key)) {
             updates.push(`${key} = ?`);
-            params.push(['tags', 'pip_defaults'].includes(key)
+            params.push(['tags', 'pip_defaults', 'content_labels'].includes(key)
                 ? (typeof val === 'string' ? val : JSON.stringify(val))
                 : val);
         }
@@ -1163,6 +1170,30 @@ async function updateManagedStream(managedStreamId, userId, fields) {
     updates.push('updated_at = ov_now()');
     params.push(managedStreamId, userId);
     return await run(`UPDATE managed_streams SET ${updates.join(', ')} WHERE id = ? AND user_id = ?`, params);
+}
+
+// ── Content labels (migration 0023, L1 labels and choices) ───
+// A creator's labels live on the slot and are copied to each live session. The AI's suggestions are stored on the
+// session and never applied; a suggestion the creator confirms leaves the suggested list. None of this hides
+// anything from anyone: a label is read by the page and the viewer's network.label-prefs@1 decides (except the home
+// page, which skips 18+).
+/** A slot's labels changed: the live session shows them at once, keeping the AI suggestions it already has. */
+async function setLiveStreamsContentLabels(managedStreamId, labels) {
+    return await run(`UPDATE streams SET content_labels = jsonb_set(content_labels, '{labels}', ?::jsonb) WHERE managed_stream_id = ? AND is_live = 1`, [JSON.stringify(labels || []), managedStreamId]);
+}
+
+/** Add AI suggestions to a live session. Read-modify-write in a transaction so two frames never lose a suggestion. */
+async function suggestStreamContentLabels(streamId, labels) {
+    const shape = require('../labels');
+    return await getDb().tx(async () => {
+        const row = await get('SELECT content_labels FROM streams WHERE id = ? FOR UPDATE', [streamId]);
+        if (!row) return null;
+        const current = shape.labelsOf(row);
+        const next = shape.shape(current.labels, [...current.suggested, ...(labels || [])]);
+        if (next.suggested.length === current.suggested.length) return current;
+        await run('UPDATE streams SET content_labels = ? WHERE id = ?', [JSON.stringify(next), streamId]);
+        return next;
+    });
 }
 
 /**
@@ -3687,6 +3718,7 @@ module.exports = {
     createManagedStream, getManagedStreamById, getManagedStreamsByUserId,
     getManagedStreamBySlug, getManagedStreamByStreamKey, getManagedStreamByIdOrSlug,
     updateManagedStream, deleteManagedStream,
+    setLiveStreamsContentLabels, suggestStreamContentLabels,
     getManagedStreamBroadcastSettings, updateManagedStreamBroadcastSettings,
     getPipOverlayForManagedStream, getPipCandidateSlots, getPipsForManagedStream, setPipsForManagedStream, getPipSourceSlots, getLiveOwnPipSourceSlots, MAX_PIPS,
     countManagedStreamsByUser, getManagedStreamLimit,
