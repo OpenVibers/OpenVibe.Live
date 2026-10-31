@@ -39,23 +39,21 @@
     <link rel="apple-touch-icon" href="/assets/logo-192.png">
     <link rel="apple-touch-icon" href="/assets/logo-192.png">
 
-    <!-- Critical theme bootstrap (ov-theme-boot) — MUST stay inline and stay ABOVE the stylesheets.
-         Paints the user's cached theme synchronously, before the browser has any chance to
-         render the default palette. theme-loader.js used to be the first thing to touch the
-         theme, but it is fetched over the network and loaded with defer, so it ran after the
-         page had already painted — that gap is the purple flash. This reads localStorage
-         only: no network, no parse blocking, works offline and on the very first paint. -->
+    <!-- The look before first paint (ov-theme-boot): MUST stay ABOVE the stylesheets. server/web/assets.js puts
+         openvibe-shared's look-boot here: it paints the look this browser last painted on Live, or the one a link from
+         another OpenVibe page carried, with the display settings (seasonal off, Calm, text size). theme-loader.js loads
+         with defer, so without it the default palette (or an old season) showed first. localStorage only, no network. -->
+    <!--ov:look-boot-->
     <script>
+    // A browser from before look-boot has only its theme (ov_theme), not yet a painted look (ov_paint): paint that once.
     (function () {
         try {
-            var raw = localStorage.getItem('ov_theme');
-            if (!raw) return;
-            var t = JSON.parse(raw), v = t && t.variables;
+            if (localStorage.getItem('ov_paint')) return;
+            var t = JSON.parse(localStorage.getItem('ov_theme') || 'null'), v = t && t.variables, el = document.documentElement;
             if (!v) return;
-            var el = document.documentElement;
-            for (var k in v) if (k.charAt(0) === '-') el.style.setProperty(k, v[k]);
-            if (t.id) el.setAttribute('data-theme', t.id);
-        } catch (_) { /* cold cache or private mode — theme-loader.js resolves it shortly */ }
+            for (var k in v) if (k.charAt(0) === '-' && /^[#0-9a-z(),.%\s-]{1,80}$/i.test(String(v[k])) && !/url|expression/i.test(String(v[k]))) el.style.setProperty(k, v[k]);
+            if (t.id && /^[a-z0-9-]{1,40}$/.test(t.id)) el.setAttribute('data-theme', t.id);
+        } catch (_) { /* nothing kept: theme-loader.js paints shortly */ }
     })();
     // "Lite" rendering for phones, coarse pointers and low-memory devices. Stylesheets on every
     // route key off .rs-lite, so it is decided here, before first paint, rather than by the home

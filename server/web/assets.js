@@ -38,6 +38,10 @@ const critical = require('./critical-css');
 const CORE_CSS = '/css/style.core.css';
 const REF_RE = /(["'])(\/(?:js|css|shared|fragments)\/[A-Za-z0-9_./-]+?\.(?:js|css|html))(?:\?v=[A-Za-z0-9_.-]*)?\1/g;
 const MANIFEST_MARK = '<!--ov:asset-manifest-->';
+// The look before first paint (openvibe-shared look-boot, plan L42): this browser's last painted look on this site, or
+// the one a link from another OpenVibe page carried, with the display settings (the season switch among them).
+const LOOK_BOOT_MARK = '<!--ov:look-boot-->';
+const { BOOT: LOOK_BOOT } = require('openvibe-shared/look-boot');
 const ROUTE_CSS_MARK = '<!--ov:route-css-->';
 const ROUTE_JS_MARK = '<!--ov:route-js-->';
 const FEATURES_PATH = path.join(PUBLIC_DIR, 'features.json');
@@ -240,6 +244,7 @@ function rewriteHtml(html) {
         const h = hashOf(urlPath);
         return h ? `${q}${urlPath}?v=${h}${q}` : m;
     });
+    if (out.includes(LOOK_BOOT_MARK)) out = out.replace(LOOK_BOOT_MARK, () => `<script>${LOOK_BOOT}</script>`);
     if (out.includes(MANIFEST_MARK)) {
         const reg = features();
         const payload = {
