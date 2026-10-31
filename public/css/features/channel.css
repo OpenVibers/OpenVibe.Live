@@ -1630,3 +1630,104 @@ button.viewer-badge:focus-visible { outline: 2px solid #93c5fd; outline-offset: 
 .ch-next-t { min-width: 0; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
 .ch-next-a, .ch-next-more { margin-left: auto; font-weight: 700; text-decoration: none; color: var(--accent-light, var(--accent)); white-space: nowrap; }
 .ch-next-more { margin-left: 0; font-weight: 600; color: var(--text-muted); }
+
+/* ── Watching on a phone (2026-10-31) ─────────────────────────────────────────────────────────────────────────────
+   The owner, watching moosely on a phone: the app's bottom bar covered the stream's round chat button, its own "Chat"
+   opened the network inbox instead of this stream's chat, and a portrait stream sat in a box of blurred bands. So on a
+   phone held upright, while a stream is live:
+   - the app bar steps aside (as a native app's tab bar does on a watch screen), and so do the floating buttons;
+   - the stream's chat is docked under the player, always open, with no button to find. Nothing floats;
+   - a portrait stream fills the screen and the chat runs over its lower part, with the channel line over its top.
+   Turning the phone on its side keeps the full-screen player above (channel.css, 2026-10-25). */
+@media (max-width: 768px) and (orientation: portrait) {
+    html:has(#page-channel.active.ch-is-live) { --ovnav-appbar-h: 0px; }
+    html:has(#page-channel.active.ch-is-live) .ovnav-appbar,
+    body:has(#page-channel.active.ch-is-live) :is(.mobile-chat-toggle, #messenger-toggle, #floating-chat-fab) { display: none !important; }
+
+    #page-channel.ch-is-live .stream-layout {
+        display: flex; flex-direction: column; overflow: hidden;
+        height: calc(100dvh - var(--navbar-h) - var(--live-tabs-h, 0px));
+    }
+    #page-channel.ch-is-live.has-live-tabs .stream-layout { --live-tabs-h: 40px; }
+    #page-channel.ch-is-live .stream-main { flex: 0 0 auto; overflow: visible; min-height: 0; }
+
+    /* The chat: in the page, under the player, taking what is left. */
+    #page-channel.ch-is-live.page .stream-layout > .chat-sidebar {
+        position: relative; inset: auto; z-index: auto;
+        width: 100%; height: auto; max-height: none; flex: 1 1 0; min-height: 0;
+        transform: none; transition: none; border-radius: 0; box-shadow: none;
+        border: 0; border-top: 1px solid var(--border);
+    }
+    #page-channel.ch-is-live .chat-sidebar > .chat-grip,
+    #page-channel.ch-is-live .chat-sidebar .mobile-chat-close,
+    #page-channel.ch-is-live .chat-sidebar .chat-header::before { display: none !important; }
+    #page-channel.ch-is-live .chat-sidebar .chat-header { position: static; padding: 4px 8px 4px 12px; min-height: 0; font-size: .72rem; }
+    #page-channel.ch-is-live .chat-sidebar .chat-header .chat-settings-btn { min-width: 36px; min-height: 36px; }
+    #page-channel.ch-is-live .chat-sidebar .chat-header .chat-settings-btn[onclick^="popoutStreamChat"] { display: none; }
+    #page-channel.ch-is-live .chat-sidebar .chat-messages { padding: 6px 12px; }
+    #page-channel.ch-is-live .chat-sidebar .chat-input-area { padding: 6px 8px calc(6px + env(safe-area-inset-bottom, 0px)); }
+
+    /* The channel line: one row (who, the title, follow). Tapping it opens the rest (the AI line, the description,
+       the totals); app-channel.js toggles .ch-info-open. */
+    #page-channel.ch-is-live .ch-info-bar { flex-wrap: nowrap; align-items: center; gap: 10px; padding: 8px 12px; }
+    #page-channel.ch-is-live .ch-info-bar-left { flex: 1 1 auto; min-width: 0; cursor: pointer; }
+    #page-channel.ch-is-live .ch-info-bar-text { min-width: 0; }
+    #page-channel.ch-is-live .ch-info-bar-top { flex-wrap: nowrap; min-width: 0; overflow: hidden; }
+    #page-channel.ch-is-live .ch-info-bar-top h2 { font-size: .95rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+    #page-channel.ch-is-live .ch-info-bar-top :is(.ch-username, #ch-protocol-badge) { display: none; }
+    #page-channel.ch-is-live .ch-stream-title { margin: 1px 0 0; font-size: .8rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    #page-channel.ch-is-live .ch-info-bar-right { width: auto; flex: 0 0 auto; gap: 6px; }
+    #page-channel.ch-is-live .ch-info-bar-right :is(.ch-follower-count, #btn-cam, .ch-game-badge) { display: none; }
+    #page-channel.ch-is-live .ch-info-bar:not(.ch-info-open) :is(.ch-stream-description, .ch-stream-ai, .ch-cumulative-viewers) { display: none !important; }
+    #page-channel.ch-is-live .ch-info-bar:not(.ch-info-open) ~ .ch-weather-widget { display: none !important; }
+    #page-channel.ch-is-live .ch-info-bar.ch-info-open { flex-wrap: wrap; }
+    #page-channel.ch-is-live .ch-info-bar.ch-info-open .ch-stream-title { white-space: normal; }
+    #page-channel.ch-is-live .ch-info-bar.ch-info-open + .ch-weather-widget,
+    #page-channel.ch-is-live .ch-info-bar.ch-info-open .ch-info-bar-text { max-height: 40dvh; overflow-y: auto; }
+
+    /* ── A portrait stream: the picture is the screen ── */
+    #page-channel.ch-is-live .stream-layout:has(.video-container.is-vertical) { position: relative; background: #000; }
+    #page-channel.ch-is-live .stream-layout:has(.video-container.is-vertical) > .stream-main { position: static; }
+    #page-channel.ch-is-live .stream-layout:has(.video-container.is-vertical) .video-container.is-vertical {
+        position: absolute; inset: 0; height: auto; max-height: none; aspect-ratio: auto; border-radius: 0; box-shadow: none;
+    }
+    /* A phone-shaped picture (9:16 or taller) fills the screen edge to edge, as phone video apps show it; a squarer
+       portrait one keeps its whole picture. */
+    #page-channel.ch-is-live .video-container.is-tall :is(#video-element, #video-canvas) { object-fit: cover; }
+    /* The channel line over the top of the picture, on a shade so it reads on any picture and in either theme. */
+    #page-channel.ch-is-live .stream-layout:has(.video-container.is-vertical) .ch-info-bar {
+        position: absolute; top: 0; left: 0; right: 0; z-index: 8;
+        padding: 10px 12px 22px; border: 0;
+        background: linear-gradient(to bottom, rgba(0, 0, 0, .62), rgba(0, 0, 0, .3) 65%, transparent);
+        color: #fff; text-shadow: 0 1px 2px rgba(0, 0, 0, .55);
+    }
+    #page-channel.ch-is-live .stream-layout:has(.video-container.is-vertical) .ch-info-bar :is(h2, .ch-stream-title, .ch-stream-description, .ch-cumulative-viewers) { color: #fff; }
+    #page-channel.ch-is-live .stream-layout:has(.video-container.is-vertical) .ch-info-bar.ch-info-open { background: rgba(0, 0, 0, .72); }
+    #page-channel.ch-is-live .stream-layout:has(.video-container.is-vertical) .ch-weather-widget { display: none !important; }
+    /* The player's own controls move under the channel line: the chat holds the bottom. */
+    #page-channel.ch-is-live .stream-layout:has(.video-container.is-vertical) .video-overlay {
+        top: 58px; bottom: auto; background: linear-gradient(to bottom, rgba(0, 0, 0, .45), transparent);
+    }
+    #page-channel.ch-is-live .stream-layout:has(.video-container.is-vertical) .dvr-progress-wrap { order: 2; }
+    /* The chat over the lower part of the picture: no box, the messages fade out upwards, and the input sits on a
+       shade at the bottom edge. The right side stays clear so the picture is not covered edge to edge. */
+    #page-channel.ch-is-live.page .stream-layout:has(.video-container.is-vertical) > .chat-sidebar {
+        position: absolute; left: 0; right: 0; bottom: 0; z-index: 7; flex: none;
+        height: var(--watch-chat-h, 46%); border: 0;
+        background: linear-gradient(to top, rgba(0, 0, 0, .66), rgba(0, 0, 0, .34) 55%, transparent);
+        color: #fff;
+    }
+    #page-channel.ch-is-live .stream-layout:has(.video-container.is-vertical) > .chat-sidebar .chat-header { display: none; }
+    #page-channel.ch-is-live .stream-layout:has(.video-container.is-vertical) > .chat-sidebar .chat-messages {
+        margin-right: 16%; padding-top: 28px; scrollbar-width: none;
+        -webkit-mask-image: linear-gradient(to bottom, transparent, #000 34%); mask-image: linear-gradient(to bottom, transparent, #000 34%);
+    }
+    #page-channel.ch-is-live .stream-layout:has(.video-container.is-vertical) > .chat-sidebar .chat-messages::-webkit-scrollbar { display: none; }
+    #page-channel.ch-is-live .stream-layout:has(.video-container.is-vertical) > .chat-sidebar .chat-msg { color: #fff; text-shadow: 0 1px 2px rgba(0, 0, 0, .8); }
+    #page-channel.ch-is-live .stream-layout:has(.video-container.is-vertical) > .chat-sidebar .chat-conn-note { display: none; }
+    #page-channel.ch-is-live .stream-layout:has(.video-container.is-vertical) > .chat-sidebar .chat-input-area { border-top: 0; background: transparent; }
+    #page-channel.ch-is-live .stream-layout:has(.video-container.is-vertical) > .chat-sidebar :is(.chat-input, .chat-input-row input, .chat-input-row textarea) {
+        background: rgba(0, 0, 0, .45); color: #fff; border-color: rgba(255, 255, 255, .22);
+    }
+    #page-channel.ch-is-live .stream-layout:has(.video-container.is-vertical) > .chat-sidebar :is(.emote-picker-btn, .chat-tts-toggle) { color: #fff; }
+}

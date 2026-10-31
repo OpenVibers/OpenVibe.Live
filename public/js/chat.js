@@ -1647,7 +1647,7 @@ function initChat(streamId, channelUserId = null) {
         }));
         ws._authToken = token || null;
         _chatReconnectDelay = CHAT_RECONNECT_BASE; // reset backoff on success
-        addRichSystemMessage('<i class="fa-solid fa-plug-circle-check" style="margin-right:5px;opacity:0.8"></i> Connected to chat');
+        addRichSystemMessage('<i class="fa-solid fa-plug-circle-check" style="margin-right:5px;opacity:0.8"></i> Connected to chat', 'conn');
         // A fresh socket after the router tore the last one down: the widget may hold rows from
         // before the gap. Pull what it missed instead of waiting for someone to type.
         _fcwRefreshIfRelevant('connect');
@@ -2173,14 +2173,14 @@ function handleChatMessage(msg) {
             const _quietAuth = _suppressNextAuthNotice;
             _suppressNextAuthNotice = false;
             if (msg.authenticated) {
-                if (!_quietAuth) addRichSystemMessage(`<i class="fa-solid fa-user-check" style="margin-right:5px;opacity:0.8"></i> Chatting as ${esc(msg.username)}`);
+                if (!_quietAuth) addRichSystemMessage(`<i class="fa-solid fa-user-check" style="margin-right:5px;opacity:0.8"></i> Chatting as ${esc(msg.username)}`, 'conn');
             } else {
                 // Server didn't authenticate us — show as anon
                 const hasToken = !!localStorage.getItem('token');
                 if (hasToken) {
                     // We think we're logged in but the server rejected the token —
                     // token may be expired/invalid. Reconnect chat after loadUser refreshes auth.
-                    if (!_quietAuth) addRichSystemMessage(`<i class="fa-solid fa-user" style="margin-right:5px;opacity:0.8"></i> Chatting as ${esc(msg.username)} (not logged in)`);
+                    if (!_quietAuth) addRichSystemMessage(`<i class="fa-solid fa-user" style="margin-right:5px;opacity:0.8"></i> Chatting as ${esc(msg.username)} (not logged in)`, 'conn');
                     console.warn('[Chat] Token rejected by server — will attempt re-auth');
                     // Re-validate token; if still valid, reconnect chat with fresh state
                     if (typeof loadUser === 'function') {
@@ -2199,7 +2199,7 @@ function handleChatMessage(msg) {
                         }).catch(() => { });
                     }
                 } else {
-                    if (!_quietAuth) addRichSystemMessage(`<i class="fa-solid fa-user-check" style="margin-right:5px;opacity:0.8"></i> Chatting as ${esc(msg.username)}`);
+                    if (!_quietAuth) addRichSystemMessage(`<i class="fa-solid fa-user-check" style="margin-right:5px;opacity:0.8"></i> Chatting as ${esc(msg.username)}`, 'conn');
                 }
             }
             // Sync slow mode state from server on join
@@ -2977,6 +2977,9 @@ function addRichSystemMessage(html, style = 'info') {
     el.className = 'chat-msg system';
     if (style === 'warning') el.style.color = 'var(--warning, #f59e0b)';
     else if (style === 'update') el.style.color = 'var(--accent)';
+    // "Connected to chat" and "Chatting as …": chat over a picture (the phone studio, a phone watching a portrait
+    // stream) leaves them out.
+    else if (style === 'conn') el.classList.add('chat-conn-note');
     el.innerHTML = html;
     container.appendChild(el);
     scrollChat();

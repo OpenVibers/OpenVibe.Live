@@ -52,6 +52,7 @@
         box.style.setProperty('--video-ar', ratio.toFixed(4));
         box.dataset.shape = ratio < 0.95 ? 'portrait' : ratio > 1.05 ? 'landscape' : 'square';
         box.classList.toggle('is-vertical', ratio < 0.95);   // the chat sidebar's width on a desktop keys on it
+        box.classList.toggle('is-tall', ratio < 0.66);        // a phone's own 9:16 or taller: it may fill a phone screen
         if (st.glow) st.glow.check();
     }
 
