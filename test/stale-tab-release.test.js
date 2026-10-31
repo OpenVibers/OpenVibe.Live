@@ -47,6 +47,7 @@ function sandbox({ loaded = 'aaaaaaaaaaaa', current = 'bbbbbbbbbbbb', stored = n
         },
         sessionStorage: { getItem: (k) => (store.has(k) ? store.get(k) : null), setItem: (k, v) => store.set(k, String(v)) },
         fetch: async (url) => { calls.push(['fetch', url]); return { ok: true, json: async () => ({ release: current }) }; },
+        setTimeout: () => 0,
         teardownRoute: () => calls.push(['teardown']),
         routeFromURL: () => calls.push(['route']),
     };

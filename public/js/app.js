@@ -970,6 +970,19 @@ function sameSitePath(url) {
     try { const u = new URL(url); return u.origin === location.origin ? `${u.pathname}${u.search}${u.hash}` : url; } catch { return url; }
 }
 
+// The navbar's OpenVibe mark draws its ring round while one of Live's own page moves loads, at the pace this browser
+// learned for them, and closes it when the route has rendered (ov-mark.js, OVMark.navStart/navEnd). A route that
+// renders without whenRouteReady closes it after the move's own turn of the event loop; none waits past 8 s.
+let _ovNavSeq = 0, _ovNavOn = 0, _ovNavWaiting = false;
+function _ovNavStart() {
+    const me = _ovNavOn = ++_ovNavSeq;
+    _ovNavWaiting = false;
+    try { window.OVMark && window.OVMark.navStart('app'); } catch { /* */ }
+    setTimeout(() => { if (_ovNavOn === me && !_ovNavWaiting) _ovNavEnd(); }, 0);
+    setTimeout(() => { if (_ovNavOn === me) _ovNavEnd(); }, 8000);
+}
+function _ovNavEnd() { if (!_ovNavOn) return; _ovNavOn = 0; _ovNavWaiting = false; try { window.OVMark && window.OVMark.navEnd('app'); } catch { /* */ } }
+
 function navigate(urlPath, replace = false) {
     if (isOffSite(urlPath)) { if (replace) location.replace(urlPath); else location.href = urlPath; return; }
     urlPath = sameSitePath(urlPath);
@@ -980,6 +993,7 @@ function navigate(urlPath, replace = false) {
         return;
     }
     teardownRoute(urlPath);
+    _ovNavStart();
 
     // Normalize path
     if (!urlPath.startsWith('/')) urlPath = '/' + urlPath;
@@ -1057,10 +1071,13 @@ function whenRouteReady(pageId, render) {
             console.error(`[route] ${path} failed to render:`, err);
             if (window.ov) ov.showRouteError(`page-${pageId}`, err, () => whenRouteReady(pageId, render));
         }
+        _ovNavEnd();
     };
     if (!window.ov) return run();
+    if (_ovNavOn) _ovNavWaiting = true;
     ov.route(path).then(run, (err) => {
         if (!ov.isCurrent(gen)) return;
+        _ovNavEnd();
         ov.showRouteError(`page-${pageId}`, err, () => whenRouteReady(pageId, render));
     });
 }
@@ -2087,7 +2104,7 @@ async function handleThumbnailError(img) {
 function thumbImg(thumbnailUrl, fallbackIcon, alt, regenerateUrl = null) {
     // The old brand glyph as a placeholder → the OV mark (static, muted).
     const iconHtml = (extra) => fallbackIcon === 'fa-circle-nodes'
-        ? `<span class="ov-mark ov-mark--ph" data-size="44" data-static="1"${extra || ''}></span>`
+        ? `<span class="ov-mark ov-mark--ph" data-size="44" data-tone="ink" data-static="1"${extra || ''}></span>`
         : `<i class="fa-solid ${fallbackIcon}"${extra || ''}></i>`;
     if (thumbnailUrl) {
         // openvibe.media thumbnails come in sizes (Media's /t/:id?w=&fmt=): a card loads a WebP near its width.
