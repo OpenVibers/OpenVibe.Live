@@ -199,7 +199,7 @@ async function _generateVodOverviewInner(vod) {
     if (!src) { try { await db.setVodAiOverview(vod.id, ' '); } catch { /* */ } return null; } // unprocessable — mark done
     const r = await ma.analyzeMedia(src, {
         streamId: vod.stream_id || null, userId: vod.user_id || null,
-        storeMemories: !!vod.stream_id, offsetBase: 0,
+        storeMemories: !!vod.stream_id, offsetBase: 0, audioOnly: !!vod.audio_only,
     });
     const overview = r && r.overview ? r.overview : ' '; // ' ' = tried, nothing to say
     try { await db.setVodAiOverview(vod.id, overview); } catch { /* */ }
@@ -219,6 +219,7 @@ async function _generateVodOverviewInner(vod) {
  */
 async function ensureVodTimeline(vod) {
     if (!vod || !vod.stream_id) return;
+    if (vod.audio_only) return;   // no frames to anchor (Media#240/R4); the transcript pass carries the moments
     if (require('./ai-media-analyze').enabled()) return;
     if (!await isEnabled() || !await withinBudget()) return;
     const ma = require('./media-analysis');
@@ -354,6 +355,7 @@ async function generateClipOverview(clip) {
     const r = await require('./media-analysis').analyzeMedia(src, {
         streamId: clip.stream_id || null, userId: clip.user_id || null,
         numFrames: 3, storeMemories: !!clip.stream_id, offsetBase: clip.start_time || 0,
+        audioOnly: !!clip.audio_only,
     });
     const overview = (r && r.overview) ? r.overview : ' ';
     const transcript = r ? r.transcript : '';

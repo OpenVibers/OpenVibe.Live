@@ -2105,6 +2105,12 @@ function thumbImg(thumbnailUrl, fallbackIcon, alt, regenerateUrl = null) {
     return `<i class="fa-solid ${fallbackIcon}"></i>`;
 }
 
+/** An audio-only recording or clip (Media#240/R4): its picture is Media's avatar card, and the card says so. */
+function audioChip(item) {
+    if (!item || !(item.audio_only === true || item.audio_only === 1)) return '';
+    return '<span class="stream-card-audio" title="Audio only"><i class="fa-solid fa-microphone" aria-hidden="true"></i> Audio</span>';
+}
+
 function formatDuration(secs) {
     if (!secs) return '0:00';
     const h = Math.floor(secs / 3600);

@@ -167,6 +167,7 @@ async function renderChannelVodsSection(username, liveStreams, vods, meta = {}) 
                         <a class="stream-card" href="${videoHref('vod', v.id)}" onclick="return handleLinkClick(event, '${videoHref('vod', v.id)}')" style="border:2px solid var(--accent);position:relative">
                             <div class="stream-card-thumb">
                                 ${thumbImg(v.thumbnail_url, 'fa-video', v.title, `/api/thumbnails/generate/vod/${v.id}`)}
+                                ${audioChip(v)}
                                 <span class="stream-card-nsfw" style="background:#e53e3e;animation:pulse 2s infinite">● RECORDING</span>
                                 <span class="stream-card-viewers"><i class="fa-solid fa-clock"></i> ${formatDuration(v.duration_seconds || 0)}</span>
                             </div>
@@ -188,6 +189,7 @@ async function renderChannelVodsSection(username, liveStreams, vods, meta = {}) 
                 <div class="stream-card-thumb">
                     ${thumbImg(v.thumbnail_url, 'fa-video', v.title, `/api/thumbnails/generate/vod/${v.id}`)}
                     ${_visBadge(v.visibility, v.is_public, canManage)}
+                    ${audioChip(v)}
                     ${v.stream_protocol ? protocolBadge(v.stream_protocol) : ''}
                     <span class="stream-card-viewers"><i class="fa-solid fa-clock"></i> ${formatDuration(v.duration_seconds || v.duration)}</span>
                 </div>

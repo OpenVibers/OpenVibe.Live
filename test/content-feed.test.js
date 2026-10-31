@@ -48,7 +48,7 @@ let VODS = [], CLIPS = [];
 const vod = (id, mins, extra = {}) => ({ id, user_id: 3, title: `VOD ${id}`, visibility: 'public', is_public: true, status: 'ready', duration_seconds: 600, view_count: 0, created_at: at(mins), thumbnail_url: `/t/vod-${id}.jpg`, file_path: `vod-${id}.webm`, storage_key: 'secret/key', ...extra });
 const clip = (id, mins, extra = {}) => ({ id, user_id: 4, channel_user_id: 3, vod_id: 1, title: `Clip ${id}`, visibility: 'public', is_public: true, status: 'ready', auto_generated: false, duration_seconds: 20, view_count: 0, created_at: at(mins), thumbnail_url: `/t/clip-${id}.jpg`, playback_url: `https://media.test/c/${id}`, file_path: `clip-${id}.webm`, ...extra });
 VODS = [
-    vod(1, 10, { view_count: 50 }), vod(2, 30, { view_count: 5 }), vod(3, 50, { view_count: 500 }), vod(4, 70),
+    vod(1, 10, { view_count: 50 }), vod(2, 30, { view_count: 5, audio_only: true }), vod(3, 50, { view_count: 500 }), vod(4, 70),
     vod(5, 90, { visibility: 'private', is_public: false, title: 'SECRET VOD' }),
     vod(6, 95, { visibility: 'unlisted', is_public: false, title: 'UNLISTED VOD' }),
     vod(7, 100, { user_id: 9, title: 'Banned streamer VOD' }),
@@ -204,10 +204,12 @@ server.on('listening', async () => {
         assert.ok(communityCalls.every((c) => !c.query.include_unlisted && !c.act.staff && c.act.liveUserId == null), 'Community is read as nobody in particular');
         const r = await get('/api/content/feed?limit=30');
         assert.deepStrictEqual(findSecrets(r.json), []);
-        const allowed = new Set(['key', 'kind', 'id', 'href', 'title', 'created_at', 'views', 'likes', 'duration_seconds', 'thumbnail_url', 'preview_url', 'image_url', 'excerpt', 'paste_type', 'language', 'nsfw', 'ai', 'ai_label', 'moment_href', 'grade', 'stream_title', 'channel', 'by']);
+        const allowed = new Set(['key', 'kind', 'id', 'href', 'title', 'created_at', 'views', 'likes', 'duration_seconds', 'thumbnail_url', 'preview_url', 'image_url', 'excerpt', 'paste_type', 'language', 'nsfw', 'ai', 'ai_label', 'moment_href', 'grade', 'stream_title', 'audio_only', 'channel', 'by']);
         for (const it of r.json.items) for (const k of Object.keys(it)) assert.ok(allowed.has(k), `unexpected field ${k} on ${it.key}`);
         const v1 = r.json.items.find((i) => i.key === 'vod:1');
         assert.strictEqual(v1.thumbnail_url, `${media.MEDIA_PUBLIC_URL}/t/vod-1.jpg`, 'Media paths become absolute');
+        assert.strictEqual(v1.audio_only, false, 'a picture recording says so');
+        assert.strictEqual((await get('/api/content/feed?type=vods&limit=30')).json.items.find((i) => i.key === 'vod:2').audio_only, true, 'an audio-only recording carries the flag to the card');
         assert.deepStrictEqual(v1.channel, { username: 'alice', display_name: 'ALICE', avatar_url: 'https://media.test/a/alice.png', profile_color: '#8b5cf6', href: '/@alice' });
         assert.ok(!('file_path' in v1) && !('storage_key' in v1));
         const c11 = r.json.items.find((i) => i.key === 'clip:11');
