@@ -225,7 +225,8 @@ function dashSceneUrl(kind) {
     if (theme && theme !== 'vibe') q.set('theme', theme);
     if (mins && kind !== 'ending') q.set('in', mins);
     const s = q.toString();
-    return `${window.location.origin}/obs/scene/${kind}/${encodeURIComponent(currentUser.username)}${s ? `?${s}` : ''}`;
+    const path = ['', 'obs', 'scene', kind, encodeURIComponent(currentUser.username)].join('/');   // a scene's address, not a channel link
+    return `${window.location.origin}${path}${s ? `?${s}` : ''}`;
 }
 function updateDashScenes() {
     const list = document.getElementById('dash-scenes');

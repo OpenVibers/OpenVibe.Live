@@ -33,7 +33,7 @@ const frag = fs.readFileSync(path.join(__dirname, '..', 'public/fragments/dashbo
 const dash = fs.readFileSync(path.join(__dirname, '..', 'public/js/dashboard.js'), 'utf8');
 assert.ok(frag.includes('id="dash-card-scenes"') && frag.includes('id="dash-scene-theme"') && frag.includes('id="dash-scenes"'), 'the card');
 assert.match(dash, /chatai: +\['dash-card-vibe', 'dash-aibot-card', 'dash-card-overlay', 'dash-card-scenes',/, 'beside the chat overlay');
-assert.match(dash, /\/obs\/scene\/\$\{kind\}\/\$\{encodeURIComponent\(currentUser\.username\)\}/, 'each scene\'s address');
+assert.match(dash, /\['', 'obs', 'scene', kind, encodeURIComponent\(currentUser\.username\)\]\.join\('\/'\)/, 'each scene\'s address');
 assert.match(dash, /if \(theme && theme !== 'vibe'\) q\.set\('theme', theme\)/, 'the theme picked rides along');
 assert.match(dash, /_call\('updateDashScenes'\)/, 'drawn when the tab opens');
 console.log('obs scenes: three scenes by route, the loader and the mark, any theme by name, the mark arriving, text only, still under reduced motion');
