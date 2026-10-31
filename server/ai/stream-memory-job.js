@@ -199,7 +199,7 @@ async function _maybeLivePaste(stream, image, r, offset) {
     if (!buffer || buffer.length < 2000) return;
     const username = stream.username || (await db.getUserById(stream.user_id) || {}).username || 'someone';
     // Public text: nothing about how anyone looks, in the page or its title.
-    const desc = db.noLooks(r.description);
+    const desc = r.description;
     const title = moments.publicTitle ? moments.publicTitle(r.title, { title: stream.title, username }, offset, desc) : r.title.slice(0, 80);
     let base = 'https://openvibe.live'; try { const c = require('../config'); base = String(c.baseUrl || c.publicUrl || base).replace(/\/$/, ''); } catch { /* */ }
     // AI output is never filed under a person (roadmap 33): origin 'ai', the stream rides along as its source.
@@ -207,7 +207,7 @@ async function _maybeLivePaste(stream, image, r, offset) {
         slug: moments.makeSlug ? moments.makeSlug() : undefined, user_id: stream.user_id,
         title, content: `${desc}\n\n🔴 Caught live on @${username}'s stream — ${base}/@${encodeURIComponent(username)}`, language: 'text', visibility: 'public',
         stream_id: stream.id, metadata: JSON.stringify({ ai_moment: true, live: true, stream_id: stream.id, offset, username, vod_link: null }),
-        ai_summary: desc, ai_tags: JSON.stringify(db.noLooksTags(Array.isArray(r.tags) ? r.tags.slice(0, 8) : [])),
+        ai_summary: desc, ai_tags: JSON.stringify(Array.isArray(r.tags) ? r.tags.slice(0, 8) : []),
         screenshot: { buffer, filename: `live-${stream.id}-${offset}.jpg`, contentType: 'image/jpeg' },
     }, { origin: 'ai' });
     if (paste) {

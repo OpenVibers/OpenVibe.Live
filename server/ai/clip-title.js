@@ -3,9 +3,8 @@
  * AI titles for untitled clips (owner, 2026-10-25: "The AI should automatically title clips that are untitled";
  * migrations/0019_clip_ai_title.sql). A clip keeps the title its maker gave it. One still named by a placeholder
  * ("Untitled Clip", "Clip from stream", …: what the Clip buttons send when nobody types a title) is titled from its AI
- * overview once that exists: OpenVibe.AI's live.stream.titles template (3-6 words, what happens, never what anyone looks
- * like), then Live's rule for public AI titles (ai-moments-job publicTitle: a title naming looks or bodies, or a rough
- * one, is replaced by the stream's title and the moment). The new title goes to OpenVibe.Media, and each
+ * overview once that exists: OpenVibe.AI's live.stream.titles template (3-6 words, what happens), then Live's rule for
+ * public AI titles (a rough one is replaced by the stream's title and the moment). The new title goes to OpenVibe.Media, and each
  * clip is decided once (clip_ai_state.title_status: titled, kept or failed).
  *
  *   isPlaceholder(title, sourceTitles) → true for a title nobody chose
@@ -17,7 +16,7 @@
  */
 const db = require('../db/database');
 const media = require('../media-client');
-const { frontPageOk } = require('../home/front-page-text');
+const { containsCoreSlur } = require('openvibe-sdk/front-page');
 
 const BATCH = 20;          // clips titled per run: live.stream.titles takes at most 20 summaries
 const LOOK = 40;           // waiting clips looked at per run (one with a person's title is only marked kept)
@@ -153,10 +152,11 @@ async function titleClips({ ids = null } = {}) {
             if (raw == null) { if (out) await db.run("UPDATE clip_ai_state SET title_status = 'failed' WHERE clip_id = ?", [t.clip.id]); continue; }
             const vod = { title: t.stream && t.stream.title, username: t.clip.username || (t.stream && t.stream.username) };
             const at = Number(t.clip.start_time) || 0;
-            // Titles are public everywhere a clip shows: one about looks or bodies, or with a slur or strong profanity,
-            // gives way to "<stream title> at mm:ss" (an overview's first clause makes a poor title: "The video centers on…").
+            // Swearing is fine in a title (owner, 2026-10-31: only the home page keeps clean, and it skips such an item).
+            // A slur the AI wrote by itself gives way to "<stream title> at mm:ss" (an overview's first clause makes a poor
+            // title: "The video centers on…").
             let title = String(publicTitle(raw, vod, at, null) || '').slice(0, 80).trim();
-            if (title && !frontPageOk(title)) title = String(publicTitle('', vod, at, null) || '').slice(0, 80).trim();
+            if (title && containsCoreSlur(title)) title = String(publicTitle('', vod, at, null) || '').slice(0, 80).trim();
             // The maker may have named it while the AI was writing: their title wins.
             let fresh = null;
             try { fresh = await media.getClip(t.clip.id); } catch { fresh = null; }

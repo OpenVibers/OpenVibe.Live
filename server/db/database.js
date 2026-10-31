@@ -371,7 +371,7 @@ async function addStreamMemory({ stream_id, user_id = null, offset_seconds = 0, 
     // store a second description of a moment already captured.
     return await run(`INSERT INTO stream_memories (stream_id, user_id, offset_seconds, description, tags, thumbnail_url, transcript_json)
                 VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING RETURNING id`,
-        [stream_id, user_id, Math.max(0, Math.round(offset_seconds || 0)), _noLooks(description || ''),
+        [stream_id, user_id, Math.max(0, Math.round(offset_seconds || 0)), description || '',
          tags ? (typeof tags === 'string' ? tags : JSON.stringify(tags)) : null, thumbnail_url,
          (transcript_json && typeof transcript_json !== 'string') ? JSON.stringify(transcript_json) : (transcript_json || null)]);
 }
@@ -395,27 +395,23 @@ function _plainProse(text) {
         .map((l) => (/[.!?…"')\]]$/.test(l) ? l : `${l}.`))
         .join(' ');
 }
-// Public AI text never describes how a person looks (the owner's rule: no looks, body, clothing, hair, face, pose,
-// age or guessed gender). Frame notes show on VOD pages and feed every overview, so every public AI string passes
-// noLooks() (tags noLooksTags(); a short title that names looks is replaced, hasLooks()). The rules and their test
-// corpus are openvibe-sdk/no-looks since SDK 0.61.0 (moved from here, Live#298–#302), shared with Community and
-// MediaHub; test/ai-text-no-looks.test.js still checks Live's writers and the repair below.
-const { noLooks: _noLooks, noLooksTags: _noLooksTags, hasLooks: _hasLooks, RULES_VERSION: _LOOKS_RULES } = require('openvibe-sdk/no-looks');
+// AI text may describe people (the owner, 2026-10-31, lifting the old no-looks rule): it is stored as the model wrote
+// it. What a scene shows is still checked before anything is published (server/ai/explicit.js).
 /**
  * A stream memory as the public sees it (home "Right now", a VOD's AI timeline, a streamer's AI profile): the
  * observation only. The " — heard: "…"" clause is raw speech-to-text kept for the AI's own context (often another
  * language, misheard, 500 characters); shown, it read as a wall of garbled text (2026-10-17, a Greek stream on the
- * home page). Looks and pose wording go as everywhere public.
+ * home page).
  */
 function _publicMemoryText(text) {
     const t = String(text || '').replace(/\s+—\s+heard:[\s\S]*$/, '').trim();
-    return (_noLooks(t) || '').trim();
+    return t;
 }
 // Derive a concise short overview from a long one — the lead sentence(s), capped
 // ~150 chars at a sentence/word boundary. Deterministic + free (no AI call), so it
 // can be cached at write time and shown on listing cards.
 function _shortOverview(text) {
-    const t = _plainProse(_noLooks(text)).replace(/\s+/g, ' ').trim();
+    const t = _plainProse(text).replace(/\s+/g, ' ').trim();
     // ' ' is the "tried, nothing to say" sentinel the AI jobs store to mark a row done.
     // It must round-trip as a non-empty value — the backfill queues treat NULL/'' as
     // still-pending, so collapsing the sentinel to null meant unprocessable VODs were
@@ -436,7 +432,7 @@ function _shortOverview(text) {
     return (sp > 40 ? cut.slice(0, sp) : cut).trim() + '…';
 }
 async function updateStreamAiOverview(streamId, text) {
-    return await run('UPDATE streams SET ai_overview = ?, ai_overview_short = ? WHERE id = ?', [_noLooks(text) || null, _shortOverview(text), streamId]);
+    return await run('UPDATE streams SET ai_overview = ?, ai_overview_short = ? WHERE id = ?', [text || null, _shortOverview(text), streamId]);
 }
 /** AI-inferred category/tags for a stream; the channel inherits the latest inferred category. */
 async function setStreamAiCategory(streamId, category, tags) {
@@ -523,13 +519,13 @@ async function setVodAiOverview(vodId, text) {
     await _ensureVodAiState(vodId);
     // Store the FULL overview alongside the derived short — the card expander swaps
     // the short teaser for this full text, so losing it makes expansion pointless.
-    const full = _noLooks((text || '').trim()) || null;
+    const full = (text || '').trim() || null;
     return await run('UPDATE vod_ai_state SET ai_overview = ?, ai_overview_short = ? WHERE vod_id = ?', [full, _shortOverview(text), vodId]);
 }
 async function setClipAiOverview(clipId, { overview = null, transcript = null, segments = null }) {
     void transcript; // full transcript text lives in the segments JSON now
     await _ensureClipAiState(clipId);
-    const full = _noLooks((overview || '').trim()) || null;
+    const full = (overview || '').trim() || null;
     return await run('UPDATE clip_ai_state SET ai_overview = ?, ai_overview_short = ?, ai_transcript_json = COALESCE(?, ai_transcript_json) WHERE clip_id = ?',
         [full, _shortOverview(overview), _segJson(segments), clipId]);
 }
@@ -657,16 +653,7 @@ function _extractDescFromMaybeJson(text) {
     if (dm) { try { return JSON.parse(`"${dm[1]}"`); } catch { return dm[1]; } }
     return text;
 }
-// The looks repair below scans ~20k rows with a regex (~0.8 s of database time on every boot). New rows are scrubbed when
-// written, so the scan only needs to run again when the scrub rules change: this hash of their source says when.
-let _looksRulesVersion = null;
-// What the repair covers is part of its version: a change in scope runs the scan again even when the rules did not change.
-const _LOOKS_REPAIR_SCOPE = 'full and short columns, each on its own; pronouns (2026-10-23)';
-function looksRulesVersion() {
-    if (!_looksRulesVersion) _looksRulesVersion = require('crypto').createHash('sha1').update([_LOOKS_REPAIR_SCOPE, _LOOKS_RULES].join('|')).digest('hex').slice(0, 12);
-    return _looksRulesVersion;
-}
-async function cleanupMalformedAiText({ force = false } = {}) {
+async function cleanupMalformedAiText() {
     // Only Live-owned tables — the moved vods/clips/pastes tables are frozen for
     // the OpenVibe.Media migration and must never be written.
     const jobs = [
@@ -705,39 +692,6 @@ async function cleanupMalformedAiText({ force = false } = {}) {
             fixed++;
         }
     } catch { /* */ }
-    // Frame notes and overviews that describe how a person looks (stored before the
-    // prompts forbade it): the person becomes "the streamer" and the card line follows.
-    let looksDone = false;
-    try { looksDone = !force && (await getState('ai_looks_repair_rules')) === looksRulesVersion(); } catch { looksDone = false; }
-    const looks = "~* '(shirtless|topless|bare-chested|young|teen|little|bearded|bald|blond|haired|tattooed|muscular|heavyset|older|elderly|middle-aged|skinny|slim|chubby|attractive|pretty|handsome|cute|boy|girl|kid|child|youth)|\\m(wear|dressed|sporting|shirt|t-shirt|tee|tank top|hoodie|sweat|jacket|coat|vest|beanie|cap|hat|helmet|headset|headphones|sunglasses|glasses|outfit|dress|jersey|suit|robe|bandana|scar|mask|attire|apparel|beard|mustache|moustache|goatee|stubble|tattoo|hair|ponytail|braids|dreadlocks|piercing|freckles|makeup|[a-z-]+-wearing)|\\m(man|woman|men|women|guy|guys|gal|lady|ladies|gentleman|gentlemen|male|female|he|she|him|his|her|hers|himself|herself)\\M'";
-    for (const [table, key, col, short] of [['stream_memories', 'id', 'description', null], ['streams', 'id', 'ai_overview', 'ai_overview_short'],
-        ['vod_ai_state', 'vod_id', 'ai_overview', 'ai_overview_short'], ['clip_ai_state', 'clip_id', 'ai_overview', 'ai_overview_short'],
-        ['streamer_overviews', 'user_id', 'overview', 'overview_short']]) {
-        if (looksDone) break;
-        try {
-            const rows = await all(`SELECT ${key} AS k, ${col} AS v FROM ${table} WHERE ${col} ${looks}`);
-            for (const r of rows) {
-                const clean = _noLooks(r.v);
-                if (clean === r.v) continue;
-                if (short) await run(`UPDATE ${table} SET ${col} = ?, ${short} = ? WHERE ${key} = ?`, [clean, _shortOverview(clean), r.k]);
-                else await run(`UPDATE ${table} SET ${col} = ? WHERE ${key} = ?`, [clean, r.k]);
-                fixed++;
-            }
-            // A card line can be stored without its full text (or derived from an older one): it is repaired on its own.
-            // ' ' is the "nothing to say" sentinel and stays when the whole line goes.
-            if (short) {
-                const shorts = await all(`SELECT ${key} AS k, ${short} AS v FROM ${table} WHERE ${short} ${looks}`);
-                for (const r of shorts) {
-                    const clean = _noLooks(r.v);
-                    if (clean === r.v) continue;
-                    await run(`UPDATE ${table} SET ${short} = ? WHERE ${key} = ?`, [clean && clean.trim() ? clean : ' ', r.k]);
-                    fixed++;
-                }
-            }
-        } catch (e) { console.warn(`[AI] looks repair (${table}):`, e.message); looksDone = null; }
-    }
-    // Recorded only after a clean pass, so a failed table is tried again at the next boot.
-    if (looksDone === false) { try { await setState('ai_looks_repair_rules', looksRulesVersion()); } catch { /* next boot tries again */ } }
     if (fixed) console.log(`[AI] Cleaned ${fixed} malformed JSON AI text value(s)`);
     return fixed;
 }
@@ -935,7 +889,7 @@ async function upsertStreamerOverview(userId, { overview, model = null, sources 
                 ON CONFLICT(user_id) DO UPDATE SET
                     overview = excluded.overview, overview_short = excluded.overview_short, model = excluded.model,
                     sources = excluded.sources, generated_at = ov_now()`,
-        [userId, _plainProse(_noLooks(overview || '')), _shortOverview(overview), model, sources]);
+        [userId, _plainProse(overview || ''), _shortOverview(overview), model, sources]);
 }
 async function getStreamerOverview(userId) {
     return await get('SELECT * FROM streamer_overviews WHERE user_id = ?', [userId]);
@@ -999,8 +953,6 @@ async function assembleStreamerAiTimeline(userId, vodIdByStream = null) {
 
 async function setStreamAiTitle(streamId, title) {
     try {
-        // A title about how someone looks is replaced by the stream's own title (stored, so it is not asked again).
-        if (_hasLooks(title)) title = ((await get('SELECT title FROM streams WHERE id = ?', [streamId])) || {}).title || 'Stream';
         return await run('UPDATE streams SET ai_title = ? WHERE id = ?', [String(title || '').slice(0, 80), streamId]);
     } catch { return null; }
 }
@@ -3699,7 +3651,7 @@ module.exports = {
     setVodAiOverview, setClipAiOverview, setVodTranscript, setClipTranscript, getStreamMemoriesInRange,
     getVodsNeedingOverview, getClipsNeedingOverview, getVodsNeedingTimeline, getVodsNeedingTranscript, getClipsNeedingTranscript, getMediaNeedingAiAnalysis,
     setVodTranscriptStatus, setClipTranscriptStatus, bumpVodTranscriptAttempt, bumpClipTranscriptAttempt,
-    cleanupMalformedAiText, noLooks: _noLooks, noLooksTags: _noLooksTags, hasLooks: _hasLooks, publicMemoryText: _publicMemoryText, recordAiUsage, getAiCostToday, getAiCostTodayForUser, getAiUsageSummary,
+    cleanupMalformedAiText, publicMemoryText: _publicMemoryText, recordAiUsage, getAiCostToday, getAiCostTodayForUser, getAiUsageSummary,
     getStreamMemoriesByUser, countStreamMemoriesByUser, getStreamTranscriptSegments,
     addTimelineEvents, getTimeline, getTimelineText, getTimelineCoverage, linkTimelineToVod, getTimelineByVod, getTimelineVodId,
     upsertStreamerOverview, getStreamerOverview, getAllStreamerOverviews, getStreamersNeedingOverview,
