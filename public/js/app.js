@@ -970,6 +970,19 @@ function sameSitePath(url) {
     try { const u = new URL(url); return u.origin === location.origin ? `${u.pathname}${u.search}${u.hash}` : url; } catch { return url; }
 }
 
+// The navbar's OpenVibe mark draws its ring round while one of Live's own page moves loads, at the pace this browser
+// learned for them, and closes it when the route has rendered (ov-mark.js, OVMark.navStart/navEnd). A route that
+// renders without whenRouteReady closes it after the move's own turn of the event loop; none waits past 8 s.
+let _ovNavSeq = 0, _ovNavOn = 0, _ovNavWaiting = false;
+function _ovNavStart() {
+    const me = _ovNavOn = ++_ovNavSeq;
+    _ovNavWaiting = false;
+    try { window.OVMark && window.OVMark.navStart('app'); } catch { /* */ }
+    setTimeout(() => { if (_ovNavOn === me && !_ovNavWaiting) _ovNavEnd(); }, 0);
+    setTimeout(() => { if (_ovNavOn === me) _ovNavEnd(); }, 8000);
+}
+function _ovNavEnd() { if (!_ovNavOn) return; _ovNavOn = 0; _ovNavWaiting = false; try { window.OVMark && window.OVMark.navEnd('app'); } catch { /* */ } }
+
 function navigate(urlPath, replace = false) {
     if (isOffSite(urlPath)) { if (replace) location.replace(urlPath); else location.href = urlPath; return; }
     urlPath = sameSitePath(urlPath);
@@ -1047,19 +1060,6 @@ function ovConnectionPill(state, source = 'app') {
     }
 }
 window.ovConnectionPill = ovConnectionPill;
-
-// The navbar's OpenVibe mark draws its ring round while one of Live's own page moves loads, at the pace this browser
-// learned for them, and closes it when the route has rendered (ov-mark.js, OVMark.navStart/navEnd). A route that
-// renders without whenRouteReady closes it after the move's own turn of the event loop; none waits past 8 s.
-let _ovNavSeq = 0, _ovNavOn = 0, _ovNavWaiting = false;
-function _ovNavStart() {
-    const me = _ovNavOn = ++_ovNavSeq;
-    _ovNavWaiting = false;
-    try { window.OVMark && window.OVMark.navStart('app'); } catch { /* */ }
-    setTimeout(() => { if (_ovNavOn === me && !_ovNavWaiting) _ovNavEnd(); }, 0);
-    setTimeout(() => { if (_ovNavOn === me) _ovNavEnd(); }, 8000);
-}
-function _ovNavEnd() { if (!_ovNavOn) return; _ovNavOn = 0; _ovNavWaiting = false; try { window.OVMark && window.OVMark.navEnd('app'); } catch { /* */ } }
 
 function whenRouteReady(pageId, render) {
     const gen = window.ov ? ov.gen() : 0;

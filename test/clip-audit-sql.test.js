@@ -87,11 +87,12 @@ async function main() {
         CREATE TABLE public.chat_messages (
             id bigint PRIMARY KEY, stream_id bigint, user_id bigint, anon_id text, message text,
             message_type text, is_deleted bigint, is_filtered bigint, timestamp text);
+        -- Created a few days ago, whatever the day the suite runs (fixed October dates fell out of the audit's 30 days).
         INSERT INTO public.clips VALUES
-            (1, 10, 100, 7, 'MARKER-title', 'MARKER-description', 0, 25, 25, 1, 'public', 'ready', 12, 1, '2026-10-01 10:00:00', 12, 'hello there friends', 'a short clip'),
-            (2, 10, 100, 7, 'MARKER-title', 'MARKER-description', 20, 45, 25, 1, 'public', 'ready', 3, 1, '2026-10-02 10:00:00', 3, 'hello there friends', 'a short clip'),
-            (3, 11, 101, 8, 'MARKER-title', 'MARKER-description', 0, 25, 25, 1, 'public', 'ready', 0, 1, '2026-10-03 10:00:00', 0, NULL, NULL),
-            (4, 12, 102, 9, 'MARKER-title', 'MARKER-description', 0, 30, 30, 1, 'public', 'ready', 5, 0, '2026-10-04 10:00:00', 5, NULL, NULL);
+            (1, 10, 100, 7, 'MARKER-title', 'MARKER-description', 0, 25, 25, 1, 'public', 'ready', 12, 1, to_char(now() - interval '5 days', 'YYYY-MM-DD HH24:MI:SS'), 12, 'hello there friends', 'a short clip'),
+            (2, 10, 100, 7, 'MARKER-title', 'MARKER-description', 20, 45, 25, 1, 'public', 'ready', 3, 1, to_char(now() - interval '4 days', 'YYYY-MM-DD HH24:MI:SS'), 3, 'hello there friends', 'a short clip'),
+            (3, 11, 101, 8, 'MARKER-title', 'MARKER-description', 0, 25, 25, 1, 'public', 'ready', 0, 1, to_char(now() - interval '3 days', 'YYYY-MM-DD HH24:MI:SS'), 0, NULL, NULL),
+            (4, 12, 102, 9, 'MARKER-title', 'MARKER-description', 0, 30, 30, 1, 'public', 'ready', 5, 0, to_char(now() - interval '2 days', 'YYYY-MM-DD HH24:MI:SS'), 5, NULL, NULL);
         INSERT INTO public.content_visits VALUES
             ('clip', 1, 'visitor-1', '2026-10-01 11:00:00', '2026-10-02 11:00:00', 2),
             ('clip', 1, 'visitor-2', '2026-10-02 11:00:00', '2026-10-02 12:00:00', 1),
