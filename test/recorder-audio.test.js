@@ -12,6 +12,7 @@ const path = require('path');
 const { EventEmitter } = require('events');
 
 process.env.VOD_AUDIO_WAIT_MS = '300';
+process.env.VOD_VIDEO_WAIT_MS = '300';
 
 // A small SFU: rooms of producers, the real findProducerByKind/waitForProducer behaviour, plain consumers recorded.
 const sfu = new EventEmitter();
@@ -53,7 +54,7 @@ db.resolveStreamVodVisibility = async () => 'public';
 let vodSeq = 6000;
 const ingests = [];
 media.createVod = async () => ({ id: ++vodSeq });
-media.ingestRtpStart = async (vodId, { video, audio }) => { ingests.push({ vodId, video, audio }); return { videoPort: 12000, audioPort: audio ? 12002 : null }; };
+media.ingestRtpStart = async (vodId, { video, audio }) => { ingests.push({ vodId, video, audio }); return { videoPort: video ? 12000 : null, audioPort: audio ? 12002 : null }; };
 media.ingestRtpStop = async () => {};
 media.finalizeVod = async () => {};
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -101,7 +102,31 @@ const until = async (fn, ms = 3000) => { const end = Date.now() + ms; while (!fn
     assert.strictEqual(recorder.activeRecordings.get(102).part, 3);
     console.log('✅ a new microphone after the recorded one died rolls too');
 
-    for (const id of [101, 102]) recorder.stopRecording(id);
-    console.log('\n✅ recorder audio: waits for the microphone, video-only without one, rolls when one comes later');
+    // 5. Stream 2827 (2026-10-30): the camera never reached the server. The sound is recorded on its own instead of
+    //    nothing at all, and when the camera arrives the recording rolls to a part with the picture.
+    sfu.produce('stream-103', 'audio');
+    recorder.startRecording(103, 'webrtc', {}, { mode: 'vod' });
+    await until(() => ingests.length === 5, 3000);
+    assert.strictEqual(ingests[4].video, undefined, 'no camera: no video section asked of Media');
+    assert.ok(ingests[4].audio && ingests[4].audio.codec === 'opus', 'but the sound is recorded');
+    assert.strictEqual(recorder.activeRecordings.get(103).audioOnly, true);
+    assert.deepStrictEqual(sfu.consumers.filter((c) => c.roomId === 'stream-103').map((c) => c.producerId.split('-')[0]), ['audio'], 'one plain consumer, for the sound');
+    console.log('✅ no camera: the sound is recorded instead of nothing');
+    sfu.produce('stream-103', 'video');
+    await until(() => ingests.length === 6, 4000);
+    assert.ok(ingests[5].video && ingests[5].audio, 'the camera arrived: the next part has the picture and the sound');
+    assert.strictEqual(recorder.activeRecordings.get(103).part, 2);
+    assert.ok(!recorder.activeRecordings.get(103).audioOnly, 'and is no longer sound only');
+    console.log('✅ a camera that arrives late rolls the recording to a part with the picture');
+
+    // 6. Neither picture nor sound: nothing is recorded, and nothing is left waiting.
+    recorder.startRecording(104, 'webrtc', {}, { mode: 'vod' });
+    await wait(500);
+    assert.strictEqual(ingests.length, 6, 'nothing to record, no VOD');
+    assert.ok(!recorder.activeRecordings.has(104));
+    console.log('✅ neither picture nor sound: no recording');
+
+    for (const id of [101, 102, 103]) recorder.stopRecording(id);
+    console.log('\n✅ recorder audio: waits for the microphone, video-only without one, sound-only without a camera, rolls when either comes later');
     process.exit(0);
 })().catch((err) => { console.error(err); process.exit(1); });

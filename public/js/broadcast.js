@@ -4078,6 +4078,10 @@ function _waitForSfuMessage(streamId, type, timeoutMs = 15000) {
     });
 }
 
+// How long producing waits for a camera that is still starting before it sends audio alone (the camera is produced
+// later as soon as it arrives: _syncSfuProducerTracks).
+const SFU_VIDEO_WAIT_MS = 8000;
+
 async function _handleSfuProduceRequest(streamId) {
     const ss = getStreamState(streamId);
     if (!ss?.localStream || !ss?.signalingWs) {
@@ -4111,6 +4115,7 @@ async function _handleSfuProduceRequest(streamId) {
 
         const device = new Device();
         await device.load({ routerRtpCapabilities: capsMsg.rtpCapabilities });
+        state.device = device;
 
         // Step 3: Create send transport
         sendBroadcastSignal(ss, { type: 'sfu-create-transport' });
@@ -4200,9 +4205,22 @@ async function _handleSfuProduceRequest(streamId) {
             }
         });
 
-        // Step 4: Produce video + audio tracks
-        const videoTrack = ss.localStream.getVideoTracks()[0];
-        const audioTrack = ss.localStream.getAudioTracks()[0];
+        // Step 4: Produce video + audio tracks. The server asks for this a second after the broadcaster connects; a
+        // camera still starting then (or re-acquired by the recovery handlers) used to leave the stream audio only for
+        // good: stream 2827 (2026-10-30) showed the streamer her own camera while viewers and the recording had no
+        // picture. So wait a few seconds for a video track, and a track that arrives later is produced by
+        // _syncSfuProducerTracks.
+        const liveStream = () => (getStreamState(streamId) || ss).localStream;
+        let videoTrack = liveStream() && liveStream().getVideoTracks()[0];
+        if (!videoTrack) {
+            console.warn('[SFU Produce] No video track yet: waiting up to ' + (SFU_VIDEO_WAIT_MS / 1000) + ' s for the camera');
+            const until = Date.now() + SFU_VIDEO_WAIT_MS;
+            while (!videoTrack && state.active && Date.now() < until) {
+                await new Promise((r) => setTimeout(r, 250));
+                videoTrack = liveStream() && liveStream().getVideoTracks()[0];
+            }
+        }
+        const audioTrack = liveStream() && liveStream().getAudioTracks()[0];
 
         if (videoTrack) {
             const opts = sfuVideoProduceOptions(device, videoTrack);
@@ -4248,7 +4266,12 @@ async function _handleSfuProduceRequest(streamId) {
             console.log('[SFU Produce] Could not log post-produce PC state:', e.message);
         }
 
-        sendBroadcastSignal(ss, { type: 'sfu-produce-status', status: 'ok', detail: `video=${!!state.videoProducer} audio=${!!state.audioProducer}` });
+        const tracks = liveStream() ? `tracks=v${liveStream().getVideoTracks().length}a${liveStream().getAudioTracks().length}` : 'tracks=none';
+        sendBroadcastSignal(ss, { type: 'sfu-produce-status', status: 'ok', detail: `video=${!!state.videoProducer} audio=${!!state.audioProducer} ${tracks}` });
+        if (!state.videoProducer) {
+            // The streamer must know: their preview may still show the camera while viewers see none.
+            toast('Viewers are not getting your camera yet. It will start as soon as the camera does; if it does not, switch the camera off and on.', 'warning');
+        }
     } catch (err) {
         console.error('[SFU Produce] Failed:', err.message);
         sendBroadcastSignal(ss, { type: 'sfu-produce-status', status: 'error', error: err.message });
@@ -4286,6 +4309,32 @@ async function _syncSfuProducerTracks(streamId) {
     if (!state?.active) return;
     const videoTrack = ss.localStream.getVideoTracks()[0] || null;
     const audioTrack = ss.localStream.getAudioTracks()[0] || null;
+    // A kind with no producer yet (the camera or microphone arrived after producing started) is produced now, so it
+    // reaches viewers and the recording (the server's recorder rolls to a part that has it).
+    if (!state.videoProducer && videoTrack && state.transport && state.device && !state.transport.closed) {
+        try {
+            const opts = sfuVideoProduceOptions(state.device, videoTrack);
+            try { state.videoProducer = await state.transport.produce(opts); } catch (err) {
+                if (!opts.codec) throw err;
+                delete opts.codec;
+                state.videoProducer = await state.transport.produce(opts);
+            }
+            await applyVideoSenderPrefs(state.videoProducer);
+            console.log('[SFU] Video producer created for a camera that arrived late:', state.videoProducer.id);
+            sendBroadcastSignal(ss, { type: 'sfu-produce-status', status: 'ok', detail: 'video=true audio=' + !!state.audioProducer + ' late-video' });
+            toast('Your camera is live now', 'success');
+        } catch (e) {
+            console.warn('[SFU] Late video produce failed:', e.message);
+        }
+    }
+    if (!state.audioProducer && audioTrack && state.transport && !state.transport.closed) {
+        try {
+            state.audioProducer = await state.transport.produce({ track: audioTrack, stopTracks: false });
+            console.log('[SFU] Audio producer created for a microphone that arrived late:', state.audioProducer.id);
+        } catch (e) {
+            console.warn('[SFU] Late audio produce failed:', e.message);
+        }
+    }
     if (state.videoProducer && videoTrack) {
         try {
             await state.videoProducer.replaceTrack({ track: videoTrack });
