@@ -4001,7 +4001,8 @@ function connectSignaling(streamId) {
 
         if (broadcastState.streams.has(streamId) && ss.streamData) {
             const delay = ss.signalingReconnectDelay;
-            ss.signalingReconnectDelay = Math.min(ss.signalingReconnectDelay * 1.5, 30000);
+            // At most 15 s between tries: the server keeps the stream live for five minutes.
+            ss.signalingReconnectDelay = Math.min(ss.signalingReconnectDelay * 1.5, 15000);
             console.log(`[Broadcast] Reconnecting signaling for stream ${streamId} in ${Math.round(delay)}ms`);
             if (broadcastState.activeStreamId === streamId) {
                 // Reconnecting, not dead — the server keeps the stream live during a grace
@@ -5040,6 +5041,24 @@ document.addEventListener('visibilitychange', () => {
         .catch((err) => console.warn('[Broadcast] Resume after background failed:', err.message))
         .finally(() => { _bcResuming = null; _bcSessionChanged(); });
 });
+
+/* The network came back (Wi-Fi to cellular, a tunnel, a router restart): every live stream's signalling socket
+   reconnects now instead of waiting out a backoff that grew while the network was gone (plan L23 R1). The server
+   keeps the stream live for five minutes meanwhile, and the SFU's own recovery handlers rebuild a transport that
+   failed. */
+function _bcReconnectNow(reason) {
+    if (!isStreaming()) return;
+    for (const [streamId, ss] of broadcastState.streams) {
+        if (!ss || ss.signalingIntentionalClose || !ss.streamData) continue;
+        if (ss.signalingWs && ss.signalingWs.readyState <= WebSocket.OPEN) continue;   // connecting or open
+        if (ss.signalingReconnectTimer) { clearTimeout(ss.signalingReconnectTimer); ss.signalingReconnectTimer = null; }
+        ss.signalingReconnectDelay = 3000;
+        console.log(`[Broadcast] ${reason}: reconnecting signalling for stream ${streamId} now`);
+        connectSignaling(streamId);
+    }
+}
+window.addEventListener('online', () => _bcReconnectNow('Network back'));
+try { if (navigator.connection) navigator.connection.addEventListener('change', () => { if (navigator.onLine !== false) _bcReconnectNow('Network changed'); }); } catch { /* */ }
 
 async function chooseBroadcastCamera(cameraId, buttonEl = null) {
     const previousCameraId = _getPreferredCameraId();

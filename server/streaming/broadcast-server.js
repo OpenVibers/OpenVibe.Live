@@ -20,6 +20,12 @@ const webrtcSFU = require('./webrtc-sfu');
 // Per-address cap on viewer sockets (a household or office behind one NAT watching several tabs fits).
 const MAX_VIEWER_SOCKETS_PER_IP = 16;
 const config = require('../config');
+
+// How long a stream stays live after its broadcaster's connection drops (plan L23 R1, owner 2026-10-31: "even if the
+// client disconnects, their phone reboots… resuming should be a piece of cake"). A phone that reboots needs a minute or
+// two; 60 s ended those streams. During the grace the room, the chat and is_live stay, viewers see "Reconnecting…", and
+// the broadcaster's studio (or any device on the same account, through Resume) carries on the same stream.
+const RESUME_GRACE_MS = Math.max(30000, Number(process.env.BROADCAST_RESUME_GRACE_MS) || 5 * 60 * 1000);
 const { turnEntries } = require('../net/turn');
 const whipHandler = require('./whip-handler');
 
@@ -513,7 +519,7 @@ class BroadcastServer extends EventEmitter {
                 console.log(`[Broadcast] Broadcaster disconnected: stream ${client.streamId}`);
                 require('./stream-history').broadcasterLeft(client.streamId);
 
-                // Start a grace timer — if broadcaster doesn't reconnect, end the stream cleanly
+                // Start a grace timer (RESUME_GRACE_MS) — if the broadcaster doesn't come back, end the stream cleanly
                 if (room._disconnectTimer) clearTimeout(room._disconnectTimer);
                 room._disconnectTimer = setTimeout(async () => {
                     // Check if broadcaster reconnected
@@ -540,11 +546,11 @@ class BroadcastServer extends EventEmitter {
                             this.safeSend(vWs, { type: 'stream-ended' });
                         }
                     }
-                }, 60000);
+                }, RESUME_GRACE_MS);
 
-                // Notify all viewers (they may get a reconnection)
+                // Notify all viewers (they may get a reconnection): they wait as long as the server does.
                 for (const [peerId, viewerWs] of room.viewers) {
-                    this.safeSend(viewerWs, { type: 'broadcaster-disconnected' });
+                    this.safeSend(viewerWs, { type: 'broadcaster-disconnected', graceMs: RESUME_GRACE_MS });
                 }
             } else {
                 room.viewers.delete(client.peerId);
