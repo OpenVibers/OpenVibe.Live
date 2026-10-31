@@ -1050,6 +1050,11 @@ app.get(/^\/obs\/scene\/(starting|brb|ending)\/[A-Za-z0-9_.-]{1,40}\/?$/, (req, 
     sendDocument(res, 'obs/scene.html');
 });
 
+// The moments of a stream in the streamer's look (plan L45): follows, tips, subs, raids and goals as they happen.
+app.get(/^\/obs\/alerts\/[A-Za-z0-9_.-]{1,40}\/?$/, (req, res) => {
+    sendDocument(res, 'obs/alerts.html');
+});
+
 // New overlay routes — per-slot and global
 app.get('/overlay/chat/:username/:slotIdOrSlug', (req, res) => {
     sendDocument(res, 'obs/chat.html');
