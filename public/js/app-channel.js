@@ -846,6 +846,7 @@ async function loadChannelPage(username, managedStreamRef = null, legacySessionI
             // ── LIVE STATE ──
             document.getElementById('ch-live-area').style.display = '';
             document.getElementById('ch-offline-area').style.display = 'none';
+            _setChannelLive(true);
             _channelFooter(true);
             _placeBelowFold();
 
@@ -928,6 +929,7 @@ async function loadChannelPage(username, managedStreamRef = null, legacySessionI
             document.getElementById('ch-live-area').style.display = 'none';
             document.getElementById('ch-offline-area').style.display = '';
             _channelFooter(false);
+            _setChannelLive(false);
             _wireCamButton();
             _updateCamButton(null);
             _placeBelowFold();
@@ -2457,6 +2459,28 @@ async function loadChannelAiTimeline(username) {
     } catch (err) {
         wrap.innerHTML = `<div class="ai-tl-empty"><i class="fa-solid fa-triangle-exclamation"></i><p>Couldn't load the AI timeline.</p><button class="btn btn-small btn-outline" onclick="loadChannelAiTimeline('${esc(username)}')">Retry</button></div>`;
     }
+}
+
+/** The page is showing a live stream. On a phone held upright this is the watch screen (channel.css "Watching on a
+ *  phone"): the app bar steps aside, the chat is docked, and the channel line opens on a tap. */
+function _setChannelLive(live) {
+    const page = document.getElementById('page-channel');
+    if (!page) return;
+    page.classList.toggle('ch-is-live', !!live);
+    const bar = document.getElementById('ch-info-bar');
+    if (!bar) return;
+    bar.classList.remove('ch-info-open');
+    const left = bar.querySelector('.ch-info-bar-left');
+    if (!left || left._ovInfoTap) return;
+    left._ovInfoTap = true;
+    // A tap on the channel line shows or hides the rest of it (the AI line, the description, the totals). Only where
+    // the line is folded: on a wide screen it is always open, so the tap does nothing there.
+    left.addEventListener('click', (e) => {
+        if (e.target.closest('a, button, input, select, textarea')) return;
+        if (!page.classList.contains('ch-is-live') || !matchMedia('(max-width: 768px) and (orientation: portrait)').matches) return;
+        const open = bar.classList.toggle('ch-info-open');
+        left.setAttribute('aria-expanded', String(open));
+    });
 }
 
 // The footer while the stream plays is the quiet one-line footer; an offline channel gets the whole footer, where someone

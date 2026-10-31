@@ -2531,7 +2531,11 @@ body.bc-studio-on #bc-stats-overlay.bc-stats-overlay {
 body.bc-studio-on .messenger-toggle,
 body.bc-studio-on .bc-mobile-chat-fab,
 body.bc-studio-on #navbar-mount,
-body.bc-studio-on .navbar { display: none !important; }
+body.bc-studio-on .navbar,
+body.bc-studio-on .ovnav-appbar { display: none !important; }
+/* The app's bottom bar (openvibe-shared appbar.js) sat over the studio's rail and cut off its last buttons (moosely,
+   2026-10-31): the studio is a full screen of its own, as a camera app is. */
+html:has(body.bc-studio-on) { --ovnav-appbar-h: 0px; }
 
 /* The stream chat over the picture: newest at the bottom, fading out upward, input at the very bottom. */
 body.bc-studio-on #bc-chat-sidebar {
@@ -2559,7 +2563,8 @@ body.bc-studio-on #bc-chat-messages .chat-msg {
 }
 /* Site update cards and chat connection lines are for viewers; a streamer on the camera gets neither (the card's
    reload button would end the stream, and the top bar already shows the connection). */
-body.bc-studio-on #bc-chat-messages .chat-deploy { display: none !important; }
+body.bc-studio-on #bc-chat-messages .chat-deploy,
+body.bc-studio-on #bc-chat-messages .chat-conn-note { display: none !important; }
 body.bc-studio-on #bc-chat-sidebar .chat-input-area { background: none; border: 0; padding: 4px 10px 10px; }
 body.bc-studio-on #bc-chat-input {
     background: rgba(0,0,0,0.45); color: #fff; border: 1px solid rgba(255,255,255,0.2); border-radius: 22px;
