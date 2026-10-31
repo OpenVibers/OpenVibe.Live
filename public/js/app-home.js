@@ -1254,9 +1254,11 @@ function demoteHomeIntroSections() {
 }
 
 /**
- * Tabs for a block of home sections (2026-10-30, the owner's short-pages rule: a phone page is one or two screens).
- * On a phone a block shows one of its sections at a time behind a row of tabs; wider screens never see the tabs
- * and show every section. The tabs and the CSS live in the home fragment and features/home.css.
+ * Tabs for a block of home sections. Only the explainer at the foot (New here?) uses them: the content blocks (Catch
+ * up, Around OpenVibe) show every section on every screen again (the owner, 2026-10-31: "now I can't see the videos
+ * and clips on the homepage… don't reduce size by removing features"). On a phone the block shows one section at a
+ * time behind a row of tabs; wider screens never see the tabs. The tabs and the CSS live in the home fragment and
+ * features/home.css.
  *
  *   initHomeTabs(boxId, shownIds, storageKey, onOpen, { closable })
  *     boxId      the block's element id. It carries data-tab — the section that is open — and its tab row.
@@ -1341,23 +1343,6 @@ function initHomeTabs(boxId, shownIds, storageKey, onOpen, { closable = false } 
     sync();
 }
 
-/**
- * Catch up: the five rails after Live Now share one place, one rail at a time. A tab shows once its rail has
- * something: each loader already hides its header or section when it has nothing, so the tabs follow those.
- */
-const HOME_CATCHUP_KEY = 'ov_home_catchup';
-const _HOME_CATCHUP_SHOWN = { vods: 'home-recent-vods-header', clips: 'home-clips-header', pastes: 'home-pastes-header', moments: 'home-moments-section' };
-function initHomeCatchup() {
-    initHomeTabs('home-catchup', _HOME_CATCHUP_SHOWN, HOME_CATCHUP_KEY);
-}
-
-/** Around OpenVibe: the digest, the star spotlight and the pulse share one place on a phone. */
-const HOME_AROUND_KEY = 'ov_home_around';
-const _HOME_AROUND_SHOWN = { lately: 'home-digest', star: 'home-star-section', happening: 'home-pulse-section' };
-function initHomeAround() {
-    initHomeTabs('home-around', _HOME_AROUND_SHOWN, HOME_AROUND_KEY);
-}
-
 /** New here?: the tour, the About banner and the network hub share one place on a phone. */
 const HOME_INTRO_KEY = 'ov_home_intro';
 const _HOME_INTRO_SHOWN = { tour: 'home-tour-mount', about: 'home-cta-banner', network: 'home-network-hub' };
@@ -1372,9 +1357,7 @@ function initHomeIntro() {
 }
 
 async function loadHome() {
-    initHomeAround();     // the digest, the star spotlight and the pulse share one place on a phone
     initHomeIntro();      // the tour, the About banner and the network hub share one place on a phone
-    initHomeCatchup();
     demoteHomeIntroSections();
     void loadHomeChangelog();
     _initHomeAbout();

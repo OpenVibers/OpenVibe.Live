@@ -1,14 +1,11 @@
 /**
  * Home tabs (2026-10-30, the owner's short-pages rule: a phone page is one or two screens).
  *
- * Part 1 shipped Catch up: the five rails after Live Now share one place, a row of tabs and one rail at a time.
- * This is the other two blocks, built on the same controller (initHomeTabs in public/js/app-home.js):
- *
- *   Around OpenVibe  the digest (Lately), the star spotlight (Star) and the pulse (Happening)
- *   New here?        the restream tour (How it works), the About banner (About), the network hub (The network)
- *
- * Wider screens never see the tabs and show every section. Nothing was removed: every section is still in the
- * page. The block is real here, not a string: the test opens the rendered home page in a DOM and drives it.
+ * Only the explainer at the foot is tabbed (New here?: the restream tour, the About banner, the network hub). The
+ * content blocks are never tabbed again (the owner, 2026-10-31: "now I can't see the videos and clips on the homepage…
+ * don't reduce size by removing features"): Around OpenVibe (the digest, the star spotlight, the pulse) shows every
+ * section on every screen, and test/home-catchup.test.js holds the rails. Wider screens never see the tabs. The
+ * block is real here, not a string: the test opens the rendered home page in a DOM and drives it.
  *
  *   node test/home-tabs.test.js
  */
@@ -91,28 +88,27 @@ function openHome({ views = 0 } = {}) {
 
 console.log('Home tabs');
 
-const AROUND = ['lately', 'star', 'happening'];
 const INTRO = ['tour', 'about', 'network'];
-const aroundStart = home.indexOf('<div class="home-tabbox" id="home-around"');
+const aroundStart = home.indexOf('<div class="home-around" id="home-around"');
 const aroundEnd = home.indexOf('</div><!-- /home-around -->');
 const around = home.slice(aroundStart, aroundEnd);
 const introStart = home.indexOf('<div class="home-tabbox home-intro" id="home-intro"');
 const introEnd = home.indexOf('</div><!-- /home-intro -->');
 const intro = home.slice(introStart, introEnd);
 
-check('the three sections of Around OpenVibe share one block, in their order, with the egg where it was', () => {
+check('Around OpenVibe shows its three sections, in their order, with the egg where it was, and no tabs', () => {
     assert.ok(aroundStart > 0 && aroundEnd > aroundStart, 'the block opens and closes on the home page');
     const order = ['id="home-digest"', 'id="home-star-section"', 'id="hero-egg"', 'id="home-pulse-section"'].map((n) => around.indexOf(n));
     assert.ok(order.every((i) => i > 0), 'every section is inside it');
     assert.deepStrictEqual([...order].sort((a, b) => a - b), order, 'in the same order as before');
     assert.ok(home.indexOf('id="home-around"') < home.indexOf('id="home-catchup"'), 'the block sits where the digest was');
+    assert.ok(!around.includes('role="tablist"') && !/data-panel="(lately|star|happening)"/.test(around), 'no tab row and no panels');
+    assert.ok(!/\[data-panel="(lately|star|happening)"\]/.test(css), 'no CSS hides one of them');
 });
 
 check('one tab per section, named for screen readers, pointing at its section', () => {
-    assert.match(around, /<div class="home-tabs" role="tablist" aria-label="Around OpenVibe">/);
     assert.ok(intro.includes('<div class="home-tabs" role="tablist" aria-label="New here?">'), 'the New here? tab list');
-    for (const [key, block, box] of [['lately', around, 'home-digest'], ['star', around, 'home-star-section'], ['happening', around, 'home-pulse-section'],
-        ['tour', intro, 'home-tour-mount'], ['about', intro, 'home-cta-banner'], ['network', intro, 'home-network-hub']]) {
+    for (const [key, block, box] of [['tour', intro, 'home-tour-mount'], ['about', intro, 'home-cta-banner'], ['network', intro, 'home-network-hub']]) {
         const tab = (new RegExp(`<button type="button" role="tab" id="[a-z]+-tab-${key}" data-tab="${key}"[^>]*>`).exec(block) || [])[0];
         assert.ok(tab, `the ${key} tab`);
         const controls = (/aria-controls="([^"]+)"/.exec(tab) || [])[1];
@@ -121,35 +117,28 @@ check('one tab per section, named for screen readers, pointing at its section', 
     }
 });
 
-check('How it works is the default tab of New here? and Lately the default of Around OpenVibe', () => {
+check('How it works is the default tab of New here?', () => {
     assert.match(intro, /id="hi-tab-tour" data-tab="tour" aria-selected="true"/);
-    assert.match(around, /id="ha-tab-lately" data-tab="lately" aria-selected="true"/);
     assert.match(intro, /<div class="home-tabbox home-intro" id="home-intro" data-tab="tour">/);
-    assert.match(around, /<div class="home-tabbox" id="home-around" data-tab="lately">/);
 });
 
 check('the tabs and the one-section-at-a-time rule exist only under 760 px', () => {
     assert.match(css, /\.home-tabs \{ display: none; \}/, 'no tabs by default');
     const phone = css.slice(css.indexOf('.home-tabs { display: none; }'));
     const block = phone.slice(phone.indexOf('@media (max-width: 759px) {'));
-    for (const key of [...AROUND, ...INTRO]) assert.ok(block.includes(`.home-tabbox:not([data-tab="${key}"]) [data-panel="${key}"]`), `${key} hides when another tab is open`);
+    for (const key of INTRO) assert.ok(block.includes(`.home-tabbox:not([data-tab="${key}"]) [data-panel="${key}"]`), `${key} hides when another tab is open`);
     assert.match(block, /min-height: 44px/, 'a tab is a 44 px target');
     assert.match(js, /const _narrow = typeof window !== 'undefined' && window\.matchMedia\('\(max-width: 759px\)'\)/, 'the same breakpoint as the rails\' phone sizing');
 });
 
-check('the section\'s own heading goes while its tab names it, and the header keeps what it does', () => {
-    assert.ok(css.includes('[data-panel="star"] > .section-header > h2'), 'the star heading goes');
-    assert.ok(css.includes('[data-panel="lately"] .digest-title'), 'the digest title goes');
+check('the network hub\'s heading goes while its tab names it', () => {
     assert.ok(css.includes('[data-panel="network"] .network-hub-header h3'), 'the network heading goes');
-    assert.ok(css.includes('[data-panel="happening"] > .section-header { display: none; }'), 'the pulse header is only its heading');
-    assert.ok(css.includes('[data-panel="star"] > .section-header { margin: 6px 0 10px; min-height: 0; }'), 'the star header keeps its note');
 });
 
 check('a tab shows once its section does: the ids the script watches are the sections\' own', () => {
-    const aroundIds = /const _HOME_AROUND_SHOWN = \{([^}]+)\}/.exec(js);
     const introIds = /const _HOME_INTRO_SHOWN = \{([^}]+)\}/.exec(js);
-    assert.ok(aroundIds && introIds, 'the maps of watched sections');
-    for (const id of aroundIds[1].match(/'([a-z-]+)'/g).map((s) => s.slice(1, -1))) assert.ok(around.includes(`id="${id}"`), `${id} is in the block`);
+    assert.ok(introIds, 'the map of watched sections');
+    assert.ok(!/initHomeAround|initHomeCatchup|_HOME_AROUND_SHOWN|_HOME_CATCHUP_SHOWN/.test(js), 'the content blocks have no tabs to set up');
     for (const id of introIds[1].match(/'([a-z-]+)'/g).map((s) => s.slice(1, -1))) assert.ok(intro.includes(`id="${id}"`), `${id} is in the block`);
 });
 
@@ -167,44 +156,17 @@ check('the tour loads when its tab opens, not only when the mount nears the view
 });
 
 (async () => {
-    await check('a tab appears once its section has something (the loader shows the pulse)', async () => {
+    await check('a tab appears once its section has something, and a block with nothing drops its tab row', async () => {
         const p = openHome();
-        p.run('initHomeAround(); initHomeIntro();');
+        p.run('initHomeIntro();');
         await tick();
-        assert.strictEqual(p.el('ha-tab-happening').hidden, true, 'the pulse has nothing yet, so its tab is hidden');
-        show(p.el('home-pulse-section'));
+        for (const id of ['home-tour-mount', 'home-cta-banner', 'home-network-hub']) hide(p.el(id));
         await tick();
-        assert.strictEqual(p.el('ha-tab-happening').hidden, false, 'the pulse arrived, so its tab is there');
-        assert.strictEqual(p.el('ha-tab-lately').hidden, false, 'the digest is there all along');
-    });
-
-    await check('a tab that is shown is one the reader can open, and it is remembered', async () => {
-        const p = openHome();
-        p.run('initHomeAround();');
+        assert.strictEqual(p.el('home-intro').querySelector('[role="tablist"]').hidden, true, 'nothing to show, so no tab row');
+        show(p.el('home-cta-banner'));
         await tick();
-        p.click('ha-tab-star');
-        await tick();
-        assert.strictEqual(p.el('home-around').dataset.tab, 'star', 'the block shows the star');
-        assert.strictEqual(p.el('ha-tab-star').getAttribute('aria-selected'), 'true', 'the tab says so');
-        assert.strictEqual(p.el('ha-tab-lately').getAttribute('aria-selected'), 'false', 'the other one does not');
-        assert.strictEqual(p.store.get('ov_home_around'), 'star', 'the reader keeps it for next time');
-    });
-
-    await check('a section that empties out falls back, and a block with nothing drops its tab row', async () => {
-        const p = openHome();
-        p.run('initHomeAround();');
-        await tick();
-        p.click('ha-tab-star');
-        await tick();
-        show(p.el('home-pulse-section'));   // the pulse arrives
-        await tick();
-        hide(p.el('home-digest'));   // the loader found nothing
-        hide(p.el('home-star-section'));
-        await tick();
-        assert.strictEqual(p.el('home-around').dataset.tab, 'happening', 'it fell back to the pulse');
-        hide(p.el('home-pulse-section'));
-        await tick();
-        assert.strictEqual(p.el('home-around').querySelector('[role="tablist"]').hidden, true, 'nothing left to show, so no tab row');
+        assert.strictEqual(p.el('hi-tab-about').hidden, false, 'the banner arrived, so its tab is there');
+        assert.strictEqual(p.el('hi-tab-network').hidden, true, 'the hub has nothing, so its tab is hidden');
     });
 
     await check('the tour loads when its tab opens', async () => {
