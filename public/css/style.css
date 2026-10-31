@@ -3818,6 +3818,13 @@ textarea.form-input { resize: vertical; min-height: 60px; }
 .form-row .form-group { flex: 1; }
 
 .key-display { display: flex; gap: 6px; flex-wrap: wrap; }
+/* The dashboard's Scenes card (L45): a theme and a countdown, then a URL for each scene. */
+.dash-scene-opts { display: flex; flex-wrap: wrap; gap: 10px 16px; margin-bottom: 12px; }
+.dash-scene-opts label { display: inline-flex; align-items: center; gap: 8px; font-size: .88rem; font-weight: 600; color: var(--text-secondary); }
+.dash-scene-opts select { min-height: 36px; padding: 0 10px; border-radius: 10px; border: 1px solid var(--border); background: var(--bg-input, var(--bg-secondary)); color: var(--text-primary); font: inherit; }
+.dash-scenes { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+.dash-scene-name { display: block; margin-bottom: 6px; font-size: .9rem; font-weight: 700; }
+.dash-scene-name i { width: 18px; color: var(--accent); }
 .key-display .form-input { flex: 1; }
 
 .endpoint-info {
