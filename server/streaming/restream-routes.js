@@ -71,7 +71,7 @@ function validateIngestUrl(raw) {
 const PLATFORM_PRESETS = {
     youtube: { name: 'YouTube', defaultServerUrl: 'rtmp://a.rtmp.youtube.com/live2', icon: 'fa-brands fa-youtube', color: '#ff0000' },
     twitch:  { name: 'Twitch', defaultServerUrl: 'rtmps://live.twitch.tv/app', icon: 'fa-brands fa-twitch', color: '#9146ff' },
-    kick:    { name: 'Kick', defaultServerUrl: '', icon: 'fa-solid fa-k', color: '#53fc18' },
+    kick:    { name: 'Kick', defaultServerUrl: '', icon: 'fa-brands fa-kick', color: '#53fc18' },
     custom:  { name: 'Custom RTMP', defaultServerUrl: '', icon: 'fa-solid fa-globe', color: '#888' },
 };
 
