@@ -138,8 +138,8 @@
     word-break: break-all;
 }
 .chat-link:hover {
-    color: var(--accent-hover, var(--accent-light));
-    text-decoration-color: var(--accent-hover, var(--accent-light));
+    color: var(--accent-light);
+    text-decoration-color: var(--accent-light);
 }
 
 /* ── Trust Domain Dialog ─────────────────────────────────────── */
@@ -265,8 +265,8 @@
     font-weight: 600;
 }
 .link-trust-always:hover {
-    background: var(--accent-hover, var(--accent-light));
-    border-color: var(--accent-hover, var(--accent-light));
+    background: var(--accent-light);
+    border-color: var(--accent-light);
 }
 .link-trust-always i { margin-right: 4px; }
 

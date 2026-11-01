@@ -69,7 +69,7 @@
     transition: background var(--ov-dur-2, 0.15s), transform var(--ov-dur-1, 0.1s);
 }
 .vc-create-btn:hover {
-    background: var(--accent-hover);
+    background: var(--accent-light);
     transform: scale(1.1);
 }
 .vc-channel-list {
