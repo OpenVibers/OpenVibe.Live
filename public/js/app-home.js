@@ -1388,7 +1388,9 @@ async function loadHome() {
         // copy is at most 20 seconds old; anything older falls through to a normal load and the
         // placeholders cover the gap.
         await apiSWR('/streams', (liveData) => {
-            const streams = liveData.streams || [];
+            // Newest first, never by crowd (market research, Live outcome: a channel that just went live is seen,
+            // instead of the biggest staying on top). The server's own order stays for its other readers.
+            const streams = (liveData.streams || []).slice().sort((a, b) => (Date.parse(b.started_at) || 0) - (Date.parse(a.started_at) || 0));
             document.getElementById('live-count').textContent = streams.length;
             const noLiveEl = document.getElementById('no-live-streams');
             if (noLiveEl) noLiveEl.style.display = streams.length ? 'none' : '';
