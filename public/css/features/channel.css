@@ -938,6 +938,9 @@ button.viewer-badge:focus-visible { outline: 2px solid #93c5fd; outline-offset: 
 .ch-offline-default-name { font-size: 1.4rem; font-weight: 700; color: var(--text-primary); }
 .ch-offline-default-sub { font-size: 0.9rem; opacity: 0.7; margin-top: 4px; }
 .ch-offline-screen:has(.ch-offline-default) { aspect-ratio: auto; max-height: none; height: auto; min-height: 0; align-items: stretch; }
+/* The default offline card is a page surface, not a video stage: it wears the theme (a streamer's own offline image or
+   HTML keeps the dark stage above). On a light theme the black stage left the name and "Most watched" unreadable. */
+.ch-offline-screen:has(.ch-offline-default) { background: radial-gradient(120% 70% at 50% 0%, color-mix(in srgb, var(--accent) 9%, var(--bg-secondary, #15151c)), var(--bg-secondary, #15151c) 72%); }
 .ch-offline-screen:has(.ch-offline-default) .ch-offline-default { justify-content: flex-start; padding-top: clamp(20px, 5vh, 44px); padding-bottom: clamp(18px, 4vh, 36px); }
 .ch-offline-explore { width: 100%; margin-top: 22px; }
 .off-cyc { width: 100%; max-width: 980px; margin: 0 auto; padding: 0 clamp(10px, 3vw, 24px); box-sizing: border-box; }
