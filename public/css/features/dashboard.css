@@ -48,7 +48,7 @@
 .pc-connecting-head { font-size: 0.98rem; font-weight: 600; color: var(--text); display: inline-flex; align-items: center; gap: 10px; }
 .pc-manual { font-size: 0.82rem; color: var(--text-muted, #999); display: flex; align-items: center; gap: 8px; justify-content: center; flex-wrap: wrap; }
 .pc-copy-btn {
-    background: rgba(255,255,255,0.06); border: 1px solid var(--border); color: var(--text-secondary);
+    background: color-mix(in srgb, var(--text-primary, #fff) 6%, transparent); border: 1px solid var(--border); color: var(--text-secondary);
     border-radius: 6px; padding: 3px 9px; font-size: 0.78rem; cursor: pointer; display: inline-flex; align-items: center; gap: 5px;
     transition: background var(--ov-dur-2, .15s), border-color var(--ov-dur-2, .15s);
 }
@@ -442,7 +442,7 @@
     display: flex;
     align-items: center;
     padding: 10px 0;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+    border-bottom: 1px solid color-mix(in srgb, var(--text-primary, #fff) 4%, transparent);
     gap: 12px;
 }
 

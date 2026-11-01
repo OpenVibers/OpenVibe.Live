@@ -40,7 +40,7 @@
 
         /* What happened — lines land one after another like messages */
         .story { display: grid; gap: 10px; max-width: 640px; margin: 0 auto 24px; text-align: left; }
-        .msg { position: relative; padding: 12px 16px; border-radius: 16px 16px 16px 4px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); color: #f3efec; font-size: clamp(1rem, 2.8vw, 1.15rem); line-height: 1.45; font-weight: 600;
+        .msg { position: relative; padding: 12px 16px; border-radius: 16px 16px 16px 4px; background: color-mix(in srgb, var(--text-primary, #fff) 6%, transparent); border: 1px solid color-mix(in srgb, var(--text-primary, #fff) 10%, transparent); color: #f3efec; font-size: clamp(1rem, 2.8vw, 1.15rem); line-height: 1.45; font-weight: 600;
             opacity: 0; transform: translateX(-24px) scale(0.98); animation: land var(--ov-dur-4, 0.55s) var(--ov-ease-out, cubic-bezier(.2,.9,.3,1.2)) forwards; animation-delay: var(--d); }
         .msg.hot { background: rgba(231,76,60,0.16); border-color: rgba(231,76,60,0.55); color: #fff; }
         .msg.hot::before { content: ''; position: absolute; inset: -1px; border-radius: inherit; animation: ring 1.6s var(--ov-ease-out, ease-out) 1; animation-delay: calc(var(--d) + 0.3s); pointer-events: none; }

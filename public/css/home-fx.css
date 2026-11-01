@@ -50,7 +50,7 @@
     font: inherit; font-weight: 700; font-size: clamp(0.88rem, 1.6vw, 0.98rem); letter-spacing: 0.01em;
     color: var(--text-primary); text-decoration: none; cursor: pointer; overflow: hidden;
     background:
-        linear-gradient(180deg, rgba(255,255,255,0.07), rgba(255,255,255,0) 46%),
+        linear-gradient(180deg, color-mix(in srgb, var(--text-primary, #fff) 7%, transparent), rgba(255,255,255,0) 46%),
         color-mix(in srgb, var(--c) 10%, var(--bg-card));
     border: 1px solid color-mix(in srgb, var(--c) 42%, var(--border));
     box-shadow: 0 2px 0 0 color-mix(in srgb, var(--c) 22%, transparent), 0 8px 20px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.09);

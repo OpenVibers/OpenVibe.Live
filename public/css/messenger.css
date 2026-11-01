@@ -672,7 +672,7 @@
     white-space: nowrap;
 }
 .msg-thread-dropdown-item:hover {
-    background: var(--bg-hover, rgba(255,255,255,0.06));
+    background: var(--bg-hover, color-mix(in srgb, var(--text-primary, #fff) 6%, transparent));
 }
 .msg-thread-dropdown-item.danger {
     color: #f38ba8;
