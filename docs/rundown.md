@@ -78,7 +78,7 @@ Speech-to-text hears a stream's whole audio track. On 2026-10-18 the Arena's "qu
 | GET, PUT | `/opt-out {out}` | signed in |
 | GET | `/voice/:user?t=` | a line in the streamer's chat voice |
 
-A person in any answer is `{ id, username, display_name, avatar_url, profile_color }`.
+A person in any answer is `{ id, username, display_name, avatar_url, profile_color }`. A stream in `on_air` or `streams` also carries `thumbnail_url`: its public VOD's thumbnail once it has ended, its live frame while it is on air, and `null` for an NSFW stream or when Media has no picture.
 
 ## Data
 
