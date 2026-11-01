@@ -1783,20 +1783,45 @@ function _streamTopics(s) {
     return out;
 }
 
+// The chip a viewer picked comes back the next time it is live (market outcome 2: a default set), in this browser
+// only; _homeTopic is what is applied now, which is All while the picked topic is off air.
+const _TOPIC_KEY = 'ov_home_topic';
+let _homeTopicPref = (() => { try { return (typeof localStorage !== 'undefined' && localStorage.getItem(_TOPIC_KEY)) || ''; } catch { return ''; } })();
 let _homeTopic = '';
-/** The chip row over the live grid: shown when at least two streams are live and they have two topics or more. */
+// Following (market outcome 3): the live channels the signed-in viewer follows, from GET /api/streams/following
+// (private, never cached by the edge), read at most once a minute. A chip of its own, first after All.
+const _FOLLOWING = '@following';
+let _homeFollowing = { at: 0, ids: new Set(), busy: false };
+let _homeLastStreams = [];
+function _homeFollowingRefresh() {
+    const me = typeof currentUser !== 'undefined' && currentUser;
+    if (!me || typeof api !== 'function') { if (!me) _homeFollowing = { at: 0, ids: new Set(), busy: false }; return; }
+    if (_homeFollowing.busy || Date.now() - _homeFollowing.at < 60000) return;
+    _homeFollowing.busy = true;
+    api('/streams/following').then((d) => {
+        _homeFollowing = { at: Date.now(), ids: new Set(((d && d.user_ids) || []).map(Number)), busy: false };
+        _homeTopicsSync(_homeLastStreams);
+    }).catch(() => { _homeFollowing = { ..._homeFollowing, at: Date.now(), busy: false }; });
+}
+/** The chip row over the live grid: shown when at least two streams are live and they have two topics or more, or
+ *  some of them are channels the viewer follows. */
 function _homeTopicsSync(streams) {
     const row = document.getElementById('home-topics');
     if (!row) return;
+    _homeLastStreams = streams;
+    _homeFollowingRefresh();
     const counts = new Map();
     for (const s of streams) for (const t of _streamTopics(s)) counts.set(t, (counts.get(t) || 0) + 1);
-    const show = streams.length >= 2 && counts.size >= 2;
+    const followingN = streams.filter((s) => _homeFollowing.ids.has(Number(s.user_id))).length;
+    const show = streams.length >= 2 && (counts.size >= 2 || followingN > 0);
     row.hidden = !show;
     if (!show) { _homeTopic = ''; _homeTopicsApply(); return; }
-    if (_homeTopic && !counts.has(_homeTopic)) _homeTopic = '';
+    const available = new Set(counts.keys());
+    if (followingN) available.add(_FOLLOWING);
+    _homeTopic = available.has(_homeTopicPref) ? _homeTopicPref : '';
     // Most streams first, then A to Z; the row scrolls sideways, so every topic stays reachable.
     const list = [...counts].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
-    const key = `${streams.length}|${list.map(([t, n]) => `${t}:${n}`).join(',')}`;
+    const key = `${streams.length}|${followingN}|${list.map(([t, n]) => `${t}:${n}`).join(',')}`;
     if (row.dataset.key !== key) {
         row.dataset.key = key;
         const chip = (topic, label, n) => {
@@ -1812,6 +1837,7 @@ function _homeTopicsSync(streams) {
             return b;
         };
         const nodes = [chip('', 'All', streams.length)];
+        if (followingN) nodes.push(chip(_FOLLOWING, 'Following', followingN));
         for (const [t, n] of list) nodes.push(chip(t, _capTag(t), n));
         row.replaceChildren(...nodes);
         if (!row._ovBound) {
@@ -1819,7 +1845,10 @@ function _homeTopicsSync(streams) {
             row.addEventListener('click', (e) => {
                 const b = e.target.closest('.home-topic');
                 if (!b) return;
-                _homeTopic = b.dataset.topic === _homeTopic ? '' : b.dataset.topic;
+                const next = b.dataset.topic === _homeTopic ? '' : b.dataset.topic;
+                _homeTopicPref = next;
+                _homeTopic = next;
+                try { if (next) localStorage.setItem(_TOPIC_KEY, next); else localStorage.removeItem(_TOPIC_KEY); } catch { /* private mode */ }
                 _homeTopicsApply();
             });
         }
@@ -1832,7 +1861,10 @@ function _homeTopicsApply() {
     const grid = document.getElementById('stream-grid-live');
     if (!grid) return;
     grid.querySelectorAll('.stream-card[data-stream-id]').forEach((card) => {
-        card.hidden = !!_homeTopic && !(card.dataset.topics || '').split('|').includes(_homeTopic);
+        const keep = !_homeTopic || (_homeTopic === _FOLLOWING
+            ? _homeFollowing.ids.has(Number(card.dataset.user))
+            : (card.dataset.topics || '').split('|').includes(_homeTopic));
+        card.hidden = !keep;
     });
 }
 
@@ -1853,7 +1885,7 @@ function streamCardHTML(s, isLive) {
     const cat = String(s.category || '').replace(/[-_]+/g, ' ').trim().toLowerCase();
     const shown = topics.filter((t) => t !== cat).slice(0, 2);
     return `
-        <a class="stream-card"${isLive ? ` data-topics="${esc(topics.join('|'))}"` : ''} data-stream-id="${esc(String(s.id || ''))}" href="${esc(navUrl)}" onclick="return handleLinkClick(event, '${esc(navUrl)}')">
+        <a class="stream-card"${isLive ? ` data-topics="${esc(topics.join('|'))}" data-user="${esc(String(s.user_id || ''))}"` : ''} data-stream-id="${esc(String(s.id || ''))}" href="${esc(navUrl)}" onclick="return handleLinkClick(event, '${esc(navUrl)}')">
             <div class="stream-card-thumb${s.is_nsfw ? ' stream-card-nsfw-blur' : ''}" style="--thumb-tint:${esc(_thumbTint(s))}">
                 ${thumbImg(thumb, 'fa-circle-nodes', s.title, !isLive && s.vod_id ? `/api/thumbnails/generate/vod/${s.vod_id}` : null)}
                 ${streamTypeBadge(s.browser_mode, s.streaming_method)}
