@@ -3352,7 +3352,7 @@ function promptClipTitle(clipId) {
 
 function _buildClipTitleModal(overlay, clipId) {
     const modal = document.createElement('div');
-    modal.style.cssText = 'background:var(--card-bg, #1a1a2e);border:1px solid var(--border, #333);border-radius:12px;padding:24px;max-width:400px;width:90%;text-align:center;';
+    modal.style.cssText = 'background:var(--bg-card);border:1px solid var(--border, #333);border-radius:12px;padding:24px;max-width:400px;width:90%;text-align:center;';
     modal.innerHTML = `
         <h3 style="margin:0 0 8px 0"><i class="fa-solid fa-scissors"></i> Name Your Clip</h3>
         <p style="margin:0 0 16px 0;opacity:0.7;font-size:0.9rem">Say what happened, or skip it and the AI names it from what was said and shown.</p>
@@ -3436,7 +3436,7 @@ function _buildClipTrimModal(clipId, dur, defaultTitle) {
     overlay.id = 'clip-trim-overlay';
     overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.78);z-index:10000;display:flex;align-items:center;justify-content:center;padding:16px;';
     const modal = document.createElement('div');
-    modal.style.cssText = 'background:var(--card-bg,#1a1a2e);border:1px solid var(--border,#333);border-radius:14px;padding:22px;max-width:600px;width:100%;box-sizing:border-box;max-height:92vh;overflow:auto;';
+    modal.style.cssText = 'background:var(--bg-card);border:1px solid var(--border,#333);border-radius:14px;padding:22px;max-width:600px;width:100%;box-sizing:border-box;max-height:92vh;overflow:auto;';
     modal.innerHTML = `
         <h3 style="margin:0 0 4px 0"><i class="fa-solid fa-scissors"></i> Trim &amp; Name Your Clip</h3>
         <p style="margin:0 0 14px 0;opacity:0.7;font-size:0.88rem">Drag the handles to trim the start and end. Only the final cut is saved.</p>

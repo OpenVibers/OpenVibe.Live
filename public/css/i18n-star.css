@@ -31,7 +31,7 @@
 @keyframes i18nPulse { 0%,100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 0%, transparent); } 50% { box-shadow: 0 0 12px color-mix(in srgb, var(--accent) 45%, transparent); } }
 
 /* ── Channel: language chip in the info bar ─────────────────── */
-.ch-lang-chip i { color: #fff; }
+.ch-lang-chip i { color: inherit; }
 
 /* ── Channel: live captions panel (under the player) ─────────── */
 .ch-captions-title i { color: var(--accent-light); }

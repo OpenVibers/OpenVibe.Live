@@ -4,7 +4,7 @@
 /*  ── from style.css ──  */
 .doc-table { width: 100%; border-collapse: collapse; margin: 1rem 0; font-size: 0.9rem; }
 .doc-table th, .doc-table td { border: 1px solid var(--border); padding: 0.5rem 0.75rem; text-align: left; }
-.doc-table th { background: var(--surface); font-weight: 600; white-space: nowrap; }
+.doc-table th { background: var(--bg-card); font-weight: 600; white-space: nowrap; }
 .doc-table td:first-child { white-space: nowrap; font-family: 'JetBrains Mono', monospace; font-size: 0.85em; }
 .doc-table tr:hover td { background: rgba(var(--accent-rgb, 99,102,241), 0.04); }
 @media (max-width: 720px) {
