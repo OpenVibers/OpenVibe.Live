@@ -82,6 +82,7 @@ code { background: rgba(255,255,255,.08); padding: 2px 6px; border-radius: 6px; 
     animation: mp-pulse 1.4s ease-out infinite;   /* a ring that pulses out: nothing spins */
 }
 @keyframes mp-pulse { from { box-shadow: 0 0 0 0 color-mix(in srgb, var(--mp-accent) 55%, transparent); } to { box-shadow: 0 0 0 12px transparent; } }
+@media (prefers-reduced-motion: reduce) { .mp-spinner { animation: none; opacity: .7; } }   /* a still ring while it loads */
 
 /* ── Custom player controls ──────────────────────────────── */
 .mp-controls {
