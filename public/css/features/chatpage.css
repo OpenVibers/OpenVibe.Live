@@ -145,7 +145,7 @@
     gap: 6px;
 }
 .vc-participant-row.speaking .vc-participant-name {
-    color: #4ade80;
+    color: var(--success-text, #4ade80);
 }
 .vc-participant-name {
     font-size: 0.75rem;
@@ -256,7 +256,7 @@
     padding: 8px 14px;
     background: rgba(251, 191, 36, 0.12);
     border-top: 1px solid rgba(251, 191, 36, 0.3);
-    color: #fbbf24;
+    color: var(--warning-text, #fbbf24);
     font-size: 0.82rem;
 }
 
