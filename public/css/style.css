@@ -4109,7 +4109,7 @@ body :is(.modal-overlay, .bc-ws-confirm-overlay, .bc-modal, .bc-perm-overlay, .b
     width: 52px; height: 52px;
     border-radius: 50%;
     background: var(--accent-dark);
-    color: #fff;
+    color: var(--on-accent, #fff);   /* a light accent (Hacker, Matrix) sets a dark one */
     border: none;
     font-size: 1.3rem;
     align-items: center; justify-content: center;
