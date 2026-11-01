@@ -50,4 +50,5 @@ assert.match(recap, /ovImgW\(u\.avatar_url, size > 72 \? 320 : size > 40 \? 160 
 const channel = fs.readFileSync(path.join(__dirname, '..', 'public', 'js', 'app-channel.js'), 'utf8');
 assert.match(channel, /img\.src = typeof ovImgW === 'function' \? ovImgW\(full, 160\) : full;/);
 assert.match(feed, /ovImgW\(url, 640\)/, 'feed pictures at 640');
+assert.match(js('app-home.js'), /ovImgW\(item\.thumbnail, 320\)/, 'hero cards at 320 (a 2460 px paste was drawn at 129)');
 console.log('avatar widths: all checks passed');
