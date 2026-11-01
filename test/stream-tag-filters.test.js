@@ -151,10 +151,12 @@ const { TAG_FILTER_RE, TAG_STOP_WORDS } = require('../server/streaming/tags');
             assert.strictEqual(back.status, 200, `every listed tag round-trips as ?tag= (${t.tag})`);
         }
 
-        // The stop list is exported and holds the meta words that say nothing about the stream.
+        // The stop list is exported and holds the meta words that say nothing about the stream. It covers
+        // the home UI's _TOPIC_STOP (Live #520) too, so the browse chips and the home topics agree.
         const meta = ['live', 'streaming', 'stream', 'livestream', 'chat', 'livechat', 'overlay', 'ui',
-            'setup', 'lobby', 'facecam', 'multicam', 'gameplay', 'commentary', 'surveillance', 'live stream',
-            'streamer', 'webcam', 'camera', 'screen', 'desktop', 'browser', 'obs'];
+            'setup', 'lobby', 'facecam', 'multicam', 'multiframe', 'gameplay', 'commentary', 'surveillance',
+            'live stream', 'stream overlay', 'streamer', 'webcam', 'camera', 'screen', 'desktop', 'browser',
+            'pc', 'obs'];
         for (const word of meta) assert.ok(TAG_STOP_WORDS.has(word), `${word} is a stop word`);
         for (const word of ['gaming', 'outdoors', 'fortnite', 'cozy', 'music', 'nature']) {
             assert.ok(!TAG_STOP_WORDS.has(word), `${word} is a useful tag`);

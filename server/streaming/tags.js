@@ -14,17 +14,19 @@
 const TAG_FILTER_RE = /^[\p{L}\p{N} -]{1,32}$/u;
 
 // Exported so the UI and tests can see exactly what is hidden; every value is already normalized.
+// Mirrors the home UI's public/js/app-home.js _TOPIC_STOP (Live #520), plus the hyphen/spaced kin a
+// stored tag can have: a topic the home drops must not become a chip here, and the other way round.
 const TAG_STOP_WORDS = new Set([
     // The medium, not the stream.
     'live', 'live stream', 'live-stream', 'livestream', 'livestreaming',
     'live streaming', 'live-streaming', 'stream', 'streaming', 'streamer',
     // The set, not the content.
-    'chat', 'livechat', 'live chat', 'live-chat', 'overlay', 'ui', 'setup',
+    'chat', 'livechat', 'live chat', 'live-chat', 'overlay', 'stream overlay', 'ui', 'setup',
     'stream setup', 'streaming setup', 'lobby', 'gameplay', 'commentary', 'surveillance',
     // The rig.
-    'webcam', 'web cam', 'camera', 'facecam', 'face cam', 'multicam',
-    'multi cam', 'multi-cam', 'screen', 'screen share', 'screenshare',
-    'desktop', 'browser', 'obs', 'obs studio',
+    'webcam', 'web cam', 'camera', 'facecam', 'face cam', 'multicam', 'multi cam', 'multi-cam',
+    'multiframe', 'screen', 'screen share', 'screenshare',
+    'desktop', 'browser', 'pc', 'obs', 'obs studio',
 ]);
 
 /** Normalize one stored tag like cleanTags() does; '' when it is not a usable tag or is a stop word. */
