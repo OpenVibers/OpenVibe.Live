@@ -138,7 +138,7 @@
     overflow: hidden;
     box-shadow: var(--elev-1);
     transition: border-color var(--motion-normal, 200ms), box-shadow var(--motion-normal, 200ms), transform var(--motion-normal, 200ms) var(--ease-standard, ease);
-    animation: cfIn .32s var(--ease-standard, ease) both;
+    animation: cfIn var(--ov-dur-3, .32s) var(--ease-standard, ease) both;
 }
 .cf-card:hover { border-color: var(--border-light); box-shadow: var(--elev-2); }
 .cf-card--ai { border-color: color-mix(in srgb, var(--cf-ai) 30%, var(--border)); }
@@ -170,7 +170,7 @@
         radial-gradient(90% 80% at 90% 100%, color-mix(in srgb, var(--cf-ai-2) 20%, transparent), transparent 60%),
         var(--bg-secondary);
 }
-.cf-media img.cf-thumb { transition: transform .5s var(--ease-standard, ease); }
+.cf-media img.cf-thumb { transition: transform var(--ov-dur-4, .5s) var(--ease-standard, ease); }
 a.cf-media:hover img.cf-thumb { transform: scale(1.03); }
 .cf-video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; background: #000; display: block; cursor: pointer; }
 
@@ -449,7 +449,7 @@ a.cf-recap-band:hover .cf-recap-sub { text-decoration: underline; text-underline
     inset: 0;
     background: linear-gradient(100deg, transparent 20%, color-mix(in srgb, var(--text-primary) 7%, transparent) 50%, transparent 80%);
     transform: translateX(-100%);
-    animation: cfSweep 1.5s ease-in-out infinite;
+    animation: cfSweep 1.5s var(--ov-ease-in-out, ease-in-out) infinite;
 }
 @keyframes cfSweep { to { transform: translateX(100%); } }
 
