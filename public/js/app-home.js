@@ -1745,6 +1745,18 @@ async function loadHomePastes(opts) {
 
 // Markup for a single stream card (live or recent). Extracted so the home page
 // can reconcile the live grid in place for real-time updates.
+/**
+ * The colour a card's picture sits on until it arrives (plan L52: "a fake thumbnail… so it is not jarring"): the
+ * streamer's own profile colour, or one drawn from their name, so a grid fills in colour rather than grey boxes.
+ */
+function _thumbTint(s) {
+    if (s && /^#[0-9a-f]{6}$/i.test(String(s.profile_color || ''))) return s.profile_color;
+    const name = String((s && s.username) || '');
+    let h = 0;
+    for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) % 360;
+    return `hsl(${h} 45% 34%)`;
+}
+
 function streamCardHTML(s, isLive) {
     let navUrl;
     if (isLive && s.id) {
@@ -1760,7 +1772,7 @@ function streamCardHTML(s, isLive) {
     const endedAgo = !isLive && s.ended_at ? `<span class="stream-card-ago">${timeAgo(s.ended_at)}</span>` : '';
     return `
         <a class="stream-card" data-stream-id="${esc(String(s.id || ''))}" href="${esc(navUrl)}" onclick="return handleLinkClick(event, '${esc(navUrl)}')">
-            <div class="stream-card-thumb${s.is_nsfw ? ' stream-card-nsfw-blur' : ''}">
+            <div class="stream-card-thumb${s.is_nsfw ? ' stream-card-nsfw-blur' : ''}" style="--thumb-tint:${esc(_thumbTint(s))}">
                 ${thumbImg(thumb, 'fa-circle-nodes', s.title, !isLive && s.vod_id ? `/api/thumbnails/generate/vod/${s.vod_id}` : null)}
                 ${streamTypeBadge(s.browser_mode, s.streaming_method)}
                 ${s.is_nsfw ? '<span class="stream-card-nsfw">18+</span>' : ''}
