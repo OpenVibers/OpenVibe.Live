@@ -22,8 +22,8 @@ body {
 }
 /* The ground: two soft lights of the look's accent and the mark's violet, drifting slowly, and a faint dot grid. */
 .sc-light { position: absolute; width: 70vmax; height: 70vmax; border-radius: 50%; filter: blur(9vmax); opacity: .38; z-index: -2; will-change: transform; }
-.sc-light.a { background: var(--accent, var(--o)); left: -18vmax; top: -24vmax; animation: scDriftA 28s ease-in-out infinite alternate; }
-.sc-light.b { background: var(--v); right: -22vmax; bottom: -30vmax; animation: scDriftB 34s ease-in-out infinite alternate; }
+.sc-light.a { background: var(--accent, var(--o)); left: -18vmax; top: -24vmax; animation: scDriftA 28s var(--ov-ease-in-out, ease-in-out) infinite alternate; }
+.sc-light.b { background: var(--v); right: -22vmax; bottom: -30vmax; animation: scDriftB 34s var(--ov-ease-in-out, ease-in-out) infinite alternate; }
 @keyframes scDriftA { to { transform: translate(14vmax, 10vmax); } }
 @keyframes scDriftB { to { transform: translate(-12vmax, -8vmax); } }
 body::after { content: ''; position: absolute; inset: 0; z-index: -1; pointer-events: none;
@@ -49,7 +49,7 @@ body::after { content: ''; position: absolute; inset: 0; z-index: -1; pointer-ev
 .sc-foot b { color: var(--text-primary, #e6edf7); font-weight: 650; }
 
 /* Each part arrives after the mark, one after another. */
-.sc > * { opacity: 0; transform: translateY(1.2vw); animation: scIn .8s cubic-bezier(.2,.8,.2,1) forwards; }
+.sc > * { opacity: 0; transform: translateY(1.2vw); animation: scIn var(--ov-dur-4, .8s) var(--ov-ease-out, cubic-bezier(.2,.8,.2,1)) forwards; }
 .sc > :nth-child(1) { animation-delay: 0s; transform: none; }
 .sc > :nth-child(2) { animation-delay: .9s; }
 .sc > :nth-child(3) { animation-delay: 1.05s; }

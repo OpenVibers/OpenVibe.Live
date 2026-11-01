@@ -33,7 +33,7 @@ html, body {
     line-height: 1.45;
     word-wrap: break-word;
     overflow-wrap: break-word;
-    animation: msg-in 0.25s ease-out;
+    animation: msg-in var(--ov-dur-2, 0.25s) var(--ov-ease-out, ease-out);
     text-shadow:
         -1px -1px 1px rgba(0,0,0,0.8),
          1px -1px 1px rgba(0,0,0,0.8),
@@ -52,7 +52,7 @@ body.no-shadow .msg { text-shadow: none; }
 
 /* ── Fade out old messages ──────────────────────────────────── */
 .msg.fading {
-    animation: msg-fade 1s ease-out forwards;
+    animation: msg-fade 1s var(--ov-ease-out, ease-out) forwards;
 }
 @keyframes msg-fade {
     to { opacity: 0; }
@@ -105,7 +105,7 @@ body.no-shadow .msg { text-shadow: none; }
     padding: 3px 8px; border-radius: 6px; font-size: 0.62em; font-weight: 700;
     white-space: nowrap; pointer-events: none; opacity: 0; z-index: 50;
     box-shadow: 0 6px 18px rgba(0,0,0,0.5);
-    transition: opacity 0.18s ease, transform 0.2s cubic-bezier(.2,.9,.3,1.25);
+    transition: opacity var(--ov-dur-2, 0.18s) var(--ov-ease-out, ease), transform var(--ov-dur-2, 0.2s) var(--ov-ease-out, cubic-bezier(.2,.9,.3,1.25));
 }
 .chat-badge[data-tip]:hover::after { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
 /* Channel !sound pill — matches the main chat's played-sound styling */
@@ -150,7 +150,7 @@ body.no-shadow .msg { text-shadow: none; }
 .name-fx-fire {
     color: #ff6600 !important;
     text-shadow: 0 0 6px #ff4400, 0 0 12px #ff220088, 0 0 20px #cc110044;
-    animation: nameFxFire 1.5s ease-in-out infinite alternate;
+    animation: nameFxFire 1.5s var(--ov-ease-in-out, ease-in-out) infinite alternate;
 }
 @keyframes nameFxFire {
     0%{text-shadow:0 0 6px #ff4400,0 0 12px #ff220088;color:#ff6600}
@@ -160,7 +160,7 @@ body.no-shadow .msg { text-shadow: none; }
 .name-fx-ice {
     color: #88ddff !important;
     text-shadow: 0 0 6px #44bbff88, 0 0 12px #2288cc44;
-    animation: nameFxIce 2s ease-in-out infinite alternate;
+    animation: nameFxIce 2s var(--ov-ease-in-out, ease-in-out) infinite alternate;
 }
 @keyframes nameFxIce {
     0%{text-shadow:0 0 4px #44bbff88;color:#88ddff}
@@ -172,7 +172,7 @@ body.no-shadow .msg { text-shadow: none; }
     background-size: 300% 100%;
     -webkit-background-clip: text; -webkit-text-fill-color: transparent;
     background-clip: text;
-    animation: nameFxGolden 2s ease-in-out infinite;
+    animation: nameFxGolden 2s var(--ov-ease-in-out, ease-in-out) infinite;
     filter: drop-shadow(0 0 4px #ffd70066);
 }
 @keyframes nameFxGolden { 0%,100%{background-position:0% 50%} 50%{background-position:100% 50%} }
@@ -180,7 +180,7 @@ body.no-shadow .msg { text-shadow: none; }
 .name-fx-neon {
     color: #00ff88 !important;
     text-shadow: 0 0 8px #00ff88, 0 0 16px #00ff8888, 0 0 24px #00cc6644;
-    animation: nameFxNeon 1.2s ease-in-out infinite alternate;
+    animation: nameFxNeon 1.2s var(--ov-ease-in-out, ease-in-out) infinite alternate;
 }
 @keyframes nameFxNeon {
     0%{text-shadow:0 0 4px #00ff88,0 0 8px #00ff8866}
@@ -212,7 +212,7 @@ body.no-shadow .msg { text-shadow: none; }
     letter-spacing: .02em;
     white-space: nowrap;
     transform-origin: 50% 60%;
-    animation: nameFxVegasShine 2.6s linear infinite, nameFxVegasLights 1.4s steps(1, end) infinite, nameFxVegasJackpot 3.2s ease-out infinite;
+    animation: nameFxVegasShine 2.6s linear infinite, nameFxVegasLights 1.4s steps(1, end) infinite, nameFxVegasJackpot 3.2s var(--ov-ease-out, ease-out) infinite;
 }
 .name-fx-vegas::before,
 .name-fx-vegas::after {
@@ -283,7 +283,7 @@ body.no-shadow .msg { text-shadow: none; }
     letter-spacing: .03em;
     white-space: nowrap;
     transform-origin: 50% 70%;
-    animation: nameFxTwofatLights 3s linear infinite, nameFxTwofatThump 1s ease-out infinite;
+    animation: nameFxTwofatLights 3s linear infinite, nameFxTwofatThump 1s var(--ov-ease-out, ease-out) infinite;
 }
 .name-fx-twofat::before {
     content: '▂▅▇▃▆';
@@ -295,7 +295,7 @@ body.no-shadow .msg { text-shadow: none; }
     font-size: .6em;
     letter-spacing: .12em;
     vertical-align: .1em;
-    animation: nameFxTwofatEq .5s steps(1, end) infinite;
+    animation: nameFxTwofatEq var(--ov-dur-4, .5s) steps(1, end) infinite;
 }
 .name-fx-twofat::after {
     content: '🔊';
@@ -303,7 +303,7 @@ body.no-shadow .msg { text-shadow: none; }
     margin-left: .3em;
     -webkit-text-fill-color: initial;
     font-size: .85em;
-    animation: nameFxTwofatSpeaker 1s ease-out infinite;
+    animation: nameFxTwofatSpeaker 1s var(--ov-ease-out, ease-out) infinite;
 }
 @keyframes nameFxTwofatLights {
     0% { background-position: 0% 50%; }
@@ -337,7 +337,7 @@ body.no-shadow .msg { text-shadow: none; }
 .name-fx-void {
     color: #9900ff !important;
     text-shadow: 0 0 8px #6600cc, 0 0 16px #33006688, 0 0 24px #11003344;
-    animation: nameFxVoid 2s ease-in-out infinite;
+    animation: nameFxVoid 2s var(--ov-ease-in-out, ease-in-out) infinite;
 }
 @keyframes nameFxVoid {
     0%,100%{text-shadow:0 0 8px #6600cc,0 0 16px #33006688;transform:scale(1)}
@@ -349,7 +349,7 @@ body.no-shadow .msg { text-shadow: none; }
     background-size: 200% 100%;
     -webkit-background-clip: text; -webkit-text-fill-color: transparent;
     background-clip: text;
-    animation: nameFxToxic 1.8s ease-in-out infinite alternate;
+    animation: nameFxToxic 1.8s var(--ov-ease-in-out, ease-in-out) infinite alternate;
 }
 @keyframes nameFxToxic { 0%{background-position:0% 50%;filter:brightness(1)} 100%{background-position:200% 50%;filter:brightness(1.3)} }
 
@@ -358,13 +358,13 @@ body.no-shadow .msg { text-shadow: none; }
     background-size: 100% 200%;
     -webkit-background-clip: text; -webkit-text-fill-color: transparent;
     background-clip: text;
-    animation: nameFxBlood 2s ease-in-out infinite;
+    animation: nameFxBlood 2s var(--ov-ease-in-out, ease-in-out) infinite;
 }
 @keyframes nameFxBlood { 0%,100%{background-position:50% 0%} 50%{background-position:50% 200%} }
 
 .name-fx-shadow {
     color: #aa88cc !important;
-    animation: nameFxShadow 2s ease-in-out infinite;
+    animation: nameFxShadow 2s var(--ov-ease-in-out, ease-in-out) infinite;
 }
 @keyframes nameFxShadow {
     0%,100%{text-shadow:0 0 6px rgba(0,0,0,0.8),0 0 12px rgba(80,0,120,0.6),2px 2px 4px rgba(0,0,0,0.9)}
@@ -373,7 +373,7 @@ body.no-shadow .msg { text-shadow: none; }
 
 .name-fx-glitch {
     color: #00ff88 !important;
-    animation: nameFxGlitch 0.15s infinite;
+    animation: nameFxGlitch var(--ov-dur-2, 0.15s) infinite;
     text-shadow: 2px 0 #ff0044, -2px 0 #00ccff;
 }
 @keyframes nameFxGlitch {
@@ -386,7 +386,7 @@ body.no-shadow .msg { text-shadow: none; }
     background-size: 300% 100%;
     -webkit-background-clip: text; -webkit-text-fill-color: transparent;
     background-clip: text;
-    animation: nameFxHoloFlicker 0.12s infinite, nameFxHoloShift 3s linear infinite;
+    animation: nameFxHoloFlicker var(--ov-dur-1, 0.12s) infinite, nameFxHoloShift 3s linear infinite;
 }
 @keyframes nameFxHoloFlicker { 0%,45%,55%,100%{opacity:1} 50%{opacity:0.6} }
 @keyframes nameFxHoloShift { 0%{background-position:0% 50%} 100%{background-position:300% 50%} }
@@ -396,7 +396,7 @@ body.no-shadow .msg { text-shadow: none; }
     background-size: 300% 100%;
     -webkit-background-clip: text; -webkit-text-fill-color: transparent;
     background-clip: text;
-    animation: nameFxDivine 2s ease-in-out infinite;
+    animation: nameFxDivine 2s var(--ov-ease-in-out, ease-in-out) infinite;
     filter: drop-shadow(0 0 8px #ffe06688);
 }
 @keyframes nameFxDivine { 0%,100%{background-position:0% 50%} 50%{background-position:300% 50%} }
@@ -413,7 +413,7 @@ body.no-shadow .msg { text-shadow: none; }
     pointer-events: none;
     font-size: 10px;
     opacity: 0;
-    animation: chatParticleFloat 1.8s ease-out forwards;
+    animation: chatParticleFloat 1.8s var(--ov-ease-out, ease-out) forwards;
 }
 @keyframes chatParticleFloat {
     0%{opacity:1;transform:translate(0,0) scale(1)}
@@ -438,9 +438,9 @@ body.no-shadow .msg { text-shadow: none; }
     font-size: 0.85em;
     vertical-align: middle;
 }
-.chat-hat.hat-float { animation: chatHatFloat 2s ease-in-out infinite; }
-.chat-hat.hat-pulse { animation: chatHatPulse 1.5s ease-in-out infinite; }
-.chat-hat.hat-warp  { animation: chatHatWarp 2s ease-in-out infinite; }
+.chat-hat.hat-float { animation: chatHatFloat 2s var(--ov-ease-in-out, ease-in-out) infinite; }
+.chat-hat.hat-pulse { animation: chatHatPulse 1.5s var(--ov-ease-in-out, ease-in-out) infinite; }
+.chat-hat.hat-warp  { animation: chatHatWarp 2s var(--ov-ease-in-out, ease-in-out) infinite; }
 @keyframes chatHatFloat { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-3px)} }
 @keyframes chatHatPulse { 0%,100%{transform:scale(1)} 50%{transform:scale(1.2)} }
 @keyframes chatHatWarp  { 0%,100%{transform:scale(1) rotate(0deg);filter:hue-rotate(0deg)} 50%{transform:scale(1.1) rotate(5deg);filter:hue-rotate(180deg)} }
@@ -454,7 +454,7 @@ body.no-shadow .msg { text-shadow: none; }
     color: rgba(255,255,255,0.4);
     text-shadow: 0 0 3px rgba(0,0,0,0.8);
     pointer-events: none;
-    transition: opacity 0.3s;
+    transition: opacity var(--ov-dur-3, 0.3s);
 }
 #status.hidden { opacity: 0; }
     .spoiler { background: rgba(255, 255, 255, 0.35); color: transparent; border-radius: 4px; padding: 0 2px; }
