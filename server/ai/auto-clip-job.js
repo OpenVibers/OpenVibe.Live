@@ -164,7 +164,7 @@ async function _checkLiveStream(stream) {
         const clip = await media.createClip({
             vod_id: rec.vodId, start_s: clipStart, end_s: clipEnd,
             title, user_id: stream.user_id,
-            stream_id: streamId, auto_generated: true, description: db.noLooks(verdict.desc || ''),
+            stream_id: streamId, auto_generated: true, description: verdict.desc || '',
             visibility: rated.verdict === 'public' ? 'public' : 'unlisted',
         }).catch((e) => { console.warn(`[AutoClip] Media createClip failed for stream ${streamId}:`, e.message); return null; });
         if (clip) {
@@ -366,7 +366,7 @@ async function clipVodMoment(o) {
         const clip = await media.createClip({
             vod_id: vodId, start_s: start, end_s: start + CLIP_PRE + CLIP_POST,
             title: title || 'Standout Moment', user_id: vod.user_id,
-            stream_id: vod.stream_id || undefined, auto_generated: true, description: db.noLooks(desc || ''),
+            stream_id: vod.stream_id || undefined, auto_generated: true, description: desc || '',
         });
         if (clip) {
             archiveHeld = false;   // the clip exists: keep the day reserved even if the log write fails
