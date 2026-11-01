@@ -1138,7 +1138,7 @@ function queueFullscreenChatEntry(entry) {
 function buildFullscreenChatEntry(msg) {
     const badge = chatSettings.showBadges ? getBadgeHTML(msg.role) : '';
     let nameColor = relayColorFor(msg) || msg.color || msg.profile_color || getRoleColor(msg.role);
-    if (chatSettings.readableColors) nameColor = ensureReadableColor(nameColor);
+    if (chatSettings.readableColors || _chatLightTheme()) nameColor = ensureReadableColor(nameColor);
     const displayName = esc(msg.username || msg.displayName || `anon${msg.anonId || ''}`);
     const _relayPlatform = (msg.source_platform || parseRelayUsername(msg.username || msg.displayName || '').platform || '').toLowerCase();
     const _relayBadge = relayBadgeHTML(_relayPlatform);
@@ -2586,7 +2586,7 @@ function buildChatMessageEl(msg, opts = {}) {
     const badge = chatSettings.showBadges ? getBadgeHTML(msg.role) : '';
     let nameColor = relayColorFor(msg) || msg.color || msg.profile_color || getRoleColor(msg.role);
     // Readable colors — ensure minimum contrast against dark backgrounds
-    if (chatSettings.readableColors) nameColor = ensureReadableColor(nameColor);
+    if (chatSettings.readableColors || _chatLightTheme()) nameColor = ensureReadableColor(nameColor);
 
     const displayName = esc(msg.username || msg.displayName || `anon${msg.anonId || ''}`);
     const coreUsername = esc(msg.core_username || '');
@@ -2906,7 +2906,7 @@ function addSystemMessage(text, isError = false) {
  */
 function getChatAvatarHTML(msg) {
     let nameColor = relayColorFor(msg) || msg.color || msg.profile_color || getRoleColor(msg.role);
-    if (chatSettings.readableColors) nameColor = ensureReadableColor(nameColor);
+    if (chatSettings.readableColors || _chatLightTheme()) nameColor = ensureReadableColor(nameColor);
     // Strip any "[Twitch]/[Kick]/[RS]" relay prefix so the initial is the real letter.
     const raw = (msg.username || msg.displayName || `anon${msg.anonId || ''}`).replace(/^\[[^\]]+\]\s*/, '');
     const initial = esc((raw.charAt(0) || '?').toUpperCase());
@@ -2927,7 +2927,7 @@ function addGottiMessage(msg) {
     const avatarHtml = getChatAvatarHTML(msg);
     const hatHtml = msg.hatFX?.emoji ? `<span class="chat-hat" aria-hidden="true">${esc(msg.hatFX.emoji)}</span>` : '';
     let nameColor = relayColorFor(msg) || msg.color || msg.profile_color || getRoleColor(msg.role);
-    if (chatSettings.readableColors) nameColor = ensureReadableColor(nameColor);
+    if (chatSettings.readableColors || _chatLightTheme()) nameColor = ensureReadableColor(nameColor);
 
     const displayName = esc(msg.username || msg.displayName || `anon${msg.anonId || ''}`);
     const coreUsername = esc(msg.core_username || '');
@@ -5203,7 +5203,7 @@ function _buildCrossfeedEl(msg) {
     }
     const badge = chatSettings.showBadges ? getBadgeHTML(msg.role) : '';
     let nameColor = relayColorFor(msg) || msg.color || msg.profile_color || getRoleColor(msg.role);
-    if (chatSettings.readableColors) nameColor = ensureReadableColor(nameColor);
+    if (chatSettings.readableColors || _chatLightTheme()) nameColor = ensureReadableColor(nameColor);
     const displayName = esc(msg.username || msg.displayName || `anon${msg.anonId || ''}`);
     const _relayPlatform = (msg.source_platform || parseRelayUsername(msg.username || msg.displayName || '').platform || '').toLowerCase();
     const _relayBadge = relayBadgeHTML(_relayPlatform);
@@ -5961,8 +5961,13 @@ function playMentionSound() {
     } catch { }
 }
 
+// A light theme (theme-loader sets data-theme-mode): pale name colours there vanish on white, so names are always made
+// readable, darkened rather than brightened (contrast probe, 2026-11-01: 1.56:1 for a pale name on Daylight).
+function _chatLightTheme() {
+    try { return document.documentElement.getAttribute('data-theme-mode') === 'light'; } catch { return false; }
+}
 function ensureReadableColor(hex) {
-    // Ensure minimum luminance for dark backgrounds (target: 0.4 relative luminance)
+    // Dark themes: a minimum brightness (0.4). Light themes: a maximum (0.45), about 4.5:1 on white.
     try {
         let r, g, b;
         if (hex.startsWith('#')) {
@@ -5974,6 +5979,12 @@ function ensureReadableColor(hex) {
             return hex;
         }
         const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+        if (_chatLightTheme()) {
+            if (lum <= 0.45) return hex;
+            const k = 0.45 / lum;
+            r = Math.round(r * k); g = Math.round(g * k); b = Math.round(b * k);
+            return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
+        }
         if (lum < 0.4) {
             // Brighten the color while keeping the hue
             const boost = 0.4 / Math.max(lum, 0.01);
