@@ -674,7 +674,7 @@ let _heroCollageTimer = null;
 function _heroFloatContent(item) {
     const badge = `<span class="hero-float-badge">${_HERO_BADGE[item.kind] || ''}</span>`;
     if (item.thumbnail) {
-        return `<img src="${esc(item.thumbnail)}" alt="" loading="lazy" onerror="this.remove()">`
+        return `<img src="${esc(ovImgW(item.thumbnail, 320))}" data-full="${esc(item.thumbnail)}" alt="" loading="lazy" onerror="${OV_IMG_RETRY}this.remove()">`
             + `<span class="hero-float-body">${badge}<span class="hero-float-title">${esc(item.title || '')}</span></span>`;
     }
     const snippet = item.text ? esc(item.text) : '';
