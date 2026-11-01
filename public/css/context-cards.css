@@ -6,14 +6,14 @@
 .cc-live { font-size: 0.66rem; color: #fff; background: #e0245e; border-radius: 999px; padding: 2px 8px; letter-spacing: 0.06em; }
 .cc-main { display: grid; grid-template-columns: minmax(200px, 300px) 1fr; gap: 16px; align-items: start; }
 .cc-thumb { position: relative; display: block; aspect-ratio: 16 / 9; border-radius: 12px; overflow: hidden; background: var(--bg-tertiary); border: 1px solid var(--border); }
-.cc-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform 0.35s ease; }
+.cc-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform var(--ov-dur-3, 0.35s) var(--ov-ease-out, ease); }
 .cc-thumb:hover img { transform: scale(1.04); }
 .cc-thumb-dur { position: absolute; right: 8px; top: 8px; font-size: 0.68rem; font-weight: 800; padding: 2px 7px; border-radius: 6px; background: rgba(0,0,0,0.72); color: #fff; }
-.cc-thumb-play { position: absolute; inset: 0; display: grid; place-items: center; color: #fff; font-size: 1.4rem; opacity: 0; transition: opacity 0.2s; background: rgba(0,0,0,0.25); }
+.cc-thumb-play { position: absolute; inset: 0; display: grid; place-items: center; color: #fff; font-size: 1.4rem; opacity: 0; transition: opacity var(--ov-dur-2, 0.2s); background: rgba(0,0,0,0.25); }
 .cc-thumb:hover .cc-thumb-play { opacity: 1; }
 .cc-thumb-play i { width: 46px; height: 46px; border-radius: 50%; display: grid; place-items: center; background: var(--accent); box-shadow: 0 8px 24px rgba(0,0,0,0.5); padding-left: 3px; }
 .cc-timeline { position: absolute; left: 0; right: 0; bottom: 0; height: 6px; background: rgba(255,255,255,0.18); }
-.cc-timeline i { position: absolute; top: -2px; bottom: -2px; min-width: 6px; border-radius: 3px; background: var(--accent); box-shadow: 0 0 10px var(--accent), 0 0 0 2px rgba(0,0,0,0.5); animation: ccMark 1.8s ease-in-out infinite; }
+.cc-timeline i { position: absolute; top: -2px; bottom: -2px; min-width: 6px; border-radius: 3px; background: var(--accent); box-shadow: 0 0 10px var(--accent), 0 0 0 2px rgba(0,0,0,0.5); animation: ccMark 1.8s var(--ov-ease-in-out, ease-in-out) infinite; }
 @keyframes ccMark { 0%, 100% { filter: brightness(1); } 50% { filter: brightness(1.5); } }
 .cc-body { min-width: 0; display: grid; gap: 8px; align-content: start; }
 .cc-title-row { display: flex; align-items: center; gap: 10px; }
@@ -44,7 +44,7 @@
 .cc-more-head { font-size: 0.82rem; font-weight: 800; margin-bottom: 8px; }
 .cc-more-head i { color: var(--accent); margin-right: 4px; }
 .cc-clips { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
-.cc-clip { position: relative; display: block; aspect-ratio: 16 / 10; border-radius: 10px; overflow: hidden; background: var(--bg-tertiary); border: 1px solid var(--border); text-decoration: none; color: #fff; transition: transform 0.15s, border-color 0.15s; }
+.cc-clip { position: relative; display: block; aspect-ratio: 16 / 10; border-radius: 10px; overflow: hidden; background: var(--bg-tertiary); border: 1px solid var(--border); text-decoration: none; color: #fff; transition: transform var(--ov-dur-2, 0.15s), border-color var(--ov-dur-2, 0.15s); }
 .cc-clip:hover { transform: translateY(-2px); border-color: var(--accent); }
 .cc-clip img, .cc-clip-ph { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: grid; place-items: center; color: var(--text-muted); font-size: 1.4rem; }
 .cc-clip-dur { position: absolute; right: 6px; top: 6px; font-size: 0.64rem; font-weight: 800; padding: 2px 6px; border-radius: 5px; background: rgba(0,0,0,0.72); }
@@ -77,7 +77,7 @@
 .dsc-sec h4 i { color: var(--accent); }
 .dsc-sec h4 .muted { text-transform: none; letter-spacing: 0; font-weight: 600; }
 .dsc-live { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 10px; }
-.dsc-live-card { display: block; border-radius: 12px; overflow: hidden; background: var(--bg-secondary); border: 1px solid color-mix(in srgb, #e0245e 40%, var(--border)); text-decoration: none; color: var(--text-primary); transition: transform 0.15s, border-color 0.15s; }
+.dsc-live-card { display: block; border-radius: 12px; overflow: hidden; background: var(--bg-secondary); border: 1px solid color-mix(in srgb, #e0245e 40%, var(--border)); text-decoration: none; color: var(--text-primary); transition: transform var(--ov-dur-2, 0.15s), border-color var(--ov-dur-2, 0.15s); }
 .dsc-live-card:hover { transform: translateY(-2px); border-color: #e0245e; }
 .dsc-live-thumb { position: relative; display: block; aspect-ratio: 16 / 9; background: var(--bg-tertiary); }
 .dsc-live-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
@@ -110,7 +110,7 @@
 .dsc-person .cc-avatar { grid-row: 1 / 3; }
 .dsc-person b { font-size: 0.84rem; } .dsc-person small { font-size: 0.68rem; color: var(--text-muted); }
 .dsc-person em { grid-column: 2; font-style: normal; font-size: 0.62rem; color: var(--accent); font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; }
-.dsc-live-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #e0245e; margin-right: 3px; animation: ccMark 1.4s ease-in-out infinite; }
+.dsc-live-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #e0245e; margin-right: 3px; animation: ccMark 1.4s var(--ov-ease-in-out, ease-in-out) infinite; }
 /* No live streams and no clips to show: let the side column use the full width, two-up. */
 @media (max-width: 980px) { .dsc { grid-template-columns: 1fr; } .dsc--sideonly .dsc-side { grid-template-columns: 1fr; } }
 .dsc-people { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; }
@@ -131,7 +131,7 @@
     display: grid; grid-template-columns: auto minmax(0, max-content) 1fr auto auto; align-items: center; gap: 12px;
     width: 100%; padding: 6px 2px 10px; cursor: pointer; text-align: left; font: inherit; color: var(--text-primary);
     background: none; border: none; border-bottom: 1px solid color-mix(in srgb, var(--accent) 22%, var(--border));
-    transition: border-color .22s;
+    transition: border-color var(--ov-dur-2, .22s);
 }
 /* A section heading of the offline page (not a card): the rule under it runs the full width. */
 /* Explicit columns: auto-placement put the count into the 1fr rule column (a full-width blue bar) and
@@ -160,13 +160,13 @@
 }
 /* A single slow pulse ring on the count, only while the board is closed and only on screens that
    want motion — once it is open the count has done its job. */
-.dsc-wrap:not(.is-open) .dsc-toggle-count { animation: dscPulse 2.8s ease-out infinite; }
+.dsc-wrap:not(.is-open) .dsc-toggle-count { animation: dscPulse 2.8s var(--ov-ease-out, ease-out) infinite; }
 @keyframes dscPulse {
     0%   { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 55%, transparent); }
     70%  { box-shadow: 0 0 0 9px transparent; }
     100% { box-shadow: 0 0 0 0 transparent; }
 }
-.dsc-toggle-chev { flex: none; color: var(--text-muted); transition: transform .3s cubic-bezier(.22,1,.36,1), color .2s; }
+.dsc-toggle-chev { flex: none; color: var(--text-muted); transition: transform var(--ov-dur-3, .3s) var(--ov-ease-out, cubic-bezier(.22,1,.36,1)), color var(--ov-dur-2, .2s); }
 .dsc-wrap.is-open .dsc-toggle-chev { transform: rotate(180deg); color: var(--accent); }
 .dsc-toggle:hover .dsc-toggle-chev { color: var(--accent); }
 /* The board no longer carries its own top margin — the wrapper owns the spacing now. */
