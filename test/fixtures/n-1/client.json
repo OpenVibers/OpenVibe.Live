@@ -1,44 +1,44 @@
 {
  "service": "live",
- "release": "f0fed5be6d1b25cfcabb1a3f3e2db347dfea88fb",
- "recorded_at": "2026-10-19T23:30:31.918Z",
+ "release": "b0270111334aae0474aeaa8bcdab1cdb80dc20da",
+ "recorded_at": "2026-11-01T08:07:25.315Z",
  "note": "N-1 fixture: written by `npm run n-1:record`, replayed by test/n-1.test.js",
  "manifest": {
   "service": "live",
-  "release": "f0fed5be6d1b",
-  "released_at": "2026-10-19T18:39:28.000Z",
-  "booted_at": "2026-10-19T23:30:27.637Z",
-  "contracts_version": "0.203.0",
+  "release": "b0270111334a",
+  "released_at": "2026-11-01T07:56:16.000Z",
+  "booted_at": "2026-11-01T08:07:21.030Z",
+  "contracts_version": "0.222.0",
   "packages": {
-   "openvibe-shared": "4.4.0",
-   "openvibe-sdk": "0.50.1"
+   "openvibe-shared": "4.73.0",
+   "openvibe-sdk": "0.74.0"
   },
   "min_client_release": null,
   "mixed_version_window_hours": 24,
   "components": {
    "styles": {
     "kind": "style",
-    "version": "77a2bdaee060"
+    "version": "acf9bb8072e0"
    },
    "shell": {
     "kind": "script",
-    "version": "4ff89f6a092a"
+    "version": "dd0ce06919cb"
    },
    "server": {
     "kind": "server",
-    "version": "73e6552a2862"
+    "version": "09c2d86932c0"
    }
   },
   "assets": {
    "/css/broadcast.css": {
-    "url": "/css/broadcast.css?v=b2d71a5f4f99",
+    "url": "/css/broadcast.css?v=ed4c67008ce9",
     "component": "styles",
-    "integrity": "sha384-RtC8Tla0kkRucdJFzF+qxQA4p4karjKzNg8ZoteYwK0lr5ESEOo8nHZVsHQCCA1Y"
+    "integrity": "sha384-cG3amgm6f4fJqiDMDC7p4/w1XIJCbnAnHzFv6ldrHm4pbQUUhLOCznN11KbBrXQw"
    },
    "/css/chat-shared.css": {
-    "url": "/css/chat-shared.css?v=558d74cf2e6a",
+    "url": "/css/chat-shared.css?v=f15d49698ef8",
     "component": "styles",
-    "integrity": "sha384-+UNgBYuMRLHmTl0hBPmZI+91u+ud0yHLElwmd/4UrYgHoLHIYVElOwsOQ4G8UdWB"
+    "integrity": "sha384-r6r4qWtxvNkQ/BQkIQq/UlDHTNqEDK/V22I7AEAfgXQRaxnPztJe7KSVWZSkTQb4"
    },
    "/css/context-cards.css": {
     "url": "/css/context-cards.css?v=07823a1b5eb5",
@@ -46,24 +46,24 @@
     "integrity": "sha384-Di4RzkxhOu9xj1RMyoQdPFeAbJQHuaU6pg8/bxcxaJI4YG9T9hX9lytrqcrulDN/"
    },
    "/css/cosmetics.css": {
-    "url": "/css/cosmetics.css?v=5d33ae6cb97b",
+    "url": "/css/cosmetics.css?v=8e8bcdae308b",
     "component": "styles",
-    "integrity": "sha384-MaYWbMCigFzwPGNlDtRg1XnF0Ak6FFOa5hqfe1wmfuRSUtqukbcqDOelKvO1RqH2"
+    "integrity": "sha384-TLZdmMD9m3AFlsHBIe2MFz9+OYuEUwoWz/O1Plljq17zyCSqAfC8TUAEMvP2sr/5"
    },
    "/css/features/broadcast.css": {
-    "url": "/css/features/broadcast.css?v=c27820784531",
+    "url": "/css/features/broadcast.css?v=2842bad8721f",
     "component": "styles",
-    "integrity": "sha384-RHi7esMaA13XfUINvU/2iDobTP+ntLrei0C0C/u03zXUAN/0fKVM3Lkg0BZXnUY4"
+    "integrity": "sha384-IeQmU2K3GECeVTDrAnLeGy9GlFaTNiSBxx26Uyq2QSOsJ1XzZjnW4ogP5GDByKyu"
    },
    "/css/features/channel.css": {
-    "url": "/css/features/channel.css?v=f41f8d4b31d8",
+    "url": "/css/features/channel.css?v=3f0237080688",
     "component": "styles",
-    "integrity": "sha384-Lu0yUHFrYfSOV0Eu2ChVrPC5NGCWHqKojTlpZdW22N1NHqeoj145OSHfZkgEIJNx"
+    "integrity": "sha384-ba/7UyRWef3SHNWMlEZ3W2Q2hhJOhnxedV4ijavK10GNJla2VNO4057MATr4+gIr"
    },
    "/css/features/chatpage.css": {
-    "url": "/css/features/chatpage.css?v=1b2ebcebcbca",
+    "url": "/css/features/chatpage.css?v=65f02fb1062d",
     "component": "styles",
-    "integrity": "sha384-TdtKvLlB6yr2QMBBD5EAYebE40Y3xXvOkr9Min86pR/jqRNTfQVXxuqqois5soM+"
+    "integrity": "sha384-rboItB1tH3DxwxgTpH//tvroAi2rEvwXVTUJKqXnt9/J+/QqqatHzABr1OwS4gFn"
    },
    "/css/features/content.css": {
     "url": "/css/features/content.css?v=ec113a44dd7a",
@@ -71,9 +71,9 @@
     "integrity": "sha384-mm5kmkmu8IXqBCHEke9GTvb1FO1Oncn77FhTR124WDryVYQSw3d3JDKr5UVlgqE6"
    },
    "/css/features/dashboard.css": {
-    "url": "/css/features/dashboard.css?v=90998f175a26",
+    "url": "/css/features/dashboard.css?v=7be97eb00032",
     "component": "styles",
-    "integrity": "sha384-t9R2mNl4dR/1OSCUsCcjYmnlhg2EgJy3gbUjJFUa3QtzTN3j+mmi+VjCqHcI+LDL"
+    "integrity": "sha384-QyMypoE2YuYRNVvCRMrTvebvCd60HYrS6nqNG96Fp6VHWfYKzXVRIxJCZkZMsS0f"
    },
    "/css/features/docs.css": {
     "url": "/css/features/docs.css?v=3e586537c2ed",
@@ -86,24 +86,34 @@
     "integrity": "sha384-qxjHx5W7yoUfDcK9M8DcVBKQX2YcR+sHHeGwpKNYrg6zM9tjKFsrcXfB4FvHcuUC"
    },
    "/css/features/home.css": {
-    "url": "/css/features/home.css?v=faa8fa066557",
+    "url": "/css/features/home.css?v=d4fb4e50c1d3",
     "component": "styles",
-    "integrity": "sha384-jc4nJLKlKXq0lKUUQPKdiR0pxiqd4E57o6O/BRMQLVGPPrWDYaG4OIxnn5uayOmi"
+    "integrity": "sha384-6WQF/o3wq+zR2QOsW+iXykl5CZeA3lubRx0fUJ2EW4FSLegYw6DpijVA4MZOl2pU"
    },
    "/css/features/rundown.css": {
-    "url": "/css/features/rundown.css?v=05f1d8c7b95c",
+    "url": "/css/features/rundown.css?v=9aa61ad79fdd",
     "component": "styles",
-    "integrity": "sha384-dFsbWdy82ur5QrZ5M8TeJzcgYwMD6FdkLXub1odJKKlSWZuFHiGxDSRpTAYUNZpr"
+    "integrity": "sha384-z7dfQi4zoOZC4pc/3OZS4bpRPDDCkyY0wWX78vYCZYrLX2ssV5yvRBY/TNfvo57Q"
    },
    "/css/features/search.css": {
-    "url": "/css/features/search.css?v=9ddd7160c54c",
+    "url": "/css/features/search.css?v=b9783c21d650",
     "component": "styles",
-    "integrity": "sha384-vBjTPlCMue0BX3XhCDjqRgbDgk+Rcmn2jUiBqfUYQXG+iH3VQ+GAvww3kICowLG8"
+    "integrity": "sha384-6HiV5ACm0bprsB0KiVrg0K/+aJN11CXf5Gn061lgZ3B4dPzAvp4jU+DoU4CqaL2o"
    },
    "/css/features/stats.css": {
-    "url": "/css/features/stats.css?v=0a1c1c6e4799",
+    "url": "/css/features/stats.css?v=2a961c048564",
     "component": "styles",
-    "integrity": "sha384-tiqr/ezmfQZcqEoCOfoC49n9LBNfeEbY7pCmRNS26+C5+OB3vw3vCv6hBhRsPC/m"
+    "integrity": "sha384-co05CFmogKIEC8//6p0LnGwmYo6VJxA0+Rnnt8blBn4PW6PHVXxqZ846jYknfkCU"
+   },
+   "/css/features/viewer-places.css": {
+    "url": "/css/features/viewer-places.css?v=ef9a27dace05",
+    "component": "styles",
+    "integrity": "sha384-Nwq4Mp7DNBurJp/eY0erZJEoDFDKNKDHsRZSDdJTOHUJShR3enLy3qwdMW/vONpJ"
+   },
+   "/css/features/voice.css": {
+    "url": "/css/features/voice.css?v=c4f41c3754ff",
+    "component": "styles",
+    "integrity": "sha384-edduqJl23ACpC3PVQR7Aq3MmP1rbhNKN5yNV4SmEesRZ/m4Ohvy0ndg1ONEMYVx/"
    },
    "/css/home-fx.css": {
     "url": "/css/home-fx.css?v=e663894c29e3",
@@ -111,39 +121,39 @@
     "integrity": "sha384-U8Kz03V5TkIF/hK5+EHWbMVu0usivPRna4gmXlTtX3AElTtjbkDrivAYyINJJ81J"
    },
    "/css/home-tour.css": {
-    "url": "/css/home-tour.css?v=3f1293159aff",
+    "url": "/css/home-tour.css?v=2bc40dd5f31d",
     "component": "styles",
-    "integrity": "sha384-amhdltUcvPHMlKbKgAysH1oVa5LXmXYvie7lrfnBB7+hnqpcSiFHfLUDcwnSznho"
+    "integrity": "sha384-Y3HHdNToHtGMyqsZDCx9nnu+Z8zM/vt9nCLP2ExlJZxPDzL0WaJ/zbeNB9o+wcMy"
    },
    "/css/i18n-star.css": {
-    "url": "/css/i18n-star.css?v=c5b0b2261c10",
+    "url": "/css/i18n-star.css?v=b41e507ae94b",
     "component": "styles",
-    "integrity": "sha384-reKMOVv9o0oQvhVOJLVJ2LIdqIAzmJK+8zknG6bitXFH6FYKLqHIXiFmyJgonCw5"
+    "integrity": "sha384-LX9BPR+aKwgjtJgS0+ZJj7ZTPOXsO2AHbl5HLx+znjCa9gMEazXKh1wI9PLnb8Rd"
    },
    "/css/media-player.css": {
-    "url": "/css/media-player.css?v=7b7fdf4b15e5",
+    "url": "/css/media-player.css?v=331ec72f4ce3",
     "component": "styles",
-    "integrity": "sha384-OsZjCMedAayAH/g66rIZS8/cND69xI8/Qx1ci04sfY8gbrncRjXT0WCDg/d+BYg9"
+    "integrity": "sha384-N1vv/UVXNP12UV6aYhzPviLD7xOQv91ueKhncYMcJVOPV8uqyn+iBIB/P9bFSyZd"
    },
    "/css/messenger.css": {
-    "url": "/css/messenger.css?v=b546de06782d",
+    "url": "/css/messenger.css?v=9fc58d6cd285",
     "component": "styles",
-    "integrity": "sha384-Gum2h1hkiOCHYGzL51Vkg18dykFocQYUKV5nj+em30urSOUV7DTkH0/qBZuRofIS"
+    "integrity": "sha384-6dCjyBy+7gKTCNlpBZ+igu1AXgts+FwGPcRjrYKOHR/C2Dbak+6zQ7rEqpEilfIS"
    },
    "/css/ov-guide.css": {
-    "url": "/css/ov-guide.css?v=51e7b691671e",
+    "url": "/css/ov-guide.css?v=89aa81350911",
     "component": "styles",
-    "integrity": "sha384-NgjftNH1wYEitNkPJWxk+J1rSLOeFiLzrujIouib3JjKTS0Z4Zv9HC8e4/IuI1IJ"
+    "integrity": "sha384-nnieycdDcszYFBj5XlBcBf++C6gvnJXtYi3WIRTGZ74ZJGp0TmiY+tQJ7VcsQC9Z"
    },
    "/css/recap.css": {
-    "url": "/css/recap.css?v=cda4dc52e8a4",
+    "url": "/css/recap.css?v=27c66cb1d30d",
     "component": "styles",
-    "integrity": "sha384-nnjFlUlLlwwU2ATKsy4JqdwUBltQRQrNx0U1rDfBnsCrWAlj2r91DGgH2GgXQZpZ"
+    "integrity": "sha384-rZTD3ACP0c3jKGeJOC1tu+lBwJfYEFbMdMlgIOIH8O3tWMUVLv8kcttFxnxgWgQm"
    },
    "/css/style.css": {
-    "url": "/css/style.css?v=a417682204dd",
+    "url": "/css/style.css?v=16d198a5019d",
     "component": "styles",
-    "integrity": "sha384-qbBXlMdrglg4suN/qZtHyXjWNnPemV+vfe/yACjNZ9YhL1bfPUaM7RvwIwz1wWhF"
+    "integrity": "sha384-BUN+BxOlHXNlTnXW3sbi2YhxUmdoaXlORVQXl/iOTqZimAL5JaM8Xu9NDyyRftLE"
    },
    "/css/vendor/fontawesome-6.5.1.min.css": {
     "url": "/css/vendor/fontawesome-6.5.1.min.css?v=d6c948f648fd",
@@ -159,7 +169,7 @@
   "shell": null,
   "metrics_url": "/release-metrics"
  },
- "dynamic_calls": 42,
+ "dynamic_calls": 43,
  "calls": [
   {
    "method": "GET",
@@ -655,6 +665,55 @@
   },
   {
    "method": "GET",
+   "path": "/api/bench-stream/channel/n1star",
+   "auth": "anon",
+   "status": 200,
+   "kind": "json",
+   "reads": {
+    "poll": "null"
+   },
+   "from": [
+    "public/js/bench-stream-watch.js"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/bench-stream/channel/n1star",
+   "auth": "user",
+   "status": 200,
+   "kind": "json",
+   "reads": {
+    "poll": "null"
+   },
+   "from": [
+    "public/js/bench-stream-watch.js"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/bench-stream/mine",
+   "auth": "anon",
+   "status": 401,
+   "kind": "json",
+   "from": [
+    "public/js/bench-stream-dashboard.js"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/bench-stream/mine",
+   "auth": "user",
+   "status": 200,
+   "kind": "json",
+   "reads": {
+    "poll": "null"
+   },
+   "from": [
+    "public/js/bench-stream-dashboard.js"
+   ]
+  },
+  {
+   "method": "GET",
    "path": "/api/chat-ai/live-captions/n1star?after=0",
    "auth": "anon",
    "status": 200,
@@ -798,6 +857,7 @@
    "reads": {
     "streamId": "number",
     "vodId": "null",
+    "parts": "array",
     "segments": "array",
     "events": "array",
     "coverageSec": "number"
@@ -815,12 +875,39 @@
    "reads": {
     "streamId": "number",
     "vodId": "null",
+    "parts": "array",
     "segments": "array",
     "events": "array",
     "coverageSec": "number"
    },
    "from": [
     "public/js/app-channel.js"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/client-release",
+   "auth": "anon",
+   "status": 200,
+   "kind": "json",
+   "reads": {
+    "release": "string"
+   },
+   "from": [
+    "public/js/app.js"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/client-release",
+   "auth": "user",
+   "status": 200,
+   "kind": "json",
+   "reads": {
+    "release": "string"
+   },
+   "from": [
+    "public/js/app.js"
    ]
   },
   {
@@ -1362,6 +1449,8 @@
     "stats.clips": "null",
     "stats.liveSessions": "number",
     "stats.streamers": "number",
+    "stats.streamedWeek": "number",
+    "stats.prevStreamedWeek": "number",
     "stats.chatMessages": "number",
     "stats.users": "number",
     "stats.anons": "number",
@@ -1373,8 +1462,6 @@
     "stats.pasteText": "null",
     "stats.streamHours": "null",
     "stats.weeklyActive": "number",
-    "stats.weeklyVisitors": "number",
-    "stats.prevWeeklyVisitors": "number",
     "stats.prevWeeklyActive": "number",
     "stats.liveNow": "number",
     "stats.recent": "object",
@@ -1411,6 +1498,11 @@
     "stats.recent.streamers.w": "number",
     "stats.recent.streamers.m": "number",
     "stats.recent.streamers.pw": "number",
+    "stats.recent.hoursWatched": "object",
+    "stats.recent.hoursWatched.d": "number",
+    "stats.recent.hoursWatched.w": "number",
+    "stats.recent.hoursWatched.m": "number",
+    "stats.recent.hoursWatched.pw": "number",
     "stats.recent.emotes": "object",
     "stats.recent.emotes.d": "number",
     "stats.recent.emotes.w": "number",
@@ -1503,6 +1595,8 @@
     "stats.clips": "null",
     "stats.liveSessions": "number",
     "stats.streamers": "number",
+    "stats.streamedWeek": "number",
+    "stats.prevStreamedWeek": "number",
     "stats.chatMessages": "number",
     "stats.users": "number",
     "stats.anons": "number",
@@ -1514,8 +1608,6 @@
     "stats.pasteText": "null",
     "stats.streamHours": "null",
     "stats.weeklyActive": "number",
-    "stats.weeklyVisitors": "number",
-    "stats.prevWeeklyVisitors": "number",
     "stats.prevWeeklyActive": "number",
     "stats.liveNow": "number",
     "stats.recent": "object",
@@ -1552,6 +1644,11 @@
     "stats.recent.streamers.w": "number",
     "stats.recent.streamers.m": "number",
     "stats.recent.streamers.pw": "number",
+    "stats.recent.hoursWatched": "object",
+    "stats.recent.hoursWatched.d": "number",
+    "stats.recent.hoursWatched.w": "number",
+    "stats.recent.hoursWatched.m": "number",
+    "stats.recent.hoursWatched.pw": "number",
     "stats.recent.emotes": "object",
     "stats.recent.emotes.d": "number",
     "stats.recent.emotes.w": "number",
@@ -1704,12 +1801,11 @@
     "viewersNow": "number",
     "weeklyActive": "number",
     "users": "number",
-    "weeklyVisitors": "number",
     "anons": "number",
     "chatMessages": "number",
     "streamers": "number",
     "hoursWatched": "number",
-    "prevWeeklyVisitors": "number",
+    "liveSessions": "number",
     "prevWeeklyActive": "number",
     "concurrency": "object",
     "concurrency.viewersAvg24h": "number",
@@ -1736,7 +1832,17 @@
     "recent.streamers.d": "number",
     "recent.streamers.w": "number",
     "recent.streamers.m": "number",
-    "recent.streamers.pw": "number"
+    "recent.streamers.pw": "number",
+    "recent.sessions": "object",
+    "recent.sessions.d": "number",
+    "recent.sessions.w": "number",
+    "recent.sessions.m": "number",
+    "recent.sessions.pw": "number",
+    "recent.hoursWatched": "object",
+    "recent.hoursWatched.d": "number",
+    "recent.hoursWatched.w": "number",
+    "recent.hoursWatched.m": "number",
+    "recent.hoursWatched.pw": "number"
    },
    "from": [
     "public/js/app-home.js"
@@ -1753,12 +1859,11 @@
     "viewersNow": "number",
     "weeklyActive": "number",
     "users": "number",
-    "weeklyVisitors": "number",
     "anons": "number",
     "chatMessages": "number",
     "streamers": "number",
     "hoursWatched": "number",
-    "prevWeeklyVisitors": "number",
+    "liveSessions": "number",
     "prevWeeklyActive": "number",
     "concurrency": "object",
     "concurrency.viewersAvg24h": "number",
@@ -1785,7 +1890,17 @@
     "recent.streamers.d": "number",
     "recent.streamers.w": "number",
     "recent.streamers.m": "number",
-    "recent.streamers.pw": "number"
+    "recent.streamers.pw": "number",
+    "recent.sessions": "object",
+    "recent.sessions.d": "number",
+    "recent.sessions.w": "number",
+    "recent.sessions.m": "number",
+    "recent.sessions.pw": "number",
+    "recent.hoursWatched": "object",
+    "recent.hoursWatched.d": "number",
+    "recent.hoursWatched.w": "number",
+    "recent.hoursWatched.m": "number",
+    "recent.hoursWatched.pw": "number"
    },
    "from": [
     "public/js/app-home.js"
@@ -2277,6 +2392,36 @@
    "kind": "json",
    "from": [
     "public/js/app-home.js"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/payments/channel/n1star/elsewhere",
+   "auth": "anon",
+   "status": 200,
+   "kind": "json",
+   "reads": {
+    "memberships": "null",
+    "support_links": "null",
+    "tips_url": "null"
+   },
+   "from": [
+    "public/js/dashboard.js"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/payments/channel/n1star/elsewhere",
+   "auth": "user",
+   "status": 200,
+   "kind": "json",
+   "reads": {
+    "memberships": "null",
+    "support_links": "null",
+    "tips_url": "null"
+   },
+   "from": [
+    "public/js/dashboard.js"
    ]
   },
   {
@@ -3297,7 +3442,17 @@
     "stream.managed_stream_slug": "null",
     "stream.endpoint": "object",
     "stream.server_clip": "boolean",
+    "stream.pip_overlays": "array",
+    "stream.pip_overlay": "null",
     "stream.external_viewer_count": "number",
+    "stream.viewer_places": "object",
+    "stream.viewer_places.total": "number",
+    "stream.viewer_places.places": "array",
+    "stream.viewer_places.places[]": "object",
+    "stream.viewer_places.places[].key": "string",
+    "stream.viewer_places.places[].name": "string",
+    "stream.viewer_places.places[].count": "number",
+    "stream.viewer_places.places[].url": "null",
     "stream.total_viewer_count": "number",
     "streams": "array",
     "streams[]": "object",
@@ -3333,7 +3488,17 @@
     "streams[].managed_stream_slug": "null",
     "streams[].endpoint": "object",
     "streams[].server_clip": "boolean",
+    "streams[].pip_overlays": "array",
+    "streams[].pip_overlay": "null",
     "streams[].external_viewer_count": "number",
+    "streams[].viewer_places": "object",
+    "streams[].viewer_places.total": "number",
+    "streams[].viewer_places.places": "array",
+    "streams[].viewer_places.places[]": "object",
+    "streams[].viewer_places.places[].key": "string",
+    "streams[].viewer_places.places[].name": "string",
+    "streams[].viewer_places.places[].count": "number",
+    "streams[].viewer_places.places[].url": "null",
     "streams[].total_viewer_count": "number",
     "managed_streams": "array",
     "managed_streams[]": "object",
@@ -3504,7 +3669,17 @@
     "stream.managed_stream_slug": "null",
     "stream.endpoint": "object",
     "stream.server_clip": "boolean",
+    "stream.pip_overlays": "array",
+    "stream.pip_overlay": "null",
     "stream.external_viewer_count": "number",
+    "stream.viewer_places": "object",
+    "stream.viewer_places.total": "number",
+    "stream.viewer_places.places": "array",
+    "stream.viewer_places.places[]": "object",
+    "stream.viewer_places.places[].key": "string",
+    "stream.viewer_places.places[].name": "string",
+    "stream.viewer_places.places[].count": "number",
+    "stream.viewer_places.places[].url": "null",
     "stream.total_viewer_count": "number",
     "streams": "array",
     "streams[]": "object",
@@ -3540,7 +3715,17 @@
     "streams[].managed_stream_slug": "null",
     "streams[].endpoint": "object",
     "streams[].server_clip": "boolean",
+    "streams[].pip_overlays": "array",
+    "streams[].pip_overlay": "null",
     "streams[].external_viewer_count": "number",
+    "streams[].viewer_places": "object",
+    "streams[].viewer_places.total": "number",
+    "streams[].viewer_places.places": "array",
+    "streams[].viewer_places.places[]": "object",
+    "streams[].viewer_places.places[].key": "string",
+    "streams[].viewer_places.places[].name": "string",
+    "streams[].viewer_places.places[].count": "number",
+    "streams[].viewer_places.places[].url": "null",
     "streams[].total_viewer_count": "number",
     "managed_streams": "array",
     "managed_streams[]": "object",
@@ -3696,7 +3881,17 @@
     "stream.managed_stream_slug": "null",
     "stream.endpoint": "object",
     "stream.server_clip": "boolean",
+    "stream.pip_overlays": "array",
+    "stream.pip_overlay": "null",
     "stream.external_viewer_count": "number",
+    "stream.viewer_places": "object",
+    "stream.viewer_places.total": "number",
+    "stream.viewer_places.places": "array",
+    "stream.viewer_places.places[]": "object",
+    "stream.viewer_places.places[].key": "string",
+    "stream.viewer_places.places[].name": "string",
+    "stream.viewer_places.places[].count": "number",
+    "stream.viewer_places.places[].url": "null",
     "stream.total_viewer_count": "number",
     "streams": "array",
     "streams[]": "object",
@@ -3732,7 +3927,17 @@
     "streams[].managed_stream_slug": "null",
     "streams[].endpoint": "object",
     "streams[].server_clip": "boolean",
+    "streams[].pip_overlays": "array",
+    "streams[].pip_overlay": "null",
     "streams[].external_viewer_count": "number",
+    "streams[].viewer_places": "object",
+    "streams[].viewer_places.total": "number",
+    "streams[].viewer_places.places": "array",
+    "streams[].viewer_places.places[]": "object",
+    "streams[].viewer_places.places[].key": "string",
+    "streams[].viewer_places.places[].name": "string",
+    "streams[].viewer_places.places[].count": "number",
+    "streams[].viewer_places.places[].url": "null",
     "streams[].total_viewer_count": "number",
     "managed_streams": "array",
     "managed_streams[]": "object",
@@ -3903,7 +4108,17 @@
     "stream.managed_stream_slug": "null",
     "stream.endpoint": "object",
     "stream.server_clip": "boolean",
+    "stream.pip_overlays": "array",
+    "stream.pip_overlay": "null",
     "stream.external_viewer_count": "number",
+    "stream.viewer_places": "object",
+    "stream.viewer_places.total": "number",
+    "stream.viewer_places.places": "array",
+    "stream.viewer_places.places[]": "object",
+    "stream.viewer_places.places[].key": "string",
+    "stream.viewer_places.places[].name": "string",
+    "stream.viewer_places.places[].count": "number",
+    "stream.viewer_places.places[].url": "null",
     "stream.total_viewer_count": "number",
     "streams": "array",
     "streams[]": "object",
@@ -3939,7 +4154,17 @@
     "streams[].managed_stream_slug": "null",
     "streams[].endpoint": "object",
     "streams[].server_clip": "boolean",
+    "streams[].pip_overlays": "array",
+    "streams[].pip_overlay": "null",
     "streams[].external_viewer_count": "number",
+    "streams[].viewer_places": "object",
+    "streams[].viewer_places.total": "number",
+    "streams[].viewer_places.places": "array",
+    "streams[].viewer_places.places[]": "object",
+    "streams[].viewer_places.places[].key": "string",
+    "streams[].viewer_places.places[].name": "string",
+    "streams[].viewer_places.places[].count": "number",
+    "streams[].viewer_places.places[].url": "null",
     "streams[].total_viewer_count": "number",
     "managed_streams": "array",
     "managed_streams[]": "object",
@@ -4095,7 +4320,17 @@
     "stream.managed_stream_slug": "null",
     "stream.endpoint": "object",
     "stream.server_clip": "boolean",
+    "stream.pip_overlays": "array",
+    "stream.pip_overlay": "null",
     "stream.external_viewer_count": "number",
+    "stream.viewer_places": "object",
+    "stream.viewer_places.total": "number",
+    "stream.viewer_places.places": "array",
+    "stream.viewer_places.places[]": "object",
+    "stream.viewer_places.places[].key": "string",
+    "stream.viewer_places.places[].name": "string",
+    "stream.viewer_places.places[].count": "number",
+    "stream.viewer_places.places[].url": "null",
     "stream.total_viewer_count": "number",
     "streams": "array",
     "streams[]": "object",
@@ -4131,7 +4366,17 @@
     "streams[].managed_stream_slug": "null",
     "streams[].endpoint": "object",
     "streams[].server_clip": "boolean",
+    "streams[].pip_overlays": "array",
+    "streams[].pip_overlay": "null",
     "streams[].external_viewer_count": "number",
+    "streams[].viewer_places": "object",
+    "streams[].viewer_places.total": "number",
+    "streams[].viewer_places.places": "array",
+    "streams[].viewer_places.places[]": "object",
+    "streams[].viewer_places.places[].key": "string",
+    "streams[].viewer_places.places[].name": "string",
+    "streams[].viewer_places.places[].count": "number",
+    "streams[].viewer_places.places[].url": "null",
     "streams[].total_viewer_count": "number",
     "managed_streams": "array",
     "managed_streams[]": "object",
@@ -4302,7 +4547,17 @@
     "stream.managed_stream_slug": "null",
     "stream.endpoint": "object",
     "stream.server_clip": "boolean",
+    "stream.pip_overlays": "array",
+    "stream.pip_overlay": "null",
     "stream.external_viewer_count": "number",
+    "stream.viewer_places": "object",
+    "stream.viewer_places.total": "number",
+    "stream.viewer_places.places": "array",
+    "stream.viewer_places.places[]": "object",
+    "stream.viewer_places.places[].key": "string",
+    "stream.viewer_places.places[].name": "string",
+    "stream.viewer_places.places[].count": "number",
+    "stream.viewer_places.places[].url": "null",
     "stream.total_viewer_count": "number",
     "streams": "array",
     "streams[]": "object",
@@ -4338,7 +4593,17 @@
     "streams[].managed_stream_slug": "null",
     "streams[].endpoint": "object",
     "streams[].server_clip": "boolean",
+    "streams[].pip_overlays": "array",
+    "streams[].pip_overlay": "null",
     "streams[].external_viewer_count": "number",
+    "streams[].viewer_places": "object",
+    "streams[].viewer_places.total": "number",
+    "streams[].viewer_places.places": "array",
+    "streams[].viewer_places.places[]": "object",
+    "streams[].viewer_places.places[].key": "string",
+    "streams[].viewer_places.places[].name": "string",
+    "streams[].viewer_places.places[].count": "number",
+    "streams[].viewer_places.places[].url": "null",
     "streams[].total_viewer_count": "number",
     "managed_streams": "array",
     "managed_streams[]": "object",
@@ -4594,7 +4859,17 @@
     "stream.managed_stream_slug": "null",
     "stream.endpoint": "object",
     "stream.server_clip": "boolean",
+    "stream.pip_overlays": "array",
+    "stream.pip_overlay": "null",
     "stream.external_viewer_count": "number",
+    "stream.viewer_places": "object",
+    "stream.viewer_places.total": "number",
+    "stream.viewer_places.places": "array",
+    "stream.viewer_places.places[]": "object",
+    "stream.viewer_places.places[].key": "string",
+    "stream.viewer_places.places[].name": "string",
+    "stream.viewer_places.places[].count": "number",
+    "stream.viewer_places.places[].url": "null",
     "stream.total_viewer_count": "number",
     "streams": "array",
     "streams[]": "object",
@@ -4630,7 +4905,17 @@
     "streams[].managed_stream_slug": "null",
     "streams[].endpoint": "object",
     "streams[].server_clip": "boolean",
+    "streams[].pip_overlays": "array",
+    "streams[].pip_overlay": "null",
     "streams[].external_viewer_count": "number",
+    "streams[].viewer_places": "object",
+    "streams[].viewer_places.total": "number",
+    "streams[].viewer_places.places": "array",
+    "streams[].viewer_places.places[]": "object",
+    "streams[].viewer_places.places[].key": "string",
+    "streams[].viewer_places.places[].name": "string",
+    "streams[].viewer_places.places[].count": "number",
+    "streams[].viewer_places.places[].url": "null",
     "streams[].total_viewer_count": "number",
     "managed_streams": "array",
     "managed_streams[]": "object",
@@ -4681,6 +4966,7 @@
     "aiClipsOffset": "number"
    },
    "from": [
+    "public/js/broadcast.js",
     "public/js/dashboard.js"
    ]
   },
@@ -4801,7 +5087,17 @@
     "stream.managed_stream_slug": "null",
     "stream.endpoint": "object",
     "stream.server_clip": "boolean",
+    "stream.pip_overlays": "array",
+    "stream.pip_overlay": "null",
     "stream.external_viewer_count": "number",
+    "stream.viewer_places": "object",
+    "stream.viewer_places.total": "number",
+    "stream.viewer_places.places": "array",
+    "stream.viewer_places.places[]": "object",
+    "stream.viewer_places.places[].key": "string",
+    "stream.viewer_places.places[].name": "string",
+    "stream.viewer_places.places[].count": "number",
+    "stream.viewer_places.places[].url": "null",
     "stream.total_viewer_count": "number",
     "streams": "array",
     "streams[]": "object",
@@ -4837,7 +5133,17 @@
     "streams[].managed_stream_slug": "null",
     "streams[].endpoint": "object",
     "streams[].server_clip": "boolean",
+    "streams[].pip_overlays": "array",
+    "streams[].pip_overlay": "null",
     "streams[].external_viewer_count": "number",
+    "streams[].viewer_places": "object",
+    "streams[].viewer_places.total": "number",
+    "streams[].viewer_places.places": "array",
+    "streams[].viewer_places.places[]": "object",
+    "streams[].viewer_places.places[].key": "string",
+    "streams[].viewer_places.places[].name": "string",
+    "streams[].viewer_places.places[].count": "number",
+    "streams[].viewer_places.places[].url": "null",
     "streams[].total_viewer_count": "number",
     "managed_streams": "array",
     "managed_streams[]": "object",
@@ -4888,6 +5194,7 @@
     "aiClipsOffset": "number"
    },
    "from": [
+    "public/js/broadcast.js",
     "public/js/dashboard.js"
    ]
   },
@@ -4993,7 +5300,17 @@
     "stream.managed_stream_slug": "null",
     "stream.endpoint": "object",
     "stream.server_clip": "boolean",
+    "stream.pip_overlays": "array",
+    "stream.pip_overlay": "null",
     "stream.external_viewer_count": "number",
+    "stream.viewer_places": "object",
+    "stream.viewer_places.total": "number",
+    "stream.viewer_places.places": "array",
+    "stream.viewer_places.places[]": "object",
+    "stream.viewer_places.places[].key": "string",
+    "stream.viewer_places.places[].name": "string",
+    "stream.viewer_places.places[].count": "number",
+    "stream.viewer_places.places[].url": "null",
     "stream.total_viewer_count": "number",
     "streams": "array",
     "streams[]": "object",
@@ -5029,7 +5346,17 @@
     "streams[].managed_stream_slug": "null",
     "streams[].endpoint": "object",
     "streams[].server_clip": "boolean",
+    "streams[].pip_overlays": "array",
+    "streams[].pip_overlay": "null",
     "streams[].external_viewer_count": "number",
+    "streams[].viewer_places": "object",
+    "streams[].viewer_places.total": "number",
+    "streams[].viewer_places.places": "array",
+    "streams[].viewer_places.places[]": "object",
+    "streams[].viewer_places.places[].key": "string",
+    "streams[].viewer_places.places[].name": "string",
+    "streams[].viewer_places.places[].count": "number",
+    "streams[].viewer_places.places[].url": "null",
     "streams[].total_viewer_count": "number",
     "managed_streams": "array",
     "managed_streams[]": "object",
@@ -5200,7 +5527,17 @@
     "stream.managed_stream_slug": "null",
     "stream.endpoint": "object",
     "stream.server_clip": "boolean",
+    "stream.pip_overlays": "array",
+    "stream.pip_overlay": "null",
     "stream.external_viewer_count": "number",
+    "stream.viewer_places": "object",
+    "stream.viewer_places.total": "number",
+    "stream.viewer_places.places": "array",
+    "stream.viewer_places.places[]": "object",
+    "stream.viewer_places.places[].key": "string",
+    "stream.viewer_places.places[].name": "string",
+    "stream.viewer_places.places[].count": "number",
+    "stream.viewer_places.places[].url": "null",
     "stream.total_viewer_count": "number",
     "streams": "array",
     "streams[]": "object",
@@ -5236,7 +5573,17 @@
     "streams[].managed_stream_slug": "null",
     "streams[].endpoint": "object",
     "streams[].server_clip": "boolean",
+    "streams[].pip_overlays": "array",
+    "streams[].pip_overlay": "null",
     "streams[].external_viewer_count": "number",
+    "streams[].viewer_places": "object",
+    "streams[].viewer_places.total": "number",
+    "streams[].viewer_places.places": "array",
+    "streams[].viewer_places.places[]": "object",
+    "streams[].viewer_places.places[].key": "string",
+    "streams[].viewer_places.places[].name": "string",
+    "streams[].viewer_places.places[].count": "number",
+    "streams[].viewer_places.places[].url": "null",
     "streams[].total_viewer_count": "number",
     "managed_streams": "array",
     "managed_streams[]": "object",
@@ -5318,6 +5665,28 @@
    },
    "from": [
     "public/js/app-channel.js"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/streams/channel/1",
+   "auth": "anon",
+   "status": 404,
+   "kind": "json",
+   "from": [
+    "public/obs/alerts.html",
+    "public/obs/scene.html"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/streams/channel/1",
+   "auth": "user",
+   "status": 404,
+   "kind": "json",
+   "from": [
+    "public/obs/alerts.html",
+    "public/obs/scene.html"
    ]
   },
   {
@@ -5479,8 +5848,6 @@
     "managed_streams[].weather_show_location": "number",
     "managed_streams[].slot_clip_recording_enabled": "number",
     "managed_streams[].slot_clip_notify_enabled": "number",
-    "managed_streams[].pip_source_msid": "null",
-    "managed_streams[].pip_defaults": "string",
     "managed_streams[].slot_powerchat_relay": "number",
     "managed_streams[].slot_powerchat_count_rs_views": "number",
     "managed_streams[].last_live_at": "string",
@@ -5535,8 +5902,6 @@
     "managed_stream.weather_show_location": "number",
     "managed_stream.slot_clip_recording_enabled": "number",
     "managed_stream.slot_clip_notify_enabled": "number",
-    "managed_stream.pip_source_msid": "null",
-    "managed_stream.pip_defaults": "string",
     "managed_stream.slot_powerchat_relay": "number",
     "managed_stream.slot_powerchat_count_rs_views": "number",
     "managed_stream.username": "string",
@@ -5552,6 +5917,30 @@
    },
    "from": [
     "public/js/guides-live.js"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/streams/managed/1/pips",
+   "auth": "anon",
+   "status": 401,
+   "kind": "json",
+   "from": [
+    "public/js/broadcast-cam-pip.js"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/streams/managed/1/pips",
+   "auth": "user",
+   "status": 200,
+   "kind": "json",
+   "reads": {
+    "pips": "array",
+    "max": "number"
+   },
+   "from": [
+    "public/js/broadcast-cam-pip.js"
    ]
   },
   {
@@ -5643,6 +6032,94 @@
    "from": [
     "public/js/broadcast.js",
     "public/js/dashboard.js"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/streams/mine?limit=30&vods=1",
+   "auth": "anon",
+   "status": 401,
+   "kind": "json",
+   "from": [
+    "public/js/broadcast.js"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/streams/mine?limit=30&vods=1",
+   "auth": "user",
+   "status": 200,
+   "kind": "json",
+   "reads": {
+    "streams": "array",
+    "streams[]": "object",
+    "streams[].id": "number",
+    "streams[].user_id": "number",
+    "streams[].channel_id": "null",
+    "streams[].title": "string",
+    "streams[].description": "string",
+    "streams[].category": "string",
+    "streams[].tags": "string",
+    "streams[].protocol": "string",
+    "streams[].is_live": "number",
+    "streams[].is_nsfw": "number",
+    "streams[].viewer_count": "number",
+    "streams[].peak_viewers": "number",
+    "streams[].follower_count": "number",
+    "streams[].thumbnail_url": "null",
+    "streams[].started_at": "string",
+    "streams[].ended_at": "string",
+    "streams[].duration_seconds": "number",
+    "streams[].created_at": "string",
+    "streams[].call_mode": "null",
+    "streams[].managed_stream_id": "number",
+    "streams[].ai_overview": "null",
+    "streams[].ai_overview_short": "null",
+    "streams[].ai_title": "null",
+    "streams[].ai_category": "null",
+    "streams[].ai_tags": "null",
+    "streams[].username": "string",
+    "streams[].display_name": "string",
+    "streams[].avatar_url": "null",
+    "streams[].profile_color": "string",
+    "streams[].managed_stream_slug": "null",
+    "streams[].vod_id": "null",
+    "streams[].vod_is_public": "null",
+    "streams[].vod_thumbnail_url": "null",
+    "streams[].vod_duration": "null"
+   },
+   "from": [
+    "public/js/broadcast.js"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/streams/pip-sources?username=n1star",
+   "auth": "anon",
+   "status": 401,
+   "kind": "json",
+   "from": [
+    "public/js/broadcast-workspace.js"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/streams/pip-sources?username=n1star",
+   "auth": "user",
+   "status": 200,
+   "kind": "json",
+   "reads": {
+    "username": "string",
+    "slots": "array",
+    "slots[]": "object",
+    "slots[].id": "number",
+    "slots[].title": "string",
+    "slots[].slug": "null",
+    "slots[].nsfw": "boolean",
+    "slots[].live": "boolean"
+   },
+   "from": [
+    "public/js/broadcast-workspace.js"
    ]
   },
   {
@@ -5802,6 +6279,32 @@
   },
   {
    "method": "GET",
+   "path": "/api/streams/1/pips",
+   "auth": "anon",
+   "status": 200,
+   "kind": "json",
+   "reads": {
+    "pips": "array"
+   },
+   "from": [
+    "public/js/stream-pip.js"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/streams/1/pips",
+   "auth": "user",
+   "status": 200,
+   "kind": "json",
+   "reads": {
+    "pips": "array"
+   },
+   "from": [
+    "public/js/stream-pip.js"
+   ]
+  },
+  {
+   "method": "GET",
    "path": "/api/streams/1",
    "auth": "anon",
    "status": 200,
@@ -5867,6 +6370,7 @@
     "stream.channel.ai_category": "null",
     "stream.channel.ai_derivation_enabled": "number",
     "stream.channel.social_links": "null",
+    "stream.pip_overlays": "array",
     "stream.pip_overlay": "null"
    },
    "from": [
@@ -5940,6 +6444,7 @@
     "stream.channel.ai_category": "null",
     "stream.channel.ai_derivation_enabled": "number",
     "stream.channel.social_links": "null",
+    "stream.pip_overlays": "array",
     "stream.pip_overlay": "null"
    },
    "from": [
@@ -5975,6 +6480,38 @@
   },
   {
    "method": "GET",
+   "path": "/api/streams/1/history",
+   "auth": "anon",
+   "status": 200,
+   "kind": "json",
+   "reads": {
+    "stream_id": "number",
+    "started_at": "string",
+    "is_live": "boolean",
+    "parts": "array"
+   },
+   "from": [
+    "public/js/stream-player.js"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/streams/1/history",
+   "auth": "user",
+   "status": 200,
+   "kind": "json",
+   "reads": {
+    "stream_id": "number",
+    "started_at": "string",
+    "is_live": "boolean",
+    "parts": "array"
+   },
+   "from": [
+    "public/js/stream-player.js"
+   ]
+  },
+  {
+   "method": "GET",
    "path": "/api/streams/1/rtmp-status",
    "auth": "anon",
    "status": 401,
@@ -5995,78 +6532,55 @@
   },
   {
    "method": "GET",
-   "path": "/api/vibe-coding/channel/n1star/1/events?limit=5",
+   "path": "/api/today/channel/n1star",
    "auth": "anon",
    "status": 200,
    "kind": "json",
    "reads": {
-    "managed_stream": "object",
-    "managed_stream.id": "number",
-    "managed_stream.slug": "null",
-    "managed_stream.title": "string",
-    "settings": "object",
-    "settings.enabled": "number",
-    "settings.widget_title": "string",
-    "settings.viewer_depth": "string",
-    "settings.show_prompts": "number",
-    "settings.show_responses": "number",
-    "settings.show_thinking": "number",
-    "settings.show_tool_calls": "number",
-    "settings.show_tool_arguments": "number",
-    "settings.show_file_events": "number",
-    "settings.show_file_snippets": "number",
-    "settings.redact_file_paths": "number",
-    "settings.paused": "number",
-    "settings.delay_ms": "number",
-    "settings.max_events": "number",
-    "settings.max_prompt_chars": "number",
-    "settings.max_response_chars": "number",
-    "settings.max_thinking_chars": "number",
-    "settings.max_tool_chars": "number",
-    "settings.max_snippet_chars": "number",
-    "publisher": "null",
     "events": "array"
    },
    "from": [
-    "public/js/chat.js"
+    "public/js/dashboard.js"
    ]
   },
   {
    "method": "GET",
-   "path": "/api/vibe-coding/channel/n1star/1/events?limit=5",
+   "path": "/api/today/channel/n1star",
    "auth": "user",
    "status": 200,
    "kind": "json",
    "reads": {
-    "managed_stream": "object",
-    "managed_stream.id": "number",
-    "managed_stream.slug": "null",
-    "managed_stream.title": "string",
-    "settings": "object",
-    "settings.enabled": "number",
-    "settings.widget_title": "string",
-    "settings.viewer_depth": "string",
-    "settings.show_prompts": "number",
-    "settings.show_responses": "number",
-    "settings.show_thinking": "number",
-    "settings.show_tool_calls": "number",
-    "settings.show_tool_arguments": "number",
-    "settings.show_file_events": "number",
-    "settings.show_file_snippets": "number",
-    "settings.redact_file_paths": "number",
-    "settings.paused": "number",
-    "settings.delay_ms": "number",
-    "settings.max_events": "number",
-    "settings.max_prompt_chars": "number",
-    "settings.max_response_chars": "number",
-    "settings.max_thinking_chars": "number",
-    "settings.max_tool_chars": "number",
-    "settings.max_snippet_chars": "number",
-    "publisher": "null",
     "events": "array"
    },
    "from": [
-    "public/js/chat.js"
+    "public/js/dashboard.js"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/vibe/settings",
+   "auth": "anon",
+   "status": 401,
+   "kind": "json",
+   "from": [
+    "public/js/dashboard.js"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/vibe/settings",
+   "auth": "user",
+   "status": 200,
+   "kind": "json",
+   "reads": {
+    "settings": "object",
+    "settings.enabled": "boolean",
+    "settings.call_word": "string",
+    "settings.speak": "boolean",
+    "hearing": "boolean"
+   },
+   "from": [
+    "public/js/dashboard.js"
    ]
   },
   {
@@ -6107,6 +6621,30 @@
    "kind": "json",
    "from": [
     "public/js/app-channel.js"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/vods/stream/1/recording",
+   "auth": "anon",
+   "status": 401,
+   "kind": "json",
+   "from": [
+    "public/js/broadcast.js"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/vods/stream/1/recording",
+   "auth": "user",
+   "status": 200,
+   "kind": "json",
+   "reads": {
+    "recording": "boolean",
+    "server": "boolean"
+   },
+   "from": [
+    "public/js/broadcast.js"
    ]
   },
   {
@@ -6181,7 +6719,7 @@
   },
   {
    "method": "GET",
-   "path": "/css/style.core.css?v=39879bee1919",
+   "path": "/css/style.core.css?v=67bf63d4fc88",
    "auth": "anon",
    "accept": "html",
    "status": 200,
@@ -6192,7 +6730,7 @@
   },
   {
    "method": "GET",
-   "path": "/css/style.css?v=a417682204dd",
+   "path": "/css/style.css?v=16d198a5019d",
    "auth": "anon",
    "accept": "html",
    "status": 200,
@@ -6203,7 +6741,7 @@
   },
   {
    "method": "GET",
-   "path": "/css/features/home.css?v=faa8fa066557",
+   "path": "/css/features/home.css?v=d4fb4e50c1d3",
    "auth": "anon",
    "accept": "html",
    "status": 200,
@@ -6225,7 +6763,7 @@
   },
   {
    "method": "GET",
-   "path": "/css/home-tour.css?v=3f1293159aff",
+   "path": "/css/home-tour.css?v=2bc40dd5f31d",
    "auth": "anon",
    "accept": "html",
    "status": 200,
@@ -6236,7 +6774,7 @@
   },
   {
    "method": "GET",
-   "path": "/css/i18n-star.css?v=c5b0b2261c10",
+   "path": "/css/i18n-star.css?v=b41e507ae94b",
    "auth": "anon",
    "accept": "html",
    "status": 200,
@@ -6247,7 +6785,7 @@
   },
   {
    "method": "GET",
-   "path": "/css/vendor/fontawesome-6.5.1.min.css?v=d6c948f648fd",
+   "path": "/css/chat-shared.css?v=f15d49698ef8",
    "auth": "anon",
    "accept": "html",
    "status": 200,
@@ -6258,7 +6796,7 @@
   },
   {
    "method": "GET",
-   "path": "/css/chat-shared.css?v=558d74cf2e6a",
+   "path": "/css/broadcast.css?v=ed4c67008ce9",
    "auth": "anon",
    "accept": "html",
    "status": 200,
@@ -6269,7 +6807,7 @@
   },
   {
    "method": "GET",
-   "path": "/css/broadcast.css?v=b2d71a5f4f99",
+   "path": "/css/cosmetics.css?v=8e8bcdae308b",
    "auth": "anon",
    "accept": "html",
    "status": 200,
@@ -6280,7 +6818,7 @@
   },
   {
    "method": "GET",
-   "path": "/css/cosmetics.css?v=5d33ae6cb97b",
+   "path": "/css/messenger.css?v=9fc58d6cd285",
    "auth": "anon",
    "accept": "html",
    "status": 200,
@@ -6291,7 +6829,18 @@
   },
   {
    "method": "GET",
-   "path": "/css/messenger.css?v=b546de06782d",
+   "path": "/index.md",
+   "auth": "anon",
+   "accept": "html",
+   "status": 200,
+   "kind": "text",
+   "from": [
+    "page /"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/llms.txt",
    "auth": "anon",
    "accept": "html",
    "status": 200,
@@ -6511,7 +7060,7 @@
   },
   {
    "method": "GET",
-   "path": "/shared/navbar.js?v=70456901fbfe",
+   "path": "/shared/navbar.js?v=497377128ccb",
    "auth": "anon",
    "accept": "html",
    "status": 200,
@@ -6522,7 +7071,7 @@
   },
   {
    "method": "GET",
-   "path": "/js/app.js?v=3dd6d6052d5b",
+   "path": "/js/app.js?v=ddb8a69ea741",
    "auth": "anon",
    "accept": "html",
    "status": 200,
@@ -6533,7 +7082,7 @@
   },
   {
    "method": "GET",
-   "path": "/js/ov-navbar-live.js?v=d54491455927",
+   "path": "/js/ov-navbar-live.js?v=e44756775969",
    "auth": "anon",
    "accept": "html",
    "status": 200,
@@ -6566,7 +7115,7 @@
   },
   {
    "method": "GET",
-   "path": "/js/chat.js?v=aede89fcff0c",
+   "path": "/js/chat.js?v=bc74fa863458",
    "auth": "anon",
    "accept": "html",
    "status": 200,
@@ -6599,7 +7148,7 @@
   },
   {
    "method": "GET",
-   "path": "/js/draggable-fab.js?v=fd94fe405afb",
+   "path": "/js/draggable-fab.js?v=c5d841c19146",
    "auth": "anon",
    "accept": "html",
    "status": 200,
@@ -6610,7 +7159,7 @@
   },
   {
    "method": "GET",
-   "path": "/js/messenger.js?v=d1d537f2289d",
+   "path": "/js/messenger.js?v=b1872df1ed31",
    "auth": "anon",
    "accept": "html",
    "status": 200,
@@ -6621,7 +7170,7 @@
   },
   {
    "method": "GET",
-   "path": "/shared/footer.js?v=885f7fd5835b",
+   "path": "/shared/footer.js?v=d901e4f858a8",
    "auth": "anon",
    "accept": "html",
    "status": 200,
@@ -6632,7 +7181,7 @@
   },
   {
    "method": "GET",
-   "path": "/js/footer-live.js?v=02da2af6b629",
+   "path": "/js/footer-live.js?v=14a86e1ba196",
    "auth": "anon",
    "accept": "html",
    "status": 200,
@@ -6643,7 +7192,7 @@
   },
   {
    "method": "GET",
-   "path": "/shared/theme-loader.js?v=ee4a6754d0f7",
+   "path": "/shared/theme-loader.js?v=4e7611149d12",
    "auth": "anon",
    "accept": "html",
    "status": 200,
@@ -6665,7 +7214,7 @@
   },
   {
    "method": "GET",
-   "path": "/shared/notification-ui.js?v=5eb3ef9fa337",
+   "path": "/shared/notification-ui.js?v=9e2661641c71",
    "auth": "anon",
    "accept": "html",
    "status": 200,
@@ -6698,7 +7247,7 @@
   },
   {
    "method": "GET",
-   "path": "/js/app-home.js?v=63d6e4a54fd8",
+   "path": "/js/app-home.js?v=1956744e79a3",
    "auth": "anon",
    "accept": "html",
    "status": 200,
@@ -6753,7 +7302,18 @@
   },
   {
    "method": "GET",
-   "path": "/css/features/channel.css?v=f41f8d4b31d8",
+   "path": "/css/features/viewer-places.css?v=ef9a27dace05",
+   "auth": "anon",
+   "accept": "html",
+   "status": 200,
+   "kind": "text",
+   "from": [
+    "page /@n1star"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/css/features/channel.css?v=3f0237080688",
    "auth": "anon",
    "accept": "html",
    "status": 200,
@@ -6775,7 +7335,18 @@
   },
   {
    "method": "GET",
-   "path": "/js/ov-clip-jobs.js?v=b674bd0b77b1",
+   "path": "/@n1star.md",
+   "auth": "anon",
+   "accept": "html",
+   "status": 200,
+   "kind": "text",
+   "from": [
+    "page /@n1star"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/js/ov-clip-jobs.js?v=5fde560ae5c0",
    "auth": "anon",
    "accept": "html",
    "status": 200,
@@ -6786,7 +7357,7 @@
   },
   {
    "method": "GET",
-   "path": "/js/stream-player.js?v=00262645004f",
+   "path": "/shared/loading.js?v=936afb661bfe",
    "auth": "anon",
    "accept": "html",
    "status": 200,
@@ -6797,7 +7368,51 @@
   },
   {
    "method": "GET",
-   "path": "/js/stream-pip.js?v=11ae18077afa",
+   "path": "/js/player-shape.js?v=59eaa343a31f",
+   "auth": "anon",
+   "accept": "html",
+   "status": 200,
+   "kind": "other",
+   "from": [
+    "page /@n1star"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/js/ov-viewer-health.js?v=773f13ba041a",
+   "auth": "anon",
+   "accept": "html",
+   "status": 200,
+   "kind": "other",
+   "from": [
+    "page /@n1star"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/js/ov-mini-player.js?v=3adbfab5e605",
+   "auth": "anon",
+   "accept": "html",
+   "status": 200,
+   "kind": "other",
+   "from": [
+    "page /@n1star"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/js/stream-player.js?v=d864a05ec517",
+   "auth": "anon",
+   "accept": "html",
+   "status": 200,
+   "kind": "other",
+   "from": [
+    "page /@n1star"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/js/stream-pip.js?v=237256233aac",
    "auth": "anon",
    "accept": "html",
    "status": 200,
@@ -6819,7 +7434,18 @@
   },
   {
    "method": "GET",
-   "path": "/js/emotes.js?v=346f6a37bfb3",
+   "path": "/js/chat-spoilers.js?v=36ea4212353c",
+   "auth": "anon",
+   "accept": "html",
+   "status": 200,
+   "kind": "other",
+   "from": [
+    "page /@n1star"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/js/emotes.js?v=b96d89da55f5",
    "auth": "anon",
    "accept": "html",
    "status": 200,
@@ -6841,7 +7467,7 @@
   },
   {
    "method": "GET",
-   "path": "/js/chat-autocomplete.js?v=b726f226680f",
+   "path": "/js/chat-autocomplete.js?v=885af1ffa6cb",
    "auth": "anon",
    "accept": "html",
    "status": 200,
@@ -6853,6 +7479,17 @@
   {
    "method": "GET",
    "path": "/js/channel-uploads.js?v=5e4c26112cbf",
+   "auth": "anon",
+   "accept": "html",
+   "status": 200,
+   "kind": "other",
+   "from": [
+    "page /@n1star"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/js/viewer-places.js?v=963c2392d1a9",
    "auth": "anon",
    "accept": "html",
    "status": 200,
@@ -6896,7 +7533,18 @@
   },
   {
    "method": "GET",
-   "path": "/js/app-channel.js?v=5aa423964298",
+   "path": "/js/app-channel.js?v=ddfa2834c54b",
+   "auth": "anon",
+   "accept": "html",
+   "status": 200,
+   "kind": "other",
+   "from": [
+    "page /@n1star"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/js/bench-stream-watch.js?v=31660025ca3c",
    "auth": "anon",
    "accept": "html",
    "status": 200,
@@ -7087,6 +7735,36 @@
   },
   {
    "method": "POST",
+   "path": "/api/bench-stream/mine",
+   "auth": "anon",
+   "status": 401,
+   "kind": "json",
+   "from": [
+    "public/js/bench-stream-dashboard.js"
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/cam/post-share",
+   "auth": "anon",
+   "status": 401,
+   "kind": "json",
+   "from": [
+    "public/js/app-channel.js"
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/cam/stills",
+   "auth": "anon",
+   "status": 401,
+   "kind": "json",
+   "from": [
+    "public/js/app-channel.js"
+   ]
+  },
+  {
+   "method": "POST",
    "path": "/api/clips/bulk",
    "auth": "anon",
    "status": 401,
@@ -7118,6 +7796,16 @@
   {
    "method": "PUT",
    "path": "/api/clips/1/title",
+   "auth": "anon",
+   "status": 401,
+   "kind": "json",
+   "from": [
+    "public/js/stream-player.js"
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/clips/1/trim",
    "auth": "anon",
    "status": 401,
    "kind": "json",
@@ -7886,6 +8574,7 @@
    "status": 401,
    "kind": "json",
    "from": [
+    "public/js/broadcast-cam-pip.js",
     "public/js/broadcast.js"
    ]
   },
@@ -7972,6 +8661,7 @@
    "kind": "json",
    "from": [
     "public/js/app.js",
+    "public/js/broadcast-cam-pip.js",
     "public/js/guides-live.js"
    ]
   },
@@ -7983,6 +8673,16 @@
    "kind": "json",
    "from": [
     "public/js/guides-live.js"
+   ]
+  },
+  {
+   "method": "PUT",
+   "path": "/api/streams/managed/1/pips",
+   "auth": "anon",
+   "status": 401,
+   "kind": "json",
+   "from": [
+    "public/js/broadcast-cam-pip.js"
    ]
   },
   {
@@ -8056,6 +8756,16 @@
    ]
   },
   {
+   "method": "PUT",
+   "path": "/api/vibe/settings",
+   "auth": "anon",
+   "status": 401,
+   "kind": "json",
+   "from": [
+    "public/js/dashboard.js"
+   ]
+  },
+  {
    "method": "POST",
    "path": "/api/vods/bulk",
    "auth": "anon",
@@ -8083,16 +8793,6 @@
    "kind": "json",
    "from": [
     "public/js/broadcast.js",
-    "public/js/stream-player.js"
-   ]
-  },
-  {
-   "method": "POST",
-   "path": "/api/vods/clips/1/trim",
-   "auth": "anon",
-   "status": 401,
-   "kind": "json",
-   "from": [
     "public/js/stream-player.js"
    ]
   },
