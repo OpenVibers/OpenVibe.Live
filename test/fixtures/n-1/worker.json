@@ -1,7 +1,7 @@
 {
  "service": "live",
- "release": "f0fed5be6d1b25cfcabb1a3f3e2db347dfea88fb",
- "recorded_at": "2026-10-19T23:30:31.918Z",
+ "release": "b0270111334aae0474aeaa8bcdab1cdb80dc20da",
+ "recorded_at": "2026-11-01T08:07:25.315Z",
  "note": "N-1 fixture: written by `npm run n-1:record`, replayed by test/n-1.test.js",
  "engine": "postgresql",
  "migrations": [
@@ -44,6 +44,54 @@
   {
    "name": "0010_rundown.sql",
    "sha256": "7477f41b9d41a067f03adb79a5c198721ef88910774d8a1f52fefce8d8ddc251"
+  },
+  {
+   "name": "0011_drop_live_controls.sql",
+   "sha256": "a0c485b7075f9f5b71b9e6a58380ce5f532feb7e4b6e3f79ec97f766345e84d3"
+  },
+  {
+   "name": "0012_clip_ai_window.sql",
+   "sha256": "200c2be0adbe32790fa59403eb9db302627e2bd093b0c627a79128ee0b77a06c"
+  },
+  {
+   "name": "0013_provider_keys_are_billings.sql",
+   "sha256": "7e7e5e134f2db877d58e511795287acdc6885c960df1c45a78495665864dd77e"
+  },
+  {
+   "name": "0014_stream_end_reason.sql",
+   "sha256": "f89a687ed58f27d4386b8f664288557b60345de59799a62b939fc9e1ea4cb4ea"
+  },
+  {
+   "name": "0015_drop_arena.sql",
+   "sha256": "0d8e42f2e955866cc2b2743673cfd371db8921350175ea2729fbcc09d2243fd9"
+  },
+  {
+   "name": "0016_drop_old_money_ledger.sql",
+   "sha256": "014a8be23d384626c01073c8cfc180d1830826d08fdaeae73ada6669d84fbdc0"
+  },
+  {
+   "name": "0017_vibe_voice.sql",
+   "sha256": "d680de62ec5b51a51d57b060ef53de05ef0dedbb77b5dce845c3146442e6010b"
+  },
+  {
+   "name": "0018_drop_vibe_coding.sql",
+   "sha256": "3aa8707d8d1c7bd2f2bdc5c15f4b0ab35bb0c46f6eb313c569b8bbab0b549701"
+  },
+  {
+   "name": "0019_clip_ai_title.sql",
+   "sha256": "885b170ba1dddd16041810534ebfd330b5d0bf946bb75b76c9ebfbf43beab5f8"
+  },
+  {
+   "name": "0020_stream_history.sql",
+   "sha256": "83db8e7e1809d73d680a14e31c9e5ff09a6ad2bbf9b636febbbf1f0605ac6148"
+  },
+  {
+   "name": "0021_stream_pips.sql",
+   "sha256": "6e8ab5b3b0f76bc8aa4f431abca51b64695e29b15f1629003fa77de7bb3dfc8a"
+  },
+  {
+   "name": "0022_bench_stream.sql",
+   "sha256": "fb7165cc840a3986074b521a2cdb86e6ca8f528cd75ac42ba80cf906983ba840"
   }
  ],
  "statements": []
