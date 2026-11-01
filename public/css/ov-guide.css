@@ -4,10 +4,10 @@
 .ovg-root { position: fixed; inset: 0; z-index: 21000; display: none; }
 .ovg-root.is-open { display: block; }
 body.ovg-lock { overflow: hidden; }
-.ovg-scrim { position: absolute; inset: 0; background: rgba(4,5,10,0.72); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); animation: ovgFade .25s ease; }
+.ovg-scrim { position: absolute; inset: 0; background: rgba(4,5,10,0.72); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); animation: ovgFade var(--ov-dur-2, .25s) var(--ov-ease-out, ease); }
 .ovg-card { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(720px, calc(100vw - 24px)); max-height: calc(100vh - 32px); display: flex; flex-direction: column;
     border-radius: 22px; background: var(--bg-card); border: 1px solid color-mix(in srgb, var(--accent) 40%, var(--border)); box-shadow: 0 40px 100px rgba(0,0,0,0.65), 0 0 0 1px rgba(255,255,255,0.04), 0 0 80px color-mix(in srgb, var(--accent) 25%, transparent);
-    animation: ovgPop .4s cubic-bezier(.2,1.3,.3,1); overflow: hidden; }
+    animation: ovgPop var(--ov-dur-3, .4s) var(--ov-ease-spring, cubic-bezier(.2,1.3,.3,1)); overflow: hidden; }
 @keyframes ovgFade { from { opacity: 0; } to { opacity: 1; } }
 @keyframes ovgPop { from { opacity: 0; transform: translate(-50%, -46%) scale(0.96); } to { opacity: 1; transform: translate(-50%, -50%) scale(1); } }
 .ovg-close { position: absolute; top: 10px; right: 10px; width: 36px; height: 36px; border-radius: 50%; border: 1px solid var(--border); background: var(--bg-tertiary); color: var(--text-secondary); cursor: pointer; z-index: 2; }
@@ -17,14 +17,14 @@ body.ovg-lock { overflow: hidden; }
 .ovg-title { font-size: 1.25rem; font-weight: 900; line-height: 1.15; }
 .ovg-steps { --p: 0%; list-style: none; margin: 8px 20px 0; padding: 0 0 12px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; position: relative; }
 .ovg-steps::before { content: ''; position: absolute; left: 12%; right: 12%; top: 15px; height: 3px; background: var(--bg-tertiary); border-radius: 2px; }
-.ovg-steps::after { content: ''; position: absolute; left: 12%; top: 15px; height: 3px; width: calc(76% * var(--p) / 100%); background: linear-gradient(90deg, var(--accent), #22d3ee); border-radius: 2px; transition: width .5s cubic-bezier(.2,.9,.3,1); }
+.ovg-steps::after { content: ''; position: absolute; left: 12%; top: 15px; height: 3px; width: calc(76% * var(--p) / 100%); background: linear-gradient(90deg, var(--accent), #22d3ee); border-radius: 2px; transition: width var(--ov-dur-4, .5s) var(--ov-ease-out, cubic-bezier(.2,.9,.3,1)); }
 .ovg-steps li { position: relative; z-index: 1; display: grid; justify-items: center; gap: 5px; font-size: 0.68rem; font-weight: 700; color: var(--text-muted); text-align: center; }
-.ovg-step-dot { width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; background: var(--bg-tertiary); border: 2px solid var(--border); font-size: 0.8rem; color: var(--text-muted); transition: all .3s; }
+.ovg-step-dot { width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; background: var(--bg-tertiary); border: 2px solid var(--border); font-size: 0.8rem; color: var(--text-muted); transition: all var(--ov-dur-3, .3s); }
 .ovg-steps li.now .ovg-step-dot { background: var(--accent-strong, var(--accent, #3472d8)); border-color: var(--accent-strong, var(--accent, #3472d8)); color: var(--on-accent-strong, var(--on-accent, #fff)); box-shadow: 0 0 0 5px color-mix(in srgb, var(--accent) 22%, transparent); transform: scale(1.08); }
 .ovg-steps li.now { color: var(--text-primary); }
 .ovg-steps li.done .ovg-step-dot { background: color-mix(in srgb, #06d6a0 25%, var(--bg-tertiary)); border-color: #06d6a0; color: #06d6a0; }
 .ovg-body { flex: 1; min-height: 0; overflow: auto; padding: 4px 20px 12px; }
-.ovg-panel { animation-duration: .35s; animation-timing-function: cubic-bezier(.2,.9,.3,1); animation-fill-mode: both; }
+.ovg-panel { animation-duration: .; animation-timing-function: var(--ov-ease-out, cubic-bezier(.2,.9,.3,1)); animation-fill-mode: both; }
 .ovg-panel.in-r { animation-name: ovgInR; } .ovg-panel.in-l { animation-name: ovgInL; }
 @keyframes ovgInR { from { opacity: 0; transform: translateX(28px); } to { opacity: 1; transform: none; } }
 @keyframes ovgInL { from { opacity: 0; transform: translateX(-28px); } to { opacity: 1; transform: none; } }
@@ -32,7 +32,7 @@ body.ovg-lock { overflow: hidden; }
 .ovg-lead b { color: var(--text-primary); }
 .ovg-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
 .ovg-grid--3 { grid-template-columns: repeat(3, 1fr); }
-.ovg-pick { --c: var(--accent); display: flex; align-items: center; gap: 12px; text-align: left; padding: 12px; border-radius: 14px; border: 1px solid var(--border); background: var(--bg-secondary); color: var(--text-primary); cursor: pointer; font: inherit; transition: transform .15s, border-color .15s, box-shadow .15s; animation: ovgRise .4s both; }
+.ovg-pick { --c: var(--accent); display: flex; align-items: center; gap: 12px; text-align: left; padding: 12px; border-radius: 14px; border: 1px solid var(--border); background: var(--bg-secondary); color: var(--text-primary); cursor: pointer; font: inherit; transition: transform var(--ov-dur-2, .15s), border-color var(--ov-dur-2, .15s), box-shadow var(--ov-dur-2, .15s); animation: ovgRise var(--ov-dur-3, .4s) both; }
 .ovg-pick:nth-child(2) { animation-delay: .05s; } .ovg-pick:nth-child(3) { animation-delay: .1s; } .ovg-pick:nth-child(4) { animation-delay: .15s; } .ovg-pick:nth-child(5) { animation-delay: .2s; }
 @keyframes ovgRise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
 .ovg-pick:hover { transform: translateY(-2px); border-color: color-mix(in srgb, var(--c) 60%, var(--border)); }
@@ -46,10 +46,10 @@ body.ovg-lock { overflow: hidden; }
 .ovg-form { display: grid; gap: 10px; } .ovg-form.is-hidden { display: none; }
 .ovg-form label { display: grid; gap: 6px; font-size: 0.8rem; font-weight: 700; color: var(--text-secondary); }
 .ovg-chips { display: flex; flex-wrap: wrap; gap: 6px; }
-.ovg-chip { padding: 6px 11px; border-radius: 999px; border: 1px solid var(--border); background: var(--bg-tertiary); color: var(--text-primary); font: inherit; font-size: 0.8rem; font-weight: 700; cursor: pointer; transition: all .15s; }
+.ovg-chip { padding: 6px 11px; border-radius: 999px; border: 1px solid var(--border); background: var(--bg-tertiary); color: var(--text-primary); font: inherit; font-size: 0.8rem; font-weight: 700; cursor: pointer; transition: all var(--ov-dur-2, .15s); }
 .ovg-chip:hover { border-color: var(--accent); } .ovg-chip.on { background: var(--accent-strong, var(--accent, #3472d8)); border-color: var(--accent-strong, var(--accent, #3472d8)); color: var(--on-accent-strong, var(--on-accent, #fff)); }
 .ovg-detail { margin-top: 4px; }
-.ovg-box { padding: 14px; border-radius: 14px; background: var(--bg-secondary); border: 1px solid var(--border); animation: ovgRise .35s both; }
+.ovg-box { padding: 14px; border-radius: 14px; background: var(--bg-secondary); border: 1px solid var(--border); animation: ovgRise var(--ov-dur-3, .35s) both; }
 .ovg-box p { margin: 0 0 10px; font-size: 0.86rem; color: var(--text-secondary); line-height: 1.5; }
 .ovg-box-head { font-weight: 800; margin-bottom: 8px; display: flex; align-items: center; gap: 8px; } .ovg-box-head i { color: var(--accent); }
 .ovg-kv { display: grid; grid-template-columns: 90px 1fr auto auto; align-items: center; gap: 8px; padding: 8px 0; border-top: 1px dashed var(--border); font-size: 0.84rem; }
@@ -72,21 +72,21 @@ body.ovg-lock { overflow: hidden; }
 .ovg-added li { display: inline-flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 999px; background: color-mix(in srgb, #06d6a0 12%, var(--bg-tertiary)); border: 1px solid color-mix(in srgb, #06d6a0 45%, var(--border)); font-size: 0.8rem; font-weight: 700; }
 .ovg-ok { color: #06d6a0; }
 .ovg-summary { display: grid; gap: 8px; margin-bottom: 14px; }
-.ovg-sum-row { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 12px; background: var(--bg-secondary); border: 1px solid var(--border); animation: ovgRise .35s both; }
+.ovg-sum-row { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 12px; background: var(--bg-secondary); border: 1px solid var(--border); animation: ovgRise var(--ov-dur-3, .35s) both; }
 .ovg-sum-row:nth-child(2) { animation-delay: .06s; } .ovg-sum-row:nth-child(3) { animation-delay: .12s; }
 .ovg-sum-row > i { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); flex: none; }
 .ovg-sum-row span { display: grid; min-width: 0; } .ovg-sum-row b { font-size: 0.9rem; } .ovg-sum-row small { color: var(--text-muted); font-size: 0.74rem; }
 .ovg-launch { text-align: center; padding: 8px 0 4px; }
-.ovg-big { font-size: 1.1rem; padding: 14px 28px; box-shadow: 0 12px 34px color-mix(in srgb, var(--accent) 45%, transparent); animation: ovgPulse 2.2s ease-out infinite; }
+.ovg-big { font-size: 1.1rem; padding: 14px 28px; box-shadow: 0 12px 34px color-mix(in srgb, var(--accent) 45%, transparent); animation: ovgPulse 2.2s var(--ov-ease-out, ease-out) infinite; }
 @keyframes ovgPulse { 0% { box-shadow: 0 12px 34px color-mix(in srgb, var(--accent) 45%, transparent), 0 0 0 0 color-mix(in srgb, var(--accent) 50%, transparent); } 100% { box-shadow: 0 12px 34px color-mix(in srgb, var(--accent) 45%, transparent), 0 0 0 20px transparent; } }
 .ovg-wait { display: grid; justify-items: center; gap: 6px; padding: 10px; }
 .ovg-wait b { font-size: 1rem; } .ovg-wait em { color: var(--accent-light, var(--accent)); font-style: normal; } .ovg-wait small { color: var(--text-muted); font-size: 0.8rem; }
 .ovg-radar { position: relative; width: 64px; height: 64px; margin-bottom: 6px; }
-.ovg-radar i { position: absolute; inset: 0; border-radius: 50%; border: 2px solid var(--accent); opacity: 0; animation: ovgRadar 2.4s ease-out infinite; }
+.ovg-radar i { position: absolute; inset: 0; border-radius: 50%; border: 2px solid var(--accent); opacity: 0; animation: ovgRadar 2.4s var(--ov-ease-out, ease-out) infinite; }
 .ovg-radar i:nth-child(2) { animation-delay: .8s; } .ovg-radar i:nth-child(3) { animation-delay: 1.6s; }
 @keyframes ovgRadar { 0% { transform: scale(0.3); opacity: 0.9; } 100% { transform: scale(1.2); opacity: 0; } }
 .ovg-live { text-align: center; padding: 16px 6px; display: grid; justify-items: center; gap: 8px; }
-.ovg-live-badge { font-size: 0.8rem; font-weight: 900; letter-spacing: 0.14em; padding: 4px 12px; border-radius: 6px; background: #e0245e; color: #fff; animation: ovgPulse 1.6s ease-out infinite; }
+.ovg-live-badge { font-size: 0.8rem; font-weight: 900; letter-spacing: 0.14em; padding: 4px 12px; border-radius: 6px; background: #e0245e; color: #fff; animation: ovgPulse 1.6s var(--ov-ease-out, ease-out) infinite; }
 .ovg-live h3 { margin: 0; font-size: 1.6rem; font-weight: 900; } .ovg-live p { margin: 0 0 8px; color: var(--text-secondary); }
 .ovg-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 20px 16px; border-top: 1px solid var(--border); background: var(--bg-card); }
 .ovg-foot-note { font-size: 0.74rem; color: var(--text-muted); font-weight: 700; }
@@ -99,7 +99,7 @@ body.ovg-lock { overflow: hidden; }
        there, which is why Next could not be tapped. 94vh also measured the *large* viewport, so
        with the browser toolbar showing the sheet ran below the visible area entirely. dvh tracks
        the viewport that is actually on screen, and the footer reserves the safe-area inset. */
-    .ovg-card { left: 0; right: 0; top: auto; bottom: 0; transform: none; width: 100%; max-height: 94vh; border-radius: 20px 20px 0 0; animation: ovgSheet .35s cubic-bezier(.2,1,.3,1); }
+    .ovg-card { left: 0; right: 0; top: auto; bottom: 0; transform: none; width: 100%; max-height: 94vh; border-radius: 20px 20px 0 0; animation: ovgSheet var(--ov-dur-3, .35s) var(--ov-ease-out, cubic-bezier(.2,1,.3,1)); }
     @supports (height: 100dvh) {
         .ovg-card { max-height: min(94dvh, calc(100dvh - 6px)); }
     }
@@ -121,7 +121,7 @@ body.ovg-lock { overflow: hidden; }
 .ovg-field-label { font-size: 0.8rem; font-weight: 700; color: var(--text-secondary); margin: 2px 0 6px; }
 .ovg-field-text .muted { font-weight: 500; color: var(--text-muted); }
 .ovg-prefix { display: flex; align-items: center; gap: 0; } .ovg-prefix span { padding: 9px 12px; border: 1px solid var(--border); border-right: 0; border-radius: 10px 0 0 10px; background: var(--bg-tertiary); font-weight: 900; } .ovg-prefix .form-input { border-radius: 0 10px 10px 0; }
-.ovg-drop { display: flex; align-items: center; justify-content: center; gap: 10px; min-height: 96px; border: 2px dashed color-mix(in srgb, var(--accent) 45%, var(--border)); border-radius: 14px; background: var(--bg-secondary); cursor: pointer; color: var(--text-secondary); font-weight: 700; padding: 12px; transition: border-color .15s, background .15s; }
+.ovg-drop { display: flex; align-items: center; justify-content: center; gap: 10px; min-height: 96px; border: 2px dashed color-mix(in srgb, var(--accent) 45%, var(--border)); border-radius: 14px; background: var(--bg-secondary); cursor: pointer; color: var(--text-secondary); font-weight: 700; padding: 12px; transition: border-color var(--ov-dur-2, .15s), background var(--ov-dur-2, .15s); }
 .ovg-drop:hover { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 6%, var(--bg-secondary)); }
 .ovg-drop img { width: 64px; height: 64px; object-fit: contain; border-radius: 10px; background: var(--bg-tertiary); }
 .ovg-drop i { font-size: 1.4rem; color: var(--accent); }
@@ -144,10 +144,10 @@ body.ovg-lock { overflow: hidden; }
 .ovg-mini-ring::before { content: ''; position: absolute; inset: 4px; border-radius: 50%; background: var(--accent); }
 .btn.is-ready small { opacity: 0.75; font-weight: 600; margin-left: 4px; }
 /* Spotlight: point at a real element */
-.ovg-spot { position: fixed; inset: 0; z-index: 20500; pointer-events: none; opacity: 0; transition: opacity .3s; }
+.ovg-spot { position: fixed; inset: 0; z-index: 20500; pointer-events: none; opacity: 0; transition: opacity var(--ov-dur-3, .3s); }
 .ovg-spot.is-on { opacity: 1; }
-.ovg-spot-hole { position: fixed; border-radius: 14px; pointer-events: none; box-shadow: 0 0 0 9999px rgba(3,3,8,0.68), 0 0 0 3px var(--accent), 0 0 30px color-mix(in srgb, var(--accent) 60%, transparent); transition: left .25s, top .25s, width .25s, height .25s, opacity .25s; }
-.ovg-spot-card { position: fixed; pointer-events: auto; width: 380px; max-width: calc(100vw - 24px); padding: 16px 18px; border-radius: 16px; color: #fff; background: linear-gradient(160deg, #17132b, #0c0c12 60%); border: 1px solid rgba(255,255,255,0.14); box-shadow: 0 30px 70px rgba(0,0,0,0.6); transition: top .25s, left .25s; }
+.ovg-spot-hole { position: fixed; border-radius: 14px; pointer-events: none; box-shadow: 0 0 0 9999px rgba(3,3,8,0.68), 0 0 0 3px var(--accent), 0 0 30px color-mix(in srgb, var(--accent) 60%, transparent); transition: left var(--ov-dur-2, .25s), top var(--ov-dur-2, .25s), width var(--ov-dur-2, .25s), height var(--ov-dur-2, .25s), opacity var(--ov-dur-2, .25s); }
+.ovg-spot-card { position: fixed; pointer-events: auto; width: 380px; max-width: calc(100vw - 24px); padding: 16px 18px; border-radius: 16px; color: #fff; background: linear-gradient(160deg, #17132b, #0c0c12 60%); border: 1px solid rgba(255,255,255,0.14); box-shadow: 0 30px 70px rgba(0,0,0,0.6); transition: top var(--ov-dur-2, .25s), left var(--ov-dur-2, .25s); }
 .ovg-spot-step { font-size: 0.68rem; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent-light, var(--accent)); margin-bottom: 4px; }
 .ovg-spot-card h4 { margin: 0 0 6px; font-size: 1.05rem; font-weight: 900; } .ovg-spot-card p { margin: 0 0 12px; font-size: 0.86rem; line-height: 1.5; color: #e2e8f0; }
 .ovg-spot-actions { display: flex; flex-wrap: wrap; gap: 8px; }
