@@ -1222,6 +1222,21 @@ router.get('/', optionalAuth, async (req, res) => {
 });
 
 // ── Tags In Use (the browse filters) ─────────────────────────
+// ── The Live Channels I Follow (the home's Following chip) ─────
+// Ids only, of channels live right now that the signed-in viewer follows (Live's projection of Network's follows).
+// Private: never cached by a browser or the edge.
+router.get('/following', requireAuth, async (req, res) => {
+    res.set('Cache-Control', 'private, no-store');
+    try {
+        const rows = await db.all(`SELECT DISTINCT s.user_id FROM streams s JOIN follows f ON f.streamer_id = s.user_id
+            WHERE f.follower_id = ? AND s.is_live = 1`, [req.user.id]);
+        res.json({ user_ids: rows.map((r) => Number(r.user_id)) });
+    } catch (err) {
+        console.error('[Streams] Following error:', err.message);
+        res.status(500).json({ error: 'Failed to read the channels you follow' });
+    }
+});
+
 router.get('/tags', async (req, res) => {
     try {
         // The tag set changes slowly and is the same for everyone (like the stream list, with a longer window).

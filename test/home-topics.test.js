@@ -27,9 +27,10 @@ function fakeDom(cardTopics) {
     };
     return { document, row, chips, cards };
 }
-function load(dom) {
+function load(dom, { currentUser, api } = {}) {
     const _capTag = (s) => String(s).split(' ').map((w) => w[0].toUpperCase() + w.slice(1)).join(' ');
-    return new Function('document', '_capTag', `${block}; return { _streamTopics, _homeTopicsSync, _homeTopicsApply, get topic() { return _homeTopic; } };`)(dom.document, _capTag);
+    return new Function('document', '_capTag', 'currentUser', 'api', `${block}; return { _streamTopics, _homeTopicsSync, _homeTopicsApply, get topic() { return _homeTopic; },
+        setFollowing(ids) { _homeFollowing = { at: Date.now(), ids: new Set(ids), busy: false }; } };`)(dom.document, _capTag, currentUser, api);
 }
 
 // A stream's topics: category first, then its own tags and the AI's, normalized, meta words dropped.
@@ -78,8 +79,32 @@ const streams = [
     assert.strictEqual(m.topic, '', 'no stream has it any more');
 }
 
+// Following (market outcome 3): the live channels the signed-in viewer follows are a chip of their own, first after
+// All, and it filters by the card's user.
+{
+    const dom = fakeDom(['gaming|fortnite', 'gaming|league', 'outdoors|hiking']);
+    dom.cards.forEach((c, i) => { c.dataset.user = String(10 + i); });
+    const m = load(dom, { currentUser: { id: 1 }, api: () => new Promise(() => {}) });
+    m.setFollowing([10, 12]);
+    m._homeTopicsSync(streams.map((s, i) => ({ ...s, user_id: 10 + i })));
+    assert.deepStrictEqual(dom.chips.slice(0, 2).map((c) => c.dataset.topic), ['', '@following']);
+    assert.strictEqual(dom.chips[1].children[2].textContent, '2', 'two followed channels are live');
+    dom.row.onclick({ target: { closest: () => dom.chips[1] } });
+    assert.deepStrictEqual(dom.cards.map((c) => c.hidden), [false, true, false], 'only the followed channels stay');
+    // Signed out, there is no Following chip.
+    const out = fakeDom(['gaming|fortnite', 'gaming|league', 'outdoors|hiking']);
+    load(out)._homeTopicsSync(streams.map((s, i) => ({ ...s, user_id: 10 + i })));
+    assert.ok(!out.chips.some((c) => c.dataset.topic === '@following'));
+}
+
 // The card carries its topics for the filter, and the row sits over the grid, hidden until filled.
 assert.match(src, /data-topics="\$\{esc\(topics\.join\('\|'\)\)\}"/, 'the card names its topics');
+assert.match(src, /data-user="\$\{esc\(String\(s\.user_id \|\| ''\)\)\}"/, 'and its channel, for Following');
+// The picked chip is remembered in this browser and comes back when that topic is live again.
+assert.match(block, /localStorage\.setItem\(_TOPIC_KEY, next\)/);
+const routes = fs.readFileSync(path.join(__dirname, '..', 'server', 'streaming', 'routes.js'), 'utf8');
+assert.match(routes, /router\.get\('\/following', requireAuth,[\s\S]{0,120}'private, no-store'/, 'Following is private');
+assert.ok(routes.indexOf("router.get('/following'") < routes.indexOf("router.get('/:id'"), 'before the /:id route');
 const frag = fs.readFileSync(path.join(__dirname, '..', 'public', 'fragments', 'home.html'), 'utf8');
 assert.match(frag, /<div class="home-topics" id="home-topics" role="group" aria-label="[^"]+" hidden><\/div>\s*<div class="stream-grid" id="stream-grid-live">/);
 const css = fs.readFileSync(path.join(__dirname, '..', 'public', 'css', 'features', 'home.css'), 'utf8');

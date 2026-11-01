@@ -473,6 +473,8 @@ body.egg-rainbow { animation: eggRainbow 2.6s linear; }
 .home-topic-n { font-size: 0.72rem; font-weight: 700; color: var(--text-muted); font-variant-numeric: tabular-nums; }
 .home-topic[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--on-accent, #fff); }
 .home-topic[aria-pressed="true"] .home-topic-n { color: inherit; opacity: 0.8; }
+/* Following: channels the viewer follows that are live now, marked with the live dot. */
+.home-topic[data-topic="@following"]::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: var(--live-red, #ef4444); }
 @media (pointer: coarse) { .home-topic { min-height: 44px; } }
 .stream-card-metaright { margin-left: auto; display: inline-flex; align-items: center; gap: 12px; color: var(--text-muted); font-size: 0.75rem; }
 .stream-card-uptime, .stream-card-vcount { display: inline-flex; align-items: center; white-space: nowrap; }
