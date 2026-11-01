@@ -18,7 +18,7 @@
     const go = (href) => (/^https?:\/\//.test(href) ? `href="${esc(href)}"` : `href="${esc(href)}" onclick="return handleLinkClick(event, '${esc(href)}')"`);
     const ago = (ts) => { try { return timeAgo(ts); } catch { return ''; } };
     const GRADE = { S: '#fbbf24', A: '#a78bfa', B: '#38bdf8', C: '#94a3b8' };
-    const av = (u, size) => `<span class="cc-avatar" style="width:${size}px;height:${size}px;${u && u.profile_color ? `background:${esc(u.profile_color)}` : ''}">${u && u.avatar_url ? `<img src="${esc(u.avatar_url)}" alt="" loading="lazy">` : esc(String((u && (u.display_name || u.username)) || '?').charAt(0).toUpperCase())}</span>`;
+    const av = (u, size) => `<span class="cc-avatar" style="width:${size}px;height:${size}px;${u && u.profile_color ? `background:${esc(u.profile_color)}` : ''}">${u && u.avatar_url ? `<img src="${esc(typeof ovImgW === 'function' ? ovImgW(u.avatar_url, size > 72 ? 320 : size > 40 ? 160 : 96) : u.avatar_url)}" data-full="${esc(u.avatar_url)}" alt="" loading="lazy" onerror="if(this.dataset.full&&this.src!==this.dataset.full){this.src=this.dataset.full;return}">` : esc(String((u && (u.display_name || u.username)) || '?').charAt(0).toUpperCase())}</span>`;
     const clipTile = (c, opts = {}) => `<a class="cc-clip" ${go(videoHref('clip', c.id))} title="${esc(c.title || 'Clip')}">
         ${c.thumbnail_url ? `<img src="${esc(c.thumbnail_url)}" alt="" loading="lazy">` : '<span class="cc-clip-ph"><i class="fa-solid fa-scissors"></i></span>'}
         <span class="cc-clip-dur">${dur(c.duration_seconds)}</span>
