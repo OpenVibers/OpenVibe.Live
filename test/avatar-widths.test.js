@@ -38,4 +38,16 @@ const chatShared = fs.readFileSync(path.join(__dirname, '..', 'public', 'js', 'c
 assert.match(chatShared, /data-full="\$\{esc\(p\.avatar_url\)\}"/);
 const messenger = fs.readFileSync(path.join(__dirname, '..', 'public', 'js', 'messenger.js'), 'utf8');
 assert.match(messenger, /data-full="\$\{esc\(user\.avatar_url\)\}"/);
+// The content feed (Content, AI Moments) builds its avatars as nodes.
+const feed = fs.readFileSync(path.join(__dirname, '..', 'public', 'js', 'content-feed.js'), 'utf8');
+assert.match(feed, /typeof ovImgW === 'function' \? ovImgW\(full, 64\) : full/);
+assert.match(feed, /if \(img\.src !== full && !img\.dataset\.retried\) \{ img\.dataset\.retried = '1'; img\.src = full; return; \}/);
+// Context cards, the after-show recap and the channel header too.
+const cards = fs.readFileSync(path.join(__dirname, '..', 'public', 'js', 'context-cards.js'), 'utf8');
+assert.match(cards, /ovImgW\(u\.avatar_url, size > 72 \? 320 : size > 40 \? 160 : 96\)/);
+const recap = fs.readFileSync(path.join(__dirname, '..', 'public', 'js', 'recap.js'), 'utf8');
+assert.match(recap, /ovImgW\(u\.avatar_url, size > 72 \? 320 : size > 40 \? 160 : 96\)/);
+const channel = fs.readFileSync(path.join(__dirname, '..', 'public', 'js', 'app-channel.js'), 'utf8');
+assert.match(channel, /img\.src = typeof ovImgW === 'function' \? ovImgW\(full, 160\) : full;/);
+assert.match(feed, /ovImgW\(url, 640\)/, 'feed pictures at 640');
 console.log('avatar widths: all checks passed');

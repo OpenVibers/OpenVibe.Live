@@ -217,8 +217,10 @@ function _fillChannelAvatar(el, ch, path) {
     if (ch.avatar_url) {
         const img = document.createElement('img');
         img.alt = '';
-        img.onerror = () => { el.textContent = letter; };
-        img.src = ch.avatar_url;
+        // At the drawn size: the original upload can be 3072 px and 3 MB (app.js ovImgW); the original once, then the letter.
+        const full = ch.avatar_url;
+        img.onerror = () => { if (img.src !== full && !img.dataset.retried) { img.dataset.retried = '1'; img.src = full; return; } el.textContent = letter; };
+        img.src = typeof ovImgW === 'function' ? ovImgW(full, 160) : full;
         el.replaceChildren(img);
     }
     if (path) { el.style.cursor = 'pointer'; el.onclick = () => navigate(path); }

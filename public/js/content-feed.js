@@ -80,16 +80,28 @@
         const box = el('span', { class: 'cf-av', 'aria-hidden': 'true' });
         if (p && p.profile_color && /^#[0-9a-f]{3,8}$/i.test(p.profile_color)) box.style.background = p.profile_color;
         if (p && p.avatar_url) {
-            const img = el('img', { src: p.avatar_url, alt: '', loading: 'lazy', decoding: 'async' });
-            img.addEventListener('error', () => { img.remove(); box.textContent = letter; }, { once: true });
+            // At the drawn size (26 px): the original upload can be 3072 px and 3 MB (app.js ovImgW). If the sized copy
+            // fails, the original once, then the letter.
+            const full = p.avatar_url;
+            const sized = typeof ovImgW === 'function' ? ovImgW(full, 64) : full;
+            const img = el('img', { src: sized, alt: '', loading: 'lazy', decoding: 'async' });
+            img.addEventListener('error', () => {
+                if (img.src !== full && !img.dataset.retried) { img.dataset.retried = '1'; img.src = full; return; }
+                img.remove(); box.textContent = letter;
+            });
             box.append(img);
         } else box.textContent = letter;
         return box;
     }
     function thumb(url, fallbackIcon) {
         if (!url) return el('span', { class: 'cf-thumb cf-thumb--ph' }, icon(fallbackIcon));
-        const img = el('img', { class: 'cf-thumb', src: url, alt: '', loading: 'lazy', decoding: 'async' });
-        img.addEventListener('error', () => img.replaceWith(el('span', { class: 'cf-thumb cf-thumb--ph' }, icon(fallbackIcon))), { once: true });
+        // A picture paste is its original upload (one is 2460 px, drawn at 390): Media's 640 px copy, the original once if it
+        // fails, then the placeholder.
+        const img = el('img', { class: 'cf-thumb', src: typeof ovImgW === 'function' ? ovImgW(url, 640) : url, alt: '', loading: 'lazy', decoding: 'async' });
+        img.addEventListener('error', () => {
+            if (img.src !== url && !img.dataset.retried) { img.dataset.retried = '1'; img.src = url; return; }
+            img.replaceWith(el('span', { class: 'cf-thumb cf-thumb--ph' }, icon(fallbackIcon)));
+        });
         return img;
     }
     const aiBadge = () => el('span', { class: 'cf-ai', title: 'Made by AI' }, icon('fa-wand-magic-sparkles'), 'AI');
