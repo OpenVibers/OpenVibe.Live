@@ -1395,6 +1395,7 @@ async function loadHome() {
             const noLiveEl = document.getElementById('no-live-streams');
             if (noLiveEl) noLiveEl.style.display = streams.length ? 'none' : '';
             renderStreamGrid('stream-grid-live', streams, true);
+            _homeTopicsSync(streams);
             _homeFeaturedSync(streams.length > 0);
             if (window.homeFeatured && homeFeatured.markGrid) homeFeatured.markGrid();
         }, { ttl: 20000 });
@@ -1759,6 +1760,82 @@ function _thumbTint(s) {
     return `hsl(${h} 45% 34%)`;
 }
 
+/* ── Topics: what the live streams are about, as filters over the Live Now grid ─────────────
+   A stream's topics are its category, the tags its streamer set and the tags the AI read from the
+   stream (streams.ai_tags), minus words that say nothing to a viewer here: every stream is live,
+   streamed and on a camera or a screen. Live market outcome 2: a viewer picks a topic, the grid
+   keeps the streams that have it; nothing else on the page changes. */
+const _TOPIC_STOP = new Set(['live', 'live stream', 'livestream', 'stream', 'streaming', 'streamer', 'chat', 'livechat',
+    'live chat', 'overlay', 'ui', 'setup', 'lobby', 'facecam', 'multicam', 'multiframe', 'webcam', 'camera', 'screen',
+    'desktop', 'browser', 'obs', 'gameplay', 'commentary', 'surveillance', 'stream overlay', 'pc']);
+function _streamTopics(s) {
+    const out = [];
+    const add = (t) => {
+        const v = String(t || '').replace(/[-_]+/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase();
+        if (v && v.length <= 32 && !_TOPIC_STOP.has(v) && !out.includes(v)) out.push(v);
+    };
+    add(s && s.category);
+    for (const field of [s && s.tags, s && s.ai_tags]) {
+        let list = field;
+        if (typeof list === 'string') { try { list = JSON.parse(list); } catch { list = null; } }
+        if (Array.isArray(list)) list.forEach(add);
+    }
+    return out;
+}
+
+let _homeTopic = '';
+/** The chip row over the live grid: shown when at least two streams are live and they have two topics or more. */
+function _homeTopicsSync(streams) {
+    const row = document.getElementById('home-topics');
+    if (!row) return;
+    const counts = new Map();
+    for (const s of streams) for (const t of _streamTopics(s)) counts.set(t, (counts.get(t) || 0) + 1);
+    const show = streams.length >= 2 && counts.size >= 2;
+    row.hidden = !show;
+    if (!show) { _homeTopic = ''; _homeTopicsApply(); return; }
+    if (_homeTopic && !counts.has(_homeTopic)) _homeTopic = '';
+    // Most streams first, then A to Z; the row scrolls sideways, so every topic stays reachable.
+    const list = [...counts].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+    const key = `${streams.length}|${list.map(([t, n]) => `${t}:${n}`).join(',')}`;
+    if (row.dataset.key !== key) {
+        row.dataset.key = key;
+        const chip = (topic, label, n) => {
+            const b = document.createElement('button');
+            b.type = 'button';
+            b.className = 'home-topic';
+            b.dataset.topic = topic;
+            b.append(label);
+            const c = document.createElement('span');
+            c.className = 'home-topic-n';
+            c.textContent = String(n);
+            b.append(' ', c);
+            return b;
+        };
+        const nodes = [chip('', 'All', streams.length)];
+        for (const [t, n] of list) nodes.push(chip(t, _capTag(t), n));
+        row.replaceChildren(...nodes);
+        if (!row._ovBound) {
+            row._ovBound = true;
+            row.addEventListener('click', (e) => {
+                const b = e.target.closest('.home-topic');
+                if (!b) return;
+                _homeTopic = b.dataset.topic === _homeTopic ? '' : b.dataset.topic;
+                _homeTopicsApply();
+            });
+        }
+    }
+    _homeTopicsApply();
+}
+function _homeTopicsApply() {
+    const row = document.getElementById('home-topics');
+    if (row) row.querySelectorAll('.home-topic').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.topic === _homeTopic)));
+    const grid = document.getElementById('stream-grid-live');
+    if (!grid) return;
+    grid.querySelectorAll('.stream-card[data-stream-id]').forEach((card) => {
+        card.hidden = !!_homeTopic && !(card.dataset.topics || '').split('|').includes(_homeTopic);
+    });
+}
+
 function streamCardHTML(s, isLive) {
     let navUrl;
     if (isLive && s.id) {
@@ -1772,8 +1849,11 @@ function streamCardHTML(s, isLive) {
     const thumb = (!isLive && s.vod_thumbnail_url) ? s.vod_thumbnail_url : s.thumbnail_url;
     const duration = !isLive && s.vod_duration ? `<span class="stream-card-duration">${formatDuration(s.vod_duration)}</span>` : '';
     const endedAgo = !isLive && s.ended_at ? `<span class="stream-card-ago">${timeAgo(s.ended_at)}</span>` : '';
+    const topics = isLive ? _streamTopics(s) : [];
+    const cat = String(s.category || '').replace(/[-_]+/g, ' ').trim().toLowerCase();
+    const shown = topics.filter((t) => t !== cat).slice(0, 2);
     return `
-        <a class="stream-card" data-stream-id="${esc(String(s.id || ''))}" href="${esc(navUrl)}" onclick="return handleLinkClick(event, '${esc(navUrl)}')">
+        <a class="stream-card"${isLive ? ` data-topics="${esc(topics.join('|'))}"` : ''} data-stream-id="${esc(String(s.id || ''))}" href="${esc(navUrl)}" onclick="return handleLinkClick(event, '${esc(navUrl)}')">
             <div class="stream-card-thumb${s.is_nsfw ? ' stream-card-nsfw-blur' : ''}" style="--thumb-tint:${esc(_thumbTint(s))}">
                 ${thumbImg(thumb, 'fa-circle-nodes', s.title, !isLive && s.vod_id ? `/api/thumbnails/generate/vod/${s.vod_id}` : null)}
                 ${streamTypeBadge(s.browser_mode, s.streaming_method)}
@@ -1791,6 +1871,7 @@ function streamCardHTML(s, isLive) {
                 ${_cardAiHTML(s.ai_overview_short, s.ai_overview)}
                 <div class="stream-card-meta">
                     ${s.category ? `<span class="stream-card-tag"${_catInferred(s) ? ' title="Category inferred by OpenVibe&#39;s AI from the stream"' : ''}>${esc(_capTag(s.category))}${_catInferred(s) ? '<span class="cat-inferred"> · inferred</span>' : ''}</span>` : ''}
+                    ${shown.length ? `<span class="stream-card-topics">${shown.map((t) => esc(_capTag(t))).join(' · ')}</span>` : ''}
                     <span class="stream-card-metaright">
                         ${isLive && s.started_at ? `<span class="stream-card-uptime" data-since="${esc(s.started_at)}"><i class="fa-solid fa-clock"></i> ${formatUptime(s.started_at)}</span>` : ''}
                         ${isLive ? `<span class="stream-card-vcount"><i class="fa-solid fa-eye"></i> ${s.total_viewer_count || s.viewer_count || 0}</span>` : ''}
@@ -1856,6 +1937,8 @@ function _crossfadeThumb(imgEl, newSrc) {
 }
 
 function _updateLiveCard(card, s) {
+    // The AI re-reads a stream as it goes, so its topics can change between refreshes.
+    card.dataset.topics = _streamTopics(s).join('|');
     const vc = card.querySelector('.stream-card-vcount');
     if (vc) vc.innerHTML = `<i class="fa-solid fa-eye"></i> ${s.total_viewer_count || s.viewer_count || 0}`;
     const up = card.querySelector('.stream-card-uptime');
@@ -1995,6 +2078,7 @@ async function refreshHomeLive() {
             setTimeout(() => { try { el.remove(); } catch {} }, 420);
         }
     });
+    _homeTopicsSync(streams);
 }
 
 // Refresh the paginated home sections (only at page 1, only when visible — so we

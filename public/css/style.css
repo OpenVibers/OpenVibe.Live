@@ -9658,9 +9658,10 @@ label.staff-inline-toggle.aiv-field { flex-direction:row; align-items:center; }
     border: 1px solid color-mix(in srgb, var(--sc-on) 34%, transparent);
     box-shadow: 0 0 16px color-mix(in srgb, var(--sc-on) 18%, transparent), inset 0 1px 0 rgba(255,255,255,0.06);
 }
-/* The live dot keeps its pulse and stays a dot — a tile around it would hide the signal. */
+/* The live dot keeps its pulse and stays a dot — a tile around it would hide the signal. Its size is the glyph's
+   own 1.15em: "auto" let the shared SVG glyph (ov-glyphs) fill the heading, a 300 px red disc on a desktop. */
 .section-header h2 > i.live-dot {
-    width: auto; height: auto; background: none; border: 0; box-shadow: none;
+    width: 1.15em; height: 1.15em; background: none; border: 0; box-shadow: none;
     color: var(--live-red-text, var(--live-red)); font-size: 0.62rem;
 }
 /* A rule that carries the section colour out across the page and fades. */
