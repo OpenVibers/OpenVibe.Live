@@ -50,4 +50,9 @@ assert.match(channel, /\.ch-lang-chip \{[^}]*color: color-mix\(in srgb, #f59e0b 
 const allCss = files.filter((f) => f.endsWith('.css')).map((f) => fs.readFileSync(f, 'utf8')).join('\n');
 assert.ok(!/(^|[^-\w])color:\s*(#b388ff|var\(--reward-color, #b388ff\))/m.test(allCss), 'no fixed pale violet text');
 assert.match(style, /\.chat-relay-badge \{ color: color-mix\(in srgb, var\(--relay-color, #888\) 55%, var\(--text-primary\)\)/);
+// The hero frame's veil is the theme's: white on light themes (a black veil greyed the whole hero on Daylight).
+assert.match(style, /\.hero-bg \{ --hero-veil: rgba\(0, 0, 0, 0\.5\); \}/);
+assert.match(style, /html\[data-theme-mode="light"\] \.hero-bg \{ --hero-veil: rgba\(255, 255, 255, 0\.62\); \}/);
+const home = fs.readFileSync(path.join(root, 'js', 'app-home.js'), 'utf8');
+assert.ok(!/linear-gradient\(rgba\(0,0,0,0\.5\)/.test(home), 'no fixed black veil on the hero frames');
 console.log('theme tokens defined: all checks passed');

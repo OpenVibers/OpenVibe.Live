@@ -723,7 +723,7 @@ function renderHeroBackground(media, moments) {
     _heroBgActive = 0;
     // Unless the server painted this frame (seo/pages.js): set it and restart the Ken Burns drift.
     if (!(layers[0].style.backgroundImage || '').includes(frames[0])) {
-        layers[0].style.backgroundImage = `linear-gradient(rgba(0,0,0,0.5), rgba(0,0,0,0.5)), url("${frames[0]}")`;
+        layers[0].style.backgroundImage = `linear-gradient(var(--hero-veil, rgba(0,0,0,0.5)), var(--hero-veil, rgba(0,0,0,0.5))), url("${frames[0]}")`;
         layers[0].classList.remove('active'); void layers[0].offsetWidth; layers[0].classList.add('active');
     } else layers[0].classList.add('active');
     layers[1].classList.remove('active');
@@ -736,9 +736,9 @@ function renderHeroBackground(media, moments) {
         const el = layers[next];
         const pre = new Image();
         pre.onload = () => {
-            // The darkening is part of the frame's own background rather than a filter or an overlay element:
-            // either of those becomes a second full-hero layer on top of an animating one.
-            el.style.backgroundImage = `linear-gradient(rgba(0,0,0,0.5), rgba(0,0,0,0.5)), url("${frames[idx]}")`;
+            // The veil is part of the frame's own background rather than a filter or an overlay element: either of those
+            // becomes a second full-hero layer on top of an animating one. Its colour is the theme's (--hero-veil, style.css).
+            el.style.backgroundImage = `linear-gradient(var(--hero-veil, rgba(0,0,0,0.5)), var(--hero-veil, rgba(0,0,0,0.5))), url("${frames[idx]}")`;
             el.classList.remove('active'); void el.offsetWidth; el.classList.add('active');
             layers[_heroBgActive].classList.remove('active');
             _heroBgActive = next;

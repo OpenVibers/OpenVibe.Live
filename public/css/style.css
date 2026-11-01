@@ -1106,7 +1106,10 @@ html[data-theme-mode="light"] .hero-scrim {
         linear-gradient(180deg, color-mix(in srgb, var(--bg-primary) 55%, transparent) 0%, transparent 22%, transparent 78%, var(--bg-primary) 100%),
         linear-gradient(color-mix(in srgb, var(--bg-primary) 64%, transparent), color-mix(in srgb, var(--bg-primary) 64%, transparent));
 }
-html[data-theme-mode="light"] .hero-bg-layer { filter: brightness(1.25) saturate(.8) contrast(.85); }
+/* The frame's veil, baked into its background (home-fx.css keeps filters off this animating layer, so the filter that
+   was here never applied): black on dark themes, white on light ones, where the black veil turned the hero grey. */
+.hero-bg { --hero-veil: rgba(0, 0, 0, 0.5); }
+html[data-theme-mode="light"] .hero-bg { --hero-veil: rgba(255, 255, 255, 0.62); }
 
 /* ── Hero background: one AI moment frame at a time, Ken-Burns crossfade ─────────── */
 .hero-bg { position: absolute; inset: 0; z-index: 0; overflow: hidden; pointer-events: none; }
