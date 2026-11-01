@@ -824,7 +824,7 @@ function ovClearStrandedOverlays() {
         document.querySelectorAll(sel).forEach(el => { try { el.remove(); } catch { /* */ } });
     }
     // The scroll lock outliving its modal is the other way a page goes dead.
-    try { if (!document.querySelector('.ovg.is-open')) document.body.classList.remove('ovg-lock'); } catch { /* */ }
+    try { if (!document.querySelector('.ovg-root.is-open')) document.body.classList.remove('ovg-lock'); } catch { /* */ }
 }
 
 /**

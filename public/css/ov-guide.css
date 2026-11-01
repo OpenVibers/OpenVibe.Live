@@ -1,6 +1,8 @@
 /* ── Go Live setup wizard (public/js/golive-wizard.js) ── */
-.ovg { position: fixed; inset: 0; z-index: 21000; display: none; }
-.ovg.is-open { display: block; }
+/* The root is .ovg-root, never .ovg: openvibe-shared's ov-glyphs.js marks every icon it draws with class "ovg", and a
+   bare .ovg rule here hid every icon on the page and pinned the rest to the top-left corner (the owner, 2026-11-01). */
+.ovg-root { position: fixed; inset: 0; z-index: 21000; display: none; }
+.ovg-root.is-open { display: block; }
 body.ovg-lock { overflow: hidden; }
 .ovg-scrim { position: absolute; inset: 0; background: rgba(4,5,10,0.72); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); animation: ovgFade .25s ease; }
 .ovg-card { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(720px, calc(100vw - 24px)); max-height: calc(100vh - 32px); display: flex; flex-direction: column;
