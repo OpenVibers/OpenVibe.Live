@@ -382,8 +382,8 @@ a.cf-chan:hover .cf-name { color: var(--text-primary); text-decoration: underlin
     background: rgba(8, 12, 22, 0.7);
     border: 2px solid currentColor;
 }
-.cf-grade--s { color: #fbbf24; }
-.cf-grade--a { color: #4ade80; }
+.cf-grade--s { color: var(--warning-text, #fbbf24); }
+.cf-grade--a { color: var(--success-text, #4ade80); }
 .cf-grade--b { color: #60a5fa; }
 .cf-grade--c { color: #94a3b8; }
 

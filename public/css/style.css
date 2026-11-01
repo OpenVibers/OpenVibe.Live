@@ -3556,7 +3556,7 @@ a.pulse-card:hover { border-color: var(--accent); transform: translateY(-2px); }
 }
 .aiv-meter-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
 .aiv-status { font-size: 0.75rem; font-weight: 600; padding: 2px 8px; border-radius: 999px; }
-.aiv-status.ok { background: rgba(52,211,153,0.18); color: #34d399; }
+.aiv-status.ok { background: rgba(52,211,153,0.18); color: var(--success-text, #34d399); }
 .aiv-status.off { background: rgba(148,148,148,0.18); color: #b0b0b0; }
 .aiv-meter-bar { margin-top: 8px; height: 8px; border-radius: 999px; background: color-mix(in srgb, var(--text-primary, #fff) 8%, transparent); overflow: hidden; }
 .aiv-meter-fill { height: 100%; background: linear-gradient(90deg, #4ecdc4, #60a5fa); transition: width var(--ov-dur-3, 0.3s); }
@@ -5462,7 +5462,7 @@ body.theme-light .btn-outline:hover {
     font-size: 0.65rem;
 }
 .call-muted-icon {
-    color: #ef4444;
+    color: var(--danger-text, #ef4444);
     font-size: 0.65rem;
 }
 .call-you-badge {
@@ -5628,7 +5628,7 @@ body.theme-light .btn-outline:hover {
     color: var(--text-secondary, #888);
 }
 .call-peer-menu-mod i { color: var(--accent, #8b5cf6); }
-.call-peer-menu-danger { color: #ef4444 !important; }
+.call-peer-menu-danger { color: var(--danger-text, #ef4444) !important; }
 .call-peer-menu-danger:hover { background: rgba(239,68,68,0.1) !important; }
 
 /* Volume slider in context menu */
@@ -5798,7 +5798,7 @@ body.theme-light .btn-outline:hover {
 .call-connected-badge {
     font-size: 0.75rem;
     font-weight: 600;
-    color: #22c55e;
+    color: var(--success-text, #22c55e);
     display: flex;
     align-items: center;
     gap: 4px;
@@ -6838,8 +6838,8 @@ textarea.paste-textarea {
 /* Only while the connection is in flux does the dot move; a settled call has nothing to pulse about. */
 .vc-connected-badge.is-connecting i, .vc-connected-badge.is-reconnecting i { animation: vc-pulse 1.2s infinite; }
 .vc-connected-badge.is-connecting { color: var(--text-muted); }
-.vc-connected-badge.is-reconnecting { color: #f59e0b; }
-.vc-connected-badge.is-connected i { color: #22c55e; }
+.vc-connected-badge.is-reconnecting { color: var(--warning-text, #f59e0b); }
+.vc-connected-badge.is-connected i { color: var(--success-text, #22c55e); }
 @keyframes vc-pulse {
     0%, 100% { opacity: 1; }
     50% { opacity: 0.35; }
@@ -6891,7 +6891,7 @@ textarea.paste-textarea {
     border-radius: 6px;
     border: 1px solid #fbbf24;
     background: transparent;
-    color: #fbbf24;
+    color: var(--warning-text, #fbbf24);
     font-size: 0.8rem;
     cursor: pointer;
     transition: background var(--ov-dur-1, 0.12s), color var(--ov-dur-1, 0.12s);
@@ -6943,7 +6943,7 @@ textarea.paste-textarea {
     font-size: 0.82rem;
 }
 .vc-ptt-status.ptt-active {
-    color: #22c55e;
+    color: var(--success-text, #22c55e);
     font-weight: 600;
 }
 .vc-ptt-status.ptt-active strong {
@@ -7561,7 +7561,7 @@ body.fabs-tucked .messenger-toggle, body.fabs-tucked .floating-chat-fab, body.fa
 }
 .vc-mini-dot {
     font-size: 0.5rem;
-    color: #22c55e;
+    color: var(--success-text, #22c55e);
     margin-right: 4px;
 }
 .vc-mini-status { font-weight: 600; white-space: nowrap; }
@@ -7577,7 +7577,7 @@ body.fabs-tucked .messenger-toggle, body.fabs-tucked .floating-chat-fab, body.fa
     font-size: 0.8rem;
 }
 .vc-mini-btn:hover { background: var(--bg-primary, #0f0f1a); }
-.vc-mini-btn.vc-mini-leave { color: #ef4444; }
+.vc-mini-btn.vc-mini-leave { color: var(--danger-text, #ef4444); }
 .vc-mini-btn.vc-mini-leave:hover { background: rgba(239,68,68,0.15); }
 
 /* ═══════════════════════════════════════════════════════════
@@ -9441,8 +9441,8 @@ body.fabs-tucked .messenger-toggle, body.fabs-tucked .floating-chat-fab, body.fa
 /* ── AI Chat Viewers v3 panel ─────────────────────────────── */
 .aiv-topline { display:flex; align-items:center; gap:16px; flex-wrap:wrap; margin-bottom:8px; }
 .aiv-status { font-size:0.75rem; font-weight:700; padding:3px 10px; border-radius:999px; background:var(--bg-tertiary); color:var(--text-secondary); }
-.aiv-status.ok { background:color-mix(in srgb, #22c55e 18%, transparent); color:#4ade80; }
-.aiv-status.warn { background:color-mix(in srgb, #f59e0b 18%, transparent); color:#fbbf24; }
+.aiv-status.ok { background:color-mix(in srgb, #22c55e 18%, transparent); color:var(--success-text, #4ade80); }
+.aiv-status.warn { background:color-mix(in srgb, #f59e0b 18%, transparent); color:var(--warning-text, #fbbf24); }
 .aiv-status.off { background:var(--bg-tertiary); color:var(--text-muted); }
 .aiv-senses { display:flex; gap:14px; flex-wrap:wrap; font-size:0.78rem; color:var(--text-secondary); padding:8px 10px; border:1px dashed var(--border); border-radius:8px; margin-bottom:10px; }
 .aiv-senses i { color:var(--accent); margin-right:4px; }
@@ -9462,7 +9462,7 @@ label.staff-inline-toggle.aiv-field { flex-direction:row; align-items:center; }
 .aiv-log-row { display:grid; grid-template-columns:20px 1fr auto; gap:8px; align-items:start; font-size:0.8rem; padding:5px 6px; border-radius:6px; }
 .aiv-log-row:nth-child(odd) { background:color-mix(in srgb, var(--bg-tertiary) 60%, transparent); }
 .aiv-log-row i { color:var(--text-muted); margin-top:3px; }
-.aiv-log-line i { color:var(--accent); } .aiv-log-mention i { color:#f59e0b; } .aiv-log-error i { color:#ef4444; } .aiv-log-tick i { color:#60a5fa; }
+.aiv-log-line i { color:var(--accent); } .aiv-log-mention i { color:var(--warning-text, #f59e0b); } .aiv-log-error i { color:var(--danger-text, #ef4444); } .aiv-log-tick i { color:#60a5fa; }
 .aiv-log-reason { font-size:0.74rem; }
 .aiv-log-meta { display:flex; flex-direction:column; align-items:flex-end; font-size:0.72rem; white-space:nowrap; }
 .aiv-preview-line { padding:6px 8px; border-left:3px solid var(--accent); margin:6px 0; font-size:0.85rem; background:var(--bg-tertiary); border-radius:0 6px 6px 0; }

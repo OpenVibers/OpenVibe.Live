@@ -2379,9 +2379,9 @@
     border-radius: 5px; background: color-mix(in srgb, var(--text-primary, #fff) 5%, transparent);
 }
 .bc-mic-meter-status { font-size: .76rem; color: var(--text-muted, #9aa3b2); margin-top: 4px; display: block; }
-.bc-mic-meter-status.is-good { color: #22c55e; }
-.bc-mic-meter-status.is-warn { color: #f59e0b; }
-.bc-mic-meter-status.is-bad  { color: #ef4444; }
+.bc-mic-meter-status.is-good { color: var(--success-text, #22c55e); }
+.bc-mic-meter-status.is-warn { color: var(--warning-text, #f59e0b); }
+.bc-mic-meter-status.is-bad  { color: var(--danger-text, #ef4444); }
 .bc-cap-list { display: flex; flex-direction: column; gap: 6px; }
 .bc-cap-row {
     display: flex; align-items: center; gap: 11px;
@@ -2396,11 +2396,11 @@
     font-style: normal; font-size: .7rem; font-weight: 700;
     letter-spacing: .04em; text-transform: uppercase; flex-shrink: 0;
 }
-.bc-cap-row.is-on em { color: #22c55e; }
+.bc-cap-row.is-on em { color: var(--success-text, #22c55e); }
 .bc-cap-row.is-off em { color: var(--text-muted, #9aa3b2); }
 .bc-cap-warn {
     margin: -1px 0 3px; padding: 6px 11px; font-size: .76rem; line-height: 1.4;
-    color: #f59e0b; display: flex; gap: 7px; align-items: flex-start;
+    color: var(--warning-text, #f59e0b); display: flex; gap: 7px; align-items: flex-start;
 }
 .bc-ws-toggle-group { margin-top: 10px; }
 .bc-ws-toggle-group-title {
