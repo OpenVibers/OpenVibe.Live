@@ -620,6 +620,8 @@ function _wsRenderPanel() {
                 <select id="bc-screen-audio" style="display:none"><option value="default">Default</option></select>
                 <select id="bc-screen-camera" style="display:none"><option value="default">Default</option></select>
 
+                ${_wsPreflight(browserMode)}
+
                 <button class="btn btn-primary btn-lg bc-ws-golive-btn"
                     onclick="goLiveFromWorkspace()" id="bc-ws-golive-btn">
                     <i class="fa-solid fa-tower-broadcast"></i> Go Live
@@ -1147,6 +1149,29 @@ function _wsPickHint(kind, id) {
 }
 
 /** The line over Allow …, before the browser may use the camera or microphone. */
+/**
+ * What viewers will get, said before the button (market outcome 6: a pre-flight summary of what will be captured; 5:
+ * what can and cannot change once live, and the browsers). The device names are the setup card's own: each
+ * [data-pick-for] here is kept current by _bcSyncPicks (broadcast-devices.js), like the card's rows.
+ */
+function _wsPreflight(mode) {
+    const cam = '<b data-pick-for="bc-create-camera">Default</b>';
+    const mic = '<b data-pick-for="bc-create-audio">Default</b>';
+    const rows = mode === 'mic_only' ? [['fa-microphone', `Sound from ${mic}`], ['fa-eye-slash', 'No picture']]
+        : mode === 'camera_only' ? [['fa-video', `Picture from ${cam}`], ['fa-volume-xmark', 'No sound']]
+        : mode === 'screen' ? [['fa-display', 'Your screen, a window or a tab: your browser asks which when you press Go Live'], ['fa-microphone', 'Your microphone and camera bubble, as set above']]
+        : [['fa-video', `Picture from ${cam}`], ['fa-microphone', `Sound from ${mic}`]];
+    const can = mode === 'screen' ? 'While live you can mute the microphone. Switching to your camera means a new stream.'
+        : mode === 'mic_only' ? 'While live you can mute the microphone. Adding a picture means a new stream.'
+        : mode === 'camera_only' ? 'While live you can turn the camera off or switch cameras. Sharing your screen instead means a new stream.'
+        : 'While live you can mute, turn the camera off or switch cameras. Sharing your screen instead means a new stream.';
+    return `<div class="bc-preflight" role="group" aria-labelledby="bc-preflight-h">
+                    <p class="bc-preflight-h" id="bc-preflight-h">What viewers will get</p>
+                    <ul>${rows.map(([icon, text]) => `<li><i class="fa-solid ${icon}" aria-hidden="true"></i><span>${text}</span></li>`).join('')}</ul>
+                    <p class="bc-preflight-note">${can} Works in Chrome, Edge, Firefox and Safari.</p>
+                </div>`;
+}
+
 function _wsPermHint(mode) {
     return mode === 'mic_only' ? 'Let your browser use the microphone to choose one.'
         : mode === 'camera_only' ? 'Let your browser use the camera to choose one.'
