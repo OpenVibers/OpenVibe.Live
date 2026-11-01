@@ -211,6 +211,20 @@ async function getLiveStreams() {
     `);
 }
 
+/**
+ * Rows for GET /api/streams/tags: every tag in use means tags on streams live now plus tags on streams
+ * that started in the last seven days. `tags` is JSON text, so the route parses and counts it (a
+ * malformed row must never fail the whole list); `recent` marks the seven-day window, live or ended.
+ */
+async function getStreamTagUsage() {
+    return await all(`
+        SELECT tags, is_live,
+               CASE WHEN started_at >= datetime('now', '-7 days') THEN 1 ELSE 0 END AS recent
+        FROM streams
+        WHERE is_live = 1 OR started_at >= datetime('now', '-7 days')
+    `);
+}
+
 // The latest ended session per streamer. The VOD fields (vod_id, vod_thumbnail_url, …) come from
 // OpenVibe.Media: media-proxy/lookups.js attachPublicVods.
 async function getRecentStreams(limit = 20) {
@@ -3646,6 +3660,7 @@ module.exports = {
     ensureStreamerRoleOnFeed,
     // Streams (sessions)
     getLiveStreams, getRecentStreams, getStreamById, setStreamAiCategory, effectiveCategory, getStreamByUserId, getLiveStreamsByUserId, getStreamsByUserId, getStreamHistoryByManagedStream,
+    getStreamTagUsage,
     createStream, endStream, onStreamLifecycle, endOtherLiveStreamsForSlot, updateViewerCount,
     addStreamMemory, getStreamMemories, getLatestStreamMemory, updateStreamAiOverview,
     setVodAiOverview, setClipAiOverview, setVodTranscript, setClipTranscript, getStreamMemoriesInRange,

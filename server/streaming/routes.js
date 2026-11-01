@@ -12,7 +12,8 @@
  * DELETE /api/streams/managed/:id        - Delete a managed stream
  * 
  * Streams (sessions on a managed stream):
- * GET    /api/streams                    - List live streams
+ * GET    /api/streams                    - List live streams (?tag=…&tag=… up to 10, ?category=)
+ * GET    /api/streams/tags               - List the tags in use (live/recent counts)
  * GET    /api/streams/recent             - List recently ended streams
  * GET    /api/streams/:id                - Get stream details
  * POST   /api/streams                    - Go live (creates session on managed stream)
@@ -173,6 +174,54 @@ function cleanTags(tags) {
         if (cleaned.length >= MAX_TAGS) break;
     }
     return cleaned;
+}
+
+// A tag filter is one of the tags a stream may carry: 1–32 letters, digits, spaces or dashes, lowercased.
+const TAG_FILTER_RE = /^[\p{L}\p{N} -]{1,32}$/u;
+
+/**
+ * Parse ?tag= for GET /api/streams: each value is lowercased, whitespace-collapsed and must match
+ * TAG_FILTER_RE; up to MAX_TAGS values, all of them required to be valid. → [] when absent, null when
+ * invalid (the route answers 400).
+ */
+function parseTagFilter(value) {
+    if (value === undefined) return [];
+    const values = Array.isArray(value) ? value : [value];
+    if (values.length > MAX_TAGS) return null;
+    const tags = new Set();
+    for (const item of values) {
+        if (typeof item !== 'string') return null;
+        const tag = item.replace(/\s+/g, ' ').trim().toLowerCase();
+        if (!TAG_FILTER_RE.test(tag)) return null;
+        tags.add(tag);
+    }
+    return [...tags];
+}
+
+/**
+ * Parse ?category= for GET /api/streams: one category, trimmed and case-folded to match the (lowercase)
+ * taxonomy the API returns. → undefined when absent, null when invalid.
+ */
+function parseCategoryFilter(value) {
+    if (value === undefined) return undefined;
+    if (typeof value !== 'string') return null;
+    const category = value.replace(/\s+/g, ' ').trim().toLowerCase();
+    if (!category || category.length > MAX_CATEGORY_LENGTH) return null;
+    return category;
+}
+
+/** The tags on a stream row as a Set: `streams.tags` is JSON text, and a malformed value is no tags. */
+function streamTagSet(row) {
+    const tags = new Set();
+    let parsed;
+    try { parsed = JSON.parse(row.tags || '[]'); } catch { return tags; }
+    if (!Array.isArray(parsed)) return tags;
+    for (const tag of parsed) {
+        if (typeof tag !== 'string') continue;
+        const normalized = tag.replace(/\s+/g, ' ').trim().toLowerCase();
+        if (normalized) tags.add(normalized);
+    }
+    return tags;
 }
 
 /** The social links an About editor sees after saving (server/social/links.js), for the response. */
@@ -1137,6 +1186,10 @@ router.get('/channel/:username/weather', async (req, res) => {
 
 // ── List Live Streams ────────────────────────────────────────
 router.get('/', optionalAuth, async (req, res) => {
+    const wantedTags = parseTagFilter(req.query.tag);
+    const wantedCategory = parseCategoryFilter(req.query.category);
+    if (wantedTags === null) return res.status(400).json({ error: 'Invalid tag filter' });
+    if (wantedCategory === null) return res.status(400).json({ error: 'Invalid category filter' });
     try {
         // Every open home tab polls this every 12 seconds and the response is the same for
         // everyone, so let the browser and the edge answer most of those hits. Kept well under
@@ -1145,7 +1198,17 @@ router.get('/', optionalAuth, async (req, res) => {
         const restreamManager = require('./restream-manager');
         // A streamer's camera that is the PIP of their own live stream shows inside it, not as a stream of its own.
         const insidePip = await db.getLiveOwnPipSourceSlots();
-        const streams = (await db.getLiveStreams()).filter((s) => !(s.managed_stream_id && insidePip.has(Number(s.managed_stream_id))));
+        let streams = (await db.getLiveStreams()).filter((s) => !(s.managed_stream_id && insidePip.has(Number(s.managed_stream_id))));
+        // Filters narrow the list in place, so its order (viewer_count DESC, started_at DESC) is untouched.
+        if (wantedTags.length) {
+            streams = streams.filter((s) => {
+                const have = streamTagSet(s);
+                return wantedTags.some((tag) => have.has(tag));
+            });
+        }
+        if (wantedCategory !== undefined) {
+            streams = streams.filter((s) => String(s.category || '').replace(/\s+/g, ' ').trim().toLowerCase() === wantedCategory);
+        }
         const channelMap = await db.getChannelsByUserIds(streams.map(s => s.user_id)); // one query, not N
         const enriched = await Promise.all(streams.map(async (s) => {
             const channel = channelMap[s.user_id] || null;
@@ -1170,6 +1233,33 @@ router.get('/', optionalAuth, async (req, res) => {
     } catch (err) {
         console.error('[Streams] List error:', err.message);
         res.status(500).json({ error: 'Failed to list streams' });
+    }
+});
+
+// ── Tags In Use (the browse filters) ─────────────────────────
+router.get('/tags', async (req, res) => {
+    try {
+        // The tag set changes slowly and is the same for everyone (like the stream list, with a longer window).
+        res.set('Cache-Control', 'public, max-age=60');
+        const rows = await db.getStreamTagUsage();
+        const counts = new Map();
+        for (const row of rows) {
+            const live = Number(row.is_live) === 1;
+            const recent = Number(row.recent) === 1;
+            for (const tag of streamTagSet(row)) {
+                let entry = counts.get(tag);
+                if (!entry) { entry = { tag, live: 0, recent: 0 }; counts.set(tag, entry); }
+                if (live) entry.live += 1;
+                if (recent) entry.recent += 1;
+            }
+        }
+        const tags = [...counts.values()]
+            .sort((a, b) => b.live - a.live || b.recent - a.recent || (a.tag < b.tag ? -1 : a.tag > b.tag ? 1 : 0))
+            .slice(0, 30);
+        res.json({ tags });
+    } catch (err) {
+        console.error('[Streams] Tags error:', err.message);
+        res.status(500).json({ error: 'Failed to list tags' });
     }
 });
 
