@@ -169,7 +169,7 @@ html { -webkit-tap-highlight-color: transparent; }
     position: fixed; top: 0; left: 0; right: 0; z-index: 1000;
     height: var(--navbar-h);
     background: var(--glass);
-    border-bottom: 1px solid rgba(255,255,255,0.06);
+    border-bottom: 1px solid color-mix(in srgb, var(--text-primary, #fff) 6%, transparent);
     display: flex; align-items: center;
     padding: 0 16px;
     gap: 16px;
@@ -235,8 +235,8 @@ body.ov-nav-overlay .navbar.ovnav-top {
     text-decoration: none;
 }
 .nav-link:hover {
-    background: rgba(255,255,255,0.06);
-    border-color: rgba(255,255,255,0.08);
+    background: color-mix(in srgb, var(--text-primary, #fff) 6%, transparent);
+    border-color: color-mix(in srgb, var(--text-primary, #fff) 8%, transparent);
     color: var(--text-primary);
 }
 .nav-link.active {
@@ -499,7 +499,7 @@ body.ov-nav-overlay .navbar.ovnav-top {
     font-size: 0.82rem; color: var(--text-secondary); margin: 3px 0 0;
 }
 .network-card:hover {
-    background: rgba(255,255,255,0.06);
+    background: color-mix(in srgb, var(--text-primary, #fff) 6%, transparent);
     border-color: var(--accent-dark);
     transform: translateY(-2px);
     box-shadow: 0 4px 20px rgba(0,0,0,0.3);
@@ -583,7 +583,7 @@ body.ov-nav-overlay .navbar.ovnav-top {
     gap: 4px;
     padding: 12px 14px;
     border-radius: var(--radius);
-    background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));
+    background: linear-gradient(180deg, color-mix(in srgb, var(--text-primary, #fff) 2%, transparent), color-mix(in srgb, var(--text-primary, #fff) 1%, transparent));
     border: 1px solid var(--border);
 }
 .openvibeapp-meta-label {
@@ -706,7 +706,7 @@ body.ov-nav-overlay .navbar.ovnav-top {
     padding: 12px 14px;
     border: 1px solid var(--border);
     border-radius: var(--radius-lg);
-    background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));
+    background: linear-gradient(180deg, color-mix(in srgb, var(--text-primary, #fff) 2%, transparent), color-mix(in srgb, var(--text-primary, #fff) 1%, transparent));
 }
 .media-filter-chip {
     display: inline-flex;
@@ -922,7 +922,7 @@ body.ov-nav-overlay .navbar.ovnav-top {
     font-size: 0.65rem;
     font-weight: 600;
     vertical-align: middle;
-    background: rgba(255,255,255,.12);
+    background: color-mix(in srgb, var(--text-primary, #fff) 12%, transparent);
     color: #fff;
 }
 /* On a thumbnail: a small round icon in the corner, not a purple label over the picture (owner, 2026-10-31: the
@@ -1313,7 +1313,7 @@ a.pulse-card:hover { border-color: var(--accent); transform: translateY(-2px); }
 .home-about-toggle {
     display: inline-flex; align-items: center; gap: 8px;
     margin: 6px auto 2px; padding: 9px 18px;
-    background: color-mix(in srgb, var(--accent) 16%, rgba(255,255,255,0.04));
+    background: color-mix(in srgb, var(--accent) 16%, color-mix(in srgb, var(--text-primary, #fff) 4%, transparent));
     border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
     color: #f4f2ef; font-size: 0.86rem; font-weight: 700; letter-spacing: 0.01em;
     border-radius: 999px; cursor: pointer;
@@ -1369,7 +1369,7 @@ a.pulse-card:hover { border-color: var(--accent); transform: translateY(-2px); }
 .home-cta-banner .cta-method span,
 .home-cta-banner .home-cta-feature > span { color: #918f8b; }
 .home-cta-banner .cta-method span b { color: #d6d4d0; }
-.home-cta-banner .btn-outline { color: #e8e6e3; border-color: color-mix(in srgb, var(--accent) 40%, transparent); background: rgba(255,255,255,0.03); }
+.home-cta-banner .btn-outline { color: #e8e6e3; border-color: color-mix(in srgb, var(--accent) 40%, transparent); background: color-mix(in srgb, var(--text-primary, #fff) 3%, transparent); }
 .home-cta-banner .btn-outline:hover { background: color-mix(in srgb, var(--accent) 14%, transparent); border-color: var(--accent); color: #fff; }
 
 /* Eyebrow */
@@ -1409,8 +1409,8 @@ a.pulse-card:hover { border-color: var(--accent); transform: translateY(-2px); }
 /* Three streaming methods */
 .cta-method {
     position: relative; padding: 18px 18px 16px; border-radius: 14px;
-    background: linear-gradient(180deg, rgba(255,255,255,0.045), rgba(255,255,255,0.015));
-    border: 1px solid rgba(255,255,255,0.08);
+    background: linear-gradient(180deg, color-mix(in srgb, var(--text-primary, #fff) 4.5%, transparent), color-mix(in srgb, var(--text-primary, #fff) 1.5%, transparent));
+    border: 1px solid color-mix(in srgb, var(--text-primary, #fff) 8%, transparent);
     transition: transform var(--ov-dur-2, .18s) var(--ov-ease-out, ease), border-color var(--ov-dur-2, .18s) var(--ov-ease-out, ease), box-shadow var(--ov-dur-2, .18s) var(--ov-ease-out, ease);
     overflow: hidden;
 }
@@ -1424,8 +1424,8 @@ a.pulse-card:hover { border-color: var(--accent); transform: translateY(-2px); }
 .home-cta-feature {
     position: relative; display: flex; flex-direction: column; gap: 5px;
     padding: 16px 16px; border-radius: 13px;
-    background: rgba(255,255,255,0.028);
-    border: 1px solid rgba(255,255,255,0.07);
+    background: color-mix(in srgb, var(--text-primary, #fff) 2.8%, transparent);
+    border: 1px solid color-mix(in srgb, var(--text-primary, #fff) 7%, transparent);
     transition: transform var(--ov-dur-2, .16s) var(--ov-ease-out, ease), background var(--ov-dur-2, .16s) var(--ov-ease-out, ease), border-color var(--ov-dur-2, .16s) var(--ov-ease-out, ease), box-shadow var(--ov-dur-2, .16s) var(--ov-ease-out, ease);
     /* `both` holds the from-state (opacity 0) for the whole animation-delay, and a subtree whose
        rendering is skipped or deferred can sit in that state indefinitely — which is how a card
@@ -1672,7 +1672,7 @@ a.pulse-card:hover { border-color: var(--accent); transform: translateY(-2px); }
     align-items: flex-start;
     margin: 12px clamp(20px, 4vw, 42px) 0;
     padding: 26px 28px;
-    border-top: 1px solid rgba(255,255,255,0.06);
+    border-top: 1px solid color-mix(in srgb, var(--text-primary, #fff) 6%, transparent);
     margin-bottom: 0;
     padding-bottom: clamp(28px, 5vw, 42px);
 }
@@ -1939,7 +1939,7 @@ a.pulse-card:hover { border-color: var(--accent); transform: translateY(-2px); }
     height: 10px;
     border-radius: 999px;
     overflow: hidden;
-    background: rgba(255,255,255,0.07);
+    background: color-mix(in srgb, var(--text-primary, #fff) 7%, transparent);
     box-shadow: inset 0 0 0 1px rgba(255,255,255,0.04);
 }
 
@@ -2007,7 +2007,7 @@ a.pulse-card:hover { border-color: var(--accent); transform: translateY(-2px); }
     padding: 11px 14px;
     font-size: 0.82rem;
     color: rgba(226, 232, 240, 0.88);
-    border-bottom: 1px solid rgba(255,255,255,0.08);
+    border-bottom: 1px solid color-mix(in srgb, var(--text-primary, #fff) 8%, transparent);
 }
 
 .player-loader-diagnostics pre {
@@ -2348,8 +2348,8 @@ a.pulse-card:hover { border-color: var(--accent); transform: translateY(-2px); }
     box-shadow: 0 12px 28px rgba(0,0,0,0.35);
 }
 .fullscreen-chat-textarea {
-    background: rgba(255,255,255,0.08);
-    border-color: rgba(255,255,255,0.12);
+    background: color-mix(in srgb, var(--text-primary, #fff) 8%, transparent);
+    border-color: color-mix(in srgb, var(--text-primary, #fff) 12%, transparent);
     color: #fff;
 }
 .fullscreen-chat-textarea::placeholder {
@@ -2401,7 +2401,7 @@ a.pulse-card:hover { border-color: var(--accent); transform: translateY(-2px); }
 .control-keybind {
     position: absolute; top: 2px; right: 4px;
     font-size: 0.55rem; font-weight: 700;
-    background: rgba(255,255,255,0.12); color: var(--text-secondary);
+    background: color-mix(in srgb, var(--text-primary, #fff) 12%, transparent); color: var(--text-secondary);
     padding: 1px 4px; border-radius: 3px;
     line-height: 1.2; pointer-events: none;
 }
@@ -2602,7 +2602,7 @@ a.pulse-card:hover { border-color: var(--accent); transform: translateY(-2px); }
 /* Hide badges */
 .chat-hide-badges .chat-badge { display: none !important; }
 /* Alternating backgrounds */
-.chat-alt-bg .chat-msg:nth-child(even) { background: rgba(255,255,255,0.02); border-radius: 2px; padding: 2px 4px; }
+.chat-alt-bg .chat-msg:nth-child(even) { background: color-mix(in srgb, var(--text-primary, #fff) 2%, transparent); border-radius: 2px; padding: 2px 4px; }
 /* Hide system messages */
 .chat-hide-system .chat-msg.system { display: none !important; }
 /* "Show All Chats Under This Streamer" off → hide other slots' messages */
@@ -2746,7 +2746,7 @@ a.pulse-card:hover { border-color: var(--accent); transform: translateY(-2px); }
 }
 .chat-reply-bar-close:hover {
     color: var(--text-primary, #fff);
-    background: rgba(255,255,255,0.08);
+    background: color-mix(in srgb, var(--text-primary, #fff) 8%, transparent);
 }
 
 /* ── Reply flash (scroll-to highlight) ───────────────────── */
@@ -2831,7 +2831,7 @@ a.pulse-card:hover { border-color: var(--accent); transform: translateY(-2px); }
     overflow: hidden;
     border-radius: 12px;
     background: rgba(0,0,0,0.24);
-    border: 1px solid rgba(255,255,255,0.08);
+    border: 1px solid color-mix(in srgb, var(--text-primary, #fff) 8%, transparent);
 }
 .gotti-card-media {
     background: rgba(0,0,0,0.25);
@@ -2901,7 +2901,7 @@ a.pulse-card:hover { border-color: var(--accent); transform: translateY(-2px); }
 
 /* ── Cross-feed messages (global/other streams in stream chat) ── */
 .chat-msg-crossfeed {
-    border-left: 2px solid rgba(255,255,255,0.08);
+    border-left: 2px solid color-mix(in srgb, var(--text-primary, #fff) 8%, transparent);
     padding-left: 6px;
     opacity: 0.85;
 }
@@ -3125,7 +3125,7 @@ a.pulse-card:hover { border-color: var(--accent); transform: translateY(-2px); }
     text-overflow: ellipsis;
 }
 .ac-item:hover, .ac-item.ac-selected {
-    background: var(--bg-hover, rgba(255,255,255,0.08));
+    background: var(--bg-hover, color-mix(in srgb, var(--text-primary, #fff) 8%, transparent));
 }
 .ac-item.ac-selected {
     background: color-mix(in srgb, var(--accent-dark, #7c3aed) 25%, var(--bg-card, #1e1e2e));
@@ -3558,7 +3558,7 @@ a.pulse-card:hover { border-color: var(--accent); transform: translateY(-2px); }
 .aiv-status { font-size: 0.75rem; font-weight: 600; padding: 2px 8px; border-radius: 999px; }
 .aiv-status.ok { background: rgba(52,211,153,0.18); color: #34d399; }
 .aiv-status.off { background: rgba(148,148,148,0.18); color: #b0b0b0; }
-.aiv-meter-bar { margin-top: 8px; height: 8px; border-radius: 999px; background: rgba(255,255,255,0.08); overflow: hidden; }
+.aiv-meter-bar { margin-top: 8px; height: 8px; border-radius: 999px; background: color-mix(in srgb, var(--text-primary, #fff) 8%, transparent); overflow: hidden; }
 .aiv-meter-fill { height: 100%; background: linear-gradient(90deg, #4ecdc4, #60a5fa); transition: width var(--ov-dur-3, 0.3s); }
 .aiv-meter-fill.over { background: linear-gradient(90deg, #fb923c, #ff6b6b); }
 
@@ -4411,13 +4411,13 @@ body :is(.modal-overlay, .bc-ws-confirm-overlay, .bc-modal, .bc-perm-overlay, .b
 }
 .live-tab.active {
     color: var(--text-primary); font-weight: 600;
-    background: rgba(255,255,255,0.03);
+    background: color-mix(in srgb, var(--text-primary, #fff) 3%, transparent);
     border-bottom-color: var(--accent);
 }
 .live-tab-num {
     font-size: 0.62rem; font-weight: 700;
     color: var(--text-muted);
-    background: rgba(255,255,255,0.06);
+    background: color-mix(in srgb, var(--text-primary, #fff) 6%, transparent);
     width: 18px; height: 18px; border-radius: 50%;
     display: flex; align-items: center; justify-content: center;
     flex-shrink: 0; line-height: 1;
@@ -4461,7 +4461,7 @@ body :is(.modal-overlay, .bc-ws-confirm-overlay, .bc-modal, .bc-perm-overlay, .b
     width: 58px;
     height: 58px;
     border-radius: 50%;
-    background: linear-gradient(140deg, color-mix(in srgb, var(--accent) 82%, white 8%), rgba(255,255,255,0.08));
+    background: linear-gradient(140deg, color-mix(in srgb, var(--accent) 82%, white 8%), color-mix(in srgb, var(--text-primary, #fff) 8%, transparent));
     box-shadow:
         0 0 0 1px rgba(255,255,255,0.1),
         0 18px 32px rgba(0,0,0,0.3),
@@ -4486,7 +4486,7 @@ body :is(.modal-overlay, .bc-ws-confirm-overlay, .bc-modal, .bc-perm-overlay, .b
 }
 .ch-hs-badge strong { font-weight: 800; }
 .ch-hs-badge i { font-size: 0.7rem; }
-.ch-restream-badge:hover { background: rgba(255, 255, 255, 0.12); filter: brightness(1.3); }
+.ch-restream-badge:hover { background: color-mix(in srgb, var(--text-primary, #fff) 12%, transparent); filter: brightness(1.3); }
 .ch-restream-badge i { font-size: 0.7rem; }
 @keyframes pulse-live {
     0%, 100% { opacity: 1; }
@@ -4810,7 +4810,7 @@ button.uai-tl-more { background: none; border: none; cursor: pointer; padding: 0
 /* "Also live:" hop bar above chat */
 .chat-stream-hops {
     display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
-    padding: 6px 10px; border-bottom: 1px solid var(--border, rgba(255,255,255,0.1));
+    padding: 6px 10px; border-bottom: 1px solid var(--border, color-mix(in srgb, var(--text-primary, #fff) 10%, transparent));
     background: color-mix(in srgb, var(--accent) 8%, transparent);
     font-size: 0.78rem;
 }
@@ -4896,7 +4896,7 @@ button.uai-tl-more { background: none; border: none; cursor: pointer; padding: 0
 .clip-time-display {
     font-size: 1.15rem; font-weight: 700; font-variant-numeric: tabular-nums;
     padding: 4px 10px; min-width: 60px; text-align: center;
-    background: rgba(255,255,255,0.05); border-radius: 8px;
+    background: color-mix(in srgb, var(--text-primary, #fff) 5%, transparent); border-radius: 8px;
 }
 
 /* Duration display */
@@ -4933,7 +4933,7 @@ button.uai-tl-more { background: none; border: none; cursor: pointer; padding: 0
     border-bottom: 1px solid var(--border);
     transition: background var(--ov-dur-2, 0.15s) var(--ov-ease-out, ease);
 }
-.comment-item:hover { background: rgba(255,255,255,0.02); }
+.comment-item:hover { background: color-mix(in srgb, var(--text-primary, #fff) 2%, transparent); }
 .comment-item:last-child { border-bottom: none; }
 
 .comment-avatar {
@@ -5606,7 +5606,7 @@ body.theme-light .btn-outline:hover {
     transition: background var(--ov-dur-1, 0.12s);
 }
 .call-peer-menu-item:hover {
-    background: var(--bg-tertiary, rgba(255,255,255,0.05));
+    background: var(--bg-tertiary, color-mix(in srgb, var(--text-primary, #fff) 5%, transparent));
 }
 .call-peer-menu-item i {
     width: 16px;
@@ -5858,7 +5858,7 @@ body.theme-light .btn-outline:hover {
     margin-top: 8px;
     font-size: 0.76rem;
     color: var(--text-secondary, #aaa);
-    background: rgba(255,255,255,0.04);
+    background: color-mix(in srgb, var(--text-primary, #fff) 4%, transparent);
     border: 1px solid var(--border);
     border-radius: var(--radius);
     padding: 6px 8px;
@@ -5966,7 +5966,7 @@ body.theme-light .btn-outline:hover {
     transition: background var(--ov-dur-2, 0.15s);
 }
 .update-entry:hover {
-    background: var(--bg-tertiary, rgba(255,255,255,0.04));
+    background: var(--bg-tertiary, color-mix(in srgb, var(--text-primary, #fff) 4%, transparent));
 }
 .update-hash {
     font-family: 'JetBrains Mono', 'Fira Code', monospace;
@@ -6694,7 +6694,7 @@ textarea.paste-textarea {
 }
 .screenshot-format-tag {
     font-size: 0.7rem;
-    background: var(--bg-secondary, rgba(255,255,255,0.06));
+    background: var(--bg-secondary, color-mix(in srgb, var(--text-primary, #fff) 6%, transparent));
     border: 1px solid var(--border);
     border-radius: 6px;
     padding: 2px 8px;
@@ -6908,7 +6908,7 @@ textarea.paste-textarea {
     cursor: not-allowed;
 }
 .vc-ctrl-btn:hover {
-    background: var(--bg-hover, rgba(255,255,255,0.1));
+    background: var(--bg-hover, color-mix(in srgb, var(--text-primary, #fff) 10%, transparent));
     transform: scale(1.08);
 }
 .vc-ctrl-btn.active {
@@ -7083,7 +7083,7 @@ textarea.paste-textarea {
     align-items: center;
     justify-content: center;
     color: var(--text-secondary);
-    background: rgba(255, 255, 255, 0.08);
+    background: color-mix(in srgb, var(--text-primary, #fff) 8%, transparent);
 }
 .vc-call-heading {
     margin-top: 16px;
@@ -7181,7 +7181,7 @@ textarea.paste-textarea {
     border-radius: 10px;
     padding: 8px 10px;
     font-weight: 600;
-    background: rgba(255, 255, 255, 0.08);
+    background: color-mix(in srgb, var(--text-primary, #fff) 8%, transparent);
     color: var(--text-primary);
     display: inline-flex;
     align-items: center;
@@ -7990,7 +7990,7 @@ body.fabs-tucked .messenger-toggle, body.fabs-tucked .floating-chat-fab, body.fa
     justify-content: space-between;
     gap: 10px;
     padding: 8px 0;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    border-bottom: 1px solid color-mix(in srgb, var(--text-primary, #fff) 5%, transparent);
     font-size: 0.86rem;
     color: var(--text-secondary);
 }
@@ -8802,7 +8802,7 @@ body.fabs-tucked .messenger-toggle, body.fabs-tucked .floating-chat-fab, body.fa
 .paste-ai-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 .paste-ai-tag {
     font-size: 0.74rem; padding: 2px 9px; border-radius: 12px;
-    background: rgba(255,255,255,0.08); color: var(--text-secondary, #bbb);
+    background: color-mix(in srgb, var(--text-primary, #fff) 8%, transparent); color: var(--text-secondary, #bbb);
 }
 
 /* ═══ Stream header polish (avatar image, larger title/desc, link) ═══ */
@@ -9158,7 +9158,7 @@ body.fabs-tucked .messenger-toggle, body.fabs-tucked .floating-chat-fab, body.fa
     transition: transform var(--ov-dur-1, .12s) var(--ov-ease-out, ease), box-shadow var(--ov-dur-1, .12s) var(--ov-ease-out, ease);
 }
 .cgw-goal:hover { transform: translateY(-1px); box-shadow: 0 4px 14px rgba(0,0,0,.35); }
-.cgw-goal.has-img { border-color: rgba(255,255,255,.08); }
+.cgw-goal.has-img { border-color: color-mix(in srgb, var(--text-primary, #fff) 8%, transparent); }
 .cgw-media {
     position: absolute; inset: 0; width: 100%; height: 100%;
     object-fit: cover; object-position: right center;
@@ -9263,7 +9263,7 @@ body.fabs-tucked .messenger-toggle, body.fabs-tucked .floating-chat-fab, body.fa
 .ai-tl-session-title a { color: var(--text-primary); text-decoration: none; }
 .ai-tl-session-title a:hover { color: var(--accent, #8b5cf6); }
 .ai-tl-session-meta i { opacity: 0.75; }
-.ai-tl-moment { display: flex; gap: 10px; padding: 8px; border-radius: 10px; background: var(--bg-elevated, rgba(255,255,255,0.03)); border: 1px solid var(--border, rgba(255,255,255,0.06)); }
+.ai-tl-moment { display: flex; gap: 10px; padding: 8px; border-radius: 10px; background: var(--bg-elevated, color-mix(in srgb, var(--text-primary, #fff) 3%, transparent)); border: 1px solid var(--border, color-mix(in srgb, var(--text-primary, #fff) 6%, transparent)); }
 .ai-tl-moment-body { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
 .ai-tl-empty i { font-size: 2rem; color: color-mix(in srgb, var(--accent, #8b5cf6) 60%, transparent); margin-bottom: 12px; }
 .ai-tl-empty p { margin: 4px 0; }
@@ -9962,7 +9962,7 @@ body.ov-panel-open #floating-chat-fab { opacity: 0; pointer-events: none; transf
 .openvibe-navbar.navbar {
     position: fixed; top: 0; left: 0; right: 0; z-index: 1000;
     height: var(--navbar-h); padding: 0 clamp(10px, 2vw, 16px); gap: clamp(6px, 1.2vw, 14px);
-    background: var(--glass); border-bottom: 1px solid rgba(255,255,255,0.06);
+    background: var(--glass); border-bottom: 1px solid color-mix(in srgb, var(--text-primary, #fff) 6%, transparent);
     backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
     --ovnav-h: var(--navbar-h);
 }

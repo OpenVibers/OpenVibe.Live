@@ -14,8 +14,8 @@
 .broadcast-page-tabs-nav {
     position: relative;
     padding: 0 16px;
-    border-bottom: 1px solid rgba(255,255,255,0.08);
-    background: rgba(255,255,255,0.02);
+    border-bottom: 1px solid color-mix(in srgb, var(--text-primary, #fff) 8%, transparent);
+    background: color-mix(in srgb, var(--text-primary, #fff) 2%, transparent);
 }
 
 .broadcast-page-tab-btn {
@@ -59,7 +59,7 @@
 .bc-tab-header {
     margin-bottom: 24px;
     padding-bottom: 16px;
-    border-bottom: 1px solid rgba(255,255,255,0.08);
+    border-bottom: 1px solid color-mix(in srgb, var(--text-primary, #fff) 8%, transparent);
 }
 
 .bc-tab-header h2 {
@@ -109,7 +109,7 @@
     position: absolute;
     top: 16px;
     right: 16px;
-    background: rgba(255,255,255,0.1);
+    background: color-mix(in srgb, var(--text-primary, #fff) 10%, transparent);
     border: none;
     width: 40px;
     height: 40px;
@@ -336,7 +336,7 @@
     padding: 14px;
     border: 1px dashed var(--border);
     border-radius: var(--radius);
-    background: rgba(255,255,255,0.02);
+    background: color-mix(in srgb, var(--text-primary, #fff) 2%, transparent);
 }
 
 /* ── Screen Capture Source Picker ────────────────────────────── */
@@ -367,7 +367,7 @@
 .bc-screen-advanced {
     border: 1px solid var(--border);
     border-radius: var(--radius, 8px);
-    background: rgba(255,255,255,0.02);
+    background: color-mix(in srgb, var(--text-primary, #fff) 2%, transparent);
     padding: 0;
 }
 
@@ -548,8 +548,8 @@
     text-align: left;
     padding: 14px 16px;
     border-radius: 18px;
-    border: 1px solid rgba(255,255,255,0.08);
-    background: rgba(255,255,255,0.04);
+    border: 1px solid color-mix(in srgb, var(--text-primary, #fff) 8%, transparent);
+    background: color-mix(in srgb, var(--text-primary, #fff) 4%, transparent);
     color: var(--text-primary);
     display: flex;
     align-items: center;
@@ -774,7 +774,7 @@
         width: 100%;
         height: 400px;
         flex-shrink: 0;
-        border-top: 1px solid rgba(255,255,255,0.06);
+        border-top: 1px solid color-mix(in srgb, var(--text-primary, #fff) 6%, transparent);
         border-left: none;
     }
 }
@@ -807,7 +807,7 @@
         width: 100%; height: 55vh;
         max-height: 55vh;
         max-height: 55dvh;
-        border-top: 1px solid rgba(255,255,255,0.06);
+        border-top: 1px solid color-mix(in srgb, var(--text-primary, #fff) 6%, transparent);
         border-left: none;
         background: var(--bg-secondary);
         z-index: 1002;
@@ -1220,7 +1220,7 @@
     gap: 12px;
     margin: 20px 0 14px;
     padding-bottom: 10px;
-    border-bottom: 1px solid rgba(255,255,255,0.06);
+    border-bottom: 1px solid color-mix(in srgb, var(--text-primary, #fff) 6%, transparent);
 }
 
 .bc-step-header:first-of-type {
@@ -1299,7 +1299,7 @@
     color: var(--text-secondary);
     margin-top: 6px;
     padding-top: 6px;
-    border-top: 1px solid rgba(255,255,255,0.06);
+    border-top: 1px solid color-mix(in srgb, var(--text-primary, #fff) 6%, transparent);
     line-height: 1.3;
 }
 
@@ -1358,7 +1358,7 @@
     margin-top: 16px;
     border: 1px solid var(--border);
     border-radius: var(--radius);
-    background: var(--bg-tertiary, rgba(255,255,255,0.02));
+    background: var(--bg-tertiary, color-mix(in srgb, var(--text-primary, #fff) 2%, transparent));
     overflow: hidden;
 }
 
@@ -1446,7 +1446,7 @@
     font-size: 0.8rem;
     color: var(--text-primary);
     padding: 8px 10px;
-    background: rgba(255,255,255,0.03);
+    background: color-mix(in srgb, var(--text-primary, #fff) 3%, transparent);
     border-radius: var(--radius-sm, 4px);
     border-left: 3px solid var(--accent);
     margin: 0;
@@ -1461,7 +1461,7 @@
 /* ── FAQ Items ───────────────────────────────────────────────── */
 .bc-faq-item {
     padding: 12px 0;
-    border-bottom: 1px solid rgba(255,255,255,0.04);
+    border-bottom: 1px solid color-mix(in srgb, var(--text-primary, #fff) 4%, transparent);
 }
 
 .bc-faq-item:last-child {
@@ -1858,7 +1858,7 @@
 .bc-perm-note i { margin-top: 2px; opacity: .8; flex-shrink: 0; }
 .bc-perm-step span {
     flex-shrink: 0; width: 21px; height: 21px; border-radius: 50%;
-    background: rgba(255,255,255,.09); display: grid; place-items: center;
+    background: color-mix(in srgb, var(--text-primary, #fff) 9%, transparent); display: grid; place-items: center;
     font-size: .72rem; font-weight: 700;
 }
 .bc-perm-step p { margin: 0; font-size: .85rem; line-height: 1.45; color: var(--text-muted, #9aa3b2); }
