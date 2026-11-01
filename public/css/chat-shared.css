@@ -432,6 +432,15 @@
 .global-chat-messages, .fullscreen-chat-messages, .chat-users-panel, .rewards-panel, .fcw-messages, #pc-msgs {
     overscroll-behavior: contain;
 }
+/* On a phone the chat on /chat and the offline chat sit inside a page that scrolls: there a swipe that reaches the
+   end of the messages carries on into the page, instead of needing a finger outside the box (the owner, 2026-11-01:
+   "you can't scroll down the page even when you're at the bottom of the chat"). Full-screen chats, the pop-out and
+   the overlays keep their containment. The network rule (openvibe-shared kit.css, .ov-scroll): contain a scroll
+   area only when it fills the screen. */
+@media (max-width: 900px), (hover: none) {
+    .global-chat-main, .global-chat-messages, .offline-global-chat, .offline-global-chat .chat-messages,
+    #page-chat .chat-messages, #page-chat .chat-sidebar, .vc-connected-panel { overscroll-behavior-y: auto; }
+}
 /* chat.js keeps the reader's place itself (pinned to the bottom, or the same distance from it);
    browser scroll anchoring on top of that double-corrects when old rows are trimmed. */
 .chat-messages, .global-chat-messages, .fcw-messages, #pc-msgs, #offline-chat-messages, #bc-chat-messages { overflow-anchor: none; }
