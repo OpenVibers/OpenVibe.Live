@@ -2805,18 +2805,16 @@ body.bc-studio-on #bc-chat-messages .chat-conn-status { display: block !importan
     .bcs-live-dot, .bcs-sheet, .bcs-sheet-wrap { animation: none; }
 }
 
-/* The studio is a going-live screen, so on a phone it owns the screen (OpenVibe.Design "media-owns-the-screen";
-   owner 2026-10-31: the Go live button sat under the app's bottom bar). The bar steps aside on the broadcast page;
-   it comes back on every other page. */
-@media (max-width: 760px) {
-    html:has(#page-broadcast.active) { --ovnav-appbar-h: 0px; }
-    html:has(#page-broadcast.active) .ovnav-appbar { display: none; }
-}
+/* Setting up on a phone keeps the app's bottom bar, with Go Live lit, like every other page (the owner, 2026-11-01:
+   "the buttons at the bottom don't show like our mobile buttons"). Only the live studio (body.bc-studio-on, above)
+   owns the whole screen, as a camera app does. The Go live dock sits just above the bar. */
 /* "Go live" in reach on a phone before going live (public/js/broadcast-studio.js): pinned while the slot's own Go Live
    button is below the fold, and always above anything else at the bottom edge (--ovnav-appbar-h). */
 .bcs-golive {
     position: fixed; left: 0; right: 0; bottom: var(--ovnav-appbar-h, 0px); z-index: 1050; display: grid; gap: 4px; justify-items: center;
-    padding: 10px max(14px, env(safe-area-inset-right, 0px)) calc(10px + env(safe-area-inset-bottom, 0px)) max(14px, env(safe-area-inset-left, 0px));
+    padding: 10px max(14px, env(safe-area-inset-right, 0px)) 10px max(14px, env(safe-area-inset-left, 0px));
+    /* Over the bar, the bar already clears the phone's home indicator; alone at the edge, the dock does. */
+    padding-bottom: calc(10px + max(0px, env(safe-area-inset-bottom, 0px) - var(--ovnav-appbar-h, 0px)));
     background: linear-gradient(to bottom, transparent, var(--bg-primary, #0b0b10) 34%);
 }
 .bcs-golive[hidden] { display: none; }
@@ -2830,7 +2828,7 @@ body.bc-studio-on #bc-chat-messages .chat-conn-status { display: block !importan
 .bcs-golive-where { color: var(--text-secondary, #a1a1aa); font-size: 0.76rem; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 body.bc-golive-dock-on .messenger-toggle { display: none !important; }
 /* The page keeps room at its foot for the dock, so its last fields are never under it. */
-body.bc-golive-dock-on #page-broadcast { padding-bottom: calc(104px + env(safe-area-inset-bottom, 0px)); }
+body.bc-golive-dock-on #page-broadcast { padding-bottom: calc(104px + var(--ovnav-appbar-h, 0px) + env(safe-area-inset-bottom, 0px)); }
 
 /* What viewers see, over the studio (bcStudio.showViewer): a phone stays on this tab. */
 .bcs-viewer {
