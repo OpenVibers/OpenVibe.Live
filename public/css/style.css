@@ -2953,7 +2953,7 @@ a.pulse-card:hover { border-color: var(--accent); transform: translateY(-2px); }
 /* VIP member badge (OpenVibe.VIP): a short text label, so it is a pill rather than an icon square. */
 .chat-vip-badge      { width: auto; padding: 0 5px; font-size: 0.62rem; font-weight: 700; letter-spacing: 0.02em; white-space: nowrap; color: var(--accent-light, var(--accent)); background: color-mix(in srgb, var(--accent) 22%, transparent); border-color: color-mix(in srgb, var(--accent) 50%, transparent); }
 /* Relay platform badge — colour driven by --relay-color (per platform). */
-.chat-relay-badge { color: var(--relay-color, #888); background: color-mix(in srgb, var(--relay-color, #888) 20%, transparent); border-color: color-mix(in srgb, var(--relay-color, #888) 45%, transparent); }
+.chat-relay-badge { color: color-mix(in srgb, var(--relay-color, #888) 55%, var(--text-primary)); background: color-mix(in srgb, var(--relay-color, #888) 20%, transparent); border-color: color-mix(in srgb, var(--relay-color, #888) 45%, transparent); }
 .chat-relay-badge i { font-size: 0.6rem; }
 
 /* Animated tooltip (shared by any [data-tip] badge — chat, user list, context menu) */
@@ -5162,7 +5162,7 @@ body.theme-light .btn-outline:hover {
     padding: 4px 10px; border-radius: 12px;
     background: linear-gradient(135deg, #1a0e2a, #0f0818);
     border: 1px solid #6c3fb5;
-    color: #b388ff; font-size: 0.85rem; font-weight: 600;
+    color: color-mix(in srgb, #b388ff 55%, var(--text-primary)); font-size: 0.85rem; font-weight: 600;
     cursor: pointer;
 }
 .nav-coins:hover { border-color: #9c6eff; }
@@ -5172,7 +5172,7 @@ body.theme-light .btn-outline:hover {
     flex-shrink: 0;
     padding: 6px 8px; background: transparent;
     border: 1px solid #6c3fb5; border-radius: var(--radius);
-    color: #b388ff; font-size: 0.85rem; cursor: pointer;
+    color: color-mix(in srgb, #b388ff 55%, var(--text-primary)); font-size: 0.85rem; cursor: pointer;
     transition: color var(--ov-dur-2, 0.15s), border-color var(--ov-dur-2, 0.15s), background var(--ov-dur-2, 0.15s);
     line-height: 1;
 }
@@ -5191,7 +5191,7 @@ body.theme-light .btn-outline:hover {
     display: flex; justify-content: space-between; align-items: center;
     padding: 8px 12px;
     font-size: 0.85rem; font-weight: 600;
-    color: #b388ff;
+    color: color-mix(in srgb, #b388ff 55%, var(--text-primary));
     border-bottom: 1px solid var(--border);
 }
 .rewards-coin-bal {
@@ -5220,7 +5220,7 @@ body.theme-light .btn-outline:hover {
 }
 .reward-btn i {
     font-size: 1.2rem;
-    color: var(--reward-color, #b388ff);
+    color: color-mix(in srgb, var(--reward-color, #b388ff) 60%, var(--text-primary));
 }
 .reward-title {
     font-weight: 500; line-height: 1.2;
@@ -5228,7 +5228,7 @@ body.theme-light .btn-outline:hover {
     text-overflow: ellipsis; white-space: nowrap;
 }
 .reward-cost {
-    font-size: 0.7rem; color: #b388ff;
+    font-size: 0.7rem; color: color-mix(in srgb, #b388ff 55%, var(--text-primary));
     font-weight: 600;
 }
 
@@ -5250,7 +5250,7 @@ body.theme-light .btn-outline:hover {
 }
 .dash-reward-icon {
     font-size: 1.4rem;
-    color: var(--reward-color, #b388ff);
+    color: color-mix(in srgb, var(--reward-color, #b388ff) 60%, var(--text-primary));
     width: 36px; text-align: center;
 }
 .dash-reward-info {

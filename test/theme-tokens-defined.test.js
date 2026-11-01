@@ -45,4 +45,9 @@ assert.match(focus[1], /background: var\(--bg-input\)/);
 // The channel's language chip mixes its gold with the theme's text instead of a pale fixed gold.
 const channel = fs.readFileSync(path.join(root, 'css', 'features', 'channel.css'), 'utf8');
 assert.match(channel, /\.ch-lang-chip \{[^}]*color: color-mix\(in srgb, #f59e0b 35%, var\(--text-primary\)\)/);
+// Violet reward words and platform-coloured relay badges are mixed with the theme's text: the fixed #b388ff and
+// Kick's #53fc18 were pale on light themes.
+const allCss = files.filter((f) => f.endsWith('.css')).map((f) => fs.readFileSync(f, 'utf8')).join('\n');
+assert.ok(!/(^|[^-\w])color:\s*(#b388ff|var\(--reward-color, #b388ff\))/m.test(allCss), 'no fixed pale violet text');
+assert.match(style, /\.chat-relay-badge \{ color: color-mix\(in srgb, var\(--relay-color, #888\) 55%, var\(--text-primary\)\)/);
 console.log('theme tokens defined: all checks passed');
