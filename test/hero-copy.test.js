@@ -12,7 +12,7 @@ const assert = require('assert');
 const { publicOk } = require('../server/ai/hero-copy');
 
 const refused = ['qeqweqwe watchers', 'free streaming fans', 'shitpost central', 'asdfgh chill crew', 'horny chat crew',
-    'shirtless kids crew'];
+    'shirtless kids crew', 'naked kids crew', 'nude teen fans'];
 for (const s of refused) assert.strictEqual(publicOk(s), false, `refused: ${s}`);
 const kept = ['2fat’s hype squad', 'JustTwoCuteBesties fans', 'Maticus and crew', 'JessePlays rhythm lovers', 'meme spike mob', 'van-dwelling coders',
     'multi-GPU benchmark junkies', 'goosely’s loyal 3 viewers', 'class clowns', 'ara007 shirtless thoughts', 'figure-drawing nude art fans', 'button mashers', 'from Tesla GPUs to spicy memes', 'throttle the hype, not the vibes', 'Goosely chaos chat'];

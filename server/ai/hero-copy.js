@@ -13,7 +13,7 @@ const NO_FREE = /\b(free|no[- ]cost)\b|\$\s?0\b/i;
 // Describing people and nudity are fine (owner, 2026-10-31). The front page never puts a child and bare skin in one
 // line.
 const MINOR = /\b(teen(age)?|kids?|child(ren)?|boys?|girls?)\b/i;
-const SKIN = /\b(shirtless|topless|bare-?chested|cleavage|bikini|underwear)\b/i;
+const SKIN = /\b(shirtless|topless|bare-?chested|cleavage|bikini|underwear|naked|nude|nudity|undress\w*)\b/i;
 const MINOR_SKIN = { test: (s) => MINOR.test(s) && SKIN.test(s) };
 // No profanity, toilet jokes or porn on the front page, whatever chat joked about. Bodies are fine (owner, 2026-10-31).
 const CRUDE = /\b(cum|horny|porn\w*|nsfw|fuck\w*|shit\w*|piss\w*|bitch\w*|cunt|wank\w*|poop\w*|fart\w*|turds?|ass(hole)?s?|butthole)\b/i;

@@ -16,9 +16,16 @@ const media = require('../media-client');
 // not in it (a nude body is not a sex act).
 const EXPLICIT = /\b(?:sexual(?:ly)?\s+(?:acts?|activity|intercourse)|sex\s+acts?|having\s+sex|(?:pornographic|sexually\s+explicit|explicit\s+adult)\s+(?:content|material|footage|scenes?|imagery|videos?|acts?)|adult\s+(?:films?|videos?)|porn(?:o|ography|ographic)?|masturbat\w*|intercourse|oral\s+sex|penetrat\w*)\b/i;
 
-/** True when any of the texts describes sex acts or pornography. */
+// The hard line that nudity being art never moves: a child and a bare body in the same text. Not a judgement of the
+// words alone ("kids in swimsuits at the beach" is not this); a child together with nudity or genitals is treated as
+// explicit, so the moment is never picked and an AI clip of it goes private for the owner to review.
+const MINOR = /\b(?:child(?:ren)?|kids?|minors?|teen(?:age(?:rs?)?|s)?|toddlers?|bab(?:y|ies)|infants?|boys?|girls?|underage)\b/i;
+const NUDE = /\b(?:naked|nude|nudity|undress(?:ed|ing)?|topless|bottomless|genital(?:s|ia)?|penis(?:es)?|vaginas?|vulvas?|breasts?|nipples?)\b/i;
+const minorNude = (t) => MINOR.test(t) && NUDE.test(t);
+
+/** True when any of the texts describes sex acts or pornography, or puts a child and nudity together. */
 function isExplicit(...texts) {
-    return texts.some((t) => t != null && EXPLICIT.test(String(t)));
+    return texts.some((t) => t != null && (EXPLICIT.test(String(t)) || minorNude(String(t))));
 }
 
 /**
@@ -40,4 +47,4 @@ async function guardAutoClip(clip, overview) {
     }
 }
 
-module.exports = { isExplicit, guardAutoClip, EXPLICIT };
+module.exports = { isExplicit, guardAutoClip, EXPLICIT, MINOR, NUDE };

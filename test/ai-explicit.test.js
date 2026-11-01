@@ -42,7 +42,16 @@ const ok = (m) => { pass++; console.log(`  ✓ ${m}`); };
         'A sextant and a map on the desk', 'The chat spams PogChamp during the clutch',
     ]) assert.ok(!isExplicit(t), `not explicit: ${t}`);
     assert.ok(isExplicit('a fine title', null, 'the frame shows sexual activity'), 'any of several texts');
-    ok('the detector: sex acts and porn, not nudity and not ordinary streams');
+    // The hard line nudity being art never moves: a child and a bare body in one text is treated as explicit.
+    for (const t of [
+        'A naked child runs across the frame', 'Two kids appear nude in the background', 'a teen undressing on camera',
+        'The toddler is topless in the bath',
+    ]) assert.ok(isExplicit(t), `a child and nudity: ${t}`);
+    for (const t of [
+        'Kids in swimsuits splash in the pool', 'A girl plays guitar on the porch', 'The boys argue about the boss fight',
+        'A naked man lying on their back on a bed',
+    ]) assert.ok(!isExplicit(t), `not explicit: ${t}`);
+    ok('the detector: sex acts and porn, and a child with nudity; not nudity alone and not ordinary streams');
 
     // An AI clip with an explicit overview goes private and loses its description.
     clips.set(1, { id: 1, auto_generated: true, visibility: 'public' });
