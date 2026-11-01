@@ -7,6 +7,7 @@
 .pc-status { font-size: 0.92rem; display: flex; align-items: center; gap: 8px; min-height: 22px; }
 .pc-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; display: inline-block; }
 .pc-dot-on { background: #53fc18; box-shadow: 0 0 6px rgba(83,252,24,0.6); animation: pcDotPulse 2.2s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { .pc-dot-on { animation: none; } }
 .pc-kind { font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; padding: 1px 7px; border-radius: 6px; margin-left: 4px; vertical-align: middle; }
 .pc-kind-app { background: rgba(83,252,24,0.16); color: #6ee34a; }
 .pc-kind-test { background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--accent-light, #e1b77d); }

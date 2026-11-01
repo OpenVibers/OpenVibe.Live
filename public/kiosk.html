@@ -146,6 +146,7 @@ button{font:inherit}
   box-shadow:0 0 12px var(--red);animation:pulse 1.6s infinite
 }
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+@media (prefers-reduced-motion:reduce){.hero-side .live-pill .pulse{animation:none}}
 .hero-side span.tag{
   display:block;margin-top:.8vh;
   font-size:.78vw;color:var(--muted);font-weight:850;
