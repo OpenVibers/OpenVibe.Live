@@ -7,7 +7,7 @@
 .hfx-sparks { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 0; opacity: 0.9; }
 .hfx-spot {
     position: absolute; left: 0; top: 0; width: 720px; height: 720px; margin: -360px 0 0 -360px;
-    pointer-events: none; z-index: 0; opacity: 0; transition: opacity 0.4s;
+    pointer-events: none; z-index: 0; opacity: 0; transition: opacity var(--ov-dur-3, 0.4s);
     border-radius: 50%;
     background: radial-gradient(circle, color-mix(in srgb, var(--accent) 22%, transparent) 0%, transparent 70%);
     transform: translate3d(50vw, 30vh, 0);
@@ -34,7 +34,7 @@
 #page-home .hero-primary .hb-label small { margin-left: 4px; font-size: 0.74rem; font-weight: 600; opacity: 0.82; }
 #page-home .hero-golive-note { margin: 0; gap: 6px 18px; font-size: 0.86rem; }
 #page-home .hero-golive-note a { display: inline-flex; align-items: center; gap: 6px; }
-#page-home .hero-golive-note a i { color: inherit; font-size: 0.7rem; transition: transform 0.2s; }
+#page-home .hero-golive-note a i { color: inherit; font-size: 0.7rem; transition: transform var(--ov-dur-2, 0.2s); }
 #page-home .hero-golive-note a:hover i, #page-home .hero-golive-note a:focus-visible i { transform: translateX(3px); }
 /* The rest: sized to their labels on one centred row (it fits from tablets up). */
 #page-home .hero-links { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; width: 100%; }
@@ -54,7 +54,7 @@
         color-mix(in srgb, var(--c) 10%, var(--bg-card));
     border: 1px solid color-mix(in srgb, var(--c) 42%, var(--border));
     box-shadow: 0 2px 0 0 color-mix(in srgb, var(--c) 22%, transparent), 0 8px 20px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.09);
-    transition: transform 0.18s cubic-bezier(.2,1.3,.3,1), border-color 0.2s, box-shadow 0.2s, background 0.2s;
+    transition: transform var(--ov-dur-2, 0.18s) var(--ov-ease-spring, cubic-bezier(.2,1.3,.3,1)), border-color var(--ov-dur-2, 0.2s), box-shadow var(--ov-dur-2, 0.2s), background var(--ov-dur-2, 0.2s);
 }
 /* One wave, not six blinks: every button shares --hb-wave, so they can never drift apart, and a
    small per-button offset makes a single highlight travel across the row. */
@@ -81,7 +81,7 @@
     content: ''; position: absolute; inset: -1px; border-radius: inherit; z-index: 0; padding: 1px;
     background: conic-gradient(from var(--a, 0deg), transparent 0 70%, var(--c) 85%, transparent 100%);
     -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-    -webkit-mask-composite: xor; mask-composite: exclude; opacity: 0; transition: opacity 0.25s;
+    -webkit-mask-composite: xor; mask-composite: exclude; opacity: 0; transition: opacity var(--ov-dur-2, 0.25s);
     display: none;
 }
 /* Only built when a pointer is actually on the button — there are no hover states on a phone,
@@ -93,14 +93,14 @@
     background: color-mix(in srgb, var(--c) 16%, var(--bg-tertiary));
     border: 1px solid color-mix(in srgb, var(--c) 40%, transparent);
     box-shadow: 0 2px 6px rgba(0,0,0,0.35) inset;
-    transition: transform 0.35s cubic-bezier(.2,1.6,.3,1), background 0.25s, color 0.25s, box-shadow 0.25s;
-    animation: hbPulse var(--hb-wave) ease-in-out infinite; animation-delay: calc(var(--i, 0) * var(--hb-step));
+    transition: transform var(--ov-dur-3, 0.35s) var(--ov-ease-spring, cubic-bezier(.2,1.6,.3,1)), background var(--ov-dur-2, 0.25s), color var(--ov-dur-2, 0.25s), box-shadow var(--ov-dur-2, 0.25s);
+    animation: hbPulse var(--hb-wave) var(--ov-ease-in-out, ease-in-out) infinite; animation-delay: calc(var(--i, 0) * var(--hb-step));
     animation-play-state: paused;
 }
 .hb-ico, .hb-label, .hb-go { position: relative; z-index: 1; }
 .hb-label { flex: 1; text-align: left; }
 /* Chevron appears on hover/focus: an explicit "this goes somewhere" cue. */
-.hb-go { width: 0; opacity: 0; font-size: 0.72rem; color: var(--c); transition: width 0.22s, opacity 0.22s, transform 0.22s; transform: translateX(-4px); }
+.hb-go { width: 0; opacity: 0; font-size: 0.72rem; color: var(--c); transition: width var(--ov-dur-2, 0.22s), opacity var(--ov-dur-2, 0.22s), transform var(--ov-dur-2, 0.22s); transform: translateX(-4px); }
 .hb:hover, .hb:focus-visible {
     transform: translateY(-3px);
     border-color: color-mix(in srgb, var(--c) 78%, transparent);
@@ -145,21 +145,21 @@
 @keyframes hfxPulse { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 55%, transparent); } 70% { box-shadow: 0 0 0 14px color-mix(in srgb, var(--accent) 0%, transparent); } 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 0%, transparent); } }
 
 /* Headline: subtle breathing glow (the sweeping sheen rendered as a block over gradient text, so it is gone) */
-.hfx-shimmer { animation: hfxBreathe 4s ease-in-out infinite; }
+.hfx-shimmer { animation: hfxBreathe 4s var(--ov-ease-in-out, ease-in-out) infinite; }
 @keyframes hfxBreathe { 0%,100% { filter: drop-shadow(0 0 0 rgba(139,92,246,0)); } 50% { filter: drop-shadow(0 0 18px rgba(139,92,246,0.45)); } }
-.hfx-glow { text-shadow: 0 0 22px color-mix(in srgb, var(--accent) 55%, transparent), 0 0 44px color-mix(in srgb, var(--accent) 25%, transparent); animation: hfxGlow 3s ease-in-out infinite; }
+.hfx-glow { text-shadow: 0 0 22px color-mix(in srgb, var(--accent) 55%, transparent), 0 0 44px color-mix(in srgb, var(--accent) 25%, transparent); animation: hfxGlow 3s var(--ov-ease-in-out, ease-in-out) infinite; }
 @keyframes hfxGlow { 0%,100% { filter: brightness(1); } 50% { filter: brightness(1.18); } }
 
 /* Scroll reveal */
-.hfx-reveal { opacity: 0; transform: translateY(18px) scale(0.985); transition: opacity 0.6s ease var(--d, 0ms), transform 0.7s cubic-bezier(.2,1.2,.3,1) var(--d, 0ms); }
+.hfx-reveal { opacity: 0; transform: translateY(18px) scale(0.985); transition: opacity var(--ov-dur-4, 0.6s) var(--ov-ease-out, ease) var(--d, 0ms), transform var(--ov-dur-4, 0.7s) var(--ov-ease-spring, cubic-bezier(.2,1.2,.3,1)) var(--d, 0ms); }
 .hfx-reveal.is-in { opacity: 1; transform: none; }
 
 /* Stream card tilt */
-#page-home .stream-card { transition: transform 0.15s ease-out, box-shadow 0.25s; }
+#page-home .stream-card { transition: transform var(--ov-dur-2, 0.15s) var(--ov-ease-out, ease-out), box-shadow var(--ov-dur-2, 0.25s); }
 #page-home .stream-card.hfx-tilting { box-shadow: 0 24px 50px rgba(0,0,0,0.45), 0 0 0 1px color-mix(in srgb, var(--accent) 40%, transparent); z-index: 2; }
 
 /* Live section header dot + Star section shimmer accent */
-#page-home .section-header h2 .live-dot { animation: hfxLive 1.4s ease-in-out infinite; }
+#page-home .section-header h2 .live-dot { animation: hfxLive 1.4s var(--ov-ease-in-out, ease-in-out) infinite; }
 @keyframes hfxLive { 0%,100% { transform: scale(1); filter: drop-shadow(0 0 0 rgba(231,76,60,0)); } 50% { transform: scale(1.25); filter: drop-shadow(0 0 8px rgba(231,76,60,0.9)); } }
 
 @media (prefers-reduced-motion: reduce) {
@@ -186,7 +186,7 @@
     .cta-hero-grad { animation: none !important; }
     .hero-aurora, .hero-aurora::before, .hero-aurora::after { filter: none !important; mix-blend-mode: normal !important; animation: none !important; transform: none !important; opacity: 0.22; }
     .hero-collage { display: none !important; }
-    .hero-bg-layer, .hero-bg-layer.active { animation: none !important; transform: none !important; transition: opacity 0.4s ease; }
+    .hero-bg-layer, .hero-bg-layer.active { animation: none !important; transform: none !important; transition: opacity var(--ov-dur-3, 0.4s) var(--ov-ease-out, ease); }
     .hero-scrim { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
     .navbar { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; background: var(--glass-strong); }
     .stream-card, .stream-card:hover { transform: none !important; }
@@ -216,7 +216,7 @@
     content: ''; position: absolute; top: 0; bottom: 0; left: -60%; width: 220%;
     z-index: 0; pointer-events: none;
     background-image: linear-gradient(115deg, color-mix(in srgb, var(--c) 16%, transparent), transparent 42%, color-mix(in srgb, #a78bfa 14%, transparent));
-    animation: hbVibeWash 11s ease-in-out infinite;
+    animation: hbVibeWash 11s var(--ov-ease-in-out, ease-in-out) infinite;
 }
 .hb-vibe > * { position: relative; z-index: 1; }
 @keyframes hbVibeWash { 0%, 100% { transform: translateX(0); } 50% { transform: translateX(27%); } }
@@ -225,7 +225,7 @@
 .hb-vibe .hb-ico::after {
     content: ''; position: absolute; top: 2px; right: 1px; width: 5px; height: 5px; border-radius: 50%;
     background: radial-gradient(circle, #fff, var(--c) 60%, transparent 70%);
-    opacity: 0; animation: hbSpark 4.4s ease-out infinite;
+    opacity: 0; animation: hbSpark 4.4s var(--ov-ease-out, ease-out) infinite;
 }
 @keyframes hbSpark {
     0% { opacity: 0; transform: translate(0, 0) scale(0.4); }
@@ -259,7 +259,7 @@
         width: 6px; height: 6px; border-radius: 50%;
         background: color-mix(in srgb, var(--c) 55%, transparent);
         z-index: 1; pointer-events: none; transform-origin: center;
-        animation: hbHintPulse 2.4s ease-out infinite;
+        animation: hbHintPulse 2.4s var(--ov-ease-out, ease-out) infinite;
     }
     @keyframes hbHintPulse {
         0%   { transform: scale(1);   opacity: 0.85; }
@@ -303,7 +303,7 @@
 #page-home .hero-latest { background: color-mix(in srgb, var(--bg-secondary) 88%, transparent); }
 
 /* Collage: flat drift, no 3D context, no per-card blur. */
-.hero-collage { perspective: none !important; transform-style: flat !important; transition: transform 0.6s cubic-bezier(.2, .7, .2, 1); }
+.hero-collage { perspective: none !important; transform-style: flat !important; transition: transform var(--ov-dur-4, 0.6s) var(--ov-ease-out, cubic-bezier(.2, .7, .2, 1)); }
 .hero-float { transform-style: flat !important; will-change: auto !important; transform: translate3d(0, 12px, 0) scale(var(--depth-scale, 1)); }
 .hero-float-inner { filter: none !important; }
 .hero-float:hover .hero-float-inner { filter: none !important; }
@@ -336,7 +336,7 @@
 /* Phones: nothing in the hero moves on its own. The page is scrolled past here far more than it is
    looked at, and every running animation in a region being scrolled costs a frame budget the
    scroll needs. */
-.rs-lite .hero-float { animation: heroFloatIn 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) var(--in-delay, 0s) forwards !important; }
+.rs-lite .hero-float { animation: heroFloatIn var(--ov-dur-4, 0.6s) var(--ov-ease-out, cubic-bezier(0.2, 0.8, 0.2, 1)) var(--in-delay, 0s) forwards !important; }
 .rs-lite .hero-bg-layer.active { animation: none !important; transform: scale(1.06) !important; will-change: auto !important; }
 .rs-lite .hero-aurora, .rs-lite .hero-aurora::before, .rs-lite .hero-aurora::after { animation: none !important; }
 .rs-lite .hfx-spot, .rs-lite .hfx-sparks { display: none !important; }

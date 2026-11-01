@@ -75,7 +75,7 @@
     <style id="ovsk-css">
     .ovsk{position:relative;overflow:hidden;background:var(--bg-card,#171826);border:1px solid var(--border,rgba(255,255,255,.08));border-radius:14px}
     .ovsk-bar{position:relative;overflow:hidden;background:color-mix(in srgb,var(--text-muted,#8b93ad) 14%,transparent);border-radius:6px}
-    .ovsk::after,.ovsk-bar::after{content:'';position:absolute;inset:0;background:linear-gradient(100deg,transparent 20%,color-mix(in srgb,var(--text-primary,#f1f4fb) 7%,transparent) 50%,transparent 80%);transform:translateX(-100%);animation:ovskSweep 1.5s ease-in-out infinite}
+    .ovsk::after,.ovsk-bar::after{content:'';position:absolute;inset:0;background:linear-gradient(100deg,transparent 20%,color-mix(in srgb,var(--text-primary,#f1f4fb) 7%,transparent) 50%,transparent 80%);transform:translateX(-100%);animation:ovskSweep 1.5s var(--ov-ease-in-out, ease-in-out) infinite}
     @keyframes ovskSweep{to{transform:translateX(100%)}}
     .ovsk-card{display:flex;flex-direction:column}
     .ovsk-thumb{aspect-ratio:16/9;width:100%;background:color-mix(in srgb,var(--text-muted,#8b93ad) 10%,transparent)}
@@ -83,13 +83,13 @@
     .ovsk-av{width:32px;height:32px;border-radius:50%;flex:none}
     .ovsk-lines{flex:1;min-width:0;display:grid;gap:6px}
     .ovsk-panel{padding:14px;display:grid;gap:10px}
-    .ovsk-fade{animation:ovskFade .25s ease forwards}
+    .ovsk-fade{animation:ovskFade var(--ov-dur-2, .25s) var(--ov-ease-out, ease) forwards}
     @keyframes ovskFade{to{opacity:0}}
     @media (max-width:760px){#stream-grid-live .ovsk-card:nth-of-type(n+3){display:none}}
     @media (prefers-reduced-motion:reduce){.ovsk::after,.ovsk-bar::after{animation:none}}
     /* A route's own markup is fetched on first visit; until it lands the page shows its outline. */
     .ov-route-skel{display:grid;gap:14px;padding:24px 16px;max-width:1200px;margin:0 auto}
-    .ov-route-skel span{display:block;border-radius:14px;background:color-mix(in srgb,var(--text-muted,#8b93ad) 10%,transparent);animation:ovRouteSkel 1.4s ease-in-out infinite alternate}
+    .ov-route-skel span{display:block;border-radius:14px;background:color-mix(in srgb,var(--text-muted,#8b93ad) 10%,transparent);animation:ovRouteSkel 1.4s var(--ov-ease-in-out, ease-in-out) infinite alternate}
     .ov-route-skel span:nth-child(1){height:44px;width:min(420px,70%)}
     .ov-route-skel span:nth-child(2){height:clamp(180px,38vw,420px)}
     .ov-route-skel span:nth-child(3){height:120px;animation-delay:.2s}

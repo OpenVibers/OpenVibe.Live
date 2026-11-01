@@ -22,14 +22,14 @@ body[data-pos=bottom] .al-stage { top: auto; bottom: 3vw; }
     padding: 1.1vw 1.8vw 1.1vw 1.1vw; border-radius: 1.6vw; overflow: hidden; isolation: isolate;
     background: color-mix(in srgb, var(--bg-card, #111827) 88%, transparent); border: 1px solid color-mix(in srgb, var(--accent, var(--o)) 40%, transparent);
     box-shadow: 0 1.4vw 3.6vw -1vw rgba(0,0,0,.55), 0 0 0 .3vw color-mix(in srgb, var(--accent, var(--o)) 14%, transparent);
-    animation: alIn .7s cubic-bezier(.34,1.56,.64,1) both; }
-.al.is-out { animation: alOut .45s cubic-bezier(.65,0,.35,1) both; }
+    animation: alIn var(--ov-dur-4, .7s) var(--ov-ease-spring, cubic-bezier(.34,1.56,.64,1)) both; }
+.al.is-out { animation: alOut var(--ov-dur-4, .45s) var(--ov-ease-out, cubic-bezier(.65,0,.35,1)) both; }
 @keyframes alIn { from { opacity: 0; transform: translateY(-2.4vw) scale(.92); } }
 @keyframes alOut { to { opacity: 0; transform: translateY(-1.2vw) scale(.96); } }
 body[data-pos=bottom] .al { animation-name: alInUp; }
 @keyframes alInUp { from { opacity: 0; transform: translateY(2.4vw) scale(.92); } }
 /* The glint, as the mark's: a band of light crosses once, just after it lands. */
-.al::after { content: ''; position: absolute; inset: 0; pointer-events: none; background: linear-gradient(105deg, transparent 35%, rgba(255,255,255,.22) 50%, transparent 65%); transform: translateX(-120%); animation: alGlint 1s .55s cubic-bezier(.45,0,.25,1) forwards; }
+.al::after { content: ''; position: absolute; inset: 0; pointer-events: none; background: linear-gradient(105deg, transparent 35%, rgba(255,255,255,.22) 50%, transparent 65%); transform: translateX(-120%); animation: alGlint 1s .55s var(--ov-ease-out, cubic-bezier(.45,0,.25,1)) forwards; }
 @keyframes alGlint { to { transform: translateX(120%); } }
 .al-ic { position: relative; display: grid; place-items: center; width: 4.6vw; height: 4.6vw; border-radius: 1.2vw; font-size: 2.2vw;
     background: linear-gradient(135deg, color-mix(in srgb, var(--accent, var(--o)) 85%, #fff 15%), var(--v)); color: #fff; }

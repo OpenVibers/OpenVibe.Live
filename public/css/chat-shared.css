@@ -14,7 +14,7 @@
     border-radius: var(--radius);
     box-shadow: 0 8px 24px rgba(0,0,0,0.4);
     overflow: hidden;
-    animation: ctxFadeIn 0.12s ease-out;
+    animation: ctxFadeIn var(--ov-dur-1, 0.12s) var(--ov-ease-out, ease-out);
 }
 @keyframes ctxFadeIn {
     from { opacity: 0; transform: scale(0.95); }
@@ -93,7 +93,7 @@
     color: var(--text-primary); font-size: 0.85rem;
     border-radius: var(--radius-sm);
     cursor: pointer; text-align: left;
-    transition: background 0.1s;
+    transition: background var(--ov-dur-1, 0.1s);
 }
 .ctx-btn:hover { background: var(--bg-hover); }
 .ctx-btn i { width: 16px; text-align: center; color: var(--text-muted); font-size: 0.8rem; }
@@ -108,7 +108,7 @@
 .chat-msg-deleted {
     opacity: 0;
     transform: translateX(-20px);
-    transition: opacity 0.3s, transform 0.3s;
+    transition: opacity var(--ov-dur-3, 0.3s), transform var(--ov-dur-3, 0.3s);
     max-height: 0;
     overflow: hidden;
     margin: 0;
@@ -118,7 +118,7 @@
 /* ── Rename submenu ── */
 .ctx-rename-group { position: relative; }
 .ctx-rename-group > .ctx-btn { justify-content: flex-start; }
-.ctx-rename-arrow { margin-left: auto; font-size: 0.65rem; transition: transform 0.15s; }
+.ctx-rename-arrow { margin-left: auto; font-size: 0.65rem; transition: transform var(--ov-dur-2, 0.15s); }
 .ctx-rename-group.open .ctx-rename-arrow { transform: rotate(90deg); }
 .ctx-rename-submenu {
     display: none; flex-direction: column;
@@ -134,7 +134,7 @@
     text-decoration-color: color-mix(in srgb, var(--accent) 40%, transparent);
     text-underline-offset: 2px;
     cursor: pointer;
-    transition: color 0.15s, text-decoration-color 0.15s;
+    transition: color var(--ov-dur-2, 0.15s), text-decoration-color var(--ov-dur-2, 0.15s);
     word-break: break-all;
 }
 .chat-link:hover {
@@ -158,7 +158,7 @@
     padding: 0;
     max-width: 440px; width: 92%;
     box-shadow: 0 16px 48px rgba(0,0,0,0.5);
-    animation: linkTrustIn 0.18s ease-out;
+    animation: linkTrustIn var(--ov-dur-2, 0.18s) var(--ov-ease-out, ease-out);
     overflow: hidden;
 }
 @keyframes linkTrustIn {
@@ -220,7 +220,7 @@
     cursor: pointer; padding: 4px 6px;
     border-radius: 4px;
     font-size: 0.85rem;
-    transition: color 0.15s, background 0.15s;
+    transition: color var(--ov-dur-2, 0.15s), background var(--ov-dur-2, 0.15s);
 }
 .link-trust-copy:hover {
     color: var(--text-primary, #eee);
@@ -239,7 +239,7 @@
     border-radius: 8px;
     font-size: 0.82rem; font-weight: 500;
     cursor: pointer;
-    transition: all 0.15s;
+    transition: all var(--ov-dur-2, 0.15s);
     background: var(--bg-secondary, #2e2e38);
     color: var(--text-primary, #eee);
 }
@@ -280,7 +280,7 @@
     box-shadow: 0 8px 24px rgba(0,0,0,0.4);
     overflow: hidden;
     padding: 4px;
-    animation: ctxFadeIn 0.12s ease-out;
+    animation: ctxFadeIn var(--ov-dur-1, 0.12s) var(--ov-ease-out, ease-out);
 }
 
 .link-ctx-btn {
@@ -292,7 +292,7 @@
     font-size: 0.82rem;
     cursor: pointer;
     border-radius: 6px;
-    transition: background 0.12s;
+    transition: background var(--ov-dur-1, 0.12s);
     text-align: left;
 }
 .link-ctx-btn:hover {
@@ -329,7 +329,7 @@
     box-shadow: 0 20px 60px rgba(0,0,0,0.5);
     display: flex; flex-direction: column;
     overflow: hidden;
-    animation: linkTrustIn 0.2s ease-out;
+    animation: linkTrustIn var(--ov-dur-2, 0.2s) var(--ov-ease-out, ease-out);
 }
 
 .link-preview-header {
@@ -364,7 +364,7 @@
     color: var(--text-muted, #777);
     cursor: pointer; padding: 2px 4px;
     font-size: 0.8rem;
-    transition: color 0.15s;
+    transition: color var(--ov-dur-2, 0.15s);
 }
 .link-preview-copy:hover { color: var(--text-primary); }
 
@@ -380,7 +380,7 @@
     color: var(--text-primary, #eee);
     font-size: 0.78rem;
     cursor: pointer;
-    transition: all 0.12s;
+    transition: all var(--ov-dur-1, 0.12s);
     display: flex; align-items: center; gap: 5px;
 }
 .link-preview-btn:hover {
@@ -456,19 +456,19 @@
 
 /* New rows arrive with a short rise; history (rendered off-screen and swapped in) does not animate. */
 @keyframes chatRowIn { from { opacity: 0; transform: translateY(6px); } }
-.chat-msg.chat-msg-new { animation: chatRowIn 180ms cubic-bezier(.2, .8, .3, 1); }
+.chat-msg.chat-msg-new { animation: chatRowIn var(--ov-dur-2, 180ms) var(--ov-ease-out, cubic-bezier(.2, .8, .3, 1)); }
 @media (prefers-reduced-motion: reduce) { .chat-msg.chat-msg-new { animation: none; } }
 
 /* Friendly global chat: folded rows. */
 .chat-friendly-group { margin: 2px 0; }
 .chat-friendly-group > .chat-msg { display: none; }
-.chat-friendly-group.is-open > .chat-msg { display: block; animation: chatRowIn 180ms ease-out; }
+.chat-friendly-group.is-open > .chat-msg { display: block; animation: chatRowIn var(--ov-dur-2, 180ms) var(--ov-ease-out, ease-out); }
 .chat-friendly-toggle {
     display: inline-flex; align-items: center; gap: 7px; max-width: 100%;
     padding: 3px 10px; border-radius: 999px; cursor: pointer; font: inherit; font-size: 0.74rem;
     color: var(--text-muted); background: color-mix(in srgb, var(--text-primary, #fff) 5%, transparent);
     border: 1px dashed color-mix(in srgb, var(--text-primary, #fff) 16%, transparent);
-    transition: color 0.15s, border-color 0.15s;
+    transition: color var(--ov-dur-2, 0.15s), border-color var(--ov-dur-2, 0.15s);
 }
 .chat-friendly-toggle:hover { color: var(--text-secondary); border-color: color-mix(in srgb, var(--accent, #8b5cf6) 50%, transparent); }
 .chat-friendly-show { color: var(--accent-light, #a78bfa); font-weight: 600; }
@@ -488,7 +488,7 @@
     padding: 0 2px;
     cursor: pointer;
     user-select: none;
-    transition: background 0.15s;
+    transition: background var(--ov-dur-2, 0.15s);
 }
 .chat-spoiler:hover { background: var(--text-secondary, #9ca3af); }
 .chat-spoiler:not(.revealed) * { visibility: hidden; }
