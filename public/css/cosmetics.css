@@ -632,3 +632,43 @@
 .cosmetics-body::-webkit-scrollbar-track { background: transparent; }
 .cosmetics-body::-webkit-scrollbar-thumb { background: #c8962e44; border-radius: 3px; }
 .cosmetics-body::-webkit-scrollbar-thumb:hover { background: #c8962e88; }
+
+/* Light themes (theme-loader sets html[data-theme-mode=light]): every effect above was drawn for a dark page, bright
+ * colour plus glow; on white some were unreadable (Neon and Glitch's #00ff88 at 1.3:1, Ice at 1.6:1, Divine's white).
+ * The same effect, same hue and motion, at a depth that reads on a light page (about 4.6:1 or more, 2026-11-01). Void
+ * (#9900ff) already reads on white and keeps its colour. */
+html[data-theme-mode="light"] .name-fx-rainbow { background-image: linear-gradient(90deg, #dc2626, #c2410c, #a16207, #15803d, #1d4ed8, #7c3aed, #be185d); }
+html[data-theme-mode="light"] .name-fx-fire { color: #c2410c !important; text-shadow: 0 0 6px #fb923c55; animation-name: nameFxFireLight; }
+@keyframes nameFxFireLight {
+    0% { text-shadow: 0 0 5px #fb923c55; color: #c2410c; }
+    100% { text-shadow: 0 0 9px #f9731666, 0 0 16px #fdba7444; color: #b45309; }
+}
+html[data-theme-mode="light"] .name-fx-ice { color: #0369a1 !important; text-shadow: 0 0 6px #38bdf855; animation-name: nameFxIceLight; }
+@keyframes nameFxIceLight {
+    0% { text-shadow: 0 0 4px #38bdf855; color: #0369a1; }
+    100% { text-shadow: 0 0 9px #7dd3fc88, 0 0 16px #38bdf844; color: #0e7490; }
+}
+html[data-theme-mode="light"] .name-fx-golden { background-image: linear-gradient(90deg, #a16207, #b45309, #a16207, #92400e); }
+html[data-theme-mode="light"] .name-fx-neon { color: #047857 !important; text-shadow: 0 0 5px #34d39966; animation-name: nameFxNeonLight; }
+@keyframes nameFxNeonLight {
+    0% { text-shadow: 0 0 3px #34d39955; }
+    100% { text-shadow: 0 0 8px #34d39988, 0 0 14px #6ee7b744; }
+}
+html[data-theme-mode="light"] .name-fx-glitch { color: #047857 !important; }
+html[data-theme-mode="light"] .name-fx-galaxy { background-image: linear-gradient(90deg, #6d28d9, #be185d, #1d4ed8, #6d28d9); }
+html[data-theme-mode="light"] .name-fx-toxic { background-image: linear-gradient(90deg, #15803d, #4d7c0f, #3f6212, #047857); }
+html[data-theme-mode="light"] .name-fx-blood { background-image: linear-gradient(180deg, #dc2626, #7f1d1d, #b91c1c); }
+html[data-theme-mode="light"] .name-fx-shadow { color: #6b4f8a !important; animation-name: nameFxShadowLight; }
+@keyframes nameFxShadowLight {
+    0%, 100% { text-shadow: 0 0 5px rgba(80, 0, 120, 0.3), 1px 1px 3px rgba(30, 10, 50, 0.3); }
+    50% { text-shadow: 0 0 10px rgba(80, 0, 120, 0.4), 2px 2px 5px rgba(30, 10, 50, 0.35); }
+}
+html[data-theme-mode="light"] .name-fx-void { text-shadow: 0 0 6px #a855f755; animation-name: nameFxVoidLight; }
+@keyframes nameFxVoidLight {
+    0%, 100% { text-shadow: 0 0 5px #a855f755, 0 0 10px #c084fc33; transform: scale(1); }
+    50% { text-shadow: 0 0 9px #a855f777, 0 0 16px #c084fc44; transform: scale(1.03); }
+}
+html[data-theme-mode="light"] .name-fx-hologram { background-image: linear-gradient(90deg, #0f766e, #0369a1, #4f46e5, #047857); }
+html[data-theme-mode="light"] .name-fx-divine { background-image: linear-gradient(90deg, #b45309, #a16207, #92400e, #a16207, #b45309); }
+html[data-theme-mode="light"] .name-fx-vegas { background-image: linear-gradient(90deg, #b45309 0%, #a16207 22%, #c2410c 40%, #be185d 52%, #a16207 66%, #b45309 82%, #a16207 100%); }
+html[data-theme-mode="light"] .name-fx-twofat { background-image: linear-gradient(90deg, #c026d3 0%, #7e22ce 25%, #0e7490 50%, #7e22ce 75%, #c026d3 100%); }
