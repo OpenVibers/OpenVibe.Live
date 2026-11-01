@@ -212,13 +212,14 @@ async function getLiveStreams() {
 }
 
 /**
- * Rows for GET /api/streams/tags: every tag in use means tags on streams live now plus tags on streams
- * that started in the last seven days. `tags` is JSON text, so the route parses and counts it (a
- * malformed row must never fail the whole list); `recent` marks the seven-day window, live or ended.
+ * Rows for GET /api/streams/tags: every tag in use means a stream's own tags and the AI's (`tags` and
+ * `ai_tags`, both JSON text) on streams live now plus streams that started in the last seven days. The
+ * route parses them (a malformed row must never fail the whole list); `recent` marks the seven-day
+ * window, live or ended.
  */
 async function getStreamTagUsage() {
     return await all(`
-        SELECT tags, is_live,
+        SELECT tags, ai_tags, is_live,
                CASE WHEN started_at >= datetime('now', '-7 days') THEN 1 ELSE 0 END AS recent
         FROM streams
         WHERE is_live = 1 OR started_at >= datetime('now', '-7 days')

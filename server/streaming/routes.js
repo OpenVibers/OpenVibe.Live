@@ -12,8 +12,8 @@
  * DELETE /api/streams/managed/:id        - Delete a managed stream
  * 
  * Streams (sessions on a managed stream):
- * GET    /api/streams                    - List live streams (?tag=…&tag=… up to 10, ?category=)
- * GET    /api/streams/tags               - List the tags in use (live/recent counts)
+ * GET    /api/streams                    - List live streams (?tag=… on own+AI tags, up to 10, ?category=)
+ * GET    /api/streams/tags               - List the filterable tags in use (live/recent counts, source)
  * GET    /api/streams/recent             - List recently ended streams
  * GET    /api/streams/:id                - Get stream details
  * POST   /api/streams                    - Go live (creates session on managed stream)
@@ -36,6 +36,7 @@ const openreMirror = require('../openre/mirror');
 const i18n = require('../i18n/translate');
 const robotStreamerService = require('../integrations/robotstreamer-service');
 const chatRelayService = require('../integrations/chat-relay-service');
+const { TAG_FILTER_RE, streamTagSources } = require('./tags');
 // The six chat tables are OpenVibe.Chat's (roadmap T3); the few reads here go through its client.
 const moderation = require('../chat/moderation-client');
 const chatReads = require('../chat/chat-reads');
@@ -176,9 +177,6 @@ function cleanTags(tags) {
     return cleaned;
 }
 
-// A tag filter is one of the tags a stream may carry: 1–32 letters, digits, spaces or dashes, lowercased.
-const TAG_FILTER_RE = /^[\p{L}\p{N} -]{1,32}$/u;
-
 /**
  * Parse ?tag= for GET /api/streams: each value is lowercased, whitespace-collapsed and must match
  * TAG_FILTER_RE; up to MAX_TAGS values, all of them required to be valid. → [] when absent, null when
@@ -208,20 +206,6 @@ function parseCategoryFilter(value) {
     const category = value.replace(/\s+/g, ' ').trim().toLowerCase();
     if (!category || category.length > MAX_CATEGORY_LENGTH) return null;
     return category;
-}
-
-/** The tags on a stream row as a Set: `streams.tags` is JSON text, and a malformed value is no tags. */
-function streamTagSet(row) {
-    const tags = new Set();
-    let parsed;
-    try { parsed = JSON.parse(row.tags || '[]'); } catch { return tags; }
-    if (!Array.isArray(parsed)) return tags;
-    for (const tag of parsed) {
-        if (typeof tag !== 'string') continue;
-        const normalized = tag.replace(/\s+/g, ' ').trim().toLowerCase();
-        if (normalized) tags.add(normalized);
-    }
-    return tags;
 }
 
 /** The social links an About editor sees after saving (server/social/links.js), for the response. */
@@ -1200,9 +1184,10 @@ router.get('/', optionalAuth, async (req, res) => {
         const insidePip = await db.getLiveOwnPipSourceSlots();
         let streams = (await db.getLiveStreams()).filter((s) => !(s.managed_stream_id && insidePip.has(Number(s.managed_stream_id))));
         // Filters narrow the list in place, so its order (viewer_count DESC, started_at DESC) is untouched.
+        // A stream matches on its own tags or the AI's, without carrying either into the response.
         if (wantedTags.length) {
             streams = streams.filter((s) => {
-                const have = streamTagSet(s);
+                const have = streamTagSources(s);
                 return wantedTags.some((tag) => have.has(tag));
             });
         }
@@ -1246,9 +1231,13 @@ router.get('/tags', async (req, res) => {
         for (const row of rows) {
             const live = Number(row.is_live) === 1;
             const recent = Number(row.recent) === 1;
-            for (const tag of streamTagSet(row)) {
+            for (const [tag, source] of streamTagSources(row)) {
+                // Every tag listed here must be accepted back as ?tag=, so values outside the grammar
+                // (for example the AI's "c++") stay out instead of becoming a chip that 400s.
+                if (!TAG_FILTER_RE.test(tag)) continue;
                 let entry = counts.get(tag);
-                if (!entry) { entry = { tag, live: 0, recent: 0 }; counts.set(tag, entry); }
+                if (!entry) { entry = { tag, live: 0, recent: 0, source }; counts.set(tag, entry); }
+                else if (entry.source !== source) entry.source = 'both';
                 if (live) entry.live += 1;
                 if (recent) entry.recent += 1;
             }
