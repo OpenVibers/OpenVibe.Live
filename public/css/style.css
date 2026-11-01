@@ -1097,6 +1097,17 @@ body.ov-nav-overlay .navbar.ovnav-top {
         linear-gradient(180deg, color-mix(in srgb, var(--bg-primary) 55%, transparent) 0%, transparent 22%, transparent 78%, var(--bg-primary) 100%);
 }
 
+/* Light themes: the frame behind the hero is darkened for dark themes (brightness .5 and a black veil), so on a light
+   page it read as a dark smudge behind the dark copy at the edges. A pale wash over the whole hero and a softer frame
+   keep it a quiet picture (Daylight sweep, 2026-11-01). */
+html[data-theme-mode="light"] .hero-scrim {
+    background:
+        radial-gradient(ellipse 62% 60% at 50% 46%, var(--bg-primary) 0%, color-mix(in srgb, var(--bg-primary) 82%, transparent) 42%, transparent 78%),
+        linear-gradient(180deg, color-mix(in srgb, var(--bg-primary) 55%, transparent) 0%, transparent 22%, transparent 78%, var(--bg-primary) 100%),
+        linear-gradient(color-mix(in srgb, var(--bg-primary) 64%, transparent), color-mix(in srgb, var(--bg-primary) 64%, transparent));
+}
+html[data-theme-mode="light"] .hero-bg-layer { filter: brightness(1.25) saturate(.8) contrast(.85); }
+
 /* ── Hero background: one AI moment frame at a time, Ken-Burns crossfade ─────────── */
 .hero-bg { position: absolute; inset: 0; z-index: 0; overflow: hidden; pointer-events: none; }
 .hero-bg-layer {
@@ -9023,6 +9034,8 @@ body.fabs-tucked .messenger-toggle, body.fabs-tucked .floating-chat-fab, body.fa
     animation: heroShimmer 7s linear infinite;
 }
 .hero h1 i { -webkit-text-fill-color: var(--accent, var(--accent)); color: var(--accent, var(--accent)); }
+/* On a light page the shimmer's pale gold sank into the white; a deep amber keeps the name readable through it. */
+html[data-theme-mode="light"] .hero h1 { background-image: linear-gradient(90deg, var(--accent, var(--accent)), #b7791f, var(--accent, var(--accent))); }
 @keyframes heroShimmer { to { background-position: 200% center; } }
 @media (prefers-reduced-motion: reduce) {
     .hero-aurora, .hero-aurora::before, .hero-aurora::after, .hero h1 { animation: none; }
