@@ -2626,7 +2626,7 @@ function buildChatMessageEl(msg, opts = {}) {
                 : `<div class="clip-chat-label"><i class="fa-solid fa-scissors"></i> New clip</div>`;
             const creator = esc(clip.creator || msg.username || 'someone');
             const avatar = clip.creator_avatar
-                ? `<img class="clip-chat-avatar" src="${esc(clip.creator_avatar)}" alt="" loading="lazy">`
+                ? `<img class="clip-chat-avatar" src="${esc(ovImgW(clip.creator_avatar, 64))}" data-full="${esc(clip.creator_avatar)}" alt="" loading="lazy" onerror="${OV_IMG_RETRY}">`
                 : `<span class="clip-chat-avatar clip-chat-avatar-ltr" style="background:${esc(clip.creator_color || 'var(--accent)')}">${creator.charAt(0).toUpperCase()}</span>`;
             const metaLine = isAuto
                 ? `<div class="clip-chat-meta"><i class="fa-solid fa-robot"></i> Auto-generated highlight</div>`
@@ -2705,7 +2705,7 @@ function buildChatMessageEl(msg, opts = {}) {
 
     // Avatar (respects showAvatars setting via CSS class on root, but still render for toggle)
     const avatarHtml = widget ? '' : msg.avatar_url
-        ? `<img class="chat-avatar" src="${esc(msg.avatar_url)}" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display=''">`
+        ? `<img class="chat-avatar" src="${esc(ovImgW(msg.avatar_url, 64))}" data-full="${esc(msg.avatar_url)}" alt="" onerror="${OV_IMG_RETRY}this.style.display='none';this.nextElementSibling.style.display=''">`
         + `<span class="chat-avatar-letter" style="display:none;background:${esc(nameColor)}">${avatarInitial}</span>`
         : `<span class="chat-avatar-letter" style="background:${esc(nameColor)}">${avatarInitial}</span>`;
 
@@ -2911,7 +2911,7 @@ function getChatAvatarHTML(msg) {
     const raw = (msg.username || msg.displayName || `anon${msg.anonId || ''}`).replace(/^\[[^\]]+\]\s*/, '');
     const initial = esc((raw.charAt(0) || '?').toUpperCase());
     return msg.avatar_url
-        ? `<img class="chat-avatar" src="${esc(msg.avatar_url)}" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display=''">`
+        ? `<img class="chat-avatar" src="${esc(ovImgW(msg.avatar_url, 64))}" data-full="${esc(msg.avatar_url)}" alt="" onerror="${OV_IMG_RETRY}this.style.display='none';this.nextElementSibling.style.display=''">`
         + `<span class="chat-avatar-letter" style="display:none;background:${esc(nameColor)}">${initial}</span>`
         : `<span class="chat-avatar-letter" style="background:${esc(nameColor)}">${initial}</span>`;
 }
@@ -6690,7 +6690,7 @@ function renderChatUsersList(users) {
     let listHtml = '<div class="chat-users-list">';
     for (const u of logged) {
         const avatar = u.avatar_url
-            ? `<img src="${esc(u.avatar_url)}" class="chat-users-avatar" alt="" loading="lazy">`
+            ? `<img src="${esc(ovImgW(u.avatar_url, 64))}" data-full="${esc(u.avatar_url)}" class="chat-users-avatar" alt="" loading="lazy" onerror="${OV_IMG_RETRY}">`
             : `<div class="chat-users-avatar chat-users-avatar-default"><i class="fa-solid fa-user"></i></div>`;
         const badge = getBadgeHTML(u.role);
         listHtml += `<div class="chat-users-row"><a href="/@${esc(u.username)}" class="chat-users-link" onclick="if(typeof handleLinkClick==='function') handleLinkClick(event, this.getAttribute('href'))">${avatar}<span class="chat-users-name">${esc(u.display_name)}</span>${badge}</a></div>`;

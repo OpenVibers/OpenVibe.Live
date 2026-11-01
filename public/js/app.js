@@ -65,11 +65,21 @@ function channelPath(username, managedStreamIdOrSlug = null) {
     return `${base}/${encodeURIComponent(String(managedStreamIdOrSlug))}`;
 }
 
+/** A Media image (openvibe.media/o/med_…) at a width from Media's ladder (64, 96, 160, 320, 480, 640); any other URL
+    as it is. Avatars are kept as uploaded (one is 3072 px and 3 MB) and drawn at 24-80 px: the home page fetched 5.4 MB
+    of them on a phone (2026-11-01). Put the original in data-full and start onerror with OV_IMG_RETRY, which loads it
+    once if the sized copy fails (Media answers 404 for an object it cannot resize). */
+function ovImgW(url, w) {
+    const s = String(url || '');
+    return /^https:\/\/openvibe\.media\/o\/med_[0-9A-Za-z]+$/.test(s) ? `${s}?w=${w}` : s;
+}
+const OV_IMG_RETRY = 'if(this.dataset.full&&this.src!==this.dataset.full){this.src=this.dataset.full;return}';
+
 /** Inner img-or-letter for an element that is itself the avatar circle. */
 function _avatarInner(url, name) {
     const letter = ((String(name || '?'))[0] || '?').toUpperCase();
     return url
-        ? `<img src="${esc(url)}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:inherit;display:block" onerror="var p=this.parentNode;this.remove();if(p)p.textContent='${letter}'">`
+        ? `<img src="${esc(ovImgW(url, 160))}" data-full="${esc(url)}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:inherit;display:block" onerror="${OV_IMG_RETRY}var p=this.parentNode;this.remove();if(p)p.textContent='${letter}'">`
         : letter;
 }
 
@@ -79,7 +89,7 @@ function _avatarSpan(url, name, color, extraCls) {
     const cls = extraCls ? ` ${extraCls}` : '';
     const bg = color ? ` style="background:${esc(color)}"` : '';
     return url
-        ? `<span class="stream-card-avatar${cls}"${bg}><img src="${esc(url)}" alt="" onerror="var p=this.parentNode;this.remove();if(p)p.textContent='${letter}'"></span>`
+        ? `<span class="stream-card-avatar${cls}"${bg}><img src="${esc(ovImgW(url, 96))}" data-full="${esc(url)}" alt="" onerror="${OV_IMG_RETRY}var p=this.parentNode;this.remove();if(p)p.textContent='${letter}'"></span>`
         : `<span class="stream-card-avatar${cls}"${bg}>${letter}</span>`;
 }
 

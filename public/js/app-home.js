@@ -1720,7 +1720,7 @@ async function loadHomePastes(opts) {
                 const icon = p.type === 'screenshot' ? 'fa-image' : (p.language && p.language !== 'plaintext' ? 'fa-code' : 'fa-file-lines');
                 const preview = p.type === 'paste' ? esc((p.content || '').slice(0, 220)).replace(/\n{3,}/g, '\n\n') : '';
                 const media = p.type === 'screenshot' && p.screenshot_url
-                    ? `<div class="home-paste-media"><img src="${esc(p.screenshot_url)}" alt="${esc(p.title || 'Screenshot paste')}" loading="lazy"><span class="home-paste-type">Image</span></div>`
+                    ? `<div class="home-paste-media"><img src="${esc(ovImgW(p.screenshot_url, 480))}" data-full="${esc(p.screenshot_url)}" alt="${esc(p.title || 'Screenshot paste')}" loading="lazy" onerror="${OV_IMG_RETRY}"><span class="home-paste-type">Image</span></div>`
                     : `<div class="home-paste-media"><div class="home-paste-snippet">${preview || esc(p.title || 'Untitled paste')}</div><div class="home-paste-icon"><i class="fa-solid ${icon}"></i></div><span class="home-paste-type">${p.language && p.language !== 'plaintext' ? esc(p.language) : 'Text'}</span></div>`;
                 return `
                 <a class="home-paste-card" href="${esc(pasteHref(p.slug))}">
@@ -2299,7 +2299,7 @@ function _renderHomeStar(data) {
     const path = channelPath(s.username);
     const initial = esc(String(s.display_name || s.username || '?').charAt(0).toUpperCase());
     const avatar = s.avatar_url
-        ? `<img src="${esc(s.avatar_url)}" alt="${name}" loading="lazy">`
+        ? `<img src="${esc(ovImgW(s.avatar_url, 160))}" data-full="${esc(s.avatar_url)}" alt="${name}" loading="lazy" onerror="${OV_IMG_RETRY}">`
         : initial;
     const bioSrc = (s.bio || '').trim();
     const bioEn = (s.bio_en || '').trim();
