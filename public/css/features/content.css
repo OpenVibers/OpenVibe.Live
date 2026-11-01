@@ -6,7 +6,8 @@
 .cf-wrap {
     --cf-gap: 16px;
     --cf-radius: 14px;
-    --cf-ai: #a78bfa;            /* AI text on dark surfaces */
+    /* AI text: the violet mixed with the theme's text, so it holds on light themes too (it read 2.5:1 on Daylight). */
+    --cf-ai: color-mix(in srgb, #a78bfa 62%, var(--text-primary, #e6edf7));
     --cf-ai-2: #22d3ee;
     --cf-ai-fill: linear-gradient(135deg, #6d28d9, #0e7490);   /* behind white text: 4.5:1 or better */
     max-width: 1240px;
