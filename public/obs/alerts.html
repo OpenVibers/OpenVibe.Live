@@ -45,8 +45,9 @@ body[data-pos=bottom] .al { animation-name: alInUp; }
 .al-status:empty { display: none; }
 @media (prefers-reduced-motion: reduce) { .al, .al.is-out { animation: none; } .al::after { display: none; } }
 </style>
-<link rel="stylesheet" href="/css/vendor/fontawesome-6.5.1.min.css">
 <script src="/shared/theme-loader.js"></script>
+<!-- The OpenVibe glyphs draw every fa- icon here (no Font Awesome since 2026-11-01). -->
+<script src="/shared/ov-glyphs.js" defer></script>
 </head>
 <body>
 <div class="al-stage" id="al-stage" aria-live="polite"></div>

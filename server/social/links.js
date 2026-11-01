@@ -31,7 +31,7 @@ const PLATFORMS = {
     patreon:   { name: 'Patreon',   icon: 'fa-brands fa-patreon',   color: '#ff424d', hosts: ['patreon.com'],                     url: (h) => `https://www.patreon.com/${h}`,    handle: /^\/([A-Za-z0-9_-]{2,64})\/?$/ },
     spotify:   { name: 'Spotify',   icon: 'fa-brands fa-spotify',   color: '#1db954', hosts: ['open.spotify.com'],                url: null,                                      handle: null },
     soundcloud:{ name: 'SoundCloud',icon: 'fa-brands fa-soundcloud',color: '#ff5500', hosts: ['soundcloud.com'],                  url: (h) => `https://soundcloud.com/${h}`,     handle: /^\/([A-Za-z0-9_-]{2,64})\/?$/ },
-    linkedin:  { name: 'LinkedIn',  icon: 'fa-brands fa-linkedin',  color: '#0a66c2', hosts: ['linkedin.com'],                    url: (h) => `https://www.linkedin.com/in/${h}`, handle: /^\/in\/([A-Za-z0-9-]{3,100})\/?$/ },
+    linkedin:  { name: 'LinkedIn',  icon: 'fa-solid fa-briefcase',  color: '#0a66c2', hosts: ['linkedin.com'],                    url: (h) => `https://www.linkedin.com/in/${h}`, handle: /^\/in\/([A-Za-z0-9-]{3,100})\/?$/ },
     mastodon:  { name: 'Mastodon',  icon: 'fa-brands fa-mastodon',  color: '#6364ff', hosts: null,                                url: null,                                      handle: /^\/@([A-Za-z0-9_]{1,30})\/?$/ },
     openvibe:  { name: 'OpenVibe',  icon: 'fa-solid fa-id-card',   color: '#3b82f6', hosts: ['openvibe.network'],                url: (h) => `https://openvibe.network/@${h}`,  handle: /^\/@([A-Za-z0-9_]{3,24})\/?$/ },
     website:   { name: 'Website',   icon: 'fa-solid fa-globe',      color: '#60a5fa', hosts: null,                                url: null,                                      handle: null },

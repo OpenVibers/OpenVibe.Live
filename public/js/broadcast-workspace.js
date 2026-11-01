@@ -2424,7 +2424,7 @@ async function onManagedStreamCreated(newManagedStreamId) {
 const _wsRestreamPlatforms = {
     twitch:        { name: 'Twitch',        icon: 'fa-brands fa-twitch',  color: '#9146ff', defaultUrl: 'rtmps://live.twitch.tv/app' },
     youtube:       { name: 'YouTube',       icon: 'fa-brands fa-youtube', color: '#ff0000', defaultUrl: 'rtmp://a.rtmp.youtube.com/live2' },
-    kick:          { name: 'Kick',          icon: 'fa-solid fa-k',        color: '#53fc18', defaultUrl: '' },
+    kick:          { name: 'Kick',          icon: 'fa-brands fa-kick',        color: '#53fc18', defaultUrl: '' },
     custom:        { name: 'Custom RTMP',   icon: 'fa-solid fa-globe',    color: '#888',    defaultUrl: '' },
     robotstreamer: { name: 'RobotStreamer', icon: 'fa-solid fa-robot',    color: '#4a9eff', defaultUrl: '', isRobotStreamer: true },
 };

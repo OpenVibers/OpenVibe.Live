@@ -2990,11 +2990,19 @@ async function startMediaCapture(streamId, opts = {}) {
                 const ctx = canvas.getContext('2d');
                 ctx.fillStyle = '#1a1a2e';
                 ctx.fillRect(0, 0, 640, 360);
-                ctx.fillStyle = 'rgba(255,255,255,0.15)';
-                ctx.font = '48px FontAwesome, sans-serif';
+                // The OpenVibe mic glyph (openvibe.design/icons/mic), drawn on its 24-unit grid at 2.5x.
+                ctx.save();
+                ctx.translate(320 - 30, 160 - 30);
+                ctx.scale(2.5, 2.5);
+                ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+                ctx.lineWidth = 2;
+                ctx.lineCap = 'round';
+                ctx.lineJoin = 'round';
+                ctx.stroke(new Path2D('M12 3a3 3 0 0 1 3 3v5a3 3 0 0 1-6 0V6a3 3 0 0 1 3-3Z'));
+                ctx.stroke(new Path2D('M5 11a7 7 0 0 0 14 0M12 18v3'));
+                ctx.restore();
                 ctx.textAlign = 'center';
                 ctx.textBaseline = 'middle';
-                ctx.fillText('\uF130', 320, 160);  // microphone icon
                 ctx.font = '18px sans-serif';
                 ctx.fillStyle = 'rgba(255,255,255,0.4)';
                 ctx.fillText('Audio Only', 320, 220);
@@ -3160,7 +3168,7 @@ function applyManualGain(streamId) {
 const RESTREAM_PLATFORM_META = {
     youtube:       { name: 'YouTube',       icon: 'fa-brands fa-youtube', color: '#ff0000' },
     twitch:        { name: 'Twitch',        icon: 'fa-brands fa-twitch',  color: '#9146ff' },
-    kick:          { name: 'Kick',          icon: 'fa-solid fa-k',        color: '#53fc18' },
+    kick:          { name: 'Kick',          icon: 'fa-brands fa-kick',     color: '#53fc18' },
     custom:        { name: 'Custom',        icon: 'fa-solid fa-globe',    color: '#888' },
     // RobotStreamer uses WebSocket (not RTMP) so it is NOT a standard RTMP destination.
     // It is listed here so the UI can show its status card and link to its own settings panel.

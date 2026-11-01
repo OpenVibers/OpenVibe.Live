@@ -7,7 +7,6 @@
 <meta name="robots" content="noindex">
 <title>OpenVibe // New Tab</title>
 <link rel="icon" href="/favicon.ico">
-<link rel="stylesheet" href="/css/vendor/fontawesome-6.5.1.min.css">
 <link rel="stylesheet" href="/css/chat-shared.css">
 <style>
 :root{
@@ -514,6 +513,8 @@ button{font:inherit}
 }
 .omni-hint b{color:#97a2ad;font-weight:800}
 </style>
+<!-- The OpenVibe glyphs draw every fa- icon here (no Font Awesome since 2026-11-01). -->
+<script src="/shared/ov-glyphs.js" defer></script>
 </head>
 <body>
 <div class="page">
@@ -1037,7 +1038,7 @@ button{font:inherit}
   const PROVIDERS={
     google:{name:"Google",url:"https://www.google.com/search?q=%s",icon:"fa-brands fa-google"},
     ddg:{name:"DuckDuckGo",url:"https://duckduckgo.com/?q=%s",icon:"fa-solid fa-shield-halved"},
-    bing:{name:"Bing",url:"https://www.bing.com/search?q=%s",icon:"fa-brands fa-microsoft"},
+    bing:{name:"Bing",url:"https://www.bing.com/search?q=%s",icon:"fa-solid fa-magnifying-glass"},
     brave:{name:"Brave",url:"https://search.brave.com/search?q=%s",icon:"fa-brands fa-brave"},
     startpage:{name:"Startpage",url:"https://www.startpage.com/sp/search?query=%s",icon:"fa-solid fa-user-secret"},
     ecosia:{name:"Ecosia",url:"https://www.ecosia.org/search?q=%s",icon:"fa-solid fa-leaf"}
