@@ -77,8 +77,8 @@
         .pc-setting-row:last-child { border-bottom: none; }
         .pc-setting-label { color: var(--text-secondary, #ccc); font-size: 0.78rem; }
         .pc-toggle-wrap { display: flex; align-items: center; }
-        .pc-toggle { width: 30px; height: 17px; background: var(--border, #444); border-radius: 9px; position: relative; cursor: pointer; transition: background 0.2s; }
-        .pc-toggle::after { content: ''; position: absolute; top: 2px; left: 2px; width: 13px; height: 13px; background: #fff; border-radius: 50%; transition: transform 0.2s; }
+        .pc-toggle { width: 30px; height: 17px; background: var(--border, #444); border-radius: 9px; position: relative; cursor: pointer; transition: background var(--ov-dur-2, 0.2s); }
+        .pc-toggle::after { content: ''; position: absolute; top: 2px; left: 2px; width: 13px; height: 13px; background: #fff; border-radius: 50%; transition: transform var(--ov-dur-2, 0.2s); }
         .pc-toggle.on { background: var(--accent, #8b5cf6); }
         .pc-toggle.on::after { transform: translateX(13px); }
 

@@ -12,10 +12,10 @@
     display: flex; align-items: center; gap: 8px; cursor: pointer;
     padding: 8px 16px; border-bottom: 1px solid var(--border);
     background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 12%, transparent), transparent);
-    font-size: 0.82rem; color: var(--text-secondary); transition: background 0.15s;
+    font-size: 0.82rem; color: var(--text-secondary); transition: background var(--ov-dur-2, 0.15s);
 }
 .global-ai-strip:hover { background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 20%, transparent), transparent); }
-.gai-strip-caret { flex-shrink: 0; opacity: 0.6; transition: transform 0.2s; }
+.gai-strip-caret { flex-shrink: 0; opacity: 0.6; transition: transform var(--ov-dur-2, 0.2s); }
 .global-ai-strip.open .gai-strip-caret { transform: rotate(180deg); }
 
 .global-ai-panel {
@@ -32,7 +32,7 @@
 .gai-tl-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
 .gai-tl-search { flex: 1; max-width: 200px; padding: 5px 10px; font-size: 0.78rem; border-radius: 999px; border: 1px solid var(--border); background: var(--bg-input, var(--bg-tertiary)); color: var(--text-primary); }
 .gai-tl-periods { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 12px; }
-.gai-tl-chip { border: 1px solid var(--border); background: var(--bg-secondary); color: var(--text-secondary); font-size: 0.72rem; font-weight: 600; padding: 3px 11px; border-radius: 999px; cursor: pointer; transition: background .15s, color .15s, border-color .15s; }
+.gai-tl-chip { border: 1px solid var(--border); background: var(--bg-secondary); color: var(--text-secondary); font-size: 0.72rem; font-weight: 600; padding: 3px 11px; border-radius: 999px; cursor: pointer; transition: background var(--ov-dur-2, .15s), color var(--ov-dur-2, .15s), border-color var(--ov-dur-2, .15s); }
 .gai-memory { font-size: 0.85rem; line-height: 1.5; color: var(--text-secondary); white-space: pre-wrap; }
 .vc-sidebar {
     width: 300px;
@@ -66,7 +66,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: background 0.15s, transform 0.1s;
+    transition: background var(--ov-dur-2, 0.15s), transform var(--ov-dur-1, 0.1s);
 }
 .vc-create-btn:hover {
     background: var(--accent-hover);
@@ -85,7 +85,7 @@
     padding: 9px 12px;
     border-radius: var(--radius);
     cursor: pointer;
-    transition: background 0.12s;
+    transition: background var(--ov-dur-1, 0.12s);
     margin-bottom: 2px;
 }
 
@@ -272,7 +272,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: background 0.12s, color 0.12s, transform 0.1s;
+    transition: background var(--ov-dur-1, 0.12s), color var(--ov-dur-1, 0.12s), transform var(--ov-dur-1, 0.1s);
 }
 .vc-ctrl-settings {
     background: none;
@@ -352,13 +352,13 @@
 }
 
 /* Channel rows arrive and leave with a short move; the joined row and speaking names stay clear. */
-.vc-channel-item.is-entering { animation: vcRowIn 200ms cubic-bezier(.2, .9, .3, 1); }
-.vc-channel-item.is-leaving { animation: vcRowOut 200ms ease-in forwards; }
+.vc-channel-item.is-entering { animation: vcRowIn var(--ov-dur-2, 200ms) var(--ov-ease-out, cubic-bezier(.2, .9, .3, 1)); }
+.vc-channel-item.is-leaving { animation: vcRowOut var(--ov-dur-2, 200ms) ease-in forwards; }
 @keyframes vcRowIn { from { opacity: 0; transform: translateX(-6px); } }
 @keyframes vcRowOut { to { opacity: 0; transform: translateX(-6px); } }
 .vc-channel-item.is-private .vc-channel-icon { color: #f472b6; }
 .vc-participant-row.speaking .vc-avatar-mini { box-shadow: 0 0 0 2px rgba(74, 222, 128, 0.7); }
-.vc-connected-panel.is-open { animation: vcPanelIn 220ms cubic-bezier(.2, .9, .3, 1); }
+.vc-connected-panel.is-open { animation: vcPanelIn var(--ov-dur-2, 220ms) var(--ov-ease-out, cubic-bezier(.2, .9, .3, 1)); }
 @keyframes vcPanelIn { from { opacity: 0; transform: translateY(6px); } }
 @media (prefers-reduced-motion: reduce) { .vc-channel-item.is-entering, .vc-channel-item.is-leaving, .vc-connected-panel.is-open { animation: none; } }
 
