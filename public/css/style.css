@@ -811,7 +811,8 @@ body.ov-nav-overlay .navbar.ovnav-top {
 }
 .stream-card-thumb {
     aspect-ratio: 16/9;
-    background: var(--bg-tertiary);
+    /* Until the picture arrives, its streamer's colour (app-home.js _thumbTint), not a grey box. */
+    background: radial-gradient(120% 95% at 28% 18%, color-mix(in srgb, var(--thumb-tint, var(--bg-tertiary)) 58%, var(--bg-tertiary)), var(--bg-tertiary));
     position: relative;
     display: flex; align-items: center; justify-content: center;
     overflow: hidden;
