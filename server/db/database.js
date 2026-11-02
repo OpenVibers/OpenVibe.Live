@@ -1709,6 +1709,9 @@ async function _computeHomeStats() {
         // Distinct people who have tipped someone.
         supporters: await c(`SELECT COUNT(DISTINCT ${TIP_SUPPORTER}) AS count FROM channel_tips WHERE created_at >= ?`, [vibesSince]),
         vibesBought: null,
+        // The day the Vibes numbers count from (the 10-17 relaunch reset, site setting stats_vibes_reset_at), so the
+        // home can say "none yet since 17 Oct" instead of four bare zeros. Null when there was no reset.
+        economySince: vibesSince.startsWith('1970') ? null : vibesSince.slice(0, 10),
         // Donation goals: currently running + ever reached.
         goalsActive: await c(`SELECT COUNT(*) AS count FROM donation_goals WHERE is_active = 1`),
         goalsReached: await c(`SELECT COUNT(*) AS count FROM donation_goals WHERE reached_at IS NOT NULL OR current_amount >= target_amount`),

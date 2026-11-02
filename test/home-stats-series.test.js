@@ -65,6 +65,7 @@ await db.run("INSERT INTO channel_tips (from_user_id, to_user_id, amount, source
 
 let stats = await db.getHomeStats();
 assert.strictEqual(stats.vibesTipped, 750, 'no reset → everything counts');
+assert.strictEqual(stats.economySince, null, 'no reset → no "since" date for the home to show');
 assert.strictEqual(stats.supporters, 2);
 assert.strictEqual((await db.getHomeStatSeries('vibes', 30)).total, 750);
 
@@ -75,6 +76,7 @@ if (!stats) { // fall back: the cache TTL keeps the old value; verify via the se
     assert.ok(await db.vibesStatsSince() > '2000-01-01', 'cutoff parsed');
 } else {
     assert.strictEqual(stats.vibesTipped, 50, 'only vibes after the reset count');
+    assert.match(stats.economySince, /^\d{4}-\d{2}-\d{2}$/, 'the day the Vibes count from, for "none yet since …"');
     assert.strictEqual(stats.supporters, 1);
     assert.strictEqual(stats.recent.vibes.d, 50);
     assert.strictEqual(stats.recent.vibes.m, 50, 'the 30-day window is also cut at the reset');
