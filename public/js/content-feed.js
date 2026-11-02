@@ -93,14 +93,36 @@
         } else box.textContent = letter;
         return box;
     }
-    function thumb(url, fallbackIcon) {
-        if (!url) return el('span', { class: 'cf-thumb cf-thumb--ph' }, icon(fallbackIcon));
+    /**
+     * No picture (a recording whose thumbnail was never written, or one that failed): the creator's face over a blur of
+     * it, as Shared's kit.card does (4.89.0), and the plain icon only when there is no face either.
+     */
+    function placeholder(fallbackIcon, who) {
+        const face = who && who.avatar_url;
+        const name = who && String(who.display_name || who.username || '').trim();
+        // No picture of them either: their letter, as their avatar shows it.
+        if (!face && name) {
+            const letter = el('span', { class: 'cf-who-letter', 'aria-hidden': 'true', text: name[0].toUpperCase() });
+            // Their own colour, as the small avatar beside their name has it.
+            if (who.profile_color && /^#[0-9a-f]{3,8}$/i.test(who.profile_color)) letter.style.background = who.profile_color;
+            return el('span', { class: 'cf-thumb cf-thumb--ph cf-thumb--who' }, letter);
+        }
+        if (!face) return el('span', { class: 'cf-thumb cf-thumb--ph' }, icon(fallbackIcon));
+        const src = typeof ovImgW === 'function' ? ovImgW(face, 160) : face;
+        const bg = el('img', { class: 'cf-who-bg', src, alt: '', loading: 'lazy', decoding: 'async' });
+        const me = el('img', { class: 'cf-who-face', src, alt: '', loading: 'lazy', decoding: 'async' });
+        const box = el('span', { class: 'cf-thumb cf-thumb--ph cf-thumb--who' }, bg, me);
+        me.addEventListener('error', () => { box.replaceWith(el('span', { class: 'cf-thumb cf-thumb--ph' }, icon(fallbackIcon))); });
+        return box;
+    }
+    function thumb(url, fallbackIcon, who) {
+        if (!url) return placeholder(fallbackIcon, who);
         // A picture paste is its original upload (one is 2460 px, drawn at 390): Media's 640 px copy, the original once if it
         // fails, then the placeholder.
         const img = el('img', { class: 'cf-thumb', src: typeof ovImgW === 'function' ? ovImgW(url, 640) : url, alt: '', loading: 'lazy', decoding: 'async' });
         img.addEventListener('error', () => {
             if (img.src !== url && !img.dataset.retried) { img.dataset.retried = '1'; img.src = url; return; }
-            img.replaceWith(el('span', { class: 'cf-thumb cf-thumb--ph' }, icon(fallbackIcon)));
+            img.replaceWith(placeholder(fallbackIcon, who));
         });
         return img;
     }
@@ -126,7 +148,7 @@
 
     function vodCard(it) {
         const media = spa(it.href, { class: 'cf-media', 'aria-label': `Watch ${it.title}` },
-            thumb(it.thumbnail_url, 'fa-video'),
+            thumb(it.thumbnail_url, 'fa-video', it.channel),
             el('span', { class: 'cf-kind' }, icon('fa-video'), 'VOD'),
             el('span', { class: 'cf-pill cf-dur', text: duration(it.duration_seconds) }),
             el('span', { class: 'cf-play', 'aria-hidden': 'true' }, icon('fa-play')));
@@ -150,7 +172,7 @@
                 el('button', { type: 'button', class: 'cf-sound', 'aria-label': 'Turn sound on', title: 'Sound' }, icon('fa-volume-xmark')),
                 el('span', { class: 'cf-play', 'aria-hidden': 'true' }, icon('fa-play')));
         } else {
-            box = spa(it.href, { class: 'cf-media', 'aria-label': `Watch ${it.title}` }, thumb(it.thumbnail_url, 'fa-scissors'), badge, dur,
+            box = spa(it.href, { class: 'cf-media', 'aria-label': `Watch ${it.title}` }, thumb(it.thumbnail_url, 'fa-scissors', it.channel), badge, dur,
                 el('span', { class: 'cf-play', 'aria-hidden': 'true' }, icon('fa-play')));
         }
         const body = el('div', { class: 'cf-body' }, spa(it.href, { class: 'cf-title', text: it.title }), meta(it));
