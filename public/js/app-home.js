@@ -342,12 +342,25 @@ function _renderHeroStats(stats) {
     });
 
     // ── Economy ──────────────────────────────────────────────────
+    // The money four (tips, supporters, Vibes bought, subs) count from the Vibes relaunch. While all four are still
+    // zero they are one chip that says so ("none yet since 17 Oct"), not four bare zeros that read as a dead site; the
+    // first tip brings the four back. Every one of them is still said: nothing is hidden.
+    const money = [
+        { icon: 'fa-hand-holding-dollar', num: stats.vibesTipped, label: 'Vibes tipped', metric: 'vibes', title: 'Vibes tipped to streamers (100 Vibes = $1), on Live, PowerChat and OpenVibe.Tips', recent: R.vibes },
+        { recent: R.supporters, icon: 'fa-hand-holding-heart', num: stats.supporters, label: 'Supporters', metric: 'supporters', title: 'People who have tipped a streamer' },
+        { icon: 'fa-cart-shopping', num: stats.vibesBought, label: 'Vibes bought', metric: 'vibesBought', title: 'Vibes bought with real money (PowerChat, card, PayPal, crypto)', recent: R.vibesBought },
+        { icon: 'fa-star', num: stats.activeSubs, label: 'Subs', metric: 'subs', title: 'Active channel subscriptions', recent: R.subs },
+    ];
+    const moneyFresh = money.every(r => r.num === 0);
+    const since = stats.economySince && !isNaN(Date.parse(stats.economySince))
+        ? new Date(stats.economySince + 'T12:00:00Z').toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : '';
+    const freshTip = { label: 'Tips and subs', title: `No tips, supporters, Vibes bought or subscriptions yet${since ? ` since the Vibes relaunch on ${since}` : ''}. Tip a streamer from their channel: the first one brings these four numbers back.`, desc: '', recent: null, metric: null };
+    const fresh = {
+        html: `<div class="hero-stat hero-stat--fresh" data-tip="${esc(JSON.stringify(freshTip))}"><i class="fa-solid fa-hand-holding-heart"></i><div class="hero-stat-meta"><span class="hero-stat-word">None yet</span><span class="hero-stat-label">Tips and subs${since ? ` · since ${esc(since)}` : ''}</span></div></div>`,
+    };
     groups.push({
         kicker: 'Economy', icon: 'fa-coins', rows: [
-            { icon: 'fa-hand-holding-dollar', num: stats.vibesTipped, label: 'Vibes tipped', metric: 'vibes', title: 'Vibes tipped to streamers (100 Vibes = $1), on Live, PowerChat and OpenVibe.Tips', recent: R.vibes },
-            { recent: R.supporters, icon: 'fa-hand-holding-heart', num: stats.supporters, label: 'Supporters', metric: 'supporters', title: 'People who have tipped a streamer' },
-            { icon: 'fa-cart-shopping', num: stats.vibesBought, label: 'Vibes bought', metric: 'vibesBought', title: 'Vibes bought with real money (PowerChat, card, PayPal, crypto)', recent: R.vibesBought },
-            { icon: 'fa-star', num: stats.activeSubs, label: 'Subs', metric: 'subs', title: 'Active channel subscriptions', recent: R.subs },
+            ...(moneyFresh ? [fresh] : money),
             // OpenCoins are network-wide; channel points below are per channel. Shown only when the wallet service
             // answered: zeroed chips would read as "nobody has any". (Coins held was coins earned less 50 spent: gone.)
             ...(stats.coinsEarned != null ? [
