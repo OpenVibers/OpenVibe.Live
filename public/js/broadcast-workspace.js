@@ -79,32 +79,22 @@ async function _wsLoadManagedStreams() {
 function _wsRenderSidebar() {
     const list = document.getElementById('bc-ws-list');
     if (!list) return;
-
+    const add = '<button type="button" class="gl-slot gl-slot--add" onclick="showCreateManagedStreamModal()"><i class="fa-solid fa-plus" aria-hidden="true"></i><span>New slot</span></button>';
     if (_wsState.managedStreams.length === 0) {
-        list.innerHTML = '<p class="bc-ws-empty-hint muted">No stream slots yet.<br>Click <strong>+</strong> to create your first one.</p>';
+        list.innerHTML = add;
         return;
     }
-
     list.innerHTML = _wsState.managedStreams.map(ms => {
         const isSelected = ms.id === _wsState.selectedId;
         const isLive = _wsIsManagedStreamLive(ms.id);
-        const proto = _wsMethodLabel(ms.streaming_method || ms.protocol);
-        return `
-            <div class="bc-ws-item${isSelected ? ' selected' : ''}" onclick="wsSelectStream(${ms.id})">
-                <div class="bc-ws-item-status${isLive ? ' live' : ''}"></div>
-                <div class="bc-ws-item-body">
-                    <div class="bc-ws-item-name">${esc(ms.title || 'Untitled')}</div>
-                    <div class="bc-ws-item-meta">
-                        <span class="bc-ws-item-proto">${esc(proto)}</span>
-                        ${ms.slug ? `<span class="bc-ws-item-slug">/${esc(ms.slug)}</span>` : `<span class="bc-ws-item-slug">#${ms.id}</span>`}
-                        ${isLive ? '<span class="bc-ws-live-dot"><i class="fa-solid fa-circle"></i> LIVE</span>' : ''}
-                    </div>
-                </div>
-                <button class="bc-ws-item-del" onclick="event.stopPropagation();_wsConfirmDelete(${ms.id})" title="Delete slot">
-                    <i class="fa-solid fa-xmark"></i>
-                </button>
-            </div>`;
-    }).join('');
+        const method = ms.streaming_method || ms.protocol;
+        return `<button type="button" class="gl-slot${isSelected ? ' is-on' : ''}${isLive ? ' is-live' : ''}" aria-pressed="${isSelected}" onclick="wsSelectStream(${ms.id})"
+                title="${esc(_wsMethodLabel(method))}${ms.slug ? ' · /' + esc(ms.slug) : ''}">
+                <i class="fa-solid fa-${_glMethodIcon(method, ms.browser_mode)}" aria-hidden="true"></i>
+                <span class="gl-slot-name">${esc(ms.title || 'Untitled')}</span>
+                ${isLive ? '<span class="gl-slot-live">Live</span>' : ''}
+            </button>`;
+    }).join('') + add;
 }
 
 /** Human-readable method label for sidebar/panel */
@@ -132,12 +122,7 @@ function _wsIsManagedStreamLive(managedStreamId) {
 // Public – called from sidebar onclick
 async function wsSelectStream(managedStreamId) {
     if (_wsState.selectedId === managedStreamId) return;
-    if (_wsState.dirty) {
-        const action = await _wsConfirmUnsaved('You have unsaved changes. What would you like to do?');
-        if (action === 'save') await _wsSaveAll();
-        if (action === 'cancel') return;
-        // 'discard' falls through
-    }
+    await _wsFlushSave();
     await _wsSelectStream(managedStreamId);
 }
 
@@ -154,7 +139,7 @@ async function _wsSelectStream(managedStreamId) {
     if (empty) empty.style.display = 'none';
     if (panel) {
         panel.style.display = '';
-        panel.innerHTML = '<div style="padding:32px;text-align:center;color:var(--text-muted)"><i class="fa-solid fa-spinner fa-spin"></i> Loading stream profile\u2026</div>';
+        panel.innerHTML = '<div class="gl-loading" aria-busy="true"><span></span><span></span><span></span></div>';
     }
 
     await _wsLoadProfile(managedStreamId);
@@ -231,27 +216,41 @@ function _wsRenderPanel() {
     // Determine browser submode from managed stream or profile
     const browserMode = ms.browser_mode || p.browserMode || 'camera';
 
-    panel.innerHTML = `
-        <!-- ── Panel header ── -->
-        <div class="bc-ws-panel-hd">
-            <div class="bc-ws-panel-title">
-                <h2>${esc(ms.title || 'Untitled Stream')}</h2>
-                <span class="bc-ws-slug muted">
-                    ${currentUser?.username
-                        ? `<a href="${channelPath(currentUser.username, ms.slug || ms.id)}" target="_blank" style="color:var(--text-muted);text-decoration:none"><i class="fa-solid fa-link" style="font-size:0.7rem"></i> openvibe.live${channelPath(currentUser.username, ms.slug || ms.id)}</a>`
-                        : ms.slug
-                            ? `<i class="fa-solid fa-link" style="font-size:0.7rem"></i> openvibe.live/${esc(ms.slug)}`
-                            : `<i class="fa-solid fa-hashtag" style="font-size:0.7rem"></i> Stream #${ms.id}`}
-                </span>
-            </div>
-            <div style="display:flex;align-items:center;gap:8px">
-                ${isLive ? '<span class="bc-live-badge bc-ws-live-badge-hd"><i class="fa-solid fa-circle"></i> LIVE</span>' : ''}
-                <button class="btn btn-small btn-ghost bc-ws-popout-chat-btn" onclick="_wsOpenPopoutChat()" title="Popout Chat">
-                    <i class="fa-solid fa-comment-dots"></i> Chat
-                </button>
-            </div>
-        </div>
+    const link = currentUser?.username
+        ? `openvibe.live${channelPath(currentUser.username, ms.slug || ms.id)}`
+        : (ms.slug ? `openvibe.live/${ms.slug}` : `Stream #${ms.id}`);
+    const isBrowser = method === 'browser';
+    const endpoint = `            <div class="bc-ws-endpoint-section">
+                <div class="bc-ws-endpoint-hd">
+                    <h3><i class="fa-solid fa-plug"></i> Your server and key</h3>
+                </div>
+                <p class="bc-ws-endpoint-note">
+                    This key belongs to <strong>${esc(ms.title || 'this stream slot')}</strong>.
+                    Each slot has its own stable key. Regenerating invalidates the current key immediately.
+                </p>
+                <div class="bc-ws-key-row">
+                    <div class="bc-ws-key-display">
+                        <input type="password" id="bc-ws-stream-key" class="form-input form-input-sm bc-ws-key-input"
+                            value="${esc(streamKey)}" readonly autocomplete="off" spellcheck="false"
+                            aria-label="Stream key">
+                        <button class="btn btn-small btn-ghost bc-ws-key-toggle"
+                            onclick="_wsToggleKeyVisibility()" title="Show / hide key">
+                            <i class="fa-solid fa-eye" id="bc-ws-key-eye"></i>
+                        </button>
+                        <button class="btn btn-small btn-ghost"
+                            onclick="_wsCopyStreamKey()" title="Copy stream key">
+                            <i class="fa-solid fa-copy"></i>
+                        </button>
+                    </div>
+                    <button class="btn btn-small btn-outline bc-ws-regen-btn"
+                        onclick="_wsRegenerateKey(${ms.id})">
+                        <i class="fa-solid fa-arrows-rotate"></i> Regen Key
+                    </button>
+                </div>
+                <div id="bc-ws-method-endpoint">${_wsRenderMethodEndpoint(method, streamKey, ms.id)}</div>
+            </div>`;
 
+    panel.innerHTML = `
         <!-- ── Live session banner (expanded with stats) ── -->
         <div id="bc-ws-live-banner" style="${liveSessionId ? '' : 'display:none'}">
             <div class="bc-ws-live-banner">
@@ -293,48 +292,134 @@ function _wsRenderPanel() {
             </div>
         </div>
 
-        <!-- ── Tabs ── -->
-        <div class="bc-ws-tabs" id="bc-ws-tabs">
-            <button class="bc-ws-tab active" data-wstab="profile" onclick="_wsTabSwitch('profile')">
-                <i class="fa-solid fa-sliders"></i> Stream
-            </button>
-            <button class="bc-ws-tab" data-wstab="settings" onclick="_wsTabSwitch('settings')">
-                <i class="fa-solid fa-gear"></i> Settings
-            </button>
-            <button class="bc-ws-tab" data-wstab="endpoint" onclick="_wsTabSwitch('endpoint')">
-                <i class="fa-solid fa-plug"></i> Endpoint
-            </button>
-            <button class="bc-ws-tab" data-wstab="history" onclick="_wsTabSwitch('history')">
-                <i class="fa-solid fa-clock-rotate-left"></i> History
-            </button>
-        </div>
+        <div class="gl">
+        <section class="gl-card${isBrowser ? ' is-browser' : ''}" aria-label="Your stream, ready to go live">
+            <div class="gl-title-row">
+                <input type="text" id="bc-title" class="gl-title" aria-label="Title"
+                    value="${esc(ms.title || '')}"
+                    placeholder="What are you streaming?" maxlength="200"
+                    oninput="_wsMarkDirty()">
+                <span id="bc-ws-save-status" class="bc-ws-save-status" role="status" aria-live="polite"></span>
+                <button type="button" class="gl-suggest" id="gl-suggest" onclick="_glSuggestTitles(this)" title="Three title ideas from your last streams on this slot">
+                    <span aria-hidden="true">\u2728</span> Suggest
+                </button>
+            </div>
+            <div class="gl-ideas" id="gl-ideas" role="group" aria-label="Title ideas" hidden></div>
+            <div class="gl-chips">
+                <label class="gl-chip gl-chip--mature" title="Mature (18+): viewers confirm their age before the stream plays. The category is set automatically from what is on stream.">
+                    <input type="checkbox" id="bc-nsfw" ${ms.is_nsfw ? 'checked' : ''} onchange="_wsMarkDirty()">
+                    <i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i><span>Mature</span><b id="gl-mature-v">${ms.is_nsfw ? 'on' : 'off'}</b>
+                </label>
+                <button type="button" class="gl-chip gl-chip--link" onclick="_glCopyLink()" title="Copy your stream's address">
+                    <i class="fa-solid fa-link" aria-hidden="true"></i><span id="gl-link">${esc(link)}</span>
+                </button>
+                <button type="button" class="gl-chip" onclick="_glOpenFold('bc-ws-restream-details')" title="Where this stream is sent too">
+                    <i class="fa-solid fa-share-nodes" aria-hidden="true"></i><span>Restreams</span><b id="gl-rs-v">…</b>
+                </button>
+                <button type="button" class="gl-chip" onclick="_wsOpenPopoutChat()" title="Open your chat in its own window">
+                    <i class="fa-solid fa-comment-dots" aria-hidden="true"></i><span>Chat</span>
+                </button>
+            </div>
 
-        <!-- ═══ TAB: Stream Profile ═══ -->
-        <div class="bc-ws-tab-panel active" data-wstabpanel="profile">
-            <div class="bc-ws-profile-section bc-ws-profile-split">
-            <div class="bc-ws-col bc-ws-col--details">
-
-                <div class="form-group">
-                    <label>Title</label>
-                    <input type="text" id="bc-title" class="form-input"
-                        value="${esc(ms.title || '')}"
-                        placeholder="What are you streaming?" maxlength="200"
-                        oninput="_wsMarkDirty()">
+            ${isBrowser ? `
+            <div class="bc-ws-golive-section is-browser" id="bc-ws-golive-section"${liveSessionId ? ' style="display:none"' : ''}>
+                <!-- Class B: device-local choices (browser only): one card, a row each for the camera, its lens and
+                     the microphone; remembered on this device, never saved with the slot. -->
+                <div id="bc-ws-device-wrap">
+                    <div id="bc-perm-request" class="bc-perm-request">
+                        <p class="bc-perm-hint"><i class="fa-solid fa-shield-halved" aria-hidden="true"></i>
+                            <span id="bc-perm-hint-text">${_wsPermHint(browserMode)}</span></p>
+                        <button id="bc-perm-btn" class="btn btn-outline" type="button"
+                            onclick="requestMediaPermissions()">
+                            <i class="fa-solid ${browserMode === 'mic_only' ? 'fa-microphone'
+                                : browserMode === 'screen' ? 'fa-display'
+                                : 'fa-video'}"></i>
+                            <span id="bc-perm-btn-text">${browserMode === 'mic_only' ? 'Allow Microphone'
+                                : browserMode === 'camera_only' ? 'Allow Camera'
+                                : browserMode === 'screen' ? 'Allow Screen Share'
+                                : 'Allow Camera &amp; Mic'}</span>
+                        </button>
+                        <p id="bc-perm-debug" style="display:none;font-size:0.75rem;color:var(--text-secondary);margin-top:6px"></p>
+                    </div>
+                    <div id="bc-device-selects" style="display:none">
+                        <div class="bc-setup-card">
+                            <div class="bc-setup-item" id="bc-ws-camera-group">
+                                <div class="bc-setup-row">
+                                    <span class="bc-setup-label"><i class="fa-solid fa-camera" aria-hidden="true"></i>Camera</span>
+                                    <div class="bc-cam-select-row bc-setup-pick">
+                                        <span class="bc-setup-val" data-pick-for="bc-create-camera">Default</span>
+                                        <i class="fa-solid fa-chevron-down bc-setup-chev" aria-hidden="true"></i>
+                                        <select id="bc-create-camera" class="bc-setup-native" aria-label="Camera">
+                                            <option value="default">Default</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="bc-setup-item" id="bc-ws-audio-group">
+                                <div class="bc-setup-row">
+                                    <span class="bc-setup-label"><i class="fa-solid fa-microphone" aria-hidden="true"></i>Microphone</span>
+                                    <div class="bc-setup-pick">
+                                        <span class="bc-setup-val" data-pick-for="bc-create-audio">Default</span>
+                                        <i class="fa-solid fa-chevron-down bc-setup-chev" aria-hidden="true"></i>
+                                        <select id="bc-create-audio" class="bc-setup-native" aria-label="Microphone">
+                                            <option value="default">Default</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <p class="bc-setup-note">
+                            <span>Remembered on this device</span>
+                            <button type="button" class="bc-setup-link" onclick="refreshDeviceLists()"><i class="fa-solid fa-rotate" aria-hidden="true"></i> Refresh devices</button>
+                        </p>
+                    </div>
                 </div>
 
+                <!-- Screen-share hidden defaults -->
+                <input type="checkbox" id="bc-screen-mic-enabled" checked style="display:none">
+                <input type="checkbox" id="bc-screen-cam-enabled" style="display:none">
+                <input type="checkbox" id="bc-screenPreferCurrentTab-create" style="display:none">
+                <select id="bc-screenSystemAudio-create" style="display:none"><option value="include" selected>Include</option><option value="auto">Auto</option><option value="exclude">Exclude</option></select>
+                <select id="bc-screenSelfBrowser-create" style="display:none"><option value="exclude" selected>Exclude</option><option value="include">Include</option></select>
+                <select id="bc-screenSurfaceSwitching-create" style="display:none"><option value="include" selected>Allow</option><option value="exclude">Disallow</option></select>
+                <select id="bc-screen-audio" style="display:none"><option value="default">Default</option></select>
+                <select id="bc-screen-camera" style="display:none"><option value="default">Default</option></select>
+
+                ${_wsPreflight(browserMode)}
+
+                <button class="btn btn-primary btn-lg bc-ws-golive-btn"
+                    onclick="goLiveFromWorkspace()" id="bc-ws-golive-btn">
+                    <i class="fa-solid fa-tower-broadcast"></i> Go Live
+                </button>
+                <p class="bc-create-reassurance" style="margin-top:6px;font-size:0.82rem">
+                    <i class="fa-solid fa-circle-info"></i>
+                    Live at <strong>openvibe.live${channelPath(currentUser?.username || 'your-channel', ms.slug || ms.id)}</strong>
+                </p>
+            </div>
+            ` : `
+            <div class="gl-wait" id="bc-ws-golive-section"${liveSessionId ? ' style="display:none"' : ''}>
+                <span class="gl-wait-dot" aria-hidden="true"></span>
+                <div>
+                    <b>Waiting for your ${method === 'rtmp' ? 'streaming app' : method === 'whip' ? 'WHIP encoder' : 'encoder'}…</b>
+                    <small>This stream goes live by itself when ${method === 'rtmp' ? 'your app connects over RTMP'
+                        : method === 'whip' ? 'your encoder connects over WHIP'
+                        : 'FFmpeg or your tool sends to the address below'}. Nothing to press here.</small>
+                </div>
+            </div>
+            ${endpoint}
+            `}
+        </section>
+
+        <div class="gl-folds">
+            <details class="gl-fold" id="gl-details">
+                <summary><i class="fa-solid fa-pen" aria-hidden="true"></i><span class="bc-sum-title">Details</span><small class="bc-sum-val" id="gl-details-sum">${_glDetailsSummary(ms)}</small><i class="fa-solid fa-chevron-down bc-sum-chev" aria-hidden="true"></i></summary>
+                <div class="gl-fold-body">
                 <div class="form-group">
                     <label>Description</label>
                     <textarea id="bc-description" class="form-input" rows="2"
                         placeholder="Optional description\u2026" maxlength="500"
                         oninput="_wsMarkDirty()">${esc(ms.description || '')}</textarea>
                 </div>
-
-                <!-- No category picker: the AI decides it from the stream itself (streams.ai_category wins everywhere). -->
-                <label class="bc-switch">
-                    <input type="checkbox" id="bc-nsfw" ${ms.is_nsfw ? 'checked' : ''} onchange="_wsMarkDirty()">
-                    <span class="bc-switch-track" aria-hidden="true"><span class="bc-switch-thumb"></span></span>
-                    <span class="bc-switch-text"><b><i class="fa-solid fa-triangle-exclamation"></i> Mature content (NSFW)</b><small>Viewers confirm their age before the stream plays. The category is set automatically from what is on stream.</small></span>
-                </label>
 
                 <!-- URL Slug -->
                 <div class="form-group">
@@ -346,12 +431,16 @@ function _wsRenderPanel() {
                             oninput="_wsMarkDirty()">
                     </div>
                 </div>
+                    <button type="button" class="gl-danger-link" onclick="_wsConfirmDelete(${ms.id})"><i class="fa-solid fa-trash" aria-hidden="true"></i> Delete this slot</button>
+                </div>
+            </details>
 
-            </div>
-            <div class="bc-ws-col bc-ws-col--method">
+            <details class="gl-fold" id="gl-how">
+                <summary><i class="fa-solid fa-${_glMethodIcon(method, browserMode)}" aria-hidden="true"></i><span class="bc-sum-title">How you stream</span><small class="bc-sum-val" id="gl-how-sum">${esc(_glHowSummary(method, browserMode))}</small><i class="fa-solid fa-chevron-down bc-sum-chev" aria-hidden="true"></i></summary>
+                <div class="gl-fold-body bc-ws-col--method">
                 <!-- ═══ Streaming Method ═══ -->
                 <div class="form-group">
-                    <label>Streaming Method</label>
+                    <label>Where the picture comes from</label>
                     <div class="bc-method-picker bc-method-picker-sm" id="bc-ws-method-picker" role="radiogroup" aria-label="Streaming method">
                         ${_wsRenderMethodCards(method)}
                     </div>
@@ -361,7 +450,7 @@ function _wsRenderPanel() {
                 <!-- ═══ Browser Sub-mode (only when method is browser) ═══ -->
                 <div id="bc-ws-browser-submodes" style="${method === 'browser' ? '' : 'display:none'}">
                     <div class="form-group">
-                        <label>Browser Capture Mode</label>
+                        <label>What your browser sends</label>
                         <div class="bc-method-picker bc-method-picker-sm" id="bc-ws-browser-mode-picker" role="radiogroup" aria-label="Browser capture mode">
                             ${_wsRenderBrowserModeCards(browserMode)}
                         </div>
@@ -512,9 +601,12 @@ function _wsRenderPanel() {
                     </div>
                 </div>
 
+                </div>
+            </details>
+
                 <!-- Video quality defaults (Class A blob, browser method only) -->
                 <div id="bc-ws-quality-wrap" style="${method === 'browser' ? '' : 'display:none'}">
-                <details class="bc-ws-quality">
+                <details class="gl-fold bc-ws-quality" id="gl-quality">
                     <summary><i class="fa-solid fa-film"></i><span class="bc-sum-title">Video quality</span><small class="bc-sum-val">${_wsQualitySummaryHTML(p.resolution || '720', p.fps || '30', p.bitrate || 2500)}</small><i class="fa-solid fa-chevron-down bc-sum-chev" aria-hidden="true"></i></summary>
                     <div class="bc-ws-quality-inner bc-ws-row">
                         <div class="form-group" style="margin:0;flex:1">
@@ -546,116 +638,9 @@ function _wsRenderPanel() {
                 </details>
                 </div>
 
-            </div>
-
-                <!-- Hidden element required by createNewStream() -->
-                <select id="bc-managed-stream" style="display:none">
-                    <option value="${ms.id}" selected>${esc(ms.title || '')}</option>
-                </select>
-            </div>
-
-            <!-- ── Go Live / Auto-detect section ── -->
-            <div class="bc-ws-golive-section${method === 'browser' ? ' is-browser' : ''}" id="bc-ws-golive-section"${liveSessionId ? ' style="display:none"' : ''}>
-
-                ${method === 'browser' ? `
-                <!-- Class B: device-local choices (browser only): one card, a row each for the camera, its lens and
-                     the microphone; remembered on this device, never saved with the slot. -->
-                <div id="bc-ws-device-wrap">
-                    <div id="bc-perm-request" class="bc-perm-request">
-                        <p class="bc-perm-hint"><i class="fa-solid fa-shield-halved" aria-hidden="true"></i>
-                            <span id="bc-perm-hint-text">${_wsPermHint(browserMode)}</span></p>
-                        <button id="bc-perm-btn" class="btn btn-outline" type="button"
-                            onclick="requestMediaPermissions()">
-                            <i class="fa-solid ${browserMode === 'mic_only' ? 'fa-microphone'
-                                : browserMode === 'screen' ? 'fa-display'
-                                : 'fa-video'}"></i>
-                            <span id="bc-perm-btn-text">${browserMode === 'mic_only' ? 'Allow Microphone'
-                                : browserMode === 'camera_only' ? 'Allow Camera'
-                                : browserMode === 'screen' ? 'Allow Screen Share'
-                                : 'Allow Camera &amp; Mic'}</span>
-                        </button>
-                        <p id="bc-perm-debug" style="display:none;font-size:0.75rem;color:var(--text-secondary);margin-top:6px"></p>
-                    </div>
-                    <div id="bc-device-selects" style="display:none">
-                        <div class="bc-setup-card">
-                            <div class="bc-setup-item" id="bc-ws-camera-group">
-                                <div class="bc-setup-row">
-                                    <span class="bc-setup-label"><i class="fa-solid fa-camera" aria-hidden="true"></i>Camera</span>
-                                    <div class="bc-cam-select-row bc-setup-pick">
-                                        <span class="bc-setup-val" data-pick-for="bc-create-camera">Default</span>
-                                        <i class="fa-solid fa-chevron-down bc-setup-chev" aria-hidden="true"></i>
-                                        <select id="bc-create-camera" class="bc-setup-native" aria-label="Camera">
-                                            <option value="default">Default</option>
-                                        </select>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="bc-setup-item" id="bc-ws-audio-group">
-                                <div class="bc-setup-row">
-                                    <span class="bc-setup-label"><i class="fa-solid fa-microphone" aria-hidden="true"></i>Microphone</span>
-                                    <div class="bc-setup-pick">
-                                        <span class="bc-setup-val" data-pick-for="bc-create-audio">Default</span>
-                                        <i class="fa-solid fa-chevron-down bc-setup-chev" aria-hidden="true"></i>
-                                        <select id="bc-create-audio" class="bc-setup-native" aria-label="Microphone">
-                                            <option value="default">Default</option>
-                                        </select>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        <p class="bc-setup-note">
-                            <span>Remembered on this device</span>
-                            <button type="button" class="bc-setup-link" onclick="refreshDeviceLists()"><i class="fa-solid fa-rotate" aria-hidden="true"></i> Refresh devices</button>
-                        </p>
-                    </div>
-                </div>
-
-                <!-- Screen-share hidden defaults -->
-                <input type="checkbox" id="bc-screen-mic-enabled" checked style="display:none">
-                <input type="checkbox" id="bc-screen-cam-enabled" style="display:none">
-                <input type="checkbox" id="bc-screenPreferCurrentTab-create" style="display:none">
-                <select id="bc-screenSystemAudio-create" style="display:none"><option value="include" selected>Include</option><option value="auto">Auto</option><option value="exclude">Exclude</option></select>
-                <select id="bc-screenSelfBrowser-create" style="display:none"><option value="exclude" selected>Exclude</option><option value="include">Include</option></select>
-                <select id="bc-screenSurfaceSwitching-create" style="display:none"><option value="include" selected>Allow</option><option value="exclude">Disallow</option></select>
-                <select id="bc-screen-audio" style="display:none"><option value="default">Default</option></select>
-                <select id="bc-screen-camera" style="display:none"><option value="default">Default</option></select>
-
-                ${_wsPreflight(browserMode)}
-
-                <button class="btn btn-primary btn-lg bc-ws-golive-btn"
-                    onclick="goLiveFromWorkspace()" id="bc-ws-golive-btn">
-                    <i class="fa-solid fa-tower-broadcast"></i> Go Live
-                </button>
-                <p class="bc-create-reassurance" style="margin-top:6px;font-size:0.82rem">
-                    <i class="fa-solid fa-circle-info"></i>
-                    Live at <strong>openvibe.live${channelPath(currentUser?.username || 'your-channel', ms.slug || ms.id)}</strong>
-                </p>
-                ` : `
-                <!-- Auto-detect notice for non-browser methods -->
-                <div class="bc-ws-autodetect">
-                    <div class="bc-ws-autodetect-pulse"></div>
-                    <div>
-                        <strong>Auto-detect enabled</strong><br>
-                        Your stream will go live automatically when ${method === 'rtmp' ? 'your streaming software connects via RTMP'
-                            : method === 'whip' ? 'your encoder connects via WHIP'
-                            : 'FFmpeg or your streaming tool sends data to the endpoint'}.
-                        Configure your software using the <strong>Endpoint</strong> tab, then just start streaming.
-                    </div>
-                </div>
-                <button class="btn btn-small btn-outline" onclick="_wsTabSwitch('endpoint')" style="width:100%">
-                    <i class="fa-solid fa-plug"></i> View Endpoint &amp; Setup Instructions
-                </button>
-                `}
-            </div>
-        </div>
-
-        <!-- ═══ TAB: Settings ═══ -->
-        <div class="bc-ws-tab-panel" data-wstabpanel="settings">
-            <div class="bc-ws-profile-section">
-
                 <!-- Picture-in-picture camera -->
-                <details class="bc-ws-slot-settings" id="bc-ws-pip-details">
-                    <summary><i class="fa-solid fa-clone"></i> Picture-in-picture</summary>
+                <details class="gl-fold" id="bc-ws-pip-details">
+                    <summary><i class="fa-solid fa-clone" aria-hidden="true"></i><span class="bc-sum-title">Picture-in-picture</span><small class="bc-sum-val" id="gl-pip-sum">None</small><i class="fa-solid fa-chevron-down bc-sum-chev" aria-hidden="true"></i></summary>
                     <div class="bc-ws-slot-settings-inner">
                         <p class="muted" style="font-size:0.82rem;margin-bottom:10px">
                             Show up to three other streams over this one: your webcam on a slot of its own, a second
@@ -669,14 +654,14 @@ function _wsRenderPanel() {
                 </details>
 
                 <!-- Restream Destinations -->
-                <details class="bc-ws-slot-settings" id="bc-ws-restream-details" open>
-                    <summary><i class="fa-solid fa-tower-broadcast"></i> Restream Destinations</summary>
+                <details class="gl-fold" id="bc-ws-restream-details">
+                    <summary><i class="fa-solid fa-share-nodes" aria-hidden="true"></i><span class="bc-sum-title">Restreams</span><small class="bc-sum-val" id="gl-rs-sum">…</small><i class="fa-solid fa-chevron-down bc-sum-chev" aria-hidden="true"></i></summary>
                     <div class="bc-ws-slot-settings-inner">
                         <p class="muted" style="font-size:0.82rem;margin-bottom:10px">
                             Stream this slot to external platforms (Twitch, YouTube, Kick, etc.). Each slot can have its own destinations.
                         </p>
                         <div id="bc-ws-restream-list" class="bc-ws-restream-list">
-                            <div class="bc-ws-loading"><i class="fa-solid fa-spinner fa-spin"></i> Loading…</div>
+                            <div class="bc-ws-loading">Loading your destinations…</div>
                         </div>
                         <button class="btn btn-small btn-outline" style="margin-top:8px" onclick="_wsAddRestreamDest()">
                             <i class="fa-solid fa-plus"></i> Add Destination
@@ -685,8 +670,8 @@ function _wsRenderPanel() {
                 </details>
 
                 <!-- Chat Overlay -->
-                <details class="bc-ws-slot-settings">
-                    <summary><i class="fa-solid fa-closed-captioning"></i> Chat Overlay</summary>
+                <details class="gl-fold">
+                    <summary><i class="fa-solid fa-closed-captioning" aria-hidden="true"></i><span class="bc-sum-title">Chat on stream</span><small class="bc-sum-val">An OBS browser source</small><i class="fa-solid fa-chevron-down bc-sum-chev" aria-hidden="true"></i></summary>
                     <div class="bc-ws-slot-settings-inner">
                         <p class="muted" style="font-size:0.82rem;margin-bottom:8px">
                             Add this URL as a Browser Source in OBS to display chat on stream.
@@ -716,8 +701,8 @@ function _wsRenderPanel() {
                     </div>
                 </details>
 
-                <details class="bc-ws-slot-settings">
-                    <summary><i class="fa-solid fa-code"></i> Vibe Coding Feed</summary>
+                <details class="gl-fold">
+                    <summary><i class="fa-solid fa-code" aria-hidden="true"></i><span class="bc-sum-title">Vibe coding feed</span><small class="bc-sum-val">Set up on openvibe.chat</small><i class="fa-solid fa-chevron-down bc-sum-chev" aria-hidden="true"></i></summary>
                     <div class="bc-ws-slot-settings-inner">
                         <p class="muted" style="font-size:0.82rem;margin-bottom:10px">
                             Show what you are building while you stream: Claude Code, Copilot or any tool sends each step (a prompt, a command, a file edited, the answer) and viewers follow along in a card above this slot's chat. Feeds live on OpenVibe Chat: make one there, pick this slot, and paste its Claude Code hooks. Secrets are wiped before anyone sees a step.
@@ -727,8 +712,8 @@ function _wsRenderPanel() {
                 </details>
 
                 <!-- PowerChat overlay relay (shown only when PowerChat is connected) -->
-                <details class="bc-ws-slot-settings bc-ws-pc-only">
-                    <summary><i class="fa-solid fa-bolt"></i> PowerChat Overlay</summary>
+                <details class="gl-fold bc-ws-pc-only">
+                    <summary><i class="fa-solid fa-bolt" aria-hidden="true"></i><span class="bc-sum-title">PowerChat overlay</span><small class="bc-sum-val" id="gl-pc-sum">${ms.slot_powerchat_relay !== 0 ? 'Relaying chat' : 'Not relaying'}</small><i class="fa-solid fa-chevron-down bc-sum-chev" aria-hidden="true"></i></summary>
                     <div class="bc-ws-slot-settings-inner">
                         <div class="bc-ws-row">
                             <div class="form-group" style="flex:1">
@@ -759,14 +744,14 @@ function _wsRenderPanel() {
                 </details>
 
                 <!-- AI Chat Viewers (v3) — compact per-slot controls; full panel lives on the dashboard -->
-                <details class="bc-ws-slot-settings" id="bc-ws-aiv-details">
-                    <summary><i class="fa-solid fa-robot"></i> AI Chat Viewers</summary>
+                <details class="gl-fold" id="bc-ws-aiv-details">
+                    <summary><i class="fa-solid fa-robot" aria-hidden="true"></i><span class="bc-sum-title">AI chat viewers</span><small class="bc-sum-val">For this slot</small><i class="fa-solid fa-chevron-down bc-sum-chev" aria-hidden="true"></i></summary>
                     <div class="bc-ws-slot-settings-inner"><div id="bc-ws-aiv" data-ms="${ms.id}"><span class="muted">Loading…</span></div></div>
                 </details>
 
                 <!-- VOD / Clips Settings -->
-                <details class="bc-ws-slot-settings">
-                    <summary><i class="fa-solid fa-film"></i> VOD &amp; Clips Settings</summary>
+                <details class="gl-fold">
+                    <summary><i class="fa-solid fa-film" aria-hidden="true"></i><span class="bc-sum-title">Recording</span><small class="bc-sum-val" id="gl-rec-sum">${_glRecSummary(ms)}</small><i class="fa-solid fa-chevron-down bc-sum-chev" aria-hidden="true"></i></summary>
                     <div class="bc-ws-slot-settings-inner">
                         <div class="bc-ws-row">
                             <div class="form-group" style="flex:1">
@@ -815,8 +800,8 @@ function _wsRenderPanel() {
                 </details>
 
                 <!-- Weather Widget Settings -->
-                <details class="bc-ws-slot-settings">
-                    <summary><i class="fa-solid fa-cloud-sun"></i> Weather Widget Settings</summary>
+                <details class="gl-fold">
+                    <summary><i class="fa-solid fa-cloud-sun" aria-hidden="true"></i><span class="bc-sum-title">Weather on stream</span><small class="bc-sum-val" id="gl-weather-sum">${_glWeatherSummary(ms)}</small><i class="fa-solid fa-chevron-down bc-sum-chev" aria-hidden="true"></i></summary>
                     <div class="bc-ws-slot-settings-inner">
                         <div class="bc-ws-row">
                             <div class="form-group" style="flex:2">
@@ -845,55 +830,31 @@ function _wsRenderPanel() {
                     </div>
                 </details>
 
-            </div>
-        </div>
 
-        <!-- ═══ TAB: Endpoint & Key ═══ -->
-        <div class="bc-ws-tab-panel" data-wstabpanel="endpoint">
-            <div class="bc-ws-endpoint-section">
-                <div class="bc-ws-endpoint-hd">
-                    <h3><i class="fa-solid fa-plug"></i> Stream Endpoint &amp; Key</h3>
-                </div>
-                <p class="bc-ws-endpoint-note">
-                    This key belongs to <strong>${esc(ms.title || 'this stream slot')}</strong>.
-                    Each slot has its own stable key. Regenerating invalidates the current key immediately.
-                </p>
-                <div class="bc-ws-key-row">
-                    <div class="bc-ws-key-display">
-                        <input type="password" id="bc-ws-stream-key" class="form-input form-input-sm bc-ws-key-input"
-                            value="${esc(streamKey)}" readonly autocomplete="off" spellcheck="false"
-                            aria-label="Stream key">
-                        <button class="btn btn-small btn-ghost bc-ws-key-toggle"
-                            onclick="_wsToggleKeyVisibility()" title="Show / hide key">
-                            <i class="fa-solid fa-eye" id="bc-ws-key-eye"></i>
-                        </button>
-                        <button class="btn btn-small btn-ghost"
-                            onclick="_wsCopyStreamKey()" title="Copy stream key">
-                            <i class="fa-solid fa-copy"></i>
-                        </button>
+            ${isBrowser ? `
+            <details class="gl-fold" id="gl-endpoint">
+                <summary><i class="fa-solid fa-plug" aria-hidden="true"></i><span class="bc-sum-title">Stream from an app instead</span><small class="bc-sum-val">OBS, WHIP or FFmpeg, with your key</small><i class="fa-solid fa-chevron-down bc-sum-chev" aria-hidden="true"></i></summary>
+                <div class="gl-fold-body">${endpoint}</div>
+            </details>` : ''}
+
+            <details class="gl-fold" id="gl-history">
+                <summary><i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i><span class="bc-sum-title">Past streams</span><small class="bc-sum-val" id="gl-hist-sum">…</small><i class="fa-solid fa-chevron-down bc-sum-chev" aria-hidden="true"></i></summary>
+                <div class="gl-fold-body">
+                    <div id="bc-ws-history-list" class="bc-ws-history-list">
+                        <p class="muted" style="padding:4px 0">Loading your past streams…</p>
                     </div>
-                    <button class="btn btn-small btn-outline bc-ws-regen-btn"
-                        onclick="_wsRegenerateKey(${ms.id})">
-                        <i class="fa-solid fa-arrows-rotate"></i> Regen Key
-                    </button>
                 </div>
-                <div id="bc-ws-method-endpoint">${_wsRenderMethodEndpoint(method, streamKey, ms.id)}</div>
-            </div>
+            </details>
+        </div>
         </div>
 
-        <!-- ═══ TAB: History ═══ -->
-        <div class="bc-ws-tab-panel" data-wstabpanel="history">
-            <div class="bc-ws-profile-section">
-                <h3><i class="fa-solid fa-clock-rotate-left"></i> Recent Sessions</h3>
-                <div id="bc-ws-history-list" class="bc-ws-history-list">
-                    <p class="muted" style="padding:12px 0"><i class="fa-solid fa-spinner fa-spin"></i> Loading\u2026</p>
-                </div>
-            </div>
-        </div>
+        <!-- Hidden element required by createNewStream() -->
+        <select id="bc-managed-stream" hidden>
+            <option value="${ms.id}" selected>${esc(ms.title || '')}</option>
+        </select>
     `;
 
-    // Restore active tab
-    _wsTabSwitch(_wsState.activeTab || 'profile');
+    _glSyncSummaries();
 
     // Async post-render: check device permissions
     // Corner/size selects are derived from the stored {x,y,w} fractions.
@@ -916,25 +877,132 @@ function _wsRenderPanel() {
     try { const aiv = document.getElementById('bc-ws-aiv'); if (aiv && window.aivRenderSlotSection) window.aivRenderSlotSection(aiv, aiv.dataset.ms); } catch { /* */ }
 }
 
+/* ── The setup's one screen: summaries and chips (broadcast-workspace.js _wsRenderPanel) ── */
+
+/** The icon a slot is known by: the camera, the microphone or the screen in a browser; the encoder otherwise. */
+function _glMethodIcon(method, browserMode) {
+    if (method === 'rtmp') return 'server';
+    if (method === 'whip') return 'satellite-dish';
+    if (method === 'cli' || method === 'jsmpeg') return 'terminal';
+    const m = _WS_BROWSER_MODES.find((x) => x.id === (browserMode || 'camera'));
+    return m ? m.icon : 'video';
+}
+
+function _glHowSummary(method, browserMode) {
+    if (method !== 'browser' && method !== 'webrtc') return _wsMethodLabel(method);
+    const m = _WS_BROWSER_MODES.find((x) => x.id === (browserMode || 'camera'));
+    return `This browser · ${m ? m.label : 'Camera & Mic'}`;
+}
+
+function _glDetailsSummary(ms) {
+    const desc = (document.getElementById('bc-description')?.value ?? ms.description ?? '').trim();
+    const slug = (document.getElementById('bc-slug')?.value ?? ms.slug ?? '').trim();
+    return `${desc ? 'Description set' : 'No description'} · ${slug ? '/' + esc(slug) : 'no short link'}`;
+}
+
+function _glRecSummary(ms) {
+    const vis = { public: 'public', unlisted: 'unlisted', private: 'private' }[ms.default_vod_visibility || 'public'] || 'public';
+    if (ms.slot_vod_recording_enabled === 0) return ms.slot_clip_recording_enabled === 0 ? 'Off' : 'Clips only';
+    return `VODs ${vis}${ms.slot_clip_recording_enabled === 0 ? ' · no clips' : ' · clips on'}`;
+}
+
+function _glWeatherSummary(ms) {
+    if (ms.weather_detail === 'off') return 'Off';
+    return ms.weather_zip ? esc(ms.weather_zip) : 'No place set';
+}
+
+/** Every summary from what the fields hold now, so a change shows in its fold's line at once. */
+function _glSyncSummaries() {
+    const ms = _wsState.selectedMs;
+    if (!ms) return;
+    const set = (id, html) => { const el = document.getElementById(id); if (el) el.innerHTML = html; };
+    set('gl-details-sum', _glDetailsSummary(ms));
+    const method = ms.streaming_method || 'browser', mode = ms.browser_mode || _wsState.profile?.browserMode || 'camera';
+    set('gl-how-sum', esc(_glHowSummary(method, mode)));
+    const howIcon = document.querySelector('#gl-how > summary > i:first-child');
+    if (howIcon) howIcon.className = `fa-solid fa-${_glMethodIcon(method, mode)}`;
+    set('gl-rec-sum', _glRecSummary(ms));
+    set('gl-weather-sum', _glWeatherSummary(ms));
+    const pc = document.getElementById('bc-ws-powerchat-relay');
+    if (pc) set('gl-pc-sum', pc.checked ? 'Relaying chat' : 'Not relaying');
+    const nsfw = document.getElementById('bc-nsfw');
+    if (nsfw) set('gl-mature-v', nsfw.checked ? 'on' : 'off');
+    const slug = (document.getElementById('bc-slug')?.value ?? ms.slug ?? '').trim().toLowerCase();
+    const user = (typeof currentUser !== 'undefined' && currentUser && currentUser.username) || '';
+    if (user && typeof channelPath === 'function') set('gl-link', esc(`openvibe.live${channelPath(user, slug || ms.id)}`));
+}
+
+/** Restreams in the chip and its fold: the names of those that start with the stream. */
+function _glSyncRestreams() {
+    const on = (_wsRestreamDests || []).filter((d) => d.enabled !== 0 && d.enabled !== false)
+        .map((d) => (_wsRestreamPlatforms[d.platform] || {}).name || d.name || d.platform);
+    if (_wsSlotRsIntegration && _wsSlotRsIntegration.enabled) on.push('RobotStreamer');
+    const chip = document.getElementById('gl-rs-v');
+    const sum = document.getElementById('gl-rs-sum');
+    const names = on.length > 2 ? `${on.slice(0, 2).join(', ')} +${on.length - 2}` : on.join(', ');
+    if (chip) chip.textContent = on.length ? names : 'none';
+    if (sum) sum.textContent = on.length ? `${on.length} on · ${names}` : 'None yet';
+}
+
+/** ✨ Suggest: three titles for the next stream (server/streaming/title-ideas.js); a tap puts one in the title. */
+async function _glSuggestTitles(btn) {
+    const ms = _wsState.selectedMs;
+    const box = document.getElementById('gl-ideas');
+    if (!ms || !box || btn.getAttribute('aria-busy') === 'true') return;
+    const busy = window.OVMark && typeof OVMark.busy === 'function' ? OVMark.busy(btn) : null;
+    btn.setAttribute('aria-busy', 'true');
+    const now = new Date();
+    const weekday = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][now.getDay()];
+    try {
+        const r = await api(`/streams/managed/${ms.id}/title-ideas`, { method: 'POST', body: { weekday, hour: now.getHours(), title: document.getElementById('bc-title')?.value || '' } });
+        const titles = (r && Array.isArray(r.titles)) ? r.titles : [];
+        box.replaceChildren(...titles.map((t) => {
+            const b = document.createElement('button');
+            b.type = 'button'; b.className = 'gl-idea'; b.textContent = t;
+            b.onclick = () => {
+                const input = document.getElementById('bc-title');
+                if (input) { input.value = t; input.focus(); }
+                box.hidden = true;
+                _wsMarkDirty();
+            };
+            return b;
+        }));
+        box.hidden = !titles.length;
+        if (busy) busy.done(titles.length ? 'Ideas' : 'None');
+    } catch (err) {
+        box.replaceChildren(Object.assign(document.createElement('p'), { className: 'gl-ideas-note', textContent: (err && err.message) || 'No ideas right now. Try again in a minute.' }));
+        box.hidden = false;
+        if (busy) busy.fail('Try again');
+    } finally {
+        btn.removeAttribute('aria-busy');
+    }
+}
+
+function _glOpenFold(id) {
+    const d = document.getElementById(id);
+    if (!d) return;
+    d.open = true;
+    d.scrollIntoView({ block: 'start', behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+}
+
+function _glCopyLink() {
+    const t = document.getElementById('gl-link')?.textContent?.trim();
+    if (!t) return;
+    _wsCopyText(`https://${t.replace(/^https?:\/\//, '')}`, 'Link copied');
+}
+
 /* ── Tab switching ───────────────────────────────────────────── */
 
 function _wsTabSwitch(tabId) {
-    _wsState.activeTab = tabId;
-    document.querySelectorAll('.bc-ws-tab').forEach(t =>
-        t.classList.toggle('active', t.dataset.wstab === tabId)
-    );
-    document.querySelectorAll('.bc-ws-tab-panel').forEach(p =>
-        p.classList.toggle('active', p.dataset.wstabpanel === tabId)
-    );
-    // Load history lazily when switching to history tab
-    if (tabId === 'history' && _wsState.selectedId) {
-        _wsLoadHistory(_wsState.selectedId);
-    }
+    const fold = { endpoint: 'gl-endpoint', history: 'gl-history', settings: 'bc-ws-restream-details' }[tabId];
+    if (fold) _glOpenFold(fold);
 }
 
 /* ── Floating save bar (Discord-style) ───────────────────────── */
 
 function _wsEnsureSaveBar() {
+    return; // no save bar: changes save as they are made
+    // eslint-disable-next-line no-unreachable
     if (document.getElementById('bc-ws-save-bar')) return;
     const bar = document.createElement('div');
     bar.className = 'bc-ws-save-bar hidden';
@@ -1696,13 +1764,26 @@ async function _wsRegenerateKey(managedStreamId) {
 
 /* ── Dirty state / Manual Save ───────────────────────────────── */
 
+let _wsAutoSaveTimer = null;
 function _wsMarkDirty() {
     _wsState.dirty = true;
-    _wsUpdateSaveButton();
+    _wsState.rev = (_wsState.rev || 0) + 1;
     _wsSyncQualitySummary();
+    _glSyncSummaries();
+    clearTimeout(_wsAutoSaveTimer);
+    _wsAutoSaveTimer = setTimeout(() => { _wsSaveAll(); }, 900);
+}
+
+/** Save now what is waiting (before switching slots or going live). */
+async function _wsFlushSave() {
+    clearTimeout(_wsAutoSaveTimer);
+    if (_wsState.savePromise) await _wsState.savePromise;
+    if (_wsState.dirty) await _wsSaveAll();
 }
 
 function _wsUpdateSaveButton() {
+    return; // saving is automatic now (_wsMarkDirty); kept for older callers
+    // eslint-disable-next-line no-unreachable
     const bar = document.getElementById('bc-ws-save-bar');
     const btn = document.getElementById('bc-ws-save-btn');
     const status = document.getElementById('bc-ws-save-status');
@@ -1731,21 +1812,27 @@ function _wsUpdateSaveButton() {
 
 function _wsShowSaveStatus(msg, cls) {
     const el = document.getElementById('bc-ws-save-status');
-    const bar = document.getElementById('bc-ws-save-bar');
-    if (el) {
+    if (!el) return;
+    el.className = 'bc-ws-save-status' + (cls ? ' ' + cls : '');
+    if (cls === 'bc-ws-save-error') {
+        el.replaceChildren(document.createTextNode(msg + ' '));
+        const again = document.createElement('button');
+        again.type = 'button'; again.className = 'gl-retry'; again.textContent = 'Try again';
+        again.onclick = () => { _wsState.dirty = true; _wsSaveAll(); };
+        el.append(again);
+    } else {
         el.textContent = msg;
-        el.className = 'bc-ws-save-status' + (cls ? ' ' + cls : '');
     }
-    // Show the bar briefly for save/error feedback even when not dirty
-    if (bar && msg) bar.style.display = '';
 }
 
 /** Save all changes (structured fields + profile blob) */
 async function _wsSaveAll() {
-    if (!_wsState.selectedId || _wsState.saving || !_wsState.dirty) return;
+    if (!_wsState.selectedId || !_wsState.dirty) return;
+    if (_wsState.saving) { _wsState.saveAgain = true; return; }
     _wsState.saving = true;
-    const btn = document.getElementById('bc-ws-save-btn');
-    if (btn) btn.disabled = true;
+    const rev = _wsState.rev || 0;
+    let settle;
+    _wsState.savePromise = new Promise((resolve) => { settle = resolve; });
     _wsShowSaveStatus('Saving\u2026', 'bc-ws-saving');
 
     try {
@@ -1809,20 +1896,28 @@ async function _wsSaveAll() {
             if (idx !== -1) _wsState.managedStreams[idx] = { ..._wsState.managedStreams[idx], ...updated.managed_stream };
         }
         _wsState.profile = profileBlob;
-        _wsState.dirty = false;
+        // A change made while this was saving stays to save next.
+        if ((_wsState.rev || 0) === rev) _wsState.dirty = false;
 
         _wsRenderSidebar();
-        _wsShowSaveStatus('Saved \u2713', 'bc-ws-saved');
-        setTimeout(() => { if (!_wsState.dirty) _wsShowSaveStatus(''); }, 2500);
+        _glSyncSummaries();
+        _wsShowSaveStatus('Saved', 'bc-ws-saved');
+        setTimeout(() => { if (!_wsState.dirty && !_wsState.saving) _wsShowSaveStatus(''); }, 2500);
 
         // Update sidebar method display
         const methodToProtocol = { browser: 'webrtc', whip: 'webrtc', cli: 'jsmpeg', rtmp: 'rtmp' };
         broadcastState.selectedMethod = methodToProtocol[streamFields.streaming_method] || streamFields.protocol;
     } catch (err) {
-        _wsShowSaveStatus('Save failed: ' + (err?.message || 'unknown error'), 'bc-ws-save-error');
+        _wsShowSaveStatus('Not saved: ' + (err?.message || 'the server did not answer') + '.', 'bc-ws-save-error');
     } finally {
         _wsState.saving = false;
-        _wsUpdateSaveButton();
+        _wsState.savePromise = null;
+        settle();
+        if (_wsState.dirty && (_wsState.saveAgain || (_wsState.rev || 0) !== rev)) {
+            _wsState.saveAgain = false;
+            clearTimeout(_wsAutoSaveTimer);
+            _wsAutoSaveTimer = setTimeout(() => { _wsSaveAll(); }, 900);
+        }
     }
 }
 
@@ -2156,6 +2251,8 @@ function _wsPipRender() {
     const box = document.getElementById('bc-ws-pip-list');
     const add = document.getElementById('bc-ws-pip-add');
     if (!st || !box || !add) return;
+    const ps = document.getElementById('gl-pip-sum');
+    if (ps) ps.textContent = st.list.length ? `${st.list.length} over this stream` : 'None';
     const mine = (_wsState.managedStreams || []);
     const ownIds = new Set(mine.map((m) => Number(m.id)));
     box.replaceChildren(...st.list.map((p, i) => {
@@ -2234,12 +2331,8 @@ async function goLiveFromWorkspace() {
         return;
     }
 
-    // Prompt to save if dirty
-    if (_wsState.dirty) {
-        const action = await _wsConfirmUnsaved('You have unsaved changes. Save before going live?');
-        if (action === 'cancel') return;
-        if (action === 'save') await _wsSaveAll();
-    }
+    // What was just typed (the title above all) is saved before the stream starts.
+    await _wsFlushSave();
 
     const p = _wsState.profile;
     const ms = _wsState.selectedMs;
@@ -2346,12 +2439,16 @@ async function _wsLoadHistory(managedStreamId) {
         _wsRenderHistory(_wsState.history);
     } catch {
         list.innerHTML = '<p class="muted">Could not load session history.</p>';
+        const hs = document.getElementById('gl-hist-sum');
+        if (hs) hs.textContent = 'Could not load';
     }
 }
 
 function _wsRenderHistory(sessions) {
     const list = document.getElementById('bc-ws-history-list');
     if (!list) return;
+    const hs = document.getElementById('gl-hist-sum');
+    if (hs) hs.textContent = sessions.length ? `${sessions.length} recent` : 'None yet';
 
     if (!sessions.length) {
         list.innerHTML = '<p class="muted" style="padding:8px 0">No past sessions yet. Go live to start your first session.</p>';
@@ -2509,9 +2606,10 @@ function _wsRenderRestreamList(container) {
     if (!container) return;
 
     const rsCard = _wsRenderSlotRsCard();
+    _glSyncRestreams();
 
     if (_wsRestreamDests.length === 0 && !rsCard) {
-        container.innerHTML = '<p class="muted" style="font-size:0.82rem">No restream destinations configured for this stream slot.</p>';
+        container.innerHTML = '<p class="muted" style="font-size:0.82rem">Nowhere else yet. Add Twitch, YouTube, Kick or any RTMP address, and this slot goes there too each time you go live.</p>';
         return;
     }
 

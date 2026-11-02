@@ -1505,6 +1505,9 @@ router.get('/channel/:username/resolve/:ref', optionalAuth, async (req, res) => 
 
 // ── Managed Stream CRUD ──────────────────────────────────────
 
+// ✨ Suggest on the go-live card: three titles for the slot's next stream (title-ideas.js).
+require('./title-ideas').mount(router, { requireAuth, db });
+
 // Get past stream sessions for a managed stream (workspace history panel)
 router.get('/managed/:managedStreamId/history', requireAuth, async (req, res) => {
     const managedStreamId = parseInt(req.params.managedStreamId);

@@ -3142,3 +3142,132 @@ body.bc-golive-dock-on #page-broadcast { padding-bottom: calc(104px + var(--ovna
     .bcs-livecard .bcs-gl-link code { flex-basis: 100%; white-space: normal; overflow-wrap: anywhere; text-align: center; font-size: 1.05rem; }
     .bcs-livecard .bcs-gl-copy { flex: 1; justify-content: center; height: 46px; }
 }
+
+/* ── Go live setup, one screen (2026-11-02; the owner: "this layout ain't too great… more intelligent… more modular").
+   The slots are a row of pills. The ready card comes first: the title, chips for what is set, the devices, what viewers
+   will get and Go live (an encoder's slot: waiting, with its address and key). Every other setting is a fold whose line
+   says what it holds. On a wide screen: two columns, the card sticky on the left. Changes save as they are made. ── */
+.bc-workspace { flex-direction: column; align-items: stretch; gap: 12px; }
+.bc-ws-sidebar.gl-slots { width: auto; position: static; max-height: none; border: 0; border-radius: 0; background: none; box-shadow: none; overflow: visible; }
+.gl-slots .bc-ws-list { display: flex; flex-direction: row; gap: 8px; overflow-x: auto; overflow-y: visible; padding: 2px 2px 6px; scrollbar-width: none; }
+.gl-slots .bc-ws-list::-webkit-scrollbar { display: none; }
+.gl-slot { all: unset; box-sizing: border-box; flex: none; display: inline-flex; align-items: center; gap: 8px; min-height: 40px; max-width: 240px; padding: 0 14px;
+    border-radius: 999px; cursor: pointer; font-size: 0.88rem; font-weight: 650; color: var(--text-secondary);
+    background: color-mix(in srgb, var(--bg-card) 92%, transparent); border: 1px solid var(--border);
+    transition: background-color var(--ov-dur-2, .15s), border-color var(--ov-dur-2, .15s), color var(--ov-dur-2, .15s); }
+.gl-slot i { font-size: 0.85rem; color: var(--text-muted); }
+.gl-slot:hover { color: var(--text-primary); border-color: color-mix(in srgb, var(--accent) 40%, var(--border)); }
+.gl-slot:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.gl-slot.is-on { color: var(--text-primary); background: color-mix(in srgb, var(--accent) 14%, var(--bg-card)); border-color: color-mix(in srgb, var(--accent) 60%, var(--border)); }
+.gl-slot.is-on i { color: var(--accent); }
+.gl-slot-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gl-slot-live { flex: none; padding: 2px 7px; border-radius: 999px; font-size: 0.66rem; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase; background: var(--live-red, #e11d48); color: #fff; }
+.gl-slot--add { color: var(--accent); border-style: dashed; background: transparent; }
+.gl-slot--add i { color: var(--accent); }
+@media (pointer: coarse) { .gl-slot { min-height: 44px; } }
+
+.bc-workspace > .bc-ws-main { border: 0; border-radius: 0; background: none; box-shadow: none; }
+.gl { display: grid; gap: 12px; align-items: start; min-width: 0; }
+@container bcws (min-width: 900px) {
+    .gl { grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); gap: 18px; }
+    .gl-card { position: sticky; top: 8px; }
+}
+
+.gl-card { min-width: 0; padding: 16px; border-radius: 18px; border: 1px solid var(--border);
+    background: color-mix(in srgb, var(--bg-card) 94%, transparent); box-shadow: 0 1px 0 color-mix(in srgb, var(--text-primary) 4%, transparent) inset; }
+.gl-title-row { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.gl-title { flex: 1 1 auto; min-width: 0; width: 100%; box-sizing: border-box; margin: -5px -8px; padding: 5px 8px; font: inherit; font-size: 1.4rem; font-weight: 800;
+    line-height: 1.25; letter-spacing: -0.01em; color: var(--text-primary); background: transparent; border: 1px solid transparent; border-radius: 10px;
+    transition: border-color var(--ov-dur-2, .15s), background-color var(--ov-dur-2, .15s); }
+.gl-title:hover { border-color: var(--border); }
+.gl-title:focus { outline: none; border-color: var(--accent); background: var(--bg-input, var(--bg-primary)); }
+.gl-title::placeholder { color: var(--text-muted); font-weight: 700; }
+.gl-title-row .bc-ws-save-status { flex: none; min-width: 0; font-size: 0.78rem; font-weight: 650; font-style: normal; text-align: right; color: var(--text-muted); white-space: nowrap; }
+.gl-title-row .bc-ws-save-status.bc-ws-saved::before { content: "\2713\00a0"; color: var(--success-text, var(--success, #16a34a)); }
+.gl-title-row .bc-ws-save-status.bc-ws-save-error { flex: 0 1 50%; white-space: normal; color: var(--danger-text, var(--danger)); }
+.gl-retry { font: inherit; font-weight: 700; color: var(--accent); background: none; border: 0; padding: 4px 2px; cursor: pointer; text-decoration: underline; }
+
+.gl-chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 14px; min-width: 0; }
+.gl-chip { all: unset; box-sizing: border-box; position: relative; display: inline-flex; align-items: center; gap: 6px; min-height: 36px; max-width: 100%; padding: 0 12px;
+    border-radius: 999px; cursor: pointer; font-size: 0.82rem; font-weight: 600; color: var(--text-secondary);
+    background: color-mix(in srgb, var(--text-primary) 5%, transparent); border: 1px solid var(--border);
+    transition: border-color var(--ov-dur-2, .15s), color var(--ov-dur-2, .15s), background-color var(--ov-dur-2, .15s); }
+.gl-chip i { flex: none; font-size: 0.8rem; color: var(--text-muted); }
+.gl-chip b { flex: none; font-weight: 750; color: var(--text-primary); }
+.gl-chip span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gl-chip:hover { color: var(--text-primary); border-color: color-mix(in srgb, var(--accent) 40%, var(--border)); }
+.gl-chip:focus-visible, .gl-chip:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
+.gl-chip--mature input { position: absolute; opacity: 0; width: 1px; height: 1px; pointer-events: none; }
+.gl-chip--mature:has(input:checked) { color: var(--danger-text, var(--danger)); border-color: color-mix(in srgb, var(--danger) 50%, var(--border)); background: color-mix(in srgb, var(--danger) 9%, transparent); }
+.gl-chip--mature:has(input:checked) i, .gl-chip--mature:has(input:checked) b { color: var(--danger-text, var(--danger)); }
+.gl-chip--link { flex: 0 1 auto; min-width: 0; }
+.gl-chip--link i { color: var(--accent); }
+@media (pointer: coarse) { .gl-chip { min-height: 44px; } }
+
+/* The go-live block sits in the card without a frame of its own; the room for the phone's chat bubble moves to the end. */
+.gl-card .bc-ws-golive-section { margin: 0; padding: 0; border: 0; }
+.gl-card .bc-ws-golive-section .bc-ws-golive-btn { margin-top: 12px; }
+@container bcws (min-width: 960px) { .gl-card .bc-ws-golive-section.is-browser > * { max-width: none; } }
+@media (max-width: 680px) { .gl-card .bc-ws-golive-section.is-browser { padding-bottom: 0; } .gl-folds { padding-bottom: 76px; } }
+
+/* An encoder's slot: waiting, in words, then its address and key. */
+.gl-wait { display: flex; align-items: flex-start; gap: 12px; padding: 12px 14px; margin-bottom: 12px; border-radius: 14px;
+    background: color-mix(in srgb, var(--accent) 7%, transparent); border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--border)); }
+.gl-wait b { display: block; font-size: 0.95rem; color: var(--text-primary); }
+.gl-wait small { display: block; margin-top: 2px; font-size: 0.8rem; line-height: 1.45; color: var(--text-secondary); }
+.gl-wait-dot { flex: none; width: 10px; height: 10px; margin-top: 6px; border-radius: 50%; background: var(--accent);
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 22%, transparent); animation: gl-breathe 2.4s var(--ov-ease-in-out, ease-in-out) infinite; }
+@keyframes gl-breathe { 50% { opacity: 0.4; } }
+.gl-card .bc-ws-endpoint-section, .gl-fold .bc-ws-endpoint-section { margin: 0; padding: 0; border: 0; border-radius: 0; background: none; }
+
+/* The folds: one row each, what it holds on the right, opened in place. */
+.gl-folds { display: grid; gap: 8px; min-width: 0; align-content: start; }
+.gl-fold { min-width: 0; padding: 0; margin: 0; border-radius: 14px; border: 1px solid var(--border); background: color-mix(in srgb, var(--bg-card) 94%, transparent); overflow: hidden; }
+.gl-fold > summary { display: flex; align-items: center; gap: 10px; min-height: 52px; padding: 8px 14px; cursor: pointer; list-style: none; user-select: none;
+    font-size: 0.9rem; font-weight: 650; color: var(--text-primary); transition: background-color var(--ov-dur-2, .15s); }
+.gl-fold > summary::-webkit-details-marker { display: none; }
+.gl-fold > summary:hover { background: color-mix(in srgb, var(--accent) 6%, transparent); }
+.gl-fold > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.gl-fold > summary > i:first-child { flex: none; width: 18px; margin: 0; text-align: center; color: var(--accent); }
+.gl-fold > summary .bc-sum-title { flex: none; white-space: nowrap; }
+.gl-fold > summary .bc-sum-val { flex: 1 1 auto; min-width: 0; margin-left: auto; text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gl-fold[open] > summary { border-bottom: 1px solid var(--border); }
+.gl-fold[open] > summary .bc-sum-chev { transform: rotate(180deg); color: var(--accent); }
+.gl-fold-body { padding: 12px 14px 14px; min-width: 0; }
+.gl-fold > .bc-ws-slot-settings-inner { padding: 12px 14px 14px; }
+.gl-fold-body > .form-group:last-of-type { margin-bottom: 6px; }
+.gl-danger-link { font: inherit; font-size: 0.84rem; font-weight: 650; color: var(--danger-text, var(--danger)); background: none; border: 0; padding: 8px 0 2px; cursor: pointer; }
+.gl-danger-link:hover { text-decoration: underline; }
+
+/* Opening a slot: three quiet dots, never a spinning ring. */
+.gl-loading { display: flex; justify-content: center; gap: 6px; padding: 40px 0; }
+.gl-loading span { width: 8px; height: 8px; border-radius: 50%; background: var(--text-muted); animation: gl-breathe 1.2s var(--ov-ease-in-out, ease-in-out) infinite; }
+.gl-loading span:nth-child(2) { animation-delay: 0.2s; }
+.gl-loading span:nth-child(3) { animation-delay: 0.4s; }
+@media (prefers-reduced-motion: reduce) { .gl-wait-dot, .gl-loading span { animation: none; } .gl-slot, .gl-chip, .gl-title { transition: none; } }
+/* Video quality is a fold too: the same row as the others (its older rule had its own padding). */
+.gl-fold.bc-ws-quality > summary { padding: 8px 14px; min-height: 52px; font-size: 0.9rem; }
+.gl-fold.bc-ws-quality > summary > i:first-child { width: 18px; }
+.gl-fold .bc-sum-chev { flex: none; font-size: 0.75rem; }
+
+/* ✨ Suggest beside the title, and its three ideas under it: a tap puts one in the title. */
+.gl-suggest { all: unset; box-sizing: border-box; flex: none; display: inline-flex; align-items: center; gap: 5px; min-height: 36px; padding: 0 12px; border-radius: 999px; cursor: pointer;
+    font-size: 0.82rem; font-weight: 700; color: var(--accent); border: 1px solid color-mix(in srgb, var(--accent) 40%, var(--border));
+    background: color-mix(in srgb, var(--accent) 8%, transparent); transition: background-color var(--ov-dur-2, .15s); }
+.gl-suggest:hover { background: color-mix(in srgb, var(--accent) 16%, transparent); }
+.gl-suggest:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (pointer: coarse) { .gl-suggest { min-height: 44px; } }
+.gl-ideas { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 0; }
+.gl-ideas[hidden] { display: none; }
+.gl-idea { all: unset; box-sizing: border-box; max-width: 100%; padding: 8px 12px; border-radius: 12px; cursor: pointer; font-size: 0.86rem; font-weight: 600; line-height: 1.3;
+    color: var(--text-primary); background: color-mix(in srgb, var(--accent) 7%, var(--bg-card)); border: 1px dashed color-mix(in srgb, var(--accent) 45%, var(--border)); overflow-wrap: anywhere; }
+.gl-idea:hover { border-style: solid; }
+.gl-idea:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.gl-ideas-note { margin: 0; font-size: 0.8rem; color: var(--text-muted); }
+/* A phone: the saved note drops under the title so the title keeps its width beside Suggest. */
+@media (max-width: 420px) {
+    .gl-title-row { flex-wrap: wrap; row-gap: 4px; }
+    .gl-title-row .gl-title { flex: 1 1 0; }
+    .gl-title-row .bc-ws-save-status { order: 3; flex-basis: 100%; text-align: left; }
+    .gl-title-row .bc-ws-save-status:empty { display: none; }
+}

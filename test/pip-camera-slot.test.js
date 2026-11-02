@@ -108,31 +108,19 @@ assert.ok(/muted: pip\.muted !== false/.test(pip),
 assert.ok(/is-offline/.test(pip), 'a camera going offline must degrade to a badge, not a broken overlay');
 console.log('OK I: geometry persists, hide is recoverable, audio defaults to muted, offline degrades gracefully');
 
-// ── J: workspace placement — Settings owns the control profile and the PiP section ───
+// ── J: workspace placement — the PiP section is its own fold on the one-screen setup ───
 {
     const ws = read('public/js/broadcast-workspace.js');
-    const at = (name) => ws.indexOf(`data-wstabpanel="${name}"`);
-    const [prof, settings, endpoint] = [at('profile'), at('settings'), at('endpoint')];
-    assert.ok(prof > 0 && settings > prof && endpoint > settings, 'expected profile/settings/endpoint panels in order');
-    const streamPanel = ws.slice(prof, settings);
-    const settingsPanel = ws.slice(settings, endpoint);
-
     // Live's robot controls are gone (robots are OpenVibe.Bot's): no control profile select anywhere.
     assert.ok(!ws.includes('id="bc-control-config"'), 'no control profile select in the workspace');
-    assert.ok(settingsPanel.includes('id="bc-ws-pip-list"') && settingsPanel.includes('id="bc-ws-pip-add"'),
-        'the PIP list must render in the Settings tab');
-
-    // It is its own collapsible section, matching the other Settings groups.
-    for (const label of ['Picture-in-picture']) {
-        // Anchor on the SUMMARY text: an HTML comment carries the same label just above
-        // the <details>, and matching that would look in the wrong place entirely.
-        const idx = settingsPanel.indexOf(`${label}</summary>`);
-        assert.ok(idx > 0, `Settings must have a "${label}" collapsible section`);
-        const before = settingsPanel.slice(Math.max(0, idx - 400), idx);
-        assert.ok(before.includes('<details class="bc-ws-slot-settings" id="bc-ws-pip-details">'),
-            `"${label}" must be a collapsible <details> section like the rest of Settings`);
-    }
-    console.log('OK J: the PiP camera is a collapsible section under Settings, and there is no control profile');
+    // No tabs since the one-screen setup (2026-11-02): the PIP list is a fold of its own, with its count in its line.
+    assert.ok(!ws.includes('data-wstabpanel='), 'no tab panels');
+    const at = ws.indexOf('<details class="gl-fold" id="bc-ws-pip-details">');
+    assert.ok(at > 0, 'Picture-in-picture is a fold');
+    const fold = ws.slice(at, ws.indexOf('</details>', at));
+    assert.ok(fold.includes('<span class="bc-sum-title">Picture-in-picture</span>') && fold.includes('id="gl-pip-sum"'), 'its line says how many');
+    assert.ok(fold.includes('id="bc-ws-pip-list"') && fold.includes('id="bc-ws-pip-add"'), 'the PIP list renders in its fold');
+    console.log('OK J: the PiP camera is its own fold, and there is no control profile');
 }
 
 // ── K: PiP starting geometry round-trips through corner/size ─────────────────────────
