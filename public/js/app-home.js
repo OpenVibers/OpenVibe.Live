@@ -1885,8 +1885,8 @@ function streamCardHTML(s, isLive) {
     const cat = String(s.category || '').replace(/[-_]+/g, ' ').trim().toLowerCase();
     const shown = topics.filter((t) => t !== cat).slice(0, 2);
     return `
-        <a class="stream-card"${isLive ? ` data-topics="${esc(topics.join('|'))}" data-user="${esc(String(s.user_id || ''))}"` : ''} data-stream-id="${esc(String(s.id || ''))}" href="${esc(navUrl)}" onclick="return handleLinkClick(event, '${esc(navUrl)}')">
-            <div class="stream-card-thumb${s.is_nsfw ? ' stream-card-nsfw-blur' : ''}" style="--thumb-tint:${esc(_thumbTint(s))}">
+        <a class="stream-card"${ovLabelsAttr(s)}${isLive ? ` data-topics="${esc(topics.join('|'))}" data-user="${esc(String(s.user_id || ''))}"` : ''} data-stream-id="${esc(String(s.id || ''))}" href="${esc(navUrl)}" onclick="return handleLinkClick(event, '${esc(navUrl)}')">
+            <div class="stream-card-thumb${s.is_nsfw ? ' stream-card-nsfw-blur' : ''}" style="--thumb-tint:${esc(_thumbTint(s))}" data-ov-labels-media>
                 ${thumbImg(thumb, 'fa-circle-nodes', s.title, !isLive && s.vod_id ? `/api/thumbnails/generate/vod/${s.vod_id}` : null)}
                 ${streamTypeBadge(s.browser_mode, s.streaming_method)}
                 ${s.is_nsfw ? '<span class="stream-card-nsfw">18+</span>' : ''}
@@ -1894,6 +1894,7 @@ function streamCardHTML(s, isLive) {
             </div>
             <div class="stream-card-info">
                 <div class="stream-card-title">${esc(s.title || 'Untitled Stream')}</div>
+                ${ovLabelChips(s)}
                 <div class="stream-card-streamer">
                     ${_avatarSpan(s.avatar_url, s.username, s.profile_color)}
                     ${esc(s.username || 'Anonymous')}
