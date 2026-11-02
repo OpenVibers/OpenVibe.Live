@@ -75,6 +75,14 @@ function ovImgW(url, w) {
 }
 const OV_IMG_RETRY = 'if(this.dataset.full&&this.src!==this.dataset.full){this.src=this.dataset.full;return}';
 
+/** The colour a Media thumbnail's name carries (Media #290: <kind>-<id>-<time>-<rrggbb>.jpg), as '#rrggbb', or ''.
+    A card paints it behind the picture, so a slow image arrives over its own colour, not a grey hole (plan L52). */
+function ovThumbColour(url) {
+    // After the time (10+ digits), so a stream's stable stream-<app>-<id>.jpg never reads its id as a colour.
+    const m = /-\d{10,}-([0-9a-f]{6})\.(?:jpe?g|webp|avif|png)(?:[?#].*)?$/i.exec(String(url || ''));
+    return m ? `#${m[1].toLowerCase()}` : '';
+}
+
 /** Inner img-or-letter for an element that is itself the avatar circle. */
 function _avatarInner(url, name) {
     const letter = ((String(name || '?'))[0] || '?').toUpperCase();
@@ -2136,7 +2144,9 @@ function thumbImg(thumbnailUrl, fallbackIcon, alt, regenerateUrl = null) {
         const sized = /^https:\/\/openvibe\.media\/t\/[^?#\s]+$/.test(thumbnailUrl);
         const src = sized ? `${thumbnailUrl}?w=480&fmt=webp` : thumbnailUrl;
         const set = sized ? ` srcset="${esc([320, 480, 640].map((w) => `${thumbnailUrl}?w=${w}&fmt=webp ${w}w`).join(', '))}" sizes="(max-width: 600px) 100vw, 320px"` : '';
-        return `<img src="${esc(src)}"${set} alt="${esc(alt || '')}" loading="lazy" data-regenerate-url="${esc(regenerateUrl || '')}" onerror="handleThumbnailError(this)">
+        const colour = ovThumbColour(thumbnailUrl);
+        const bg = colour ? ` style="background-color:${colour}"` : '';
+        return `<img src="${esc(src)}"${set}${bg} alt="${esc(alt || '')}" loading="lazy" data-regenerate-url="${esc(regenerateUrl || '')}" onerror="handleThumbnailError(this)">
                 ${iconHtml(' style="display:none"')}`;
     }
     if (regenerateUrl) {
