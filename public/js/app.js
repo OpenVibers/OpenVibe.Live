@@ -1278,6 +1278,21 @@ function showNotFound({ title = 'Page not found', message = 'Nothing lives at th
         }
         box.append(h1, p, links);
         el.replaceChildren(box);
+        // A bare /name is never a channel (no redirect, ever), but a typed one is offered the channel that exists.
+        const bare = title === 'Page not found' && /^\/([A-Za-z0-9_]{3,24})\/?$/.exec(location.pathname);
+        if (bare) {
+            api(`/auth/user/${encodeURIComponent(bare[1])}`).then((d) => {
+                const u = d && d.user;
+                if (!u || !u.username || !box.isConnected) return;
+                const href = `/@${u.username}`;
+                const a = document.createElement('a');
+                a.href = href; a.className = 'btn btn-primary'; a.textContent = `@${u.username}'s channel`;
+                a.addEventListener('click', (e) => handleLinkClick(e, href));
+                links.querySelectorAll('.btn-primary').forEach((b) => b.classList.replace('btn-primary', 'btn-outline'));
+                links.prepend(a);
+                p.textContent = `Channels live at openvibe.live/@name. Looking for @${u.username}?`;
+            }).catch(() => {});
+        }
     }
     // A page that found out late (a channel nobody has) is still showing: only this one stays.
     document.querySelectorAll('.page.active').forEach((pg) => { if (pg !== el) pg.classList.remove('active'); });
