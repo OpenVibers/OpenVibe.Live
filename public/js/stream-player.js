@@ -963,7 +963,7 @@ function initPlayer(stream) {
     // Content labels (L1): each viewer's own choice covers or hides the player (Shared ov-labels.js), and the chips
     // under the title say what it carries.
     try {
-        ovMarkLabels(document.getElementById('video-container'), stream);
+        ovMarkLabels(document.getElementById('video-container'), stream, { opened: true });
         const chips = document.getElementById('stream-labels');
         if (chips) chips.innerHTML = ovLabelChips(stream);
     } catch { /* labels are a courtesy: never stop playback */ }

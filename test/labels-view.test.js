@@ -29,6 +29,7 @@ assert.ok(home.includes('<a class="stream-card"${ovLabelsAttr(s)}'), 'the home c
 assert.ok(home.includes('style="--thumb-tint:${esc(_thumbTint(s))}" data-ov-labels-media>'), 'its picture is what a blur covers');
 assert.ok(home.includes('${ovLabelChips(s)}'), 'its chips under the title');
 const player = read('public/js/stream-player.js');
-assert.ok(player.includes("ovMarkLabels(document.getElementById('video-container'), stream);"), 'the channel player is marked when a stream plays');
+assert.ok(player.includes("ovMarkLabels(document.getElementById('video-container'), stream, { opened: true });"), 'the channel player is marked when a stream plays, as its own page (hide covers, never empties it)');
+assert.ok(/el\.toggleAttribute\('data-ov-labels-opened', Boolean\(opened && labels\.length\)\)/.test(app), 'opened is set only on a labelled thing');
 assert.ok(read('public/fragments/channel.html').includes('<div id="stream-labels" class="stream-labels"></div>'), 'the channel shows the chips under the title');
 console.log('labels-view: all passed');

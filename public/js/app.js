@@ -2509,10 +2509,12 @@ function ovLabelChips(item) {
     return `<ul class="ovk-labels" aria-label="Content labels">${labels.map((l) => `<li class="ovk-label${l === '18+' ? ' ovk-label--adult' : ''}" data-label="${esc(l)}">${esc(OV_LABEL_NAMES[l])}</li>`).join('')}</ul>`;
 }
 /** Mark (or unmark) an element already on the page, such as the channel's player. */
-function ovMarkLabels(el, item) {
+function ovMarkLabels(el, item, { opened = false } = {}) {
     if (!el) return;
     const labels = ovIsMine(item) ? [] : ovLabelsOf(item);
     if (labels.length) el.setAttribute('data-ov-labels', labels.join(','));
     else { el.removeAttribute('data-ov-labels'); el.removeAttribute('data-ov-labels-state'); }
+    // The thing's own page (the channel's player): hide covers it rather than emptying the page (openvibe-shared 4.94.0).
+    el.toggleAttribute('data-ov-labels-opened', Boolean(opened && labels.length));
     if (window.OVLabels && typeof window.OVLabels.apply === 'function') window.OVLabels.apply(el);
 }
