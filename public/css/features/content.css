@@ -502,3 +502,11 @@ a.cf-recap-band:hover .cf-recap-sub { text-decoration: underline; text-underline
     .cf-skel-media::after, .cf-skel-line::after { animation: none; }
     .cf-media img.cf-thumb, .cf-play { transition: none; }
 }
+
+/* A card with no picture shows who made it: their face, round, over a blur of the same picture. */
+.cf-thumb--who { overflow: hidden; }
+.cf-thumb--who .cf-who-bg { position: absolute; inset: -12%; width: 124%; height: 124%; object-fit: cover; filter: blur(22px) saturate(1.2) brightness(.62); }
+.cf-thumb--who .cf-who-face { position: relative; width: 30%; max-width: 84px; aspect-ratio: 1; height: auto; border-radius: 50%; object-fit: cover;
+    box-shadow: 0 0 0 3px color-mix(in srgb, #fff 22%, transparent), 0 8px 24px rgba(0, 0, 0, .45); }
+.cf-who-letter { display: grid; place-items: center; width: 30%; max-width: 84px; aspect-ratio: 1; border-radius: 50%; font-size: clamp(1.4rem, 7vw, 2.4rem); font-weight: 800;
+    color: var(--on-accent-strong, var(--on-accent, #fff)); background: var(--accent-strong, var(--accent)); box-shadow: 0 0 0 3px color-mix(in srgb, #fff 18%, transparent), 0 8px 24px rgba(0, 0, 0, .35); }
