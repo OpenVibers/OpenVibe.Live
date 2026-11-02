@@ -111,12 +111,25 @@
         const sweep = () => {
             document.querySelectorAll('.hfx-reveal:not(.is-in)').forEach(el => {
                 const r = el.getBoundingClientRect();
-                if (r.height && r.top < window.innerHeight && r.bottom > 0) el.classList.add('is-in');
+                if (r.height && r.top < window.innerHeight) el.classList.add('is-in');   // on screen, or already passed
             });
             revealPasses++;
             revealSafety = revealPasses < 5 ? setTimeout(sweep, 2000) : 0;
         };
         revealSafety = setTimeout(sweep, 1200);
+        // A fling can carry a section past the screen between two frames, so the observer never reports it, and the
+        // sweeps above stop after ten seconds. When scrolling stops, anything above the bottom of the screen that is
+        // still waiting is shown: one query per pause, never during the scroll.
+        let settle = 0;
+        window.addEventListener('scroll', () => {
+            clearTimeout(settle);
+            settle = setTimeout(() => {
+                document.querySelectorAll('.hfx-reveal:not(.is-in)').forEach(el => {
+                    const r = el.getBoundingClientRect();
+                    if (r.height && r.top < window.innerHeight) el.classList.add('is-in');
+                });
+            }, 140);
+        }, { passive: true });
     }
 
     const REVEAL_SEL = '#page-home .section-header, #page-home .stream-card, #page-home .home-cta-banner, #page-home .home-star-section, #page-home .rs-hero-mount, #page-home .pulse-grid > *, #page-home .moments-row > *, #page-home .home-digest';
@@ -125,7 +138,9 @@
     let lateIo = null;
     function attachReveal(roots) {
         if (!('IntersectionObserver' in window)) return;
-        if (!io) io = new IntersectionObserver((entries) => { for (const en of entries) if (en.isIntersecting) { en.target.classList.add('is-in'); io.unobserve(en.target); } }, { rootMargin: '0px 0px -8% 0px', threshold: 0.08 });
+        // Seen, or scrolled past before the observer caught it (a fast swipe): either way it shows. A section passed
+        // over stayed at opacity 0 until the reader came back to it, a blank band on the way down (2026-11-02).
+        if (!io) io = new IntersectionObserver((entries) => { for (const en of entries) if (en.isIntersecting || en.boundingClientRect.bottom < 0) { en.target.classList.add('is-in'); io.unobserve(en.target); } }, { rootMargin: '0px 0px -8% 0px', threshold: 0.08 });
         if (!lateIo) lateIo = new IntersectionObserver((entries) => {
             for (const en of entries) {
                 const el = en.target; lateIo.unobserve(el);

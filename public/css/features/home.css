@@ -1332,22 +1332,23 @@ body.egg-rainbow { animation: eggRainbow 2.6s linear; }
     .home-tabbox [data-panel="network"] .network-hub-header h3 { display: none; }
 
     /* Catch up on a phone: each rail is one row of cards that scrolls sideways, so all five fit in a few screens
-       and nothing is behind a tab. */
-    #home-catchup .stream-grid {
+       and nothing is behind a tab. Recent Pastes rides the same rail (2026-11-02): it was two cards a row with a
+       "Load 2 more · 309 left" button under them. */
+    #home-catchup .stream-grid, #home-catchup .home-pastes-list {
         display: grid; grid-auto-flow: column; grid-template-columns: none; grid-auto-columns: minmax(232px, 74%); align-items: start;
         gap: 12px; margin-inline: -16px; padding: 2px 16px 10px; scroll-padding-inline: 16px;
         overflow-x: auto; overscroll-behavior-x: contain; scroll-snap-type: x mandatory; scrollbar-width: none;
     }
-    #home-catchup .stream-grid::-webkit-scrollbar { display: none; }
+    #home-catchup .stream-grid::-webkit-scrollbar, #home-catchup .home-pastes-list::-webkit-scrollbar { display: none; }
     /* ov-density.js reads a sideways rail's implicit columns as "too many" and clamps the grid to repeat(N, minmax(0, 1fr))
        with !important, which squeezed the first cards to a few pixels (production's Recently Online showed an 81 px
        sliver, 2026-11-01). A rail has no columns to choose: its own track sizing wins. */
-    #home-catchup .stream-grid[data-ovd-cols] { grid-template-columns: none !important; }
-    #home-catchup .stream-grid > * { scroll-snap-align: start; min-width: 0; }
-    #home-catchup .stream-grid > .empty-state { grid-column: auto; min-width: calc(100vw - 32px); }
+    #home-catchup .stream-grid[data-ovd-cols], #home-catchup .home-pastes-list[data-ovd-cols] { grid-template-columns: none !important; }
+    #home-catchup .stream-grid > *, #home-catchup .home-pastes-list > * { scroll-snap-align: start; min-width: 0; }
+    #home-catchup .stream-grid > .empty-state, #home-catchup .home-pastes-list > .empty-state { grid-column: auto; min-width: calc(100vw - 32px); }
     /* The end of a sideways rail (2026-11-01): placeholder cards where the next ones load by themselves as the reader
        swipes toward them (app-home.js homeRailTail), then one "View all" card once every card is in. */
-    #home-catchup .stream-grid > .home-rail-tail { display: flex; }
+    #home-catchup .stream-grid > .home-rail-tail, #home-catchup .home-pastes-list > .home-rail-tail { display: flex; }
     .home-rail-skel {
         flex-direction: column; gap: 10px; padding-bottom: 14px; overflow: hidden;
         border-radius: 14px; border: 1px solid var(--border); background: var(--bg-card);
