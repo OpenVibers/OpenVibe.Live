@@ -901,6 +901,20 @@ body.ov-nav-overlay .navbar.ovnav-top {
     font-size: 0.65rem; font-weight: 700;
 }
 
+/* Audio-only (Media#240/R4): the picture is Media's avatar card and the card says why there is no frame. */
+.stream-card-audio {
+    position: absolute; top: 8px; left: 8px;
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 2px 7px; border-radius: 999px;
+    background: color-mix(in srgb, var(--accent) 22%, rgba(9, 9, 13, 0.72));
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    color: #fff; font-size: 0.65rem; font-weight: 700; letter-spacing: 0.01em;
+    backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+    pointer-events: none;
+}
+.stream-card-audio i { font-size: 0.78em; opacity: 0.95; }
+@container (max-width: 150px) { .stream-card-audio { top: 4px; left: 4px; padding: 1px 5px; font-size: 0.6rem; } }
+
 /* Protocol badges */
 .protocol-badge {
     display: inline-block;
