@@ -310,6 +310,9 @@ function _wsRenderPanel() {
                     <input type="checkbox" id="bc-nsfw" ${ms.is_nsfw ? 'checked' : ''} onchange="_wsMarkDirty()">
                     <i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i><span>Mature</span><b id="gl-mature-v">${ms.is_nsfw ? 'on' : 'off'}</b>
                 </label>
+                <button type="button" class="gl-chip" onclick="_glOpenFold('gl-labels')" title="What this stream carries: each viewer decides to show, blur or hide it">
+                    <i class="fa-solid fa-tag" aria-hidden="true"></i><span>Labels</span><b id="gl-labels-v">${esc(_glLabelsSummary(ms, true))}</b>
+                </button>
                 <button type="button" class="gl-chip gl-chip--link" onclick="_glCopyLink()" title="Copy your stream's address">
                     <i class="fa-solid fa-link" aria-hidden="true"></i><span id="gl-link">${esc(link)}</span>
                 </button>
@@ -436,6 +439,15 @@ function _wsRenderPanel() {
                     </div>
                 </div>
                     <button type="button" class="gl-danger-link" onclick="_wsConfirmDelete(${ms.id})"><i class="fa-solid fa-trash" aria-hidden="true"></i> Delete this slot</button>
+                </div>
+            </details>
+
+            <details class="gl-fold" id="gl-labels">
+                <summary><i class="fa-solid fa-tag" aria-hidden="true"></i><span class="bc-sum-title">Labels</span><small class="bc-sum-val" id="gl-labels-sum">${esc(_glLabelsSummary(ms))}</small><i class="fa-solid fa-chevron-down bc-sum-chev" aria-hidden="true"></i></summary>
+                <div class="gl-fold-body">
+                    <p class="gl-labels-why">Labels are choices, not bans. Each viewer decides whether what carries them shows, blurs until tapped or hides; the home page leaves 18+ out.</p>
+                    <div class="gl-labels" id="gl-labels-pick" role="group" aria-label="Labels on this stream">${_glLabelsChips(ms)}</div>
+                    <div class="gl-labels-ai" id="gl-labels-ai">${_glLabelsSuggested(ms)}</div>
                 </div>
             </details>
 
@@ -922,6 +934,8 @@ function _glSyncSummaries() {
     if (!ms) return;
     const set = (id, html) => { const el = document.getElementById(id); if (el) el.innerHTML = html; };
     set('gl-details-sum', _glDetailsSummary(ms));
+    set('gl-labels-sum', esc(_glLabelsSummary(ms)));
+    set('gl-labels-v', esc(_glLabelsSummary(ms, true)));
     const method = ms.streaming_method || 'browser', mode = ms.browser_mode || _wsState.profile?.browserMode || 'camera';
     set('gl-how-sum', esc(_glHowSummary(method, mode)));
     const howIcon = document.querySelector('#gl-how > summary > i:first-child');
@@ -1278,6 +1292,51 @@ function _glTestClear() {
     const w = document.getElementById('gl-test-play');
     if (w) w.remove();
     if (_glT.url) { URL.revokeObjectURL(_glT.url); _glT.url = ''; }
+}
+
+/* ── Labels on the stream (L1, Live #477, common.content-labels@1): the creator sets them; the AI only suggests, and a
+   suggestion is the creator's to confirm. Saved with the rest of the card (_wsSaveAll sends labels). ── */
+const _GL_LABELS = [['nudity', 'Nudity'], ['language', 'Strong language'], ['graphic', 'Graphic'], ['18+', '18+'], ['flashing', 'Flashing lights'], ['spoilers', 'Spoilers']];
+const _glLabelName = (id) => (_GL_LABELS.find(([k]) => k === id) || [id, id])[1];
+
+function _glLabelsOf(ms) {
+    let raw = ms && ms.content_labels;
+    if (typeof raw === 'string') { try { raw = JSON.parse(raw); } catch { raw = null; } }
+    const pick = (v) => (Array.isArray(v) ? v : []).filter((l) => _GL_LABELS.some(([k]) => k === l));
+    return { labels: pick(raw && raw.labels), suggested: pick(raw && raw.suggested) };
+}
+
+function _glLabelsSummary(ms, short = false) {
+    const { labels, suggested } = _glLabelsOf(ms);
+    if (!labels.length) return suggested.length && !short ? `None · ${suggested.length} suggested` : 'none';
+    if (short && labels.length > 2) return `${labels.length}`;
+    return labels.map(_glLabelName).join(', ');
+}
+
+function _glLabelsChips(ms) {
+    const { labels } = _glLabelsOf(ms);
+    return _GL_LABELS.map(([id, name]) => `<button type="button" class="gl-label${labels.includes(id) ? ' is-on' : ''}${id === '18+' ? ' gl-label--adult' : ''}" aria-pressed="${labels.includes(id)}" onclick="_glToggleLabel('${id}')">${esc(name)}</button>`).join('');
+}
+
+function _glLabelsSuggested(ms) {
+    const { labels, suggested } = _glLabelsOf(ms);
+    const open = suggested.filter((l) => !labels.includes(l));
+    if (!open.length) return '';
+    return `<p class="gl-labels-ai-h">The AI noticed these on your last stream. Nothing changes until you add one.</p>`
+        + open.map((id) => `<button type="button" class="gl-label gl-label--ai" onclick="_glToggleLabel('${id}')">+ ${esc(_glLabelName(id))}</button>`).join('');
+}
+
+function _glToggleLabel(id) {
+    const ms = _wsState.selectedMs;
+    if (!ms || !_GL_LABELS.some(([k]) => k === id)) return;
+    const cur = _glLabelsOf(ms);
+    const labels = cur.labels.includes(id) ? cur.labels.filter((l) => l !== id) : [...cur.labels, id];
+    ms.content_labels = { labels, suggested: cur.suggested.filter((l) => !labels.includes(l)) };
+    const pick = document.getElementById('gl-labels-pick');
+    if (pick) pick.innerHTML = _glLabelsChips(ms);
+    const ai = document.getElementById('gl-labels-ai');
+    if (ai) ai.innerHTML = _glLabelsSuggested(ms);
+    _wsMarkDirty();
 }
 
 /* ── Tab switching ───────────────────────────────────────────── */
@@ -2146,6 +2205,8 @@ async function _wsSaveAll() {
             weather_zip: ms.weather_zip || null,
             weather_detail: ms.weather_detail || 'basic',
             weather_show_location: ms.weather_show_location || 0,
+            // The creator's labels (L1): confirmed ones leave the AI's suggestions on the server too.
+            labels: _glLabelsOf(ms).labels,
         };
 
         const profileBlob = {
