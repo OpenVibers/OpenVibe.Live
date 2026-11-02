@@ -477,6 +477,7 @@ router.get('/digest', optionalAuth, async (req, res) => {
         const followed = new Set(uid ? (await db.all('SELECT streamer_id FROM follows WHERE follower_id = ?', [uid]) || []).map(r => r.streamer_id) : []);
         const liveNow = (await db.all(`SELECT u.id AS user_id, u.username, u.display_name, u.avatar_url, u.profile_color, s.title, s.viewer_count, s.started_at
             FROM streams s JOIN users u ON u.id = s.user_id WHERE s.is_live = 1 AND COALESCE(u.is_banned, 0) = 0
+              AND NOT (s.content_labels->'labels' @> '["18+"]'::jsonb)
             ORDER BY s.viewer_count DESC, s.started_at DESC LIMIT 10`) || []).map(r => ({ ...r, followed: followed.has(r.user_id) }));
         const liveIds = new Set(liveNow.map(r => r.user_id));
         const streamedRows = (await db.all(`SELECT u.id AS user_id, u.username, u.display_name, u.avatar_url, u.profile_color,

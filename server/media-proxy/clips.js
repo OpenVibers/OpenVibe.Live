@@ -12,6 +12,7 @@ const { requireAuth, optionalAuth } = require('../auth/auth');
 const permissions = require('../auth/permissions');
 const access = require('./access');
 const purge = require('./purge');
+const contentLabels = require('../labels');
 const { commentCount } = require('./comments');
 const lineage = require('../lineage/resolver');
 const cache = require('openvibe-shared/cache-policy');
@@ -369,6 +370,23 @@ router.put('/:id/title', requireAuth, async (req, res) => {
         res.json({ message: 'Clip title updated', title });
     } catch (err) {
         mediaErr(res, err, 'Failed to update clip title');
+    }
+});
+
+// L1: the creator (or a channel moderator) labels the clip. Media stores `{ labels, suggested }`; a suggestion the
+// creator confirms leaves the suggested list. A label never hides the clip from anyone by itself.
+router.put('/:id/labels', requireAuth, async (req, res) => {
+    try {
+        let clip;
+        try { clip = await media.getClip(req.params.id); } catch (err) { return mediaErr(res, err, 'Clip not found'); }
+        if (!clip) return res.status(404).json({ error: 'Clip not found' });
+        if (!(await canActorModerateClip(req.user, clip))) return await refuse(req, res, clip, 'Not authorized to edit this clip');
+        const nextLabels = contentLabels.parseLabels((req.body || {}).labels);
+        if (nextLabels === null) return res.status(400).json({ error: 'labels must be a list of known labels' });
+        const out = await media.updateClip(clip.id, { labels: nextLabels });
+        res.json({ message: 'Clip labels updated', content_labels: (out && out.clip && out.clip.content_labels) || { labels: nextLabels, suggested: [] } });
+    } catch (err) {
+        mediaErr(res, err, 'Failed to update clip labels');
     }
 });
 
