@@ -3249,3 +3249,25 @@ body.bc-golive-dock-on #page-broadcast { padding-bottom: calc(104px + var(--ovna
 .gl-fold.bc-ws-quality > summary { padding: 8px 14px; min-height: 52px; font-size: 0.9rem; }
 .gl-fold.bc-ws-quality > summary > i:first-child { width: 18px; }
 .gl-fold .bc-sum-chev { flex: none; font-size: 0.75rem; }
+
+/* ✨ Suggest beside the title, and its three ideas under it: a tap puts one in the title. */
+.gl-suggest { all: unset; box-sizing: border-box; flex: none; display: inline-flex; align-items: center; gap: 5px; min-height: 36px; padding: 0 12px; border-radius: 999px; cursor: pointer;
+    font-size: 0.82rem; font-weight: 700; color: var(--accent); border: 1px solid color-mix(in srgb, var(--accent) 40%, var(--border));
+    background: color-mix(in srgb, var(--accent) 8%, transparent); transition: background-color var(--ov-dur-2, .15s); }
+.gl-suggest:hover { background: color-mix(in srgb, var(--accent) 16%, transparent); }
+.gl-suggest:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (pointer: coarse) { .gl-suggest { min-height: 44px; } }
+.gl-ideas { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 0; }
+.gl-ideas[hidden] { display: none; }
+.gl-idea { all: unset; box-sizing: border-box; max-width: 100%; padding: 8px 12px; border-radius: 12px; cursor: pointer; font-size: 0.86rem; font-weight: 600; line-height: 1.3;
+    color: var(--text-primary); background: color-mix(in srgb, var(--accent) 7%, var(--bg-card)); border: 1px dashed color-mix(in srgb, var(--accent) 45%, var(--border)); overflow-wrap: anywhere; }
+.gl-idea:hover { border-style: solid; }
+.gl-idea:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.gl-ideas-note { margin: 0; font-size: 0.8rem; color: var(--text-muted); }
+/* A phone: the saved note drops under the title so the title keeps its width beside Suggest. */
+@media (max-width: 420px) {
+    .gl-title-row { flex-wrap: wrap; row-gap: 4px; }
+    .gl-title-row .gl-title { flex: 1 1 0; }
+    .gl-title-row .bc-ws-save-status { order: 3; flex-basis: 100%; text-align: left; }
+    .gl-title-row .bc-ws-save-status:empty { display: none; }
+}

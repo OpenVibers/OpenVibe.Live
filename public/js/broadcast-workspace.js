@@ -300,7 +300,11 @@ function _wsRenderPanel() {
                     placeholder="What are you streaming?" maxlength="200"
                     oninput="_wsMarkDirty()">
                 <span id="bc-ws-save-status" class="bc-ws-save-status" role="status" aria-live="polite"></span>
+                <button type="button" class="gl-suggest" id="gl-suggest" onclick="_glSuggestTitles(this)" title="Three title ideas from your last streams on this slot">
+                    <span aria-hidden="true">\u2728</span> Suggest
+                </button>
             </div>
+            <div class="gl-ideas" id="gl-ideas" role="group" aria-label="Title ideas" hidden></div>
             <div class="gl-chips">
                 <label class="gl-chip gl-chip--mature" title="Mature (18+): viewers confirm their age before the stream plays. The category is set automatically from what is on stream.">
                     <input type="checkbox" id="bc-nsfw" ${ms.is_nsfw ? 'checked' : ''} onchange="_wsMarkDirty()">
@@ -938,6 +942,40 @@ function _glSyncRestreams() {
     const names = on.length > 2 ? `${on.slice(0, 2).join(', ')} +${on.length - 2}` : on.join(', ');
     if (chip) chip.textContent = on.length ? names : 'none';
     if (sum) sum.textContent = on.length ? `${on.length} on · ${names}` : 'None yet';
+}
+
+/** ✨ Suggest: three titles for the next stream (server/streaming/title-ideas.js); a tap puts one in the title. */
+async function _glSuggestTitles(btn) {
+    const ms = _wsState.selectedMs;
+    const box = document.getElementById('gl-ideas');
+    if (!ms || !box || btn.getAttribute('aria-busy') === 'true') return;
+    const busy = window.OVMark && typeof OVMark.busy === 'function' ? OVMark.busy(btn) : null;
+    btn.setAttribute('aria-busy', 'true');
+    const now = new Date();
+    const weekday = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][now.getDay()];
+    try {
+        const r = await api(`/streams/managed/${ms.id}/title-ideas`, { method: 'POST', body: { weekday, hour: now.getHours(), title: document.getElementById('bc-title')?.value || '' } });
+        const titles = (r && Array.isArray(r.titles)) ? r.titles : [];
+        box.replaceChildren(...titles.map((t) => {
+            const b = document.createElement('button');
+            b.type = 'button'; b.className = 'gl-idea'; b.textContent = t;
+            b.onclick = () => {
+                const input = document.getElementById('bc-title');
+                if (input) { input.value = t; input.focus(); }
+                box.hidden = true;
+                _wsMarkDirty();
+            };
+            return b;
+        }));
+        box.hidden = !titles.length;
+        if (busy) busy.done(titles.length ? 'Ideas' : 'None');
+    } catch (err) {
+        box.replaceChildren(Object.assign(document.createElement('p'), { className: 'gl-ideas-note', textContent: (err && err.message) || 'No ideas right now. Try again in a minute.' }));
+        box.hidden = false;
+        if (busy) busy.fail('Try again');
+    } finally {
+        btn.removeAttribute('aria-busy');
+    }
 }
 
 function _glOpenFold(id) {
