@@ -323,6 +323,7 @@ function _wsRenderPanel() {
 
             ${isBrowser ? `
             <div class="bc-ws-golive-section is-browser" id="bc-ws-golive-section"${liveSessionId ? ' style="display:none"' : ''}>
+            ${_glPreviewHTML(browserMode)}
                 <!-- Class B: device-local choices (browser only): one card, a row each for the camera, its lens and
                      the microphone; remembered on this device, never saved with the slot. -->
                 <div id="bc-ws-device-wrap">
@@ -855,6 +856,7 @@ function _wsRenderPanel() {
     `;
 
     _glSyncSummaries();
+    _glPreviewWatch();
 
     // Async post-render: check device permissions
     // Corner/size selects are derived from the stored {x,y,w} fractions.
@@ -989,6 +991,194 @@ function _glCopyLink() {
     const t = document.getElementById('gl-link')?.textContent?.trim();
     if (!t) return;
     _wsCopyText(`https://${t.replace(/^https?:\/\//, '')}`, 'Link copied');
+}
+
+/* ── The ready card's preview (golive-setup redesign, part 2): what the camera sees, the microphone moving and the
+   network, before going live. One watch, once a second, owns the camera: it opens it only while this page shows a
+   browser slot that is not live, with permission already given, and lets go when the tab hides, the page changes, a
+   stream starts or Go live is pressed. Turning it off is remembered on this device. ── */
+const _glPv = { stream: null, key: '', starting: false, timer: 0, raf: 0, ctx: null, hold: 0, failed: '' };
+const _GL_PV_OFF = 'ov_gl_preview_off';
+
+function _glPreviewHTML(mode) {
+    if (mode === 'screen') {
+        return `<div class="gl-preview is-still" id="gl-preview">
+            <div class="gl-pv-still"><i class="fa-solid fa-display" aria-hidden="true"></i><span>Your browser asks which screen, window or tab when you press Go live.</span></div>
+        </div>`;
+    }
+    const audioOnly = mode === 'mic_only';
+    const img = audioOnly && _wsState.profile && _wsState.profile.micOnlyImage ? `<img class="gl-pv-img" src="${esc(_wsState.profile.micOnlyImage)}" alt="">` : '';
+    return `<div class="gl-preview${audioOnly ? ' is-audio' : ''}" id="gl-preview" data-state="idle">
+            ${audioOnly ? img || '<div class="gl-pv-still"><i class="fa-solid fa-microphone" aria-hidden="true"></i><span>Viewers hear you, with the picture you choose under How you stream.</span></div>'
+                : '<video id="gl-preview-video" muted playsinline autoplay aria-label="Your camera, as viewers will see it"></video>'}
+            <p class="gl-pv-note" id="gl-pv-note">${audioOnly ? '' : 'Allow the camera below to see yourself here.'}</p>
+            <div class="gl-pv-chips">
+                ${audioOnly ? '' : '<span class="gl-pv-chip"><i class="fa-solid fa-video" aria-hidden="true"></i><span data-pick-for="bc-create-camera">Default</span></span>'}
+                ${mode === 'camera_only' ? '' : '<span class="gl-pv-chip gl-pv-mic" title="Your microphone level"><i class="fa-solid fa-microphone" aria-hidden="true"></i><span class="gl-pv-lvl" aria-hidden="true"><i id="gl-pv-lvl"></i></span></span>'}
+                <span class="gl-pv-chip" id="gl-pv-net" hidden></span>
+            </div>
+            <button type="button" class="gl-pv-off" id="gl-pv-off" onclick="_glPreviewToggle()" aria-pressed="false" title="Turn the preview off">
+                <i class="fa-solid fa-eye-slash" aria-hidden="true"></i><span class="bc-visually-hidden">Turn the preview off</span>
+            </button>
+        </div>`;
+}
+
+function _glPreviewOff() { try { return localStorage.getItem(_GL_PV_OFF) === '1'; } catch { return false; } }
+
+function _glPreviewToggle() {
+    const off = !_glPreviewOff();
+    try { localStorage.setItem(_GL_PV_OFF, off ? '1' : '0'); } catch { /* a private window: this page only */ }
+    if (off) _glPreviewStop();
+    _glPreviewSync();
+}
+
+/** What the preview should hold now: '' for nothing, else the devices it opens. */
+function _glPreviewWant() {
+    const box = document.getElementById('gl-preview');
+    const ms = _wsState.selectedMs;
+    if (!box || !box.isConnected || !ms || box.classList.contains('is-still') && !box.classList.contains('is-audio')) return '';
+    if (document.hidden || _glPv.hold > Date.now() || _glPreviewOff()) return '';
+    // The studio's page is shown (its address is /@you/studio or /broadcast); another page hides its section.
+    if (!box.getClientRects().length) return '';
+    if ((ms.streaming_method || 'browser') !== 'browser') return '';
+    if (typeof broadcastState !== 'undefined' && broadcastState.streams && broadcastState.streams.size) return '';
+    // Only once the browser may use the devices (the setup card shows them): the preview never asks by itself.
+    const devices = document.getElementById('bc-device-selects');
+    if (!devices || devices.style.display === 'none') return '';
+    const mode = ms.browser_mode || (_wsState.profile && _wsState.profile.browserMode) || 'camera';
+    if (mode === 'screen') return '';
+    const cam = mode === 'mic_only' ? '-' : (document.getElementById('bc-create-camera')?.value || 'default');
+    const mic = mode === 'camera_only' ? '-' : (document.getElementById('bc-create-audio')?.value || 'default');
+    return `${mode}|${cam}|${mic}`;
+}
+
+function _glPreviewStop() {
+    cancelAnimationFrame(_glPv.raf);
+    _glPv.raf = 0;
+    if (_glPv.ctx) { try { _glPv.ctx.close(); } catch { /* */ } _glPv.ctx = null; }
+    if (_glPv.stream) { _glPv.stream.getTracks().forEach((t) => { try { t.stop(); } catch { /* */ } }); _glPv.stream = null; }
+    _glPv.key = '';
+    const v = document.getElementById('gl-preview-video');
+    if (v) v.srcObject = null;
+    const box = document.getElementById('gl-preview');
+    if (box) box.dataset.state = _glPreviewOff() ? 'off' : 'idle';
+    const off = document.getElementById('gl-pv-off');
+    if (off) { off.setAttribute('aria-pressed', String(_glPreviewOff())); off.title = _glPreviewOff() ? 'Turn the preview on' : 'Turn the preview off'; }
+    const note = document.getElementById('gl-pv-note');
+    if (note && _glPreviewOff()) note.textContent = 'Preview off on this device.';
+}
+
+async function _glPreviewStart(key) {
+    if (_glPv.starting) return;
+    _glPv.starting = true;
+    _glPreviewStop();
+    const [mode, cam, mic] = key.split('|');
+    const pick = (id) => (id && id !== 'default' ? { deviceId: { exact: id } } : true);
+    try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+            video: cam === '-' ? false : { ...(cam !== 'default' ? { deviceId: { exact: cam } } : {}), width: { ideal: 1280 }, height: { ideal: 720 } },
+            audio: mic === '-' ? false : pick(mic),
+        });
+        // Things moved on while the camera opened: let it go again.
+        if (_glPreviewWant() !== key) { stream.getTracks().forEach((t) => t.stop()); return; }
+        _glPv.stream = stream;
+        _glPv.key = key;
+        _glPv.failed = '';
+        const box = document.getElementById('gl-preview');
+        const v = document.getElementById('gl-preview-video');
+        if (v) {
+            const sel = document.getElementById('bc-create-camera');
+            const opt = sel && sel.selectedOptions && sel.selectedOptions[0];
+            let mirror = false;
+            try { mirror = localStorage.getItem('ov_bc_mirror_preview') === '1' && !!opt && opt.dataset.facing === 'user'; } catch { /* */ }
+            v.classList.toggle('is-mirror', mirror);
+            v.srcObject = stream;
+            v.onloadedmetadata = () => {
+                if (box && v.videoWidth && v.videoHeight) box.style.setProperty('--gl-pv-ratio', `${v.videoWidth} / ${v.videoHeight}`);
+                v.play().catch(() => { /* muted autoplay: allowed */ });
+            };
+        }
+        if (box) box.dataset.state = 'on';
+        const note = document.getElementById('gl-pv-note');
+        if (note) note.textContent = '';
+        if (mode !== 'camera_only' && stream.getAudioTracks().length) _glPreviewMeter(stream);
+    } catch (err) {
+        _glPv.failed = key;
+        const note = document.getElementById('gl-pv-note');
+        if (note) note.textContent = err && err.name === 'NotReadableError' ? 'Another app is using the camera. Close it, then come back here.'
+            : 'The camera did not open for the preview. Going live still asks for it.';
+    } finally {
+        _glPv.starting = false;
+    }
+}
+
+/** The microphone's level as a bar in its chip (about 20 times a second; nothing when the sound is off). */
+function _glPreviewMeter(stream) {
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return;
+    let ctx;
+    try { ctx = new AC(); } catch { return; }
+    _glPv.ctx = ctx;
+    const an = ctx.createAnalyser();
+    an.fftSize = 512;
+    ctx.createMediaStreamSource(stream).connect(an);
+    const buf = new Uint8Array(an.fftSize);
+    let last = 0;
+    const bar = document.getElementById('gl-pv-lvl');
+    const tick = (t) => {
+        if (!_glPv.ctx) return;
+        _glPv.raf = requestAnimationFrame(tick);
+        if (t - last < 50 || !bar) return;
+        last = t;
+        an.getByteTimeDomainData(buf);
+        let sum = 0;
+        for (let i = 0; i < buf.length; i++) { const d = (buf[i] - 128) / 128; sum += d * d; }
+        const level = Math.min(1, Math.sqrt(sum / buf.length) * 4);
+        bar.style.transform = `scaleX(${level.toFixed(3)})`;
+    };
+    if (ctx.state === 'suspended') {
+        const wake = () => { ctx.resume().catch(() => {}); };
+        document.addEventListener('pointerdown', wake, { once: true, capture: true });
+    }
+    _glPv.raf = requestAnimationFrame(tick);
+}
+
+/** The network in a word: navigator.connection where the browser has it, and offline everywhere. */
+function _glPreviewNetwork() {
+    const chip = document.getElementById('gl-pv-net');
+    if (!chip) return;
+    const c = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+    let text = '', cls = '';
+    if (navigator.onLine === false) { text = 'Offline'; cls = 'is-bad'; }
+    else if (c && (c.effectiveType || c.downlink)) {
+        const weak = /(^|-)(2g|3g)$/.test(c.effectiveType || '') || (c.downlink && c.downlink < 2.5);
+        text = weak ? 'Weak network · 720p suggested' : 'Good network';
+        cls = weak ? 'is-warn' : 'is-ok';
+    }
+    chip.hidden = !text;
+    chip.className = `gl-pv-chip gl-pv-net ${cls}`;
+    chip.innerHTML = text ? `<i class="fa-solid fa-signal" aria-hidden="true"></i><span>${esc(text)}</span>` : '';
+}
+
+function _glPreviewSync() {
+    const want = _glPreviewWant();
+    _glPreviewNetwork();
+    if (!want) { if (_glPv.stream || _glPv.key) _glPreviewStop(); return; }
+    if (want !== _glPv.key && want !== _glPv.failed) _glPreviewStart(want);
+}
+
+/** Start the watch (once); each panel render calls it. */
+function _glPreviewWatch() {
+    _glPreviewSync();
+    if (_glPv.timer) return;
+    _glPv.timer = setInterval(() => {
+        _glPreviewSync();
+        // Off the page for good: nothing left to watch.
+        if (!document.getElementById('gl-preview') && !_glPv.stream) { clearInterval(_glPv.timer); _glPv.timer = 0; }
+    }, 1000);
+    document.addEventListener('visibilitychange', _glPreviewSync);
+    window.addEventListener('online', _glPreviewSync);
+    window.addEventListener('offline', _glPreviewSync);
 }
 
 /* ── Tab switching ───────────────────────────────────────────── */
@@ -2333,6 +2523,9 @@ async function goLiveFromWorkspace() {
 
     // What was just typed (the title above all) is saved before the stream starts.
     await _wsFlushSave();
+    // The studio opens the camera itself: the preview lets go of it first (a phone cannot open one camera twice).
+    _glPv.hold = Date.now() + 20000;
+    _glPreviewStop();
 
     const p = _wsState.profile;
     const ms = _wsState.selectedMs;
@@ -2388,7 +2581,12 @@ async function goLiveFromWorkspace() {
     // Sync screen-share hidden defaults
     _wsSyncScreenShareHiddenDefaults(browserMode);
 
-    await createNewStream();
+    try {
+        await createNewStream();
+    } finally {
+        // Live now (the studio holds the camera: the watch stays off), or it failed and the preview may come back.
+        _glPv.hold = 0;
+    }
 
     // After going live, save device selections to server-side profile
     _wsSaveDevicesToProfile();
