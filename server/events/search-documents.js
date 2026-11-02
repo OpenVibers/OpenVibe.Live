@@ -113,6 +113,8 @@ function init() {
     const jobs = require('../utils/jobs');
     jobs.every('search-documents-scan', 5 * 60 * 1000, () => scan(), { initialDelayMs: 2 * 60 * 1000, jitterMs: 15 * 1000 });
     jobs.every('search-documents-refresh', DAY_MS, () => refresh(), { initialDelayMs: 4 * 60 * 1000, jitterMs: 60 * 1000 });
+    // Live's guides (./search-guides.js): once soon after boot, then daily; a guide changes only with a release.
+    jobs.every('search-guides', DAY_MS, () => require('./search-guides').publishAll(), { initialDelayMs: 5 * 60 * 1000, jitterMs: 60 * 1000 });
     return true;
 }
 
