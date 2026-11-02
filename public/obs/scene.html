@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex">
+<title>Stream scene</title>
+<!-- An OBS browser source (plan L45 step 5): a full-screen scene in the streamer's look.
+       /obs/scene/<starting|brb|ending>/<username>
+     Query: theme=<theme id> (any OpenVibe theme; default Vibe), season=1 (wear the season's mark), msg=<a line of your own>, in=<minutes> or at=<ISO time>
+     for a countdown, next=<ISO time> for "next stream" on the ending scene. The mark arrives with its intro; on Be right
+     back it breathes while you are away. Size the source 1920 x 1080; everything scales with it. -->
+<style>
+@font-face { font-family: 'OV Brand'; src: url('/shared/ov-brand.woff2') format('woff2'); font-weight: 700 900; font-display: swap; }
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { width: 100%; height: 100%; overflow: hidden; }
+body {
+    --o: #4f7cff; --v: #8b5cf6;
+    background: var(--bg-primary, #0a0f1c); color: var(--text-primary, #e6edf7);
+    font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    display: grid; place-items: center; position: relative; isolation: isolate;
+}
+/* The ground: two soft lights of the look's accent and the mark's violet, drifting slowly, and a faint dot grid. */
+.sc-light { position: absolute; width: 70vmax; height: 70vmax; border-radius: 50%; filter: blur(9vmax); opacity: .38; z-index: -2; will-change: transform; }
+.sc-light.a { background: var(--accent, var(--o)); left: -18vmax; top: -24vmax; animation: scDriftA 28s var(--ov-ease-in-out, ease-in-out) infinite alternate; }
+.sc-light.b { background: var(--v); right: -22vmax; bottom: -30vmax; animation: scDriftB 34s var(--ov-ease-in-out, ease-in-out) infinite alternate; }
+@keyframes scDriftA { to { transform: translate(14vmax, 10vmax); } }
+@keyframes scDriftB { to { transform: translate(-12vmax, -8vmax); } }
+body::after { content: ''; position: absolute; inset: 0; z-index: -1; pointer-events: none;
+    background-image: radial-gradient(color-mix(in srgb, var(--text-primary, #fff) 9%, transparent) 1px, transparent 1.3px); background-size: 2.2vw 2.2vw;
+    -webkit-mask-image: radial-gradient(closest-side, transparent 35%, #000); mask-image: radial-gradient(closest-side, transparent 35%, #000); }
+
+.sc { display: grid; justify-items: center; text-align: center; gap: 2.2vw; width: min(86vw, 150vh); }
+.sc .ov-mark { width: 13vw !important; height: 13vw !important; }
+.sc-who { display: inline-flex; align-items: center; gap: .9vw; padding: .5vw 1.3vw .5vw .5vw; border-radius: 999px;
+    background: color-mix(in srgb, var(--bg-card, #111827) 70%, transparent); border: 1px solid var(--border, rgba(255,255,255,.12));
+    font-size: 1.45vw; font-weight: 650; }
+.sc-who img { width: 2.6vw; height: 2.6vw; border-radius: 50%; object-fit: cover; }
+.sc-who:empty { display: none; }
+.sc-h { font-family: 'OV Brand', Nunito, Inter, sans-serif; font-weight: 900; font-size: 7.2vw; line-height: .98; letter-spacing: -.02em; text-wrap: balance;
+    background: linear-gradient(120deg, var(--text-primary, #fff) 30%, color-mix(in srgb, var(--accent, var(--o)) 70%, var(--text-primary, #fff))); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.sc-sub { max-width: 60vw; font-size: 1.9vw; line-height: 1.4; color: var(--text-secondary, #a8b3c4); text-wrap: balance; }
+.sc-sub:empty { display: none; }
+.sc-chip { display: inline-flex; align-items: baseline; gap: .8vw; padding: .8vw 1.8vw; border-radius: 999px; font-size: 1.6vw; font-weight: 700;
+    background: color-mix(in srgb, var(--accent, var(--o)) 18%, transparent); border: 1px solid color-mix(in srgb, var(--accent, var(--o)) 45%, transparent); }
+.sc-chip b { font-family: 'OV Brand', Nunito, Inter, sans-serif; font-weight: 900; font-size: 2.2vw; font-variant-numeric: tabular-nums; }
+.sc-chip[hidden] { display: none; }
+.sc-foot { position: absolute; left: 0; right: 0; bottom: 3vw; display: flex; justify-content: center; gap: .7vw; font-size: 1.35vw; color: var(--text-muted, #7d8aa0); }
+.sc-foot b { color: var(--text-primary, #e6edf7); font-weight: 650; }
+
+/* Each part arrives after the mark, one after another. */
+.sc > * { opacity: 0; transform: translateY(1.2vw); animation: scIn var(--ov-dur-4, .8s) var(--ov-ease-out, cubic-bezier(.2,.8,.2,1)) forwards; }
+.sc > :nth-child(1) { animation-delay: 0s; transform: none; }
+.sc > :nth-child(2) { animation-delay: .9s; }
+.sc > :nth-child(3) { animation-delay: 1.05s; }
+.sc > :nth-child(4) { animation-delay: 1.2s; }
+.sc > :nth-child(5) { animation-delay: 1.35s; }
+@keyframes scIn { to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .sc-light { animation: none; } .sc > * { animation: none; opacity: 1; transform: none; } }
+</style>
+<script src="/shared/theme-loader.js"></script>
+</head>
+<body>
+<span class="sc-light a" aria-hidden="true"></span><span class="sc-light b" aria-hidden="true"></span>
+<main class="sc">
+    <span class="ov-mark" data-size="240" data-glow id="sc-mark"></span>
+    <p class="sc-who" id="sc-who"></p>
+    <h1 class="sc-h" id="sc-h">Starting soon</h1>
+    <p class="sc-sub" id="sc-sub"></p>
+    <p class="sc-chip" id="sc-chip" hidden></p>
+</main>
+<p class="sc-foot" id="sc-foot"></p>
+<script src="/shared/ov-mark.js"></script>
+<script>
+(function () {
+    'use strict';
+    var parts = location.pathname.split('/').filter(Boolean);   // obs, scene, <kind>, <username>
+    var KINDS = { starting: 'Starting soon', brb: 'Be right back', ending: 'Thanks for watching' };
+    var kind = KINDS[parts[2]] ? parts[2] : 'starting';
+    var user = /^[A-Za-z0-9_.-]{1,40}$/.test(parts[3] || '') ? parts[3] : '';
+    var q = new URLSearchParams(location.search);
+    var $ = function (id) { return document.getElementById(id); };
+
+    // The look: any OpenVibe theme by its id (an OBS source keeps no account), else Vibe.
+    var L = window.OpenVibeThemeLoader;
+    var themeId = /^[a-z0-9-]{1,40}$/.test(q.get('theme') || '') ? q.get('theme') : 'vibe';
+    if (L && L.THEMES && L.THEMES[themeId]) { L.applyVars(L.THEMES[themeId]); document.documentElement.setAttribute('data-theme', themeId); }
+    // A scene wears the look it was given; the season (a pumpkin O, falling leaves) only with season=1.
+    if (q.get('season') !== '1') { document.documentElement.removeAttribute('data-ov-season'); document.documentElement.removeAttribute('data-ov-season-mark'); }
+
+    $('sc-h').textContent = KINDS[kind];
+    var msg = (q.get('msg') || '').slice(0, 140);
+    if (msg) $('sc-sub').textContent = msg;
+    else if (kind === 'brb') $('sc-sub').textContent = 'Chat is still open. Back in a moment.';
+    else if (kind === 'ending') $('sc-sub').textContent = 'That was the stream. See you next time.';
+
+    // The countdown: in=<minutes> from when the source loaded, or at=<a time>.
+    var until = 0;
+    var mins = Number(q.get('in'));
+    if (mins > 0 && mins < 600) until = Date.now() + mins * 60000;
+    var at = Date.parse(q.get('at') || '');
+    if (Number.isFinite(at) && at > Date.now()) until = at;
+    function tick() {
+        var left = Math.max(0, until - Date.now()), chip = $('sc-chip');
+        if (!until || kind === 'ending') return;
+        chip.hidden = false;
+        if (left <= 0) { chip.textContent = kind === 'brb' ? 'Back any moment' : 'Any moment now'; return; }
+        var m = Math.floor(left / 60000), s = Math.floor(left / 1000) % 60;
+        chip.textContent = '';
+        chip.append(kind === 'brb' ? 'Back in' : 'Starting in');
+        var b = document.createElement('b'); b.textContent = m + ':' + String(s).padStart(2, '0'); chip.append(b);
+        setTimeout(tick, 1000 - (Date.now() % 1000));
+    }
+    tick();
+    var next = Date.parse(q.get('next') || '');
+    if (kind === 'ending' && Number.isFinite(next) && next > Date.now()) {
+        var chip = $('sc-chip'); chip.hidden = false; chip.append('Next stream');
+        var nb = document.createElement('b'); nb.textContent = new Date(next).toLocaleString(undefined, { weekday: 'short', hour: 'numeric', minute: '2-digit' }); chip.append(nb);
+    }
+
+    // On Be right back the mark breathes while you are away (after its intro).
+    if (kind === 'brb') setTimeout(function () { $('sc-mark').setAttribute('data-state', 'busy'); }, 2200);
+
+    // Who: the channel's name and picture, and the address to follow.
+    if (!user) return;
+    var foot = $('sc-foot');
+    foot.append(kind === 'ending' ? 'Follow for the next one at' : 'Watching on');
+    var addr = document.createElement('b'); addr.textContent = 'openvibe.live/@' + user; foot.append(addr);
+    fetch('/api/streams/channel/' + encodeURIComponent(user)).then(function (r) { return r.ok ? r.json() : null; }).then(function (d) {
+        var c = d && d.channel; if (!c) return;
+        var who = $('sc-who');
+        if (/^https:\/\//.test(c.avatar_url || '')) { var img = document.createElement('img'); img.alt = ''; img.onerror = function () { img.remove(); }; img.src = c.avatar_url; who.append(img); }
+        who.append(c.display_name || c.username || user);
+        if (!msg && kind === 'starting' && c.title && !/'s Channel$/.test(c.title)) $('sc-sub').textContent = c.title;
+    }).catch(function () { /* the scene still stands without them */ });
+})();
+</script>
+</body>
+</html>

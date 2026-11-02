@@ -10,18 +10,21 @@
 
 // The owner's rule: no "free"/"$0" copy anywhere.
 const NO_FREE = /\b(free|no[- ]cost)\b|\$\s?0\b/i;
-// Never a real person's looks or age ("ara007 shirtless thoughts" was served once).
-const LOOKS = /\b(shirtless|topless|bare-?chested|naked|nude|cleavage|bikini|underwear|teen(age)?|young|kids?|child(ren)?|boys?|girls?)\b/i;
-// Nothing crude or sexual on the front page ("testicle banter crew", 2026-10-17), whatever chat joked about.
-const CRUDE = /\b(testic\w*|dick|cock|penis|vagina|puss(y|ies)|boobs?|tits|titties|ass(hole)?s?|butthole|cum|horny|sexy?|porn\w*|nsfw|fuck\w*|shit\w*|piss\w*|bitch\w*|cunt|wank\w*|poop\w*|fart\w*|turds?)\b/i;
+// Describing people and nudity are fine (owner, 2026-10-31). The front page never puts a child and bare skin in one
+// line.
+const MINOR = /\b(teen(age)?|kids?|child(ren)?|boys?|girls?)\b/i;
+const SKIN = /\b(shirtless|topless|bare-?chested|cleavage|bikini|underwear|naked|nude|nudity|undress\w*)\b/i;
+const MINOR_SKIN = { test: (s) => MINOR.test(s) && SKIN.test(s) };
+// No profanity, toilet jokes or porn on the front page, whatever chat joked about. Bodies are fine (owner, 2026-10-31).
+const CRUDE = /\b(cum|horny|porn\w*|nsfw|fuck\w*|shit\w*|piss\w*|bitch\w*|cunt|wank\w*|poop\w*|fart\w*|turds?|ass(hole)?s?|butthole)\b/i;
 // A keyboard mash taken for a name ("qeqweqwe watchers").
 const MASH = /(qwe|ewq|asdf|sdfg|zxcv|qeqw)/i;
 
-const RULES = [NO_FREE, LOOKS, CRUDE, MASH];
+const RULES = [NO_FREE, MINOR_SKIN, CRUDE, MASH];
 
 function publicOk(text) {
     const s = String(text == null ? '' : text);
     return !RULES.some((re) => re.test(s));
 }
 
-module.exports = { publicOk, NO_FREE, LOOKS, CRUDE, MASH };
+module.exports = { publicOk, NO_FREE, MINOR_SKIN, CRUDE, MASH };

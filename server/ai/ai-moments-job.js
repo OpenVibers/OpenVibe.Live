@@ -58,26 +58,20 @@ function _deJson(desc) {
     return s;
 }
 // The title when the AI gives none. A frame caption's first clause, when it reads as a title: never cut off on a
-// dangling word ("…Speaking To") and never about how someone looks (owner's rule for public AI text: "A Man With A
-// Beard Is Speaking To" and "A Person In A Bright Yellow High-Visibility Jacket" titled public clips, 2026-10-17).
-// Otherwise the stream's own title and the moment's time ("Fortnite! at 41:20").
-const LOOKS_WORDS = /\b(wearing|wears|dressed|beard(ed)?|mustache|glasses|sunglasses|jacket|hoodie|sweater|vest|shirt|shirtless|topless|naked|nude|tank top|t-shirt|beanie|cap|hat|helmet|headset|headphones|hair|bald|blonde|expression|face|smil(e|ing)|clothing|outfit|tattoo(ed)?|young|old(er)?|teen(age)?|boy|girl|kid|child|blurred|body|skin|boob(s|ies)?|tits|titties|breasts?|cleavage|nipples?|butts?|booty|thighs?|crotch|sexy|busty|curvy|thicc)\b/i;
-// A title also fails the shared rule (openvibe-sdk/no-looks, db.hasLooks): this list alone let "A Naked Man Lying On
-// Their Back With Legs" through to Live's home (clip 483, 2026-10-23): it named neither "man" nor "naked".
-const namesLooks = (s) => LOOKS_WORDS.test(s) || db.hasLooks(s);
+// dangling word ("…Speaking To"). Otherwise the stream's own title and the moment's time ("Fortnite! at 41:20").
 const DANGLING = /\s+(to|in|with|a|an|of|and|the|on|at|is|are|was|from|for|by|near|while|as|or|into|onto|its|his|her|their)$/i;
 function _captionTitle(desc) {
     let s = _cleanText(desc).split(/[.!?;:]|,\s(?=(?:with|and|as|while|near|showing|likely)\b)/i)[0].trim();
     s = s.split(' ').filter(Boolean).slice(0, 9).join(' ').replace(/[,\s]+$/, '');
     while (DANGLING.test(s)) s = s.replace(DANGLING, '');
-    if (s.split(' ').length < 3 || namesLooks(s)) return null;
+    if (s.split(' ').length < 3) return null;
     return s.replace(/\b\w/g, (ch) => ch.toUpperCase()).slice(0, 70);
 }
 // An AI-written title is used unless it is about looks ("Red Beanie Moment", "Glasses Adjustment Tension"); then the
 // fallback above.
 function _publicTitle(title, vod, offset, desc) {
     const t = _cleanTitle(title);
-    return t && !namesLooks(t) ? t : _fallbackTitle(vod, offset, desc);
+    return t || _fallbackTitle(vod, offset, desc);
 }
 function _fallbackTitle(vod, offset, desc) {
     const fromCaption = desc ? _captionTitle(desc) : null;
@@ -235,7 +229,7 @@ async function _findBestMoment(vod, { flavor = 'paste', avoid = [] } = {}) {
                 t = clamp(t);
                 if (!farFromUsed(t)) { console.log(`[AI-Moments] VOD ${vod.vod_id}: pick at ${_mmss(t)} is next to a used moment — trying the objective signals instead`); throw new Error('near used'); }
                 const near = _nearestMemory(ctx.memories, t);
-                const result = { offset: t, title: _publicTitle(j.title, vod, t, j.desc), desc: db.noLooks(_cleanText(_deJson(j.desc), 400) || (near && _deJson(near.description)) || ''), speech: _speechNear(ctx.transcript, t), tags: _memTags(near) };
+                const result = { offset: t, title: _publicTitle(j.title, vod, t, j.desc), desc: _cleanText(_deJson(j.desc), 400) || (near && _deJson(near.description)) || '', speech: _speechNear(ctx.transcript, t), tags: _memTags(near) };
                 if (explicit.isExplicit(j.desc, j.title, near && near.description, result.desc)) { console.log(`[AI-Moments] VOD ${vod.vod_id}: the pick at ${_mmss(t)} shows sexual content — no moment from it`); return null; }
                 return _isEmptyScene(result.desc) ? null : result;
             }
@@ -252,7 +246,7 @@ async function _findBestMoment(vod, { flavor = 'paste', avoid = [] } = {}) {
     if (!candidates.length) return null;
     let offset = clamp(candidates[0].t);
     const near = _nearestMemory(ctx.memories, offset);
-    const desc = near ? db.noLooks(_deJson(near.description)) : '';
+    const desc = near ? _deJson(near.description) : '';
     if (near && explicit.isExplicit(near.description)) return null;   // never a moment of sexual content (server/ai/explicit.js)
     return _isEmptyScene(desc) ? null : { offset, title: _fallbackTitle(vod, offset, desc), desc, speech: _speechNear(ctx.transcript, offset), tags: _memTags(near) };
 }
@@ -462,7 +456,7 @@ async function tick(opts = {}) {
                                 const vis = await ai.analyzeImagePaste(outPath, title, 'moment_frame');
                                 if (vis && explicit.isExplicit(vis.description, (vis.tags || []).join(' '))) sexual = true;
                                 if (vis && vis.description && vis.description.length > 25) {
-                                    desc = db.noLooks(_cleanText(vis.description, 500));
+                                    desc = _cleanText(vis.description, 500);
                                     if (Array.isArray(vis.tags) && vis.tags.length) tags = vis.tags.slice(0, 8);
                                     if (!moment.title) title = _fallbackTitle(v, offset, desc);
                                 }
@@ -512,7 +506,7 @@ async function tick(opts = {}) {
                     slug, user_id: v.user_id,
                     title: title.slice(0, 80), content, language: 'text', visibility: 'public',
                     stream_id: v.stream_id, metadata,
-                    ai_summary: desc, ai_tags: JSON.stringify(db.noLooksTags(tags)),
+                    ai_summary: desc, ai_tags: JSON.stringify(tags),
                     screenshot: {
                         buffer: fs.readFileSync(screenshotPath),
                         filename: path.basename(screenshotPath),

@@ -59,7 +59,7 @@
                     <div class="tour-core-wrap">
                         <div class="tour-core" data-node="core">
                             <span class="tour-core-ring"></span><span class="tour-core-ring tour-core-ring--2"></span>
-                            <span class="tour-core-logo"><span class="ov-mark" data-size="30" style="color:#fff"></span></span>
+                            <span class="tour-core-logo"><span class="ov-mark" data-size="34" data-tone="white"></span></span>
                             <b>OpenVibe.Live</b>
                             <!-- The old feature line here ("<1s latency · chat · emotes · …") listed the same
                                  things the chip grid below spells out properly. Two statements of the same

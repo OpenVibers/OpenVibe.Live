@@ -440,7 +440,7 @@
         const tAgo = (d.deps && d.deps.timeAgoShort) || ((x) => x || '?');
         const numf = (d.deps && d.deps.formatNumber) || _num;
         const avatarHtml = p.avatar_url
-            ? `<img class="ctx-avatar" src="${esc(p.avatar_url)}" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display=''">`
+            ? `<img class="ctx-avatar" src="${esc(typeof ovImgW === 'function' ? ovImgW(p.avatar_url, 64) : p.avatar_url)}" data-full="${esc(p.avatar_url)}" alt="" onerror="if(this.dataset.full&&this.src!==this.dataset.full){this.src=this.dataset.full;return}this.style.display='none';this.nextElementSibling.style.display=''">`
             + `<span class="ctx-avatar-letter" style="display:none;background:${esc(p.profile_color || '#999')}">${esc(username[0] ? username[0].toUpperCase() : '?')}</span>`
             : `<span class="ctx-avatar-letter" style="background:${esc(p.profile_color || '#999')}">${esc(username[0] ? username[0].toUpperCase() : '?')}</span>`;
         const badge = _badgeHTML(p.role);

@@ -18,7 +18,7 @@
                 <!-- ═══ STEP 0: Stream Manager (existing streams + create new) ═══ -->
                 <div id="bc-stream-manager" class="broadcast-tab-content active" data-tab="go-live">
                     <h2><i class="fa-solid fa-tower-broadcast"></i> Go Live <button type="button" class="btn btn-outline btn-sm glw-open-btn" onclick="openSetupHub()" title="Everything you can set up, step by step"><i class="fa-solid fa-list-check"></i> Streamer setup</button></h2>
-                    <p class="bc-page-subtitle">Select a stream slot to configure your profile and go live.</p>
+                    <p class="bc-page-subtitle">Check the card, press Go live. Everything else is in the rows under it.</p>
 
                     <!-- Guests: going live needs an account. broadcast.js shows this in place of the slot
                          workspace and loads nothing else (_broadcastSignInGate). -->
@@ -52,26 +52,17 @@
                     <div class="bc-top-tab-panel active" data-bctabpanel="mine">
                     <div class="bc-workspace" id="bc-workspace">
 
-                        <!-- Left sidebar: stream slot list -->
-                        <div class="bc-ws-sidebar">
-                            <div class="bc-ws-sidebar-hd">
-                                <span><i class="fa-solid fa-tower-broadcast"></i> My Streams</span>
-                                <button class="btn btn-small btn-ghost bc-ws-add-btn"
-                                    onclick="showCreateManagedStreamModal()" title="Add stream slot">
-                                    <i class="fa-solid fa-plus"></i>
-                                </button>
-                            </div>
-                            <div class="bc-ws-list" id="bc-ws-list">
-                                <p class="muted" style="padding:12px"><i class="fa-solid fa-spinner fa-spin"></i> Loading&hellip;</p>
-                            </div>
-                        </div>
+                        <!-- Your slots: a row of pills (method icon, name, live), then New slot (broadcast-workspace.js) -->
+                        <nav class="bc-ws-sidebar gl-slots" aria-label="Your stream slots">
+                            <div class="bc-ws-list" id="bc-ws-list"></div>
+                        </nav>
 
                         <!-- Right main panel -->
                         <div class="bc-ws-main">
                             <!-- Empty state: no stream selected -->
                             <div class="bc-ws-empty" id="bc-ws-empty">
                                 <i class="fa-solid fa-tower-broadcast" style="font-size:2.5rem;opacity:0.2;margin-bottom:16px"></i>
-                                <p class="muted" style="margin:0 0 16px">Select a stream slot from the sidebar to configure and go live</p>
+                                <p class="muted" style="margin:0 0 16px">A slot is one stream of yours: its title, its link, how it goes out and where else it is sent. Make one to go live.</p>
                                 <button class="btn btn-outline" onclick="showCreateManagedStreamModal()">
                                     <i class="fa-solid fa-plus"></i> Create stream slot
                                 </button>

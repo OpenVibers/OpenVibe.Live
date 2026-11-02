@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex">
+<title>Alerts</title>
+<!-- An OBS browser source (plan L45 step 5): the moments of a stream, in the streamer's look.
+       /obs/alerts/<username>
+     Follows, tips, subs, raids and goals arrive over the channel's chat room as `overlay-alert` messages; each one
+     springs in, says who and what, glints, and leaves after a few seconds; a big tip or a goal throws confetti.
+     Query: theme=<theme id> (default Vibe), pos=top|bottom (default top), demo=1 (sample alerts, to line up OBS).
+     The ground is transparent; size the source 1920 x 1080. -->
+<style>
+@font-face { font-family: 'OV Brand'; src: url('/shared/ov-brand.woff2') format('woff2'); font-weight: 700 900; font-display: swap; }
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { width: 100%; height: 100%; overflow: hidden; background: transparent !important; }
+body { --o: #4f7cff; --v: #8b5cf6; font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: var(--text-primary, #e6edf7); }
+.al-stage { position: fixed; left: 0; right: 0; top: 3vw; display: grid; justify-items: center; pointer-events: none; }
+body[data-pos=bottom] .al-stage { top: auto; bottom: 3vw; }
+.al { position: relative; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 1.2vw; align-items: center; min-width: 26vw; max-width: 46vw;
+    padding: 1.1vw 1.8vw 1.1vw 1.1vw; border-radius: 1.6vw; overflow: hidden; isolation: isolate;
+    background: color-mix(in srgb, var(--bg-card, #111827) 88%, transparent); border: 1px solid color-mix(in srgb, var(--accent, var(--o)) 40%, transparent);
+    box-shadow: 0 1.4vw 3.6vw -1vw rgba(0,0,0,.55), 0 0 0 .3vw color-mix(in srgb, var(--accent, var(--o)) 14%, transparent);
+    animation: alIn var(--ov-dur-4, .7s) var(--ov-ease-spring, cubic-bezier(.34,1.56,.64,1)) both; }
+.al.is-out { animation: alOut var(--ov-dur-4, .45s) var(--ov-ease-out, cubic-bezier(.65,0,.35,1)) both; }
+@keyframes alIn { from { opacity: 0; transform: translateY(-2.4vw) scale(.92); } }
+@keyframes alOut { to { opacity: 0; transform: translateY(-1.2vw) scale(.96); } }
+body[data-pos=bottom] .al { animation-name: alInUp; }
+@keyframes alInUp { from { opacity: 0; transform: translateY(2.4vw) scale(.92); } }
+/* The glint, as the mark's: a band of light crosses once, just after it lands. */
+.al::after { content: ''; position: absolute; inset: 0; pointer-events: none; background: linear-gradient(105deg, transparent 35%, rgba(255,255,255,.22) 50%, transparent 65%); transform: translateX(-120%); animation: alGlint 1s .55s var(--ov-ease-out, cubic-bezier(.45,0,.25,1)) forwards; }
+@keyframes alGlint { to { transform: translateX(120%); } }
+.al-ic { position: relative; display: grid; place-items: center; width: 4.6vw; height: 4.6vw; border-radius: 1.2vw; font-size: 2.2vw;
+    background: linear-gradient(135deg, color-mix(in srgb, var(--accent, var(--o)) 85%, #fff 15%), var(--v)); color: #fff; }
+.al-ic img { width: 100%; height: 100%; border-radius: inherit; object-fit: cover; }
+.al-ic b { position: absolute; right: -.5vw; bottom: -.5vw; display: grid; place-items: center; width: 2vw; height: 2vw; border-radius: 50%; font-size: 1vw; background: var(--accent-strong, var(--accent, var(--o))); color: #fff; border: .2vw solid var(--bg-card, #111827); }
+.al-t { display: grid; gap: .25vw; min-width: 0; }
+.al-who { font-family: 'OV Brand', Nunito, Inter, sans-serif; font-weight: 900; font-size: 2.1vw; line-height: 1.1; letter-spacing: -.01em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.al-what { font-size: 1.35vw; font-weight: 650; color: var(--text-secondary, #a8b3c4); }
+.al-what em { font-style: normal; color: var(--accent-light, var(--accent, var(--o))); font-weight: 800; }
+.al-msg { margin-top: .3vw; font-size: 1.3vw; line-height: 1.35; color: var(--text-primary, #e6edf7); overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.al-msg:empty { display: none; }
+.al-status { position: fixed; left: 1vw; bottom: 1vw; font-size: .9vw; color: rgba(255,255,255,.55); text-shadow: 0 1px 2px #000; }
+.al-status:empty { display: none; }
+@media (prefers-reduced-motion: reduce) { .al, .al.is-out { animation: none; } .al::after { display: none; } }
+</style>
+<script src="/shared/theme-loader.js"></script>
+<!-- The OpenVibe glyphs draw every fa- icon here (no Font Awesome since 2026-11-01). -->
+<script src="/shared/ov-glyphs.js" defer></script>
+</head>
+<body>
+<div class="al-stage" id="al-stage" aria-live="polite"></div>
+<p class="al-status" id="al-status"></p>
+<script src="/shared/ov-fx.js"></script>
+<script>
+(function () {
+    'use strict';
+    var parts = location.pathname.split('/').filter(Boolean);   // obs, alerts, <username>
+    var user = /^[A-Za-z0-9_.-]{1,40}$/.test(parts[2] || '') ? parts[2] : '';
+    var q = new URLSearchParams(location.search);
+    var $ = function (id) { return document.getElementById(id); };
+    var L = window.OpenVibeThemeLoader;
+    var themeId = /^[a-z0-9-]{1,40}$/.test(q.get('theme') || '') ? q.get('theme') : 'vibe';
+    if (L && L.THEMES && L.THEMES[themeId]) { L.applyVars(L.THEMES[themeId]); document.documentElement.setAttribute('data-theme', themeId); }
+    document.documentElement.removeAttribute('data-ov-season'); document.documentElement.removeAttribute('data-ov-season-mark');
+    document.body.setAttribute('data-pos', q.get('pos') === 'bottom' ? 'bottom' : 'top');
+    var status = function (t) { $('al-status').textContent = t || ''; };
+
+    // ── One alert at a time, each for a few seconds; seen ids are never shown twice ──
+    var KIND = {
+        follow: { icon: 'fa-heart', say: 'followed' },
+        tip: { icon: 'fa-coins', say: 'tipped' },
+        sub: { icon: 'fa-star', say: 'subscribed' },
+        raid: { icon: 'fa-users', say: 'raided' },
+        goal: { icon: 'fa-trophy', say: 'Goal reached' },
+    };
+    var queue = [], showing = false, seen = new Set();
+    function el(tag, cls, kids) { var n = document.createElement(tag); if (cls) n.className = cls; (kids || []).forEach(function (k) { if (k != null) n.append(k); }); return n; }
+    function icon(name) { var i = document.createElement('i'); i.className = 'fa-solid ' + name; i.setAttribute('aria-hidden', 'true'); return i; }
+    function amountText(a) {
+        if (!a || !(Number(a.value) > 0)) return '';
+        var unit = String(a.unit || '').slice(0, 16);
+        return Number(a.value).toLocaleString() + (unit ? ' ' + unit : '');
+    }
+    function card(a) {
+        var k = KIND[a.kind];
+        var ic = el('div', 'al-ic');
+        var who = a.who && typeof a.who === 'object' ? a.who : null;
+        if (who && /^https:\/\//.test(who.avatar || '')) { var img = document.createElement('img'); img.alt = ''; img.onerror = function () { img.replaceWith(icon(k.icon)); }; img.src = who.avatar; ic.append(img); var badge = el('b'); badge.append(icon(k.icon)); ic.append(badge); }
+        else ic.append(icon(k.icon));
+        var name = a.kind === 'goal' ? 'Goal reached' : (who && who.name ? String(who.name).slice(0, 40) : 'Someone');
+        var what = el('p', 'al-what');
+        var amt = amountText(a.amount);
+        if (a.kind === 'goal') what.append(a.text ? String(a.text).slice(0, 80) : 'Thank you, everyone');
+        else if (a.kind === 'raid') { what.append('raided'); if (amt) { what.append(' with '); var e = el('em'); e.textContent = amt; what.append(e); } }
+        else { what.append(k.say); if (amt) { what.append(' '); var e2 = el('em'); e2.textContent = amt; what.append(e2); } }
+        var msg = el('p', 'al-msg');
+        if (a.kind === 'tip' && a.text) msg.textContent = String(a.text).slice(0, 200);
+        var t = el('div', 'al-t', [el('p', 'al-who', [name]), what, msg]);
+        return el('div', 'al', [ic, t]);
+    }
+    function next() {
+        if (showing || !queue.length) return;
+        showing = true;
+        var a = queue.shift(), node = card(a), stage = $('al-stage');
+        stage.replaceChildren(node);
+        var big = a.kind === 'goal' || a.kind === 'raid' || (a.kind === 'tip' && Number(a.amount && a.amount.value) >= 10) || a.kind === 'sub';
+        if (big && window.OVFx && window.OVFx.confetti) setTimeout(function () { var r = node.getBoundingClientRect(); window.OVFx.confetti({ x: r.left + r.width / 2, y: r.top + r.height / 2, count: a.kind === 'goal' ? 140 : 90 }); }, 450);
+        var stay = a.kind === 'tip' && a.text ? 8000 : 5500;
+        setTimeout(function () { node.classList.add('is-out'); setTimeout(function () { node.remove(); showing = false; next(); }, 460); }, stay);
+    }
+    function take(a) {
+        if (!a || !KIND[a.kind]) return;
+        var id = String(a.id || '');
+        if (id) { if (seen.has(id)) return; seen.add(id); if (seen.size > 500) seen.delete(seen.values().next().value); }
+        queue.push(a); if (queue.length > 20) queue.shift();
+        next();
+    }
+    window.OVAlerts = { take: take };
+
+    // ── Demo: a sample of each, to line up OBS ──
+    if (q.get('demo') === '1') {
+        var samples = [
+            { kind: 'follow', id: 'd1', who: { name: 'Wren' } },
+            { kind: 'tip', id: 'd2', who: { name: 'Maticus' }, amount: { value: 25, unit: 'Vibes' }, text: 'For the robot fund. Make it dance!' },
+            { kind: 'sub', id: 'd3', who: { name: 'JapaneseOldGuy' } },
+            { kind: 'raid', id: 'd4', who: { name: 'Goosely' }, amount: { value: 42, unit: 'viewers' } },
+            { kind: 'goal', id: 'd5', text: 'New camera: 100%' },
+        ];
+        var i = 0;
+        var loop = function () { var s = samples[i % samples.length]; take(Object.assign({}, s, { id: s.id + '-' + i })); i++; setTimeout(loop, 7000); };
+        loop();
+        status('Demo alerts');
+        return;
+    }
+
+    // ── The channel's room: overlay-alert messages, channel-wide, live or not ──
+    if (!user) { status('No channel in the address'); return; }
+    var ws = null, delay = 2000, streamId = null;
+    function resolve() {
+        return fetch('/api/streams/channel/' + encodeURIComponent(user)).then(function (r) { return r.ok ? r.json() : null; }).then(function (d) {
+            if (!d || !d.channel) { status('Channel not found'); return false; }
+            var s = d.stream && d.stream.id ? d.stream : ((d.streams || [])[0] || null);
+            streamId = s && s.id ? s.id : null;
+            return true;
+        }).catch(function () { return false; });
+    }
+    function connect() {
+        var proto = location.protocol === 'https:' ? 'wss' : 'ws';
+        ws = new WebSocket(proto + '://' + location.host + '/ws/chat' + (streamId ? '?stream=' + streamId : ''));
+        ws.onopen = function () { delay = 2000; status(''); ws.send(JSON.stringify({ type: 'join', streamId: streamId, channel: user })); };
+        ws.onmessage = function (e) { try { var m = JSON.parse(e.data); if (m && m.type === 'overlay-alert') take(m); } catch (err) { /* not ours */ } };
+        ws.onclose = function () { status('Reconnecting…'); setTimeout(function () { resolve().then(connect); }, delay); delay = Math.min(delay * 1.6, 30000); };
+    }
+    resolve().then(function (ok) { if (ok) connect(); else setTimeout(function () { location.reload(); }, 30000); });
+    // The stream changes when it goes live or ends: join again then.
+    setInterval(function () {
+        var before = streamId;
+        resolve().then(function () { if (streamId !== before && ws && ws.readyState === 1) ws.close(); });
+    }, 60000);
+})();
+</script>
+</body>
+</html>

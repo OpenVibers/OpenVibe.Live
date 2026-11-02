@@ -297,7 +297,7 @@ const server = http.createServer(app).listen(0, '127.0.0.1', async () => {
         assert.strictEqual(meta.heroImage, frame);
         const html = pages.render(meta, '/');
         assert.ok(head(html).includes(`<link rel="preload" as="image" href="${frame}" fetchpriority="high">`), 'preloaded in the head');
-        assert.ok(html.includes(`<div class="hero-bg-layer active" style="background-image:linear-gradient(rgba(0,0,0,0.5),rgba(0,0,0,0.5)),url(&quot;${frame}&quot;)"></div><div class="hero-bg-layer"></div>`), 'the first layer shows it');
+        assert.ok(html.includes(`<div class="hero-bg-layer active" style="background-image:linear-gradient(var(--hero-veil,rgba(0,0,0,0.5)),var(--hero-veil,rgba(0,0,0,0.5))),url(&quot;${frame}&quot;)"></div><div class="hero-bg-layer"></div>`), 'the first layer shows it');
         // A thumbnail that is not a plain https URL is never written into the page.
         await db.setState('home_hero_moments', JSON.stringify({ moments: [{ vodId: 100, thumbnail: 'https://x.test/a")%3Bbackground:url("//evil' }] }));
         assert.strictEqual((await pages._pageMeta('/')).heroImage, null);

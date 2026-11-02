@@ -251,6 +251,7 @@ function renderPage({ name, title, html, headings }) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>${escapeHtml(pageTitle)}</title>
     <link rel="icon" type="image/svg+xml" href="/assets/logo.svg">
+    <script src="/shared/theme-loader.js"></script>
     <link rel="canonical" href="${escapeHtml(canonical)}">${description ? `
     <meta name="description" content="${escapeHtml(description)}">
     <meta property="og:type" content="article">
@@ -261,43 +262,46 @@ function renderPage({ name, title, html, headings }) {
     <meta property="og:image" content="${escapeHtml(new URL(social.url('live') || '/og-image.png', canonical).href)}">
     <meta name="twitter:card" content="summary_large_image">` : ''}
     <style>
-        :root { --bg: #0d0d0f; --bg-2: #16161a; --bg-3: #1e1e24; --text: #e8e6e3; --text-2: #9a9a9a; --muted: #666;
-                --accent: #8b5cf6; --accent-light: #a78bfa; --border: #2a2a32; }
+        /* The reader's theme (theme-loader.js, 2026-11-01): the docs were dark whatever the reader chose. */
+        :root { --d-bg: var(--bg-primary, #0d0d0f); --d-bg-2: var(--bg-secondary, #16161a); --d-bg-3: var(--bg-tertiary, #1e1e24);
+                --d-text: var(--text-primary, #e8e6e3); --d-text-2: var(--text-secondary, #9a9a9a); --d-muted: var(--text-muted, #7a7a84);
+                --d-accent: var(--accent, #8b5cf6); --d-link: var(--accent-text, var(--accent-light, #a78bfa)); --d-border: var(--border, #2a2a32);
+                color-scheme: var(--color-scheme, dark); }
         * { box-sizing: border-box; }
-        html, body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
-        a { color: var(--accent-light); }
-        .top { display: flex; align-items: center; gap: 14px; padding: 12px 20px; border-bottom: 1px solid var(--border); background: var(--bg-2); font-size: 0.9rem; }
-        .top .brand { font-weight: 700; color: var(--text); text-decoration: none; display: flex; align-items: center; gap: 8px; }
-        .top .brand::before { content: ''; width: 18px; height: 18px; border-radius: 5px; background: linear-gradient(135deg, #8b5cf6, #6d28d9); }
-        .top .sep { color: var(--muted); }
+        html, body { margin: 0; background: var(--d-bg); color: var(--d-text); font: 15px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+        a { color: var(--d-link); }
+        .top { display: flex; align-items: center; gap: 14px; padding: 12px 20px; border-bottom: 1px solid var(--d-border); background: var(--d-bg-2); font-size: 0.9rem; }
+        .top .brand { font-weight: 700; color: var(--d-text); text-decoration: none; display: flex; align-items: center; gap: 8px; }
+        .top .brand::before { content: ''; width: 18px; height: 18px; border-radius: 5px; background: linear-gradient(135deg, var(--d-accent), color-mix(in srgb, var(--d-accent) 70%, #000)); }
+        .top .sep { color: var(--d-muted); }
         .top .right { margin-left: auto; display: flex; gap: 14px; }
         main { max-width: 880px; margin: 0 auto; padding: 24px 20px 64px; }
         h1 { font-size: 1.9rem; margin: 0 0 12px; line-height: 1.25; }
-        h2 { font-size: 1.35rem; margin: 2.2em 0 0.6em; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
+        h2 { font-size: 1.35rem; margin: 2.2em 0 0.6em; padding-bottom: 6px; border-bottom: 1px solid var(--d-border); }
         h3 { font-size: 1.1rem; margin: 1.8em 0 0.5em; }
         h4 { font-size: 1rem; margin: 1.5em 0 0.4em; }
         h1, h2, h3, h4 { scroll-margin-top: 16px; }
-        .anchor { margin-left: 8px; color: var(--muted); text-decoration: none; opacity: 0; font-weight: 400; }
+        .anchor { margin-left: 8px; color: var(--d-muted); text-decoration: none; opacity: 0; font-weight: 400; }
         h1:hover .anchor, h2:hover .anchor, h3:hover .anchor, h4:hover .anchor, .anchor:focus { opacity: 1; }
         p, ul, ol, blockquote, pre, .table-wrap { margin: 0 0 1em; }
         li { margin: 0.25em 0; }
-        code { font: 0.9em ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; background: var(--bg-3); padding: 1px 5px; border-radius: 4px; }
-        pre { background: var(--bg-2); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; overflow-x: auto; position: relative; }
-        pre:focus-visible { outline: 2px solid var(--accent-light); outline-offset: 2px; }
+        code { font: 0.9em ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; background: var(--d-bg-3); padding: 1px 5px; border-radius: 4px; }
+        pre { background: var(--d-bg-2); border: 1px solid var(--d-border); border-radius: 10px; padding: 14px 16px; overflow-x: auto; position: relative; }
+        pre:focus-visible { outline: 2px solid var(--d-link); outline-offset: 2px; }
         pre code { background: none; padding: 0; font-size: 0.85rem; line-height: 1.5; }
-        pre[data-lang]::before { content: attr(data-lang); position: absolute; top: 6px; right: 12px; font-size: 0.7rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
-        blockquote { border-left: 3px solid var(--accent); background: rgba(139, 92, 246, 0.08); padding: 10px 16px; border-radius: 0 8px 8px 0; }
+        pre[data-lang]::before { content: attr(data-lang); position: absolute; top: 6px; right: 12px; font-size: 0.7rem; color: var(--d-muted); text-transform: uppercase; letter-spacing: 0.06em; }
+        blockquote { border-left: 3px solid var(--d-accent); background: color-mix(in srgb, var(--d-accent) 8%, transparent); padding: 10px 16px; border-radius: 0 8px 8px 0; }
         blockquote p:last-child { margin: 0; }
         .table-wrap { overflow-x: auto; }
         table { border-collapse: collapse; width: 100%; font-size: 0.92rem; }
-        th, td { text-align: left; padding: 8px 10px; border: 1px solid var(--border); vertical-align: top; }
-        th { background: var(--bg-2); }
-        tr:nth-child(even) td { background: rgba(255, 255, 255, 0.02); }
-        hr { border: 0; border-top: 1px solid var(--border); margin: 2em 0; }
-        .toc { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 0.85rem; margin: 0 0 24px; padding: 12px 14px; background: var(--bg-2); border: 1px solid var(--border); border-radius: 10px; }
-        .toc a { color: var(--text-2); text-decoration: none; }
-        .toc a:hover { color: var(--accent-light); }
-        .foot { margin-top: 48px; padding-top: 16px; border-top: 1px solid var(--border); font-size: 0.85rem; color: var(--text-2); }
+        th, td { text-align: left; padding: 8px 10px; border: 1px solid var(--d-border); vertical-align: top; }
+        th { background: var(--d-bg-2); }
+        tr:nth-child(even) td { background: color-mix(in srgb, var(--d-text) 3%, transparent); }
+        hr { border: 0; border-top: 1px solid var(--d-border); margin: 2em 0; }
+        .toc { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 0.85rem; margin: 0 0 24px; padding: 12px 14px; background: var(--d-bg-2); border: 1px solid var(--d-border); border-radius: 10px; }
+        .toc a { color: var(--d-text-2); text-decoration: none; }
+        .toc a:hover { color: var(--d-link); }
+        .foot { margin-top: 48px; padding-top: 16px; border-top: 1px solid var(--d-border); font-size: 0.85rem; color: var(--d-text-2); }
     </style>
 </head>
 <body>

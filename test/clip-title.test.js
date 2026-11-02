@@ -1,6 +1,6 @@
 'use strict';
 // AI titles for untitled clips (server/ai/clip-title.js, migration 0019): a clip still named by a placeholder is titled
-// from its overview through live.stream.titles, once; a title a person gave is kept; a title naming looks or a rough
+// from its overview through live.stream.titles, once; a title a person gave is kept; a slur
 // one gives way to a safe one; a person who names the clip while the AI writes wins. A clip's chat announcement waits a
 // little for the AI title (clip-notify _waitForTitle), and the title route marks a person's title kept.
 //
@@ -87,9 +87,9 @@ console.warn = () => {};
     const byId = new Map(updates);
     assert.strictEqual(byId.get(601), 'Triple Kill Final Round Clutch');
     assert.strictEqual(byId.get(603), 'Shotgun Rush Through Hallway', '"Clip: <stream title>" is a placeholder');
-    assert.strictEqual(byId.get(605), 'Friday ranked at 0:42', 'a title naming looks gives way to the stream and the moment');
-    assert.strictEqual(byId.get(606), 'Friday ranked at 0:42', 'a rough title gives way to the stream and the moment');
-    assert.strictEqual(byId.get(612), 'Friday ranked at 0:42', 'a body word gives way too (clip 488, 2026-10-25)');
+    assert.strictEqual(byId.get(605), 'Woman In Red Dress Dances', 'describing someone is fine (2026-10-31)');
+    assert.strictEqual(byId.get(606), 'Fucking Insane Clutch', 'swearing is fine in a title (2026-10-31)');
+    assert.strictEqual(byId.get(612), 'Boobs by Bobs Chalk Talk', 'body words are fine (2026-10-31)');
     assert.ok(!byId.has(602) && !byId.has(604) && !byId.has(607) && !byId.has(608), 'nothing else is written to Media');
     assert.strictEqual(n, 5);
 

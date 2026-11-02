@@ -247,6 +247,18 @@ async function _rdMore(btn) {
 }
 
 // ── Topics ───────────────────────────────────────────────────
+// The first dozen show; the rest fold under their count (the owner, 10-31: short pages by counted folds, never by
+// hiding). A card's summary is a teaser of four lines: the whole of it is the topic's own page.
+const RD_FIRST = 12;
+function _rdTopicCard(t) {
+    return `<article class="rd-card rd-topic-card">
+            ${_rdTopicChip(t)}
+            ${t.headline ? `<h3 class="rd-h3">${_rdA(`/rundown/t/${encodeURIComponent(t.slug)}`, _rdEsc(t.headline))}</h3>` : ''}
+            ${t.summary ? `<p class="rd-what rd-what-clip">${_rdEsc(t.summary)}</p>` : ''}
+            <p class="rd-trend-meta"><span class="rd-stack" aria-hidden="true">${(t.people || []).map((p) => `<i style="--rd-c:${_rdEsc(p.profile_color || '#64748b')}">${p.avatar_url ? `<img src="${_rdEsc(p.avatar_url)}" alt="" width="20" height="20" loading="lazy">` : _rdEsc(_rdName(p).charAt(0).toUpperCase())}</i>`).join('')}</span>
+            ${t.streamers} streamer${t.streamers === 1 ? '' : 's'} · ${t.takes} take${t.takes === 1 ? '' : 's'} · ${_rdEsc(_rdAgo(t.last_seen_at))}</p>
+        </article>`;
+}
 async function _rdTopics(root, query) {
     const sort = query.get('sort') === 'most' ? 'most' : 'recent';
     const kind = RD_KIND[query.get('kind')] ? query.get('kind') : '';
@@ -257,13 +269,7 @@ async function _rdTopics(root, query) {
             <div class="rd-seg" role="group" aria-label="Sort">${_rdA(href({ sort: '' }), 'Most recent', `rd-seg-btn${sort === 'recent' ? ' is-on' : ''}`)}${_rdA(href({ sort: 'most' }), 'Most talked about', `rd-seg-btn${sort === 'most' ? ' is-on' : ''}`)}</div>
             <div class="rd-chips" role="group" aria-label="Kind">${_rdA(href({ kind: '' }), 'All', `rd-chip${kind ? '' : ' is-on'}`)}${Object.entries(RD_KIND).map(([k, [label, color]]) => _rdA(href({ kind: k }), label, `rd-chip${kind === k ? ' is-on' : ''}`).replace('class="rd-chip', `style="--rd-k:${color}" class="rd-chip`)).join('')}</div>
         </div>
-        ${d.topics.length ? `<div class="rd-topic-grid">${d.topics.map((t) => `<article class="rd-card rd-topic-card">
-            ${_rdTopicChip(t)}
-            ${t.headline ? `<h3 class="rd-h3">${_rdA(`/rundown/t/${encodeURIComponent(t.slug)}`, _rdEsc(t.headline))}</h3>` : ''}
-            ${t.summary ? `<p class="rd-what">${_rdEsc(t.summary)}</p>` : ''}
-            <p class="rd-trend-meta"><span class="rd-stack" aria-hidden="true">${(t.people || []).map((p) => `<i style="--rd-c:${_rdEsc(p.profile_color || '#64748b')}">${p.avatar_url ? `<img src="${_rdEsc(p.avatar_url)}" alt="" width="20" height="20" loading="lazy">` : _rdEsc(_rdName(p).charAt(0).toUpperCase())}</i>`).join('')}</span>
-            ${t.streamers} streamer${t.streamers === 1 ? '' : 's'} · ${t.takes} take${t.takes === 1 ? '' : 's'} · ${_rdEsc(_rdAgo(t.last_seen_at))}</p>
-        </article>`).join('')}</div>` : _rdEmpty('fa-comments', kind ? 'No topics of that kind yet.' : 'No topics yet: the desk is reading this week\'s streams.')}`;
+        ${d.topics.length ? `<div class="rd-topic-grid">${d.topics.slice(0, RD_FIRST).map(_rdTopicCard).join('')}</div>${d.topics.length > RD_FIRST ? `<details class="rd-more"><summary>${d.topics.length - RD_FIRST} more topic${d.topics.length - RD_FIRST === 1 ? '' : 's'}</summary><div class="rd-topic-grid">${d.topics.slice(RD_FIRST).map(_rdTopicCard).join('')}</div></details>` : ''}` : _rdEmpty('fa-comments', kind ? 'No topics of that kind yet.' : 'No topics yet: the desk is reading this week\'s streams.')}`;
     document.title = 'Topics · The Rundown · OpenVibe.Live';
 }
 async function _rdTopic(root, slug) {

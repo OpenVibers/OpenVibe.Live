@@ -192,7 +192,7 @@
         if (!user) return `<div class="msg-conv-avatar" style="width:${size}px;height:${size}px"><i class="fa-solid fa-user"></i></div>`;
         if (user.avatar_url) {
             return `<div class="msg-conv-avatar" style="width:${size}px;height:${size}px">
-                <img src="${esc(user.avatar_url)}" alt="" onerror="this.parentElement.innerHTML='<span style=\\'background:${esc(user.profile_color || '#999')}\\';font-size:${Math.round(size*0.4)}px>${esc((user.display_name||user.username||'?')[0].toUpperCase())}</span>'">
+                <img src="${esc(ovImgW(user.avatar_url, 96))}" data-full="${esc(user.avatar_url)}" alt="" onerror="${OV_IMG_RETRY}this.parentElement.innerHTML='<span style=\\'background:${esc(user.profile_color || '#999')}\\';font-size:${Math.round(size*0.4)}px>${esc((user.display_name||user.username||'?')[0].toUpperCase())}</span>'">
             </div>`;
         }
         const color = user.profile_color || '#999';

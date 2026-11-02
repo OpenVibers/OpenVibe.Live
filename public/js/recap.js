@@ -9,7 +9,7 @@
     const n = (v) => Number(v || 0).toLocaleString();
     const dur = (sec) => { sec = Math.max(0, Math.round(sec || 0)); const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60); return h ? `${h}h ${m}m` : `${m}m`; };
     const when = (ts) => { const t = Date.parse(String(ts || '').replace(' ', 'T') + (String(ts || '').endsWith('Z') ? '' : 'Z')); return Number.isFinite(t) ? new Date(t).toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : ''; };
-    const av = (u, size) => `<span class="recap-avatar" style="width:${size}px;height:${size}px;${u.profile_color ? `background:${esc(u.profile_color)}` : ''}">${u.avatar_url ? `<img src="${esc(u.avatar_url)}" alt="" loading="lazy">` : esc(String(u.display_name || u.username || '?').charAt(0).toUpperCase())}</span>`;
+    const av = (u, size) => `<span class="recap-avatar" style="width:${size}px;height:${size}px;${u.profile_color ? `background:${esc(u.profile_color)}` : ''}">${u.avatar_url ? `<img src="${esc(typeof ovImgW === 'function' ? ovImgW(u.avatar_url, size > 72 ? 320 : size > 40 ? 160 : 96) : u.avatar_url)}" data-full="${esc(u.avatar_url)}" alt="" loading="lazy" onerror="if(this.dataset.full&&this.src!==this.dataset.full){this.src=this.dataset.full;return}">` : esc(String(u.display_name || u.username || '?').charAt(0).toUpperCase())}</span>`;
     // Inside Live the SPA navigates; a recording or clip opens on openvibe.video (a plain link).
     const go = (href) => (/^https?:\/\//.test(href) ? `href="${esc(href)}"` : `href="${esc(href)}" onclick="return handleLinkClick(event, '${esc(href)}')"`);
 

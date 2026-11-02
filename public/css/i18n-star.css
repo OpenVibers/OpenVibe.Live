@@ -12,7 +12,7 @@
     border-radius: 0 8px 8px 0;
     background: color-mix(in srgb, var(--accent) 8%, transparent);
     color: var(--text-secondary); font-size: 0.82rem; line-height: 1.35;
-    animation: i18nSlideIn 0.35s ease both;
+    animation: i18nSlideIn var(--ov-dur-3, 0.35s) var(--ov-ease-out, ease) both;
 }
 .chat-translation i { color: var(--accent-light); margin-top: 2px; font-size: 0.8rem; }
 .chat-translation-text { color: var(--text-primary); opacity: 0.92; }
@@ -26,12 +26,12 @@
     color: var(--accent-light);
     background: color-mix(in srgb, var(--accent) 14%, transparent);
     border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
-    cursor: help; animation: i18nPulse 3s ease-in-out infinite;
+    cursor: help; animation: i18nPulse 3s var(--ov-ease-in-out, ease-in-out) infinite;
 }
 @keyframes i18nPulse { 0%,100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 0%, transparent); } 50% { box-shadow: 0 0 12px color-mix(in srgb, var(--accent) 45%, transparent); } }
 
 /* ── Channel: language chip in the info bar ─────────────────── */
-.ch-lang-chip i { color: #fff; }
+.ch-lang-chip i { color: inherit; }
 
 /* ── Channel: live captions panel (under the player) ─────────── */
 .ch-captions-title i { color: var(--accent-light); }
@@ -45,9 +45,9 @@
    ═══════════════════════════════════════════════════════════════ */
 .star-card-border {
     position: relative; border-radius: 22px; padding: 2px; overflow: hidden; isolation: isolate;
-    animation: starCardIn 0.8s cubic-bezier(.2,1.3,.3,1) both;
+    animation: starCardIn var(--ov-dur-4, 0.8s) var(--ov-ease-spring, cubic-bezier(.2,1.3,.3,1)) both;
 }
-@keyframes starSpin { to { transform: rotate(360deg); } }
+@keyframes starSpin { 50% { filter: hue-rotate(50deg) brightness(1.15); } }   /* the ring shimmers in colour; it never turns */
 @keyframes starCardIn { from { opacity: 0; transform: translateY(24px) scale(0.97); } to { opacity: 1; transform: none; } }
 .star-card {
     position: relative; border-radius: 20px; overflow: hidden;
@@ -82,7 +82,7 @@
     -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 5px), #000 calc(100% - 4px));
     mask: radial-gradient(farthest-side, transparent calc(100% - 5px), #000 calc(100% - 4px));
 }
-.star-avatar-glow { position: absolute; inset: -14px; border-radius: 50%; background: radial-gradient(circle, rgba(251,191,36,0.35), transparent 65%); animation: starGlow 2.6s ease-in-out infinite; }
+.star-avatar-glow { position: absolute; inset: -14px; border-radius: 50%; background: radial-gradient(circle, rgba(251,191,36,0.35), transparent 65%); animation: starGlow 2.6s var(--ov-ease-in-out, ease-in-out) infinite; }
 @keyframes starGlow { 0%,100% { transform: scale(0.9); opacity: 0.6; } 50% { transform: scale(1.15); opacity: 1; } }
 .star-avatar {
     position: relative; width: 100%; height: 100%; border-radius: 50%; object-fit: cover;
@@ -99,9 +99,9 @@
 .star-live-pill {
     position: absolute; top: -4px; right: -6px; padding: 2px 8px; border-radius: 999px;
     background: var(--live-red); color: #fff; font-size: 0.64rem; font-weight: 900; letter-spacing: 0.08em;
-    animation: i18nBlink 1.4s ease-in-out infinite;
+    animation: i18nBlink 1.4s var(--ov-ease-in-out, ease-in-out) infinite;
 }
-.star-kicker i { animation: starTwinkle 1.8s ease-in-out infinite; }
+.star-kicker i { animation: starTwinkle 1.8s var(--ov-ease-in-out, ease-in-out) infinite; }
 @keyframes starTwinkle { 0%,100% { transform: scale(1) rotate(0); opacity: 1; } 50% { transform: scale(1.35) rotate(20deg); opacity: 0.7; } }
 .star-btn-watch {
     background: linear-gradient(135deg, #fde68a, #fbbf24 50%, #f59e0b); color: #1c1002; border: none;
@@ -121,7 +121,7 @@
     display: none; position: absolute; right: 30px; top: 2px;
     padding: 2px 6px; font-size: 0.65rem; line-height: 1; z-index: 5; cursor: pointer;
     background: var(--bg-card, #1e1e2e); border: 1px solid var(--border, #333); border-radius: var(--radius-sm, 4px);
-    color: var(--text-muted, #888); transition: color 0.15s, border-color 0.15s;
+    color: var(--text-muted, #888); transition: color var(--ov-dur-2, 0.15s), border-color var(--ov-dur-2, 0.15s);
 }
 .chat-msg-hoverable:hover .chat-translate-btn { display: inline-flex; }
 .chat-msg-hoverable .chat-translate-btn:hover { color: var(--accent-light); border-color: var(--accent); }
@@ -164,9 +164,9 @@
 /* Expanded (non-compact) card: both blocks run the full width under the avatar and text. */
 @keyframes starMoreIn { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: none; } }
 
-/* The avatar ring: a slow conic sweep rather than a static rainbow, so the card has one moving
-   element instead of several competing ones. Paused off-screen by the viewport gate. */
-@keyframes starRingSpin { to { transform: rotate(360deg); } }
+/* The avatar ring: its colours shimmer slowly rather than a static rainbow, so the card has one moving
+   element instead of several competing ones; it never turns. Paused off-screen by the viewport gate. */
+@keyframes starRingSpin { 50% { filter: hue-rotate(50deg) brightness(1.15); } }
 
 /* The gold border sweep is the card's one loud effect; calm it down when compact so it frames
    the card instead of shouting over it. */
@@ -211,7 +211,7 @@
 .pc-tools-row > button.chat-autotr {
     display: inline-flex; align-items: center; gap: 6px; margin-left: auto; padding: 0 12px; height: 34px; border-radius: 999px; cursor: pointer;
     font-size: 0.78rem; font-weight: 600; line-height: 1; white-space: nowrap; color: var(--text-secondary);
-    background: transparent; border: 1px solid var(--border); transition: color .15s, border-color .15s, background-color .15s;
+    background: transparent; border: 1px solid var(--border); transition: color var(--ov-dur-2, .15s), border-color var(--ov-dur-2, .15s), background-color var(--ov-dur-2, .15s);
 }
 .chat-tools-row > button.chat-autotr i { font-size: 0.95rem; color: var(--accent-light, var(--accent)); }
 .chat-tools-row > button.chat-autotr:hover { color: var(--text-primary); background: transparent; border-color: color-mix(in srgb, var(--accent) 50%, var(--border)); }

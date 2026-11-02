@@ -595,8 +595,10 @@ console.log(`[Server] /shared: serving ${SHARED_BROWSER_FILES.length} browser fi
     });
     // The share cards (og:image on every page), before the browser-file allowlist below.
     require('./web/share-cards').register(app);
-    // Serve only the whitelisted browser files — don't expose the entire package
-    const sharedFileSet = new Set(SHARED_BROWSER_FILES);
+    // Serve only the whitelisted browser files — don't expose the entire package — and the brand face the navbar
+    // declares beside itself (files.FONTS, Shared 4.59.0).
+    const SHARED_FONTS = sharedFiles.FONTS || [];
+    const sharedFileSet = new Set([...SHARED_BROWSER_FILES, ...SHARED_FONTS]);
     app.use('/shared', (req, res, next) => {
         const fileName = path.basename(req.path);
         if (!sharedFileSet.has(fileName)) {
@@ -609,7 +611,7 @@ console.log(`[Server] /shared: serving ${SHARED_BROWSER_FILES.length} browser fi
         const hashed = Boolean(req.query.v) && req.query.v === assets.hashOf('/shared/' + fileName);
         res.setHeader('Cache-Control', cache.assetHeaders(req.originalUrl, { hashed }));
         if (hashed) res.setHeader('CDN-Cache-Control', cache.IMMUTABLE);
-        res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+        res.setHeader('Content-Type', SHARED_FONTS.includes(fileName) ? 'font/woff2' : 'application/javascript; charset=utf-8');
         res.sendFile(filePath, (err) => {
             // A listed file that cannot be read is this server's fault, and passing: never a cacheable answer
             // (its headers above said immutable; Cloudflare kept a 404 navbar through a deploy on 2026-10-17).
@@ -816,6 +818,7 @@ app.use('/api/themes', themeRoutes);
 app.use('/api/ai-viewers', require('./ai/viewers/routes'));
 app.use('/api/vibe', require('./ai/vibe-routes'));
 app.use('/api/powerchat', require('./integrations/powerchat-routes'));
+app.use('/api/overlay', require('./overlay/routes'));        // the overlay alert feed: the streamer's own test alert
 app.use('/api/meta', metaRoutes);
 app.use('/api/pastes', pasteRoutes);
 app.use('/api/content', require('./content/routes'));    // Content (people's work) + Moments (AI) feeds
@@ -1041,6 +1044,16 @@ app.use('/docs', require('./docs/routes'));
 // Each widget is a standalone HTML page designed for OBS browser sources.
 app.get('/obs/chat/:username', (req, res) => {
     sendDocument(res, 'obs/chat.html');
+});
+
+// Scenes in the streamer's look (plan L45): Starting soon, Be right back and Thanks for watching, as browser sources.
+app.get(/^\/obs\/scene\/(starting|brb|ending)\/[A-Za-z0-9_.-]{1,40}\/?$/, (req, res) => {
+    sendDocument(res, 'obs/scene.html');
+});
+
+// The moments of a stream in the streamer's look (plan L45): follows, tips, subs, raids and goals as they happen.
+app.get(/^\/obs\/alerts\/[A-Za-z0-9_.-]{1,40}\/?$/, (req, res) => {
+    sendDocument(res, 'obs/alerts.html');
 });
 
 // New overlay routes — per-slot and global

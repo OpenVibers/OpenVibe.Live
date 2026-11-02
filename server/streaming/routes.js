@@ -12,7 +12,8 @@
  * DELETE /api/streams/managed/:id        - Delete a managed stream
  * 
  * Streams (sessions on a managed stream):
- * GET    /api/streams                    - List live streams
+ * GET    /api/streams                    - List live streams (?tag=… on own+AI tags, up to 10, ?category=)
+ * GET    /api/streams/tags               - List the filterable tags in use (live/recent counts, source)
  * GET    /api/streams/recent             - List recently ended streams
  * GET    /api/streams/:id                - Get stream details
  * POST   /api/streams                    - Go live (creates session on managed stream)
@@ -35,6 +36,7 @@ const openreMirror = require('../openre/mirror');
 const i18n = require('../i18n/translate');
 const robotStreamerService = require('../integrations/robotstreamer-service');
 const chatRelayService = require('../integrations/chat-relay-service');
+const { TAG_FILTER_RE, streamTagSources } = require('./tags');
 // The six chat tables are OpenVibe.Chat's (roadmap T3); the few reads here go through its client.
 const moderation = require('../chat/moderation-client');
 const chatReads = require('../chat/chat-reads');
@@ -173,6 +175,37 @@ function cleanTags(tags) {
         if (cleaned.length >= MAX_TAGS) break;
     }
     return cleaned;
+}
+
+/**
+ * Parse ?tag= for GET /api/streams: each value is lowercased, whitespace-collapsed and must match
+ * TAG_FILTER_RE; up to MAX_TAGS values, all of them required to be valid. → [] when absent, null when
+ * invalid (the route answers 400).
+ */
+function parseTagFilter(value) {
+    if (value === undefined) return [];
+    const values = Array.isArray(value) ? value : [value];
+    if (values.length > MAX_TAGS) return null;
+    const tags = new Set();
+    for (const item of values) {
+        if (typeof item !== 'string') return null;
+        const tag = item.replace(/\s+/g, ' ').trim().toLowerCase();
+        if (!TAG_FILTER_RE.test(tag)) return null;
+        tags.add(tag);
+    }
+    return [...tags];
+}
+
+/**
+ * Parse ?category= for GET /api/streams: one category, trimmed and case-folded to match the (lowercase)
+ * taxonomy the API returns. → undefined when absent, null when invalid.
+ */
+function parseCategoryFilter(value) {
+    if (value === undefined) return undefined;
+    if (typeof value !== 'string') return null;
+    const category = value.replace(/\s+/g, ' ').trim().toLowerCase();
+    if (!category || category.length > MAX_CATEGORY_LENGTH) return null;
+    return category;
 }
 
 /** The social links an About editor sees after saving (server/social/links.js), for the response. */
@@ -1137,6 +1170,10 @@ router.get('/channel/:username/weather', async (req, res) => {
 
 // ── List Live Streams ────────────────────────────────────────
 router.get('/', optionalAuth, async (req, res) => {
+    const wantedTags = parseTagFilter(req.query.tag);
+    const wantedCategory = parseCategoryFilter(req.query.category);
+    if (wantedTags === null) return res.status(400).json({ error: 'Invalid tag filter' });
+    if (wantedCategory === null) return res.status(400).json({ error: 'Invalid category filter' });
     try {
         // Every open home tab polls this every 12 seconds and the response is the same for
         // everyone, so let the browser and the edge answer most of those hits. Kept well under
@@ -1145,7 +1182,18 @@ router.get('/', optionalAuth, async (req, res) => {
         const restreamManager = require('./restream-manager');
         // A streamer's camera that is the PIP of their own live stream shows inside it, not as a stream of its own.
         const insidePip = await db.getLiveOwnPipSourceSlots();
-        const streams = (await db.getLiveStreams()).filter((s) => !(s.managed_stream_id && insidePip.has(Number(s.managed_stream_id))));
+        let streams = (await db.getLiveStreams()).filter((s) => !(s.managed_stream_id && insidePip.has(Number(s.managed_stream_id))));
+        // Filters narrow the list in place, so its order (viewer_count DESC, started_at DESC) is untouched.
+        // A stream matches on its own tags or the AI's, without carrying either into the response.
+        if (wantedTags.length) {
+            streams = streams.filter((s) => {
+                const have = streamTagSources(s);
+                return wantedTags.some((tag) => have.has(tag));
+            });
+        }
+        if (wantedCategory !== undefined) {
+            streams = streams.filter((s) => String(s.category || '').replace(/\s+/g, ' ').trim().toLowerCase() === wantedCategory);
+        }
         const channelMap = await db.getChannelsByUserIds(streams.map(s => s.user_id)); // one query, not N
         const enriched = await Promise.all(streams.map(async (s) => {
             const channel = channelMap[s.user_id] || null;
@@ -1170,6 +1218,52 @@ router.get('/', optionalAuth, async (req, res) => {
     } catch (err) {
         console.error('[Streams] List error:', err.message);
         res.status(500).json({ error: 'Failed to list streams' });
+    }
+});
+
+// ── Tags In Use (the browse filters) ─────────────────────────
+// ── The Live Channels I Follow (the home's Following chip) ─────
+// Ids only, of channels live right now that the signed-in viewer follows (Live's projection of Network's follows).
+// Private: never cached by a browser or the edge.
+router.get('/following', requireAuth, async (req, res) => {
+    res.set('Cache-Control', 'private, no-store');
+    try {
+        const rows = await db.all(`SELECT DISTINCT s.user_id FROM streams s JOIN follows f ON f.streamer_id = s.user_id
+            WHERE f.follower_id = ? AND s.is_live = 1`, [req.user.id]);
+        res.json({ user_ids: rows.map((r) => Number(r.user_id)) });
+    } catch (err) {
+        console.error('[Streams] Following error:', err.message);
+        res.status(500).json({ error: 'Failed to read the channels you follow' });
+    }
+});
+
+router.get('/tags', async (req, res) => {
+    try {
+        // The tag set changes slowly and is the same for everyone (like the stream list, with a longer window).
+        res.set('Cache-Control', 'public, max-age=60');
+        const rows = await db.getStreamTagUsage();
+        const counts = new Map();
+        for (const row of rows) {
+            const live = Number(row.is_live) === 1;
+            const recent = Number(row.recent) === 1;
+            for (const [tag, source] of streamTagSources(row)) {
+                // Every tag listed here must be accepted back as ?tag=, so values outside the grammar
+                // (for example the AI's "c++") stay out instead of becoming a chip that 400s.
+                if (!TAG_FILTER_RE.test(tag)) continue;
+                let entry = counts.get(tag);
+                if (!entry) { entry = { tag, live: 0, recent: 0, source }; counts.set(tag, entry); }
+                else if (entry.source !== source) entry.source = 'both';
+                if (live) entry.live += 1;
+                if (recent) entry.recent += 1;
+            }
+        }
+        const tags = [...counts.values()]
+            .sort((a, b) => b.live - a.live || b.recent - a.recent || (a.tag < b.tag ? -1 : a.tag > b.tag ? 1 : 0))
+            .slice(0, 30);
+        res.json({ tags });
+    } catch (err) {
+        console.error('[Streams] Tags error:', err.message);
+        res.status(500).json({ error: 'Failed to list tags' });
     }
 });
 
@@ -1410,6 +1504,9 @@ router.get('/channel/:username/resolve/:ref', optionalAuth, async (req, res) => 
 });
 
 // ── Managed Stream CRUD ──────────────────────────────────────
+
+// ✨ Suggest on the go-live card: three titles for the slot's next stream (title-ideas.js).
+require('./title-ideas').mount(router, { requireAuth, db });
 
 // Get past stream sessions for a managed stream (workspace history panel)
 router.get('/managed/:managedStreamId/history', requireAuth, async (req, res) => {

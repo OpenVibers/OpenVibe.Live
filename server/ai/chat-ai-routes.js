@@ -19,15 +19,6 @@ const router = express.Router();
 const db = require('../db/database');
 const insights = require('../chat/insight-client');
 
-// These answers are public (the chat user popover and the profile's AI tab): AI text in them never says how anyone
-// looks, wherever it was written (Live's overviews, Chat's chatter insight, a cached synthesis from before the rule).
-function _noLooksDeep(v, depth = 0) {
-    if (typeof v === 'string') return db.noLooks(v);
-    if (depth > 5 || !v || typeof v !== 'object') return v;
-    if (Array.isArray(v)) return v.map((x) => _noLooksDeep(x, depth + 1));
-    return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, _noLooksDeep(x, depth + 1)]));
-}
-
 router.get('/user/:id', async (req, res) => {
     try {
         const uid = parseInt(req.params.id, 10);
@@ -62,8 +53,8 @@ router.get('/user/:id', async (req, res) => {
         } catch { /* streamer context is best-effort */ }
 
         res.json({
-            insight: _noLooksDeep(insight || null),
-            streamer: _noLooksDeep(streamer),
+            insight: insight || null,
+            streamer,
             user: user ? { id: user.id, username: user.username, display_name: user.display_name } : null,
         });
     } catch (err) {
@@ -81,7 +72,7 @@ async function _combinedOverview(userId, streamerOv, chatIns) {
     const cOv = (chatIns && (chatIns.overview_alltime || chatIns.overview_24h)) || '';
     if (!sOv && !cOv) return null;
     // Only one side → that's the whole story; no synthesis (and no AI cost) needed.
-    if (!sOv || !cOv) return db.noLooks(sOv || cOv);
+    if (!sOv || !cOv) return sOv || cOv;
 
     const key = `ai_whole_overview_${userId}`;
     const srcLen = sOv.length + '|' + cOv.length; // cheap change-detector
@@ -90,7 +81,7 @@ async function _combinedOverview(userId, streamerOv, chatIns) {
         const raw = await db.getState(key);
         if (raw) { const j = JSON.parse(raw); cachedText = j.text ? String(j.text).replace(/^\s*(combined\s+overview|overview)\s*[:\-–]\s*/i, '').trim() : null; fresh = j.src === srcLen && (Date.now() - (j.generated_at || 0) < 24 * 60 * 60 * 1000); }
     } catch { /* rebuild */ }
-    if (cachedText && fresh) return db.noLooks(cachedText);
+    if (cachedText && fresh) return cachedText;
 
     // Regenerate in the background (best-effort) so the request never blocks on the LLM.
     const ai = require('./ai-analysis');
@@ -98,12 +89,12 @@ async function _combinedOverview(userId, streamerOv, chatIns) {
         _combinedBusy.add(userId);
         // The prompt is OpenVibe.AI's versioned template live.person.overview (WS-O task 2).
         Promise.resolve(require('./ai-service').structured('live.person.overview', { as_streamer: String(sOv).slice(0, 4000), as_chatter: String(cOv).slice(0, 4000) }, { meter: { kind: 'combined_overview', role: 'legacy', ownerUserId: userId } }))
-            .then(async out => { const clean = out && out.overview ? db.noLooks(String(out.overview).trim()) : ''; if (clean) { try { await db.setState(key, JSON.stringify({ text: clean, generated_at: Date.now(), src: srcLen })); } catch { /* */ } } })
+            .then(async out => { const clean = out && out.overview ? String(out.overview).trim() : ''; if (clean) { try { await db.setState(key, JSON.stringify({ text: clean, generated_at: Date.now(), src: srcLen })); } catch { /* */ } } })
             .catch(() => { })
             .finally(() => _combinedBusy.delete(userId));
     }
     // Return whatever we have now: last synthesis (even if stale) or a simple stitch.
-    return db.noLooks(cachedText || `${sOv}\n\n${cOv}`);
+    return cachedText || `${sOv}\n\n${cOv}`;
 }
 
 // Background: give sessions SHORT, catchy AI titles (streamers reuse literal stream titles,
@@ -173,14 +164,14 @@ router.get('/timeline/:username', async (req, res) => {
         res.json({
             username: user.username,
             display_name: user.display_name || user.username,
-            overview: first ? _noLooksDeep(timeline.overview) : undefined,
-            chatInsight: _noLooksDeep(chatInsight),
+            overview: first ? timeline.overview : undefined,
+            chatInsight,
             combinedOverview,
             sessionCount: timeline.sessionCount,
             momentCount: timeline.momentCount,
             generatedAt: timeline.generatedAt,
             index,
-            sessions: _noLooksDeep(page),
+            sessions: page,
             offset, limit,
             hasMore: offset + limit < allSessions.length,
         });
@@ -338,4 +329,3 @@ router.get('/transcript/:streamId', async (req, res) => {
 });
 
 module.exports = router;
-module.exports._internals = { noLooksDeep: _noLooksDeep };

@@ -1,8 +1,9 @@
 'use strict';
 /**
- * AI text that says a scene shows sexual content never becomes a public moment or auto-clip, and an AI-made clip whose
+ * AI text that says a scene shows sex acts or porn never becomes a public moment or auto-clip, and an AI-made clip whose
  * overview turns out explicit goes private (server/ai/explicit.js). 2026-10-23: clip 483, cut by the AI from a stream
- * that showed sexual acts, went public on openvibe.media and Live's home with a description of them.
+ * that showed sexual acts, went public on openvibe.media and Live's home with a description of them. Nudity is not
+ * explicit (owner, 2026-10-31: "dick is art… titties is art").
  *
  *   node test/ai-explicit.test.js
  */
@@ -25,20 +26,32 @@ let pass = 0;
 const ok = (m) => { pass++; console.log(`  ✓ ${m}`); };
 
 (async () => {
-    // What the AI wrote about clip 483, word for word, and the same after the no-looks adjective filter.
+    // Sex acts and porn: what the AI wrote about clip 483's stream, and the like.
     for (const t of [
-        'A naked man lying on their back with legs spread, reaching toward their genitals — heard: "I\'m gonna assume…"',
-        'A man lying on their back with legs spread, reaching toward their genitals',
         'The video shows the streamer engaging in explicit adult content, with close-up footage of sexual acts on a couch',
-        'Pornographic footage plays on the second monitor', 'The scene contains nudity', 'masturbating on camera',
+        'Pornographic footage plays on the second monitor', 'masturbating on camera', 'Two people having sex on a bed',
     ]) assert.ok(isExplicit(t), `explicit: ${t}`);
+    // Nudity and bodies are art, not explicit.
+    for (const t of [
+        'A naked man lying on their back on a bed', 'The scene contains nudity', 'A topless painter works on a canvas',
+        'The streamer shows their genitals as part of a body-art piece', 'A nude figure drawing session',
+    ]) assert.ok(!isExplicit(t), `not explicit: ${t}`);
     for (const t of [
         'A player in Fortnite is sprinting along a pink-purple sunset map', 'The streamer smokes a cigarette and smiles at the camera',
         'They read the news from Essex and talk about the weather', 'A boss fight in a dark purple-lit arena', '', null, undefined,
         'A sextant and a map on the desk', 'The chat spams PogChamp during the clutch',
     ]) assert.ok(!isExplicit(t), `not explicit: ${t}`);
     assert.ok(isExplicit('a fine title', null, 'the frame shows sexual activity'), 'any of several texts');
-    ok('the detector: what a scene shows (body parts, sex acts, pornography, nudity), not ordinary streams');
+    // The hard line nudity being art never moves: a child and a bare body in one text is treated as explicit.
+    for (const t of [
+        'A naked child runs across the frame', 'Two kids appear nude in the background', 'a teen undressing on camera',
+        'The toddler is topless in the bath',
+    ]) assert.ok(isExplicit(t), `a child and nudity: ${t}`);
+    for (const t of [
+        'Kids in swimsuits splash in the pool', 'A girl plays guitar on the porch', 'The boys argue about the boss fight',
+        'A naked man lying on their back on a bed',
+    ]) assert.ok(!isExplicit(t), `not explicit: ${t}`);
+    ok('the detector: sex acts and porn, and a child with nudity; not nudity alone and not ordinary streams');
 
     // An AI clip with an explicit overview goes private and loses its description.
     clips.set(1, { id: 1, auto_generated: true, visibility: 'public' });
@@ -53,7 +66,7 @@ const ok = (m) => { pass++; console.log(`  ✓ ${m}`); };
     assert.strictEqual(calls.length, 0, 'no Media call for an ordinary overview');
     // An event's clip object may not say who made it: Media is asked (only for an explicit overview).
     clips.set(4, { id: 4, auto_generated: true, visibility: 'unlisted' });
-    assert.strictEqual(await guardAutoClip({ id: 4 }, 'the streamer shows their genitals'), true);
+    assert.strictEqual(await guardAutoClip({ id: 4 }, 'the streamer is having sex on camera'), true);
     assert.deepStrictEqual(calls.map((c) => c[0]), ['get', 'update']);
     // Already private: left alone.
     calls.length = 0;

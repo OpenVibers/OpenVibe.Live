@@ -41,7 +41,7 @@
     function shell() {
         let root = $('#ovg');
         if (root) return root;
-        root = document.createElement('div'); root.id = 'ovg'; root.className = 'ovg';
+        root = document.createElement('div'); root.id = 'ovg'; root.className = 'ovg-root';   // never 'ovg': the glyph icons' class
         root.innerHTML = `<div class="ovg-scrim"></div>
             <div class="ovg-card" role="dialog" aria-modal="true">
                 <button type="button" class="ovg-close" aria-label="Close"><i class="fa-solid fa-xmark"></i></button>

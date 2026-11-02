@@ -65,11 +65,21 @@ function channelPath(username, managedStreamIdOrSlug = null) {
     return `${base}/${encodeURIComponent(String(managedStreamIdOrSlug))}`;
 }
 
+/** A Media image (openvibe.media/o/med_…) at a width from Media's ladder (64, 96, 160, 320, 480, 640); any other URL
+    as it is. Avatars are kept as uploaded (one is 3072 px and 3 MB) and drawn at 24-80 px: the home page fetched 5.4 MB
+    of them on a phone (2026-11-01). Put the original in data-full and start onerror with OV_IMG_RETRY, which loads it
+    once if the sized copy fails (Media answers 404 for an object it cannot resize). */
+function ovImgW(url, w) {
+    const s = String(url || '');
+    return /^https:\/\/openvibe\.media\/o\/med_[0-9A-Za-z]+$/.test(s) ? `${s}?w=${w}` : s;
+}
+const OV_IMG_RETRY = 'if(this.dataset.full&&this.src!==this.dataset.full){this.src=this.dataset.full;return}';
+
 /** Inner img-or-letter for an element that is itself the avatar circle. */
 function _avatarInner(url, name) {
     const letter = ((String(name || '?'))[0] || '?').toUpperCase();
     return url
-        ? `<img src="${esc(url)}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:inherit;display:block" onerror="var p=this.parentNode;this.remove();if(p)p.textContent='${letter}'">`
+        ? `<img src="${esc(ovImgW(url, 160))}" data-full="${esc(url)}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:inherit;display:block" onerror="${OV_IMG_RETRY}var p=this.parentNode;this.remove();if(p)p.textContent='${letter}'">`
         : letter;
 }
 
@@ -79,7 +89,7 @@ function _avatarSpan(url, name, color, extraCls) {
     const cls = extraCls ? ` ${extraCls}` : '';
     const bg = color ? ` style="background:${esc(color)}"` : '';
     return url
-        ? `<span class="stream-card-avatar${cls}"${bg}><img src="${esc(url)}" alt="" onerror="var p=this.parentNode;this.remove();if(p)p.textContent='${letter}'"></span>`
+        ? `<span class="stream-card-avatar${cls}"${bg}><img src="${esc(ovImgW(url, 96))}" data-full="${esc(url)}" alt="" onerror="${OV_IMG_RETRY}var p=this.parentNode;this.remove();if(p)p.textContent='${letter}'"></span>`
         : `<span class="stream-card-avatar${cls}"${bg}>${letter}</span>`;
 }
 
@@ -466,7 +476,7 @@ function renderOpenVibeAppMeta(data) {
 
     const ctaSub = document.getElementById('openvibeapp-cta-sub');
     if (ctaSub) {
-        ctaSub.innerHTML = `<i class="fa-solid fa-code-branch"></i> Latest push ${esc(repo.pushedAt ? timeAgo(repo.pushedAt) : 'unknown')} &nbsp;·&nbsp; <i class="fa-solid fa-code-commit"></i> ${esc(latestCommit.shortSha || 'n/a')} &nbsp;·&nbsp; <i class="fa-brands fa-windows"></i> <i class="fa-brands fa-linux"></i> <i class="fa-brands fa-apple"></i> Windows, Linux & macOS`;
+        ctaSub.innerHTML = `<i class="fa-solid fa-code-branch"></i> Latest push ${esc(repo.pushedAt ? timeAgo(repo.pushedAt) : 'unknown')} &nbsp;·&nbsp; <i class="fa-solid fa-code-commit"></i> ${esc(latestCommit.shortSha || 'n/a')} &nbsp;·&nbsp; <i class="fa-solid fa-desktop"></i> <i class="fa-brands fa-linux"></i> <i class="fa-brands fa-apple"></i> Windows, Linux & macOS`;
     }
 }
 
@@ -824,7 +834,7 @@ function ovClearStrandedOverlays() {
         document.querySelectorAll(sel).forEach(el => { try { el.remove(); } catch { /* */ } });
     }
     // The scroll lock outliving its modal is the other way a page goes dead.
-    try { if (!document.querySelector('.ovg.is-open')) document.body.classList.remove('ovg-lock'); } catch { /* */ }
+    try { if (!document.querySelector('.ovg-root.is-open')) document.body.classList.remove('ovg-lock'); } catch { /* */ }
 }
 
 /**
@@ -970,6 +980,19 @@ function sameSitePath(url) {
     try { const u = new URL(url); return u.origin === location.origin ? `${u.pathname}${u.search}${u.hash}` : url; } catch { return url; }
 }
 
+// The navbar's OpenVibe mark draws its ring round while one of Live's own page moves loads, at the pace this browser
+// learned for them, and closes it when the route has rendered (ov-mark.js, OVMark.navStart/navEnd). A route that
+// renders without whenRouteReady closes it after the move's own turn of the event loop; none waits past 8 s.
+let _ovNavSeq = 0, _ovNavOn = 0, _ovNavWaiting = false;
+function _ovNavStart() {
+    const me = _ovNavOn = ++_ovNavSeq;
+    _ovNavWaiting = false;
+    try { window.OVMark && window.OVMark.navStart('app'); } catch { /* */ }
+    setTimeout(() => { if (_ovNavOn === me && !_ovNavWaiting) _ovNavEnd(); }, 0);
+    setTimeout(() => { if (_ovNavOn === me) _ovNavEnd(); }, 8000);
+}
+function _ovNavEnd() { if (!_ovNavOn) return; _ovNavOn = 0; _ovNavWaiting = false; try { window.OVMark && window.OVMark.navEnd('app'); } catch { /* */ } }
+
 function navigate(urlPath, replace = false) {
     if (isOffSite(urlPath)) { if (replace) location.replace(urlPath); else location.href = urlPath; return; }
     urlPath = sameSitePath(urlPath);
@@ -980,6 +1003,7 @@ function navigate(urlPath, replace = false) {
         return;
     }
     teardownRoute(urlPath);
+    _ovNavStart();
 
     // Normalize path
     if (!urlPath.startsWith('/')) urlPath = '/' + urlPath;
@@ -1057,10 +1081,13 @@ function whenRouteReady(pageId, render) {
             console.error(`[route] ${path} failed to render:`, err);
             if (window.ov) ov.showRouteError(`page-${pageId}`, err, () => whenRouteReady(pageId, render));
         }
+        _ovNavEnd();
     };
     if (!window.ov) return run();
+    if (_ovNavOn) _ovNavWaiting = true;
     ov.route(path).then(run, (err) => {
         if (!ov.isCurrent(gen)) return;
+        _ovNavEnd();
         ov.showRouteError(`page-${pageId}`, err, () => whenRouteReady(pageId, render));
     });
 }
@@ -2087,7 +2114,7 @@ async function handleThumbnailError(img) {
 function thumbImg(thumbnailUrl, fallbackIcon, alt, regenerateUrl = null) {
     // The old brand glyph as a placeholder → the OV mark (static, muted).
     const iconHtml = (extra) => fallbackIcon === 'fa-circle-nodes'
-        ? `<span class="ov-mark ov-mark--ph" data-size="44" data-static="1"${extra || ''}></span>`
+        ? `<span class="ov-mark ov-mark--ph" data-size="44" data-tone="ink" data-static="1"${extra || ''}></span>`
         : `<i class="fa-solid ${fallbackIcon}"${extra || ''}></i>`;
     if (thumbnailUrl) {
         // openvibe.media thumbnails come in sizes (Media's /t/:id?w=&fmt=): a card loads a WebP near its width.
