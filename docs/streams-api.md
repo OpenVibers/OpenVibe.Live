@@ -19,6 +19,10 @@ Send `Authorization: Bearer <token>` with every call.
 
 Every path below starts with `https://openvibe.live/api/streams`.
 
+In JavaScript, [`openvibe-sdk/live`](https://github.com/OpenVibers/OpenVibe.SDK) wraps these calls:
+`live.slots.list()`, `live.slots.create()`, `live.slots.update()`, `live.slots.profile()`, `live.slots.history()`,
+`live.slots.quality()`, `live.slots.titleIdeas()`, `live.goLive()`, `live.streams.end()` and the WHIP helpers.
+
 ## Slots
 
 | Call | What it does |
@@ -36,6 +40,10 @@ Every path below starts with `https://openvibe.live/api/streams`.
 ## Going live
 
 How a slot goes live depends on its `streaming_method`.
+
+- **Starting a session from a slot:** `POST /` with `{ managed_stream_id, title? }` returns `{ stream, endpoint }`.
+  This is what the Go live button does before your browser connects. An encoder that connects by itself starts one on
+  its own.
 
 - **WHIP:** `POST https://openvibe.live/whip/<slot id>` with the slot's key as the Bearer token and your SDP offer.
   It works from any WHIP client, including a browser page of your own. The [WHIP guide](whip.md) has the whole
