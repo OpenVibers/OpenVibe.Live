@@ -75,7 +75,7 @@ const FEED_ITEM_FIELDS = {
     views: 'number', likes: 'number', duration_seconds: 'number',
     thumbnail_url: 'string', preview_url: 'string', image_url: 'string',
     excerpt: 'string', paste_type: 'string', language: 'string', nsfw: 'boolean',
-    ai: 'boolean', ai_label: 'string', moment_href: 'string', grade: 'string', stream_title: 'string',
+    ai: 'boolean', ai_label: 'string', moment_href: 'string', grade: 'string', stream_title: 'string', audio_only: 'boolean',
 };
 const FEED_PERSON_FIELDS = ['username', 'display_name', 'avatar_url', 'profile_color', 'href'];
 

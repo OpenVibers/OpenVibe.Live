@@ -128,6 +128,7 @@ async function vodItem(v) {
         created_at: iso(v.created_at), views: num(v.view_count),
         duration_seconds: Math.round(num(v.duration_seconds ?? v.duration)),
         thumbnail_url: media.publicUrl(v.thumbnail_url) || null,
+        audio_only: !!v.audio_only,
         excerpt: v.description ? clean(v.description, 220) : null,
         channel: person(owner), ai: false,
     };
@@ -150,6 +151,7 @@ async function clipItem(c, { ai }) {
         created_at: iso(c.created_at), views: num(c.view_count),
         duration_seconds: Math.round(num(c.duration_seconds ?? c.duration)),
         thumbnail_url: media.publicUrl(c.thumbnail_url) || null,
+        audio_only: !!c.audio_only,
         preview_url: media.publicUrl(c.playback_url) || media.clipUrl(c.id),
         excerpt: summary ? clean(summary, 220) : (c.description ? clean(c.description, 220) : null),
         channel: person(channelOwner || creator), by, ai,

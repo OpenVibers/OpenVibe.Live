@@ -2132,6 +2132,12 @@ function thumbImg(thumbnailUrl, fallbackIcon, alt, regenerateUrl = null) {
     return `<i class="fa-solid ${fallbackIcon}"></i>`;
 }
 
+/** An audio-only recording or clip (Media#240/R4): its picture is Media's avatar card, and the card says so. */
+function audioChip(item) {
+    if (!item || !(item.audio_only === true || item.audio_only === 1)) return '';
+    return '<span class="stream-card-audio" title="Audio only"><i class="fa-solid fa-microphone" aria-hidden="true"></i> Audio</span>';
+}
+
 function formatDuration(secs) {
     if (!secs) return '0:00';
     const h = Math.floor(secs / 3600);
@@ -2477,3 +2483,38 @@ window.addEventListener('popstate', () => {
     // If auth hasn't loaded yet, DOMContentLoaded handler will call routeFromURL()
 });
 
+
+
+/* ── Content labels (L1): what a stream or recording carries, for Shared's ov-labels.js (each viewer's show, blur or
+   hide) and as chips in words. The streamer's own content always shows to them, so it is never marked for them. ── */
+const OV_LABEL_NAMES = { nudity: 'Nudity', language: 'Strong language', graphic: 'Graphic', '18+': '18+', flashing: 'Flashing lights', spoilers: 'Spoilers' };
+function ovLabelsOf(item) {
+    let raw = item && item.content_labels;
+    if (typeof raw === 'string') { try { raw = JSON.parse(raw); } catch { raw = null; } }
+    const list = raw && Array.isArray(raw.labels) ? raw.labels : [];
+    return [...new Set(list)].filter((l) => Object.prototype.hasOwnProperty.call(OV_LABEL_NAMES, l));
+}
+function ovIsMine(item) {
+    try { return !!(currentUser && item && item.username && String(currentUser.username).toLowerCase() === String(item.username).toLowerCase()); } catch { return false; }
+}
+/** ' data-ov-labels="…"' for a card or player (empty for none, or for the viewer's own). */
+function ovLabelsAttr(item) {
+    const labels = ovLabelsOf(item);
+    return labels.length && !ovIsMine(item) ? ` data-ov-labels="${esc(labels.join(','))}"` : '';
+}
+/** The chips, in words; 18+ in the warning colour. */
+function ovLabelChips(item) {
+    const labels = ovLabelsOf(item);
+    if (!labels.length) return '';
+    return `<ul class="ovk-labels" aria-label="Content labels">${labels.map((l) => `<li class="ovk-label${l === '18+' ? ' ovk-label--adult' : ''}" data-label="${esc(l)}">${esc(OV_LABEL_NAMES[l])}</li>`).join('')}</ul>`;
+}
+/** Mark (or unmark) an element already on the page, such as the channel's player. */
+function ovMarkLabels(el, item, { opened = false } = {}) {
+    if (!el) return;
+    const labels = ovIsMine(item) ? [] : ovLabelsOf(item);
+    if (labels.length) el.setAttribute('data-ov-labels', labels.join(','));
+    else { el.removeAttribute('data-ov-labels'); el.removeAttribute('data-ov-labels-state'); }
+    // The thing's own page (the channel's player): hide covers it rather than emptying the page (openvibe-shared 4.94.0).
+    el.toggleAttribute('data-ov-labels-opened', Boolean(opened && labels.length));
+    if (window.OVLabels && typeof window.OVLabels.apply === 'function') window.OVLabels.apply(el);
+}

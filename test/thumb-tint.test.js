@@ -16,7 +16,7 @@ assert.match(_thumbTint({ profile_color: 'red;background:url(x)', username: 'ana
 assert.strictEqual(_thumbTint({ username: 'ana' }), _thumbTint({ username: 'ana' }), 'the same name, the same colour');
 assert.notStrictEqual(_thumbTint({ username: 'ana' }), _thumbTint({ username: 'kai' }), 'another name, another colour');
 assert.match(_thumbTint({}), /^hsl\(0 45% 34%\)$/);
-assert.match(src, /<div class="stream-card-thumb\$\{[^}]+\}" style="--thumb-tint:\$\{esc\(_thumbTint\(s\)\)\}">/, 'the card wears it');
+assert.match(src, /<div class="stream-card-thumb\$\{[^}]+\}" style="--thumb-tint:\$\{esc\(_thumbTint\(s\)\)\}"[^>]*>/, 'the card wears it');
 const css = fs.readFileSync(path.join(__dirname, '..', 'public', 'css', 'style.css'), 'utf8');
 assert.match(css, /\.stream-card-thumb \{\s*aspect-ratio: 16\/9;[\s\S]{0,200}var\(--thumb-tint/, 'the box is drawn in it');
 console.log('thumb tint: all checks passed');

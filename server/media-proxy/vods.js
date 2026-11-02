@@ -27,6 +27,7 @@ const permissions = require('../auth/permissions');
 const access = require('./access');
 const purge = require('./purge');
 const { commentCount } = require('./comments');
+const contentLabels = require('../labels');
 const cache = require('openvibe-shared/cache-policy');
 
 const router = express.Router();
@@ -652,11 +653,16 @@ router.put('/:id', requireAuth, async (req, res) => {
     if (!vod) return;
     try {
         const { title, description, is_public, visibility } = req.body || {};
+        // L1: a creator labels a VOD here (MediaHub's manage form and the SPA both call this route), and a
+        // suggestion the creator confirms leaves `suggested`. Media stores the shape; Live forwards it.
+        const nextLabels = req.body && req.body.labels !== undefined ? contentLabels.parseLabels(req.body.labels) : undefined;
+        if (nextLabels === null) return res.status(400).json({ error: 'labels must be a list of known labels' });
         const fields = {};
         if (title !== undefined) fields.title = title;
         if (description !== undefined) fields.description = description;
         if (visibility !== undefined) fields.visibility = visibility;
         else if (is_public !== undefined) fields.visibility = is_public ? 'public' : 'private';
+        if (nextLabels !== undefined) fields.labels = nextLabels;
         await media.updateVod(req.params.id, fields);
         res.json({ vod: await media.getVod(req.params.id).catch(() => ({ ...vod, ...fields })) });
     } catch (err) {
