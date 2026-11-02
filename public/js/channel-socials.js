@@ -18,7 +18,10 @@
     /** Pills: one line of links (the offline screen). */
     function pills(host, links) {
         if (!host) return;
-        host.innerHTML = (links || []).map((l) => `<a class="ch-social-pill" style="--sc:${escH(l.color)}" href="${escH(l.url)}" target="_blank" rel="noopener me" title="${escH(l.name)}${l.auto ? ' (connected)' : ''}"><i class="${escH(l.icon)}" aria-hidden="true"></i><span>${escH(label(l))}</span></a>`).join('');
+        // The OpenVibe profile pill says what it is: its @handle is the channel's own, already written just above it
+        // (the header read "JapaneseOldGuy · @JapaneseOldGuy · @JapaneseOldGuy", 2026-11-02).
+        const text = (l) => (l.kind === 'openvibe' && !l.label ? 'OpenVibe profile' : label(l));
+        host.innerHTML = (links || []).map((l) => `<a class="ch-social-pill" style="--sc:${escH(l.color)}" href="${escH(l.url)}" target="_blank" rel="noopener me" title="${escH(l.name)}${l.auto ? ' (connected)' : ''}${l.kind === 'openvibe' ? ` ${escH(label(l))}` : ''}"><i class="${escH(l.icon)}" aria-hidden="true"></i><span>${escH(text(l))}</span></a>`).join('');
         host.hidden = !(links || []).length;
     }
 
