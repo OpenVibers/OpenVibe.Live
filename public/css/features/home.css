@@ -1339,9 +1339,33 @@ body.egg-rainbow { animation: eggRainbow 2.6s linear; }
         overflow-x: auto; overscroll-behavior-x: contain; scroll-snap-type: x mandatory; scrollbar-width: none;
     }
     #home-catchup .stream-grid::-webkit-scrollbar { display: none; }
+    /* ov-density.js reads a sideways rail's implicit columns as "too many" and clamps the grid to repeat(N, minmax(0, 1fr))
+       with !important, which squeezed the first cards to a few pixels (production's Recently Online showed an 81 px
+       sliver, 2026-11-01). A rail has no columns to choose: its own track sizing wins. */
+    #home-catchup .stream-grid[data-ovd-cols] { grid-template-columns: none !important; }
     #home-catchup .stream-grid > * { scroll-snap-align: start; min-width: 0; }
     #home-catchup .stream-grid > .empty-state { grid-column: auto; min-width: calc(100vw - 32px); }
+    /* The end of a sideways rail (2026-11-01): placeholder cards where the next ones load by themselves as the reader
+       swipes toward them (app-home.js homeRailTail), then one "View all" card once every card is in. */
+    #home-catchup .stream-grid > .home-rail-tail { display: flex; }
+    .home-rail-skel {
+        flex-direction: column; gap: 10px; padding-bottom: 14px; overflow: hidden;
+        border-radius: 14px; border: 1px solid var(--border); background: var(--bg-card);
+        animation: homeRailPulse 1.4s ease-in-out infinite alternate;
+    }
+    .home-rail-skel-thumb { aspect-ratio: 16 / 9; background: color-mix(in srgb, var(--text-primary) 7%, var(--bg-card)); }
+    .home-rail-skel-line { height: 12px; width: 72%; margin: 0 14px; border-radius: 6px; background: color-mix(in srgb, var(--text-primary) 9%, var(--bg-card)); }
+    .home-rail-skel-line.is-short { width: 44%; }
+    .home-rail-end {
+        flex-direction: column; align-items: center; justify-content: center; gap: 10px; align-self: stretch; min-height: 160px;
+        border-radius: 14px; border: 1px dashed var(--border); color: var(--text-secondary); font-weight: 700; text-decoration: none;
+    }
+    .home-rail-end:hover, .home-rail-end:focus-visible { color: var(--text-primary); border-color: var(--accent); }
+    .home-rail-end-icon { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 50%; color: var(--accent); background: color-mix(in srgb, var(--accent) 16%, transparent); }
 }
+.home-rail-tail { display: none; }
+@keyframes homeRailPulse { from { opacity: 1; } to { opacity: .55; } }
+@media (prefers-reduced-motion: reduce) { .home-rail-skel { animation: none; } }
 @media (max-width: 759px) and (prefers-reduced-motion: reduce) { .home-tabs [role="tab"] { transition: none; } }
 
 /* 2026-10-31, the phone home, shorter again: the featured stream's card leaves the Live Now grid on a phone (the
