@@ -392,6 +392,9 @@ function _wsRenderPanel() {
                     onclick="goLiveFromWorkspace()" id="bc-ws-golive-btn">
                     <i class="fa-solid fa-tower-broadcast"></i> Go Live
                 </button>
+                ${browserMode === 'screen' ? '' : `<button type="button" class="gl-test-btn" id="gl-test-btn" onclick="_glTestPrivately()">
+                    <i class="fa-solid fa-circle-dot" aria-hidden="true"></i><span id="gl-test-label">Test privately</span><small>10 seconds, only on this device</small>
+                </button>`}
                 <p class="bc-create-reassurance" style="margin-top:6px;font-size:0.82rem">
                     <i class="fa-solid fa-circle-info"></i>
                     Live at <strong>openvibe.live${channelPath(currentUser?.username || 'your-channel', ms.slug || ms.id)}</strong>
@@ -1053,6 +1056,7 @@ function _glPreviewWant() {
 }
 
 function _glPreviewStop() {
+    if (_glT.rec) _glTestStop(true);
     cancelAnimationFrame(_glPv.raf);
     _glPv.raf = 0;
     if (_glPv.ctx) { try { _glPv.ctx.close(); } catch { /* */ } _glPv.ctx = null; }
@@ -1179,6 +1183,101 @@ function _glPreviewWatch() {
     document.addEventListener('visibilitychange', _glPreviewSync);
     window.addEventListener('online', _glPreviewSync);
     window.addEventListener('offline', _glPreviewSync);
+}
+
+/* ── Test privately (golive-setup redesign, part 3): ten seconds of what the preview holds, recorded in this browser
+   and played back in the card, so the camera and the microphone are heard and seen before anyone else does. Nothing
+   is uploaded and nobody is told: the recording lives in this page's memory until Done. ── */
+const _glT = { rec: null, chunks: [], timer: 0, left: 0, url: '' };
+
+function _glTestType(audioOnly) {
+    const list = audioOnly ? ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4']
+        : ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm', 'video/mp4'];
+    if (typeof MediaRecorder === 'undefined') return null;
+    return list.find((t) => { try { return MediaRecorder.isTypeSupported(t); } catch { return false; } }) || '';
+}
+
+function _glTestLabel(text) { const l = document.getElementById('gl-test-label'); if (l) l.textContent = text; }
+
+function _glTestPrivately() {
+    if (_glT.rec) { _glTestStop(); return; }
+    const stream = _glPv.stream;
+    const note = document.getElementById('gl-pv-note');
+    if (!stream || !stream.getTracks().some((t) => t.readyState === 'live')) {
+        if (note) note.textContent = _glPreviewOff() ? 'Turn the preview on (the eye) to record a test.' : 'Allow the camera and microphone below, then record a test.';
+        return;
+    }
+    const audioOnly = !stream.getVideoTracks().length;
+    const type = _glTestType(audioOnly);
+    if (type === null) { if (note) note.textContent = 'This browser cannot record a test. Going live still works.'; return; }
+    _glTestClear();
+    let rec;
+    try { rec = new MediaRecorder(stream, type ? { mimeType: type } : undefined); } catch { if (note) note.textContent = 'This browser cannot record a test. Going live still works.'; return; }
+    _glT.rec = rec;
+    _glT.chunks = [];
+    rec.ondataavailable = (e) => { if (e.data && e.data.size) _glT.chunks.push(e.data); };
+    rec.onstop = () => _glTestShow(rec.mimeType || type || (audioOnly ? 'audio/webm' : 'video/webm'), audioOnly);
+    rec.start(1000);
+    const btn = document.getElementById('gl-test-btn');
+    if (btn) btn.classList.add('is-rec');
+    _glT.left = 10;
+    _glTestLabel(`Recording · ${_glT.left} s · tap to stop`);
+    _glT.timer = setInterval(() => {
+        _glT.left -= 1;
+        if (_glT.left <= 0) { _glTestStop(); return; }
+        _glTestLabel(`Recording · ${_glT.left} s · tap to stop`);
+    }, 1000);
+}
+
+/** Stop recording. discard: drop it (going live, or the page changing) rather than play it back. */
+function _glTestStop(discard = false) {
+    clearInterval(_glT.timer);
+    _glT.timer = 0;
+    const rec = _glT.rec;
+    _glT.rec = null;
+    const btn = document.getElementById('gl-test-btn');
+    if (btn) btn.classList.remove('is-rec');
+    _glTestLabel('Test privately');
+    if (rec && rec.state !== 'inactive') {
+        if (discard) rec.onstop = null;
+        try { rec.stop(); } catch { /* */ }
+    }
+    if (discard) _glTestClear();
+}
+
+function _glTestShow(type, audioOnly) {
+    const box = document.getElementById('gl-preview');
+    if (!box || !_glT.chunks.length) return;
+    _glTestClear();
+    _glT.url = URL.createObjectURL(new Blob(_glT.chunks, { type }));
+    _glT.chunks = [];
+    const wrap = document.createElement('div');
+    wrap.className = 'gl-test-play';
+    wrap.id = 'gl-test-play';
+    const media = document.createElement(audioOnly ? 'audio' : 'video');
+    media.src = _glT.url;
+    media.controls = true;
+    media.playsInline = true;
+    media.setAttribute('aria-label', 'Your private test');
+    const bar = document.createElement('div');
+    bar.className = 'gl-test-bar';
+    const say = document.createElement('span');
+    say.textContent = 'Your test, only on this device. Check the picture and that you can hear yourself.';
+    const done = document.createElement('button');
+    done.type = 'button';
+    done.className = 'gl-test-done';
+    done.textContent = 'Done';
+    done.onclick = _glTestClear;
+    bar.append(say, done);
+    wrap.append(media, bar);
+    box.append(wrap);
+    media.play().catch(() => { /* the controls are there: a tap plays it */ });
+}
+
+function _glTestClear() {
+    const w = document.getElementById('gl-test-play');
+    if (w) w.remove();
+    if (_glT.url) { URL.revokeObjectURL(_glT.url); _glT.url = ''; }
 }
 
 /* ── Tab switching ───────────────────────────────────────────── */
@@ -2525,6 +2624,7 @@ async function goLiveFromWorkspace() {
     await _wsFlushSave();
     // The studio opens the camera itself: the preview lets go of it first (a phone cannot open one camera twice).
     _glPv.hold = Date.now() + 20000;
+    _glTestStop(true);
     _glPreviewStop();
 
     const p = _wsState.profile;
