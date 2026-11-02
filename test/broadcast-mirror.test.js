@@ -34,7 +34,10 @@ const walk = (dir) => fs.readdirSync(path.join(__dirname, '..', dir), { withFile
     while ((m = re.exec(text))) flips.push(`${rel}:${text.slice(0, m.index).split('\n').length}`);
 });
 walk('public');
-assert.deepStrictEqual(flips, ['public/css/features/broadcast.css:' + (css.slice(0, css.indexOf('#bc-video-preview.bcs-mirror')).split('\n').length)],
-    `only the studio preview's own rule may mirror a video: ${flips.join(', ')}`);
+// The studio's preview, and the go-live card's preview (which mirrors only when the same choice is on and the camera
+// faces the person: broadcast-workspace.js _glPreviewStart). Nothing else flips a video.
+const lineOf = (needle) => 'public/css/features/broadcast.css:' + css.slice(0, css.indexOf(needle)).split('\n').length;
+assert.deepStrictEqual(flips, [lineOf('#bc-video-preview.bcs-mirror'), lineOf('.gl-preview video.is-mirror')],
+    `only the previews' own rules may mirror a video: ${flips.join(', ')}`);
 
 console.log('broadcast-mirror: the preview is the true picture unless the person mirrors it; nothing else flips a video');
