@@ -427,12 +427,15 @@ function start() {
     // clips). Jittered so it does not start in lockstep with every other boot-time job.
     _backfillTimer = require('../utils/jobs').every('auto-clip-vod-backfill', 5 * 60 * 1000, () => backfillVodClips(), { initialDelayMs: 30 * 1000, jitterMs: 30 * 1000 });
     _flagTimer = require('../utils/jobs').every('auto-clip-flag-sync', FLAG_SYNC_INTERVAL_MS, () => syncAutoClipFlags(), { initialDelayMs: 90 * 1000, jitterMs: 60 * 1000 });
+    // Once a day, the AI's old clips no person ever opened leave the lists (unlisted, never deleted).
+    require('./auto-clip-sweep').start();
     console.log('[AutoClip] Live auto-clip job started (selective chat-spike + AI agreement, cuts via OpenVibe.Media) + persistent VOD backfill');
 }
 function stop() {
     if (_timer) { clearInterval(_timer); _timer = null; }
     if (_backfillTimer) { _backfillTimer(); _backfillTimer = null; }
     if (_flagTimer) { _flagTimer(); _flagTimer = null; }
+    require('./auto-clip-sweep').stop();
 }
 
 module.exports = { start, stop, clipVodMoment, backfillVodClips, syncAutoClipFlags, _tick, _internals: { checkLiveStream: _checkLiveStream, backfillPool: _backfillPool } };
