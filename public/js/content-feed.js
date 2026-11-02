@@ -120,6 +120,9 @@
         // A picture paste is its original upload (one is 2460 px, drawn at 390): Media's 640 px copy, the original once if it
         // fails, then the placeholder.
         const img = el('img', { class: 'cf-thumb', src: typeof ovImgW === 'function' ? ovImgW(url, 640) : url, alt: '', loading: 'lazy', decoding: 'async' });
+        // The picture's own colour first (Media names a thumbnail with it), so it fills in over that colour.
+        const colour = typeof ovThumbColour === 'function' ? ovThumbColour(url) : '';
+        if (colour) img.style.backgroundColor = colour;
         img.addEventListener('error', () => {
             if (img.src !== url && !img.dataset.retried) { img.dataset.retried = '1'; img.src = url; return; }
             img.replaceWith(placeholder(fallbackIcon, who));
