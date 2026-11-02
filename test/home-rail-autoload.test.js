@@ -104,8 +104,14 @@ function page(overflowX) {
     // The styles: the tail shows only in a sideways rail, the placeholders keep still for reduced motion, and the density
     // control's column clamp never squeezes a rail's cards.
     assert.match(css, /\.home-rail-tail \{ display: none; \}/);
-    assert.match(css, /#home-catchup \.stream-grid > \.home-rail-tail \{ display: flex; \}/);
+    assert.match(css, /#home-catchup \.stream-grid > \.home-rail-tail, #home-catchup \.home-pastes-list > \.home-rail-tail \{ display: flex; \}/);
     assert.match(css, /@media \(prefers-reduced-motion: reduce\) \{ \.home-rail-skel \{ animation: none; \} \}/);
-    assert.match(css, /#home-catchup \.stream-grid\[data-ovd-cols\] \{ grid-template-columns: none !important; \}/);
+    assert.match(css, /#home-catchup \.stream-grid\[data-ovd-cols\], #home-catchup \.home-pastes-list\[data-ovd-cols\] \{ grid-template-columns: none !important; \}/);
+    // Recent Pastes rides the same rail on a phone (it was two cards a row with "Load 2 more", 2026-11-02).
+    assert.match(css, /#home-catchup \.stream-grid, #home-catchup \.home-pastes-list \{\n\s+display: grid; grid-auto-flow: column;/);
+    // A section passed over in a fling is shown: the observer counts "scrolled past", and a pause in scrolling sweeps.
+    const fx = fs.readFileSync(path.join(__dirname, '..', 'public', 'js', 'home-fx.js'), 'utf8');
+    assert.ok(fx.includes('en.isIntersecting || en.boundingClientRect.bottom < 0'), 'scrolled past counts as seen');
+    assert.ok(/window\.addEventListener\('scroll', \(\) => \{\s+clearTimeout\(settle\);/.test(fx), 'a pause in scrolling shows what is still waiting');
     console.log('home rail autoload: all checks passed');
 })().catch((e) => { console.error(e); process.exit(1); });

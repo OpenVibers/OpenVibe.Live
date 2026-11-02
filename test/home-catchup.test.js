@@ -49,8 +49,8 @@ check('no tabs and nothing that hides a rail on a phone', () => {
 
 check('on a phone each rail is one row that scrolls sideways', () => {
     const phone = css.slice(css.indexOf('/* Catch up on a phone'));
-    assert.match(phone, /#home-catchup \.stream-grid \{[^}]*grid-auto-flow: column;[^}]*overflow-x: auto;[^}]*scroll-snap-type: x mandatory;/);
-    assert.match(phone, /#home-catchup \.stream-grid > \* \{ scroll-snap-align: start; min-width: 0; \}/);
+    assert.match(phone, /#home-catchup \.stream-grid, #home-catchup \.home-pastes-list \{[^}]*grid-auto-flow: column;[^}]*overflow-x: auto;[^}]*scroll-snap-type: x mandatory;/, 'every rail, Recent Pastes too');
+    assert.match(phone, /#home-catchup \.stream-grid > \*, #home-catchup \.home-pastes-list > \* \{ scroll-snap-align: start; min-width: 0; \}/);
 });
 
 check('the changelog preview keeps its full height on a phone', () => {
