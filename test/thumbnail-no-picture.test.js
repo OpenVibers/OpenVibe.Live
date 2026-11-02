@@ -78,6 +78,29 @@ console.warn = () => {};
     const live = await post('/api/thumbnails/generate/vod/5833');
     assert.deepStrictEqual([live.status, live.json, jobs], [200, { thumbnail_url: null }, 0], 'a recording VOD asks Media for nothing');
 
+    // The same recording's job failing again and again (VOD 1803, 32 times in three hours on 2026-11-02): each failure
+    // doubles the wait, from 5 minutes up to a day; a picture resets it.
+    const backoff = require('../server/media-proxy/thumbnails')._failedAgain;
+    const waits = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(() => backoff('vod:9999') / 60000);
+    assert.deepStrictEqual(waits, [5, 10, 20, 40, 80, 160, 320, 640, 1280, 1440], 'minutes: doubling, a day at most');
+    media.getVod = async (id) => ({ id: Number(id), user_id: 1, visibility: 'public', thumbnail_url: null });
+    let fails = 0;
+    media.generateThumbnail = async () => {
+        fails++;
+        const err = new Error('Failed to generate thumbnail');
+        Object.assign(err, { name: 'MediaApiError', status: 500, body: { error: 'Failed to generate thumbnail' } });
+        throw err;
+    };
+    const t0 = realNow();
+    Date.now = () => t0;
+    await post('/api/thumbnails/generate/vod/1803');
+    Date.now = () => t0 + 6 * 60 * 1000;    // 6 minutes: past the first 5-minute wait
+    await post('/api/thumbnails/generate/vod/1803');
+    Date.now = () => t0 + 12 * 60 * 1000;   // 12 minutes: within the second, 10-minute wait
+    await post('/api/thumbnails/generate/vod/1803');
+    assert.strictEqual(fails, 2, 'the second failure waits twice as long');
+    Date.now = realNow;
+
     server.close();
     console.log('thumbnail no-picture: all checks passed');
     process.exit(0);

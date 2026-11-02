@@ -70,6 +70,16 @@ function rememberNoPicture(key, ms = NO_PICTURE_MS) {
     if (noPicture.size >= 5000) noPicture.delete(noPicture.keys().next().value);
     noPicture.set(key, Date.now() + ms);
 }
+// Media's job failing again and again for the same recording (a file ffmpeg cannot draw a frame from) is not going to
+// change in five minutes: each failure doubles the wait, from 5 minutes up to a day, and a picture resets it (VOD 1803
+// failed 32 times in three hours on 2026-11-02, one Media job each).
+const failures = new Map();   // `${kind}:${id}` → failures in a row
+function failedAgain(key) {
+    const n = Math.min((failures.get(key) || 0) + 1, 12);
+    if (failures.size >= 5000 && !failures.has(key)) failures.delete(failures.keys().next().value);
+    failures.set(key, n);
+    return Math.min(MEDIA_BUSY_MS * 2 ** (n - 1), NO_VIDEO_MS);
+}
 
 async function generateFor(kind, id, req, res) {
     try {
@@ -96,11 +106,11 @@ async function generateFor(kind, id, req, res) {
             if (!(err && err.name === 'MediaApiError' && (err.status === 404 || err.status === 429 || failed))) throw err;
             if (failed) console.warn(`[Thumbnails] Media's thumbnail job failed for ${key}: ${err.status}${err.body && err.body.job_id ? ` (${err.body.job_id})` : ''}`);
             const noVideo = err.status === 404 && err.body && err.body.code === 'media.no_video';
-            rememberNoPicture(key, noVideo ? NO_VIDEO_MS : err.status === 404 ? NO_PICTURE_MS : MEDIA_BUSY_MS);
+            rememberNoPicture(key, noVideo ? NO_VIDEO_MS : err.status === 404 ? NO_PICTURE_MS : failed ? failedAgain(key) : MEDIA_BUSY_MS);
             return res.json({ thumbnail_url: null });
         }
         const url = media.publicUrl(out?.url || meta.thumbnail_url);
-        if (url) return res.json({ thumbnail_url: url });
+        if (url) { failures.delete(key); return res.json({ thumbnail_url: url }); }
         // Media is still working on it (202 with its job): no picture yet, nothing failed.
         if (out && out.job) return res.status(202).json({ thumbnail_url: null });
         // Media answered with neither a picture nor a job (a recording it cannot draw a frame from yet): no picture,
@@ -190,3 +200,4 @@ router.get('/:filename', async (req, res) => {
 });
 
 module.exports = router;
+module.exports._failedAgain = failedAgain;   // for test/thumbnail-backoff.test.js
