@@ -3,14 +3,14 @@
 .sn-overlay {
     position: fixed; inset: 0; z-index: 10050; /* above the chat/DM bubbles (9999) */ display: flex; align-items: center; justify-content: center;
     padding: 16px; background: rgba(6, 6, 10, 0.72); backdrop-filter: blur(6px);
-    animation: snFade var(--dur-fast, 160ms) ease-out;
+    animation: snFade var(--dur-fast, 160ms) var(--ov-ease-out, ease-out);
 }
-.sn-overlay.is-closing { animation: snFadeOut 160ms ease-in forwards; }
+.sn-overlay.is-closing { animation: snFadeOut var(--ov-dur-2, 160ms) ease-in forwards; }
 .sn-dialog {
     position: relative; width: min(860px, 100%); max-height: calc(100dvh - 32px); overflow: auto;
     background: var(--bg-card); border: 1px solid var(--border); border-radius: 20px;
     padding: 18px 20px 14px; box-shadow: 0 30px 80px rgba(0, 0, 0, 0.5);
-    animation: snPop 240ms cubic-bezier(0.2, 0.9, 0.3, 1.15);
+    animation: snPop var(--ov-dur-2, 240ms) var(--ov-ease-out, cubic-bezier(0.2, 0.9, 0.3, 1.15));
 }
 .sn-dialog:focus { outline: none; }
 .sn-head { display: grid; grid-template-columns: auto 1fr auto auto; align-items: start; gap: 10px; }
@@ -65,12 +65,12 @@
 .sn-svg { display: block; width: 100%; height: auto; overflow: visible; touch-action: pan-y; }
 .sn-grid { stroke: color-mix(in srgb, var(--text-primary) 9%, transparent); stroke-width: 1; shape-rendering: crispEdges; }
 .sn-axis { fill: var(--text-muted); font-size: 10.5px; font-variant-numeric: tabular-nums; }
-.sn-bar { fill: var(--accent); transform-box: fill-box; transform-origin: bottom; animation: snGrow 520ms cubic-bezier(0.2, 0.8, 0.3, 1) both; transition: fill var(--dur-fast, 160ms); }
+.sn-bar { fill: var(--accent); transform-box: fill-box; transform-origin: bottom; animation: snGrow var(--ov-dur-4, 520ms) var(--ov-ease-out, cubic-bezier(0.2, 0.8, 0.3, 1)) both; transition: fill var(--dur-fast, 160ms); }
 .sn-bar.is-hot { fill: color-mix(in srgb, var(--accent) 70%, #fff); }
 .sn-line { fill: none; stroke: var(--accent); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
 .sn-line--context { stroke: color-mix(in srgb, var(--text-primary) 32%, transparent); stroke-width: 1.5; }
 .sn-area { fill: color-mix(in srgb, var(--accent) 10%, transparent); }
-.sn-marks .sn-line:not(.sn-line--context) { stroke-dasharray: 4000; stroke-dashoffset: 4000; animation: snDraw 900ms cubic-bezier(0.3, 0.7, 0.2, 1) forwards; }
+.sn-marks .sn-line:not(.sn-line--context) { stroke-dasharray: 4000; stroke-dashoffset: 4000; animation: snDraw 900ms var(--ov-ease-out, cubic-bezier(0.3, 0.7, 0.2, 1)) forwards; }
 .sn-dot { fill: var(--accent); stroke: var(--bg-card); stroke-width: 2; }
 .sn-cross { stroke: color-mix(in srgb, var(--text-primary) 35%, transparent); stroke-width: 1; shape-rendering: crispEdges; pointer-events: none; }
 .sn-legend { display: flex; gap: 14px; justify-content: flex-end; font-size: 0.72rem; color: var(--text-secondary); padding: 2px 4px 0; }
@@ -83,7 +83,7 @@
     position: absolute; top: 0; left: 0; z-index: 2; pointer-events: none; min-width: 90px;
     padding: 7px 10px; border-radius: 10px; background: color-mix(in srgb, var(--bg-primary) 92%, transparent);
     border: 1px solid var(--border); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
-    transition: transform 70ms linear;
+    transition: transform var(--ov-dur-1, 70ms) linear;
 }
 .sn-tip-value { font-size: 1rem; font-weight: 700; color: var(--text-primary); }
 .sn-tip-label { font-size: 0.72rem; color: var(--text-secondary); }

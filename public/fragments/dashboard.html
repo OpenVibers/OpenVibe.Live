@@ -75,6 +75,17 @@
                     <p class="muted" style="font-size:0.82rem;margin-bottom:0">Per-slot overlay URLs are available in each stream slot's Settings tab on the <a href="/broadcast">Broadcast page</a>.<br>Browser Source size: 800×600 is a good starting point. Background stays transparent.</p>
                 </div>
 
+                <!-- Scenes in your look (plan L45): Starting soon, Be right back, Thanks for watching, as browser sources. -->
+                <div class="dash-card" id="dash-card-scenes">
+                    <h3><i class="fa-solid fa-clapperboard"></i> Scenes</h3>
+                    <p class="muted" style="margin-bottom:12px">Full-screen scenes for OBS, in the theme you pick, with the OpenVibe mark arriving. Add each as a Browser Source at 1920&nbsp;&times;&nbsp;1080.</p>
+                    <div class="dash-scene-opts">
+                        <label>Theme <select id="dash-scene-theme" onchange="updateDashScenes()"></select></label>
+                        <label>Countdown <select id="dash-scene-in" onchange="updateDashScenes()"><option value="">None</option><option value="2">2 min</option><option value="5" selected>5 min</option><option value="10">10 min</option><option value="15">15 min</option></select></label>
+                    </div>
+                    <ul class="dash-scenes" id="dash-scenes"></ul>
+                </div>
+
                 <!-- API Tokens (Bot / Integration) -->
                 <div class="dash-card" id="dash-card-tokens">
                     <h3><i class="fa-solid fa-key"></i> API Tokens</h3>

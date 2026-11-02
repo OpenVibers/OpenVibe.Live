@@ -27,6 +27,14 @@
     };
 
     const $ = (id) => document.getElementById(id);
+    // The preview shows what viewers get (the owner, 2026-11-01: "it shows everything flipped, like mirrored… when
+    // you watch the VOD, it's correct"). Viewers and the recording always get the camera's true picture; a mirrored
+    // self-view, like a selfie camera, is the person's choice for their own preview only, remembered on this device.
+    const MIRROR_KEY = 'ov_bc_mirror_preview';
+    function mirrorWanted() { try { return localStorage.getItem(MIRROR_KEY) === '1'; } catch { return false; } }
+    function toggleMirror() { try { localStorage.setItem(MIRROR_KEY, mirrorWanted() ? '0' : '1'); } catch { /* a private window keeps the default */ } refresh(); }
+    /** Is the preview mirrored right now: asked for, a front camera, and not a shared screen. */
+    function mirrored() { return mirrorWanted() && facing() === 'user' && !screenSharing(); }
     function el(tag, attrs, ...kids) {
         const n = document.createElement(tag);
         for (const [k, v] of Object.entries(attrs || {})) {
@@ -595,13 +603,14 @@
         if (st.camOff) flags.push(['fa-video-slash', 'Camera off: viewers see black']);
         const v = $('bc-video-preview');
         if (v && v.style.display === 'none') flags.push(['fa-eye-slash', 'Preview hidden, still live']);
+        else if (mirrored()) flags.push(['fa-left-right', 'Preview mirrored: viewers see it the right way']);
         const box = $('bcs-flags');
         const sig = JSON.stringify(flags);
         if (box.dataset.sig !== sig) {
             box.dataset.sig = sig;
             box.replaceChildren(...flags.map(([i, t]) => el('span', { class: 'bcs-flag' }, icon(i), t)));
         }
-        if (v) v.classList.toggle('bcs-mirror', facing() === 'user' && !screenSharing());
+        if (v) v.classList.toggle('bcs-mirror', mirrored());
     }
 
     // ── Desktop row: the same Mute / Camera off / Flip ──
@@ -725,6 +734,7 @@
             tile('fa-film', 'Media requests', after(() => toggleMediaPip())),
             tile('fa-scissors', 'Clip last minute', after(() => quickClip(60))),
             tile(previewHidden ? 'fa-eye' : 'fa-eye-slash', previewHidden ? 'Show my preview' : 'Hide my preview', after(() => toggleBroadcastPreview()), previewHidden ? null : 'Saves battery'),
+            tile('fa-left-right', mirrorWanted() ? 'Show it as viewers see it' : 'Mirror my preview', after(() => toggleMirror()), mirrorWanted() ? 'Your preview is mirrored now' : 'Like a selfie: only you see it mirrored'),
             tile('fa-sliders', 'All settings', after(() => leave('#bc-live-section .bc-settings-group'))),
             tile('fa-up-right-and-down-left-from-center', 'Full page', after(() => leave())));
 

@@ -37,7 +37,7 @@ Speech-to-text hears a stream's whole audio track. On 2026-10-18 the Arena's "qu
 - **A quote** is kept only when it is in the streamer's own lines the AI read, word for word.
 - **No invented accusations.** A headline, account or take that uses an accusing word (threat, attack, scam, hacked…) the transcript never used drops the whole segment; in a quip, only the quip goes. Episodes and topic pages follow the same rule.
 - **Nothing that places a person.** The prompts forbid writing or quoting where anyone is, lives or will be (named places, events, schools, towns, time zones), their school, workplace or family. After the AI, `filters.privateDetail` drops any segment, quote, quip, episode text or topic page that names a time zone, a school, a street address, a phone number or an email address. When someone seems to be under 18, the desk is kind: no roasting and nothing about school.
-- **No looks, ever.** Every text passes `db.noLooks()`, and the prompts forbid jokes about looks, body, clothing, age, race, religion, sexuality, gender or disability, sexual content about anyone, threats and self-harm jokes. Swearing is fine.
+- **Kind, not cruel.** The prompts forbid mocking anyone's race, religion, sexuality, gender or disability, sexual content about anyone, threats and self-harm jokes. Describing people is fine (2026-10-31). Swearing is fine.
 - **Names and pronouns.** Names are written exactly as given, and people are called by their name or "they".
 - **Opting out.** A streamer can keep themselves out ("Keep me out of The Rundown" on their page, `PUT /api/rundown/opt-out`; the Arena's opt-outs carry over). The desk stops reading their streams, and what was written about them is set aside (status `out`). Coming back restores it, never anything staff took down.
 - **Staff** take an item down with `POST /api/rundown/hide {type, id}` (segment, episode or topic).
@@ -78,7 +78,7 @@ Speech-to-text hears a stream's whole audio track. On 2026-10-18 the Arena's "qu
 | GET, PUT | `/opt-out {out}` | signed in |
 | GET | `/voice/:user?t=` | a line in the streamer's chat voice |
 
-A person in any answer is `{ id, username, display_name, avatar_url, profile_color }`.
+A person in any answer is `{ id, username, display_name, avatar_url, profile_color }`. A stream in `on_air` or `streams` also carries `thumbnail_url`: its public VOD's thumbnail once it has ended, its live frame while it is on air, and `null` for an NSFW stream or when Media has no picture.
 
 ## Data
 

@@ -76,10 +76,13 @@
     <div class="home-featured" id="home-featured" hidden></div>
     <!-- Live Streams -->
     <div class="section-header" style="--sc:#ef4444">
-        <h2><i class="fa-solid fa-circle live-dot"></i> Live Now<small class="section-kicker">on air</small></h2>
+        <h2><i class="fa-solid fa-circle live-dot"></i> Live Now<small class="section-kicker" title="Sorted by when each stream started, so a channel that just went live is seen">newest first, never by crowd</small></h2>
         <span id="live-count" class="badge">0</span>
         <button type="button" class="home-featured-toggle" id="home-featured-toggle" hidden><i class="fa-solid fa-satellite-dish"></i> Show featured stream</button>
     </div>
+    <!-- Topics live now (app-home.js _homeTopicsSync): the live streams' categories and tags as filters over the
+         grid below; filled and shown only when two streams or more are live with two topics or more. -->
+    <div class="home-topics" id="home-topics" role="group" aria-label="Filter live streams by topic" hidden></div>
     <div class="stream-grid" id="stream-grid-live">
         <div class="ovsk ovsk-card" aria-hidden="true"><div class="ovsk-thumb"></div><div class="ovsk-meta"><div class="ovsk-bar ovsk-av"></div><div class="ovsk-lines"><div class="ovsk-bar" style="height:11px;width:72%"></div><div class="ovsk-bar" style="height:9px;width:45%"></div></div></div></div>
         <div class="ovsk ovsk-card" aria-hidden="true"><div class="ovsk-thumb"></div><div class="ovsk-meta"><div class="ovsk-bar ovsk-av"></div><div class="ovsk-lines"><div class="ovsk-bar" style="height:11px;width:72%"></div><div class="ovsk-bar" style="height:9px;width:45%"></div></div></div></div>

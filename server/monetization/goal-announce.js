@@ -6,7 +6,8 @@
  * (tips/delivery-routes.js).
  *
  *   goal-update    the goal widget's new numbers, a channel event
- *   goal reached   a saved "🎉 Goal reached" donation line, then the streamer's goal sound
+ *   goal reached   a saved "🎉 Goal reached" donation line, then the streamer's goal sound, then the
+ *                  overlay feed's goal alert (server/overlay/overlay-alerts.js)
  */
 const delivery = require('../chat/chat-delivery');
 
@@ -40,6 +41,17 @@ async function announceGoal({ userId, streamId = null, goalResult, by, key }) {
         });
     } catch (e) { console.warn('[Goals] goal-reached line not saved:', e.message); }
     try { await require('./alerts').playAlertSound(userId, streamId, 'goal'); } catch { /* non-critical */ }
+    // The overlay alert feed: "Goal reached" with the goal's target, for the streamer's OBS overlay.
+    try {
+        await require('../overlay/overlay-alerts').emit({
+            streamerId: userId,
+            kind: 'goal',
+            who: null,
+            amount: { value: Number(g.target_amount) || 0, unit: 'vibes' },
+            text: null,
+            naturalKey: `goal:${g.id}:${g.reached_at || key || 'reached'}`,
+        });
+    } catch { /* non-critical */ }
 }
 
 module.exports = { publicGoal, announceGoal };

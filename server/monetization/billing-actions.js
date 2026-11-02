@@ -342,6 +342,17 @@ async function subscribe(req, { streamer, provider, autoRenewRaw }) {
                     isResub: !!(out.transaction && out.transaction.metadata && out.transaction.metadata.renewal),
                 });
             } catch { /* non-critical */ }
+            // The overlay alert feed: "X subscribed", keyed by the same Billing transaction.
+            try {
+                await require('../overlay/overlay-alerts').emit({
+                    streamerId: streamer.id,
+                    kind: 'sub',
+                    who: { name: req.user.display_name || req.user.username || 'Someone', avatar: req.user.avatar_url || null },
+                    amount: null,
+                    text: null,
+                    naturalKey: `sub:${out.transaction ? out.transaction.id : sub.id}`,
+                });
+            } catch { /* non-critical */ }
         }
         invalidateEntitlement(req.user.id, streamer.id);
         return { status: 200, body: { ok: true, subscription: { streamer: streamer.username, current_period_end: sub.current_period_end, auto_renew: !!sub.auto_renew } } };

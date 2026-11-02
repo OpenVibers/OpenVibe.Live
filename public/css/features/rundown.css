@@ -228,3 +228,14 @@ a.rd-use:hover b { color: var(--accent); }
   .rd-onair-item { min-width: 200px; }
   .rd-streamer-head { align-items: flex-start; }
 }
+
+/* Topics (/rundown/topics): a card's summary is a four-line teaser, and the topics after the first dozen fold under
+   their count. */
+.rd-what-clip { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 4; line-clamp: 4; overflow: hidden; }
+.rd-more { margin-top: 14px; border-radius: 14px; border: 1px solid var(--border, color-mix(in srgb, var(--text-primary, #fff) 10%, transparent)); }
+.rd-more > summary { padding: 14px 16px; cursor: pointer; font-weight: 700; list-style: none; display: flex; align-items: center; gap: 10px; }
+.rd-more > summary::-webkit-details-marker { display: none; }
+.rd-more > summary::before { content: ''; width: 8px; height: 8px; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: translateY(-2px) rotate(-45deg); transition: transform var(--ov-dur-2, .18s) var(--ov-ease-out, ease); }
+.rd-more[open] > summary::before { transform: translateY(-4px) rotate(45deg); }
+.rd-more > .rd-topic-grid { padding: 4px 12px 14px; }
+@media (prefers-reduced-motion: reduce) { .rd-more > summary::before { transition: none; } }

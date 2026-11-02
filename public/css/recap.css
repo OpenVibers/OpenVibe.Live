@@ -8,7 +8,8 @@
 .recap-grade span { font-size: 3rem; font-weight: 900; line-height: 1; color: var(--g); text-shadow: 0 0 24px color-mix(in srgb, var(--g) 70%, transparent); }
 .recap-grade small { font-size: 0.62rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-muted); font-weight: 800; }
 .recap-head-body { min-width: 0; flex: 1; }
-.recap-kicker { font-size: 0.72rem; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; color: var(--g); display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+/* Half the hue, half the theme's text: it held on dark themes only (Daylight contrast probe, 2026-11-01). */
+.recap-kicker { font-size: 0.72rem; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; color: color-mix(in srgb, var(--g) 60%, var(--text-primary, #e6edf7)); display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
 .recap-ai { color: var(--text-muted); letter-spacing: 0.04em; font-weight: 700; text-transform: none; font-size: 0.72rem; }
 .recap-headline { margin: 6px 0 10px; font-size: clamp(1.5rem, 4vw, 2.4rem); line-height: 1.12; font-weight: 900; letter-spacing: -0.01em; }
 .recap-by { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 0.92rem; color: var(--text-secondary); }

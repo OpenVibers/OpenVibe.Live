@@ -7,7 +7,6 @@
 <meta name="robots" content="noindex">
 <title>OpenVibe // New Tab</title>
 <link rel="icon" href="/favicon.ico">
-<link rel="stylesheet" href="/css/vendor/fontawesome-6.5.1.min.css">
 <link rel="stylesheet" href="/css/chat-shared.css">
 <style>
 :root{
@@ -121,7 +120,7 @@ button{font:inherit}
 .hero p{
   margin:0;font-size:1.08vw;line-height:1.35;
   font-weight:650;color:#bcc5cf;
-  min-height:1.5em;transition:opacity .5s
+  min-height:1.5em;transition:opacity var(--ov-dur-4, .5s)
 }
 .hero-side{
   position:relative;z-index:1;text-align:right;
@@ -147,6 +146,7 @@ button{font:inherit}
   box-shadow:0 0 12px var(--red);animation:pulse 1.6s infinite
 }
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+@media (prefers-reduced-motion:reduce){.hero-side .live-pill .pulse{animation:none}}
 .hero-side span.tag{
   display:block;margin-top:.8vh;
   font-size:.78vw;color:var(--muted);font-weight:850;
@@ -196,7 +196,7 @@ button{font:inherit}
   background:linear-gradient(145deg,rgba(18,22,29,.97),rgba(10,12,17,.96));
   display:flex;flex-direction:column;justify-content:center;
   box-shadow:0 14px 36px rgba(0,0,0,.22);
-  transition:transform .12s,border-color .12s
+  transition:transform var(--ov-dur-1, .12s),border-color var(--ov-dur-1, .12s)
 }
 .domain:hover{transform:translateY(-3px);border-color:var(--c)}
 .domain:after{
@@ -283,7 +283,7 @@ button{font:inherit}
   min-width:0;overflow:hidden;
   display:grid;grid-template-rows:1fr auto;
   border:1px solid #29313b;border-radius:12px;
-  background:#0b0e13;transition:border-color .12s
+  background:#0b0e13;transition:border-color var(--ov-dur-1, .12s)
 }
 .card:hover{border-color:#3c4652}
 .thumb{
@@ -417,13 +417,13 @@ button{font:inherit}
   display:flex;align-items:flex-start;justify-content:center;
   padding-top:3.5vh;
   pointer-events:none;                 /* the dashboard behind stays fully visible + clickable */
-  opacity:0;visibility:hidden;transition:opacity .3s ease,visibility .3s;
+  opacity:0;visibility:hidden;transition:opacity var(--ov-dur-3, .3s) var(--ov-ease-out, ease),visibility var(--ov-dur-3, .3s);
 }
 .omni.show{opacity:1;visibility:visible}
 .omni-box{
   width:min(720px,92vw);pointer-events:auto;   /* only the bar itself is interactive */
   transform:translateY(-10px);opacity:0;
-  transition:transform .34s cubic-bezier(.2,.9,.3,1.2),opacity .3s ease;
+  transition:transform var(--ov-dur-3, .34s) var(--ov-ease-out, cubic-bezier(.2,.9,.3,1.2)),opacity var(--ov-dur-3, .3s) var(--ov-ease-out, ease);
 }
 .omni.show .omni-box{transform:translateY(0);opacity:1}
 .omni-inputwrap{
@@ -432,7 +432,7 @@ button{font:inherit}
   border:1.5px solid var(--line);border-radius:16px;
   padding:8px 10px;
   box-shadow:0 24px 70px rgba(0,0,0,.55),0 0 0 1px rgba(167,139,250,.05);
-  transition:background .25s,border-color .25s,box-shadow .25s;
+  transition:background var(--ov-dur-2, .25s),border-color var(--ov-dur-2, .25s),box-shadow var(--ov-dur-2, .25s);
 }
 /* Active (user is typing): prominent, gold-glow. */
 .omni.active .omni-box{opacity:1}
@@ -448,7 +448,7 @@ button{font:inherit}
 .omni:not(.active) .omni-hint{opacity:.3}
 /* Reveal on hover (not focus — the input is always focused for the typing feature) so it stays
    ghosted at rest, and go fully solid whenever the search-engine dropdown is open. */
-.omni:not(.active) .omni-box:hover{opacity:.85;transition:opacity .18s}
+.omni:not(.active) .omni-box:hover{opacity:.85;transition:opacity var(--ov-dur-2, .18s)}
 .omni.provopen .omni-box{opacity:1!important}
 .omni-input{
   flex:1;min-width:0;background:none;border:none;outline:none;
@@ -460,7 +460,7 @@ button{font:inherit}
   display:flex;align-items:center;gap:7px;flex-shrink:0;
   background:rgba(255,255,255,.04);border:1px solid var(--line);
   color:var(--muted);border-radius:11px;padding:9px 12px;cursor:pointer;
-  font-size:.82rem;font-weight:800;letter-spacing:.02em;transition:background .15s,color .15s;
+  font-size:.82rem;font-weight:800;letter-spacing:.02em;transition:background var(--ov-dur-2, .15s),color var(--ov-dur-2, .15s);
 }
 .omni-provider:hover{background:rgba(255,255,255,.08);color:var(--text)}
 .omni-provider i:first-child{color:var(--gold)}
@@ -468,7 +468,7 @@ button{font:inherit}
 .omni-go{
   flex-shrink:0;background:var(--gold);color:#161009;border:none;
   width:44px;height:44px;border-radius:11px;cursor:pointer;font-size:1.05rem;
-  display:grid;place-items:center;transition:transform .12s,filter .15s;
+  display:grid;place-items:center;transition:transform var(--ov-dur-1, .12s),filter var(--ov-dur-2, .15s);
 }
 .omni-go:hover{filter:brightness(1.08)}
 .omni-go:active{transform:scale(.94)}
@@ -489,8 +489,8 @@ button{font:inherit}
 .omni-sug{
   display:flex;align-items:center;gap:12px;padding:11px 14px;border-radius:11px;
   cursor:pointer;background:rgba(16,20,27,.7);border:1px solid transparent;
-  transition:background .12s,border-color .12s,transform .12s;
-  animation:omniSugIn .22s ease both;
+  transition:background var(--ov-dur-1, .12s),border-color var(--ov-dur-1, .12s),transform var(--ov-dur-1, .12s);
+  animation:omniSugIn var(--ov-dur-2, .22s) var(--ov-ease-out, ease) both;
 }
 .omni-sug:hover,.omni-sug.sel{background:rgba(26,32,42,.95);border-color:var(--line)}
 .omni-sug.sel{transform:translateX(2px)}
@@ -505,7 +505,7 @@ button{font:inherit}
 .omni-sug-title{font-size:.98rem;font-weight:700;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .omni-sug-sub{font-size:.76rem;color:#7e8997;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px}
 .omni-sug-kind{font-size:.64rem;font-weight:900;letter-spacing:.08em;text-transform:uppercase;color:#6f7b89;flex-shrink:0}
-.omni-sug-del{flex-shrink:0;background:none;border:none;color:#5a6570;cursor:pointer;padding:4px 6px;border-radius:6px;font-size:.8rem;opacity:0;transition:opacity .12s,color .12s}
+.omni-sug-del{flex-shrink:0;background:none;border:none;color:#5a6570;cursor:pointer;padding:4px 6px;border-radius:6px;font-size:.8rem;opacity:0;transition:opacity var(--ov-dur-1, .12s),color var(--ov-dur-1, .12s)}
 .omni-sug:hover .omni-sug-del{opacity:1}
 .omni-sug-del:hover{color:var(--red)}
 .omni-hint{
@@ -514,6 +514,8 @@ button{font:inherit}
 }
 .omni-hint b{color:#97a2ad;font-weight:800}
 </style>
+<!-- The OpenVibe glyphs draw every fa- icon here (no Font Awesome since 2026-11-01). -->
+<script src="/shared/ov-glyphs.js" defer></script>
 </head>
 <body>
 <div class="page">
@@ -1037,7 +1039,7 @@ button{font:inherit}
   const PROVIDERS={
     google:{name:"Google",url:"https://www.google.com/search?q=%s",icon:"fa-brands fa-google"},
     ddg:{name:"DuckDuckGo",url:"https://duckduckgo.com/?q=%s",icon:"fa-solid fa-shield-halved"},
-    bing:{name:"Bing",url:"https://www.bing.com/search?q=%s",icon:"fa-brands fa-microsoft"},
+    bing:{name:"Bing",url:"https://www.bing.com/search?q=%s",icon:"fa-solid fa-magnifying-glass"},
     brave:{name:"Brave",url:"https://search.brave.com/search?q=%s",icon:"fa-brands fa-brave"},
     startpage:{name:"Startpage",url:"https://www.startpage.com/sp/search?query=%s",icon:"fa-solid fa-user-secret"},
     ecosia:{name:"Ecosia",url:"https://www.ecosia.org/search?q=%s",icon:"fa-solid fa-leaf"}

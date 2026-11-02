@@ -12,6 +12,7 @@
  *   react(type, id, voter, r)       one reaction per reader per item (a reader is their account, else a salted address hash)
  */
 const db = require('../db/database');
+const config = require('../config');
 
 const REACTIONS = ['fire', 'lol', 'dead', 'cap', 'facts'];
 const FEED_MIN_SCORE = 4;       // the front page: a take scored 4 or 5, a crossover or an episode
@@ -19,6 +20,46 @@ const STREAM_TAKES = 3;         // stream by stream: a stream's best takes on th
 const STREAMS_PAGE = 8;
 const parseJson = (s, d) => { try { return JSON.parse(s); } catch { return d; } };
 const daysAgo = (n) => new Date(Date.now() - n * 86400000).toISOString().slice(0, 19).replace('T', ' ');
+
+/** Live's public base, never localhost in a URL a browser would get. */
+function siteBase() {
+    let b = config.baseUrl || 'https://openvibe.live';
+    if (/localhost|127\.0\.0\.1/.test(b)) b = 'https://openvibe.live';
+    return b.replace(/\/+$/, '');
+}
+function absolute(url) {
+    if (!url) return null;
+    if (/^https?:\/\//i.test(url)) return url;
+    return `${siteBase()}${String(url).startsWith('/') ? '' : '/'}${url}`;
+}
+const isNsfw = (row) => !!(Number(row && row.is_nsfw) || Number(row && row.channel_force_nsfw));
+
+/**
+ * stream id → card picture. A live stream shows its live frame; an ended one asks Media for its public VOD's
+ * thumbnail (one batched, five-minute-cached lookup per call, media-proxy/lookups.js). NSFW channels and streams
+ * never get a picture, and a Media failure leaves the ended ones null instead of failing the page.
+ */
+async function thumbnailsFor(rows) {
+    const out = new Map();
+    const vodIds = [];
+    for (const r of rows || []) {
+        if (!r) continue;
+        const id = Number(r.id ?? r.stream_id);
+        if (!Number.isSafeInteger(id) || id <= 0) continue;
+        if (isNsfw(r)) { out.set(id, null); continue; }
+        if (Number(r.is_live)) { out.set(id, absolute(r.thumbnail_url)); continue; }
+        vodIds.push(id);
+    }
+    if (!vodIds.length) return out;
+    try {
+        const vods = await require('../media-proxy/lookups').publicVodsForStreams(vodIds);
+        const media = require('../media-client');
+        for (const id of vodIds) out.set(id, media.publicUrl(vods.get(id) && vods.get(id).thumbnail_url));
+    } catch {
+        for (const id of vodIds) out.set(id, null);
+    }
+    return out;
+}
 
 function person(u) {
     return u ? { id: Number(u.id), username: u.username, display_name: u.display_name || u.username, avatar_url: u.avatar_url || null, profile_color: u.profile_color || null } : null;
@@ -88,13 +129,16 @@ const SEGMENT_COLS = 'id, stream_id, user_id, topic_id, start_sec, title, what, 
 const EPISODE_COLS = 'stream_id, user_id, title, logline, recap, chapters_json, vod_id, minutes, aired_at';
 
 async function onAir() {
-    const rows = await db.all(`SELECT s.id AS stream_id, s.user_id, s.title AS stream_title,
+    const rows = await db.all(`SELECT s.id AS stream_id, s.user_id, s.title AS stream_title, s.is_nsfw, s.thumbnail_url,
+            COALESCE(c.force_nsfw, 0) AS channel_force_nsfw,
             (SELECT g.title FROM rundown_segments g WHERE g.stream_id = s.id AND g.status = 'live' ORDER BY g.start_sec DESC LIMIT 1) AS talking_about,
             (SELECT t.slug FROM rundown_segments g JOIN rundown_topics t ON t.id = g.topic_id WHERE g.stream_id = s.id AND g.status = 'live' ORDER BY g.start_sec DESC LIMIT 1) AS topic_slug,
             (SELECT t.title FROM rundown_segments g JOIN rundown_topics t ON t.id = g.topic_id WHERE g.stream_id = s.id AND g.status = 'live' ORDER BY g.start_sec DESC LIMIT 1) AS topic_title
-        FROM streams s WHERE s.is_live = 1 AND s.user_id NOT IN (SELECT user_id FROM arena_opt_outs) ORDER BY s.viewer_count DESC NULLS LAST LIMIT 12`);
+        FROM streams s LEFT JOIN channels c ON c.user_id = s.user_id
+        WHERE s.is_live = 1 AND s.user_id NOT IN (SELECT user_id FROM arena_opt_outs) ORDER BY s.viewer_count DESC NULLS LAST LIMIT 12`);
     const ppl = await people(rows.map((r) => r.user_id));
-    return rows.map((r) => ({ stream_id: Number(r.stream_id), user: ppl.get(Number(r.user_id)) || null, stream_title: r.stream_title || null, talking_about: r.talking_about || null, topic: r.topic_slug ? { slug: r.topic_slug, title: r.topic_title } : null })).filter((r) => r.user);
+    const thumbs = await thumbnailsFor(rows.map((r) => ({ stream_id: r.stream_id, is_live: 1, is_nsfw: r.is_nsfw, channel_force_nsfw: r.channel_force_nsfw, thumbnail_url: r.thumbnail_url })));
+    return rows.map((r) => ({ stream_id: Number(r.stream_id), user: ppl.get(Number(r.user_id)) || null, stream_title: r.stream_title || null, thumbnail_url: thumbs.get(Number(r.stream_id)) || null, talking_about: r.talking_about || null, topic: r.topic_slug ? { slug: r.topic_slug, title: r.topic_title } : null })).filter((r) => r.user);
 }
 
 async function trending(limit = 12, days = 7) {
@@ -152,13 +196,16 @@ async function streamsFeed({ before = null, limit = STREAMS_PAGE, viewer = null,
     for (const t of await segmentsOut(chosen, viewer)) { const l = takes.get(t.stream_id) || []; l.push(t); takes.set(t.stream_id, l); }
     const eps = new Map((await episodesOut(await db.all(`SELECT ${EPISODE_COLS} FROM rundown_episodes WHERE status = 'live' AND stream_id = ANY(?)`, [ids]), viewer))
         .map((e) => [e.stream_id, { title: e.title, logline: e.logline, minutes: e.minutes, aired_at: e.aired_at, topics: e.topics, reactions: e.reactions, my_reaction: e.my_reaction }]));
-    const streams = new Map((await db.all('SELECT id, user_id, title, is_live, started_at, ended_at, duration_seconds FROM streams WHERE id = ANY(?)', [ids])).map((s) => [Number(s.id), s]));
+    const streams = new Map((await db.all(`SELECT s.id, s.user_id, s.title, s.is_live, s.started_at, s.ended_at, s.duration_seconds,
+            s.is_nsfw, s.thumbnail_url, COALESCE(c.force_nsfw, 0) AS channel_force_nsfw
+        FROM streams s LEFT JOIN channels c ON c.user_id = s.user_id WHERE s.id = ANY(?)`, [ids])).map((s) => [Number(s.id), s]));
     const ppl = await people([...streams.values()].map((s) => s.user_id));
+    const thumbs = await thumbnailsFor([...streams.values()]);
     const out = groups.map((g) => {
         const s = streams.get(Number(g.stream_id));
         if (!s) return null;
-        return { stream_id: Number(g.stream_id), user: ppl.get(Number(s.user_id)) || null, title: s.title || null, live: !!Number(s.is_live), started_at: s.started_at,
-            minutes: s.duration_seconds ? Math.round(Number(s.duration_seconds) / 60) : null, last_at: g.last_at, takes_total: Number(g.takes),
+        return { stream_id: Number(g.stream_id), user: ppl.get(Number(s.user_id)) || null, title: s.title || null, thumbnail_url: thumbs.get(Number(g.stream_id)) || null,
+            live: !!Number(s.is_live), started_at: s.started_at, minutes: s.duration_seconds ? Math.round(Number(s.duration_seconds) / 60) : null, last_at: g.last_at, takes_total: Number(g.takes),
             episode: eps.get(Number(g.stream_id)) || null, takes: takes.get(Number(g.stream_id)) || [] };
     }).filter((x) => x && x.user && x.takes.length);
     return { streams: out, next: groups.length >= limit ? groups[groups.length - 1].last_at : null };

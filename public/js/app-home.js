@@ -674,7 +674,7 @@ let _heroCollageTimer = null;
 function _heroFloatContent(item) {
     const badge = `<span class="hero-float-badge">${_HERO_BADGE[item.kind] || ''}</span>`;
     if (item.thumbnail) {
-        return `<img src="${esc(item.thumbnail)}" alt="" loading="lazy" onerror="this.remove()">`
+        return `<img src="${esc(ovImgW(item.thumbnail, 320))}" data-full="${esc(item.thumbnail)}" alt="" loading="lazy" onerror="${OV_IMG_RETRY}this.remove()">`
             + `<span class="hero-float-body">${badge}<span class="hero-float-title">${esc(item.title || '')}</span></span>`;
     }
     const snippet = item.text ? esc(item.text) : '';
@@ -723,7 +723,7 @@ function renderHeroBackground(media, moments) {
     _heroBgActive = 0;
     // Unless the server painted this frame (seo/pages.js): set it and restart the Ken Burns drift.
     if (!(layers[0].style.backgroundImage || '').includes(frames[0])) {
-        layers[0].style.backgroundImage = `linear-gradient(rgba(0,0,0,0.5), rgba(0,0,0,0.5)), url("${frames[0]}")`;
+        layers[0].style.backgroundImage = `linear-gradient(var(--hero-veil, rgba(0,0,0,0.5)), var(--hero-veil, rgba(0,0,0,0.5))), url("${frames[0]}")`;
         layers[0].classList.remove('active'); void layers[0].offsetWidth; layers[0].classList.add('active');
     } else layers[0].classList.add('active');
     layers[1].classList.remove('active');
@@ -736,9 +736,9 @@ function renderHeroBackground(media, moments) {
         const el = layers[next];
         const pre = new Image();
         pre.onload = () => {
-            // The darkening is part of the frame's own background rather than a filter or an overlay element:
-            // either of those becomes a second full-hero layer on top of an animating one.
-            el.style.backgroundImage = `linear-gradient(rgba(0,0,0,0.5), rgba(0,0,0,0.5)), url("${frames[idx]}")`;
+            // The veil is part of the frame's own background rather than a filter or an overlay element: either of those
+            // becomes a second full-hero layer on top of an animating one. Its colour is the theme's (--hero-veil, style.css).
+            el.style.backgroundImage = `linear-gradient(var(--hero-veil, rgba(0,0,0,0.5)), var(--hero-veil, rgba(0,0,0,0.5))), url("${frames[idx]}")`;
             el.classList.remove('active'); void el.offsetWidth; el.classList.add('active');
             layers[_heroBgActive].classList.remove('active');
             _heroBgActive = next;
@@ -1388,11 +1388,14 @@ async function loadHome() {
         // copy is at most 20 seconds old; anything older falls through to a normal load and the
         // placeholders cover the gap.
         await apiSWR('/streams', (liveData) => {
-            const streams = liveData.streams || [];
+            // Newest first, never by crowd (market research, Live outcome: a channel that just went live is seen,
+            // instead of the biggest staying on top). The server's own order stays for its other readers.
+            const streams = (liveData.streams || []).slice().sort((a, b) => (Date.parse(b.started_at) || 0) - (Date.parse(a.started_at) || 0));
             document.getElementById('live-count').textContent = streams.length;
             const noLiveEl = document.getElementById('no-live-streams');
             if (noLiveEl) noLiveEl.style.display = streams.length ? 'none' : '';
             renderStreamGrid('stream-grid-live', streams, true);
+            _homeTopicsSync(streams);
             _homeFeaturedSync(streams.length > 0);
             if (window.homeFeatured && homeFeatured.markGrid) homeFeatured.markGrid();
         }, { ttl: 20000 });
@@ -1717,7 +1720,7 @@ async function loadHomePastes(opts) {
                 const icon = p.type === 'screenshot' ? 'fa-image' : (p.language && p.language !== 'plaintext' ? 'fa-code' : 'fa-file-lines');
                 const preview = p.type === 'paste' ? esc((p.content || '').slice(0, 220)).replace(/\n{3,}/g, '\n\n') : '';
                 const media = p.type === 'screenshot' && p.screenshot_url
-                    ? `<div class="home-paste-media"><img src="${esc(p.screenshot_url)}" alt="${esc(p.title || 'Screenshot paste')}" loading="lazy"><span class="home-paste-type">Image</span></div>`
+                    ? `<div class="home-paste-media"><img src="${esc(ovImgW(p.screenshot_url, 480))}" data-full="${esc(p.screenshot_url)}" alt="${esc(p.title || 'Screenshot paste')}" loading="lazy" onerror="${OV_IMG_RETRY}"><span class="home-paste-type">Image</span></div>`
                     : `<div class="home-paste-media"><div class="home-paste-snippet">${preview || esc(p.title || 'Untitled paste')}</div><div class="home-paste-icon"><i class="fa-solid ${icon}"></i></div><span class="home-paste-type">${p.language && p.language !== 'plaintext' ? esc(p.language) : 'Text'}</span></div>`;
                 return `
                 <a class="home-paste-card" href="${esc(pasteHref(p.slug))}">
@@ -1745,6 +1748,126 @@ async function loadHomePastes(opts) {
 
 // Markup for a single stream card (live or recent). Extracted so the home page
 // can reconcile the live grid in place for real-time updates.
+/**
+ * The colour a card's picture sits on until it arrives (plan L52: "a fake thumbnail… so it is not jarring"): the
+ * streamer's own profile colour, or one drawn from their name, so a grid fills in colour rather than grey boxes.
+ */
+function _thumbTint(s) {
+    if (s && /^#[0-9a-f]{6}$/i.test(String(s.profile_color || ''))) return s.profile_color;
+    const name = String((s && s.username) || '');
+    let h = 0;
+    for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) % 360;
+    return `hsl(${h} 45% 34%)`;
+}
+
+/* ── Topics: what the live streams are about, as filters over the Live Now grid ─────────────
+   A stream's topics are its category, the tags its streamer set and the tags the AI read from the
+   stream (streams.ai_tags), minus words that say nothing to a viewer here: every stream is live,
+   streamed and on a camera or a screen. Live market outcome 2: a viewer picks a topic, the grid
+   keeps the streams that have it; nothing else on the page changes. */
+const _TOPIC_STOP = new Set(['live', 'live stream', 'livestream', 'stream', 'streaming', 'streamer', 'chat', 'livechat',
+    'live chat', 'overlay', 'ui', 'setup', 'lobby', 'facecam', 'multicam', 'multiframe', 'webcam', 'camera', 'screen',
+    'desktop', 'browser', 'obs', 'gameplay', 'commentary', 'surveillance', 'stream overlay', 'pc']);
+function _streamTopics(s) {
+    const out = [];
+    const add = (t) => {
+        const v = String(t || '').replace(/[-_]+/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase();
+        if (v && v.length <= 32 && !_TOPIC_STOP.has(v) && !out.includes(v)) out.push(v);
+    };
+    add(s && s.category);
+    for (const field of [s && s.tags, s && s.ai_tags]) {
+        let list = field;
+        if (typeof list === 'string') { try { list = JSON.parse(list); } catch { list = null; } }
+        if (Array.isArray(list)) list.forEach(add);
+    }
+    return out;
+}
+
+// The chip a viewer picked comes back the next time it is live (market outcome 2: a default set), in this browser
+// only; _homeTopic is what is applied now, which is All while the picked topic is off air.
+const _TOPIC_KEY = 'ov_home_topic';
+let _homeTopicPref = (() => { try { return (typeof localStorage !== 'undefined' && localStorage.getItem(_TOPIC_KEY)) || ''; } catch { return ''; } })();
+let _homeTopic = '';
+// Following (market outcome 3): the live channels the signed-in viewer follows, from GET /api/streams/following
+// (private, never cached by the edge), read at most once a minute. A chip of its own, first after All.
+const _FOLLOWING = '@following';
+let _homeFollowing = { at: 0, ids: new Set(), busy: false };
+let _homeLastStreams = [];
+function _homeFollowingRefresh() {
+    const me = typeof currentUser !== 'undefined' && currentUser;
+    if (!me || typeof api !== 'function') { if (!me) _homeFollowing = { at: 0, ids: new Set(), busy: false }; return; }
+    if (_homeFollowing.busy || Date.now() - _homeFollowing.at < 60000) return;
+    _homeFollowing.busy = true;
+    api('/streams/following').then((d) => {
+        _homeFollowing = { at: Date.now(), ids: new Set(((d && d.user_ids) || []).map(Number)), busy: false };
+        _homeTopicsSync(_homeLastStreams);
+    }).catch(() => { _homeFollowing = { ..._homeFollowing, at: Date.now(), busy: false }; });
+}
+/** The chip row over the live grid: shown when at least two streams are live and they have two topics or more, or
+ *  some of them are channels the viewer follows. */
+function _homeTopicsSync(streams) {
+    const row = document.getElementById('home-topics');
+    if (!row) return;
+    _homeLastStreams = streams;
+    _homeFollowingRefresh();
+    const counts = new Map();
+    for (const s of streams) for (const t of _streamTopics(s)) counts.set(t, (counts.get(t) || 0) + 1);
+    const followingN = streams.filter((s) => _homeFollowing.ids.has(Number(s.user_id))).length;
+    const show = streams.length >= 2 && (counts.size >= 2 || followingN > 0);
+    row.hidden = !show;
+    if (!show) { _homeTopic = ''; _homeTopicsApply(); return; }
+    const available = new Set(counts.keys());
+    if (followingN) available.add(_FOLLOWING);
+    _homeTopic = available.has(_homeTopicPref) ? _homeTopicPref : '';
+    // Most streams first, then A to Z; the row scrolls sideways, so every topic stays reachable.
+    const list = [...counts].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+    const key = `${streams.length}|${followingN}|${list.map(([t, n]) => `${t}:${n}`).join(',')}`;
+    if (row.dataset.key !== key) {
+        row.dataset.key = key;
+        const chip = (topic, label, n) => {
+            const b = document.createElement('button');
+            b.type = 'button';
+            b.className = 'home-topic';
+            b.dataset.topic = topic;
+            b.append(label);
+            const c = document.createElement('span');
+            c.className = 'home-topic-n';
+            c.textContent = String(n);
+            b.append(' ', c);
+            return b;
+        };
+        const nodes = [chip('', 'All', streams.length)];
+        if (followingN) nodes.push(chip(_FOLLOWING, 'Following', followingN));
+        for (const [t, n] of list) nodes.push(chip(t, _capTag(t), n));
+        row.replaceChildren(...nodes);
+        if (!row._ovBound) {
+            row._ovBound = true;
+            row.addEventListener('click', (e) => {
+                const b = e.target.closest('.home-topic');
+                if (!b) return;
+                const next = b.dataset.topic === _homeTopic ? '' : b.dataset.topic;
+                _homeTopicPref = next;
+                _homeTopic = next;
+                try { if (next) localStorage.setItem(_TOPIC_KEY, next); else localStorage.removeItem(_TOPIC_KEY); } catch { /* private mode */ }
+                _homeTopicsApply();
+            });
+        }
+    }
+    _homeTopicsApply();
+}
+function _homeTopicsApply() {
+    const row = document.getElementById('home-topics');
+    if (row) row.querySelectorAll('.home-topic').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.topic === _homeTopic)));
+    const grid = document.getElementById('stream-grid-live');
+    if (!grid) return;
+    grid.querySelectorAll('.stream-card[data-stream-id]').forEach((card) => {
+        const keep = !_homeTopic || (_homeTopic === _FOLLOWING
+            ? _homeFollowing.ids.has(Number(card.dataset.user))
+            : (card.dataset.topics || '').split('|').includes(_homeTopic));
+        card.hidden = !keep;
+    });
+}
+
 function streamCardHTML(s, isLive) {
     let navUrl;
     if (isLive && s.id) {
@@ -1758,9 +1881,12 @@ function streamCardHTML(s, isLive) {
     const thumb = (!isLive && s.vod_thumbnail_url) ? s.vod_thumbnail_url : s.thumbnail_url;
     const duration = !isLive && s.vod_duration ? `<span class="stream-card-duration">${formatDuration(s.vod_duration)}</span>` : '';
     const endedAgo = !isLive && s.ended_at ? `<span class="stream-card-ago">${timeAgo(s.ended_at)}</span>` : '';
+    const topics = isLive ? _streamTopics(s) : [];
+    const cat = String(s.category || '').replace(/[-_]+/g, ' ').trim().toLowerCase();
+    const shown = topics.filter((t) => t !== cat).slice(0, 2);
     return `
-        <a class="stream-card" data-stream-id="${esc(String(s.id || ''))}" href="${esc(navUrl)}" onclick="return handleLinkClick(event, '${esc(navUrl)}')">
-            <div class="stream-card-thumb${s.is_nsfw ? ' stream-card-nsfw-blur' : ''}">
+        <a class="stream-card"${isLive ? ` data-topics="${esc(topics.join('|'))}" data-user="${esc(String(s.user_id || ''))}"` : ''} data-stream-id="${esc(String(s.id || ''))}" href="${esc(navUrl)}" onclick="return handleLinkClick(event, '${esc(navUrl)}')">
+            <div class="stream-card-thumb${s.is_nsfw ? ' stream-card-nsfw-blur' : ''}" style="--thumb-tint:${esc(_thumbTint(s))}">
                 ${thumbImg(thumb, 'fa-circle-nodes', s.title, !isLive && s.vod_id ? `/api/thumbnails/generate/vod/${s.vod_id}` : null)}
                 ${streamTypeBadge(s.browser_mode, s.streaming_method)}
                 ${s.is_nsfw ? '<span class="stream-card-nsfw">18+</span>' : ''}
@@ -1777,6 +1903,7 @@ function streamCardHTML(s, isLive) {
                 ${_cardAiHTML(s.ai_overview_short, s.ai_overview)}
                 <div class="stream-card-meta">
                     ${s.category ? `<span class="stream-card-tag"${_catInferred(s) ? ' title="Category inferred by OpenVibe&#39;s AI from the stream"' : ''}>${esc(_capTag(s.category))}${_catInferred(s) ? '<span class="cat-inferred"> · inferred</span>' : ''}</span>` : ''}
+                    ${shown.length ? `<span class="stream-card-topics">${shown.map((t) => esc(_capTag(t))).join(' · ')}</span>` : ''}
                     <span class="stream-card-metaright">
                         ${isLive && s.started_at ? `<span class="stream-card-uptime" data-since="${esc(s.started_at)}"><i class="fa-solid fa-clock"></i> ${formatUptime(s.started_at)}</span>` : ''}
                         ${isLive ? `<span class="stream-card-vcount"><i class="fa-solid fa-eye"></i> ${s.total_viewer_count || s.viewer_count || 0}</span>` : ''}
@@ -1842,6 +1969,8 @@ function _crossfadeThumb(imgEl, newSrc) {
 }
 
 function _updateLiveCard(card, s) {
+    // The AI re-reads a stream as it goes, so its topics can change between refreshes.
+    card.dataset.topics = _streamTopics(s).join('|');
     const vc = card.querySelector('.stream-card-vcount');
     if (vc) vc.innerHTML = `<i class="fa-solid fa-eye"></i> ${s.total_viewer_count || s.viewer_count || 0}`;
     const up = card.querySelector('.stream-card-uptime');
@@ -1981,6 +2110,7 @@ async function refreshHomeLive() {
             setTimeout(() => { try { el.remove(); } catch {} }, 420);
         }
     });
+    _homeTopicsSync(streams);
 }
 
 // Refresh the paginated home sections (only at page 1, only when visible — so we
@@ -2055,7 +2185,7 @@ function homeRailRange(key, opts, gridId, loaderName) {
     if (opts && opts.more) return { offset: rail.shown, limit: opts.more, append: true, rail };
     rail.shown = 0;
     const cols = _homeRailCols(rail.grid);
-    return { offset: 0, limit: Math.max(_narrow ? 2 : 4, cols * 2), append: false, rail };
+    return { offset: 0, limit: Math.max(4, cols * 2), append: false, rail };
 }
 /** Record what a load brought in, then fill the last row if it is short. */
 function homeRailLoaded(rail, offset, count, total) {
@@ -2080,6 +2210,59 @@ function homeRailAutofill(rail) {
     if (typeof fn === 'function') fn({ more: need, auto: true }); else rail.filling = false;
 }
 
+/** True when the grid is a row that scrolls sideways (features/home.css makes Catch up's grids one on a phone). */
+function homeRailSideways(grid) {
+    try { return !!grid && getComputedStyle(grid).overflowX === 'auto'; } catch { return false; }
+}
+/** Cards a sideways rail asks for at a time: a few swipes' worth. */
+const HOME_RAIL_BATCH = 6;
+/**
+ * The end of a sideways rail. While cards are left: two placeholder cards, and when the reader swipes to within about
+ * a card of them the next batch loads in their place (an IntersectionObserver on the rail itself, no scroll handler).
+ * When none are left: one "View all" card to the section's own page. left < 0 removes the tail (a grid that wraps
+ * keeps its button).
+ */
+function homeRailTail(rail, left) {
+    const grid = rail && rail.grid;
+    if (!grid) return;
+    for (const old of grid.querySelectorAll(':scope > .home-rail-tail')) old.remove();
+    if (rail.tailObserver) { rail.tailObserver.disconnect(); rail.tailObserver = null; }
+    if (left < 0) return;
+    if (left === 0) {
+        const all = grid.previousElementSibling && grid.previousElementSibling.querySelector('a.section-action[href]');
+        if (!all || !rail.shown) return;
+        const href = all.getAttribute('href');
+        const end = document.createElement('a');
+        end.className = 'home-rail-tail home-rail-end';
+        end.href = href;
+        end.addEventListener('click', (e) => handleLinkClick(e, href));
+        end.innerHTML = '<span class="home-rail-end-icon" aria-hidden="true"><i class="fa-solid fa-arrow-right"></i></span><span>View all</span>';
+        grid.appendChild(end);
+        return;
+    }
+    const skel = [];
+    for (let i = 0; i < Math.min(2, left); i++) {
+        const s = document.createElement('div');
+        s.className = 'home-rail-tail home-rail-skel';
+        s.setAttribute('aria-hidden', 'true');
+        s.innerHTML = '<div class="home-rail-skel-thumb"></div><div class="home-rail-skel-line"></div><div class="home-rail-skel-line is-short"></div>';
+        grid.appendChild(s);
+        skel.push(s);
+    }
+    if (typeof IntersectionObserver !== 'function') return;
+    const more = () => {
+        if (rail.loading || !rail.loader) return;
+        const fn = window[rail.loader];
+        if (typeof fn !== 'function') return;
+        rail.loading = true;
+        Promise.resolve(fn({ more: Math.min(left, HOME_RAIL_BATCH) })).catch(() => {}).finally(() => { rail.loading = false; });
+    };
+    // rootMargin on the right: the batch starts loading about a card before the placeholders come into view.
+    rail.tailObserver = new IntersectionObserver((entries) => { if (entries.some((e) => e.isIntersecting)) more(); },
+        { root: grid, rootMargin: '0px 80% 0px 0px', threshold: 0 });
+    rail.tailObserver.observe(skel[0]);
+}
+
 // Thin wrapper for homepage section pagination — same visual style as renderVodsPagination.
 /**
  * Home rails get a "Load more" button, not a pager.
@@ -2093,6 +2276,10 @@ function renderHomePagination(containerId, rail) {
     const el = document.getElementById(containerId);
     if (!el || !rail) return;
     const left = Math.max(0, rail.total - rail.shown);
+    // A rail that scrolls sideways (Catch up on a phone) loads its next cards by itself as the reader swipes toward its
+    // end: a button under the row added cards off screen, at the far end, two at a time (the owner, 2026-11-01).
+    if (homeRailSideways(rail.grid)) { el.innerHTML = ''; el.style.display = 'none'; homeRailTail(rail, left); return; }
+    homeRailTail(rail, -1);
     // These containers ship with an inline display:none — the old pager unhid them itself, and
     // this one has to as well or the button renders into a hidden box and nobody ever sees it.
     if (left <= 0) { el.innerHTML = ''; el.style.display = 'none'; return; }
@@ -2169,7 +2356,7 @@ function _renderHomeStar(data) {
     const path = channelPath(s.username);
     const initial = esc(String(s.display_name || s.username || '?').charAt(0).toUpperCase());
     const avatar = s.avatar_url
-        ? `<img src="${esc(s.avatar_url)}" alt="${name}" loading="lazy">`
+        ? `<img src="${esc(ovImgW(s.avatar_url, 160))}" data-full="${esc(s.avatar_url)}" alt="${name}" loading="lazy" onerror="${OV_IMG_RETRY}">`
         : initial;
     const bioSrc = (s.bio || '').trim();
     const bioEn = (s.bio_en || '').trim();

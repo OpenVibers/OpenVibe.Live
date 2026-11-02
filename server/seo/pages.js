@@ -866,7 +866,7 @@ function render(meta, urlPath) {
     // it summarises the same content the SPA renders.
     if (meta.snapshot) html = _prerender(html, meta.snapshot + _summary(meta));
     // The first hero layer shows that frame already (the same background app-home.js gives it).
-    if (meta.heroImage) html = html.replace('<div class="hero-bg-layer"></div>', `<div class="hero-bg-layer active" style="background-image:linear-gradient(rgba(0,0,0,0.5),rgba(0,0,0,0.5)),url(&quot;${esc(meta.heroImage)}&quot;)"></div>`);
+    if (meta.heroImage) html = html.replace('<div class="hero-bg-layer"></div>', `<div class="hero-bg-layer active" style="background-image:linear-gradient(var(--hero-veil,rgba(0,0,0,0.5)),var(--hero-veil,rgba(0,0,0,0.5))),url(&quot;${esc(meta.heroImage)}&quot;)"></div>`);
     return html;
 }
 
