@@ -2185,7 +2185,7 @@ function homeRailRange(key, opts, gridId, loaderName) {
     if (opts && opts.more) return { offset: rail.shown, limit: opts.more, append: true, rail };
     rail.shown = 0;
     const cols = _homeRailCols(rail.grid);
-    return { offset: 0, limit: Math.max(_narrow ? 2 : 4, cols * 2), append: false, rail };
+    return { offset: 0, limit: Math.max(4, cols * 2), append: false, rail };
 }
 /** Record what a load brought in, then fill the last row if it is short. */
 function homeRailLoaded(rail, offset, count, total) {
@@ -2210,6 +2210,59 @@ function homeRailAutofill(rail) {
     if (typeof fn === 'function') fn({ more: need, auto: true }); else rail.filling = false;
 }
 
+/** True when the grid is a row that scrolls sideways (features/home.css makes Catch up's grids one on a phone). */
+function homeRailSideways(grid) {
+    try { return !!grid && getComputedStyle(grid).overflowX === 'auto'; } catch { return false; }
+}
+/** Cards a sideways rail asks for at a time: a few swipes' worth. */
+const HOME_RAIL_BATCH = 6;
+/**
+ * The end of a sideways rail. While cards are left: two placeholder cards, and when the reader swipes to within about
+ * a card of them the next batch loads in their place (an IntersectionObserver on the rail itself, no scroll handler).
+ * When none are left: one "View all" card to the section's own page. left < 0 removes the tail (a grid that wraps
+ * keeps its button).
+ */
+function homeRailTail(rail, left) {
+    const grid = rail && rail.grid;
+    if (!grid) return;
+    for (const old of grid.querySelectorAll(':scope > .home-rail-tail')) old.remove();
+    if (rail.tailObserver) { rail.tailObserver.disconnect(); rail.tailObserver = null; }
+    if (left < 0) return;
+    if (left === 0) {
+        const all = grid.previousElementSibling && grid.previousElementSibling.querySelector('a.section-action[href]');
+        if (!all || !rail.shown) return;
+        const href = all.getAttribute('href');
+        const end = document.createElement('a');
+        end.className = 'home-rail-tail home-rail-end';
+        end.href = href;
+        end.addEventListener('click', (e) => handleLinkClick(e, href));
+        end.innerHTML = '<span class="home-rail-end-icon" aria-hidden="true"><i class="fa-solid fa-arrow-right"></i></span><span>View all</span>';
+        grid.appendChild(end);
+        return;
+    }
+    const skel = [];
+    for (let i = 0; i < Math.min(2, left); i++) {
+        const s = document.createElement('div');
+        s.className = 'home-rail-tail home-rail-skel';
+        s.setAttribute('aria-hidden', 'true');
+        s.innerHTML = '<div class="home-rail-skel-thumb"></div><div class="home-rail-skel-line"></div><div class="home-rail-skel-line is-short"></div>';
+        grid.appendChild(s);
+        skel.push(s);
+    }
+    if (typeof IntersectionObserver !== 'function') return;
+    const more = () => {
+        if (rail.loading || !rail.loader) return;
+        const fn = window[rail.loader];
+        if (typeof fn !== 'function') return;
+        rail.loading = true;
+        Promise.resolve(fn({ more: Math.min(left, HOME_RAIL_BATCH) })).catch(() => {}).finally(() => { rail.loading = false; });
+    };
+    // rootMargin on the right: the batch starts loading about a card before the placeholders come into view.
+    rail.tailObserver = new IntersectionObserver((entries) => { if (entries.some((e) => e.isIntersecting)) more(); },
+        { root: grid, rootMargin: '0px 80% 0px 0px', threshold: 0 });
+    rail.tailObserver.observe(skel[0]);
+}
+
 // Thin wrapper for homepage section pagination — same visual style as renderVodsPagination.
 /**
  * Home rails get a "Load more" button, not a pager.
@@ -2223,6 +2276,10 @@ function renderHomePagination(containerId, rail) {
     const el = document.getElementById(containerId);
     if (!el || !rail) return;
     const left = Math.max(0, rail.total - rail.shown);
+    // A rail that scrolls sideways (Catch up on a phone) loads its next cards by itself as the reader swipes toward its
+    // end: a button under the row added cards off screen, at the far end, two at a time (the owner, 2026-11-01).
+    if (homeRailSideways(rail.grid)) { el.innerHTML = ''; el.style.display = 'none'; homeRailTail(rail, left); return; }
+    homeRailTail(rail, -1);
     // These containers ship with an inline display:none — the old pager unhid them itself, and
     // this one has to as well or the button renders into a hidden box and nobody ever sees it.
     if (left <= 0) { el.innerHTML = ''; el.style.display = 'none'; return; }
