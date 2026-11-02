@@ -9,6 +9,7 @@
  */
 const db = require('../db/database');
 const ai = require('./ai-analysis');
+const contentLabels = require('../labels');
 
 let vision = null;
 try { vision = require('./stream-vision'); } catch { /* optional */ }
@@ -150,6 +151,9 @@ async function _analyzeOne(stream, { allowFfmpeg = true, reason = 'periodic' } =
             description: memDesc, tags: r.tags, thumbnail_url: await _persistMomentFrame(image, stream.id, offset) || _stableThumb(stream.thumbnail_url),
             transcript_json: heardSegments,
         });
+        // L1: suggest labels from what this frame shows and what was said. A suggestion is stored in `suggested`
+        // and changes nothing for anyone; the creator confirms it (PUT /api/streams/:id). Never a takedown.
+        try { await db.suggestStreamContentLabels(stream.id, contentLabels.suggestFrom({ description: r.description, transcript: heardClean })); } catch (e) { console.warn('[AI-Labels] suggestion not stored:', e.message); }
         // Roll this stream's memories into an overview — but only RE-summarize when
         // enough new memories have accumulated (SUMMARY_MIN_NEW) or enough time has
         // passed (SUMMARY_MAX_AGE_MS), NOT on every 120s frame capture. This cuts the

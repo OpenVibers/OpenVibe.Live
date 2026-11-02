@@ -24,6 +24,7 @@
  */
 const express = require('express');
 const db = require('../db/database');
+const contentLabels = require('../labels');
 const { can } = require('../auth/permissions');
 const config = require('../config');
 const { requireAuth, requireStreamer, optionalAuth } = require('../auth/auth');
@@ -1182,7 +1183,10 @@ router.get('/', optionalAuth, async (req, res) => {
         const restreamManager = require('./restream-manager');
         // A streamer's camera that is the PIP of their own live stream shows inside it, not as a stream of its own.
         const insidePip = await db.getLiveOwnPipSourceSlots();
-        let streams = (await db.getLiveStreams()).filter((s) => !(s.managed_stream_id && insidePip.has(Number(s.managed_stream_id))));
+        // The home page is the owner's one clean page (L1): nothing labelled 18+ is listed there, whatever a
+        // viewer's prefs say. Every other surface shows it with its chips; this is the only place a label hides.
+        let streams = (await db.getLiveStreams()).filter((s) => !(s.managed_stream_id && insidePip.has(Number(s.managed_stream_id)))
+            && !contentLabels.labelsOf(s).labels.includes('18+'));
         // Filters narrow the list in place, so its order (viewer_count DESC, started_at DESC) is untouched.
         // A stream matches on its own tags or the AI's, without carrying either into the response.
         if (wantedTags.length) {
@@ -1672,6 +1676,8 @@ router.post('/managed', requireAuth, async (req, res) => {
         const category = cleanText(req.body.category, { maxLength: MAX_CATEGORY_LENGTH }) || null;   // empty = let the AI infer it from the stream
         const protocol = cleanProtocol(req.body.protocol) || 'webrtc';
         const is_nsfw = cleanBooleanFlag(req.body.is_nsfw);
+        const labels = hasOwn(req.body, 'labels') ? contentLabels.parseLabels(req.body.labels) : [];
+        if (labels === null) return res.status(400).json({ error: 'Invalid labels' });
         let slug = req.body.slug ? req.body.slug.trim().toLowerCase() : null;
 
         if (slug) {
@@ -1700,6 +1706,7 @@ router.post('/managed', requireAuth, async (req, res) => {
             streaming_method: cleanText(req.body.streaming_method, { maxLength: 20 }) || null,
             stream_key,
             is_nsfw,
+            content_labels: contentLabels.shape(labels),
         });
 
         const managedStream = await db.getManagedStreamById(result.lastInsertRowid);
@@ -1747,6 +1754,13 @@ router.put('/managed/:id', requireAuth, async (req, res) => {
         if (hasOwn(req.body, 'tags')) {
             fields.tags = cleanTags(req.body.tags);
             if (fields.tags === null) return res.status(400).json({ error: 'Invalid tags' });
+        }
+        if (hasOwn(req.body, 'labels')) {
+            // The creator's labels (L1): applied to the slot and its live session; a confirmed suggestion leaves
+            // the suggested list. Labels never hide anything here; the viewer's Network prefs decide.
+            const labels = contentLabels.parseLabels(req.body.labels);
+            if (labels === null) return res.status(400).json({ error: 'Invalid labels' });
+            fields.content_labels = contentLabels.confirmed(ms.content_labels, labels);
         }
         if (hasOwn(req.body, 'pip_source_msid')) {
             // null / '' clears the overlay. Anything else must be one of this user's own
@@ -1855,6 +1869,7 @@ router.put('/managed/:id', requireAuth, async (req, res) => {
             await db.setPipsForManagedStream(msId, fields.pip_source_msid ? [{ source_msid: fields.pip_source_msid, ...d }] : []);
         }
         const updated = await db.getManagedStreamById(msId);
+        if (fields.content_labels) await db.setLiveStreamsContentLabels(msId, contentLabels.labelsOf(updated).labels);
 
         // If the title changed and this slot has a RobotStreamer integration, mirror the
         // new title to the RS robot name (best-effort, non-blocking).
@@ -2232,11 +2247,15 @@ router.put('/:id', requireAuth, async (req, res) => {
         const description = cleanText(req.body.description, { maxLength: MAX_DESCRIPTION_LENGTH, allowEmpty: true });
         const category = cleanText(req.body.category, { maxLength: MAX_CATEGORY_LENGTH });
         const tags = cleanTags(req.body.tags);
+        // The creator confirms or clears labels on the live session too (L1): this applies them and drops the
+        // confirmed ones from the AI's suggestions. A label never hides the stream from its own creator.
+        const labels = hasOwn(req.body, 'labels') ? contentLabels.parseLabels(req.body.labels) : undefined;
 
         if ((hasOwn(req.body, 'title') && title === null)
             || (hasOwn(req.body, 'description') && description === null)
             || (hasOwn(req.body, 'category') && category === null)
-            || (hasOwn(req.body, 'tags') && tags === null)) {
+            || (hasOwn(req.body, 'tags') && tags === null)
+            || labels === null) {
             return res.status(400).json({ error: 'Invalid stream update' });
         }
 
@@ -2256,6 +2275,7 @@ router.put('/:id', requireAuth, async (req, res) => {
             }
         }
         if (tags !== undefined) { updates.push('tags = ?'); params.push(JSON.stringify(tags)); }
+        if (labels !== undefined) { updates.push('content_labels = ?'); params.push(JSON.stringify(contentLabels.confirmed(stream.content_labels, labels))); }
 
         if (updates.length > 0) {
             params.push(req.params.id);
