@@ -10016,3 +10016,10 @@ body.ov-panel-open #floating-chat-fab { opacity: 0; pointer-events: none; transf
     html.ov-has-appbar .messenger-toggle { bottom: calc(var(--ovnav-appbar-h, 58px) + 14px); }
     html.ov-has-appbar body { padding-bottom: calc(var(--ovnav-appbar-h, 58px) + 64px); }
 }
+
+/* Content labels (L1): quiet chips in words, the adult one in the warning colour (as Shared's kit.labels). */
+.ovk-labels { display: flex; flex-wrap: wrap; gap: 4px; margin: 4px 0 0; padding: 0; list-style: none; }
+.ovk-label { display: inline-flex; align-items: center; min-height: 20px; padding: 0 8px; border-radius: 999px; font-size: .7rem; font-weight: 700; letter-spacing: .02em;
+    color: var(--text-secondary); background: color-mix(in srgb, var(--text-primary) 7%, transparent); border: 1px solid var(--border); }
+.ovk-label--adult { color: var(--warning-text, #fbbf24); border-color: color-mix(in srgb, var(--warning-text, #fbbf24) 45%, transparent); background: color-mix(in srgb, var(--warning-text, #fbbf24) 9%, transparent); }
+.stream-labels:empty { display: none; }
