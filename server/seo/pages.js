@@ -980,4 +980,4 @@ async function middleware(req, res, next) {
     }
 }
 
-module.exports = { middleware, shellHtml, _pageMeta, render, SITE_NAME, baseUrl, isAiClip, isoDate };
+module.exports = { middleware, shellHtml, _pageMeta, _pageParam, render, SITE_NAME, baseUrl, isAiClip, isoDate, SEO_ROUTE_RE };

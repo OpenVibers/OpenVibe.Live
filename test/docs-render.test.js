@@ -115,4 +115,29 @@ console.log('✅ page shell: canonical and icon');
     console.log('✅ page shell: search title and description');
 }
 
+// AGT-5: a doc's Markdown twin is the file as written, its relative links made absolute (another doc → that doc's twin),
+// links inside fenced code left as text; the HTML page names the twin in its head.
+{
+    const { _twinMarkdown: twin, _renderPage: page } = require('../server/docs/routes');
+    const md = twin([
+        'See [WHIP](whip.md#publishing-from-a-browser), [the index](README.md), [setup](../SETUP.md "Setup"),',
+        '[the publisher](../public/whip-publisher.html), [abs](https://example.com/x.md), [here](#top) and [root](/broadcast).',
+        '```md',
+        'a [sample](whip.md) in code',
+        '```',
+        'after [api](api-tokens.md)',
+    ].join('\n'));
+    assert.ok(md.includes('[WHIP](/docs/whip.md#publishing-from-a-browser)'), 'another doc is its twin, anchor kept');
+    assert.ok(md.includes('[the index](/docs.md)'), 'the index is /docs.md');
+    assert.ok(md.includes('[setup](https://github.com/OpenVibers/OpenVibe.Live/blob/main/SETUP.md "Setup")'), 'a repo file is on GitHub, its title kept');
+    assert.ok(md.includes('[the publisher](/whip-publisher.html)'));
+    assert.ok(md.includes('[abs](https://example.com/x.md)') && md.includes('[here](#top)') && md.includes('[root](/broadcast)'), 'absolute links stay');
+    assert.ok(md.includes('a [sample](whip.md) in code'), 'a link in a code sample is text');
+    assert.ok(md.includes('after [api](/docs/api-tokens.md)'), 'links after a code block are rewritten again');
+    const html = page({ name: 'whip', title: 'WHIP', html: '<p>x</p>', headings: [] });
+    assert.ok(html.includes('<link rel="alternate" type="text/markdown" href="/docs/whip.md">') && html.includes('<link rel="describedby" href="/llms.txt">'), 'the page names its twin');
+    assert.ok(page({ name: 'README', title: 'Docs', html: '<p>x</p>', headings: [] }).includes('href="/docs.md"'), 'the index names /docs.md');
+    console.log('✅ docs twins');
+}
+
 console.log('\n✅ All docs renderer tests passed');

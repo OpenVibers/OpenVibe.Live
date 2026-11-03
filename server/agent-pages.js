@@ -4,24 +4,19 @@
 // because the page itself is (the SPA translates in place in the browser); Japanese titles, bios and stream
 // facts stay in Japanese in the Markdown, exactly as they are in the HTML.
 //
-// Recordings and clips are watched on OpenVibe.Video now: /vod/:id and /clip/:id 301 there (web/video-handover.js,
-// mounted before this), so Live twins the home, the channel pages and the VOD/clip list pages it still serves.
+// Every page the SEO renderer serves has a twin, since its Link header names one (11-03: /content, /moments, /rundown,
+// /chat, /documentation and /updates named a twin that answered 404). Recordings, clips and pastes are not twinned
+// here: /vod/:id, /clip/:id and /p/:slug 301 to OpenVibe.Video and OpenVibe.Community (mounted before this).
+// The docs (/docs/<name>.md) are their own Markdown files, served by server/docs/routes.js sendTwin.
 const pages = require('./seo/pages');
 
-const CHANNEL_PATH_RE = /^\/@([A-Za-z0-9_]{3,24})$/;
-const LIST_PATHS = new Set(['/vods', '/clips']);
-const CHANNEL_MAX_PAGE = 500;
-
-function pageOf(query) {
-    const raw = query && query.get('page');
-    return /^\d{1,4}$/.test(String(raw || '')) ? Math.min(CHANNEL_MAX_PAGE, Math.max(1, parseInt(raw, 10))) : 1;
-}
+const HANDED_OVER_RE = /^\/(?:vod|clip|p)\//;
 
 function createAgentPages() {
     async function renderPublicPage(path, { query } = {}) {
         const p = String(path || '/').replace(/\/+$/, '') || '/';
-        const page = CHANNEL_PATH_RE.test(p) ? pageOf(query) : 1;
-        if (p !== '/' && !CHANNEL_PATH_RE.test(p) && !LIST_PATHS.has(p)) return null;
+        if (!pages.SEO_ROUTE_RE.test(p) || HANDED_OVER_RE.test(p)) return null;
+        const page = pages._pageParam(p, { page: (query && query.get('page')) || '' });
         const meta = await pages._pageMeta(p, { page });
         if (!meta) return null;
         const html = pages.render(meta, p);
