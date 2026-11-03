@@ -148,10 +148,10 @@ async function check(name, fn) {
         const pool = await autoClip._internals.backfillPool(5);
         assert.deepStrictEqual(pool.map((v) => v.vod_id), [10], 'the VOD backfill pool leaves the opted-out channel out');
         created.length = 0;
-        const none = await autoClip.clipVodMoment({ vod: { vod_id: 11, user_id: 4, stream_id: sOlive }, offset: 300, title: 'Olive moment' });
+        const none = await autoClip.clipVodMoment({ vod: { vod_id: 11, user_id: 4, stream_id: sOlive }, offset: 300, title: 'Olive moment', evidence: { picked_by: 'ai', spike: { peak: 20, avg: 2 }, chatters: 6, sounds: [{ label: 'Laughter', confidence: 0.8 }], speechWords: 30 } });
         assert.strictEqual(none, null);
         assert.strictEqual(created.length, 0);
-        const clip = await autoClip.clipVodMoment({ vod: { vod_id: 10, user_id: 3, stream_id: sAlice }, offset: 300, title: 'Alice moment' });
+        const clip = await autoClip.clipVodMoment({ vod: { vod_id: 10, user_id: 3, stream_id: sAlice }, offset: 300, title: 'Alice moment', evidence: { picked_by: 'ai', spike: { peak: 20, avg: 2 }, chatters: 6, sounds: [{ label: 'Laughter', confidence: 0.8 }], speechWords: 30 } });
         assert.ok(clip && clip.id, 'Alice still gets auto-clips');
         assert.strictEqual(created.length, 1);
         assert.strictEqual(created[0].auto_generated, true);

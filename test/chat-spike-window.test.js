@@ -15,7 +15,8 @@ const chatReads = require('../server/chat/chat-reads');
     const started = Date.parse('2026-08-20T12:00:00Z');
     const ended = started + 2 * 3600 * 1000;
     const spikes = await chatReads.spikeOffsets(2125, 30, 8, started, ended);
-    assert.deepStrictEqual(spikes, [{ offset: 30, count: 9 }, { offset: 60, count: 3 }]);
+    // people is null when Chat does not count chatters per bucket (C08 reads it as "unknown").
+    assert.deepStrictEqual(spikes, [{ offset: 30, count: 9, people: null }, { offset: 60, count: 3, people: null }]);
     assert.deepStrictEqual(calls.pop(), { stream_id: 2125, since: started, until: ended, bucket_ms: 30000 }, 'an ended stream is read up to its end');
 
     // A stream still live (no end): up to now, as before; the client leaves a null `until` out of the query.
@@ -30,6 +31,9 @@ const chatReads = require('../server/chat/chat-reads');
     // An end before the start is ignored (asked up to now).
     await chatReads.spikeOffsets(2128, 30, 8, started, started - 1000);
     assert.strictEqual(calls.pop().until, null);
+    // When Chat counts the people in each bucket, it rides along.
+    client.readTimeline = async (q2) => ({ buckets: [{ t: q2.since + 30000, count: 14, people: 5 }] });
+    assert.deepStrictEqual(await chatReads.spikeOffsets(2129, 30, 8, started, ended), [{ offset: 30, count: 14, people: 5 }]);
     console.log('chat-spike-window: ok');
     process.exit(0);
 })().catch((e) => { console.error(e); process.exit(1); });

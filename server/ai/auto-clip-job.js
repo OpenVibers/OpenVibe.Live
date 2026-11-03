@@ -311,7 +311,7 @@ async function backfillVodClips({ limit = BACKFILL_PER_RUN, force = false } = {}
                     if (dark) { console.log(`[AutoClip] backfill skip VOD ${v.vod_id} — dark/empty frame`); newSkip.push(v.vod_id); continue; }
                 }
             } catch { /* probe optional */ }
-            const clip = await clipVodMoment({ vod: v, offset: moment.offset, title: moment.title, desc: moment.desc, speech: moment.speech, archival: v.archival, source });
+            const clip = await clipVodMoment({ vod: v, offset: moment.offset, title: moment.title, desc: moment.desc, speech: moment.speech, evidence: moment.evidence, archival: v.archival, source });
             if (clip) { made++; if (v.archival) archiveMade++; console.log(`[AutoClip] Backfilled VOD ${v.vod_id}${v.archival ? ' (archive)' : ''} ("${String(moment.title || '').slice(0, 60)}")`); }
             else if (v.archival && !clipPolicy.archiveAllowed(await _clipLog(), Date.now())) continue; // another cutter took today's archive slot: not this VOD's fault, don't skip it forever
             else newSkip.push(v.vod_id); // cut failed (e.g. unseekable/short) — don't retry forever
@@ -325,8 +325,28 @@ async function backfillVodClips({ limit = BACKFILL_PER_RUN, force = false } = {}
 
 /**
  * Cut a clip around a moment the AI-moments pipeline already chose for a finished VOD.
- * @param {object} o { vod (row w/ user_id, stream_id, vod_id/id), offset, title, desc, speech, archival, source }
+ * @param {object} o { vod (row w/ user_id, stream_id, vod_id/id), offset, title, desc, speech, evidence, archival, source }
+ *
+ * The moment is scored before anything is cut (item 151, C08), by the same clip-score.js as the live cutter: `evidence`
+ * (ai-moments-job's evidenceAt) is the chat bucket at the moment against the stream's average, the people in it, the
+ * sounds and the words near it, and who picked it. A thin moment is not cut ("no clip beats a bad clip"), one that
+ * clears the keep bar is unlisted, and only a reacted moment (12+ messages from 3+ people) can be public. A moment with
+ * no evidence at all is not cut. The log keeps the score, bucket, picker and policy, so Bench and the audits can tell
+ * this policy from the one before.
  */
+const VOD_POLICY = Object.freeze({ selector: 'vod-moment', version: '2026-11-03' });
+function rateVodMoment(evidence) {
+    if (!evidence || typeof evidence !== 'object') return { verdict: 'skip', score: 0, bucket: 'A', reasons: ['no evidence was gathered for the moment'] };
+    const sp = evidence.spike || {};
+    return clipScore.score({
+        spike: { peak: Number(sp.peak) || 0, avg: Number(sp.avg) || 0 },
+        chatters: evidence.chatters == null ? null : Number(evidence.chatters),
+        sounds: Array.isArray(evidence.sounds) ? evidence.sounds : [],
+        speechWords: Number(evidence.speechWords) || 0,
+        // The AI's pick counts as its yes; a pick from the signals alone has no AI opinion (both bars rise).
+        ai: { clip: evidence.picked_by === 'ai' ? true : null },
+    });
+}
 function _sceneSig(text) {
     return dedupe.shortSignature(text, 5);
 }
@@ -345,9 +365,14 @@ async function _isDuplicateAutoClip(vod, offset, desc, title, speech) {
 async function clipVodMoment(o) {
     let archiveHeld = false;
     try {
-        const { vod, offset, title, desc, speech, archival } = o || {};
+        const { vod, offset, title, desc, speech, archival, evidence } = o || {};
         if (!vod || !(offset >= 0)) return null;
         if (!await _derivationOn(vod.user_id)) return null;   // the channel turned AI Moments off
+        const rated = rateVodMoment(evidence);
+        if (rated.verdict === 'skip') {
+            console.log(`[AutoClip] VOD ${vod.vod_id || vod.id} @${Math.round(offset)}s not cut — score ${rated.score}: ${(rated.reasons || []).slice(-2).join('; ') || 'below the bar'}`);
+            return null;
+        }
         if (require('./explicit').isExplicit(desc, title)) {     // never a clip of sexual content (server/ai/explicit.js)
             console.log(`[AutoClip] skip VOD ${vod.vod_id || vod.id} — the AI describes the moment as sexual content`);
             return null;
@@ -361,7 +386,7 @@ async function clipVodMoment(o) {
         // the clip public whatever the recording is.
         const publication = require('./clip-publication');
         if (!publication.mayCut(vodId)) { console.log(`[AutoClip] VOD ${vodId}: protected, not cut`); return null; }
-        const visibility = publication.visibilityFor({ vodVisibility: await publication.vodVisibility(vod), wanted: 'public' });
+        const visibility = publication.visibilityFor({ vodVisibility: await publication.vodVisibility(vod), wanted: rated.verdict === 'public' ? 'public' : 'unlisted' });
         const start = Math.max(0, Math.floor(offset) - CLIP_PRE);
         // One archive clip per UTC day is shared with the AI moments job. Both may pass the pool
         // gate before either writes auto_clip_log, so claim the slot atomically before cutting and
@@ -381,7 +406,11 @@ async function clipVodMoment(o) {
         });
         if (clip) {
             archiveHeld = false;   // the clip exists: keep the day reserved even if the log write fails
-            await _logClip({ stream_id: vod.stream_id || null, vod_id: vodId, start_time: start, title: title || 'Standout Moment', clip_id: clip.id, dedup: !!clip.deduplicated || undefined, desc: desc || '', speech, archival: archival || undefined, sig: _sceneSig(desc || title) });
+            const sp = (evidence && evidence.spike) || {};
+            await _logClip({ stream_id: vod.stream_id || null, vod_id: vodId, start_time: start, title: title || 'Standout Moment', clip_id: clip.id, dedup: !!clip.deduplicated || undefined, desc: desc || '', speech, archival: archival || undefined, sig: _sceneSig(desc || title),
+                score: rated.score, visibility: rated.verdict, bucket: rated.bucket, peak: Number(sp.peak) || 0, chatters: evidence.chatters == null ? undefined : evidence.chatters,
+                picked_by: evidence.picked_by || undefined, policy: VOD_POLICY });
+            console.log(`[AutoClip] VOD ${vodId} @${Math.round(offset)}s cut (${evidence.picked_by || 'signals'}) — score ${rated.score} → ${rated.verdict}, bucket ${rated.bucket}`);
         }
         return clip || null;
     } catch { return null; }
@@ -452,7 +481,7 @@ function stop() {
     require('./clip-evaluation').stop();
 }
 
-module.exports = { start, stop, clipVodMoment, backfillVodClips, syncAutoClipFlags, _tick, _internals: { checkLiveStream: _checkLiveStream, backfillPool: _backfillPool } };
+module.exports = { start, stop, clipVodMoment, backfillVodClips, syncAutoClipFlags, _tick, _internals: { checkLiveStream: _checkLiveStream, backfillPool: _backfillPool, rateVodMoment, VOD_POLICY } };
 
 // CLI: force a historical backfill batch, e.g. `node server/ai/auto-clip-job.js --backfill --limit=4`
 if (require.main === module) {

@@ -3,8 +3,8 @@
  * clip-evaluation.js — the AI's clip picks against people's, blind, on OpenVibe.Bench (item 151, C20).
  *
  * Once a day, for up to MAX_PER_RUN recent recordings that have both a public clip the AI cut and a public clip a
- * person made, Live submits one live.clip round to Bench (#105): the AI's pick (policy auto-clip@AUTO_CLIP_POLICY)
- * and the person's (policy people@1), each with a 6-hour signed playback link from Media. Signed-in people vote at
+ * person made, Live submits one live.clip round to Bench (#105): the AI's pick (policy auto-clip@AUTO_CLIP_POLICY, or
+ * the one the auto-clip log names for it: policyOf) and the person's (policy people@1), each with a 6-hour signed playback link from Media. Signed-in people vote at
  * https://bench.openvibe.services/battle?kind=live.clip (Bench #106: two players, blind, no titles), and
  * results() reads each side's accept rate back from Bench (both_bad counts against both).
  *
@@ -66,6 +66,17 @@ async function bench(method, path, body) {
     return json;
 }
 
+/**
+ * Which picker cut an AI clip, for Bench's per-policy accept rate: the auto-clip log names it on clips cut since C08
+ * (2026-11-03: VOD moments are `vod-moment@2026-11-03`); older clips and the live cutter are `auto-clip@AUTO_CLIP_POLICY`.
+ */
+function policyOf(clip, clipLog = []) {
+    const e = (Array.isArray(clipLog) ? clipLog : []).find((x) => x && x.clip_id != null && String(x.clip_id) === String(clip.id));
+    const p = e && e.policy;
+    if (p && typeof p.selector === 'string' && typeof p.version === 'string') return { selector: p.selector.slice(0, 80), version: p.version.slice(0, 80), models: [] };
+    return { selector: 'auto-clip', version: AUTO_CLIP_POLICY, models: [] };
+}
+
 function entryOf(clip, policy, signed) {
     const start = Math.round(Number(clip.start_time) * 1000);
     const len = Math.round(Number(clip.duration_seconds ?? clip.duration ?? (Number(clip.end_time) - Number(clip.start_time))) * 1000);
@@ -85,6 +96,8 @@ async function run({ now = Date.now(), max = MAX_PER_RUN } = {}) {
     if (!ai || !Array.isArray(ai.clips)) return { submitted: [], skipped: 0, why: 'Media did not answer' };
     let done;
     try { done = new Set((await _log()).map((x) => String(x.vod_id))); } catch (e) { return { submitted: [], skipped: 0, why: `state unreadable: ${e.message}` }; }
+    let clipLog = [];
+    try { clipLog = JSON.parse(await db.getState('auto_clip_log') || '[]'); } catch { clipLog = []; }
     const byVod = new Map();
     for (const c of ai.clips) if (c.auto_generated === true && eligible(c) && !done.has(String(c.vod_id)) && !byVod.has(String(c.vod_id))) byVod.set(String(c.vod_id), c);
     const submitted = [];
@@ -106,7 +119,7 @@ async function run({ now = Date.now(), max = MAX_PER_RUN } = {}) {
             const task = await bench('POST', '/api/v1/kinds/live.clip/tasks', { prompt: 'Two clips of one stream', public: false });
             const round = await bench('POST', `/api/v1/tasks/${task.task.id}/rounds`, {});
             const roundId = round.round.id;
-            await bench('POST', `/api/v1/rounds/${roundId}/entries`, { payload: entryOf(aiClip, { selector: 'auto-clip', version: AUTO_CLIP_POLICY, models: [] }, sa) });
+            await bench('POST', `/api/v1/rounds/${roundId}/entries`, { payload: entryOf(aiClip, policyOf(aiClip, clipLog), sa) });
             await bench('POST', `/api/v1/rounds/${roundId}/entries`, { payload: entryOf(person, { selector: 'people', version: '1', models: [] }, sp) });
             const log = await _log();
             const mine = log.find((x) => String(x.vod_id) === vodId && x.round_id == null);
@@ -136,4 +149,4 @@ function start() {
 }
 function stop() { if (_stop) { _stop(); _stop = null; } }
 
-module.exports = { run, results, start, stop, eligible, entryOf, AUTO_CLIP_POLICY, LOG, MAX_PER_RUN };
+module.exports = { run, results, start, stop, eligible, entryOf, policyOf, AUTO_CLIP_POLICY, LOG, MAX_PER_RUN };

@@ -500,7 +500,7 @@ function recentChatters(streamId, sinceSec = 30, limit = 200) {
 }
 
 /** The busiest `bucketSec` time-buckets of a stream between `sinceMs` and `untilMs` (default now), as offsets from
- *  `sinceMs`: [{ offset, count }]. Chat answers at most 10,000 buckets, so a stream that ended gives its end: up to
+ *  `sinceMs`: [{ offset, count, people }]. Chat answers at most 10,000 buckets, so a stream that ended gives its end: up to
  *  now, a stream from two months ago asked for 184,000 and got a 400 (2026-10-23). */
 function spikeOffsets(streamId, bucketSec = 30, topN = 8, sinceMs, untilMs) {
     const id = Number(streamId) || 0;
@@ -512,7 +512,8 @@ function spikeOffsets(streamId, bucketSec = 30, topN = 8, sinceMs, untilMs) {
         if (!out || !Array.isArray(out.buckets)) throw unavailable('timeline');
         const base = sinceMs || 0;
         return out.buckets
-            .map((b) => ({ offset: Math.max(0, Math.round((Number(b.t) - base) / 1000 / bucketSec) * bucketSec), count: Number(b.count) || 0 }))
+            // people: how many different chatters were in the bucket, when Chat says (null when it does not).
+            .map((b) => ({ offset: Math.max(0, Math.round((Number(b.t) - base) / 1000 / bucketSec) * bucketSec), count: Number(b.count) || 0, people: b.people == null ? null : Number(b.people) || 0 }))
             .sort((a, b) => b.count - a.count || a.offset - b.offset)
             .slice(0, topN);
     }, () => []);

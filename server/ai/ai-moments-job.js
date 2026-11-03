@@ -24,6 +24,7 @@ const registry = require('./moment-registry');
 const clipPolicy = require('./clip-policy');
 const dedupe = require('./clip-dedupe');
 const explicit = require('./explicit');
+const clipScore = require('./clip-score');
 let cfg = null; try { cfg = require('../config'); } catch { /* */ }
 let thumb = null; try { thumb = require('../media-proxy/live-thumbs'); } catch { /* optional */ }
 const FRAMES_TMP_DIR = path.join(os.tmpdir(), 'openvibe-live-moments');
@@ -148,7 +149,9 @@ function _sample(arr, max) {
 }
 async function _momentContext(streamId, vodId) {
     const memories = _sample((await db.getStreamMemories(streamId) || []).filter(m => m.description), 45);
-    const transcript = _sample(await db.getStreamTranscriptSegments(streamId) || [], 60);
+    // The picker reads a sample spread over the stream; the evidence at the chosen second reads everything near it.
+    const said = await db.getStreamTranscriptSegments(streamId) || [];
+    const transcript = _sample(said, 60);
     // Where viewers clipped: the clips live in OpenVibe.Media.
     const clipTimes = await require('../media-proxy/lookups').clipStartTimes(streamId, vodId);
     // Chat's own buckets over the stream (offsets are relative to started_at, as before; it ends at ended_at, or now).
@@ -158,13 +161,21 @@ async function _momentContext(streamId, vodId) {
     const spikes = started > 0 ? (await chatReads.spikeOffsets(streamId, 30, 8, started, ms(span.ended_at) || undefined) || []) : [];
     // Non-speech sounds are strong moment candidates — an explosion or a burst of
     // laughter marks a highlight as reliably as anything said out loud.
-    let sounds = [];
+    let heard = [];
     try {
-        sounds = _sample((await db.getTimeline(streamId, { kind: 'sound', limit: 400 }) || [])
+        heard = (await db.getTimeline(streamId, { kind: 'sound', limit: 400 }) || [])
             // Background music (audio-events.js spans) is the stream's bed, not a moment.
-            .filter(e => Number(e.confidence || 0) >= 0.45 && e.label !== 'Music'), 30);
+            .filter(e => Number(e.confidence || 0) >= 0.45 && e.label !== 'Music');
     } catch { /* timeline optional */ }
-    return _inPart({ memories, transcript, clipTimes, spikes, sounds }, vodId);
+    const sounds = _sample(heard, 30);
+    // The stream's average chat per 30 s, empty stretches counted (C07/C08: averaging only the busy buckets made every
+    // spike look small on a quiet channel and every lull look big on a busy one).
+    let chatAvg = 0;
+    try {
+        const secs = started > 0 ? ((ms(span.ended_at) || Date.now()) - started) / 1000 : 0;
+        if (secs >= 60) chatAvg = (Number((await chatReads.streamStats(streamId) || {}).messages) || 0) / (secs / 30);
+    } catch { /* chat optional */ }
+    return _inPart({ memories, transcript, said, clipTimes, spikes, sounds, heard, chatAvg }, vodId);
 }
 
 /**
@@ -183,14 +194,35 @@ async function _inPart(ctx, vodId) {
         ...ctx,
         memories: ctx.memories.filter(m => inside(Number(m.offset_seconds) || 0)).map(m => ({ ...m, offset_seconds: move(Number(m.offset_seconds) || 0) })),
         transcript: ctx.transcript.filter(t => inside(Number(t.start) || 0)).map(t => ({ ...t, start: move(Number(t.start) || 0), end: t.end == null ? null : move(Number(t.end)) })),
+        said: (ctx.said || []).filter(t => inside(Number(t.start) || 0)).map(t => ({ ...t, start: move(Number(t.start) || 0), end: t.end == null ? null : move(Number(t.end)) })),
         spikes: ctx.spikes.filter(sp => inside(Number(sp.offset))).map(sp => ({ ...sp, offset: move(Number(sp.offset)) })),
         sounds: ctx.sounds.filter(e => inside(Number(e.start_sec))).map(e => ({ ...e, start_sec: move(Number(e.start_sec)), end_sec: e.end_sec == null ? null : move(Number(e.end_sec)) })),
+        heard: (ctx.heard || []).filter(e => inside(Number(e.start_sec))).map(e => ({ ...e, start_sec: move(Number(e.start_sec)), end_sec: e.end_sec == null ? null : move(Number(e.end_sec)) })),
     };
 }
 function _nearestMemory(memories, offset) {
     let best = null, bestD = Infinity;
     for (const m of memories) { const d = Math.abs((m.offset_seconds || 0) - offset); if (d < bestD) { bestD = d; best = m; } }
     return best;
+}
+/**
+ * What there is to go on at one second (item 151, C08), in the shape clip-score.js reads: the chat bucket at it against
+ * the stream's average, how many people were in it (when Chat says), the sounds within 15 s, the words said within 20 s,
+ * and who picked it (`picked_by`: ai, chat, sound, people, scene). The cutter scores it before anything is cut.
+ */
+function _evidenceAt(ctx, t, pickedBy) {
+    const at = Number(t) || 0;
+    const bucket = (ctx.spikes || []).filter(sp => Math.abs(Number(sp.offset) - at) <= 30).sort((a, b) => b.count - a.count)[0] || null;
+    const sounds = (ctx.heard || ctx.sounds || []).filter(e => Math.abs(Number(e.start_sec) - at) <= 15)
+        .map(e => ({ label: String(e.label || ''), confidence: Number(e.confidence) || 0 }));
+    const words = (ctx.said || ctx.transcript || []).filter(x => Math.abs(Number(x.start || 0) - at) <= 20)
+        .reduce((n, x) => n + String(x.text || '').trim().split(/\s+/).filter(Boolean).length, 0);
+    return {
+        picked_by: pickedBy,
+        spike: { peak: bucket ? Number(bucket.count) || 0 : 0, avg: Math.round((Number(ctx.chatAvg) || 0) * 100) / 100 },
+        chatters: bucket && bucket.people != null ? Number(bucket.people) : null,
+        sounds, speechWords: words,
+    };
 }
 /** Transcript text around a moment, so dedupe can tell a new conversation from a repeated scene. */
 function _speechNear(transcript, offset, windowSec = 45) {
@@ -202,10 +234,14 @@ function _speechNear(transcript, offset, windowSec = 45) {
 }
 // flavor: 'paste' → a frame that is striking on its own; 'clip' → a beat that plays out over ~25 s.
 // avoid: offsets (seconds) already turned into something — the picker must stay ≥ 2 min away.
+// The result carries `evidence` (_evidenceAt): the clip cutter scores it and abstains when it is thin (C08).
 async function _findBestMoment(vod, { flavor = 'paste', avoid = [] } = {}) {
     const dur = Math.floor(vod.duration || 0);
     const ctx = await _momentContext(vod.stream_id, vod.vod_id);
-    const avoidList = [...new Set([...(avoid || []), ...await registry.usedOffsets(vod.vod_id, vod.stream_id)])].sort((a, b) => a - b);
+    // A clip never re-cuts what a person already clipped: that footage is a clip already, theirs (C08). A paste (one
+    // frame) may still use the second people chose.
+    const peopleClipped = flavor === 'clip' ? ctx.clipTimes : [];
+    const avoidList = [...new Set([...(avoid || []), ...peopleClipped, ...await registry.usedOffsets(vod.vod_id, vod.stream_id)])].sort((a, b) => a - b);
     const farFromUsed = (t) => avoidList.every(a => Math.abs(a - t) >= registry.GAP_SEC);
     if (!ctx.memories.length && !ctx.transcript.length) return null;
     const clamp = (t) => Math.max(1, Math.min(Math.floor(t || 0), dur > 3 ? dur - 2 : (t || 0)));
@@ -219,18 +255,24 @@ async function _findBestMoment(vod, { flavor = 'paste', avoid = [] } = {}) {
             timeline: ctx.memories.map(m => ({ t: secs(m.offset_seconds), text: _cleanText(_deJson(m.description), 180) })).filter(x => x.text).slice(0, 400),
             transcript: ctx.transcript.map(x => ({ t: secs(x.start), text: _cleanText(x.text, 160) })).filter(x => x.text).slice(0, 1500),
             sounds: (ctx.sounds || []).map(e => ({ t: secs(e.start_sec), label: _cleanText(e.label, 120) })).filter(x => x.label).slice(0, 500),
-            clipped: ctx.clipTimes.slice(0, 12).map(secs),
+            clipped: (flavor === 'clip' ? [] : ctx.clipTimes).slice(0, 12).map(secs),
             spikes: ctx.spikes.slice(0, 6).map(sp => secs(sp.offset)),
             avoid: avoidList.map(secs).slice(0, 500),
         };
         try {
             const j = await aiService.structured('live.moments.pick', input, { target: { service: 'live', type: 'vod', id: String(vod.vod_id) }, meter: { kind: 'moment_pick', role: 'legacy' } });
+            // The AI may say nothing here is worth it (C08/C09): that is an answer, not a failure, so no weaker signal
+            // is tried in its place.
+            if (j && (j.abstain === true || (Object.prototype.hasOwnProperty.call(j, 't') && j.t === null))) {
+                console.log(`[AI-Moments] VOD ${vod.vod_id}: the AI found nothing worth a ${flavor === 'clip' ? 'clip' : 'paste'}${j.why ? ` (${_cleanText(j.why, 120)})` : ''}`);
+                return null;
+            }
             let t = j ? Number(j.t) : NaN;
             if (!isNaN(t)) {
                 t = clamp(t);
                 if (!farFromUsed(t)) { console.log(`[AI-Moments] VOD ${vod.vod_id}: pick at ${_mmss(t)} is next to a used moment — trying the objective signals instead`); throw new Error('near used'); }
                 const near = _nearestMemory(ctx.memories, t);
-                const result = { offset: t, title: _publicTitle(j.title, vod, t, j.desc), desc: _cleanText(_deJson(j.desc), 400) || (near && _deJson(near.description)) || '', speech: _speechNear(ctx.transcript, t), tags: _memTags(near) };
+                const result = { offset: t, title: _publicTitle(j.title, vod, t, j.desc), desc: _cleanText(_deJson(j.desc), 400) || (near && _deJson(near.description)) || '', speech: _speechNear(ctx.said || ctx.transcript, t), tags: _memTags(near), evidence: _evidenceAt(ctx, t, 'ai') };
                 if (explicit.isExplicit(j.desc, j.title, near && near.description, result.desc)) { console.log(`[AI-Moments] VOD ${vod.vod_id}: the pick at ${_mmss(t)} shows sexual content — no moment from it`); return null; }
                 return _isEmptyScene(result.desc) ? null : result;
             }
@@ -238,18 +280,22 @@ async function _findBestMoment(vod, { flavor = 'paste', avoid = [] } = {}) {
     }
 
     // No-AI fallback (also used when the AI pick collided with a used moment): the strongest
-    // objective signal that is not next to something already made.
+    // objective signal that is not next to something already made. A clip needs something people or the room did — a
+    // chat spike or a strong sound; a long scene note alone is a description, not a moment (C08), so only a paste may
+    // fall back to one.
+    const strongSounds = (ctx.heard || ctx.sounds || []).filter(e => Number(e.confidence) >= clipScore.EVIDENCE.soundConfidence && clipScore.STRONG_SOUND.test(String(e.label || '')));
     const candidates = [
-        ...ctx.clipTimes.map(t => ({ t, w: 3 })),                                   // where viewers clipped
-        ...ctx.spikes.map(s => ({ t: s.offset, w: 2 })),                            // busiest chat moments
-        ...ctx.memories.slice().sort((a, b) => String(b.description).length - String(a.description).length).slice(0, 8).map(m => ({ t: m.offset_seconds || 0, w: 1 })), // richest scene notes
+        ...(flavor === 'clip' ? [] : ctx.clipTimes.map(t => ({ t, w: 3, by: 'people' }))),   // where people clipped
+        ...ctx.spikes.map(s => ({ t: s.offset, w: 2, by: 'chat' })),                         // busiest chat moments
+        ...strongSounds.map(e => ({ t: Number(e.start_sec) || 0, w: 2, by: 'sound' })),     // laughter, a crowd, a bang
+        ...(flavor === 'clip' ? [] : ctx.memories.slice().sort((a, b) => String(b.description).length - String(a.description).length).slice(0, 8).map(m => ({ t: m.offset_seconds || 0, w: 1, by: 'scene' }))), // richest scene notes
     ].filter(c => farFromUsed(clamp(c.t))).sort((a, b) => b.w - a.w);
     if (!candidates.length) return null;
     let offset = clamp(candidates[0].t);
     const near = _nearestMemory(ctx.memories, offset);
     const desc = near ? _deJson(near.description) : '';
     if (near && explicit.isExplicit(near.description)) return null;   // never a moment of sexual content (server/ai/explicit.js)
-    return _isEmptyScene(desc) ? null : { offset, title: _fallbackTitle(vod, offset, desc), desc, speech: _speechNear(ctx.transcript, offset), tags: _memTags(near) };
+    return _isEmptyScene(desc) ? null : { offset, title: _fallbackTitle(vod, offset, desc), desc, speech: _speechNear(ctx.said || ctx.transcript, offset), tags: _memTags(near), evidence: _evidenceAt(ctx, offset, candidates[0].by) };
 }
 // True when a description says the frame is essentially empty — black/dark/loading/blank — so we
 // never turn "nothing" into a clip or paste.
@@ -537,7 +583,7 @@ async function tick(opts = {}) {
                 try {
                     const second = await _findBestMoment(v, { flavor: 'clip', avoid: [offset] });
                     if (second && !await registry.isUsed({ vod_id: v.vod_id, stream_id: v.stream_id, offset: second.offset, desc: second.desc, title: second.title, speech: second.speech })) {
-                        const clip = await require('./auto-clip-job').clipVodMoment({ vod: v, offset: second.offset, title: second.title, desc: second.desc, speech: second.speech, archival: v.archival, source: momentSource });
+                        const clip = await require('./auto-clip-job').clipVodMoment({ vod: v, offset: second.offset, title: second.title, desc: second.desc, speech: second.speech, evidence: second.evidence, archival: v.archival, source: momentSource });
                         if (clip) console.log(`[AI-Moments] Auto-clip cut for VOD ${v.vod_id} at ${_mmss(second.offset)} ("${String(second.title || '').slice(0, 60)}") — paste was at ${_mmss(offset)}`);
                     } else console.log(`[AI-Moments] VOD ${v.vod_id}: no second, distinct beat for a clip — skipped`);
                 } catch { /* clipping is best-effort */ }
@@ -566,7 +612,7 @@ function start() {
     setInterval(() => { tick().catch(() => {}); }, 5 * 60 * 1000);
 }
 
-module.exports = { start, tick, findBestMoment: _findBestMoment, frameTooDark: _frameTooDark, makeSlug: _slug, publicTitle: _publicTitle, _internals: { momentPool: _momentPool, fallbackTitle: _fallbackTitle, captionTitle: _captionTitle } };
+module.exports = { start, tick, findBestMoment: _findBestMoment, frameTooDark: _frameTooDark, makeSlug: _slug, publicTitle: _publicTitle, _internals: { momentPool: _momentPool, fallbackTitle: _fallbackTitle, captionTitle: _captionTitle, evidenceAt: _evidenceAt } };
 
 // CLI: force a one-off regeneration, e.g. a whole-dataset "best of all-time" test run:
 //   node server/ai/ai-moments-job.js --fresh --target=6 --perUser=2

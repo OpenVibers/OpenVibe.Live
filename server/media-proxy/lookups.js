@@ -218,9 +218,13 @@ async function streamClips(streamId, vodId) {
     return [...byId.values()];
 }
 
-/** Seconds into the VOD where viewers clipped (the AI moment picker's strongest signal). */
+/**
+ * Seconds into the VOD where people clipped (the AI moment picker's strongest signal). The AI's own clips are left out
+ * (item 151, C08): they are not people choosing a moment, and counting them made every AI clip a reason for the next.
+ */
 async function clipStartTimes(streamId, vodId) {
     return (await streamClips(streamId, vodId))
+        .filter((c) => c.auto_generated !== true)
         .map((c) => Number(c.start_time)).filter((t) => t > 0).map(Math.floor).sort((a, b) => a - b);
 }
 
