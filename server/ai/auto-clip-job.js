@@ -429,6 +429,8 @@ function start() {
     _flagTimer = require('../utils/jobs').every('auto-clip-flag-sync', FLAG_SYNC_INTERVAL_MS, () => syncAutoClipFlags(), { initialDelayMs: 90 * 1000, jitterMs: 60 * 1000 });
     // Once a day, the AI's old clips no person ever opened leave the lists (unlisted, never deleted).
     require('./auto-clip-sweep').start();
+    // Once a day (LIVE_CLIP_EVAL=on), recordings with both an AI clip and a person's go to Bench for a blind vote.
+    require('./clip-evaluation').start();
     console.log('[AutoClip] Live auto-clip job started (selective chat-spike + AI agreement, cuts via OpenVibe.Media) + persistent VOD backfill');
 }
 function stop() {
@@ -436,6 +438,7 @@ function stop() {
     if (_backfillTimer) { _backfillTimer(); _backfillTimer = null; }
     if (_flagTimer) { _flagTimer(); _flagTimer = null; }
     require('./auto-clip-sweep').stop();
+    require('./clip-evaluation').stop();
 }
 
 module.exports = { start, stop, clipVodMoment, backfillVodClips, syncAutoClipFlags, _tick, _internals: { checkLiveStream: _checkLiveStream, backfillPool: _backfillPool } };
