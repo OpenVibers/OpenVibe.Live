@@ -264,11 +264,13 @@ async function _findBestMoment(vod, { flavor = 'paste', avoid = [] } = {}) {
         };
         try {
             const j = await aiService.structured('live.moments.pick', input, { target: { service: 'live', type: 'vod', id: String(vod.vod_id) }, meter: { kind: 'moment_pick', role: 'legacy' } });
-            // The AI may say nothing here is worth it (C08/C09): that is an answer, not a failure, so no weaker signal
-            // is tried in its place.
+            // The AI may say nothing here is worth a clip (C08/C09): that is an answer, not a failure, so no weaker
+            // signal is tried in its place. A paste needs only one good frame: if the AI declines one anyway, the
+            // objective signals below pick it (11-03: twelve declined pastes left the home with none).
             if (j && (j.abstain === true || (Object.prototype.hasOwnProperty.call(j, 't') && j.t === null))) {
-                console.log(`[AI-Moments] VOD ${vod.vod_id}: the AI found nothing worth a ${flavor === 'clip' ? 'clip' : 'paste'}${j.why ? ` (${_cleanText(j.why, 120)})` : ''}`);
-                return null;
+                console.log(`[AI-Moments] VOD ${vod.vod_id}: the AI found nothing worth a ${flavor === 'clip' ? 'clip' : 'paste'}${j.why ? ` (${_cleanText(j.why, 120)})` : ''}${flavor === 'clip' ? '' : ': the signals pick the frame'}`);
+                if (flavor === 'clip') return null;
+                throw new Error('declined paste');
             }
             let t = j ? Number(j.t) : NaN;
             if (!isNaN(t)) {
