@@ -113,7 +113,11 @@ async function usedReason({ vod_id = null, stream_id = null, offset = null, sig:
                                 ORDER BY created_at DESC LIMIT ${SCAN}`, [iso(now - SIG_TTL_MS)]);
     for (const e of rows) {
         const eEmb = Array.isArray(e.embedding) ? e.embedding : null;
-        const shortMatch = scene && e.sig && e.sig === scene;
+        // The five-word signature is the opening words, stopwords and all, so "the streamer is in a …" matched nearly
+        // every scene note and skipped unrelated VODs (11-03: two in one run). With both full scenes known it counts
+        // only when it carries three content words (a Japanese opening does; "the streamer sits in a" does not), and
+        // isSameScene decides the rest; a row or candidate with no full scene still matches on it alone.
+        const shortMatch = scene && e.sig && e.sig === scene && (!(full && e.scene) || dedupe.contentTokens(scene).length >= 3);
         const sceneMatch = full && e.scene && dedupe.isSameScene(e.scene, full);
         // Frame embeddings (when both sides have them) are independent evidence: the same footage
         // is a repeat even if it was re-described or re-uploaded.

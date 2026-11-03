@@ -20,7 +20,11 @@ console.log('✅ legacy logs imported');
 
 await reg.record({ kind: 'paste', vod_id: 42, stream_id: 7, offset: 1000, title: 'Depth Estimation tease', desc: 'The video appears to be a live streaming session with a chat overlay' });
 assert.strictEqual(await reg.usedReason({ vod_id: 42, offset: 1050 }), 'paste already made at 1000s of this VOD', 'same VOD within 2 min is blocked');
-assert.ok(/same scene as a recent paste/.test(await reg.usedReason({ vod_id: 43, offset: 5, desc: 'the video appears to be a live streaming session with music' })), 'same opening words = same scene, even on another VOD');
+// Opening words alone are not a scene (11-03: "the streamer is in a" skipped two unrelated VODs); content words are.
+await reg.record({ kind: 'paste', vod_id: 44, stream_id: 8, offset: 60, title: 'Couch', desc: 'The streamer sits in a red gaming chair, laughing at chat' });
+assert.strictEqual(await reg.usedReason({ vod_id: 45, offset: 60, desc: 'The streamer sits in a dim kitchen cooking pasta' }), null, '"the streamer sits in a" is not a scene');
+assert.strictEqual(await reg.usedReason({ vod_id: 43, offset: 5, desc: 'the video appears to be a live streaming session with music' }), null, 'same opening words, different content: a new scene');
+assert.ok(/same scene as a recent paste/.test(await reg.usedReason({ vod_id: 43, offset: 5, desc: 'The video appears to be a live-streaming session with a chat overlay.' })), 'the same scene, reworded, on another VOD is still a repeat');
 assert.strictEqual(await reg.usedReason({ vod_id: 42, offset: 1300, desc: 'A robot arm knocks over the coffee' }), null, '≥ 2 min away with a different scene is fine');
 assert.ok(await reg.isUsed({ stream_id: 7, offset: 1010 }), 'live streams are matched by stream id too');
 await reg.record({ kind: 'clip', vod_id: 42, stream_id: 7, offset: 1300, title: 'Robot arm vs coffee' });
