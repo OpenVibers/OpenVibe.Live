@@ -27,4 +27,7 @@ assert.deepStrictEqual(sections, ["{ id: 'live', label: 'Live', items: ["], 'one
 });
 assert.ok(!/\bafter:/.test(menu), 'no rows after the network\'s');
 
+// The router answers same-site links, so the navbar's speculation rules (which broke the report-only CSP) are off.
+assert.match(src.slice(src.indexOf('function config(user)')), /speculate: false,/, 'no speculation rules on Live');
+
 console.log('navbar menu live: all checks passed');
