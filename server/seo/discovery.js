@@ -138,16 +138,20 @@ const LLMS_DOCS = [
 const LLMS_SUMMARY = 'Open-source, community-run live streaming. Anyone can go live straight from a web browser, with no OBS, no downloads and no follower, subscriber or equipment requirement: press Go Live, allow camera and microphone, and the stream is live (WebRTC, under a second of delay; Chromebooks, laptops and phones). OBS (RTMP), WHIP and command-line ingest are there for produced shows. Every stream can be recorded as a VOD, clipped and discussed. Part of the OpenVibe network: one account across openvibe.network, openvibe.media, openvibe.community, openvibe.tools and the other OpenVibe sites.';
 const _docsPresent = () => LLMS_DOCS.filter(([name]) => { try { return fs.existsSync(path.join(DOCS_DIR, `${name}.md`)); } catch { return false; } });
 
+// Each of Live's own pages is linked at its Markdown twin (AGT-5; openvibe-shared 4.108.0 leaves files and other sites'
+// links as they are). The broadcaster is an app with no twin, so it is linked as HTML.
 function llmsTxt() {
     const b = baseUrl();
     return seo.llmsTxt({
         name: SITE_NAME,
+        markdown: true,
+        base: b,
         summary: LLMS_SUMMARY,
         details: 'People\'s work and AI-made material are kept apart everywhere on this site. The Content pages list what people made; AI Moments list what the platform\'s AI derived from streams. Every AI item is labelled AI-generated, credited to no person, marked noindex,follow and made canonical to the source recording at the moment it came from, on OpenVibe.Video (https://openvibe.video/v/<id>?t=<seconds>). In the JSON feeds, AI items carry "ai": true and an "ai_label".',
         sections: [
             { title: 'Going live from a browser (no OBS)', links: [
                 { title: 'How to go live in your browser', url: `${b}/docs/go-live-in-your-browser`, note: `open ${b}, sign in, press Go Live, allow camera and microphone, start. No software, no follower minimum.` },
-                { title: 'The broadcaster', url: `${b}/broadcast`, note: 'camera switching, screen/window/tab sharing with a camera picture-in-picture, live stats, chat beside the stream.' },
+                { title: 'The broadcaster', url: `${b}/broadcast`, html: true, note: 'camera switching, screen/window/tab sharing with a camera picture-in-picture, live stats, chat beside the stream.' },
                 { title: 'Browser publishing for other sites', url: `${b}/docs/whip#publishing-from-a-browser`, note: 'any web page can publish to a channel over WHIP.' },
             ] },
             { title: 'What people made', links: [
@@ -170,12 +174,14 @@ function llmsTxt() {
                 ..._docsPresent().map(([name, what]) => ({ title: name, url: `${b}/docs/${name}`, note: what })),
                 { title: 'Source code', url: 'https://github.com/OpenVibers/OpenVibe.Live' },
             ] },
-            { title: 'Discovery', links: [
-                { title: 'Sitemap', url: `${b}/sitemap.xml`, note: 'people\'s work only' },
-                { title: 'robots.txt', url: `${b}/robots.txt` },
-                { title: 'llms-full.txt', url: `${b}/llms-full.txt`, note: 'the docs above in full, as plain text' },
-                { title: 'OpenVibe platform descriptor', url: 'https://openvibe.network/.well-known/openvibe', note: 'the OpenVibe network\'s descriptor' },
-            ] },
+        ],
+        // llmstxt.org's "## Optional": what an agent may skip when it needs a shorter context.
+        optional: [
+            { title: 'Sitemap', url: `${b}/sitemap.xml`, note: 'people\'s work only' },
+            { title: 'robots.txt', url: `${b}/robots.txt` },
+            { title: 'llms-full.txt', url: `${b}/llms-full.txt`, note: 'the docs above in full, as plain text' },
+            { title: 'Updates', url: `${b}/updates`, note: 'every change deployed to Live, newest first' },
+            { title: 'OpenVibe platform descriptor', url: 'https://openvibe.network/.well-known/openvibe', note: 'the OpenVibe network\'s descriptor' },
         ],
     });
 }

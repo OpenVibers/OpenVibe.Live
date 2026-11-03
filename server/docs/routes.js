@@ -16,6 +16,7 @@ const express = require('express');
 const fs = require('fs');
 const path = require('path');
 const cache = require('openvibe-shared/cache-policy');
+const agentLayer = require('openvibe-shared/agent-layer');
 const social = require('openvibe-shared/social');
 
 const router = express.Router();
@@ -252,7 +253,8 @@ function renderPage({ name, title, html, headings }) {
     <title>${escapeHtml(pageTitle)}</title>
     <link rel="icon" type="image/svg+xml" href="/assets/logo.svg">
     <script src="/shared/theme-loader.js"></script>
-    <link rel="canonical" href="${escapeHtml(canonical)}">${description ? `
+    <link rel="canonical" href="${escapeHtml(canonical)}">
+    ${agentLayer.linkHeaderTags(pagePath(name)).head.replace(/\n/g, '\n    ')}${description ? `
     <meta name="description" content="${escapeHtml(description)}">
     <meta property="og:type" content="article">
     <meta property="og:site_name" content="OpenVibe.Live">
@@ -331,16 +333,47 @@ function loadDoc(name) {
     }
 }
 
+const pagePath = (name) => (name === 'README' ? '/docs' : `/docs/${name}`);
+
 function sendDoc(req, res, name) {
     const markdown = loadDoc(name);
     if (markdown === null) return res.status(404).type('text/plain').send('No such doc');
     const rendered = renderMarkdown(markdown);
     res.set('Cache-Control', cache.htmlHeaders({ maxAge: 300 }));
+    res.set('Link', agentLayer.linkHeaderTags(pagePath(name)).header);
     res.type('html').send(renderPage({ name, ...rendered }));
 }
 
+/** A relative link in a doc's Markdown as its twin serves it: another doc is that doc's twin (whip.md → /docs/whip.md). */
+function twinHref(href) {
+    if (/^(?:[a-z][a-z0-9+.-]*:|\/\/|\/|#)/i.test(href)) return href;
+    const [target, hash] = href.split('#');
+    const doc = target.replace(/^\.\//, '').match(/^([a-z0-9-]+)\.md$/i);
+    return doc ? `${pagePath(doc[1])}.md${hash ? `#${hash}` : ''}` : rewriteHref(href);
+}
+
+/** A doc's own Markdown with its relative links made absolute; links inside fenced code are text and stay. */
+function twinMarkdown(markdown) {
+    return String(markdown).split(/(^(?:```|~~~)[^\n]*\n[\s\S]*?^(?:```|~~~)[ \t]*$)/m)
+        .map((part, i) => (i % 2 ? part : part.replace(/\]\(([^)\s]+)((?:\s+"[^"]*")?)\)/g, (m, href, title) => `](${twinHref(href)}${title})`)))
+        .join('');
+}
+
+/**
+ * The Markdown twin of a doc (AGT-5): the file as written, at /docs.md and /docs/<name>.md. Mounted in server/index.js
+ * before the agent layer, which answers an .md it does not render with a 404.
+ */
+function sendTwin(req, res) {
+    const name = req.params.name || 'README';
+    const markdown = loadDoc(name);
+    res.type('text/markdown; charset=utf-8');
+    if (markdown === null) return res.status(404).send('# Not found\n');
+    res.set('Cache-Control', cache.htmlHeaders({ maxAge: 300 }));
+    res.set('Link', `<${publicBase()}${pagePath(name)}>; rel="canonical", </llms.txt>; rel="describedby"`);
+    res.send(twinMarkdown(markdown));
+}
+
 router.get('/', (req, res) => sendDoc(req, res, 'README'));
-router.get('/:name.md', (req, res) => sendDoc(req, res, req.params.name));
 router.get('/:name', (req, res) => sendDoc(req, res, req.params.name));
 
 module.exports = router;
@@ -348,3 +381,5 @@ module.exports._renderMarkdown = renderMarkdown;
 module.exports._rewriteHref = rewriteHref;
 module.exports._slugify = slugify;
 module.exports._renderPage = renderPage;
+module.exports.sendTwin = sendTwin;
+module.exports._twinMarkdown = twinMarkdown;

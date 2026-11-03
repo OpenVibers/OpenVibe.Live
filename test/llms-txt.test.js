@@ -60,12 +60,12 @@ async function main() {
         const summary = text.split('\n').find((l) => l.startsWith('> '));
         assert.match(summary, /straight from a web browser, with no OBS, no downloads and no follower/);
         assert.ok(text.includes('## Going live from a browser (no OBS)'));
-        assert.ok(text.includes('https://openvibe.live/docs/go-live-in-your-browser)'));
+        assert.ok(text.includes('https://openvibe.live/docs/go-live-in-your-browser.md)'));
     });
 
     await check('links the API docs, and every docs page it links exists', () => {
-        assert.ok(text.includes('[API docs](https://openvibe.live/documentation)'));
-        const linked = [...text.matchAll(/https:\/\/openvibe\.live\/docs\/([a-z-]+)\)/g)].map((m) => m[1]);
+        assert.ok(text.includes('[API docs](https://openvibe.live/documentation.md)'));
+        const linked = [...text.matchAll(/https:\/\/openvibe\.live\/docs\/([a-z-]+)\.md\)/g)].map((m) => m[1]);
         assert.ok(linked.includes('whip') && linked.includes('api-tokens'), linked.join(','));
         for (const name of linked) assert.ok(fs.existsSync(path.join(__dirname, '../docs', `${name}.md`)), `docs/${name}.md`);
     });
@@ -74,6 +74,19 @@ async function main() {
         assert.ok(/People's work and AI-made material are kept apart/.test(text));
         assert.ok(text.includes('noindex,follow') && text.includes('credited to no person') && text.includes('"ai": true'));
         assert.ok(/## What people made[\s\S]*## What the AI made/.test(text), 'made, then derived');
+    });
+
+    await check('links each of its own pages at the Markdown twin, and ends with an Optional section (AGT-5)', () => {
+        const own = [...text.matchAll(/\]\((https:\/\/openvibe\.live[^)\s]*)\)( \(HTML\))?/g)];
+        assert.ok(own.length > 10, String(own.length));
+        for (const [, url, html] of own) {
+            const p = new URL(url).pathname;
+            assert.ok(p.endsWith('.md') || /\.[a-z]+$/.test(p) || p.startsWith('/api/') || html, `${url} is a twin, a file or marked (HTML)`);
+        }
+        assert.ok(text.includes('[Home](https://openvibe.live/index.md)'));
+        assert.ok(text.includes('[The broadcaster](https://openvibe.live/broadcast) (HTML)'), 'the broadcaster has no twin');
+        assert.ok(text.includes('(https://openvibe.live/@goosely.md)') && text.includes('(https://openvibe.video/v/<id>)'), 'a channel twin; another site keeps its link');
+        assert.ok(/\n## Optional\n\n[\s\S]*\[Sitemap\]\(https:\/\/openvibe\.live\/sitemap\.xml\)/.test(text) && text.lastIndexOf('\n## ') === text.indexOf('\n## Optional'), 'Optional is the last section');
     });
 
     server.close();

@@ -677,7 +677,8 @@ try { require('./seo').register(app); } catch (e) { console.warn('[SEO] not regi
 // The agent layer (openvibe-shared/agent-layer): /.well-known/agent.json, and the Markdown twins of the home,
 // channel pages and VOD/clip lists. Mounted after the SEO middleware, so a browser keeps the page's own head and
 // cache (which now names the twin) and only a twin request reaches this renderer; before the static files and the
-// SPA fallback, so an unknown .md is a 404 rather than a page.
+// SPA fallback, so an unknown .md is a 404 rather than a page. A doc's twin is its own Markdown file (AGT-5).
+app.get(['/docs.md', '/docs/:name.md'], require('./docs/routes').sendTwin);
 require('openvibe-shared/agent-layer').mount(app, {
     descriptor: require('./agent-descriptor'),
     render: require('./agent-pages').createAgentPages().renderPublicPage,
