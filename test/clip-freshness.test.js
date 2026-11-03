@@ -248,6 +248,8 @@ const archiveCut = (id) => autoClip.clipVodMoment({
     offset: 60,
     title: `Archive moment ${id}`,
     desc: `A distinct archival scene number ${id} with enough words`,
+    // A moment worth cutting (C08: the cutter scores the evidence first).
+    evidence: { picked_by: 'ai', spike: { peak: 20, avg: 2 }, chatters: 6, sounds: [{ label: 'Laughter', confidence: 0.8 }], speechWords: 30 },
     archival: true,
 });
 const firstCut = archiveCut(70);
