@@ -45,7 +45,9 @@ async function analyze(kind, item) {
         attemptNo = Number(state && state.transcript_attempts) || 0;
         const mediaUrl = await source(kind, item);
         if (!mediaUrl) throw new Error('Media did not provide a readable URL');
-        const run = await aiService.run('media.analyze', { media_url: mediaUrl, language: 'en', allow_paid: false }, {
+        // The channel's language (C11): AI hears a Japanese recording as Japanese.
+        const language = await require('./transcribe').speechLanguage(item.user_id, { local: false });
+        const run = await aiService.run('media.analyze', { media_url: mediaUrl, language, allow_paid: false }, {
             target: { service: 'live', type: kind, id: String(item.id) },
             attribution: aiService.ownerRef(item.user_id),
             idempotencyKey: `live.media.analyze:${kind}:${item.id}:${attemptNo}`,

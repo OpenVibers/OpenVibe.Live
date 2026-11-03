@@ -216,10 +216,10 @@ function _ffprobeHasAudio(src) {
  * recording where it lies (range requests, nothing downloaded), loudness-normalises it and runs whisper.cpp with the
  * same models; low power while streams are live. → { ok, segments, error }
  */
-async function _aiWindow(src, start, len) {
+async function _aiWindow(src, start, len, language = 'en') {
     const aiService = require('./ai-service');
     const r = await aiService.run('live.media.transcribe', {
-        media_url: src, language: 'en', start_sec: start, seconds: Math.max(0, Math.round(len)), low_power: require('./transcribe').isLowPower(),
+        media_url: src, language: language || 'en', start_sec: start, seconds: Math.max(0, Math.round(len)), low_power: require('./transcribe').isLowPower(),
     }, { waitMs: 60000, pollMs: 20 * 60000 });
     const out = aiService.usable(r);
     if (!out) return { ok: false, segments: [], error: (r && r.error && (r.error.code || r.error.detail)) || 'OpenVibe.AI did not transcribe' };
@@ -230,17 +230,19 @@ async function _aiWindow(src, start, len) {
 // waiting out rather than skipping the window.
 const PERMANENT_AI_ERRORS = new Set(['media.unreadable', 'media.not_found', 'media.too_long', 'validation.failed']);
 
-async function _transcribeSpan(src, duration, { resumeFromSec = 0, priorSegments = null, onWindow = null } = {}) {
+async function _transcribeSpan(src, duration, { resumeFromSec = 0, priorSegments = null, onWindow = null, userId = null, language = null } = {}) {
     const transcribe = require('./transcribe');
     // Recordings on Media are transcribed by OpenVibe.AI; only a local file (legacy) is still decoded here.
     const viaAi = /^https?:\/\//i.test(String(src || '')) && require('./ai-service').enabled();
     if (!viaAi && !transcribe.available()) return { text: '', segments: [], ok: false, error: 'whisper unavailable' };
+    // The channel's language (C11): a Japanese stream is heard as Japanese, not decoded as English.
+    const lang = language || (userId ? await transcribe.speechLanguage(userId, { local: !viaAi }) : 'en');
     if (viaAi && duration > 0 && duration <= 200) {
-        const w = await _aiWindow(src, 0, 0);
+        const w = await _aiWindow(src, 0, 0, lang);
         return { text: w.segments.map(g => g.text).join(' ').replace(/\s+/g, ' ').trim(), segments: w.segments, ok: w.ok, error: w.error };
     }
     if (duration > 0 && duration <= 200) {
-        return await transcribe.transcribeMediaDetailed(src, { seconds: 0, timeoutMs: 300000 });
+        return await transcribe.transcribeMediaDetailed(src, { seconds: 0, timeoutMs: 300000, language: lang });
     }
     // FULL coverage, not a sample. This used to take three 60-second windows at 10%/45%/80%
     // of the recording, so a 4-hour VOD produced 3 minutes of transcript and the rest was
@@ -272,7 +274,7 @@ async function _transcribeSpan(src, duration, { resumeFromSec = 0, priorSegments
     for (const start of windows) {
         const len = Math.min(WINDOW_SEC, total - start);
         if (viaAi) {
-            const w = await _aiWindow(src, start, len);
+            const w = await _aiWindow(src, start, len, lang);
             if (w.ok) anyOk = true; else lastErr = w.error || lastErr;
             if (w.segments.length) segments.push(...w.segments);
             if (w.ok && typeof onWindow === 'function') {
@@ -287,7 +289,7 @@ async function _transcribeSpan(src, duration, { resumeFromSec = 0, priorSegments
         const wav = _tmp('wav');
         const ffOk = await _runFf('ffmpeg', ['-y', '-ss', String(start), '-i', src, '-t', String(len), '-vn', '-ac', '1', '-ar', '16000', '-af', 'loudnorm=I=-16:TP=-1.5:LRA=11', '-f', 'wav', wav], 180000);
         if (ffOk) {
-            const r = await transcribe.transcribeWavDetailed(wav, { timeoutMs: 600000, offsetSec: start });
+            const r = await transcribe.transcribeWavDetailed(wav, { timeoutMs: 600000, offsetSec: start, language: lang });
             if (r.ok) anyOk = true; else lastErr = r.error || lastErr;
             if (r.segments && r.segments.length) segments.push(...r.segments);
             if (r.ok && typeof onWindow === 'function') {
@@ -334,7 +336,7 @@ async function analyzeMedia(src, { streamId = null, userId = null, numFrames = n
         frames = await captureFrameMemories(src, times, { streamId, userId, offsetBase, store: storeMemories });
     }
 
-    const { text: transcript, segments, ok: transcriptOk } = await _transcribeSpan(src, duration);
+    const { text: transcript, segments, ok: transcriptOk } = await _transcribeSpan(src, duration, { userId });
 
     let overview = null;
     if ((frames.length || transcript) && await ai.isEnabled() && await ai.withinBudget()) {

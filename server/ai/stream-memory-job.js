@@ -122,7 +122,8 @@ async function _analyzeOne(stream, { allowFfmpeg = true, reason = 'periodic' } =
         } else if (ai.transcriptionEnabled && await ai.transcriptionEnabled()) {
             const audio = require('./stream-audio').captureAudioChunk ? await require('./stream-audio').captureAudioChunk(stream, CHUNK_SEC) : null;
             if (audio) {
-                const tx = await require('./transcribe').transcribeWavDetailed(audio, { offsetSec: Math.max(0, offset - CHUNK_SEC) });
+                const transcribe = require('./transcribe');
+                const tx = await transcribe.transcribeWavDetailed(audio, { offsetSec: Math.max(0, offset - CHUNK_SEC), language: await transcribe.speechLanguage(stream.user_id) });
                 heard = tx.text || '';
                 heardSegments = (tx.segments && tx.segments.length) ? tx.segments : null;
                 try { require('fs').unlinkSync(audio); } catch { /* */ }

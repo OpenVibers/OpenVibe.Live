@@ -69,6 +69,19 @@ function parakeetAvailable() {
     if (process.env.ASR_ENGINE === 'whisper') return false;
     try { return fs.existsSync(PARAKEET_BIN) && fs.existsSync(PARAKEET_MODEL); } catch { return false; }
 }
+/**
+ * The language a channel's speech is decoded in (item 151, C11): its chat language (set, or detected from its bio),
+ * when a local model can decode it (Parakeet's languages, or a multilingual whisper); else English. OpenVibe.AI's
+ * path takes the channel's language as it is: AI picks its own model.
+ */
+async function speechLanguage(userId, { local = true } = {}) {
+    let lang = 'en';
+    try { lang = await require('../i18n/translate').channelLanguage(userId); } catch { lang = 'en'; }
+    lang = String(lang || 'en').toLowerCase();
+    if (!local || lang === 'en') return lang || 'en';
+    return engineFor(lang) === 'parakeet' || multilingualModel() ? lang : 'en';
+}
+
 /** The engine a decode in `language` uses: 'parakeet' or 'whisper'. */
 function engineFor(language = 'en') {
     return parakeetAvailable() && PARAKEET_LANGS.has(String(language || 'en').slice(0, 2).toLowerCase()) ? 'parakeet' : 'whisper';
@@ -185,6 +198,10 @@ const HALLUCINATIONS = new Set([
     'thanks for watching.', 'please subscribe', 'subscribe', 'like and subscribe',
     'thank you for watching', 'thank you very much',
     'thank you so much', 'silence', 'music', 'applause',
+    // Whisper's Japanese stock inventions over silence and music (item 151, C11: Japanese streams are now heard in
+    // Japanese, and these came with it): "thanks for watching", "please subscribe".
+    'ご視聴ありがとうございました', 'ご視聴ありがとうございます', 'ご視聴いただきありがとうございました',
+    'チャンネル登録よろしくお願いします', 'チャンネル登録お願いします', 'チャンネル登録よろしくね',
 ]);
 // Drop-only-without-VAD: these ARE real words a streamer says constantly. They were on the
 // blocklist because, with the decoder run over 87% silence, they were overwhelmingly
@@ -201,8 +218,10 @@ function _isNoise(t) {
     if (/^[\s.\-–—_*]+$/.test(s)) return true;
     if (/^[\[(♪].*[\])♪]?$/.test(s)) return true;
     if (/^♪/.test(s) || /♪$/.test(s)) return true;
-    const norm = s.toLowerCase().replace(/[.!?,…]+$/g, '').trim();
+    const norm = s.toLowerCase().replace(/[.!?,…。！？、]+$/g, '').trim();
     if (HALLUCINATIONS.has(norm)) return true;
+    // Japanese subtitle credits ("字幕: …", "字幕作成者 …") are training-data boilerplate, never stream speech.
+    if (/^(?:字幕|翻訳)(?:作成者?|制作|提供)?[\s:：]/.test(norm) || /^字幕\s*by\b/i.test(norm)) return true;
     // Whisper's training data was full of subtitle boilerplate, and it emits those exact
     // phrases over noise even when VAD says a voice is present — a real live segment came
     // back as "For more information, visit www.fema.org." These are recognisable by shape:
@@ -398,7 +417,7 @@ async function transcribeWav(wavPath, opts = {}) {
  * Extract audio from ANY media (local file OR http(s) URL) → temp wav → detailed
  * transcription. @returns {Promise<{text, segments}>}
  */
-function transcribeMediaDetailed(mediaPath, { seconds = 0, offsetSec = 0, timeoutMs = 300000 } = {}) {
+function transcribeMediaDetailed(mediaPath, { seconds = 0, offsetSec = 0, timeoutMs = 300000, language = 'en' } = {}) {
     return new Promise((resolve) => {
         const isUrl = /^https?:/i.test(mediaPath || '');
         if (!available() || !mediaPath || (!isUrl && !fs.existsSync(mediaPath))) return resolve({ text: '', segments: [], ok: false, error: 'source unavailable' });
@@ -415,7 +434,7 @@ function transcribeMediaDetailed(mediaPath, { seconds = 0, offsetSec = 0, timeou
             clearTimeout(ffTimer);
             if (code !== 0) { cleanup(); return resolve({ text: '', segments: [], ok: false, error: `ffmpeg exited ${code}` }); }
             let r = { text: '', segments: [], ok: false, error: 'unknown' };
-            try { r = await transcribeWavDetailed(wav, { timeoutMs, offsetSec }); } catch (e) { r = { text: '', segments: [], ok: false, error: e.message }; }
+            try { r = await transcribeWavDetailed(wav, { timeoutMs, offsetSec, language }); } catch (e) { r = { text: '', segments: [], ok: false, error: e.message }; }
             cleanup();
             resolve(r);
         });
@@ -463,4 +482,4 @@ function describe() {
 
 function isLowPower() { return _lowPower; }
 
-module.exports = { available, describe, engineFor, parseParakeet, laneStatus, multilingualModel, transcribeWav, transcribeWavDetailed, transcribeMedia, transcribeMediaDetailed, killActive, setLowPower, isLowPower };
+module.exports = { _isNoise, speechLanguage, available, describe, engineFor, parseParakeet, laneStatus, multilingualModel, transcribeWav, transcribeWavDetailed, transcribeMedia, transcribeMediaDetailed, killActive, setLowPower, isLowPower };
