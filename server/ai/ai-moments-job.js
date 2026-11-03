@@ -60,9 +60,12 @@ function _deJson(desc) {
 }
 // The title when the AI gives none. A frame caption's first clause, when it reads as a title: never cut off on a
 // dangling word ("…Speaking To"). Otherwise the stream's own title and the moment's time ("Fortnite! at 41:20").
-const DANGLING = /\s+(to|in|with|a|an|of|and|the|on|at|is|are|was|from|for|by|near|while|as|or|into|onto|its|his|her|their)$/i;
+const DANGLING = /\s+(to|in|with|a|an|of|and|the|on|at|is|are|was|from|for|by|near|while|as|or|into|onto|its|his|her|their|inside|outside|behind|under|over|through|toward|towards|around|about|like|that|which|who|where|when|what|[\w-]+-like)$/i;
+// "The streamer is playing …": on a streaming site the subject says nothing, and it took three of a title's nine words
+// (11-03 home: "The Streamer Is Livestreaming From A Low-Angle POV Inside").
+const STREAMER_IS = /^the (?:streamer|broadcaster|host) (?:is|was) (?=\w+ing\b)/i;
 function _captionTitle(desc) {
-    let s = _cleanText(desc).split(/[.!?;:]|,\s(?=(?:with|and|as|while|near|showing|likely)\b)/i)[0].trim();
+    let s = _cleanText(desc).split(/[.!?;:]|,\s(?=(?:with|and|as|while|near|showing|likely)\b)/i)[0].trim().replace(STREAMER_IS, '');
     s = s.split(' ').filter(Boolean).slice(0, 9).join(' ').replace(/[,\s]+$/, '');
     while (DANGLING.test(s)) s = s.replace(DANGLING, '');
     if (s.split(' ').length < 3) return null;
