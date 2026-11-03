@@ -95,8 +95,8 @@
 }
 
 .bc-modal-content {
-    background: rgba(22,22,26,0.95);
-    border: 1px solid rgba(255,255,255,0.08);
+    background: var(--bg-card);
+    border: 1px solid var(--border);
     border-radius: 16px;
     max-width: 1200px;
     width: 100%;
