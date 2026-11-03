@@ -100,6 +100,32 @@ const evaluation = require('../server/ai/clip-evaluation');
     assert.strictEqual(out.submitted.length, 0);
     assert.strictEqual(bench.length, 1, 'stopped at the first refusal');
 
+    // The recording is claimed before Bench is asked: a state that cannot be written sends nothing, and a state that
+    // cannot be read stops the run (11-03).
+    reset();
+    const realSet = db.setState;
+    db.setState = async () => { throw new Error('db down'); };
+    out = await evaluation.run({ now: NOW, max: 5 });
+    assert.strictEqual(bench.length, 0, 'nothing reaches Bench without the claim');
+    db.setState = realSet;
+    const realGet = db.getState;
+    db.getState = async () => { throw new Error('db down'); };
+    out = await evaluation.run({ now: NOW, max: 5 });
+    assert.match(out.why, /state unreadable/);
+    assert.strictEqual(bench.length, 0);
+    db.getState = realGet;
+    // Bench failing after the claim: that recording stays claimed (never a second round for it).
+    reset();
+    benchDown = true;
+    await evaluation.run({ now: NOW, max: 5 });
+    benchDown = false;
+    const claimed = JSON.parse(state.get(evaluation.LOG));
+    assert.strictEqual(claimed.length, 1);
+    assert.strictEqual(claimed[0].round_id, null);
+    const firstVod = claimed[0].vod_id;
+    out = await evaluation.run({ now: NOW, max: 5 });
+    assert.ok(!out.submitted.some((x) => x.vod_id === firstVod), 'a claimed recording is not sent again');
+
     // Off unless switched on.
     reset();
     process.env.LIVE_CLIP_EVAL = '';
