@@ -86,6 +86,10 @@
             messages: { onOpen: () => { if (window.messengerWidget && window.messengerWidget.toggle) window.messengerWidget.toggle(); else location.href = 'https://openvibe.chat/messages'; }, href: 'https://openvibe.chat/messages' },
             // Same-origin links are routes of this single-page app.
             onNavigate: (href, e) => (typeof handleLinkClick === 'function' ? handleLinkClick(e, href) : true),
+            // No speculation rules: the router answers same-site links, so a prefetched page was never used, and the
+            // injected rules broke the hash-based report-only CSP on every page view (11-03: a /api/csp-report POST
+            // each load; Chrome ignores 'inline-speculation-rules' beside hashes).
+            speculate: false,
             onLogout: () => call('logout'),
         };
     }
