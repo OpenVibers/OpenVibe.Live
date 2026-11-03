@@ -420,6 +420,28 @@ router.post('/bulk-delete-old', requireAuth, async (req, res) => {
     }
 });
 
+/**
+ * A stream's rows (stream time, in `key`) in this VOD's own time. The first part of a joined recording answers for the
+ * whole video: every row that was recorded, in the video's time (streaming/recordings.js; the gaps between parts were
+ * not). A VOD that is one part of its stream (the broadcaster reconnected) keeps the rows inside it, moved to its time:
+ * its chapters (OpenVibe.Video) pointed eleven minutes late on part 2 of stream 2795. `round` keeps whole seconds.
+ */
+async function inVodTime(vod, rows, key, { round = true } = {}) {
+    const fix = (v) => (round ? Math.round(v) : Math.round(v * 100) / 100);
+    if (vod.recording && Number(vod.recording.vod_id) === Number(vod.id) && vod.recording.hls_url && (vod.recording.parts || []).length > 1) {
+        const recordings = require('../streaming/recordings');
+        const parts = await recordings.presentParts(vod.recording);
+        return rows.map((r) => ({ r, at: recordings.toRecordingTime(parts, Number(r[key])) }))
+            .filter((x) => x.at != null).map(({ r, at }) => ({ ...r, [key]: fix(at), ...(r.end != null ? { end: fix(at + (Number(r.end) - Number(r[key]))) } : {}) }));
+    }
+    const part = await require('../streaming/stream-history').partForVod(vod.id);
+    if (!part) return rows;
+    const len = part.end != null ? part.end - part.at : Infinity;
+    return rows
+        .filter((r) => Number(r[key]) >= part.at && Number(r[key]) - part.at <= len)
+        .map((r) => ({ ...r, [key]: fix(Number(r[key]) - part.at), ...(r.end != null ? { end: fix(Number(r.end) - part.at) } : {}) }));
+}
+
 // AI "memory" timeline for a VOD (stream_memories stays in live.db).
 router.get('/:id/memories', optionalAuth, async (req, res) => {
     try {
@@ -427,32 +449,35 @@ router.get('/:id/memories', optionalAuth, async (req, res) => {
         if (!vod) return;
         const streamId = vod.stream_id || null;
         if (!streamId) return res.json({ memories: [] });
-        let memories = (await db.getStreamMemories(streamId) || []).map(m => ({
+        const memories = (await db.getStreamMemories(streamId) || []).map(m => ({
             offset_seconds: m.offset_seconds,
             description: db.publicMemoryText(m.description),
             tags: m.tags ? (() => { try { return JSON.parse(m.tags); } catch { return []; } })() : [],
         }));
-        // The first part of a joined recording answers for the whole video: every moment that was recorded, in the
-        // video's time (streaming/recordings.js; the gaps between parts were not).
-        if (vod.recording && Number(vod.recording.vod_id) === Number(vod.id) && vod.recording.hls_url && (vod.recording.parts || []).length > 1) {
-            const recordings = require('../streaming/recordings');
-            const parts = await recordings.presentParts(vod.recording);
-            memories = memories.map((m) => ({ ...m, offset_seconds: recordings.toRecordingTime(parts, m.offset_seconds) }))
-                .filter((m) => m.offset_seconds != null).map((m) => ({ ...m, offset_seconds: Math.round(m.offset_seconds) }));
-            return res.json({ memories });
-        }
-        // A VOD that is one part of its stream (the broadcaster reconnected): the moments inside it, in its own time.
-        // Its chapters (OpenVibe.Video) pointed eleven minutes late on part 2 of stream 2795.
-        const part = await require('../streaming/stream-history').partForVod(vod.id);
-        if (part) {
-            const len = part.end != null ? part.end - part.at : Infinity;
-            memories = memories
-                .filter((m) => Number(m.offset_seconds) >= part.at && Number(m.offset_seconds) - part.at <= len)
-                .map((m) => ({ ...m, offset_seconds: Math.round(Number(m.offset_seconds) - part.at) }));
-        }
-        res.json({ memories });
+        res.json({ memories: await inVodTime(vod, memories, 'offset_seconds') });
     } catch {
         res.status(500).json({ error: 'Failed to load AI timeline' });
+    }
+});
+
+/**
+ * GET /api/vods/:id/sounds — what was heard in the VOD, as caption cues in its own time: "[laughter]", "[applause]",
+ * "[music]" (item 151, C15; server/ai/sound-captions.js: a short list of tags, each above its own bar, nothing written
+ * by a model). OpenVibe.Video puts them in the VOD's captions between the spoken lines. Empty for a stream recorded
+ * before the timeline, or with nothing worth a tag.
+ */
+router.get('/:id/sounds', optionalAuth, async (req, res) => {
+    try {
+        const vod = await loadVisibleVod(req, res, req.params.id);
+        if (!vod) return;
+        const streamId = vod.stream_id || null;
+        if (!streamId) return res.json({ cues: [] });
+        const events = await db.getTimeline(streamId, { kind: 'sound', limit: 20000 }) || [];
+        const last = events.reduce((m, e) => Math.max(m, Number(e.end_sec) || Number(e.start_sec) || 0), 0);
+        const cues = require('../ai/sound-captions').cues(events, { spanSec: last });
+        res.json({ cues: await inVodTime(vod, cues, 'start', { round: false }) });
+    } catch {
+        res.status(500).json({ error: 'Failed to load the sounds' });
     }
 });
 

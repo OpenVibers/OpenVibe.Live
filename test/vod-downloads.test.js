@@ -58,6 +58,11 @@ async function check(name, fn) {
     for (const [off, text] of [[100, 'birds in part one'], [900, 'robot in part two'], [1500, 'squirrels in part two']]) {
         await raw.prepare('INSERT INTO stream_memories (stream_id, user_id, offset_seconds, description) VALUES (?, 80, ?, ?)').run(sid, off, text);
     }
+    // What was heard (C15): a laugh and a rare explosion in part two, applause in part one, and a "Vehicle" the
+    // classifier hears everywhere and is never captioned.
+    for (const [at, end, label, conf] of [[150, 152, 'Applause', 0.8], [920, 921, 'Laughter', 0.9], [922, 923.5, 'Laughter', 0.8], [930, 931, 'Vehicle', 0.9], [1600, 1601, 'Explosion', 0.9]]) {
+        await raw.prepare(`INSERT INTO stream_timeline_events (stream_id, user_id, kind, start_sec, end_sec, label, confidence) VALUES (?, 80, 'sound', ?, ?, ?, ?)`).run(sid, at, end, label, conf);
+    }
 
     const media = require('../server/media-client');
     const VODS = {
@@ -136,6 +141,16 @@ async function check(name, fn) {
         assert.deepStrictEqual(m2.json.memories.map((m) => [m.offset_seconds, m.description]), [[191, 'robot in part two'], [791, 'squirrels in part two']]);
         const m1 = await call('/api/vods/6025/memories');
         assert.deepStrictEqual(m1.json.memories.map((m) => [m.offset_seconds, m.description]), [[72, 'birds in part one']]);
+    });
+
+    await check('what was heard, as caption cues in the part\'s own time (C15)', async () => {
+        const s2 = await call('/api/vods/6026/sounds');
+        assert.strictEqual(s2.status, 200, s2.text);
+        assert.deepStrictEqual(s2.json.cues, [{ start: 211, end: 214.5, text: '[laughter]' }, { start: 891, end: 892.5, text: '[explosion]' }],
+            'one cue for the burst of laughter; no "[vehicle]"');
+        const s1 = await call('/api/vods/6025/sounds');
+        assert.deepStrictEqual(s1.json.cues.map((c) => [c.start, c.text]), [[122, '[applause]']]);
+        assert.strictEqual((await call('/api/vods/99999/sounds')).status, 404);
     });
 
     server.close();
