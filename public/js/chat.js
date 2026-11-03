@@ -3885,9 +3885,9 @@ function showChatContextMenu(event) {
     menu.dataset.msgId = msgId || '';
     menu.dataset.isRelay = isRelay ? '1' : '';
     menu.dataset.sourcePlatform = sourcePlatform;
-    menu.innerHTML = `
-        <div class="ctx-loading"><i class="fa-solid fa-spinner fa-spin"></i> Loading...</div>
-    `;
+    // The basic card at once (the name, Message, Channel), upgraded when the profile arrives: a click never waits on a
+    // "Loading..." box (11-03: Maticus's sat for minutes while Chat restarted in a deploy round).
+    menu.innerHTML = basicContextCard(username);
 
     // Position near the click
     document.body.appendChild(menu);
@@ -3991,22 +3991,30 @@ async function loadContextMenuProfile(menu, username, userId, isAnon) {
         return;
     }
     try {
-        const profile = await api(`/chat/user/${encodeURIComponent(username)}/profile`);
+        // At most eight seconds: a profile that takes longer leaves the basic card, which already works.
+        const profile = await api(`/chat/user/${encodeURIComponent(username)}/profile`, { signal: AbortSignal.timeout(8000) });
+        if (!menu.isConnected) return;   // dismissed meanwhile
         renderContextMenu(menu, profile, username);
     } catch {
-        menu.innerHTML = `
+        if (menu.isConnected) menu.innerHTML = basicContextCard(username);
+    }
+}
+
+/** The name card before (or without) the profile: the name, Message and Channel. Shown at once, never a spinner. */
+function basicContextCard(username) {
+    const name = String(username || '?');
+    return `
             <div class="ctx-header">
-                <span class="ctx-avatar-letter">${esc(username)[0].toUpperCase()}</span>
+                <span class="ctx-avatar-letter">${esc(name)[0].toUpperCase()}</span>
                 <div class="ctx-info">
-                    <span class="ctx-name">${esc(username)}</span>
+                    <span class="ctx-name">${esc(name)}</span>
                 </div>
             </div>
             <div class="ctx-actions">
-                <button class="ctx-btn" data-username="${esc(username)}" onclick="ctxWhisper(this.dataset.username)"><i class="fa-solid fa-comment"></i> Message</button>
-                <button class="ctx-btn" data-username="${esc(username)}" onclick="ctxViewChannel(this.dataset.username)"><i class="fa-solid fa-user"></i> Channel</button>
+                <button class="ctx-btn" data-username="${esc(name)}" onclick="ctxWhisper(this.dataset.username)"><i class="fa-solid fa-comment"></i> Message</button>
+                <button class="ctx-btn" data-username="${esc(name)}" onclick="ctxViewChannel(this.dataset.username)"><i class="fa-solid fa-user"></i> Channel</button>
             </div>
         `;
-    }
 }
 
 // Reserved usernames that represent the site itself (system/changelog messages), not a
@@ -4778,7 +4786,7 @@ function openChatLogsModal(username, userId, relay) {
                 </div>
             </div>
             <div class="chat-logs-body" id="chat-logs-body">
-                <div class="chat-logs-loading"><i class="fa-solid fa-spinner fa-spin"></i> Loading...</div>
+                <div class="chat-logs-loading" role="status">Loading…</div>
             </div>
             <div class="chat-logs-footer" id="chat-logs-footer"></div>
         </div>
@@ -4806,7 +4814,9 @@ async function loadChatLogs() {
     const footer = document.getElementById('chat-logs-footer');
     if (!body) return;
 
-    body.innerHTML = '<div class="chat-logs-loading"><i class="fa-solid fa-spinner fa-spin"></i> Loading...</div>';
+    body.innerHTML = '<div class="chat-logs-loading" role="status">Loading…</div>';
+    // At most ten seconds for a page of logs (11-03: a request held while Chat restarted kept this up for minutes).
+    const signal = AbortSignal.timeout(10000);
 
     try {
         let url, result;
@@ -4815,24 +4825,24 @@ async function loadChatLogs() {
             const params = new URLSearchParams({ limit: '50', offset: String(ctx.offset) });
             if (ctx.query) params.set('q', ctx.query);
             url = `/chat/anon/${encodeURIComponent(ctx.anon)}/logs?${params}`;
-            result = await api(url);
+            result = await api(url, { signal });
         } else if (ctx.relay) {
             // Relay (external-platform) user history — matched by platform + username.
             const params = new URLSearchParams({ limit: '50', offset: String(ctx.offset) });
             if (ctx.query) params.set('q', ctx.query);
             url = `/chat/relay-user/${encodeURIComponent(ctx.relay.platform)}/${encodeURIComponent(ctx.relay.username)}/logs?${params}`;
-            result = await api(url);
+            result = await api(url, { signal });
         } else if (ctx.userId && !ctx.query) {
             // User history mode
             url = `/chat/user/${ctx.userId}/history?limit=50&offset=${ctx.offset}`;
-            result = await api(url);
+            result = await api(url, { signal });
         } else {
             // Search mode
             const params = new URLSearchParams({ limit: '50', offset: String(ctx.offset) });
             if (ctx.query) params.set('q', ctx.query);
             if (ctx.userId) params.set('user_id', String(ctx.userId));
             url = `/chat/search?${params}`;
-            result = await api(url);
+            result = await api(url, { signal });
         }
 
         const msgs = result.messages || [];
@@ -4866,7 +4876,7 @@ async function loadChatLogs() {
             footer.innerHTML = total > 0 ? `<span class="log-page-info">${total} messages</span>` : '';
         }
     } catch (err) {
-        body.innerHTML = '<p class="muted" style="text-align:center;padding:20px">Failed to load logs</p>';
+        body.innerHTML = `<p class="muted" style="text-align:center;padding:20px">${err && err.name === 'TimeoutError' ? 'The logs are taking too long right now.' : 'Failed to load logs.'} <button type="button" class="btn btn-sm" onclick="loadChatLogs()">Try again</button></p>`;
     }
 }
 

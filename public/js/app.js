@@ -237,6 +237,10 @@ function authHeaders() {
 async function api(path, opts = {}) {
     // Caller headers add to the defaults (spreading opts after them used to replace the lot, auth included).
     const { headers, body, _retried, ...init } = opts;
+    // A read gives up after 20 seconds unless the caller set its own signal: during a deploy round a request held at a
+    // restarting service kept "Loading..." boxes up for minutes (11-03). The caller's error path takes it from there.
+    const method = String(init.method || 'GET').toUpperCase();
+    if (!init.signal && (method === 'GET' || method === 'HEAD') && typeof AbortSignal !== 'undefined' && AbortSignal.timeout) init.signal = AbortSignal.timeout(20000);
     const res = await fetch(`${API}/api${path}`, {
         ...init,
         headers: { 'Content-Type': 'application/json', ...authHeaders(), ...headers },
