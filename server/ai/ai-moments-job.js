@@ -228,6 +228,15 @@ function _evidenceAt(ctx, t, pickedBy) {
     };
 }
 /** Transcript text around a moment, so dedupe can tell a new conversation from a repeated scene. */
+/** The transcript rows within `span` seconds of a moment (VOD time), for the cutter to start and end on sentences. */
+function _rowsNear(transcript, offset, span = 60) {
+    const t = Number(offset) || 0;
+    return (transcript || [])
+        .filter((x) => x && Number.isFinite(Number(x.start)) && Math.abs(Number(x.start) - t) <= span && String(x.text || '').trim())
+        .slice(0, 80)
+        .map((x) => ({ start: Number(x.start), end: x.end == null ? null : Number(x.end), text: String(x.text) }));
+}
+
 function _speechNear(transcript, offset, windowSec = 45) {
     try {
         return (transcript || [])
@@ -277,7 +286,7 @@ async function _findBestMoment(vod, { flavor = 'paste', avoid = [] } = {}) {
                 t = clamp(t);
                 if (!farFromUsed(t)) { console.log(`[AI-Moments] VOD ${vod.vod_id}: pick at ${_mmss(t)} is next to a used moment — trying the objective signals instead`); throw new Error('near used'); }
                 const near = _nearestMemory(ctx.memories, t);
-                const result = { offset: t, title: _publicTitle(j.title, vod, t, j.desc), desc: _cleanText(_deJson(j.desc), 400) || (near && _deJson(near.description)) || '', speech: _speechNear(ctx.said || ctx.transcript, t), tags: _memTags(near), evidence: _evidenceAt(ctx, t, 'ai') };
+                const result = { offset: t, title: _publicTitle(j.title, vod, t, j.desc), desc: _cleanText(_deJson(j.desc), 400) || (near && _deJson(near.description)) || '', speech: _speechNear(ctx.said || ctx.transcript, t), rows: _rowsNear(ctx.said || ctx.transcript, t), tags: _memTags(near), evidence: _evidenceAt(ctx, t, 'ai') };
                 if (explicit.isExplicit(j.desc, j.title, near && near.description, result.desc)) { console.log(`[AI-Moments] VOD ${vod.vod_id}: the pick at ${_mmss(t)} shows sexual content — no moment from it`); return null; }
                 return _isEmptyScene(result.desc) ? null : result;
             }
@@ -300,7 +309,7 @@ async function _findBestMoment(vod, { flavor = 'paste', avoid = [] } = {}) {
     const near = _nearestMemory(ctx.memories, offset);
     const desc = near ? _deJson(near.description) : '';
     if (near && explicit.isExplicit(near.description)) return null;   // never a moment of sexual content (server/ai/explicit.js)
-    return _isEmptyScene(desc) ? null : { offset, title: _fallbackTitle(vod, offset, desc), desc, speech: _speechNear(ctx.said || ctx.transcript, offset), tags: _memTags(near), evidence: _evidenceAt(ctx, offset, candidates[0].by) };
+    return _isEmptyScene(desc) ? null : { offset, title: _fallbackTitle(vod, offset, desc), desc, speech: _speechNear(ctx.said || ctx.transcript, offset), rows: _rowsNear(ctx.said || ctx.transcript, offset), tags: _memTags(near), evidence: _evidenceAt(ctx, offset, candidates[0].by) };
 }
 // True when a description says the frame is essentially empty — black/dark/loading/blank — so we
 // never turn "nothing" into a clip or paste.
@@ -605,7 +614,7 @@ async function tick(opts = {}) {
                 try {
                     const second = await _findBestMoment(v, { flavor: 'clip', avoid: [offset] });
                     if (second && !await registry.isUsed({ vod_id: v.vod_id, stream_id: v.stream_id, offset: second.offset, desc: second.desc, title: second.title, speech: second.speech })) {
-                        const clip = await require('./auto-clip-job').clipVodMoment({ vod: v, offset: second.offset, title: second.title, desc: second.desc, speech: second.speech, evidence: second.evidence, archival: v.archival, source: momentSource });
+                        const clip = await require('./auto-clip-job').clipVodMoment({ vod: v, offset: second.offset, title: second.title, desc: second.desc, speech: second.speech, segments: second.rows, evidence: second.evidence, archival: v.archival, source: momentSource });
                         if (clip) console.log(`[AI-Moments] Auto-clip cut for VOD ${v.vod_id} at ${_mmss(second.offset)} ("${String(second.title || '').slice(0, 60)}") — paste was at ${_mmss(offset)}`);
                     } else console.log(`[AI-Moments] VOD ${v.vod_id}: no second, distinct beat for a clip — skipped`);
                 } catch { /* clipping is best-effort */ }
@@ -636,7 +645,7 @@ function start() {
     setInterval(() => { tick().catch(() => {}); }, 5 * 60 * 1000);
 }
 
-module.exports = { start, tick, findBestMoment: _findBestMoment, frameTooDark: _frameTooDark, makeSlug: _slug, publicTitle: _publicTitle, _internals: { momentPool: _momentPool, fallbackTitle: _fallbackTitle, captionTitle: _captionTitle, evidenceAt: _evidenceAt, keepHeroFull } };
+module.exports = { start, tick, findBestMoment: _findBestMoment, frameTooDark: _frameTooDark, makeSlug: _slug, publicTitle: _publicTitle, _internals: { rowsNear: _rowsNear, momentPool: _momentPool, fallbackTitle: _fallbackTitle, captionTitle: _captionTitle, evidenceAt: _evidenceAt, keepHeroFull } };
 
 // CLI: force a one-off regeneration, e.g. a whole-dataset "best of all-time" test run:
 //   node server/ai/ai-moments-job.js --fresh --target=6 --perUser=2
