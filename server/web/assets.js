@@ -407,7 +407,9 @@ function cspReportOnly(html) {
     }
     const scriptHosts = "cdnjs.cloudflare.com cdn.jsdelivr.net https://openvibe.network https://esm.sh https://static.cloudflareinsights.com";
     const policy = [
-        `script-src-elem 'self' ${[...hashes].join(' ')} ${scriptHosts}`,
+        // The shared navbar adds inline speculation rules (same-site prefetch); CSP 3 allows them with their own
+        // keyword, not a hash (11-03: every guest's direct /broadcast load reported one).
+        `script-src-elem 'self' 'inline-speculation-rules' ${[...hashes].join(' ')} ${scriptHosts}`,
         "script-src-attr 'unsafe-inline'",
         "object-src 'none'",
         "base-uri 'self'",

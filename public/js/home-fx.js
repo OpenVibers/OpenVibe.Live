@@ -106,6 +106,7 @@
      * It is now a standalone schedule that cannot be starved, and it sweeps a few times to catch
      * sections that mount late.
      */
+    let revealScrollHooked = false;
     function startRevealSafety() {
         if (revealSafety) return;
         const sweep = () => {
@@ -119,7 +120,10 @@
         revealSafety = setTimeout(sweep, 1200);
         // A fling can carry a section past the screen between two frames, so the observer never reports it, and the
         // sweeps above stop after ten seconds. When scrolling stops, anything above the bottom of the screen that is
-        // still waiting is shown: one query per pause, never during the scroll.
+        // still waiting is shown: one query per pause, never during the scroll. Hooked once per page life: the sweeps
+        // restart on later mutations, and each restart used to add another scroll listener (11-03, the smoke's lap leak).
+        if (revealScrollHooked) return;
+        revealScrollHooked = true;
         let settle = 0;
         window.addEventListener('scroll', () => {
             clearTimeout(settle);
