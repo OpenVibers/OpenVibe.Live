@@ -19,10 +19,17 @@ let db = null;
  * serving pool. Tests adopt the database test/helpers/pg-preload.mjs migrated. Development without DATABASE_URL gets
  * an embedded PGlite database under the data directory (one process only); production refuses to boot without it.
  */
-async function initDb({ log = console } = {}) {
+async function initDb({ log = console, script = false } = {}) {
     if (db) return db;
     if (globalThis.__ovLiveTestDb) { db = globalThis.__ovLiveTestDb; return db; }
     const url = process.env.DATABASE_URL;
+    // A one-off script (`node server/ai/ai-moments-job.js`, …) beside the running service: the serving pool only. No
+    // migrations (the service ran them) and no boot recovery, which would re-queue the transcripts the service is
+    // working on. Without this the scripts' queries all failed and they reported nothing done (11-03).
+    if (script && url) {
+        db = createDb({ url, service: 'live-script', max: 2, log });
+        return db;
+    }
     if (!url) {
         if (process.env.NODE_ENV === 'production') throw new Error('DATABASE_URL is not set: Live serves from PostgreSQL (OpenVibe.Host roles/data add-service.sh live)');
         const dir = require('../paths').data('pglite');

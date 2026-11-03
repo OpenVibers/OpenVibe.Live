@@ -206,5 +206,5 @@ module.exports = { start, tick, getPublic, checkSolution, noteFail, reveal, reve
 
 // CLI: force a fresh egg now — `node server/ai/easter-egg-job.js`
 if (require.main === module) {
-    tick({ force: true }).then(async () => { const p = await _load(); console.log('Egg:', JSON.stringify({ title: p.title, code: p.code, clues: p.clues, effect: p.effect, ai: p.ai })); process.exit(0); }).catch(e => { console.error(e); process.exit(1); });
+    require('../db/database').initDb({ script: true }).then(() => tick({ force: true })).then(async () => { const p = await _load(); console.log('Egg:', JSON.stringify({ title: p.title, code: p.code, clues: p.clues, effect: p.effect, ai: p.ai })); process.exit(0); }).catch(e => { console.error(e); process.exit(1); });
 }
