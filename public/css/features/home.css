@@ -1292,7 +1292,11 @@ body.egg-rainbow { animation: eggRainbow 2.6s linear; }
     #page-home .star-act.star-expand { min-width: 44px; }
     #page-home .streamer-group-identity, #page-home .hf-who { min-height: 44px; display: flex; align-items: center; }
     #page-home .section-action, #page-home .digest-recap, #page-home .hf-hide, #page-home .hero-philosophy-btn, #page-home .hero-philosophy-link, #page-home .star-name a, #page-home .hero-golive-note a { position: relative; }
-    #page-home .section-action::after { content: ''; position: absolute; inset: -9px -4px; }
+    /* The rail below starts right under its header, and its cards reached into the link's last pixels and took the taps
+       under the old hit area (11-03 re-audit: "View all" measured 28 to 32px). The header sits above the rail, and the
+       link's hit area grows up into the header's own room, never down into the cards: 44px. */
+    #page-home .section-header { position: relative; z-index: 1; }
+    #page-home .section-action::after { content: ''; position: absolute; inset: -16px -4px 0; }
     #page-home .digest-recap::after { content: ''; position: absolute; inset: -7px; }
     #page-home .hf-hide::after { content: ''; position: absolute; inset: -11px; }
     /* Text links in a row: taller only, so neighbours never take each other's taps. */
