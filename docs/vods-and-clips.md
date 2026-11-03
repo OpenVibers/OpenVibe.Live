@@ -145,7 +145,13 @@ From the dashboard:
 
 Every recording and clip has its page on OpenVibe.Video (`https://openvibe.video/v/<id>`, `/c/<id>`;
 `server/web/video-url.js`, `VIDEO_PUBLIC_URL` overrides the origin): the player, AI chapters and captions, the chat
-replay, comments, clipping, and the owner's visibility and delete, for private items too (to their owner). Live's old
+replay, comments, clipping, and the owner's visibility and delete, for private items too (to their owner). The
+captions name what was heard as well as what was said: `GET /api/vods/:id/sounds` gives cues like "[laughter]",
+"[applause]" and "[music]" in the VOD's own time (item 151, C15; `server/ai/sound-captions.js`). Each tag comes from
+a classifier label above its own bar, set from production (applause and laughter from 0.7, a dog or a siren from 0.8);
+nothing is written by a model, so nothing is invented. A burst is one cue of at most 6 s; music gives one cue where it
+starts; explosions and gunfire need 0.85 and must be rare in the stream (in a shooter they are the game); the
+classifier's long tail ("Vehicle", "Animal", "Glass") is never captioned. Same visibility rule as `memories`. Live's old
 `/vod/<id>` and `/clip/<id>` URLs answer a 301 there (`server/web/video-handover.js`, mounted before the SEO renderer
 like the paste handover; a `?t=` start time goes along as seconds). Every watch link Live renders points there: the
 SPA through `videoHref()` (the shell's `ov-video-base` meta names the origin), the server through `videoUrl()`. Live's
@@ -185,7 +191,7 @@ answers 204 whether or not it counted.
 
 ## Who sees a private VOD or clip
 
-A private item (visibility `private`, or a legacy row with no visibility and `is_public = 0`) is visible only to its owners — the uploader or clipper, the clipped channel's streamer, the streamer whose stream it came from — and to staff (admin, global mod). Everyone else gets exactly the answer an unknown id gets: the same 404 and body on `/api/vods/:id` and its `live-info`/`memories`/`context`, `/api/clips/:id`, comments (including a comment's replies, edit and delete), thumbnail regeneration and the write routes (a 403 would confirm the id exists). It is also left out of `/api/chat-ai/vod-transcripts`, the server-rendered `/vod/:id` and `/clip/:id` pages, and `/api/streams/recent`. The rule lives in `server/media-proxy/access.js`; Media applies the same rule to `openvibe.media/v/:id` and `/c/:id`. Unlisted items stay reachable by direct link.
+A private item (visibility `private`, or a legacy row with no visibility and `is_public = 0`) is visible only to its owners — the uploader or clipper, the clipped channel's streamer, the streamer whose stream it came from — and to staff (admin, global mod). Everyone else gets exactly the answer an unknown id gets: the same 404 and body on `/api/vods/:id` and its `live-info`/`memories`/`sounds`/`context`, `/api/clips/:id`, comments (including a comment's replies, edit and delete), thumbnail regeneration and the write routes (a 403 would confirm the id exists). It is also left out of `/api/chat-ai/vod-transcripts`, the server-rendered `/vod/:id` and `/clip/:id` pages, and `/api/streams/recent`. The rule lives in `server/media-proxy/access.js`; Media applies the same rule to `openvibe.media/v/:id` and `/c/:id`. Unlisted items stay reachable by direct link.
 
 ## Comments are OpenVibe.Community threads
 
