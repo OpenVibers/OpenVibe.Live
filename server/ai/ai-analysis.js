@@ -285,6 +285,7 @@ async function generateVodTranscript(vod) {
             // the frequent deploy restarts no longer discard an hour of decoding.
             const prog = db.getVodTranscriptProgress ? await db.getVodTranscriptProgress(vod.id) : { progressSec: 0, segments: [] };
             r = await require('./media-analysis').transcribeOnly(src, {
+                userId: vod.user_id || null,
                 resumeFromSec: prog.progressSec,
                 priorSegments: prog.segments,
                 onWindow: async (sec, segs) => await db.saveVodTranscriptProgress(vod.id, sec, segs),
@@ -326,7 +327,7 @@ async function generateClipTranscript(clip) {
         }
         await db.setClipTranscriptStatus(clip.id, 'processing');
         let r = { text: '', segments: [], ok: false, error: 'unknown' };
-        try { r = await require('./media-analysis').transcribeOnly(src); } catch (e) { r = { text: '', segments: [], ok: false, error: e.message }; }
+        try { r = await require('./media-analysis').transcribeOnly(src, { userId: clip.user_id || null }); } catch (e) { r = { text: '', segments: [], ok: false, error: e.message }; }
         if (r.text) {
             try { await db.setClipTranscript(clip.id, r.text, r.segments || []); } catch { /* */ }
             await db.setClipTranscriptStatus(clip.id, 'done');
