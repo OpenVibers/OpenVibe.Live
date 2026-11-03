@@ -365,6 +365,7 @@ async function check(name, fn) {
             'server/monetization/cosmetics.js': 'legacy quest API (env)',
             'server/openre/openre-client.js': 'OpenRestream (configured)',
             'server/ai/ai-service.js': 'OpenVibe.AI (configured)',
+            'server/ai/clip-evaluation.js': 'OpenVibe.Bench (configured LIVE_BENCH_URL): the AI\'s clip picks against people\'s, with Live\'s service token',
             'server/ai/llm.js': 'images are Live\'s own frames; a streamer\'s typed provider address (testProvider) goes through egress.postJson',
             'server/chat/soundboard-service.js': '101soundboards (host allowlist; the audio download through safeLookup)',
             'server/chat/tts-engine.js': 'Google / AWS TTS (fixed hosts)',
