@@ -34,7 +34,7 @@ assert.ok(!dedupe.isSameEmbedding([1, 0, 0], [0, 1, 0]), 'different frame embedd
 console.log('✅ clip-dedupe: Unicode, paraphrases, 0.8 Dice, boilerplate and embedding negatives');
 
 // ── The shared registry ────────────────────────────────────
-await db.setState('ai_used_moments', '[]');
+await require('../server/ai/moment-registry')._clear();
 registry._reset();
 await registry.record({
     kind: 'paste', vod_id: 30, stream_id: 5, offset: 100,
@@ -86,7 +86,7 @@ await autoClip._internals.checkLiveStream(liveStream);
 assert.strictEqual(created.length, 0, 'the live path never cuts a moment the registry already used');
 
 registry._reset();
-await db.setState('ai_used_moments', '[]');
+await require('../server/ai/moment-registry')._clear();
 registry._reset();
 await autoClip._internals.checkLiveStream(liveStream);
 assert.strictEqual(created.length, 1, 'a free moment is still cut (the check does not block everything)');

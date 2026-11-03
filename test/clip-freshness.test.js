@@ -142,7 +142,7 @@ async function reset() {
     await raw.prepare('DELETE FROM analytics_events').run();
     await raw.prepare('DELETE FROM streams').run();
     await db.setState('auto_clip_log', '[]');
-    await db.setState('ai_used_moments', '[]');
+    await require('../server/ai/moment-registry')._clear();
     require('../server/ai/moment-registry')._reset();
     require('../server/ai/clip-policy')._resetArchiveReservation();
     currentVods = [];
@@ -265,7 +265,7 @@ assert.strictEqual(policy.archiveAllowed(clipLog, Date.now()), false, "today's a
 // A cut that fails must not burn the day.
 policy._resetArchiveReservation();
 await db.setState('auto_clip_log', '[]');
-await db.setState('ai_used_moments', '[]');
+await require('../server/ai/moment-registry')._clear();
 registry._reset();
 media.createClip = async () => null;
 assert.strictEqual(await archiveCut(72), null, 'the failed archival cut returns nothing');
