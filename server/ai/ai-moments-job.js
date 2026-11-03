@@ -161,7 +161,8 @@ async function _momentContext(streamId, vodId) {
     let sounds = [];
     try {
         sounds = _sample((await db.getTimeline(streamId, { kind: 'sound', limit: 400 }) || [])
-            .filter(e => Number(e.confidence || 0) >= 0.45), 30);
+            // Background music (audio-events.js spans) is the stream's bed, not a moment.
+            .filter(e => Number(e.confidence || 0) >= 0.45 && e.label !== 'Music'), 30);
     } catch { /* timeline optional */ }
     return _inPart({ memories, transcript, clipTimes, spikes, sounds }, vodId);
 }

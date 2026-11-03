@@ -142,6 +142,51 @@ async function detect(wavPath, { offsetSec = 0, minConfidence = MIN_CONFIDENCE }
         return [];
     }
 
+    return eventsFromScores(scores, frames, classes, labels, { offsetSec, minConfidence });
+}
+
+// Music (item 151, C14): a stream's background music is one long span, not a flicker of frames, so it is its own
+// event with hysteresis instead of a per-frame label. It begins after MUSIC_ON_FRAMES frames at MUSIC_ON or more
+// (about 1.4 s), ends after MUSIC_OFF_FRAMES frames below MUSIC_OFF (about 2.9 s), and is kept when it lasted at least
+// MUSIC_MIN_SEC; it never counts against the per-segment cap. Timeline rows read "Music" with background: true.
+const MUSIC_ON = 0.45;
+const MUSIC_OFF = 0.25;
+const MUSIC_ON_FRAMES = 3;
+const MUSIC_OFF_FRAMES = 6;
+const MUSIC_MIN_SEC = 5;
+
+function musicSpans(scores, frames, classes, labels, offsetSec) {
+    const c = labels.indexOf('Music');
+    if (c < 0) return [];
+    const spans = [];
+    let on = null;          // { start, end, peak } while music plays
+    let above = 0;          // frames in a row at MUSIC_ON or more (while off)
+    let below = 0;          // frames in a row under MUSIC_OFF (while on)
+    let firstAbove = 0;
+    for (let f = 0; f < frames; f++) {
+        const v = scores[f * classes + c];
+        const t = offsetSec + f * FRAME_HOP_SEC;
+        if (!on) {
+            if (v >= MUSIC_ON) { if (above === 0) firstAbove = t; above++; } else above = 0;
+            if (above >= MUSIC_ON_FRAMES) { on = { start: firstAbove, end: t + FRAME_HOP_SEC, peak: v }; below = 0; }
+        } else {
+            if (v > on.peak) on.peak = v;
+            if (v < MUSIC_OFF) {
+                below++;
+                if (below >= MUSIC_OFF_FRAMES) { spans.push(on); on = null; above = 0; }
+            } else { below = 0; on.end = t + FRAME_HOP_SEC; }
+        }
+    }
+    if (on) spans.push(on);
+    return spans.filter((m) => m.end - m.start >= MUSIC_MIN_SEC);
+}
+
+/**
+ * The events in one segment's YAMNet scores (frames × classes): per-frame winners above the threshold, merged into
+ * runs of the same label (at most MAX_EVENTS_PER_SEGMENT, the strongest), plus background music spans. Pure, so the
+ * tests can feed it scores without the model.
+ */
+function eventsFromScores(scores, frames, classes, labels, { offsetSec = 0, minConfidence = MIN_CONFIDENCE } = {}) {
     // Collect per-frame winners above threshold, then merge runs of the same label.
     const open = new Map();   // label -> { start, end, peak }
     const done = [];
@@ -168,18 +213,16 @@ async function detect(wavPath, { offsetSec = 0, minConfidence = MIN_CONFIDENCE }
     }
     for (const ev of open.values()) done.push(ev);
 
+    const round = (e) => ({ start: Math.round(e.start * 100) / 100, end: Math.round(e.end * 100) / 100, label: e.label, confidence: Math.round(e.peak * 1000) / 1000 });
+    const music = musicSpans(scores, frames, classes, labels, offsetSec).map((m) => ({ ...round({ ...m, label: 'Music' }), background: true }));
     return done
         .sort((a, b) => b.peak - a.peak)
         .slice(0, MAX_EVENTS_PER_SEGMENT)
-        .map(e => ({
-            start: Math.round(e.start * 100) / 100,
-            end: Math.round(e.end * 100) / 100,
-            label: e.label,
-            confidence: Math.round(e.peak * 1000) / 1000,
-        }))
+        .map(round)
+        .concat(music)
         .sort((a, b) => a.start - b.start);
 }
 
 // _wavToFloat32 is exported for tests: it is the part that has to survive whatever
 // ffmpeg leaves on disk, and it cannot be reached through detect() without the model.
-module.exports = { available, detect, MODEL_PATH, CLASSMAP_PATH, _wavToFloat32 };
+module.exports = { available, detect, eventsFromScores, musicSpans, MODEL_PATH, CLASSMAP_PATH, _wavToFloat32, MUSIC_MIN_SEC };

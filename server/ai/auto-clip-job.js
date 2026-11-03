@@ -83,7 +83,8 @@ async function _confirmLiveMoment(stream) {
     try {
         const since = Math.max(0, ((Date.now() - new Date(stream.started_at + 'Z').getTime()) / 1000) - WINDOW_SEC);
         sounds = (await db.getTimeline(stream.id, { kind: 'sound', from: since, limit: 40 }) || [])
-            .filter(e => Number(e.confidence || 0) >= 0.4).slice(-12);
+            // Background music (audio-events.js spans) is the stream's bed, not a moment: never a clip signal.
+            .filter(e => Number(e.confidence || 0) >= 0.4 && e.label !== 'Music').slice(-12);
     } catch { /* timeline optional */ }
     // The decision rules are OpenVibe.AI's versioned template live.clips.confirm (WS-O task 2); Live sends what it saw,
     // heard and read, with times so the model can line up speech, sounds and the chat spike.
