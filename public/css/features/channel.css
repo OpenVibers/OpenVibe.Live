@@ -1111,6 +1111,11 @@ button.viewer-badge:focus-visible { outline: 2px solid #93c5fd; outline-offset: 
 .ch-meta { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; font-size: 0.85rem; }
 /* Each item stays on one line; on a phone the row wraps instead ("22 / followers" and "IRL · / inferred" did). */
 .ch-follower-count { color: var(--text-muted); white-space: nowrap; }
+/* "Get an alert" (OpenVibe.Watch) sits in the same quiet row: a link, not a second button beside Follow. */
+.ch-watch-alert { color: var(--text-muted); text-decoration: none; white-space: nowrap; }
+.ch-watch-alert:hover, .ch-watch-alert:focus-visible { color: var(--accent); }
+.ch-watch-alert[hidden] { display: none; }
+@media (pointer: coarse) { .ch-watch-alert { position: relative; } .ch-watch-alert::after { content: ''; position: absolute; left: -4px; right: -4px; top: -12px; bottom: -12px; } }
 .ch-meta .ch-category-badge { white-space: nowrap; }
 .ch-actions { flex-shrink: 0; }
 
