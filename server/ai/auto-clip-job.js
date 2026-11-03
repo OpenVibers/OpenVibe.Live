@@ -318,7 +318,7 @@ async function backfillVodClips({ limit = BACKFILL_PER_RUN, force = false } = {}
                     if (dark) { console.log(`[AutoClip] backfill skip VOD ${v.vod_id} — dark/empty frame`); newSkip.push(v.vod_id); continue; }
                 }
             } catch { /* probe optional */ }
-            const clip = await clipVodMoment({ vod: v, offset: moment.offset, title: moment.title, desc: moment.desc, speech: moment.speech, segments: moment.rows, evidence: moment.evidence, archival: v.archival, source });
+            const clip = await clipVodMoment({ vod: v, offset: moment.offset, title: moment.title, desc: moment.desc, speech: moment.speech, segments: moment.rows, lines: moment.lines, evidence: moment.evidence, archival: v.archival, source });
             if (clip) { made++; if (v.archival) archiveMade++; console.log(`[AutoClip] Backfilled VOD ${v.vod_id}${v.archival ? ' (archive)' : ''} ("${String(moment.title || '').slice(0, 60)}")`); }
             else if (v.archival && !clipPolicy.archiveAllowed(await _clipLog(), Date.now())) continue; // another cutter took today's archive slot: not this VOD's fault, don't skip it forever
             else newSkip.push(v.vod_id); // cut failed (e.g. unseekable/short) — don't retry forever
@@ -369,6 +369,26 @@ async function _isDuplicateAutoClip(vod, offset, desc, title, speech) {
     return false;
 }
 
+/**
+ * The verifier (item 151, C09; OpenVibe.AI live.moments.verify): before an AI clip is public, its title and
+ * description are checked against the minute around the moment. → 'supported' | 'unsupported' | 'unsure' | 'failed'.
+ * Only "supported" is a yes: a check that fails or cannot tell keeps the clip unlisted.
+ */
+async function _verifyMoment({ vod, offset, title, desc, lines, evidence }) {
+    try {
+        const l = lines || {};
+        const sp = (evidence && evidence.spike) || {};
+        const out = await aiService.structured('live.moments.verify', {
+            title: String(vod.title || '').slice(0, 200), clip_title: String(title || '').slice(0, 200), clip_desc: String(desc || '').slice(0, 800),
+            t: Math.max(0, Number(offset) || 0),
+            timeline: (l.timeline || []).slice(0, 60), transcript: (l.transcript || []).slice(0, 120), sounds: (l.sounds || []).slice(0, 60),
+            chat: { peak: Math.max(0, Number(sp.peak) || 0), avg: Math.max(0, Number(sp.avg) || 0), people: Math.max(0, Number(evidence && evidence.chatters) || 0) },
+        }, { target: { service: 'live', type: 'vod', id: String(vod.vod_id || vod.id) }, meter: { kind: 'moment_verify', role: 'legacy', ownerUserId: vod.user_id } });
+        if (!out || !['supported', 'unsupported', 'unsure'].includes(out.verdict)) return { verdict: 'failed', why: 'no answer' };
+        return out;
+    } catch (e) { return { verdict: 'failed', why: String(e && e.message || e).slice(0, 120) }; }
+}
+
 async function clipVodMoment(o) {
     let archiveHeld = false;
     try {
@@ -393,7 +413,18 @@ async function clipVodMoment(o) {
         // the clip public whatever the recording is.
         const publication = require('./clip-publication');
         if (!publication.mayCut(vodId)) { console.log(`[AutoClip] VOD ${vodId}: protected, not cut`); return null; }
-        const visibility = publication.visibilityFor({ vodVisibility: await publication.vodVisibility(vod), wanted: rated.verdict === 'public' ? 'public' : 'unlisted' });
+        // Public only when the verifier backs the title and description (C09); an unbacked claim is not cut at all.
+        let wanted = rated.verdict === 'public' ? 'public' : 'unlisted';
+        let verified = null;
+        if (wanted === 'public') {
+            verified = await _verifyMoment({ vod, offset, title, desc, lines: o.lines, evidence });
+            if (verified.verdict === 'unsupported') {
+                console.log(`[AutoClip] VOD ${vodId} @${Math.round(offset)}s not cut — the title or description is not backed by the moment${verified.unsupported && verified.unsupported.length ? ` (${verified.unsupported.slice(0, 2).join('; ')})` : ''}`);
+                return null;
+            }
+            if (verified.verdict !== 'supported') wanted = 'unlisted';
+        }
+        const visibility = publication.visibilityFor({ vodVisibility: await publication.vodVisibility(vod), wanted });
         // Start and end on sentences (server/ai/clip-trim.js), as a live clip does: the rows near the moment are in the
         // VOD's own time. Without speech near it the fixed window stands (11-03: VOD clips always used it, so they
         // began and ended mid-sentence).
@@ -421,9 +452,9 @@ async function clipVodMoment(o) {
             archiveHeld = false;   // the clip exists: keep the day reserved even if the log write fails
             const sp = (evidence && evidence.spike) || {};
             await _logClip({ stream_id: vod.stream_id || null, vod_id: vodId, start_time: start, title: title || 'Standout Moment', clip_id: clip.id, dedup: !!clip.deduplicated || undefined, desc: desc || '', speech, archival: archival || undefined, sig: _sceneSig(desc || title),
-                score: rated.score, visibility: rated.verdict, bucket: rated.bucket, peak: Number(sp.peak) || 0, chatters: evidence.chatters == null ? undefined : evidence.chatters,
-                picked_by: evidence.picked_by || undefined, policy: VOD_POLICY });
-            console.log(`[AutoClip] VOD ${vodId} @${Math.round(offset)}s cut (${evidence.picked_by || 'signals'}) — score ${rated.score} → ${rated.verdict}, bucket ${rated.bucket}${cut.snapped ? ', on sentences' : ''}`);
+                score: rated.score, visibility: wanted, bucket: rated.bucket, peak: Number(sp.peak) || 0, chatters: evidence.chatters == null ? undefined : evidence.chatters,
+                picked_by: evidence.picked_by || undefined, policy: VOD_POLICY, verified: verified ? verified.verdict : undefined });
+            console.log(`[AutoClip] VOD ${vodId} @${Math.round(offset)}s cut (${evidence.picked_by || 'signals'}) — score ${rated.score} → ${wanted}${verified ? ` (check: ${verified.verdict})` : ''}, bucket ${rated.bucket}${cut.snapped ? ', on sentences' : ''}`);
         }
         return clip || null;
     } catch { return null; }

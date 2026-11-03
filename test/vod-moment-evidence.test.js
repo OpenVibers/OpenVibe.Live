@@ -56,11 +56,19 @@ console.warn = () => {};
     assert.strictEqual(await autoClip.clipVodMoment({ vod: vod(501), offset: 300, title: 'Just talking', desc: 'A person talks to the camera about lunch', evidence: { picked_by: 'ai', spike: { peak: 0, avg: 0 }, chatters: null, sounds: [], speechWords: 30 } }), null);
     assert.strictEqual(created.length, 0, 'the thin moment never reached Media');
     assert.ok(log.some((l) => /VOD 501 @300s not cut — score/.test(l)), 'the abstention is logged with its score');
-    const c1 = await autoClip.clipVodMoment({ vod: vod(502), offset: 300, title: 'The room lost it', desc: 'The streamer trips over the cable mid-sentence', evidence: { picked_by: 'ai', spike: { peak: 22, avg: 1.5 }, chatters: 7, sounds: [], speechWords: 25 } });
+    // The verifier (C09) answers for public clips only; each call is recorded.
+    const verifyCalls = [];
+    let verdictFor = () => ({ verdict: 'supported', unsupported: [], why: 'it happens' });
+    aiService.structured = async (name, input) => { if (name === 'live.moments.verify') { verifyCalls.push(input); return verdictFor(input); } return null; };
+    const lines = { timeline: [{ t: 298, text: 'the streamer trips over a cable' }], transcript: [{ t: 299, text: 'oh no the cable' }], sounds: [] };
+    const c1 = await autoClip.clipVodMoment({ vod: vod(502), offset: 300, title: 'The room lost it', desc: 'The streamer trips over the cable mid-sentence', lines, evidence: { picked_by: 'ai', spike: { peak: 22, avg: 1.5 }, chatters: 7, sounds: [], speechWords: 25 } });
+    assert.strictEqual(verifyCalls.length, 1, 'a public clip is checked first');
+    assert.deepStrictEqual([verifyCalls[0].clip_title, verifyCalls[0].t, verifyCalls[0].timeline[0].text, verifyCalls[0].chat.people], ['The room lost it', 300, 'the streamer trips over a cable', 7]);
     assert.ok(c1 && c1.id);
     const c2 = await autoClip.clipVodMoment({ vod: vod(503), offset: 300, title: 'A laugh', desc: 'A dog barks and the streamer laughs at the window', evidence: { picked_by: 'ai', spike: { peak: 0, avg: 0 }, chatters: null, sounds: [{ label: 'Laughter', confidence: 0.8 }], speechWords: 30 } });
     assert.ok(c2 && c2.id);
     assert.deepStrictEqual(created.map((b) => b.visibility), ['public', 'unlisted'], 'public only for the reacted room');
+    assert.strictEqual(verifyCalls.length, 1, 'an unlisted clip is not checked');
     assert.deepStrictEqual([created[0].start_s, created[0].end_s], [284, 309], 'no speech near it: the fixed 16 s before and 9 s after');
 
     // ── A VOD clip starts and ends on sentences (clip-trim.js), as a live clip does (11-03: it always used the window) ──
@@ -72,6 +80,8 @@ console.warn = () => {};
         { start: 306.2, end: 311.0, text: 'Chat, did you see that?' },
     ];
     const near = moments._internals.rowsNear(rows, 300);
+    const ln = moments._internals.linesNear({ memories: [{ offset_seconds: 295, description: 'a desk tips over' }, { offset_seconds: 900, description: 'far' }], said: rows, heard: [{ start_sec: 301, label: 'Laughter' }] }, 300);
+    assert.deepStrictEqual([ln.timeline.map((x) => x.text), ln.transcript.length, ln.sounds], [['a desk tips over'], 4, [{ t: 301, label: 'Laughter' }]], 'the verifier reads the minute around the moment');
     assert.deepStrictEqual(near.map((r) => r.start), [279.2, 286.4, 296.5, 306.2], 'the rows within a minute of the moment');
     const c3 = await autoClip.clipVodMoment({ vod: { ...vod(504), duration: 3600 }, offset: 300, title: 'Desk goes down', desc: 'The streamer walks into the cable and the desk tips over', segments: near, evidence: { picked_by: 'ai', spike: { peak: 22, avg: 1.5 }, chatters: 7, sounds: [], speechWords: 25 } });
     assert.ok(c3 && c3.id);
@@ -87,6 +97,29 @@ console.warn = () => {};
     assert.strictEqual(e1.picked_by, 'ai');
     assert.strictEqual(e1.bucket, 'D');
     assert.ok(e1.score >= 0.7);
+
+    assert.strictEqual(e1.verified, 'supported');
+
+    // ── C09: an unbacked title is not cut; "unsure" or a failed check keeps the clip unlisted ──
+    const reacted = { picked_by: 'ai', spike: { peak: 22, avg: 1.5 }, chatters: 7, sounds: [], speechWords: 25 };
+    verdictFor = () => ({ verdict: 'unsupported', unsupported: ['a dragon explodes'], why: 'no dragon' });
+    const before = created.length;
+    assert.strictEqual(await autoClip.clipVodMoment({ vod: vod(510), offset: 300, title: 'Dragon Eruption', desc: 'A dragon explodes on screen', lines, evidence: reacted }), null);
+    assert.strictEqual(created.length, before, 'not cut');
+    assert.ok(log.some((l) => /VOD 510 @300s not cut — the title or description is not backed by the moment \(a dragon explodes\)/.test(l)));
+    verdictFor = () => ({ verdict: 'unsure', unsupported: [], why: 'too little' });
+    assert.ok(await autoClip.clipVodMoment({ vod: vod(511), offset: 300, title: 'Cable Trip', desc: 'The streamer trips', lines, evidence: reacted }));
+    assert.strictEqual(created[created.length - 1].visibility, 'unlisted', 'unsure: kept unlisted');
+    verdictFor = () => { throw new Error('AI down'); };
+    assert.ok(await autoClip.clipVodMoment({ vod: vod(512), offset: 300, title: 'Cable Trip Again', desc: 'The streamer trips twice', lines, evidence: reacted }));
+    assert.strictEqual(created[created.length - 1].visibility, 'unlisted', 'a failed check is not a yes');
+    verdictFor = () => ({ verdict: 'yes!' });
+    assert.ok(await autoClip.clipVodMoment({ vod: vod(513), offset: 300, title: 'Cable Trip Thrice', desc: 'The streamer trips thrice', lines, evidence: reacted }));
+    assert.strictEqual(created[created.length - 1].visibility, 'unlisted', 'an answer outside the set is not a yes');
+    const logged = JSON.parse(await db.getState('auto_clip_log'));
+    assert.strictEqual(logged.find((e) => e.vod_id === 512).verified, 'failed');
+    assert.strictEqual(logged.find((e) => e.vod_id === 512).visibility, 'unlisted', 'the log records what was published');
+    verdictFor = () => ({ verdict: 'supported', unsupported: [], why: 'it happens' });
 
     // ── Bench names the policy that cut the clip ──
     assert.deepStrictEqual(evaluation.policyOf({ id: c1.id }, entries), { selector: 'vod-moment', version: '2026-11-03', models: [] });
