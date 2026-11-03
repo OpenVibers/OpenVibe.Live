@@ -18,6 +18,11 @@ assert.strictEqual(captionTitle('A person is assembling a small robotic device o
 // Describing people is fine: a caption about someone is a title like any other.
 assert.strictEqual(captionTitle('A man with a beard is speaking to the camera.'), 'A Man With A Beard Is Speaking');
 assert.strictEqual(captionTitle('A young boy plays a game.'), 'A Young Boy Plays A Game');
+// 11-03: "The streamer is …-ing" gives its words to the moment, and a title never ends on a word that leads on.
+assert.strictEqual(captionTitle('The streamer is playing Fortnite, sprinting through a cave-like tunnel with a shotgun.'), 'Playing Fortnite, Sprinting Through A Cave-Like Tunnel');
+assert.strictEqual(captionTitle('The streamer is livestreaming from a low-angle POV inside a parked car at night.'), 'Livestreaming From A Low-Angle POV Inside A Parked Car');
+assert.strictEqual(captionTitle('The streamer sits in a red chair and waves.'), 'The Streamer Sits In A Red Chair And Waves', 'only "is …-ing" is dropped');
+assert.strictEqual(captionTitle('A dog runs through a long hallway behind the couch.'), 'A Dog Runs Through A Long Hallway', 'nine words, then every dangling word goes');
 const vod = { title: 'Fortnite!' };
 assert.strictEqual(fallbackTitle(vod, 2480, 'A man wearing a headset sits in a gaming chair.'), 'A Man Wearing A Headset Sits In A Gaming', 'nine words at most');
 assert.strictEqual(fallbackTitle(vod, 2480, 'The Minecraft main menu is displayed with a panorama.'), 'The Minecraft Main Menu Is Displayed With A Panorama', 'a complete clause is kept whole');
