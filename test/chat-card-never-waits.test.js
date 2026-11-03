@@ -29,4 +29,6 @@ const logs = /async function loadChatLogs\(\) \{[\s\S]*?\n\}/.exec(src)[0];
 assert.match(logs, /const signal = AbortSignal\.timeout\(10000\);/);
 assert.strictEqual((logs.match(/await api\(url, \{ signal \}\)/g) || []).length, 4, 'every logs request has the limit');
 assert.match(logs, /taking too long right now[\s\S]*onclick="loadChatLogs\(\)">Try again/);
+const app = fs.readFileSync(path.join(__dirname, '..', 'public', 'js', 'app.js'), 'utf8');
+assert.match(app, /if \(!init\.signal && \(method === 'GET' \|\| method === 'HEAD'\)[^\n]*AbortSignal\.timeout\(20000\)/, 'every read through api() gives up after 20 s unless the caller set a signal');
 console.log('chat card never waits: all checks passed');
