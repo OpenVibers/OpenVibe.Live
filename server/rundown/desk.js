@@ -123,6 +123,38 @@ async function recountTopic(topicId) {
 }
 
 // ── Reading a stream ─────────────────────────────────────────
+/**
+ * A VOD was deleted (server/media-proxy/purge.js afterDelete, on every delete path): what the Rundown made from it goes.
+ * Its segments and their reactions; the episode of each stream those segments came from (an episode is written from
+ * them), with its reactions; each topic they were filed under is recounted, and its page, written from takes that are
+ * gone, is cleared so the desk writes it again from what is left (two takes or more) or leaves it empty. The stream's
+ * progress stays, so the desk does not read the deleted recording again. → { segments, episodes, topics }
+ */
+async function forgetVod(vodId) {
+    const id = Number(vodId);
+    const none = { segments: 0, episodes: 0, topics: 0 };
+    if (!Number.isSafeInteger(id) || id <= 0) return none;
+    const segs = await db.all('SELECT id, stream_id, topic_id FROM rundown_segments WHERE vod_id = ?', [id]);
+    const segIds = segs.map((s) => Number(s.id));
+    const streams = [...new Set(segs.map((s) => Number(s.stream_id)))];
+    const episodes = (await db.all('SELECT stream_id FROM rundown_episodes WHERE vod_id = ? OR stream_id = ANY(?)', [id, streams])).map((e) => Number(e.stream_id));
+    if (!segIds.length && !episodes.length) return none;
+    if (segIds.length) {
+        await db.run("DELETE FROM rundown_reactions WHERE item_type = 'segment' AND item_id = ANY(?)", [segIds]);
+        await db.run('DELETE FROM rundown_segments WHERE id = ANY(?)', [segIds]);
+    }
+    if (episodes.length) {
+        await db.run("DELETE FROM rundown_reactions WHERE item_type = 'episode' AND item_id = ANY(?)", [episodes]);
+        await db.run('DELETE FROM rundown_episodes WHERE stream_id = ANY(?)', [episodes]);
+    }
+    const topics = [...new Set(segs.map((s) => s.topic_id).filter((t) => t != null).map(Number))];
+    for (const topicId of topics) {
+        await recountTopic(topicId);
+        await db.run('UPDATE rundown_topics SET headline = NULL, summary = NULL, summary_takes = 0, summary_at = NULL WHERE id = ?', [topicId]);
+    }
+    return { segments: segIds.length, episodes: episodes.length, topics: topics.length };
+}
+
 async function optedOut(userId) { try { return !!await db.get('SELECT 1 FROM arena_opt_outs WHERE user_id = ?', [userId]); } catch { return false; } }
 
 /** Streams with unread speech or a missing episode: live ones first, then the newest ended ones. */
@@ -430,4 +462,4 @@ function start() {
 }
 function stop() { if (typeof _job === 'function') _job(); _job = null; }
 
-module.exports = { start, stop, tick, readStretch, writeEpisode, refreshTopic, keepSegments, topicFor, nextStretch, ready, optedOut, MAX_LINES, _test: { reset() { _calls = []; _announced = []; _fails = new Map(); _repeated = { at: 0, set: new Set() }; _langs = new Map(); _people = { at: 0, entries: [] }; _chat = new Map(); } } };
+module.exports = { start, stop, tick, readStretch, writeEpisode, refreshTopic, keepSegments, topicFor, nextStretch, ready, optedOut, forgetVod, MAX_LINES, _test: { reset() { _calls = []; _announced = []; _fails = new Map(); _repeated = { at: 0, set: new Set() }; _langs = new Map(); _people = { at: 0, entries: [] }; _chat = new Map(); } } };

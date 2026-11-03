@@ -10,7 +10,9 @@
  *     backfill (server/ai/backfill-job.js) takes newest-first and would otherwise keep offering for an
  *     id Media no longer has, and the unique-view rows (content_views);
  *   - re-reads its OpenVibe.Search document now (Media's 404 sends the tombstone) instead of leaving
- *     it to the daily refresh.
+ *     it to the daily refresh;
+ *   - for a VOD, drops what the Rundown made from it: its segments, the episodes they fed, their reactions, and the
+ *     pages of the topics they were filed under (server/rundown/desk.js forgetVod).
  * Lists and pages that cached the item (home pool, SSR detail, page status) expire within a minute.
  */
 const db = require('../db/database');
@@ -22,6 +24,9 @@ async function afterDelete(kind, id) {
     commentsClient.hideThreadOf(kind, n);
     try { await db.forgetMediaItem(kind, n); } catch (err) { console.warn(`[Media] could not drop Live's rows for deleted ${kind} ${n}:`, err.message); }
     try { require('../events/search-media-documents').touchLater(kind, n); } catch { /* search is optional */ }
+    if (kind === 'vod') {
+        try { await require('../rundown/desk').forgetVod(n); } catch (err) { console.warn(`[Rundown] could not drop what it made from deleted VOD ${n}:`, err.message); }
+    }
 }
 
 module.exports = { afterDelete };
