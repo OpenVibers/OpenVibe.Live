@@ -110,6 +110,11 @@ console.warn = () => {};
     assert.strictEqual(await moments.findBestMoment(v, { flavor: 'clip' }), null, 'the AI said nothing is worth it');
     aiService.structured = async () => ({ t: null });
     assert.strictEqual(await moments.findBestMoment(v, { flavor: 'clip' }), null, 't: null is an abstention too');
+    // A paste is never left empty by a declined pick: the signals choose its frame (11-03).
+    aiService.structured = async () => ({ abstain: true, why: 'nothing stands out' });
+    const pasteBack = await moments.findBestMoment(v, { flavor: 'paste' });
+    assert.ok(pasteBack && Number.isFinite(pasteBack.offset), 'a declined paste falls back to the signals');
+    assert.notStrictEqual(pasteBack.evidence.picked_by, 'ai');
     let asked = null;
     aiService.structured = async (_name, input) => { asked = input; return { t: 1500, title: 'Lost it', desc: 'The streamer laughs at a clip on the second monitor' }; };
     const picked = await moments.findBestMoment(v, { flavor: 'clip' });
