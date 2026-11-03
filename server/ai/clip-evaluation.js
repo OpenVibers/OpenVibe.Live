@@ -38,8 +38,10 @@ const NEVER_VODS = new Set(['5709']);
 
 const enabled = () => String(process.env.LIVE_CLIP_EVAL || '').toLowerCase() === 'on';
 
+/** What was sent (or claimed). A failed read throws: an empty answer would look like "nothing sent yet". */
 async function _log() {
-    try { const d = JSON.parse(await db.getState(LOG) || '[]'); return Array.isArray(d) ? d : []; } catch { return []; }
+    const raw = await db.getState(LOG);
+    try { const d = JSON.parse(raw || '[]'); return Array.isArray(d) ? d : []; } catch { return []; }
 }
 
 /** A clip that may be judged: public, ready, not flagged, 5 to 180 seconds, with its window known. */
@@ -81,7 +83,8 @@ async function run({ now = Date.now(), max = MAX_PER_RUN } = {}) {
     const since = new Date(now - WINDOW_DAYS * DAY_MS).toISOString();
     const ai = await media.listClips({ auto_generated: 1, since, status: 'ready', order: 'newest', limit: 100 }, { timeoutMs: 15_000 });
     if (!ai || !Array.isArray(ai.clips)) return { submitted: [], skipped: 0, why: 'Media did not answer' };
-    const done = new Set((await _log()).map((x) => String(x.vod_id)));
+    let done;
+    try { done = new Set((await _log()).map((x) => String(x.vod_id))); } catch (e) { return { submitted: [], skipped: 0, why: `state unreadable: ${e.message}` }; }
     const byVod = new Map();
     for (const c of ai.clips) if (c.auto_generated === true && eligible(c) && !done.has(String(c.vod_id)) && !byVod.has(String(c.vod_id))) byVod.set(String(c.vod_id), c);
     const submitted = [];
@@ -96,14 +99,19 @@ async function run({ now = Date.now(), max = MAX_PER_RUN } = {}) {
             if (!person) { skipped++; continue; }
             const [sa, sp] = await Promise.all([media.signedMediaUrl('clip', aiClip.id, PLAYBACK_TTL_S), media.signedMediaUrl('clip', person.id, PLAYBACK_TTL_S)]);
             if (!sa || !sa.url || !sp || !sp.url) { skipped++; continue; }
+            // Claimed before Bench is asked: a recording is never sent twice, even when a later step fails (11-03: a
+            // round reached Bench, then the log write failed, and the next run would have sent it again).
+            const claim = { vod_id: vodId, ai_clip: aiClip.id, person_clip: person.id, round_id: null, at: new Date(now).toISOString() };
+            await db.setState(LOG, JSON.stringify([claim, ...(await _log())].slice(0, KEEP)));
             const task = await bench('POST', '/api/v1/kinds/live.clip/tasks', { prompt: 'Two clips of one stream', public: false });
             const round = await bench('POST', `/api/v1/tasks/${task.task.id}/rounds`, {});
             const roundId = round.round.id;
             await bench('POST', `/api/v1/rounds/${roundId}/entries`, { payload: entryOf(aiClip, { selector: 'auto-clip', version: AUTO_CLIP_POLICY, models: [] }, sa) });
             await bench('POST', `/api/v1/rounds/${roundId}/entries`, { payload: entryOf(person, { selector: 'people', version: '1', models: [] }, sp) });
             const log = await _log();
-            log.unshift({ vod_id: vodId, ai_clip: aiClip.id, person_clip: person.id, round_id: roundId, at: new Date(now).toISOString() });
-            await db.setState(LOG, JSON.stringify(log.slice(0, KEEP)));
+            const mine = log.find((x) => String(x.vod_id) === vodId && x.round_id == null);
+            if (mine) mine.round_id = roundId;
+            await db.setState(LOG, JSON.stringify(log.slice(0, KEEP))).catch(() => {});
             submitted.push({ vod_id: vodId, round_id: roundId });
         } catch (e) {
             if (e && (e.status === 404 || e.status === 410)) { skipped++; continue; }
