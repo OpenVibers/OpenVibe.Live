@@ -472,8 +472,9 @@ function recentChatText(streamId, sinceSec = 120, limit = 40) {
         const out = await client.readMessages({ stream_id: id, limit });
         if (!out || !Array.isArray(out.messages)) throw unavailable('recent messages');
         const floor = Date.now() - Math.max(1, sinceSec) * 1000;
+        // People's chat only: Live's own AI viewers (source_platform 'ai') are not evidence that a moment landed.
         return out.messages
-            .filter((m) => m.message && Date.parse(String(m.timestamp).replace(' ', 'T') + 'Z') >= floor)
+            .filter((m) => m.message && m.source_platform !== 'ai' && Date.parse(String(m.timestamp).replace(' ', 'T') + 'Z') >= floor)
             .map((m) => String(m.message))
             .reverse();
     }, () => []);
@@ -489,8 +490,9 @@ function recentChatters(streamId, sinceSec = 30, limit = 200) {
         const out = await client.readMessages({ stream_id: id, limit });
         if (!out || !Array.isArray(out.messages)) throw unavailable('recent messages');
         const floor = Date.now() - Math.max(1, sinceSec) * 1000;
+        // Live's AI viewers (source_platform 'ai') are not people: they never make "a crowd reacted" (item 151, C07).
         const people = new Set(out.messages
-            .filter((m) => m.message && Date.parse(String(m.timestamp).replace(' ', 'T') + 'Z') >= floor)
+            .filter((m) => m.message && m.source_platform !== 'ai' && Date.parse(String(m.timestamp).replace(' ', 'T') + 'Z') >= floor)
             .map((m) => (m.user_id != null ? `u${m.user_id}` : m.username ? `n${String(m.username).toLowerCase()}` : null))
             .filter(Boolean));
         return people.size;
