@@ -318,7 +318,7 @@ async function backfillVodClips({ limit = BACKFILL_PER_RUN, force = false } = {}
                     if (dark) { console.log(`[AutoClip] backfill skip VOD ${v.vod_id} — dark/empty frame`); newSkip.push(v.vod_id); continue; }
                 }
             } catch { /* probe optional */ }
-            const clip = await clipVodMoment({ vod: v, offset: moment.offset, title: moment.title, desc: moment.desc, speech: moment.speech, evidence: moment.evidence, archival: v.archival, source });
+            const clip = await clipVodMoment({ vod: v, offset: moment.offset, title: moment.title, desc: moment.desc, speech: moment.speech, segments: moment.rows, evidence: moment.evidence, archival: v.archival, source });
             if (clip) { made++; if (v.archival) archiveMade++; console.log(`[AutoClip] Backfilled VOD ${v.vod_id}${v.archival ? ' (archive)' : ''} ("${String(moment.title || '').slice(0, 60)}")`); }
             else if (v.archival && !clipPolicy.archiveAllowed(await _clipLog(), Date.now())) continue; // another cutter took today's archive slot: not this VOD's fault, don't skip it forever
             else newSkip.push(v.vod_id); // cut failed (e.g. unseekable/short) — don't retry forever
@@ -394,7 +394,13 @@ async function clipVodMoment(o) {
         const publication = require('./clip-publication');
         if (!publication.mayCut(vodId)) { console.log(`[AutoClip] VOD ${vodId}: protected, not cut`); return null; }
         const visibility = publication.visibilityFor({ vodVisibility: await publication.vodVisibility(vod), wanted: rated.verdict === 'public' ? 'public' : 'unlisted' });
-        const start = Math.max(0, Math.floor(offset) - CLIP_PRE);
+        // Start and end on sentences (server/ai/clip-trim.js), as a live clip does: the rows near the moment are in the
+        // VOD's own time. Without speech near it the fixed window stands (11-03: VOD clips always used it, so they
+        // began and ended mid-sentence).
+        const duration = Number(vod.duration_seconds ?? vod.duration) || 0;
+        const cut = clipTrim.trim({ moment: offset, segments: Array.isArray(o.segments) ? o.segments : [], pre: CLIP_PRE, post: CLIP_POST, limit: duration > 1 ? duration - 0.5 : Infinity });
+        const start = Math.max(0, Math.floor(cut.start * 10) / 10);
+        const end = Math.max(start + 1, Math.round(cut.end * 10) / 10);
         // One archive clip per UTC day is shared with the AI moments job. Both may pass the pool
         // gate before either writes auto_clip_log, so claim the slot atomically before cutting and
         // give it back if no clip results.
@@ -406,7 +412,7 @@ async function clipVodMoment(o) {
             archiveHeld = true;
         }
         const clip = await media.createClip({
-            vod_id: vodId, start_s: start, end_s: start + CLIP_PRE + CLIP_POST,
+            vod_id: vodId, start_s: start, end_s: end,
             title: title || 'Standout Moment', user_id: vod.user_id,
             stream_id: vod.stream_id || undefined, auto_generated: true, description: desc || '',
             visibility,
@@ -417,7 +423,7 @@ async function clipVodMoment(o) {
             await _logClip({ stream_id: vod.stream_id || null, vod_id: vodId, start_time: start, title: title || 'Standout Moment', clip_id: clip.id, dedup: !!clip.deduplicated || undefined, desc: desc || '', speech, archival: archival || undefined, sig: _sceneSig(desc || title),
                 score: rated.score, visibility: rated.verdict, bucket: rated.bucket, peak: Number(sp.peak) || 0, chatters: evidence.chatters == null ? undefined : evidence.chatters,
                 picked_by: evidence.picked_by || undefined, policy: VOD_POLICY });
-            console.log(`[AutoClip] VOD ${vodId} @${Math.round(offset)}s cut (${evidence.picked_by || 'signals'}) — score ${rated.score} → ${rated.verdict}, bucket ${rated.bucket}`);
+            console.log(`[AutoClip] VOD ${vodId} @${Math.round(offset)}s cut (${evidence.picked_by || 'signals'}) — score ${rated.score} → ${rated.verdict}, bucket ${rated.bucket}${cut.snapped ? ', on sentences' : ''}`);
         }
         return clip || null;
     } catch { return null; }

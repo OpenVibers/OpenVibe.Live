@@ -61,6 +61,26 @@ console.warn = () => {};
     const c2 = await autoClip.clipVodMoment({ vod: vod(503), offset: 300, title: 'A laugh', desc: 'A dog barks and the streamer laughs at the window', evidence: { picked_by: 'ai', spike: { peak: 0, avg: 0 }, chatters: null, sounds: [{ label: 'Laughter', confidence: 0.8 }], speechWords: 30 } });
     assert.ok(c2 && c2.id);
     assert.deepStrictEqual(created.map((b) => b.visibility), ['public', 'unlisted'], 'public only for the reacted room');
+    assert.deepStrictEqual([created[0].start_s, created[0].end_s], [284, 309], 'no speech near it: the fixed 16 s before and 9 s after');
+
+    // ── A VOD clip starts and ends on sentences (clip-trim.js), as a live clip does (11-03: it always used the window) ──
+    const rows = [
+        { start: 120, end: 126, text: 'Long before the moment.' },
+        { start: 279.2, end: 286.0, text: 'So I was telling chat about the cable.' },
+        { start: 286.4, end: 296.1, text: 'And then I just walked straight into it, look at this.' },
+        { start: 296.5, end: 305.8, text: 'Oh no, oh no, the whole desk is going.' },
+        { start: 306.2, end: 311.0, text: 'Chat, did you see that?' },
+    ];
+    const near = moments._internals.rowsNear(rows, 300);
+    assert.deepStrictEqual(near.map((r) => r.start), [279.2, 286.4, 296.5, 306.2], 'the rows within a minute of the moment');
+    const c3 = await autoClip.clipVodMoment({ vod: { ...vod(504), duration: 3600 }, offset: 300, title: 'Desk goes down', desc: 'The streamer walks into the cable and the desk tips over', segments: near, evidence: { picked_by: 'ai', spike: { peak: 22, avg: 1.5 }, chatters: 7, sounds: [], speechWords: 25 } });
+    assert.ok(c3 && c3.id);
+    const b3 = created[created.length - 1];
+    assert.deepStrictEqual([b3.start_s, b3.end_s], [279.2, 311], 'from the start of the sentence before to the end of the one after');
+    assert.ok(log.some((l) => /VOD 504 @300s cut .*, on sentences/.test(l)));
+    const c4 = await autoClip.clipVodMoment({ vod: { ...vod(505), duration: 304 }, offset: 300, title: 'At the end', desc: 'The streamer says goodbye as the stream ends abruptly', segments: near, evidence: { picked_by: 'ai', spike: { peak: 22, avg: 1.5 }, chatters: 7, sounds: [], speechWords: 25 } });
+    assert.ok(c4 && c4.id);
+    assert.ok(created[created.length - 1].end_s <= 303.5, 'never past the end of the recording');
     const entries = JSON.parse(await db.getState('auto_clip_log'));
     const e1 = entries.find((e) => e.clip_id === c1.id);
     assert.deepStrictEqual(e1.policy, { selector: 'vod-moment', version: '2026-11-03' });
