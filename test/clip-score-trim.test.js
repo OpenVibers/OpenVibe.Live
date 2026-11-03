@@ -54,12 +54,17 @@ const { trim } = require('../server/ai/clip-trim');
         { start: 112, end: 117.4, text: 'And then it held, and we all screamed!' },
         { start: 118, end: 124, text: 'Look at chat right now.' },
     ];
-    // The moment is the scream at 115: the fixed window is 99..124; snapped to rows it is 100 (the setup) .. 124.
+    // The moment is the scream at 115: the fixed window is 99..124; snapped to rows it is 100 (the setup) .. 124, with
+    // 0.3 s of air before the first word (the end, 124, is the fixed window's: no sentence is spoken at that second).
     const t = trim({ moment: 115, segments: rows });
-    assert.deepStrictEqual([t.start, t.end, t.snapped], [100, 124, true], JSON.stringify(t));
+    assert.deepStrictEqual([t.start, t.end, t.snapped], [99.7, 124, true], JSON.stringify(t));
     // A row without an end runs to the next row's start.
     const noEnd = trim({ moment: 115, segments: rows.map((r) => ({ ...r, end: null })) });
-    assert.strictEqual(noEnd.start, 100);
+    assert.strictEqual(noEnd.start, 99.7);
+    // The air never reaches into the sentence next to an edge.
+    const tight = trim({ moment: 115, segments: [{ start: 98.2, end: 99.9, text: 'Before.' }, ...rows.slice(0, 3), { start: 117.6, end: 124, text: 'Right after.' }], pre: 15, post: 2 });
+    assert.deepStrictEqual([tight.start, tight.end], [99.9, 117.6], `the air stops at the neighbours (${JSON.stringify(tight)})`);
+    assert.deepStrictEqual(trim({ moment: 115, segments: rows, padStart: 0, padEnd: 0 }), { start: 100, end: 124, snapped: true }, 'without air: the rows exactly');
     // The live edge caps the end.
     const edge = trim({ moment: 115, segments: rows, limit: 119 });
     assert.ok(edge.end <= 119, `never past the flushed edge (${edge.end})`);

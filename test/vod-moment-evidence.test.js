@@ -86,7 +86,7 @@ console.warn = () => {};
     const c3 = await autoClip.clipVodMoment({ vod: { ...vod(504), duration: 3600 }, offset: 300, title: 'Desk goes down', desc: 'The streamer walks into the cable and the desk tips over', segments: near, evidence: { picked_by: 'ai', spike: { peak: 22, avg: 1.5 }, chatters: 7, sounds: [], speechWords: 25 } });
     assert.ok(c3 && c3.id);
     const b3 = created[created.length - 1];
-    assert.deepStrictEqual([b3.start_s, b3.end_s], [279.2, 311], 'from the start of the sentence before to the end of the one after');
+    assert.deepStrictEqual([b3.start_s, b3.end_s], [278.9, 311.5], 'from the start of the sentence before to the end of the one after, with a little air');
     assert.ok(log.some((l) => /VOD 504 @300s cut .*, on sentences/.test(l)));
     const c4 = await autoClip.clipVodMoment({ vod: { ...vod(505), duration: 304 }, offset: 300, title: 'At the end', desc: 'The streamer says goodbye as the stream ends abruptly', segments: near, evidence: { picked_by: 'ai', spike: { peak: 22, avg: 1.5 }, chatters: 7, sounds: [], speechWords: 25 } });
     assert.ok(c4 && c4.id);

@@ -16,10 +16,14 @@
  *   flushed edge of a live recording).
  * - Without speech near the moment, or with rows that would make the clip shorter than `min` or longer than `max`,
  *   the fixed window stands (clamped), so trimming never makes a clip worse than before.
+ * - A snapped edge gets a little air: `padStart` before the first word and `padEnd` after the last, never into the
+ *   sentence next to it. A row's times are where speech recognition heard the words begin and end, so an edge exactly
+ *   on them clips the first breath or the last syllable's tail (item 151 C12; measured 11-03 on ten AI clips cut with
+ *   the fixed window: two ended and one started mid-word, which snapping to sentences already avoids).
  * All times are in one clock (the caller converts between stream and recording time). Pure.
  */
 
-const DEFAULTS = Object.freeze({ pre: 16, post: 9, min: 12, max: 45, maxLead: 25, maxTail: 20 });
+const DEFAULTS = Object.freeze({ pre: 16, post: 9, min: 12, max: 45, maxLead: 25, maxTail: 20, padStart: 0.3, padEnd: 0.5 });
 
 function rowEnd(rows, i) {
     const r = rows[i];
@@ -42,18 +46,29 @@ function trim({ moment, segments = [], limit = Infinity, ...o } = {}) {
     if (!rows.length) return fixed;
     const at = (t) => { let idx = -1; for (let i = 0; i < rows.length; i++) { if (rows[i].start <= t && rowEnd(rows, i) > t) idx = i; } return idx; };
 
+    // A sentence's start, a little earlier, but not into the sentence before it.
+    const airBefore = (i) => {
+        const s = Math.max(0, rows[i].start);
+        const prevEnd = i > 0 ? rowEnd(rows, i - 1) : 0;
+        return Math.min(s, Math.max(0, prevEnd, s - k.padStart));
+    };
     let start = fixedStart, end = fixedEnd, snapped = false;
     const si = at(fixedStart);
-    if (si >= 0 && rows[si].start >= m - k.maxLead) { start = Math.max(0, rows[si].start); snapped = true; }
+    if (si >= 0 && rows[si].start >= m - k.maxLead) { start = airBefore(si); snapped = true; }
     else if (si < 0) {
         // The fixed start is in silence: begin at the first sentence that starts between it and the moment.
-        const next = rows.find((r) => r.start > fixedStart && r.start < m);
-        if (next) { start = next.start; snapped = true; }
+        const ni = rows.findIndex((r) => r.start > fixedStart && r.start < m);
+        if (ni >= 0) { start = airBefore(ni); snapped = true; }
     }
     const ei = at(Math.min(m + k.post, limit - 0.01));
     if (ei >= 0) {
         const e = Math.min(rowEnd(rows, ei), limit);
-        if (e <= m + k.maxTail && e > start) { end = e; snapped = true; }
+        if (e <= m + k.maxTail && e > start) {
+            // The sentence's end, a little later, but not into the next sentence or past the recording's edge.
+            const nextStart = ei + 1 < rows.length ? rows[ei + 1].start : Infinity;
+            end = Math.max(e, Math.min(e + k.padEnd, nextStart, limit));
+            snapped = true;
+        }
     }
     const len = end - start;
     if (len < k.min || len > k.max) return fixed;
