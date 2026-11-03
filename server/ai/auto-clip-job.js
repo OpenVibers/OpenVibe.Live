@@ -80,11 +80,18 @@ async function _confirmLiveMoment(stream) {
     // Sound events are a strong clip signal on their own — a burst of gunfire, an explosion or laughter is exactly
     // the kind of thing viewers clip, and it is often the reason chat spiked in the first place.
     let sounds = [];
+    let notable = [];
     try {
-        const since = Math.max(0, ((Date.now() - new Date(stream.started_at + 'Z').getTime()) / 1000) - WINDOW_SEC);
+        const elapsed = Math.max(0, (Date.now() - new Date(stream.started_at + 'Z').getTime()) / 1000);
+        const since = Math.max(0, elapsed - WINDOW_SEC);
         sounds = (await db.getTimeline(stream.id, { kind: 'sound', from: since, limit: 40 }) || [])
             // Background music (audio-events.js spans) is the stream's bed, not a moment: never a clip signal.
             .filter(e => Number(e.confidence || 0) >= 0.4 && e.label !== 'Music').slice(-12);
+        // The score counts only the sounds that are news in this stream: a shooter's gunfire all hour is its background
+        // (clip-score.rareSounds, over the last hour). The AI still hears them all.
+        const hour = await db.getTimeline(stream.id, { kind: 'sound', from: Math.max(0, elapsed - 3600), limit: 2000 }) || [];
+        const rare = new Set(clipScore.rareSounds(hour, Math.min(3600, elapsed)).map(e => String(e.label || '')));
+        notable = sounds.filter(e => rare.has(String(e.label || '')));
     } catch { /* timeline optional */ }
     // The decision rules are OpenVibe.AI's versioned template live.clips.confirm (WS-O task 2); Live sends what it saw,
     // heard and read, with times so the model can line up speech, sounds and the chat spike.
@@ -95,9 +102,9 @@ async function _confirmLiveMoment(stream) {
             sounds: sounds.map(e => ({ t: Math.max(0, Number(e.start_sec) || 0), label: String(e.label || '').slice(0, 120), confidence: Number(e.confidence || 0) })),
             chat: chat.slice(-30).map(c => _clean(c, 100)).filter(Boolean),
         }, { target: { service: 'live', type: 'stream', id: String(stream.id) }, meter: { kind: 'auto_clip_confirm', role: 'legacy', ownerUserId: stream.user_id } });
-        if (!j) return { clip: false, transcript, sounds };
-        return { clip: j.clip === true, title: _clean(j.title, 80), desc: _clean(j.desc, 400), transcript, sounds };
-    } catch { return { clip: false, transcript, sounds }; }
+        if (!j) return { clip: false, transcript, sounds, notable };
+        return { clip: j.clip === true, title: _clean(j.title, 80), desc: _clean(j.desc, 400), transcript, sounds, notable };
+    } catch { return { clip: false, transcript, sounds, notable }; }
 }
 
 /** What was said around a stream second: the registry uses it so a static camera alone is not a repeat. */
@@ -154,7 +161,7 @@ async function _checkLiveStream(stream) {
         // The score: no clip beats a bad clip; a fair one is kept unlisted for the streamer; a clear one is public.
         const near = _speechNear(verdict.transcript, streamSec, 20);
         const chatters = await chatReads.recentChatters(streamId, BUCKET_SEC * 2).catch(() => null);
-        const rated = clipScore.score({ spike: { peak: peak.count, avg }, chatters, sounds: verdict.sounds, speechWords: near ? near.split(/\s+/).length : 0, ai: { clip: verdict.clip } });
+        const rated = clipScore.score({ spike: { peak: peak.count, avg }, chatters, sounds: verdict.notable || verdict.sounds, speechWords: near ? near.split(/\s+/).length : 0, ai: { clip: verdict.clip } });
         if (rated.verdict === 'skip') { console.log(`[AutoClip] stream ${streamId}: skipped a weak moment (score ${rated.score}${rated.reasons.length ? `: ${rated.reasons.join('; ')}` : ''})`); return; }
         const why = await registry.usedReason({ vod_id: rec.vodId, stream_id: streamId, offset: momentOffset, desc: verdict.desc, title, speech });
         if (why) { console.log(`[AutoClip] stream ${streamId}: ${why}`); return; }

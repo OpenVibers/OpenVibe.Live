@@ -171,11 +171,14 @@ async function _momentContext(streamId, vodId) {
     // The stream's average chat per 30 s, empty stretches counted (C07/C08: averaging only the busy buckets made every
     // spike look small on a quiet channel and every lull look big on a busy one).
     let chatAvg = 0;
+    const spanSec = started > 0 ? Math.max(0, ((ms(span.ended_at) || Date.now()) - started) / 1000) : 0;
     try {
-        const secs = started > 0 ? ((ms(span.ended_at) || Date.now()) - started) / 1000 : 0;
-        if (secs >= 60) chatAvg = (Number((await chatReads.streamStats(streamId) || {}).messages) || 0) / (secs / 30);
+        if (spanSec >= 60) chatAvg = (Number((await chatReads.streamStats(streamId) || {}).messages) || 0) / (spanSec / 30);
     } catch { /* chat optional */ }
-    return _inPart({ memories, transcript, said, clipTimes, spikes, sounds, heard, chatAvg }, vodId);
+    // A sound the stream hears all evening (a shooter's gunfire) is its background, not a moment: only the rare ones
+    // count as evidence or as a place to cut (clip-score.rareSounds).
+    const notable = clipScore.rareSounds(heard, spanSec);
+    return _inPart({ memories, transcript, said, clipTimes, spikes, sounds, heard: notable, chatAvg }, vodId);
 }
 
 /**

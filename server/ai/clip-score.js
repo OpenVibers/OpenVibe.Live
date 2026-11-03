@@ -73,4 +73,18 @@ function score({ spike = {}, chatters = null, sounds = [], speechWords = 0, ai =
     return { score: Math.round(total * 1000) / 1000, verdict, parts, reasons, bucket, evidence };
 }
 
-module.exports = { score, BARS, WEIGHTS, STRONG_SOUND, EVIDENCE, REACTED };
+/**
+ * The sounds that are news in this stream (item 151, C08 follow-up). The audio classifier hears a shooter's explosions
+ * and gunfire all evening: in production (11-03) "Explosion" and "Gunshot, gunfire" at 0.6 or more were in the
+ * thousands across 200+ streams, while laughter was rare. A sound that comes back more than `perHour` times an hour in
+ * the stream is its background, not a moment, so it is no evidence. Rates are over at least a quarter hour.
+ */
+function rareSounds(events, spanSec, { perHour = 12 } = {}) {
+    const list = Array.isArray(events) ? events : [];
+    const hours = Math.max(0.25, (Number(spanSec) || 0) / 3600);
+    const count = new Map();
+    for (const e of list) { const k = String((e && e.label) || ''); count.set(k, (count.get(k) || 0) + 1); }
+    return list.filter((e) => (count.get(String((e && e.label) || '')) || 0) / hours <= perHour);
+}
+
+module.exports = { score, rareSounds, BARS, WEIGHTS, STRONG_SOUND, EVIDENCE, REACTED };
