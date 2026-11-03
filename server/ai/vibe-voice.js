@@ -121,7 +121,11 @@ async function clipMoment(stream, ev, settings, deps) {
     const start = Math.max(0, end - CLIP_SEC);
     if (end - start < 5) return say(stream, 'Give me a few seconds of the stream first, then ask again.', { speak: settings.speak, deps });
     const title = `${String(stream.title || 'Stream moment').slice(0, 70)} (clipped by voice)`;
-    const clip = await media.createClip({ vod_id: rec.vodId, start_s: start, end_s: end, title, user_id: stream.user_id, stream_id: stream.id, auto_generated: false, description: '' })
+    // Never more visible than the recording (server/ai/clip-publication.js): Media would make it public otherwise.
+    const publication = require('./clip-publication');
+    if (!publication.mayCut(rec.vodId)) return say(stream, 'That recording is protected, so I can\'t clip it.', { speak: settings.speak, deps });
+    const visibility = publication.visibilityFor({ vodVisibility: await publication.vodVisibility({ id: rec.vodId }), wanted: 'public' });
+    const clip = await media.createClip({ vod_id: rec.vodId, start_s: start, end_s: end, title, user_id: stream.user_id, stream_id: stream.id, auto_generated: false, description: '', visibility })
         .catch((e) => { console.warn(`[Vibe] stream ${stream.id}: clip failed:`, e.message); return null; });
     if (!clip) return say(stream, 'That clip didn\'t work, sorry. Try again in a moment.', { speak: settings.speak, deps });
     const url = (deps.videoUrl || require('../web/video-url').videoUrl)('clip', clip.id);
