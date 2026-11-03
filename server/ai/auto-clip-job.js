@@ -161,11 +161,15 @@ async function _checkLiveStream(stream) {
         const shift = streamSec - momentOffset;
         const cut = clipTrim.trim({ moment: streamSec, segments: verdict.transcript, pre: CLIP_PRE, post: CLIP_POST, limit: Math.max(0, recEdge - 0.5) + shift });
         const clipStart = Math.max(0, cut.start - shift), clipEnd = cut.end - shift;
+        // Never more visible than the recording (server/ai/clip-publication.js, C16); a protected one is never cut.
+        const publication = require('./clip-publication');
+        if (!publication.mayCut(rec.vodId)) { console.log(`[AutoClip] stream ${streamId}: recording ${rec.vodId} is protected, not cut`); return; }
+        const visibility = publication.visibilityFor({ vodVisibility: await publication.vodVisibility({ id: rec.vodId }), wanted: rated.verdict === 'public' ? 'public' : 'unlisted' });
         const clip = await media.createClip({
             vod_id: rec.vodId, start_s: clipStart, end_s: clipEnd,
             title, user_id: stream.user_id,
             stream_id: streamId, auto_generated: true, description: verdict.desc || '',
-            visibility: rated.verdict === 'public' ? 'public' : 'unlisted',
+            visibility,
         }).catch((e) => { console.warn(`[AutoClip] Media createClip failed for stream ${streamId}:`, e.message); return null; });
         if (clip) {
             // deduplicated: Media handed back a clip someone already cut of this window. It stays in
@@ -352,6 +356,11 @@ async function clipVodMoment(o) {
             return null;
         }
         const vodId = vod.vod_id || vod.id;
+        // Never more visible than the recording (C16); a protected recording is never cut. Media would otherwise make
+        // the clip public whatever the recording is.
+        const publication = require('./clip-publication');
+        if (!publication.mayCut(vodId)) { console.log(`[AutoClip] VOD ${vodId}: protected, not cut`); return null; }
+        const visibility = publication.visibilityFor({ vodVisibility: await publication.vodVisibility(vod), wanted: 'public' });
         const start = Math.max(0, Math.floor(offset) - CLIP_PRE);
         // One archive clip per UTC day is shared with the AI moments job. Both may pass the pool
         // gate before either writes auto_clip_log, so claim the slot atomically before cutting and
@@ -367,6 +376,7 @@ async function clipVodMoment(o) {
             vod_id: vodId, start_s: start, end_s: start + CLIP_PRE + CLIP_POST,
             title: title || 'Standout Moment', user_id: vod.user_id,
             stream_id: vod.stream_id || undefined, auto_generated: true, description: desc || '',
+            visibility,
         });
         if (clip) {
             archiveHeld = false;   // the clip exists: keep the day reserved even if the log write fails
