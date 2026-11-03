@@ -947,6 +947,7 @@ async function loadChannelPage(username, managedStreamRef = null, legacySessionI
             if (window.ChannelSocials) ChannelSocials.pills(document.getElementById('ch-socials-offline'), ch.social_links || []);
             _loadNextStream(ch.username);
             document.getElementById('ch-follower-count-offline').textContent = `${ch.follower_count || 0} followers`;
+            _setWatchAlert(document.getElementById('ch-watch-offline'), ch.username);
             _loadGameBadge(ch.username);
             _setCategoryBadge(document.getElementById('ch-category-badge-offline'), ch.ai_category || ch.category || 'Offline', !!ch.ai_category);
             setupFollowBtn(document.getElementById('ch-btn-follow-offline'));
@@ -3251,6 +3252,21 @@ function _wireAboutDrag() {
             _markAboutDirty();
         });
     });
+}
+
+/**
+ * "Get an alert" beside the follower count while a channel is offline: OpenVibe.Watch's form, filled in for this
+ * channel going live (the live.stream.started event, nothing polled). It reaches people where Live's own follow cannot:
+ * an email, a webhook, or one of their agents woken up. Not on one's own channel.
+ */
+function _setWatchAlert(a, username) {
+    if (!a) return;
+    const own = !!(typeof currentUser !== 'undefined' && currentUser && currentUser.username === username);
+    if (own || !username) { a.hidden = true; return; }
+    const q = new URLSearchParams({ template: 'event', event: 'live.stream.started', event_filter: username, name: `@${username} goes live` });
+    a.href = `https://openvibe.watch/watches/new?${q}`;
+    a.title = `An alert when @${username} goes live: by email, a webhook or your agent (OpenVibe.Watch)`;
+    a.hidden = false;
 }
 
 // Render a streamer's customizable offline screen into #ch-offline-screen.
