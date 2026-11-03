@@ -21,14 +21,15 @@
     100% { background-position: 400% 50%; }
 }
 
-/* Fire — warm pulse with glow */
+/* Fire — warm pulse with glow. Darkest frame #ff7a1f (was #ff6600, 4.42:1 on a red-tinted chat row; WCAG AA needs 4.5;
+   axe, 11-03), as in openvibe-shared's items.css. */
 .name-fx-fire {
-    color: #ff6600 !important;
+    color: #ff7a1f !important;
     text-shadow: 0 0 6px #ff4400, 0 0 12px #ff220088, 0 0 20px #cc110044;
     animation: nameFxFire 1.5s var(--ov-ease-in-out, ease-in-out) infinite alternate;
 }
 @keyframes nameFxFire {
-    0% { text-shadow: 0 0 6px #ff4400, 0 0 12px #ff220088; color: #ff6600; }
+    0% { text-shadow: 0 0 6px #ff4400, 0 0 12px #ff220088; color: #ff7a1f; }
     100% { text-shadow: 0 0 10px #ff8800, 0 0 20px #ff440088, 0 0 30px #cc220044; color: #ffaa00; }
 }
 
