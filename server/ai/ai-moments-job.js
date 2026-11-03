@@ -407,6 +407,23 @@ async function _momentPool(limit) {
     return [];
 }
 
+/**
+ * The hero set after a run: this run's moments first, then the last set's (not the same VOD), up to the target. A run
+ * that found little or nothing used to replace the set with what it found, and the home hero went empty (11-03: a run
+ * where the AI declined every VOD left 0 moments for six hours).
+ */
+function keepHeroFull(fresh, previous, target) {
+    const out = [...(fresh || [])];
+    const vods = new Set(out.map((m) => m && m.vodId));
+    for (const m of Array.isArray(previous) ? previous : []) {
+        if (out.length >= target) break;
+        if (!m || vods.has(m.vodId)) continue;
+        vods.add(m.vodId);
+        out.push(m);
+    }
+    return out;
+}
+
 async function tick(opts = {}) {
     // opts: { force } bypass the daily gate, { fresh } ignore the recently-used log,
     // { target } how many moments, { vodPool } how many VODs to consider, { perUser } cap.
@@ -596,8 +613,10 @@ async function tick(opts = {}) {
         }
 
         const usedLog = [...newUsedVods, ...(prev.usedVods || [])].slice(0, 300);
-        await db.setState(SETTING, JSON.stringify({ moments, usedVods: usedLog, rankCache: _rankCacheOut, updated_at: Date.now() }));
-        console.log(`[AI-Moments] ${moments.length} moment(s) from ${chosen.length}/${totalEligible} ranked VODs + pastes created`);
+        const found = moments.length;
+        const shown = keepHeroFull(moments, prev.moments, TARGET_N);
+        await db.setState(SETTING, JSON.stringify({ moments: shown, usedVods: usedLog, rankCache: _rankCacheOut, updated_at: Date.now() }));
+        console.log(`[AI-Moments] ${found} moment(s) from ${chosen.length}/${totalEligible} ranked VODs + pastes created${shown.length > found ? `; ${shown.length - found} kept from the last set` : ''}`);
     } catch (e) {
         console.warn('[AI-Moments] tick error:', e.message);
     } finally {
@@ -617,7 +636,7 @@ function start() {
     setInterval(() => { tick().catch(() => {}); }, 5 * 60 * 1000);
 }
 
-module.exports = { start, tick, findBestMoment: _findBestMoment, frameTooDark: _frameTooDark, makeSlug: _slug, publicTitle: _publicTitle, _internals: { momentPool: _momentPool, fallbackTitle: _fallbackTitle, captionTitle: _captionTitle, evidenceAt: _evidenceAt } };
+module.exports = { start, tick, findBestMoment: _findBestMoment, frameTooDark: _frameTooDark, makeSlug: _slug, publicTitle: _publicTitle, _internals: { momentPool: _momentPool, fallbackTitle: _fallbackTitle, captionTitle: _captionTitle, evidenceAt: _evidenceAt, keepHeroFull } };
 
 // CLI: force a one-off regeneration, e.g. a whole-dataset "best of all-time" test run:
 //   node server/ai/ai-moments-job.js --fresh --target=6 --perUser=2
@@ -633,7 +652,7 @@ if (require.main === module) {
         perUser: num('perUser', 1),
     };
     console.log('[AI-Moments] Manual run:', JSON.stringify(opts));
-    tick(opts)
+    db.initDb({ script: true }).then(() => tick(opts))
         .then(async () => { const p = await _load(); console.log(`[AI-Moments] Done — ${(p.moments || []).length} moment(s) in the hero set.`); process.exit(0); })
         .catch((e) => { console.error('[AI-Moments] Manual run failed:', e); process.exit(1); });
 }

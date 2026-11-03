@@ -497,7 +497,7 @@ if (require.main === module) {
     if (argv.includes('--backfill')) {
         const limit = num('limit', 4);
         console.log(`[AutoClip] Manual backfill (limit ${limit})…`);
-        backfillVodClips({ limit, force: true })
+        db.initDb({ script: true }).then(() => backfillVodClips({ limit, force: true }))
             .then((n) => { console.log(`[AutoClip] Manual backfill done — ${n} clip(s) created.`); process.exit(0); })
             .catch((e) => { console.error('[AutoClip] Manual backfill failed:', e); process.exit(1); });
     } else {
