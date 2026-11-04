@@ -29,19 +29,34 @@ const SYSTEM = { type: 'service', id: 'live' };
 const isConfigKey = (key) => typeof key === 'string' && key.length > 0 && key.length <= 100 && !NOT_CONFIG.test(key);
 const classify = (key) => (SECRET.test(key) ? 'secret' : PUBLIC_KEYS.has(key) ? 'public' : 'internal');
 
-/** The configuration rows as they are now: key → the stored string. */
+const isSecret = (key) => classify(key) === 'secret';
+const nonSecret = (o) => Object.fromEntries(Object.entries(o).filter(([k]) => !isSecret(k)));
+
+/** The configuration rows as they are now: key → the stored string. Never the merged view readers see. */
 async function rowsNow() {
     const out = {};
-    for (const r of await db.getAllSettings()) if (isConfigKey(r.key)) out[r.key] = r.value == null ? '' : String(r.value);
+    for (const r of await db.all('SELECT key, value FROM site_settings ORDER BY key')) if (isConfigKey(r.key)) out[r.key] = r.value == null ? '' : String(r.value);
     return out;
 }
 
-/** Write the revision's values to the rows: set what differs, delete what the revision no longer has. */
+/**
+ * Write the revision's non-secret values to the rows: set what differs, delete what the revision no longer has.
+ * A secret-class value never goes into site_settings (D11): the store keeps the only copy, sealed when it has a
+ * KEK. Its row may stay as a blank, typed slot so the settings page still lists the key; a stored value is left
+ * alone here (the boot migration blanks it once the store holds a sealed copy).
+ */
 async function writeRows(target) {
     const now = await rowsNow();
     await db.getDb().tx(async () => {
-        for (const [k, v] of Object.entries(target)) if (isConfigKey(k) && now[k] !== String(v)) await db.setSetting(k, String(v));
-        for (const k of Object.keys(now)) if (!(k in target)) await db.deleteSetting(k);
+        for (const [k, v] of Object.entries(target)) {
+            if (!isConfigKey(k)) continue;
+            if (isSecret(k)) {
+                if (!(k in now)) await db.setSetting(k, '');
+                continue;
+            }
+            if (now[k] !== String(v)) await db.setSetting(k, String(v));
+        }
+        for (const k of Object.keys(now)) if (!(k in target) && !isSecret(k)) await db.deleteSetting(k);
     });
 }
 
@@ -64,14 +79,25 @@ function getStore() {
     return store;
 }
 
+/** The store once it exists, without creating it. Readers use it when the boot has loaded it. */
+function hasStore() { return store !== null; }
+async function secretValue(key) {
+    if (!store) return undefined;
+    return (await store).get(key);
+}
+
 const canonical = (o) => JSON.stringify(Object.keys(o).sort().map((k) => [k, o[k]]));
 
-/** Record rows written around the journal as a revision of their own. → the sync snapshot, or null */
+/** Record non-secret rows written around the journal as a revision of their own. → the sync snapshot, or null */
 async function sync() {
     const s = await getStore();
     const now = await rowsNow();
-    if (canonical({ ...s.get() }) === canonical(now)) return null;
-    return s.apply(now, { actor: SYSTEM, reason: 'sync: site_settings changed outside the configuration journal' });
+    const current = { ...s.get() };
+    const next = {};
+    for (const [k, v] of Object.entries(current)) if (isSecret(k)) next[k] = v;   // secrets stay in the store
+    for (const [k, v] of Object.entries(now)) if (!isSecret(k)) next[k] = v;
+    if (canonical(nonSecret(current)) === canonical(nonSecret(next))) return null;
+    return s.apply(next, { actor: SYSTEM, reason: 'sync: site_settings changed outside the configuration journal' });
 }
 
 /**
@@ -84,7 +110,10 @@ async function change({ set = {}, unset = [] } = {}, { actor = SYSTEM, reason = 
     await sync();
     const values = {};
     for (const [k, v] of Object.entries(set)) values[k] = v !== null && typeof v === 'object' ? JSON.stringify(v) : String(v ?? '');
-    return (await getStore()).apply(values, { merge: true, unset, actor, reason });
+    const snap = await (await getStore()).apply(values, { merge: true, unset, actor, reason });
+    // An explicit unset drops the store's secret; blank the legacy slot too so no plaintext copy survives.
+    for (const k of unset) if (isSecret(k)) await db.setSetting(k, '');
+    return snap;
 }
 
 /** Roll back to the previous good revision (or `to`) after recording any outside changes. */
@@ -93,10 +122,54 @@ async function rollback({ actor = SYSTEM, reason = null, to } = {}) {
     return (await getStore()).rollback({ actor, reason, to });
 }
 
+/**
+ * D11: the legacy table keeps non-secret rows only. With a KEK, every secret-class row the store holds — and for
+ * which the sealed store's read-back and marker agree — is blanked. Without a KEK nothing is blanked (the store is
+ * not sealed); without a value in the store, or with a locked envelope, the row is left for a later run. Counts
+ * only, never a key's value.
+ */
+async function migrateLegacySecrets(s) {
+    const rows = await rowsNow();
+    const candidates = Object.entries(rows).filter(([k, v]) => isSecret(k) && String(v) !== '');
+    if (!candidates.length) return { checked: 0, blanked: 0, kept: 0, sealed: !!s.sealed };
+    if (!s.sealed) {
+        console.log(`[Config] legacy site_settings: ${candidates.length} secret value(s) left (no KEK; the store is not sealed)`);
+        return { checked: candidates.length, blanked: 0, kept: candidates.length, sealed: false };
+    }
+    const summary = await s.summary();
+    const snap = summary.active;
+    let blanked = 0, kept = 0;
+    for (const [k, v] of candidates) {
+        const stored = s.get(k);
+        const marker = summary.secrets[k] || (typeof s.secretMarker === 'function' ? await s.secretMarker(k) : null);
+        const sealedRow = snap && snap.values ? snap.values[k] : null;
+        const proven = stored !== undefined && stored !== null && String(stored) !== ''
+            && marker && sealedRow && sealedRow.redacted === true
+            && marker.fingerprint && marker.fingerprint === sealedRow.fingerprint;
+        if (!proven) { kept++; continue; }
+        await db.setSetting(k, '');
+        blanked++;
+    }
+    console.log(`[Config] legacy site_settings: ${blanked} secret value(s) blanked after the sealed store held them; ${kept} left (no sealed copy)${s.kek ? `; KEK ${s.kek}` : ''}`);
+    return { checked: candidates.length, blanked, kept, sealed: true };
+}
+
+let initPromise = null;
+/** Boot: load the store, seal old plaintext rows, then blank the legacy copies the sealed store holds. */
+function init() {
+    if (initPromise) return initPromise;
+    initPromise = (async () => {
+        const s = await getStore();
+        if (s.sealed) await s.reseal();
+        return await migrateLegacySecrets(s);
+    })().catch((err) => { initPromise = null; throw err; });
+    return initPromise;
+}
+
 /** A person as the journal records them. */
 function actorOf(user) {
     if (user && user.subject_id) return { type: 'user', id: String(user.subject_id) };
     return SYSTEM;
 }
 
-module.exports = { getStore, change, rollback, sync, isConfigKey, classify, actorOf, NOT_CONFIG, _reset: () => { store = null; } };
+module.exports = { getStore, init, hasStore, secretValue, migrateLegacySecrets, change, rollback, sync, isConfigKey, classify, isSecret, actorOf, NOT_CONFIG, _reset: () => { store = null; initPromise = null; } };

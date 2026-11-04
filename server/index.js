@@ -1283,6 +1283,9 @@ async function start() {
 
     // 1. Initialize database: migrations as the owner, then the pool (server/db/database.js; the schema is migrations/).
     await db.initDb();
+    // D11: load the configuration journal, reseal old plaintext under the KEK, then blank the legacy secret
+    // copies it holds. Without a KEK the store reports sealed:false and nothing is blanked.
+    await require('./admin/site-config').init();
     await analyticsStore.ready();
     console.log('[Server] Database ready');
     await restoreRum();   // the real-user reservoirs, now that the database is open
