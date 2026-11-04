@@ -29,6 +29,7 @@ console.log = capture('log'); console.warn = capture('warn'); console.error = ca
     const store = await siteConfig.getStore();
     assert.strictEqual(store.sealed, true, 'the store is sealed under the KEK');
     assert.strictEqual(report.blanked, 1, 'the legacy secret value was blanked');
+    assert.strictEqual(report.differs, 0, 'an equal value is not counted as differing');
 
     const row = await db.get('SELECT value, type FROM site_settings WHERE key = ?', ['tts_google_api_key']);
     assert.ok(row, 'the key keeps its typed slot');
@@ -53,6 +54,19 @@ console.log = capture('log'); console.warn = capture('warn'); console.error = ca
     assert.strictEqual((await db.get('SELECT value FROM site_settings WHERE key = ?', ['tts_google_api_key'])).value, '', 'a new secret is not written to the legacy row');
     assert.strictEqual(await db.getSetting('tts_google_api_key'), 'sentinel-rotated', 'the rotated value is read from the store');
     assert.ok(!JSON.stringify(await store.summary()).includes('sentinel-rotated'));
+
+    // A legacy row newer than the store is kept, not blanked: the store does not hold this value.
+    await siteConfig.change({ set: { tts_aws_secret_access_key: 'store-side-secret' } }, { reason: 'store side' });
+    await db.setSetting('tts_aws_secret_access_key', 'legacy-side-secret');
+    // A secret row the store does not hold at all is kept too.
+    await db.setSetting('tts_aws_access_key_id', 'legacy-only-secret');
+    const kept = await siteConfig.migrateLegacySecrets(store);
+    assert.strictEqual(kept.blanked, 0, 'a differing value is never blanked');
+    assert.strictEqual(kept.differs, 2, 'one unequal value and one the store does not hold');
+    assert.strictEqual((await db.get('SELECT value FROM site_settings WHERE key = ?', ['tts_aws_secret_access_key'])).value, 'legacy-side-secret', 'the newer legacy value is kept');
+    assert.strictEqual((await db.get('SELECT value FROM site_settings WHERE key = ?', ['tts_aws_access_key_id'])).value, 'legacy-only-secret', 'the only copy is kept');
+    assert.strictEqual(await db.getSetting('tts_aws_secret_access_key'), 'store-side-secret', 'the reader keeps the store value');
+    assert.ok(!logs.join('\n').includes('store-side-secret') && !logs.join('\n').includes('legacy-side-secret') && !logs.join('\n').includes('legacy-only-secret'), 'no log line carries either side');
 
     real.log('legacy secrets (KEK): all checks passed');
     process.exit(0);
