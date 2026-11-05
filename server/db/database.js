@@ -2481,7 +2481,24 @@ async function close() {
 
 // ── Site Settings helpers ────────────────────────────────────
 
+/** The config journal, when the boot has loaded it: a secret-class value's only copy (D11). */
+function configJournal() {
+    try {
+        const sc = require('../admin/site-config');
+        return typeof sc.hasStore === 'function' && sc.hasStore() ? sc : null;
+    } catch { return null; }
+}
+
+/** The store's value for a secret-class key; the row's value is only a fallback before the store exists. */
+async function storeSecret(key) {
+    const sc = configJournal();
+    if (!sc || sc.classify(key) !== 'secret') return undefined;
+    return await sc.secretValue(key);
+}
+
 async function getSetting(key) {
+    const secret = await storeSecret(key);
+    if (secret !== undefined) return secret;
     const row = await get('SELECT * FROM site_settings WHERE key = ?', [key]);
     if (!row) return null;
     switch (row.type) {
@@ -2493,11 +2510,26 @@ async function getSetting(key) {
 }
 
 async function getSettingRow(key) {
-    return await get('SELECT * FROM site_settings WHERE key = ?', [key]);
+    const row = await get('SELECT * FROM site_settings WHERE key = ?', [key]);
+    if (row) {
+        const secret = await storeSecret(key);
+        if (secret !== undefined) row.value = typeof secret === 'string' ? secret : JSON.stringify(secret);
+    }
+    return row;
 }
 
+/** The rows as the admin settings page expects them: secret-class values from the store, never the legacy copy. */
 async function getAllSettings() {
-    return await all('SELECT * FROM site_settings ORDER BY key');
+    const rows = await all('SELECT * FROM site_settings ORDER BY key');
+    const sc = configJournal();
+    if (sc) {
+        for (const r of rows) {
+            if (sc.classify(r.key) !== 'secret') continue;
+            const secret = await sc.secretValue(r.key);
+            if (secret !== undefined) r.value = typeof secret === 'string' ? secret : JSON.stringify(secret);
+        }
+    }
+    return rows;
 }
 
 async function setSetting(key, value) {

@@ -32,10 +32,8 @@ permissions.requireAdmin = (req, res, next) => (req.user && ['admin'].includes(r
 
 async function main() {
 await db.initDb();
-// migrations/0002_live.sql does not create openvibe-shared/config's tables (config_snapshots/config_keys,
-// their configSchema()); the service migrations are meant to. Owner-only DDL stands them up here until the
-// migration includes configSchema() (Network's migrations/0006_config.sql is the pattern).
-await globalThis.__ovLiveDdl(require('openvibe-shared/config-pg').configSchema());
+// migrations/0025_config.sql creates openvibe-shared/config's tables (config_snapshots/config_keys, its
+// configSchema()): the service's migrations own its tables (Network's migrations/0006_config.sql is the pattern).
 const raw = db.getDb();
 const add = async (id, username, role) => await raw.prepare(`INSERT INTO users (id, username, display_name, email, password_hash, role, created_at) OVERRIDING SYSTEM VALUE VALUES (?, ?, ?, ?, 'x', ?, '2025-01-01 00:00:00')`).run(id, username, username, `${username}@x`, role);
 await add(1, 'owner', 'admin');

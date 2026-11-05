@@ -34,6 +34,7 @@ const express = require('express');
 const fs = require('fs');
 const path = require('path');
 const db = require('../db/database');
+const siteConfig = require('../admin/site-config');
 const config = require('../config');
 const permissions = require('../auth/permissions');
 const { guard } = require('../net/service-guard');
@@ -371,16 +372,18 @@ effectsRouter.post('/site-settings', async (req, res) => {
     const allowed = ['tts_enabled', 'tts_provider', 'tts_google_api_key', 'tts_google_service_account', 'tts_aws_access_key_id', 'tts_aws_secret_access_key', 'tts_aws_region', 'tts_max_length', 'tts_max_queue_per_user', 'tts_max_queue_global', 'tts_default_voice'];
     const secret = new Set(['tts_google_api_key', 'tts_google_service_account', 'tts_aws_access_key_id', 'tts_aws_secret_access_key']);
     const owner = permissions.isOwner(actor);
-    let count = 0;
+    const set = {};
     for (const [key, value] of Object.entries(req.body.settings || {})) {
         if (!allowed.includes(key)) continue;
         if (secret.has(key) && !owner) continue;
         if (secret.has(key) && typeof value === 'string' && /^••••/.test(value)) continue;
-        await db.setSetting(key, value);
-        count++;
+        set[key] = value;
     }
+    // D11: these are configuration (the credentials are secret-class): one revision in the store, which seals a
+    // secret and never writes its value to site_settings.
+    if (Object.keys(set).length) await siteConfig.change({ set }, { actor: siteConfig.actorOf(actor), reason: 'Chat TTS settings' });
     try { require('./tts-engine').invalidateSettingsCache(); } catch { /* */ }
-    res.json({ ok: true, updated: count });
+    res.json({ ok: true, updated: Object.keys(set).length });
 });
 
 // One real chat line: OpenCoins chat bonus, AI chat viewers, the PowerChat overlay relay.

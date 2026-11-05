@@ -399,6 +399,7 @@ const waitFor = async (pred, what, ms = 3000) => {
         assert.notStrictEqual(await db.getSetting('tts_google_api_key'), 'admin-cannot', 'an admin cannot set a credential');
         assert.strictEqual((await put(owner, { tts_google_api_key: 'owner-can' })).body.updated, 1);
         assert.strictEqual(await db.getSetting('tts_google_api_key'), 'owner-can');
+        assert.strictEqual((await db.get("SELECT value FROM site_settings WHERE key = 'tts_google_api_key'")).value, '', 'the credential is in the journal, not site_settings');
 
         // 8. Slow mode and sub-only persistence moved to Chat with channel_moderation_settings (roadmap
         // T3); Live now only writes channels.emote_sources for Chat's PUT /api/emotes/sources.

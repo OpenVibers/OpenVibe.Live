@@ -70,6 +70,7 @@ const ulid = () => ids.ulid();
             const chatTables = ['channel_moderators', 'channel_moderation_settings', 'user_tags', 'chat_ai_summaries', 'chat_timeline_events'];
             for (const t of chatTables) exempt[t] = 'Chat owns and erases it';
             exempt.hidden_relay_users = 'a moderation record of a relay account hidden from a channel, kept for accountability';
+            exempt.config_snapshots = 'the configuration journal: created_by/activated_by are actor refs, not an account row';
             // Every other table with a person column is handled by the schema-driven export and erase below.
             const handled = [...cols.keys()].filter((t) => !chatTables.includes(t));
             const missing = await uncovered(d, { taskKeyed: handled, exempt });
