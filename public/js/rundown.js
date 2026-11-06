@@ -45,6 +45,12 @@ function _rdAv(u, size = 36) {
     const inner = u.avatar_url ? `<img src="${_rdEsc(u.avatar_url)}" alt="" loading="lazy" width="${size}" height="${size}">` : `<span>${_rdEsc(_rdName(u).trim().charAt(0).toUpperCase() || '?')}</span>`;
     return _rdA(_rdUserHref(u), inner, 'rd-av', _rdName(u)).replace('class="rd-av"', `class="rd-av" style="--rd-av:${size}px;--rd-c:${_rdEsc(u.profile_color || '#64748b')}"`);
 }
+// The same face, not a link: for inside another link (a link in a link is closed early by the browser).
+function _rdFace(u, size = 36) {
+    if (!u) return '';
+    const inner = u.avatar_url ? `<img src="${_rdEsc(u.avatar_url)}" alt="" loading="lazy" width="${size}" height="${size}">` : `<span>${_rdEsc(_rdName(u).trim().charAt(0).toUpperCase() || '?')}</span>`;
+    return `<span class="rd-av" aria-hidden="true" style="--rd-av:${size}px;--rd-c:${_rdEsc(u.profile_color || '#64748b')}">${inner}</span>`;
+}
 function _rdUser(u) { return u ? _rdA(_rdUserHref(u), _rdEsc(_rdName(u)), 'rd-user') : ''; }
 function _rdTopicChip(t, extra = '') {
     if (!t) return '';
@@ -477,7 +483,7 @@ function _rdSheetPanel(state) {
     ].join('');
     const streamers = (o.streamers || []).map((s) => '<button type="button" class="rd-sheet-btn-row' + (state.streamer.includes(s.user.username) ? ' is-on' : '') + '" data-rd-pick-value="streamer:' + _rdEsc(s.user.username) + '">' + _rdAv(s.user, 24) + '<span>' + _rdEsc(_rdName(s.user)) + '</span></button>').join('');
     const topics = (o.topics || []).map((t) => '<button type="button" class="rd-sheet-btn-row' + (state.topic === t.slug ? ' is-on' : '') + '" data-rd-pick-value="topic:' + _rdEsc(t.slug) + '">' + _rdEsc(t.title) + '</button>').join('');
-    return '<div class="rd-sheet-backdrop" data-rd-sheet="close"></div>' +
+    return '<div class="rd-sheet-wrap"><div class="rd-sheet-backdrop" data-rd-sheet="close"></div>' +
         '<div class="rd-sheet" role="dialog" aria-modal="true" aria-label="Filters" data-rd-sheet="panel">' +
             '<div class="rd-sheet-head"><h2 class="rd-h2">Filters</h2><button type="button" class="rd-icon-btn" data-rd-sheet="close" aria-label="Close the filters"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button></div>' +
             '<div class="rd-sheet-body" id="rd-sheet-body">' +
@@ -489,7 +495,7 @@ function _rdSheetPanel(state) {
                 section('More', '<div class="rd-sheet-list">' + toggles + '</div>') +
             '</div>' +
             '<div class="rd-sheet-foot"><button type="button" class="btn btn-secondary" data-rd-clear="all">Clear all</button><button type="button" class="btn btn-primary" data-rd-sheet="close">Show results</button></div>' +
-        '</div>';
+        '</div></div>';
 }
 
 // ── Results ─────────────────────────────────────────────────────────────────
@@ -570,7 +576,7 @@ function _rdKindChips(state) {
 // Trending topics and who's been talking, as two rails under the bar (on the phone) and in the side column.
 function _rdRails(d) {
     const trending = (d.trending || []).map(_rdTopicFilter).join('');
-    const voices = (d.voices || []).map((v) => '<a class="rd-rail-item" href="/rundown?streamer=' + encodeURIComponent(v.user.username) + '">' + _rdAv(v.user, 24) + '<span>' + _rdEsc(_rdName(v.user)) + '</span></a>').join('');
+    const voices = (d.voices || []).map((v) => '<a class="rd-rail-item" href="/rundown?streamer=' + encodeURIComponent(v.user.username) + '">' + _rdFace(v.user, 24) + '<span>' + _rdEsc(_rdName(v.user)) + '</span></a>').join('');
     return '<div class="rd-rails">' +
         '<section class="rd-rail"><h2 class="rd-h2">Trending topics</h2><div class="rd-rail-track">' + (trending || '<span class="rd-quiet">No topics yet.</span>') + '</div></section>' +
         '<section class="rd-rail"><h2 class="rd-h2">Who\'s been talking</h2><div class="rd-rail-track">' + (voices || '<span class="rd-quiet">Nobody yet.</span>') + '</div></section>' +
@@ -744,7 +750,8 @@ async function loadRundownPage(segments = []) {
         else if (first === 's' && second) await _rdStreamer(root, decodeURIComponent(second));
         else if (first) await _rdStreamer(root, decodeURIComponent(first));
         else await _rdBrowse(root, _rdPathState('/rundown', new URLSearchParams(location.search)));
-        _rdAddBar(root);
+        // The browse view draws its own bar; every other Rundown page gets it added on top (once).
+        if (!root.querySelector('.rd-bar')) _rdAddBar(root);
     } catch (err) {
         const missing = err && err.status === 404;
         root.innerHTML = _rdEmpty(missing ? 'fa-magnifying-glass' : 'fa-plug-circle-xmark', _rdEsc(missing ? 'Nothing here. It may have been taken down, or it never existed.' : (err && err.message) || 'The Rundown could not load.'), _rdA('/rundown', 'Back to The Rundown', 'btn btn-primary'));

@@ -317,7 +317,8 @@ a.rd-use:hover b { color: var(--accent); }
 .rd-kinds { margin: 0 0 12px; }
 
 /* The phone's sheet: the same sections as the pickers, one under the other. */
-.rd-sheet-wrap { position: fixed; inset: 0; z-index: 120; }
+/* Over the Shared app bar (9990): the sheet is modal, so nothing of the page shows through it. */
+.rd-sheet-wrap { position: fixed; inset: 0; z-index: 10000; }
 .rd-sheet-backdrop { position: absolute; inset: 0; background: rgba(0, 0, 0, 0.55); }
 .rd-sheet { position: absolute; left: 0; right: 0; bottom: 0; display: flex; flex-direction: column; max-height: 88vh;
   border-radius: 18px 18px 0 0; background: var(--bg-primary, var(--bg-secondary)); border-top: 1px solid var(--border); }
