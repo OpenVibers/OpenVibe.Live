@@ -364,6 +364,7 @@
                 if (structural) { render(next); return; }
                 state = next;
                 ticket = next.view_ticket || ticket;
+                ensureOverlay(next);
                 renderStatus(next.stream, liveViewers);
                 renderOwner(next);
                 schedulePoll(id);
