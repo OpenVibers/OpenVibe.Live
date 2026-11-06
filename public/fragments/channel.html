@@ -366,12 +366,20 @@
                 <div class="ch-tabs" id="ch-tabs" role="tablist" aria-label="Channel sections">
                     <button class="ch-tab" id="ch-tab-btn-about" role="tab" aria-selected="false" data-tab="about" onclick="switchChannelTab('about', this)" style="display:none"><i class="fa-solid fa-circle-info"></i> About<span class="ch-tab-edit" id="ch-tab-about-edit" role="button" tabindex="0" title="Edit About" onclick="event.stopPropagation(); editAboutFromTab();" style="display:none"><i class="fa-solid fa-pen"></i></span></button>
                     <button class="ch-tab active" id="ch-tab-btn-videos" role="tab" aria-selected="true" data-tab="videos" onclick="switchChannelTab('videos', this)"><i class="fa-solid fa-video"></i> Videos<span class="ch-tab-badge" id="ch-tab-badge-videos" hidden></span></button>
+                    <button class="ch-tab" id="ch-tab-btn-agents" role="tab" aria-selected="false" data-tab="agents" onclick="switchChannelTab('agents', this)" style="display:none"><i class="fa-solid fa-robot"></i> Agents<span class="ch-tab-badge" id="ch-tab-badge-agents" hidden></span></button>
                     <button class="ch-tab" id="ch-tab-btn-clips" role="tab" aria-selected="false" data-tab="clips" onclick="switchChannelTab('clips', this)"><i class="fa-solid fa-scissors"></i> Clips<span class="ch-tab-badge" id="ch-tab-badge-clips" hidden></span></button>
                     <button class="ch-tab" id="ch-tab-btn-clips-taken" role="tab" aria-selected="false" data-tab="clips-taken" onclick="switchChannelTab('clips-taken', this)"><i class="fa-solid fa-film"></i> Clips Taken<span class="ch-tab-badge" id="ch-tab-badge-clips-taken" hidden></span></button>
                     <button class="ch-tab" id="ch-tab-btn-pastes" role="tab" aria-selected="false" data-tab="pastes" onclick="switchChannelTab('pastes', this)"><i class="fa-solid fa-paste"></i> Pastes<span class="ch-tab-badge" id="ch-tab-badge-pastes" hidden></span></button>
                     <button class="ch-tab" id="ch-tab-btn-ai-timeline" role="tab" aria-selected="false" data-tab="ai-timeline" onclick="switchChannelTab('ai-timeline', this)"><i class="fa-solid fa-brain"></i> AI Timeline<span class="ch-tab-badge" id="ch-tab-badge-ai-timeline" hidden></span></button>
                     <button class="ch-tab" id="ch-tab-btn-media" role="tab" aria-selected="false" data-tab="media" onclick="switchChannelTab('media', this)" style="display:none"><i class="fa-solid fa-music"></i> Media Request</button>
                     <button class="ch-tab" role="tab" aria-selected="false" data-tab="analytics" onclick="switchChannelTab('analytics', this)"><i class="fa-solid fa-chart-line"></i> Analytics</button>
+                </div>
+
+                <!-- Agents (Agent Streams S2): this channel's AI agent streams, live and past. -->
+                <div class="ch-tab-panel" id="ch-panel-agents" role="tabpanel">
+                    <p class="ch-panel-hint"><i class="fa-solid fa-robot"></i> AI agents working on this channel — live now, and what they finished.</p>
+                    <div class="agent-cards" id="ch-agents-grid"></div>
+                    <button class="btn btn-small btn-outline agent-more" id="ch-agents-more" type="button" hidden onclick="loadMoreChannelAgents(this)">More</button>
                 </div>
 
                 <!-- Videos -->

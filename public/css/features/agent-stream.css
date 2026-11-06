@@ -54,3 +54,99 @@
 .agent-embed .agent-embed-state[hidden] { display: none; }
 .agent-embed .agent-embed-curtain { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: #07080a; color: #cfd3d8; font-weight: 600; z-index: 4; }
 .agent-embed .agent-embed-curtain[hidden] { display: none; }
+
+/* ── The overlay (S2): the band the player draws from the steps feed, never burned into the video ───────────────── */
+.agent-overlay { position: absolute; left: 0; right: 0; bottom: 0; z-index: 6; display: flex; flex-direction: column; gap: 2px; padding: 8px 12px 9px; color: #f1f3f5; background: linear-gradient(to top, rgba(5, 6, 8, 0.94), rgba(5, 6, 8, 0.78) 70%, rgba(5, 6, 8, 0)); font-size: 0.82rem; line-height: 1.35; text-shadow: 0 1px 2px rgba(0, 0, 0, 0.7); }
+.agent-overlay[hidden] { display: none; }
+.agent-overlay-body { display: flex; flex-direction: column; gap: 3px; min-width: 0; padding-right: 26px; }
+.agent-overlay-task { margin: 0; font-weight: 700; font-size: 0.8rem; color: #d9dde2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.agent-overlay-step { margin: 0; display: flex; align-items: center; gap: 7px; min-width: 0; }
+.agent-overlay-step-title { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.agent-overlay-dot { flex: 0 0 auto; width: 8px; height: 8px; border-radius: 50%; background: #6b7280; box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.12); }
+.agent-overlay-dot.is-started { background: #3b82f6; animation: agent-overlay-pulse 1.6s ease-in-out infinite; }
+.agent-overlay-dot.is-passed { background: #22c55e; }
+.agent-overlay-dot.is-failed { background: #ef4444; }
+.agent-overlay-dot.is-skipped { background: #94a3b8; }
+@keyframes agent-overlay-pulse { 50% { opacity: 0.45; } }
+@media (prefers-reduced-motion: reduce) { .agent-overlay-dot.is-started { animation: none; } }
+.agent-overlay-ticks { display: flex; gap: 3px; align-items: center; margin-top: 3px; min-height: 10px; }
+.agent-overlay-ticks[hidden] { display: none; }
+.agent-overlay-tick { width: 12px; height: 8px; padding: 0; border: 0; border-radius: 2px; background: #4b5563; cursor: pointer; opacity: 0.85; }
+.agent-overlay-tick.is-started { background: #3b82f6; }
+.agent-overlay-tick.is-passed { background: #22c55e; }
+.agent-overlay-tick.is-failed { background: #ef4444; }
+.agent-overlay-tick.is-skipped { background: #94a3b8; }
+.agent-overlay-tick:hover, .agent-overlay-tick.is-open { opacity: 1; transform: scaleY(1.35); }
+.agent-overlay-foot { margin: 1px 0 0; display: flex; flex-wrap: wrap; gap: 4px 12px; color: #c3c8ce; font-size: 0.74rem; }
+.agent-overlay-foot span[hidden] { display: none; }
+.agent-overlay-tests { color: #e5e7eb; }
+.agent-overlay-fold { position: absolute; right: 6px; bottom: 8px; width: 26px; height: 26px; padding: 0; border: 1px solid rgba(255, 255, 255, 0.22); border-radius: 7px; background: rgba(10, 12, 16, 0.8); color: #e5e7eb; cursor: pointer; font-size: 0.7rem; }
+.agent-overlay.is-folded { padding-top: 6px; }
+.agent-overlay.is-folded .agent-overlay-task,
+.agent-overlay.is-folded .agent-overlay-ticks,
+.agent-overlay.is-folded .agent-overlay-foot { display: none; }
+.agent-overlay.is-folded .agent-overlay-body { padding-right: 32px; }
+.agent-overlay-sheet { position: absolute; left: 8px; right: 8px; bottom: 42px; max-height: 50vh; overflow: auto; padding: 8px 10px; border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 10px; background: rgba(8, 10, 14, 0.97); }
+.agent-overlay-sheet[hidden] { display: none; }
+.agent-overlay-sheet-list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; }
+.agent-overlay-sheet-row { display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; padding-left: 8px; border-left: 3px solid #6b7280; }
+.agent-overlay-sheet-row.is-started { border-left-color: #3b82f6; }
+.agent-overlay-sheet-row.is-passed { border-left-color: #22c55e; }
+.agent-overlay-sheet-row.is-failed { border-left-color: #ef4444; }
+.agent-overlay-sheet-title { font-weight: 600; }
+.agent-overlay-sheet-status { color: #9aa1a9; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; }
+.agent-overlay-sheet-detail { grid-column: 1 / -1; color: #aeb4bb; font-size: 0.76rem; }
+/* Phone: the band is one line; tapping it opens the sheet (the design's rule). */
+@media (max-width: 640px) {
+    .agent-overlay { padding: 6px 8px; font-size: 0.76rem; }
+    .agent-overlay-task, .agent-overlay-ticks, .agent-overlay-foot { display: none; }
+    .agent-overlay-body { padding-right: 30px; }
+}
+
+/* ── Chapters and highlights under the player (S2) ─────────────────────────────────────────────── */
+.agent-chapters { margin: 16px 0 0; padding: 14px 16px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-card); }
+.agent-chapters[hidden] { display: none; }
+.agent-chapters-title { margin: 0 0 4px; font-size: 0.95rem; font-weight: 700; }
+.agent-chapters-hint { margin: 0 0 10px; color: var(--text-muted); font-size: 0.8rem; }
+.agent-chapter-list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 2px; max-height: 320px; overflow: auto; }
+.agent-chapter { display: flex; align-items: baseline; gap: 10px; padding: 6px 4px; border-radius: 6px; }
+.agent-chapter:hover { background: var(--bg-secondary); }
+.agent-chapter-time { flex: 0 0 auto; color: var(--accent); font-variant-numeric: tabular-nums; font-size: 0.8rem; font-weight: 700; }
+.agent-chapter-title { min-width: 0; overflow-wrap: anywhere; font-size: 0.86rem; }
+.agent-highlights { margin: 12px 0 0; }
+.agent-highlights-title { margin: 0 0 6px; font-size: 0.85rem; font-weight: 700; }
+.agent-highlight { display: flex; align-items: center; gap: 8px; padding: 4px 0; }
+.agent-highlight-title { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; font-size: 0.84rem; }
+.agent-highlight-status { font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; }
+.agent-highlight-status.is-failed { color: #ef4444; }
+.agent-highlight-status.is-passed { color: #22c55e; }
+.agent-clip-btn { flex: 0 0 auto; }
+.agent-recording { margin: 10px 0 0; font-size: 0.84rem; }
+.agent-recording a { color: var(--accent); }
+
+/* ── Cards (the Agents tab and the "Agents live" row) ─────────────────────────────────────────── */
+.agent-card { display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-card); overflow: hidden; color: var(--text-primary); text-decoration: none; }
+.agent-card:hover { border-color: var(--border-light); }
+.agent-card-media { position: relative; aspect-ratio: 16 / 9; background: #0b0d10; }
+.agent-card-media img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.agent-card-media .agent-card-noimg { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #7c848d; font-size: 0.78rem; }
+.agent-card-media .agent-label { position: absolute; top: 8px; left: 8px; background: rgba(7, 8, 10, 0.82); color: #cfc7ff; }
+.agent-card-live { position: absolute; top: 8px; right: 8px; padding: 1px 8px; border-radius: 999px; background: var(--live-red, #e0245e); color: #fff; font-size: 0.66rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; }
+.agent-card-body { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px 12px; }
+.agent-card-title { margin: 0; font-size: 0.92rem; font-weight: 700; overflow-wrap: anywhere; }
+.agent-card-task { margin: 0; color: var(--text-muted); font-size: 0.78rem; overflow-wrap: anywhere; }
+.agent-card-meta { margin: 0; color: var(--text-secondary); font-size: 0.76rem; display: flex; flex-wrap: wrap; gap: 2px 8px; }
+.agent-card-meta .is-failed { color: #ef4444; }
+.agent-card-meta .is-passed { color: #22c55e; }
+.agent-card-link { margin-top: 2px; font-size: 0.78rem; color: var(--accent); }
+.agent-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 14px; }
+.agent-more { margin-top: 12px; }
+.agent-empty { margin: 0; color: var(--text-muted); font-size: 0.88rem; }
+
+/* The "Agents live" row on Live's home: its own row, after people's streams, never mixed into them. */
+.home-agents { margin-top: 28px; }
+.home-agents[hidden] { display: none; }
+.home-agents-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
+.home-agents-title { margin: 0; font-size: 1.05rem; font-weight: 800; }
+.home-agents-note { color: var(--text-muted); font-size: 0.78rem; }
+.home-agents .agent-cards { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); }

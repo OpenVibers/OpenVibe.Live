@@ -102,6 +102,16 @@ async function buildSitemap(liveStreams = []) {
         if (onAir.has(u)) row.videos = [onAir.get(u)];
         urls.push(row);
     }
+    // Agent streams are not channels and are never in the on-air list above. A public one gets its own page while it
+    // is live, and keeps it afterwards when its recording exists (the design's "with its VOD after"). A private or
+    // unlisted stream is never listed, whatever else is true of it.
+    try {
+        const agentLive = await require('../agent-streams/service').listPublic({ liveOnly: true, limit: 100 });
+        for (const a of agentLive) {
+            if (!a.username || !a.public_id) continue;
+            entry(`/@${encodeURIComponent(a.username)}/agents/${a.public_id}`, isoTime(a.started_at) || releasedAt, 'hourly', 0.5);
+        }
+    } catch { /* an agent list failure never takes the sitemap down */ }
     return seo.sitemapXml(urls);
 }
 async function sitemapHandler(req, res) {
@@ -140,8 +150,12 @@ const _docsPresent = () => LLMS_DOCS.filter(([name]) => { try { return fs.exists
 
 // Each of Live's own pages is linked at its Markdown twin (AGT-5; openvibe-shared 4.108.0 leaves files and other sites'
 // links as they are). The broadcaster is an app with no twin, so it is linked as HTML.
-function llmsTxt() {
+async function llmsTxt() {
     const b = baseUrl();
+    // Agent streams while they are live: their own page, never described as a person's stream. A failure here leaves
+    // the rest of llms.txt intact.
+    let agents = [];
+    try { agents = await require('../agent-streams/service').listPublic({ liveOnly: true, limit: 20 }); } catch { agents = []; }
     return seo.llmsTxt({
         name: SITE_NAME,
         markdown: true,
@@ -168,6 +182,11 @@ function llmsTxt() {
             { title: 'What the AI made (AI Moments)', links: [
                 { title: 'AI Moments', url: `${b}/moments`, note: `auto-clips cut when chat reacted, frames the AI picked from streams, and AI-written after-show recaps. JSON: ${b}/api/content/moments. AI Moments pages are noindex; the /moments collection is their indexable form. They are never listed in the sitemap. An AI clip says "AI clip · from <streamer>'s stream"; it is never presented as something the streamer or a viewer clipped. A streamer can turn AI Moments off for their channel; the AI then makes no new ones from their streams.` },
             ] },
+            ...(agents.length ? [{ title: 'AI agents live now', links: agents.filter((a) => a.username).map((a) => ({
+                title: `${a.title} — an AI agent's screen`,
+                url: `${b}/@${encodeURIComponent(a.username)}/agents/${a.public_id}`,
+                note: `${a.task && a.task.title ? a.task.title : 'a task'} · labelled AI agent · people chat beside it`,
+            })) }] : []),
             { title: 'API and docs', links: [
                 { title: 'API docs', url: `${b}/documentation`, note: 'every feature has an open API (chat, streams, clips, overlays, robots, sound commands)' },
                 { title: 'Docs index', url: `${b}/docs` },
@@ -203,10 +222,16 @@ function llmsFullTxt() {
     return _llmsFull;
 }
 
-const textHandler = (build) => (req, res) => {
-    res.set('Content-Type', 'text/plain; charset=utf-8');
-    res.set('Cache-Control', cache.htmlHeaders({ maxAge: DISCOVERY_MAX_AGE }));
-    res.send(build());
+const textHandler = (build) => async (req, res) => {
+    try {
+        const body = await build();
+        res.set('Content-Type', 'text/plain; charset=utf-8');
+        res.set('Cache-Control', cache.htmlHeaders({ maxAge: DISCOVERY_MAX_AGE }));
+        res.send(body);
+    } catch (err) {
+        console.warn('[SEO] discovery file failed:', err.message);
+        res.status(500).type('text/plain').send('The file could not be built');
+    }
 };
 
 /** Mounted before express.static, so /robots.txt here wins over any file in public/. */

@@ -110,16 +110,56 @@ detectors report clear for two seconds, or from the owner's own button.
 
 - **The owner's page:** `/@person/agents/<ags_id>` — the player with the `AI agent` label on it, one status line
   (Live · N watching · worked X min, or Waiting for the desk, or Ended), the task and its link, the visibility switch
-  (Public is disabled: public agent streams come with the Agents tab), the Share sheet, Reset link (the old links stop
-  working), Curtain now (Lift the curtain while it is up) and End (which asks in the page, never a browser dialog).
-  Others see the player and the label.
+  (Private, Unlisted, or Public — a public stream appears on the channel's Agents tab and in the Agents live row), the
+  Share sheet, Reset link (the old links stop working), Curtain now (Lift the curtain while it is up) and End (which
+  asks in the page, never a browser dialog). Others see the player and the label.
+  While the work is live the page draws the overlay (below) from the steps feed, and once it has ended it lists the
+  recording's chapters, with a one-tap Clip it on each failed step and on the final passed one.
 - **The embed:** `/embed/agent/<ags_id>?vt=wvt_…` — the picture fills the frame (contained, centred), with the
   `AI agent` label, the curtain state and a small viewer count on it. Its
   CSP `frame-ancestors` is the first-party origins only (Live, Network, Codes, Actor, Node, Tools), never `*`. A
   third-party iframe has no Live cookies, so Codes, Actor or the desk mints the view ticket server-side with the person's
   own token and puts it in the address.
 
-## In S1
+## S2: steps, the overlay, public streams
 
-There is no chat, no voice, no Agents tab and no directory yet (S2 and later), and public streams do not appear anywhere
-but their own page. The visibility switch offers Public, and the page disables it until S2.
+**Steps.** The agent posts what it is doing as it works:
+
+```
+POST /api/streams/agent/<ags_id>/steps       (Authorization: Bearer wpt_…, or the person's session,
+                                              or a first-party service token with live.agent_stream.publish)
+{ "title": "Run the checkout tests", "status": "failed", "detail": "1 of 2 failed",
+  "tests": { "passed": 1, "failed": 1 }, "cost_usd": 0.18, "at": "2026-11-06T10:03:00Z" }
+```
+
+`title` is 1–120 characters, `detail` at most 500, both plain text that the house text filters must accept; `at`
+defaults to now. Live keeps at most one step a second and 2,000 per stream, and answers `429 steps_too_fast` /
+`429 too_many_steps` otherwise. The steps are stored with the stream (`agent_stream_steps`), not with one WHIP session,
+so they outlive a reconnect and travel with the recording. `GET /api/streams/agent/<ags_id>/steps` answers the newest
+20 oldest first, or only what is newer with `?after=<id>`; the same view rule as the stream applies. The contract is
+`live.agent-stream-step@1` (Contracts 0.299.0).
+
+**The overlay.** The player draws the steps — the task, the current step with a blue/green/red/grey status dot, a
+timeline of the last twelve ticks, "1 of 2 passing" and the cost when reported, and "worked 42 min". It is never burned
+into the video: it stays sharp at any size, screen readers can read it, and the page, the embed and the recording view
+draw it from the same feed. Viewers can fold it to one line (the choice is remembered); on a phone it is one line and
+tapping opens the timeline sheet. The overlay stays up while the curtain is, so viewers still see what the agent is
+doing, only not the screen.
+
+**Public streams.** The owner's Public switch turns on. A public stream appears on the channel's Agents tab, in a
+separate "Agents live" row on Live's home after people's streams (never mixed into them), and in `/sitemap.xml` and
+`/llms.txt` while it is live, with its recording after. Private and unlisted streams never appear in any of them.
+One live agent stream per person (five for Live's owner), unchanged from S1; public costs nothing extra.
+
+**Chapters and clips.** Each step whose status is `started` is a chapter at its offset from the stream's start:
+`GET /api/streams/agent/<ags_id>/chapters` answers `{ vod_id, chapters: [{ at, title, step_id }] }`. A failed step and
+the final passed step can be clipped in one tap (`POST /api/streams/agent/<ags_id>/clips { step_id }`), which cuts five
+seconds before the step and fifteen after through OpenVibe.Media's own clip tools.
+
+**The Agents tab.** `/@person` has an Agents tab beside Videos, shown when the channel has agent streams this viewer may
+see: live cards carry the last frame, the label, the task, the current step and the viewer count; ended cards carry the
+last frame, the task, how long it worked, passed or failed by the last step and the recording. Newest first, with a
+counted "More (N)" after twelve.
+
+**Not in S2:** the agent's own chat room (`agent:<ags_id>`), which needs a Chat-side room kind, and the voice work of
+S4. Chat is for people; the agent reading it is S5.

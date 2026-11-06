@@ -2092,8 +2092,9 @@ async function refreshHomeLive() {
     // A background tab has nobody to show a refreshed grid to. refreshHomeSections() already
     // skips in that case; this one polled /api/streams forever regardless.
     if (document.hidden) return;
-    let streams;
-    try { const d = await api('/streams'); streams = d.streams || []; } catch { return; }
+    let streams, agents;
+    try { const d = await api('/streams'); streams = d.streams || []; agents = d.agents || []; } catch { return; }
+    renderHomeAgents(agents);
     const grid = document.getElementById('stream-grid-live');
     if (!grid) return;
     const countEl = document.getElementById('live-count');
@@ -2127,6 +2128,46 @@ async function refreshHomeLive() {
         }
     });
     _homeTopicsSync(streams);
+}
+
+/** The Agents live row: public AI agent streams in their own row after people's streams (S2). */
+function renderHomeAgents(agents) {
+    const section = document.getElementById('home-agents');
+    const grid = document.getElementById('home-agents-grid');
+    if (!section || !grid) return;
+    const list = Array.isArray(agents) ? agents : [];
+    if (!list.length) { section.hidden = true; grid.replaceChildren(); return; }
+    grid.replaceChildren();
+    for (const a of list.slice(0, 12)) {
+        const card = document.createElement('a');
+        card.className = 'agent-card';
+        card.href = a.page_url || '#';
+        const media = document.createElement('div');
+        media.className = 'agent-card-media';
+        if (a.last_frame_url) {
+            const img = document.createElement('img');
+            img.src = a.last_frame_url; img.alt = ''; img.loading = 'lazy';
+            media.appendChild(img);
+        }
+        const label = document.createElement('span');
+        label.className = 'agent-label'; label.textContent = 'AI agent';
+        media.appendChild(label);
+        if (a.state === 'live') {
+            const live = document.createElement('span');
+            live.className = 'agent-card-live'; live.textContent = a.viewers ? `live · ${a.viewers}` : 'live';
+            media.appendChild(live);
+        }
+        card.appendChild(media);
+        const body = document.createElement('div');
+        body.className = 'agent-card-body';
+        const title = document.createElement('h3');
+        title.className = 'agent-card-title'; title.textContent = a.title || 'An AI agent';
+        const meta = document.createElement('p');
+        meta.className = 'agent-card-meta';
+        meta.textContent = [a.state === 'live' ? `${a.viewers || 0} watching` : `worked ${Math.round((a.worked_seconds || 0) / 60)} min`, (a.task && a.task.title) || ''].filter(Boolean).join(' · ');
+        body.append(title, meta); card.appendChild(body); grid.appendChild(card);
+    }
+    section.hidden = false;
 }
 
 // Refresh the paginated home sections (only at page 1, only when visible — so we
