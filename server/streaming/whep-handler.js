@@ -216,6 +216,28 @@ async function targetFor(requestId) {
 }
 
 /**
+ * The curtain is a viewer's reality too: a WHEP consumer born while it is up starts paused.
+ *
+ * The row is the truth (a restart empties the in-memory set), so the curtain is raised from the row before the
+ * consumer is paused — raising it is what makes the pause stick for the consumers that follow, and it puts every
+ * other viewer of the stream in the same state.
+ */
+async function pauseUnderCurtain(sessionId, consumerId, curtainUp = null) {
+    try {
+        const curtains = require('./curtains');
+        const up = (curtainUp === null || curtainUp === undefined)
+            ? await curtains.isUp(sessionId)
+            : Number(curtainUp) === 1;
+        if (!up) return false;
+        curtains.raise(sessionId);
+        return curtains.applyToConsumer(sessionId, consumerId);
+    } catch (err) {
+        console.warn('[WHEP] curtain pause failed:', err.message);
+        return false;
+    }
+}
+
+/**
  * POST /whep/agent/:id — the viewer's offer in, the server's sendonly answer out.
  *
  * A private or unlisted stream needs a view ticket, whatever the caller's cookies say (a WHEP client is often on
@@ -305,7 +327,7 @@ async function handleWhepPost(req, res) {
                 session.consumerIds.push(consumer.id);
                 consumersByIndex[index] = consumer;
                 // The curtain is a viewer's reality too: a consumer born while it is up starts paused.
-                try { require('./curtains').applyToConsumer(live.id, consumer.id); } catch { /* not an agent room */ }
+                await pauseUnderCurtain(live.id, consumer.id, agent.curtain_up);
             } catch (err) {
                 console.warn(`[WHEP] consume ${media.type} failed:`, err.message);
             }
@@ -412,4 +434,5 @@ module.exports = {
     available: !!sdpTransform,
     _capabilitiesFromOffer: capabilitiesFromOffer,
     _buildWhepAnswer: buildWhepAnswer,
+    _pauseUnderCurtain: pauseUnderCurtain,
 };

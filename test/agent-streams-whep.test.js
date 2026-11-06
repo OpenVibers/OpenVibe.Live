@@ -168,6 +168,74 @@ const OFFER = sdpTransform.write({
             curtains._reset();
         }
     });
+    await check('a curtain pauses the WHEP consumer, even when the in-memory set is empty', async () => {
+        const sessionId = liveStream.lastInsertRowid;
+        const roomId = `stream-${sessionId}`;
+        const room = { producers: new Map(), consumers: new Map(), transports: new Map(), router: null };
+        const consumer = { paused: false, pause() { this.paused = true; }, resume() { this.paused = false; } };
+        room.consumers.set('w1', { consumer, peerId: 'whep-abc' });
+        webrtcSFU.rooms.set(roomId, room);
+        try {
+            // The row is the truth after a restart: the in-memory set is empty but the curtain is still up.
+            await db.run('UPDATE agent_streams SET curtain_up = 1 WHERE managed_stream_id = ?', [priv.managed_stream_id]);
+            curtains._reset();
+            assert.strictEqual(consumer.paused, false, 'not paused before the consumer arrives');
+            assert.strictEqual(await whep._pauseUnderCurtain(sessionId, 'w1'), true);
+            assert.strictEqual(consumer.paused, true, 'the WHEP consumer is paused by the curtain');
+            // Lowering the curtain resumes exactly what the curtain paused.
+            assert.strictEqual(curtains.lower(sessionId), 1);
+            assert.strictEqual(consumer.paused, false);
+        } finally {
+            await db.run('UPDATE agent_streams SET curtain_up = 0 WHERE managed_stream_id = ?', [priv.managed_stream_id]);
+            webrtcSFU.rooms.delete(roomId);
+            curtains._reset();
+        }
+    });
+    await check('a WHEP consumer born under a raised curtain starts paused', async () => {
+        const sessionId = liveStream.lastInsertRowid;
+        const roomId = `stream-${sessionId}`;
+        const room = { producers: new Map(), consumers: new Map(), transports: new Map(), router: null };
+        const consumer = { paused: false, pause() { this.paused = true; }, resume() { this.paused = false; } };
+        room.consumers.set('w1', { consumer, peerId: 'whep-abc' });
+        webrtcSFU.rooms.set(roomId, room);
+        try {
+            // What the handler passes: the row's own flag, so no second query is needed.
+            await whep._pauseUnderCurtain(sessionId, 'w1', 1);
+            assert.strictEqual(consumer.paused, true, 'the consumer starts paused');
+            // A stream with no curtain is not paused.
+            const other = { paused: false, pause() { this.paused = true; }, resume() { this.paused = false; } };
+            room.consumers.set('w2', { consumer: other, peerId: 'whep-def' });
+            await whep._pauseUnderCurtain(sessionId, 'w2', 0);
+            assert.strictEqual(other.paused, false, 'no curtain, no pause');
+        } finally {
+            webrtcSFU.rooms.delete(roomId);
+            curtains._reset();
+        }
+    });
+    await check('DELETE ends the WHEP session: its consumers and transport go, the stream stays', async () => {
+        const sessionId = liveStream.lastInsertRowid;
+        const roomId = `stream-${sessionId}`;
+        const room = { producers: new Map(), consumers: new Map(), transports: new Map(), router: null };
+        let closed = false;
+        const consumer = { closed: false, close() { this.closed = true; } };
+        const transport = { closed: false, close() { this.closed = true; closed = true; } };
+        room.consumers.set('c1', { consumer, peerId: 'whep-xyz' });
+        room.transports.set('whep-xyz-t1', transport);
+        webrtcSFU.rooms.set(roomId, room);
+        whep.sessions.set('res1', { streamId: sessionId, agentId: priv.public_id, peerId: 'whep-xyz', transportId: 't1', consumerIds: ['c1'] });
+        try {
+            const res = fakeRes();
+            await whep.handleWhepDelete({ params: { id: priv.public_id, resourceId: 'res1' } }, res);
+            assert.strictEqual(res.statusCode, 200);
+            assert.strictEqual(consumer.closed, true, 'the consumer is closed');
+            assert.strictEqual(closed, true, 'the transport is closed');
+            assert.strictEqual(whep.sessions.has('res1'), false, 'the session is gone');
+            assert.strictEqual(whep.countForStream(sessionId), 0, 'the viewer is not counted any more');
+        } finally {
+            whep.sessions.delete('res1');
+            webrtcSFU.rooms.delete(roomId);
+        }
+    });
 
     quiet('agent streams: the WHEP answer');
     await check('the offer\'s codecs become the receive capabilities, with their parameters', async () => {

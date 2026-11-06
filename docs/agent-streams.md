@@ -102,9 +102,13 @@ detectors report clear for two seconds, or from the owner's own button.
 
 ## The pages
 
-- **The owner's page:** `/@person/agents/<ags_id>` — the player, the task and its link, the visibility switch, the Share
-  sheet, Curtain now and End. Others see the player and the `AI agent` label.
-- **The embed:** `/embed/agent/<ags_id>?vt=wvt_…` — the player, the label, the curtain state and the viewer count. Its
+- **The owner's page:** `/@person/agents/<ags_id>` — the player with the `AI agent` label on it, one status line
+  (Live · N watching · worked X min, or Waiting for the desk, or Ended), the task and its link, the visibility switch
+  (Public is disabled: public agent streams come with the Agents tab), the Share sheet, Reset link (the old links stop
+  working), Curtain now (Lift the curtain while it is up) and End (which asks in the page, never a browser dialog).
+  Others see the player and the label.
+- **The embed:** `/embed/agent/<ags_id>?vt=wvt_…` — the picture fills the frame (contained, centred), with the
+  `AI agent` label, the curtain state and a small viewer count on it. Its
   CSP `frame-ancestors` is the first-party origins only (Live, Network, Codes, Actor, Node, Tools), never `*`. A
   third-party iframe has no Live cookies, so Codes, Actor or the desk mints the view ticket server-side with the person's
   own token and puts it in the address.

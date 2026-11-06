@@ -171,8 +171,8 @@
         if (hint) {
             if (stream.visibility === 'unlisted') {
                 hint.textContent = stream.page_url.includes('?k=')
-                    ? 'Anyone with this link can watch. Resetting the link closes the old one.'
-                    : 'Anyone with the link can watch. Press "Reset link" to get the link to send; old links stop working.';
+                    ? 'Anyone with this link can watch. Reset the link and the old links stop working.'
+                    : 'Anyone with the link can watch. Press "Reset link" to get a link to send — old links stop working.';
             } else {
                 hint.textContent = 'Only you and the people you share it with can watch.';
             }
