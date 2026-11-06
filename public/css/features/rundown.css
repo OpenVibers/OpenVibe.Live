@@ -245,7 +245,8 @@ a.rd-use:hover b { color: var(--accent); }
    make room — the cards simply get taller. */
 @media (pointer: coarse) {
     #rundown-root .rd-tab { min-height: 44px; display: inline-flex; align-items: center; }
-    #rundown-root .rd-av { min-width: 44px; min-height: 44px; }
+    /* A linked face only: a face inside another link (the rails) is not a target and keeps its size. */
+    #rundown-root a.rd-av { min-width: 44px; min-height: 44px; }
     #rundown-root .rd-user { min-width: 44px; min-height: 44px; display: inline-flex; align-items: center; }
     #rundown-root .rd-speak { width: 44px; height: 44px; }
     #rundown-root .rd-react-btn { min-height: 44px; min-width: 44px; }
