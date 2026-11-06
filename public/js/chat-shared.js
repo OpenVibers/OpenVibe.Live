@@ -522,10 +522,30 @@
         if (n.length > 18) n = n.slice(0, 18);
         return n;
     }
-    // Replace only REAL links with a spoken description; leave non-link text (typos) untouched.
+    // Emotes are spoken by their name only (the owner, 2026-11-06; the same rule as OpenVibe.Chat's tts-engine
+    // speakableEmotes): Kick's [emote:123456:Name] / [emoji:Name], Discord's <:name:123> / <a:name:123> and :shortcode:
+    // become the name, underscores read as spaces; a word said three or more times in a row is read once.
+    function ttsSpeakableEmotes(text) {
+        const name = (n) => ' ' + String(n).replace(/_+/g, ' ').trim() + ' ';
+        const t = String(text == null ? '' : text)
+            .replace(/\[(?:emote|emoji):(?:\d+:)?([A-Za-z0-9_]{1,64})\]/g, (_m, n) => name(n))
+            .replace(/<a?:([A-Za-z0-9_]{1,64}):\d+>/g, (_m, n) => name(n))
+            .replace(/(^|\s):([A-Za-z0-9_+-]{2,32}):(?=\s|$)/g, (_m, pre, n) => pre + name(n));
+        const words = t.split(/\s+/).filter(Boolean);
+        const out = [];
+        for (let i = 0; i < words.length;) {
+            let j = i;
+            while (j + 1 < words.length && words[j + 1].toLowerCase() === words[i].toLowerCase()) j++;
+            out.push(words[i]);
+            if (j - i + 1 === 2) out.push(words[i + 1]);
+            i = j + 1;
+        }
+        return out.join(' ');
+    }
+    // Replace only REAL links with a spoken description; leave non-link text (typos) untouched. Emotes first.
     function ttsReplaceLinks(text, username) {
         const uname = ttsUsername(username);
-        return String(text == null ? '' : text).replace(
+        return ttsSpeakableEmotes(text).replace(
             /((?:https?:\/\/)?(?:www\.)?)([a-z0-9][-a-z0-9]*(?:\.[a-z]{2,})+)([^\s]*)/gi,
             (m, pre, domain) => {
                 const hasScheme = /https?:\/\//i.test(pre) || /^www\./i.test(pre);
@@ -541,6 +561,7 @@
         escape: esc,
         linkify,
         ttsReplaceLinks,
+        ttsSpeakableEmotes,
         ttsUsername,
         handleLinkClick: handleChatLinkClick,
         showLinkContextMenu,
