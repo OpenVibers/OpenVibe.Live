@@ -79,7 +79,7 @@ The media subsystem lives in **OpenVibe.Media**:
 - **Chat, its messages and every chat table**: OpenVibe.Chat (since 2026-09-23). Live keeps no copy: reads and writes go through `server/chat/chat-reads.js` and `chat-delivery.js`, and the twelve tables it once held do not exist on PostgreSQL (`migrations/0002_live.sql` leaves them out; SQLite-era migration 007 dropped them).
 - **Recordings, clips, thumbnails, files**: OpenVibe.Media; their watch pages are OpenVibe.Video's. The local `vods`/`clips`/`pastes` tables are frozen (`test/frozen-tables.test.js`).
 - **Pastes and comments**: OpenVibe.Community.
-- **AI**: OpenVibe.AI. Live calls no model provider itself. Every prompt is an AI template; streamers' own keys are stored there; VOD and clip transcripts run there. Live-stream captions run in Live's own speech-to-text (`server/ai/transcribe.js`). Both use NVIDIA Parakeet TDT 0.6B v3 for English and 24 European languages and whisper.cpp for the rest.
+- **AI**: OpenVibe.AI. Live calls no model provider itself. Every prompt is an AI template; streamers' own keys are stored there; VOD and clip transcripts run there. Live-stream captions run in Live's own speech-to-text (`server/ai/transcribe.js`). Both use NVIDIA Parakeet TDT 0.6B v3 for English and 24 European languages and whisper.cpp for the rest. The AI's own clip/moment text is sorted by `server/ai/explicit.js` into exactly three categories: `fine` (nudity is allowed), `sex_acts` (never public; the clip is private and kept for its owner) and `minor_sexual` (always blocked, private even when a person owns it, and a report record is made through OpenVibe.Vision with `VISION_URL` + Live's service principal). The moments job, both auto-clip paths, both clip overview passes and clip evaluation use the same classifier.
 - **Search, events, tips, VIP, money ledger**: OpenVibe.Search, Events, Tips, VIP and Billing.
 
 ## Depends on
@@ -175,7 +175,7 @@ Minimum `.env`: `BASE_URL`, `JWT_SECRET`, `OV_NETWORK_URL`, `OV_NETWORK_INTERNAL
 - [docs/restream-branding.md](docs/restream-branding.md) — branding guide for restream channels.
 
 <!-- versions:start -->
-- openvibe-contracts: v0.289.1
+- openvibe-contracts: v0.294.0
 - openvibe-sdk: v0.82.0
 - openvibe-shared: v4.114.0
 <!-- versions:end -->
