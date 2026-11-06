@@ -55,10 +55,15 @@ function buildWhipResourceUrl(req, streamId, resourceId) {
         : null;
     const baseUrl = requestOrigin
         || normalizeOrigin(config.whip?.publicUrl || config.webrtc?.publicUrl || config.baseUrl);
+    return buildWhipResourceUrlOn(baseUrl, streamId, resourceId);
+}
+
+/** `/whip/<streamId>/<resourceId>`, or another path form (an agent stream's `/whip/agent/<id>/<resource>`) on `baseUrl`. */
+function buildWhipResourceUrlOn(baseUrl, streamId, resourceId, basePath = '/whip') {
     try {
-        return new URL(`/whip/${streamId}/${resourceId}`, baseUrl).toString();
+        return new URL(`${basePath}/${streamId}/${resourceId}`, baseUrl).toString();
     } catch {
-        return `/whip/${streamId}/${resourceId}`;
+        return `${basePath}/${streamId}/${resourceId}`;
     }
 }
 
@@ -105,9 +110,13 @@ function whipCors(req, res, next) {
     next();
 }
 
-function buildWhipResponseHeaders(req, streamId, resourceId) {
+function buildWhipResponseHeaders(req, streamId, resourceId, basePath = '/whip') {
+    const origin = (typeof req?.get === 'function' && req.get('host'))
+        ? normalizeOrigin(`${req.protocol || 'https'}://${req.get('host')}`)
+        : null;
+    const baseUrl = origin || normalizeOrigin(config.whip?.publicUrl || config.webrtc?.publicUrl || config.baseUrl);
     return {
-        Location: buildWhipResourceUrl(req, streamId, resourceId),
+        Location: buildWhipResourceUrlOn(baseUrl, streamId, resourceId, basePath),
         'Access-Control-Expose-Headers': WHIP_CORS_HEADERS['Access-Control-Expose-Headers'],
     };
 }
@@ -226,6 +235,7 @@ async function endActiveWhipStream(streamId, reason = 'whip_cleanup') {
     try { if (chatRelayService) chatRelayService.stopForStream(streamId); } catch (err) { /* ignore */ }
     try { require('../integrations/ai-chatbot-service').stopForStream(streamId); } catch (err) { /* ignore */ }
     try { require('./broadcast-server').endStream(streamId); } catch (err) { /* ignore */ }
+    try { require('./whep-handler').closeAllForStream(streamId); } catch (err) { /* ignore */ }
     try { webrtcSFU.closeRoom(`stream-${streamId}`); } catch (err) { /* ignore */ }
     try { await require('./calls-authority').removeStreamChannel(streamId); } catch (err) { /* ignore */ }
 }
@@ -636,6 +646,117 @@ async function autoCreateWhipSession(managedStream, user) {
 }
 
 /**
+ * Open the live session for an agent stream. Unlike a slot's auto-create there is no chat relay, no AI chatbot and no
+ * restream destination in S1 (an agent stream has no chat), but the recorder is the usual one: the VOD is the card's
+ * recording of the work.
+ */
+async function createAgentSession(agent) {
+    try {
+        const user = await db.getUserById(agent.user_id);
+        if (!user) return null;
+        await db.ensureChannel(user.id);
+        const result = await db.createStream({
+            user_id: user.id,
+            channel_id: agent.channel_id || null,
+            managed_stream_id: agent.managed_stream_id,
+            title: agent.title || 'Agent stream',
+            description: '',
+            category: null,
+            protocol: 'webrtc',
+            is_nsfw: 0,
+        });
+        const streamId = result.lastInsertRowid;
+        await db.run('UPDATE streams SET last_heartbeat = ov_now() WHERE id = ?', [streamId]);
+        await db.run(`INSERT INTO cameras (stream_id, camera_index, label, protocol) VALUES (?, 0, 'Main', 'webrtc')`, [streamId]);
+        setTimeout(async () => {
+            try {
+                const stream = await db.getStreamById(streamId);
+                const mode = await db.resolveStreamRecordingMode(stream || {});
+                if (mode !== 'none') recorder.startRecording(streamId, 'webrtc', {}, { mode });
+            } catch (err) { console.warn(`[WHIP] agent stream ${streamId} recording not started: ${err.message}`); }
+        }, 2000);
+        console.log(`[WHIP] Agent stream ${agent.public_id} opened session ${streamId} (user: ${user.username})`);
+        return await db.getStreamById(streamId);
+    } catch (err) {
+        console.error('[WHIP] Agent session create failed:', err.message);
+        return null;
+    }
+}
+
+/** The publish ticket the request carries, and the agent stream it names (null for anything else). */
+async function agentForTicket(req) {
+    const header = String(req.headers.authorization || '');
+    if (!header.startsWith('Bearer wpt_')) return null;
+    const tickets = require('../agent-streams/tickets');
+    const ticket = await tickets.findPublish(header.slice(7).trim());
+    if (!ticket) return null;
+    const agent = await require('../agent-streams/service').getByManagedStreamId(ticket.managed_stream_id);
+    if (!agent || agent.public_id !== req.params.id) return null;
+    return { ticket, agent };
+}
+
+/**
+ * POST /whip/agent/:id — an agent desk publishing its screen.
+ *
+ * The bearer is the publish ticket (`wpt_…`), never a stream key. A ticket that does not verify, has expired, is
+ * revoked or names another stream is `401 invalid_ticket`. A second session while one is up is `409 already_publishing`
+ * (the desk replaces a dead session by ending it first, or by its ticket expiring). The rule that a person has one live
+ * agent stream (five for the owner) is applied here, where going live actually happens.
+ */
+async function handleAgentWhipPost(req, res) {
+    if (!sdpTransform) return sendWhipError(res, 503, 'whip_unavailable', 'WHIP not available (sdp-transform not installed)');
+    try {
+        const found = await agentForTicket(req);
+        if (!found) {
+            logWhipStage('agent_auth_fail', req.params.id, { reason: 'invalid_ticket' });
+            return sendWhipError(res, 401, 'invalid_ticket', 'The publish ticket is not valid for this stream');
+        }
+        const { ticket, agent } = found;
+        if (agent.state === 'ended') return sendWhipError(res, 401, 'invalid_ticket', 'This agent stream has ended');
+
+        const live = await require('../agent-streams/service').liveSession(agent.managed_stream_id);
+        if (live && (hasActiveSessionsForStream(live.id) || findSessionsByStreamId(live.id).length)) {
+            return sendWhipError(res, 409, 'already_publishing', 'This agent stream already has a WHIP session');
+        }
+
+        const user = await db.getUserById(agent.user_id);
+        if (!user) return sendWhipError(res, 401, 'user_not_found', 'Stream owner not found');
+        if (user.is_banned) return sendWhipError(res, 403, 'user_banned', 'Account is banned');
+
+        const service = require('../agent-streams/service');
+        const others = (await service.countLiveByUser(user.id)) - (agent.state === 'live' ? 1 : 0);
+        if (others >= service.liveLimit(user)) {
+            logWhipStage('agent_auth_fail', agent.public_id, { reason: 'live.agent_stream_limit', live: others });
+            return sendWhipError(res, 409, 'live.agent_stream_limit', `This account already has ${others} agent stream(s) live; the limit is ${service.liveLimit(user)}`);
+        }
+
+        let stream = live;
+        if (!stream) {
+            stream = await createAgentSession(agent);
+            if (!stream) return sendWhipError(res, 500, 'session_create_failed', 'Failed to create the stream session');
+        }
+        return await runWhipOffer(req, res, { stream, userId: user.id, agent, ticket });
+    } catch (err) {
+        console.error('[WHIP] agent POST error:', err.message || err);
+        sendWhipError(res, 500, 'internal_server_error', 'WHIP negotiation failed');
+    }
+}
+
+/** PATCH /whip/agent/:id/:resourceId — trickle, only for the session that stream owns. */
+async function handleAgentWhipPatch(req, res) {
+    const session = sessions.get(req.params.resourceId);
+    if (!session || session.agentStreamId !== req.params.id) return sendWhipError(res, 404, 'session_not_found', 'Session not found');
+    return await handleWhipPatch(req, res);
+}
+
+/** DELETE /whip/agent/:id/:resourceId — the desk leaving; the stream ends if this was its last session. */
+async function handleAgentWhipDelete(req, res) {
+    const session = sessions.get(req.params.resourceId);
+    if (!session || session.agentStreamId !== req.params.id) return sendWhipError(res, 404, 'session_not_found', 'Session not found');
+    return await handleWhipDelete(req, res);
+}
+
+/**
  * POST /whip/:streamId — WHIP offer → answer
  *
  * Supports two auth models:
@@ -674,6 +795,11 @@ async function handleWhipPost(req, res) {
 
         if (isStreamKey) {
             const managedStream = await db.getManagedStreamByStreamKey(pathParam);
+            if (managedStream && managedStream.kind === 'agent') {
+                // An agent stream has no stream key; it publishes at /whip/agent/<ags> with a ticket.
+                logWhipStage('auth_key_fail', pathParam, { reason: 'agent_slot' });
+                return sendWhipError(res, 401, 'invalid_stream_key', 'Stream key not recognized');
+            }
             if (!managedStream) {
                 logWhipStage('auth_key_fail', pathParam, { reason: 'stream_key_not_found' });
                 return sendWhipError(res, 401, 'invalid_stream_key', 'Stream key not recognized');
@@ -734,6 +860,9 @@ async function handleWhipPost(req, res) {
 
             // First try: slot ID + key
             const managedStream = await db.getManagedStreamById(slotId);
+            if (managedStream && managedStream.kind === 'agent') {
+                return sendWhipError(res, 401, 'invalid_key', 'An agent stream publishes with its ticket at /whip/agent/<id>');
+            }
             if (!managedStream) {
                 logWhipStage('auth_slot_fail', pathParam, { reason: 'slot_not_found' });
                 return sendWhipError(res, 404, 'slot_not_found', 'Stream slot not found');
@@ -845,6 +974,20 @@ async function handleWhipPost(req, res) {
             logWhipStage('auth_jwt', pathParam, { user_id: userId });
         }
 
+        return await runWhipOffer(req, res, { stream, userId });
+    } catch (err) {
+        console.error('[WHIP] POST error:', err.message || err);
+        sendWhipError(res, 500, 'internal_server_error', 'WHIP negotiation failed');
+    }
+}
+
+/**
+ * The offer → answer path once the caller is known: SDP, transport, producers, the answer. Shared by the stream-key
+ * forms and the agent-stream ticket form, which differs only in how the caller proved themselves and in the resource
+ * address it answers with.
+ */
+async function runWhipOffer(req, res, { stream, userId, agent = null, ticket = null }) {
+    try {
         const streamId = stream.id;
         if (!webrtcSFU.ready) return sendWhipError(res, 503, 'sfu_unavailable', 'WebRTC SFU unavailable');
         logWhipStage('stream_validation', streamId, { protocol: stream.protocol, live: stream.is_live });
@@ -893,6 +1036,11 @@ async function handleWhipPost(req, res) {
             resourceId,
             iceReady: false,
             heartbeatTimer: null,
+            // An agent stream owns this session: the bearer was its publish ticket, and the resource lives under
+            // /whip/agent/<ags>/… so the desk's PATCH and DELETE address the same kind.
+            agentStreamId: agent ? agent.public_id : null,
+            agentManagedStreamId: agent ? agent.managed_stream_id : null,
+            ticketId: ticket ? ticket.id : null,
         };
         sessions.set(resourceId, session);
         await touchWhipHeartbeat(streamId, 'whip_post');
@@ -1085,9 +1233,18 @@ async function handleWhipPost(req, res) {
         console.log(`[WHIP] Session ${resourceId} created for stream ${streamId} (${session.producerIds.length} producer(s))`);
         logWhipStage('response_send', streamId, { resourceId, status: 201 });
 
+        // An agent stream is publishing now: the state goes live and the ticket is bound to this session, so a second
+        // desk with the same ticket is a second session (and is refused by the check above, never replacing this one).
+        if (agent) {
+            try {
+                await require('../agent-streams/tickets').bindSession(ticket.id, resourceId);
+                await require('../agent-streams/service').markPublishing(agent);
+            } catch (err) { console.warn(`[WHIP] agent stream ${agent.public_id} state not marked: ${err.message}`); }
+        }
+
         res.status(201)
             .set('Content-Type', 'application/sdp')
-            .set(buildWhipResponseHeaders(req, streamId, resourceId))
+            .set(buildWhipResponseHeaders(req, streamId, resourceId, agent ? '/whip/agent' : '/whip'))
             .send(answerSdp);
 
     } catch (err) {
@@ -1183,6 +1340,15 @@ async function cleanupSession(resourceId, { endStreamIfNoActiveSessions = true, 
 
     if (endStreamIfNoActiveSessions && !hasActiveSessionsForStream(session.streamId)) {
         await endActiveWhipStream(session.streamId, reason || 'session_cleanup');
+        // An agent stream lives exactly as long as its one WHIP session: when the desk leaves, the card stays but the
+        // state ends (and the worked time and the last frame are what remain).
+        if (session.agentManagedStreamId) {
+            try {
+                const service = require('../agent-streams/service');
+                const row = await service.getByManagedStreamId(session.agentManagedStreamId);
+                if (row && row.state !== 'ended') await service.end(row, { reason: 'session_ended' });
+            } catch (err) { console.warn(`[WHIP] agent stream ${session.agentStreamId} not ended: ${err.message}`); }
+        }
     }
 }
 
@@ -1204,20 +1370,27 @@ module.exports = {
     handleWhipPost,
     handleWhipPatch,
     handleWhipDelete,
+    handleAgentWhipPost,
+    handleAgentWhipPatch,
+    handleAgentWhipDelete,
     handleWhipOptions,
     whipCors,
     applyWhipCorsHeaders,
     WHIP_CORS_HEADERS,
     buildWhipResourceUrl,
+    buildWhipResourceUrlOn,
     buildWhipResponseHeaders,
     hasSfuProducers,
     hasActiveSessionsForStream,
     sessions,
     cleanupSession,
     endSessionsForStream,
+    endActiveWhipStream,
     available: !!sdpTransform,
     _extractRtpParameters: extractRtpParameters,
     _extractDtlsParameters: extractDtlsParameters,
     _buildSdpAnswer: buildSdpAnswer,
     _selectDtlsFingerprint: selectDtlsFingerprint,
+    _getDtlsSetupAttribute: getDtlsSetupAttribute,
+    _sendWhipError: sendWhipError,
 };

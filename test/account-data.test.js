@@ -71,6 +71,13 @@ const ulid = () => ids.ulid();
             for (const t of chatTables) exempt[t] = 'Chat owns and erases it';
             exempt.hidden_relay_users = 'a moderation record of a relay account hidden from a channel, kept for accountability';
             exempt.config_snapshots = 'the configuration journal: created_by/activated_by are actor refs, not an account row';
+            // The sharing system's rows name people by canonical subject (jsonb), so the user_id scan cannot see them;
+            // server/auth/account-data.js erases them by subject in the same deletion (subject and owner records).
+            exempt.shares = 'sharing: the person\'s own shares, erased by subject (eraseSharing)';
+            exempt.share_members = 'sharing: membership by subject, erased by subject (eraseSharing)';
+            exempt.share_access_requests = 'sharing: access requests by subject, erased by subject (eraseSharing)';
+            exempt.share_transfers = 'sharing: offers by subject, erased by subject (eraseSharing)';
+            exempt.agent_view_tickets = 'agent streams: view tickets carry the viewer\'s subject; the rows go with the stream (managed_streams cascade)';
             // Every other table with a person column is handled by the schema-driven export and erase below.
             const handled = [...cols.keys()].filter((t) => !chatTables.includes(t));
             const missing = await uncovered(d, { taskKeyed: handled, exempt });

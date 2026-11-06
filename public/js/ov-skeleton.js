@@ -116,7 +116,7 @@
     // the wait is long enough to see (120 ms): a route already loaded never flashes one.
     const ROUTE_SHAPE = {
         'page-home': 'cards', 'page-content': 'cards', 'page-moments': 'cards', 'page-search': 'rows',
-        'page-channel': 'player', 'page-stream': 'player', 'page-dashboard': 'dash', 'page-broadcast': 'panel',
+        'page-channel': 'player', 'page-stream': 'player', 'page-agent-stream': 'player', 'page-dashboard': 'dash', 'page-broadcast': 'panel',
         'page-chat': 'chat', 'page-updates': 'rows', 'page-recap': 'lines', 'page-rundown': 'rows',
         'page-documentation': 'lines', 'page-paste-viewer': 'lines', 'page-profile': 'rows',
     };

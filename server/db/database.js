@@ -1082,7 +1082,7 @@ async function getManagedStreamsByUserId(userId) {
                (SELECT s.is_live FROM streams s WHERE s.managed_stream_id = ms.id AND s.is_live = 1 LIMIT 1) AS is_currently_live,
                (SELECT s.id FROM streams s WHERE s.managed_stream_id = ms.id AND s.is_live = 1 LIMIT 1) AS live_session_id
         FROM managed_streams ms
-        WHERE ms.user_id = ?
+        WHERE ms.user_id = ? AND ms.kind = 'normal'
         ORDER BY ms.sort_order ASC, ms.created_at ASC
     `, [userId]);
 }
@@ -1317,7 +1317,8 @@ async function updateManagedStreamBroadcastSettings(managedStreamId, userId, set
 }
 
 async function countManagedStreamsByUser(userId) {
-    return (await get('SELECT COUNT(*) AS count FROM managed_streams WHERE user_id = ?', [userId]))?.count || 0;
+    // Agent streams (kind 'agent') are cards of their own and never take one of the person's normal slots.
+    return (await get("SELECT COUNT(*) AS count FROM managed_streams WHERE user_id = ? AND kind = 'normal'", [userId]))?.count || 0;
 }
 
 async function getManagedStreamLimit(user) {

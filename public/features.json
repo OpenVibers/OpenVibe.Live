@@ -309,6 +309,18 @@
       "js": [
         "/js/app-search.js"
       ]
+    },
+    "agent-stream": {
+      "fragment": "agent-stream",
+      "css": [
+        "/css/features/agent-stream.css",
+        "/shared/ov-share.css"
+      ],
+      "js": [
+        "/js/agent-player.js",
+        "/js/agent-stream.js",
+        "/shared/ov-share.js"
+      ]
     }
   },
   "routes": [
@@ -378,6 +390,12 @@
       "path": "^/stream/",
       "features": [
         "channel"
+      ]
+    },
+    {
+      "path": "^/@[A-Za-z0-9_]+/agents/",
+      "features": [
+        "agent-stream"
       ]
     },
     {
