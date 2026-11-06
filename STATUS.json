@@ -5,8 +5,8 @@
   "runtime": "node 22, express, PostgreSQL, node-media-server, mediasoup; no build step",
   "port": 3000,
   "domain": "openvibe.live (www, ingest, whip)",
-  "contracts": "openvibe-contracts v0.294.0",
-  "sdk": "openvibe-sdk v0.82.0",
+  "contracts": "openvibe-contracts v0.297.0",
+  "sdk": "openvibe-sdk v0.91.0",
   "shared": "openvibe-shared v4.115.1",
   "capabilities": [
     "live.chat_context.read",
@@ -30,7 +30,7 @@
     "channel points and Vibes; The Rundown (/rundown: what streamers talked about, from their speech; replaced the Arena 2026-10-19); after-show recaps; the Star of OpenVibe",
     "live, VOD and clip transcripts by Parakeet TDT 0.6B v3 on the server for English and 24 European languages (whisper for others)",
     "per-actor limits on API writes; account export and deletion contributions; follows on OpenVibe.Network",
-    "channel \u2194 OpenVibe.Bot robot binding, its dashboard field and the Bot panel iframe on the channel page behind LIVE_BOT_EMBED (off by default; on in production)"
+    "channel ↔ OpenVibe.Bot robot binding, its dashboard field and the Bot panel iframe on the channel page behind LIVE_BOT_EMBED (off by default; on in production)"
   ],
   "updated": "2026-11-06"
 }

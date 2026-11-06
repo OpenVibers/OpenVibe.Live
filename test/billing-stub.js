@@ -14,12 +14,16 @@
  */
 const http = require('http');
 const crypto = require('crypto');
+const jwt = require('jsonwebtoken');
 const { serviceAuth, http: ovHttp, ids } = require('openvibe-contracts');
 
 const read = (req) => new Promise((resolve) => { const c = []; req.on('data', (d) => c.push(d)); req.on('end', () => resolve(Buffer.concat(c).toString('utf8'))); });
 const send = (res, status, obj, headers = {}) => { res.writeHead(status, { 'Content-Type': 'application/json', ...headers }); res.end(JSON.stringify(obj)); };
 const problem = (res, status, code, detail, extra) => { res.writeHead(status, { 'Content-Type': 'application/problem+json' }); res.end(JSON.stringify(ovHttp.problem(status, code, { detail, extra }))); };
 const listen = (server) => new Promise((resolve) => server.listen(0, '127.0.0.1', () => resolve(`http://127.0.0.1:${server.address().port}`)));
+
+/** The issuer Network's tokens carry in the tests. */
+const ISSUER = 'https://openvibe.network';
 
 const LIVE_BILLING_GRANTS = ['billing.intent.create', 'billing.transfer.create', 'billing.balance.read', 'billing.cashout.request', 'billing.subscription.manage', 'billing.entitlement.check'];
 
@@ -38,6 +42,27 @@ async function startNetwork() {
             const claims = { iss: 'https://openvibe.network', sub: `svc:${body.get('client_id')}`, actor_type: 'service', aud: [aud], cap: grants[aud] || [], iat: now, exp: now + 300, jti: `tok_${crypto.randomBytes(6).toString('hex')}` };
             return send(res, 200, { access_token: serviceAuth.signServiceToken(claims, keys.privateKey), expires_in: 300 });
         }
+        if (req.url === '/internal/subject-assertions') {
+            // The mint route (ADR-003, the 2026-11-06 amendment): a first-party service hands over the
+            // person's own token and gets back a 60-second assertion naming the person.
+            const v = serviceAuth.verifyServiceToken(String(req.headers.authorization || '').slice(7), { publicKey: keys.publicKey, issuer: ISSUER, audience: 'openvibe.network' });
+            if (!v.ok) return send(res, 401, { code: v.code });
+            if (!/^svc:[a-z][a-z0-9-]{1,39}$/.test(String(v.claims.sub || ''))) return send(res, 403, { code: 'assertion.not_a_service' });
+            const body = JSON.parse(raw || '{}');
+            if (!body.user_token) return send(res, 401, { code: 'assertion.no_user_token' });
+            let claims;
+            try { claims = jwt.verify(String(body.user_token), keys.publicKey, { issuer: ISSUER }); } catch { return send(res, 401, { code: 'assertion.invalid_user_token' }); }
+            const subject = claims.subject_id;
+            if (body.subject && body.subject !== subject) return send(res, 403, { code: 'assertion.subject_mismatch' });
+            const audience = Array.isArray(body.audience) ? body.audience : [body.audience];
+            const forServices = [...new Set([v.claims.sub, ...(Array.isArray(body.for) ? body.for : [])])];
+            const jti = `as_${crypto.randomBytes(6).toString('hex')}`;
+            const now = Math.floor(Date.now() / 1000);
+            const b64 = (b) => Buffer.from(b).toString('base64url');
+            const header = b64(JSON.stringify({ alg: 'ES256', typ: 'JWT', kid: 'ov-network-assertion-1' }));
+            const payload = b64(JSON.stringify({ iss: ISSUER, sub: subject, aud: audience, act: v.claims.sub, for: forServices, jti, iat: now, exp: now + 60 }));
+            return send(res, 200, { assertion: `${header}.${payload}.${b64('signed')}`, subject, audience: body.audience, act: v.claims.sub, for: forServices, jti, expires_in: 60 });
+        }
         if (req.url === '/internal/identity/resolve-batch') {
             const { ids: want } = JSON.parse(raw || '{}');
             return send(res, 200, { results: Object.fromEntries((want || []).map((id) => [id, legacy[id] ? { subject: { type: 'user', id: legacy[id] } } : null])) });
@@ -45,7 +70,9 @@ async function startNetwork() {
         send(res, 404, {});
     });
     const url = await listen(server);
-    return { url, publicKey: keys.publicKey, grants, legacy, tokens, close: () => new Promise((r) => server.close(r)) };
+    /** A Network user token (the session a person's browser holds). */
+    const signUser = (subject, username = 'someone') => jwt.sign({ sub: String(subject), subject_id: subject, username, display_name: username, role: 'user' }, keys.privateKey, { algorithm: 'RS256', issuer: ISSUER, expiresIn: '1h' });
+    return { url, publicKey: keys.publicKey, grants, legacy, tokens, signUser, close: () => new Promise((r) => server.close(r)) };
 }
 
 const CAP = [
@@ -172,7 +199,7 @@ async function startBilling({ network }) {
         const auth = String(req.headers.authorization || '');
         const v = serviceAuth.verifyServiceToken(auth.slice(7), { publicKey: network.publicKey, audience: 'openvibe.billing' });
         const rule = CAP.find(([m, re]) => m === req.method && re.test(path));
-        const call = { method: req.method, path, query: Object.fromEntries(u.searchParams), key: req.headers['idempotency-key'] || null, body, cap: rule ? rule[2] : undefined, principal: v.ok ? v.claims.sub : null, traceparent: req.headers.traceparent || null };
+        const call = { method: req.method, path, query: Object.fromEntries(u.searchParams), key: req.headers['idempotency-key'] || null, body, cap: rule ? rule[2] : undefined, principal: v.ok ? v.claims.sub : null, traceparent: req.headers.traceparent || null, assertion: req.headers['x-ov-subject-assertion'] || null };
         calls.push(call);
         if (state.delayMs) await new Promise((r) => setTimeout(r, state.delayMs));
         if (!v.ok) return problem(res, 401, v.code, v.reason);

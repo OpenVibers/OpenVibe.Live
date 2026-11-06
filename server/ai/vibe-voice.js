@@ -160,7 +160,14 @@ async function answer(stream, request, ev, settings, deps) {
         .catch(() => null);
     let text = r && typeof r.text === 'string' ? r.text.replace(/\s+/g, ' ').replace(/^["'“”]+|["'“”]+$/g, '').trim() : '';
     text = text.slice(0, ANSWER_MAX).trim();
-    if (!text) return say(stream, 'I couldn\'t answer that just now. Try again in a minute.', { speak: false, deps });
+    if (!text) {
+        // AI is resting (503 ai.resting: every provider is out of balance, paused or busy): show its sentence, not
+        // a generic failure. deps.problem lets a test (or another caller) supply the same state.
+        const problem = typeof deps.problem === 'function' ? deps.problem()
+            : (typeof llm.lastProblem === 'function' ? llm.lastProblem() : require('./ai-service').lastProblem());
+        const resting = Boolean(problem && problem.code === 'ai.resting');
+        return say(stream, resting ? 'AI is resting for a moment. Try again in a minute.' : 'I couldn\'t answer that just now. Try again in a minute.', { speak: false, deps });
+    }
     try {
         const wf = require('../chat/word-filter');
         if (!wf.check(text).safe) return null;

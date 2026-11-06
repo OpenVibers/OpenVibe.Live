@@ -80,6 +80,14 @@ const voice = require('../server/ai/vibe-voice');
     done = await voice.onSpeech(stream, [speech(500, 'hey vibe clip that'), speech(520, 'okay robot, clip that')], deps);
     assert.deepStrictEqual(done.map((d) => d.start_sec), [520], 'only their word wakes it');
 
+    // AI is resting (503 ai.resting): the stream hears AI's own sentence, not a generic failure.
+    const resting = { ...deps, llm: { complete: async () => null }, problem: () => ({ code: 'ai.resting', detail: 'AI is resting for a moment' }) };
+    await voice.onSpeech(stream, [speech(600, 'okay robot, tell me a joke')], resting);
+    assert.ok(/AI is resting for a moment/.test(posted[posted.length - 1].message), posted[posted.length - 1].message);
+    const generic = { ...deps, llm: { complete: async () => null }, problem: () => null };
+    await voice.onSpeech(stream, [speech(700, 'okay robot, tell me a joke')], generic);
+    assert.ok(/couldn't answer that just now/.test(posted[posted.length - 1].message), posted[posted.length - 1].message);
+
     console.log('vibe voice: all checks passed');
     process.exit(0);
 })().catch((e) => { console.error(e); process.exit(1); });

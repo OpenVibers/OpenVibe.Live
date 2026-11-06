@@ -857,7 +857,7 @@ body.ov-nav-overlay .navbar.ovnav-top {
     position: absolute; bottom: 5px;
     display: inline-flex; align-items: center; gap: 4px;
     padding: 2px 6px; border-radius: 7px;
-    font-size: clamp(0.7rem, 4.6cqw, 0.8rem);
+    font-size: clamp(0.75rem, 4.6cqw, 0.8rem);
     font-weight: 700; line-height: 1.3;
     color: #fff;
     font-variant-numeric: tabular-nums;
@@ -887,7 +887,7 @@ body.ov-nav-overlay .navbar.ovnav-top {
 }
 /* Very small tiles: the badge would otherwise eat the corner of the frame. */
 @container (max-width: 150px) {
-    .stream-card-viewers, .stream-card-duration { padding: 1px 5px; gap: 3px; bottom: 4px; border-radius: 6px; font-size: 0.68rem; }
+    .stream-card-viewers, .stream-card-duration { padding: 1px 5px; gap: 3px; bottom: 4px; border-radius: 6px; font-size: 0.75rem; }
     .stream-card-duration { left: 4px; }
     .stream-card-viewers { right: 4px; }
 }
@@ -1004,7 +1004,7 @@ body.ov-nav-overlay .navbar.ovnav-top {
 }
 .stream-card-avatar {
     width: 24px; height: 24px; border-radius: 50%;
-    background: var(--accent); color: #000; font-size: 0.65rem;
+    background: var(--accent); color: #000; font-size: 0.75rem;
     display: flex; align-items: center; justify-content: center;
     font-weight: 700; flex-shrink: 0;
 }
@@ -1765,7 +1765,7 @@ a.pulse-card:hover { border-color: var(--accent); transform: translateY(-2px); }
     top: 10px;
     right: 10px;
     padding: 4px 8px;
-    font-size: 0.68rem;
+    font-size: 0.75rem;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.05em;
@@ -3239,7 +3239,7 @@ a.pulse-card:hover { border-color: var(--accent); transform: translateY(-2px); }
 .chat-avatar-letter {
     display: inline-flex; align-items: center; justify-content: center;
     width: 20px; height: 20px; border-radius: 50%;
-    font-size: 0.65rem; font-weight: 700;
+    font-size: 0.75rem; font-weight: 700;
     color: #fff; vertical-align: middle;
     text-transform: uppercase;
 }
@@ -4821,7 +4821,7 @@ button.uai-tl-more { background: none; border: none; cursor: pointer; padding: 0
 
 /* Stream source badge in global chat */
 .chat-stream-badge {
-    display: inline-block; font-size: 0.7rem; padding: 1px 6px;
+    display: inline-block; font-size: 0.75rem; padding: 1px 6px;
     background: var(--accent); color: var(--bg-primary);
     border-radius: 3px; margin-right: 4px; font-weight: 600;
     vertical-align: middle; opacity: 0.85;
