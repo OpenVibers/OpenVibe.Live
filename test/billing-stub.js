@@ -45,7 +45,7 @@ async function startNetwork() {
         if (req.url === '/internal/subject-assertions') {
             // The mint route (ADR-003, the 2026-11-06 amendment): a first-party service hands over the
             // person's own token and gets back a 60-second assertion naming the person.
-            const v = serviceAuth.verifyServiceToken(String(req.headers.authorization || '').slice(7), { publicKey: keys.publicKey, issuer: ISSUER });
+            const v = serviceAuth.verifyServiceToken(String(req.headers.authorization || '').slice(7), { publicKey: keys.publicKey, issuer: ISSUER, audience: 'openvibe.network' });
             if (!v.ok) return send(res, 401, { code: v.code });
             if (!/^svc:[a-z][a-z0-9-]{1,39}$/.test(String(v.claims.sub || ''))) return send(res, 403, { code: 'assertion.not_a_service' });
             const body = JSON.parse(raw || '{}');
