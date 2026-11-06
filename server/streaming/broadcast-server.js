@@ -36,6 +36,15 @@ const MAX_SEND_BACKPRESSURE = 512 * 1024;
 // consumer every 2 s (the viewer's own recovery ladder asks at that pace too).
 const VIEWER_KEYFRAME_ASK_MS = 2000;
 
+/**
+ * The agent stream a live session belongs to, or null. A normal slot has no agent row, so the join just finds nothing.
+ * Used for the two things an agent stream adds to viewing: its view rule and its curtain.
+ */
+async function agentRowForStream(stream) {
+    if (!stream || !stream.managed_stream_id) return null;
+    try { return await require('../agent-streams/service').getByManagedStreamId(stream.managed_stream_id); } catch { return null; }
+}
+
 class BroadcastServer extends EventEmitter {
     constructor() {
         super();
@@ -263,12 +272,33 @@ class BroadcastServer extends EventEmitter {
         // ask the SFU for a router and a WebRTC transport — about 100 anonymous sockets exhausted the
         // RTC port range and locked out real viewers and ingest.
         const ip = String(req.headers['cf-connecting-ip'] || (req.socket && req.socket.remoteAddress) || '');
+        let agentStream = null;
         if (role === 'viewer') {
             let stream = null;
             try { stream = await db.getStreamById(streamId); } catch { stream = null; }
             if (!stream || !stream.is_live) {
                 ws.close(4004, 'Stream not live');
                 return;
+            }
+            // An agent stream is watched only by those the view rule allows: the owner, a guest the sharing system let
+            // in, or the holder of an unlisted link's secret (all of whom the page exchanged for a view ticket). The
+            // route already refuses to hand out the live session id to anybody else; this is the second check, on the
+            // socket itself, so a page that forgets its ticket still shows nothing.
+            agentStream = await agentRowForStream(stream);
+            if (agentStream && agentStream.visibility !== 'public') {
+                const isOwner = !!(user && Number(user.id) === Number(agentStream.user_id));
+                let ticketed = false;
+                if (!isOwner) {
+                    const vt = url.searchParams.get('vt');
+                    if (vt) {
+                        try { ticketed = !!await require('../agent-streams/tickets').findViewById(vt, agentStream.managed_stream_id); } catch { ticketed = false; }
+                    }
+                }
+                if (!isOwner && !ticketed) {
+                    console.warn(`[Broadcast] Viewer refused for agent stream ${agentStream.public_id}: no view ticket`);
+                    ws.close(4003, 'View ticket required');
+                    return;
+                }
             }
             let fromIp = 0;
             for (const info of this.clients.values()) if (info.role === 'viewer' && info.ip === ip) fromIp++;
@@ -326,6 +356,11 @@ class BroadcastServer extends EventEmitter {
         } else {
             room.viewers.set(peerId, ws);
             console.log(`[Broadcast] Viewer connected: stream ${streamId} (${peerId})`);
+
+            // A viewer who joins while the desk has its curtain up sees nothing until it comes down.
+            if (agentStream && Number(agentStream.curtain_up)) {
+                try { require('./curtains').raise(streamId); } catch { /* the SFU may not have a room yet */ }
+            }
 
             // If broadcaster is already connected, notify viewer
             if (room.broadcaster && room.broadcaster.readyState === WebSocket.OPEN) {
@@ -973,6 +1008,8 @@ class BroadcastServer extends EventEmitter {
         );
         if (!client._sfuViewerConsumerIds) client._sfuViewerConsumerIds = [];
         client._sfuViewerConsumerIds.push(result.id);
+        // The curtain stays up for a viewer who arrives while it is up: their new consumer starts paused.
+        try { require('./curtains').applyToConsumer(client.streamId, result.id); } catch { /* not an agent stream */ }
 
         this.safeSend(ws, {
             type: 'sfu-viewer-consumed',

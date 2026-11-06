@@ -805,7 +805,42 @@ app.use('/api/auth', authRoutes);
 app.use('/api/bench-stream', require('./bench-stream/routes'));
 // Channel ↔ OpenVibe.Bot robot binding (LIVE_BOT_EMBED, off by default: the route answers 404).
 app.use('/api/streams', require('./bot/routes'));
+// Agent streams (Agent Streams S1): /api/streams/agent/* — the resource, its tickets, the curtain, the frames. Mounted
+// before the slot/stream router so its paths are never read as a stream id.
+app.use('/api/streams/agent', require('./agent-streams/routes'));
 app.use('/api/streams', streamRoutes);
+// The sharing system's HTTP surface (the Share sheet's access part) for agent streams, at /api/v1/<kind>/<id>/share.
+// Built on the first request, not at load (the database opens at boot), and absent when the pinned openvibe-sdk
+// predates `share`; then only the owner can open a private stream, which fails closed.
+let _shareRouter;
+function shareRouterFor(req, res, next) {
+    if (!req.path.startsWith('/api/v1/')) return next();
+    if (_shareRouter === undefined) {
+        const sharing = require('./agent-streams/sharing');
+        _shareRouter = sharing.router({
+            authenticate: async (request) => {
+                await require('./auth/auth').optionalAuth(request, null, () => {});
+                if (!request.user) return null;
+                const subject = await require('./agent-streams/auth').viewerSubject(request.user);
+                if (!subject) return null;
+                return { subject: { type: 'user', id: subject }, staff: ['global_mod', 'admin'].includes(request.user.role) };
+            },
+            describe: async (ref) => {
+                const stream = await require('./agent-streams/service').getByPublicId(ref.id);
+                return stream ? {
+                    title: stream.title,
+                    link: `https://openvibe.live/@${encodeURIComponent(stream.username)}/agents/${stream.public_id}`,
+                    roles: ['viewer'],
+                    audiences: ['private', 'link', 'people'],
+                    transferable: false,
+                } : {};
+            },
+        }) || null;
+    }
+    if (!_shareRouter) return next();
+    return _shareRouter(req, res, next);
+}
+app.use(shareRouterFor);
 // Cross-site "streamer went live" SSE feed (consumed by /live-notify.js everywhere).
 const liveEvents = require('./streaming/live-events');
 app.get('/api/live-events', (req, res) => liveEvents.subscribe(req, res));
@@ -826,6 +861,8 @@ app.use('/api/today', require('./today/routes').createTodayRoutes());   // a cha
 app.use('/api/recap', require('./recap/routes'));            // after-show reports (docs/recap.md)
 app.use('/api/social', require('./social/routes').router);   // channel social links and their previews (server/social/)
 app.get('/embed/x-timeline', require('./social/routes').xTimelinePage);
+// An agent stream's embed for the task page and the Dock (Agent Streams S1): standalone, first-party frames only.
+app.get('/embed/agent/:id', require('./agent-streams/pages').embed);
 app.use('/api/cam', require('./cam/routes'));                // the cam button: a viewer takes a still of a live stream
 app.use('/api/comments', commentRoutes);
 app.use('/api/admin/openre', require('./openre/routes'));
@@ -1114,6 +1151,13 @@ app.get('/privacy', (req, res) => {
 // ── WHIP Endpoint (WebRTC-HTTP Ingestion Protocol) ───────────
 // OBS and other WHIP-compatible encoders send WebRTC media via HTTP POST.
 // Body is raw SDP (application/sdp), auth via Bearer token.
+app.options('/whip/agent/:id', whipHandler.handleWhipOptions);
+app.options('/whip/agent/:id/:resourceId', whipHandler.handleWhipOptions);
+// An agent stream publishes with a wpt_ publish ticket, not a stream key; these paths are matched before the
+// stream-key forms so `agent` is never read as a stream.
+app.post('/whip/agent/:id', express.text({ type: 'application/sdp', limit: '64kb' }), whipHandler.handleAgentWhipPost);
+app.patch('/whip/agent/:id/:resourceId', express.text({ type: 'application/trickle-ice-sdpfrag', limit: '16kb' }), whipHandler.handleAgentWhipPatch);
+app.delete('/whip/agent/:id/:resourceId', whipHandler.handleAgentWhipDelete);
 app.options('/whip/:streamId', whipHandler.handleWhipOptions);
 app.options('/whip/:streamId/:resourceId', whipHandler.handleWhipOptions);
 app.post('/whip/:streamId', express.text({ type: 'application/sdp', limit: '64kb' }), whipHandler.handleWhipPost);
@@ -1515,6 +1559,9 @@ async function start() {
         // The Rundown's desk replaced the Arena's jobs (the drama desk, the beef listener and judges, 2026-10-19).
         try { require('./rundown/desk').start(); } catch (e) { console.warn('[Rundown] desk not started:', e.message); }
         try { require('./bench-stream/service').startJobs(); } catch (e) { console.warn('[BenchStream] poll job not started:', e.message); }
+        // An agent stream whose publish ticket expired with no renewal ends; expired tickets and sharing deliveries
+        // are pruned on the same minute (server/agent-streams/sweep.js).
+        try { require('./agent-streams/sweep').start(); } catch (e) { console.warn('[AgentStream] sweep not started:', e.message); }
         try { require('./recap/recap').start(); } catch (e) { console.warn('[Recap] job not started:', e.message); }
         // Continuous audio → stream_timeline_events. Gated behind ai_timeline_enabled
         // (default off), so starting it is a no-op until switched on in admin.

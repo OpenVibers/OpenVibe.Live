@@ -1,0 +1,42 @@
+<div class="agent-page">
+    <header class="agent-head">
+        <span class="agent-label">AI agent</span>
+        <h1 id="agent-title" class="agent-title">Agent stream</h1>
+        <p id="agent-task" class="agent-task"></p>
+    </header>
+    <div class="agent-layout">
+        <div class="agent-main">
+            <div class="agent-stage" id="agent-stage">
+                <video id="agent-video" playsinline muted autoplay></video>
+                <img id="agent-still" alt="" hidden>
+                <div class="agent-state" id="agent-state">Loading…</div>
+                <div class="agent-curtain" id="agent-curtain" hidden>Private screen</div>
+            </div>
+            <div class="agent-meta">
+                <span id="agent-status" class="agent-chip">Offline</span>
+                <span id="agent-viewers" class="agent-chip" hidden></span>
+                <span id="agent-worked" class="agent-chip" hidden></span>
+            </div>
+        </div>
+        <aside class="agent-side" id="agent-owner" hidden>
+            <h2 class="agent-side-title">This stream</h2>
+            <div class="agent-field">
+                <label class="agent-field-label" for="agent-visibility">Who can watch</label>
+                <select id="agent-visibility" class="agent-select">
+                    <option value="private">Only me and people I share it with</option>
+                    <option value="unlisted">Anyone with the link</option>
+                    <option value="public" disabled>Everyone (coming soon)</option>
+                </select>
+            </div>
+            <div class="agent-actions">
+                <button type="button" class="btn btn-outline" data-ov-share-sheet id="agent-share" data-title="An AI agent's screen">Share</button>
+                <button type="button" class="btn btn-outline" id="agent-rotate">New link</button>
+            </div>
+            <div class="agent-actions">
+                <button type="button" class="btn btn-outline" id="agent-curtain-btn">Curtain now</button>
+                <button type="button" class="btn btn-danger" id="agent-end">End</button>
+            </div>
+            <p class="agent-hint" id="agent-hint"></p>
+        </aside>
+    </div>
+</div>

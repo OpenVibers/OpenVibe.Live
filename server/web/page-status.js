@@ -143,6 +143,16 @@ async function channelStatus(segment) {
     } catch { return OK; }
 }
 
+/** /@user/agents/<ags_…>: an agent stream that exists, under its owner's channel. */
+async function agentStatus(segment, id) {
+    const m = CHANNEL_RE.exec(segment);
+    if (!m || !/^ags_[0-9A-HJKMNP-TV-Z]{26}$/.test(String(id || ''))) return NOT_FOUND;
+    try {
+        const row = await require('../agent-streams/service').getByPublicId(id);
+        return row && String(row.username || '').toLowerCase() === m[1].toLowerCase() ? OK : NOT_FOUND;
+    } catch { return OK; }
+}
+
 async function streamStatus(id) {
     if (!ID_RE.test(id)) return NOT_FOUND;
     try { return await db.getStreamById(Number(id)) ? OK : NOT_FOUND; } catch { return OK; }
@@ -159,7 +169,10 @@ async function statusFor(req) {
         const [first, second] = segs;
         if (segs.length === 1 && EXACT.has(first)) return OK;
         if (PREFIX.has(first)) return OK;
-        if (first.startsWith('@')) return segs.length <= 2 ? await channelStatus(first) : NOT_FOUND;
+        if (first.startsWith('@')) {
+            if (segs.length === 3 && segs[1] === 'agents') return await agentStatus(first, segs[2]);
+            return segs.length <= 2 ? await channelStatus(first) : NOT_FOUND;
+        }
         if (segs.length !== 2) return NOT_FOUND;
         switch (first) {
             case 'vod': return await mediaItemStatus(req, 'vod', second);

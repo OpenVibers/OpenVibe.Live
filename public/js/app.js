@@ -936,6 +936,7 @@ function teardownRoute(nextPath) {
     if (typeof _goalCycleTimer !== 'undefined' && _goalCycleTimer) { clearInterval(_goalCycleTimer); _goalCycleTimer = null; }
     stop('stopAiViewerActivity');
     stop('stopPlayerStatsPoll');
+    stop('stopAgentStreamPage');
     // The broadcast desk's polls only matter while you are on it. Leaving them running elsewhere
     // costs roughly a request a second for the rest of the session.
     const goingToBroadcast = typeof nextPath === 'string' && nextPath.startsWith('/broadcast');
@@ -1269,6 +1270,15 @@ function routeFromURL() {
         const mine = !!(currentUser && String(currentUser.username || '').toLowerCase() === username.toLowerCase());
         navigate(mine ? `/broadcast${location.search}` : `/@${username}`, true);
         return;
+    } else if (segments.length === 3 && segments[0].startsWith('@') && segments[1] === 'agents' && segments[2]) {
+        // An agent's own stream (Agent Streams S1): /@person/agents/<ags_id> (public/js/agent-stream.js).
+        const username = normalizeChannelUsername(segments[0]);
+        if (CHANNEL_USERNAME_RE.test(username)) {
+            showPage('agent-stream');
+            whenRouteReady('agent-stream', () => { if (typeof loadAgentStreamPage === 'function') loadAgentStreamPage(username, segments[2]); });
+        } else {
+            showNotFound();
+        }
     } else if (segments.length >= 1 && segments[0].startsWith('@')) {
         // Channel page: /@username or /@username/:managedStreamIdOrSlug
         // Backward compat: /@username?stream=sessionId

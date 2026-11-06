@@ -140,6 +140,31 @@ async function exportPart(d, userId) {
 // ── Deletion ───────────────────────────────────────────────────
 
 /** Erase Live's rows of these Live users in one transaction → { erased, retained }. */
+/**
+ * The person's rows in the sharing system (openvibe-sdk/share; Live owns the share_* tables). Those rows name people by
+ * canonical subject in jsonb, which the user_id scan above cannot see, so they are erased here by subject: their
+ * membership, access requests and offers, and the shares they own (with those shares' members, requests and offers).
+ * share_log stays: it is an append-only audit trail of who changed what, like the moderation records Live keeps.
+ */
+async function eraseSharing(d, subjects) {
+    if (!(await d.prepare("SELECT 1 FROM information_schema.tables WHERE table_schema = current_schema() AND table_name = 'shares'").get())) return 0;
+    let n = 0;
+    for (const subject of subjects) {
+        if (!SUBJECT_RE.test(String(subject || ''))) continue;
+        n += (await d.prepare("DELETE FROM share_members WHERE subject->>'id' = ?").run(subject)).changes;
+        n += (await d.prepare("DELETE FROM share_access_requests WHERE subject->>'id' = ?").run(subject)).changes;
+        n += (await d.prepare("DELETE FROM share_transfers WHERE from_subject->>'id' = ? OR to_subject->>'id' = ?").run(subject, subject)).changes;
+        const owned = await d.prepare("SELECT service, kind, resource_id FROM shares WHERE owner_subject->>'id' = ?").all(subject);
+        for (const ref of owned) {
+            for (const table of ['share_members', 'share_access_requests', 'share_transfers']) {
+                await d.prepare(`DELETE FROM ${table} WHERE service = ? AND kind = ? AND resource_id = ?`).run(ref.service, ref.kind, ref.resource_id);
+            }
+            n += (await d.prepare('DELETE FROM shares WHERE service = ? AND kind = ? AND resource_id = ?').run(ref.service, ref.kind, ref.resource_id)).changes;
+        }
+    }
+    return n;
+}
+
 async function eraseUsers(d, userIds, { now = new Date().toISOString() } = {}) {
     const erased = {};
     const retained = {};
@@ -220,6 +245,8 @@ async function apply(ev, { send = networkCall } = {}) {
             const ids = [...new Set((await Promise.all(subjects.map(async (s) => await liveUserOf(d, s)))).filter(Boolean))];
             for (const id of [...ids]) for (const m of (await hasColumn(d, 'users', 'merged_into') ? await d.prepare('SELECT id FROM users WHERE merged_into = ?').all(id) : [])) if (!ids.includes(m.id)) ids.push(m.id);
             const counts = await eraseUsers(d, ids);
+            const sharing = await eraseSharing(d, subjects);
+            if (sharing) counts.erased.shares = (counts.erased.shares || 0) + sharing;
             if (await d.prepare("SELECT 1 FROM information_schema.tables WHERE table_schema = current_schema() AND table_name = 'subject_projection'").get()) {
                 await d.prepare(`DELETE FROM subject_projection WHERE subject_id IN (${subjects.map(() => '?').join(',')})`).run(...subjects);
             }
@@ -241,4 +268,4 @@ async function apply(ev, { send = networkCall } = {}) {
 
 async function hasColumn(d, table, col) { return (await columnNames(d, table)).includes(col); }
 
-module.exports = { apply, exportPart, eraseUsers, personColumns, FROZEN, RETAIN };
+module.exports = { apply, exportPart, eraseUsers, eraseSharing, personColumns, FROZEN, RETAIN };

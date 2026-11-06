@@ -102,7 +102,16 @@ async function apply(event, data) {
             // was already built while the stream was running — no second transcription.
             try {
                 const sid = data.stream_id || data.streamId;
-                if (sid) await db.linkTimelineToVod(sid, vodId);
+                if (sid) {
+                    await db.linkTimelineToVod(sid, vodId);
+                    // An agent stream's card names its VOD once Media has it (the design's vod_id).
+                    const slot = await db.get('SELECT managed_stream_id FROM streams WHERE id = ?', [sid]);
+                    if (slot && slot.managed_stream_id) {
+                        const service = require('../agent-streams/service');
+                        const agent = await service.getByManagedStreamId(slot.managed_stream_id);
+                        if (agent) await service.setVod(agent, vodId);
+                    }
+                }
             } catch { /* */ }
             return {
                 outcome: 'vod_ready',
