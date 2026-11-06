@@ -75,6 +75,9 @@
 
         const body = el('div', 'agent-overlay-body');
         const taskLine = el('p', 'agent-overlay-task');
+        // S4: the line the agent is saying right now, drawn as a caption under the step.
+        const captionLine = el('p', 'agent-overlay-caption');
+        captionLine.hidden = true;
         const stepLine = el('p', 'agent-overlay-step');
         const dot = el('span', 'agent-overlay-dot');
         const stepTitle = el('span', 'agent-overlay-step-title');
@@ -95,7 +98,7 @@
         const sheetList = el('ol', 'agent-overlay-sheet-list');
         sheet.appendChild(sheetList);
 
-        body.append(taskLine, stepLine, ticks, foot);
+        body.append(taskLine, stepLine, captionLine, ticks, foot);
         root.append(foldBtn, body, sheet);
         host.appendChild(root);
 
@@ -158,6 +161,17 @@
             const data = next || {};
             const steps = Array.isArray(data.steps) ? data.steps : lastSteps;
             lastSteps = steps;
+            // S4: the caption is the newest spoken line; it fades with the fold like the rest of the band.
+            const caption = data.caption && String(data.caption).trim() ? String(data.caption).trim() : '';
+            captionLine.textContent = caption;
+            captionLine.hidden = !caption;
+            const voice = data.voice || null;
+            if (voice && voice.personality) {
+                const label = voice.muted ? 'Voice muted' : (voice.paused ? 'Voice paused' : voice.personality);
+                root.setAttribute('data-voice', label);
+            } else {
+                root.removeAttribute('data-voice');
+            }
             const cur = current(steps);
             const task = data.task && data.task.title ? data.task.title : (options.title || 'An AI agent is working');
             taskLine.textContent = task;
