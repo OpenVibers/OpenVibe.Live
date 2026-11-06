@@ -12,11 +12,35 @@ const { can } = require('../auth/permissions');
 const recap = require('./recap');
 const { requireAuth, optionalAuth } = require('../auth/auth');
 
-router.get('/channel/:username', async (req, res) => {
+// An after-show report follows its stream's Rundown audience (RUNDOWN-CONTROLS design 2026-11-06): the stricter of the
+// episode's own setting and its recording's. Everyone and Anyone with the link read it; Specific people and Only me are
+// for those people and the streamer; a list never shows a report its reader may not open.
+const visibility = require('../rundown/visibility');
+const sharing = require('../rundown/sharing');
+async function readerOf(req) {
+    if (!req.user || !req.user.id) return { userId: null, subject: null };
+    let subject = null;
+    try { subject = await require('../auth/identity-sync').subjectOf(req.user.id); } catch { subject = null; }
+    return { userId: Number(req.user.id), subject };
+}
+async function mayRead(streamId, ownerUserId, reader) {
+    const eff = await visibility.effective(streamId);
+    return { ok: sharing.maySee(eff, { ownerUserId, viewer: reader }), eff };
+}
+
+router.get('/channel/:username', optionalAuth, async (req, res) => {
     const user = await db.get('SELECT * FROM users WHERE lower(username) = lower(?)', [String(req.params.username || '')]);
     if (!user) return res.status(404).json({ error: 'Channel not found' });
-    res.set('Cache-Control', 'public, max-age=60');
-    res.json({ recaps: await recap.listRecaps(user.id, Math.min(12, parseInt(req.query.limit || '6', 10) || 6)) });
+    const reader = await readerOf(req);
+    const all = await recap.listRecaps(user.id, Math.min(12, parseInt(req.query.limit || '6', 10) || 6));
+    // A list shows Everyone reports only, plus the streamer's own.
+    const shown = [];
+    for (const r of all) {
+        const eff = await visibility.effective(r.stream_id);
+        if (eff.audience === 'public' || (reader.userId != null && reader.userId === Number(user.id))) shown.push(r);
+    }
+    res.set('Cache-Control', reader.userId ? 'private, no-store' : 'public, max-age=60');
+    res.json({ recaps: shown });
 });
 
 router.get('/:streamId', optionalAuth, async (req, res) => {
@@ -26,6 +50,9 @@ router.get('/:streamId', optionalAuth, async (req, res) => {
         const stream = await db.getStreamById(id);
         if (!stream) return res.status(404).json({ error: 'Stream not found' });
         if (stream.is_live) return res.status(409).json({ error: 'Still live — the report comes after the stream ends', live: true });
+        const reader = await readerOf(req);
+        const gate = await mayRead(id, stream.user_id, reader);
+        if (!gate.ok) return res.status(404).json({ error: 'No report for this stream' });
         let r = await recap.getRecap(id);
         if (!r) {
             const dur = Number(stream.duration_seconds) || 0;
@@ -33,8 +60,12 @@ router.get('/:streamId', optionalAuth, async (req, res) => {
             r = await recap.buildRecap(id);
         }
         if (!r) return res.status(404).json({ error: 'No report for this stream' });
-        res.set('Cache-Control', 'public, max-age=120');
-        res.json({ recap: r, more: (await recap.listRecaps(r.streamer.id, 6)).filter(x => x.stream_id !== id) });
+        res.set('Cache-Control', gate.eff.audience === 'public' ? 'public, max-age=120' : 'private, no-store');
+        const more = [];
+        for (const x of (await recap.listRecaps(r.streamer.id, 6)).filter((y) => y.stream_id !== id)) {
+            if ((await visibility.effective(x.stream_id)).audience === 'public') more.push(x);
+        }
+        res.json({ recap: r, more });
     } catch (err) {
         console.error('[Recap] route:', err.message);
         res.status(500).json({ error: 'Failed to build the report' });
