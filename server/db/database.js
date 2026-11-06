@@ -213,7 +213,7 @@ async function getLiveStreams() {
         FROM streams s
         JOIN users u ON s.user_id = u.id
         LEFT JOIN managed_streams ms ON s.managed_stream_id = ms.id
-        WHERE s.is_live = 1
+        WHERE s.is_live = 1 AND COALESCE(ms.kind, 'normal') <> 'agent'
         ORDER BY s.viewer_count DESC, s.started_at DESC
     `);
 }
@@ -265,9 +265,12 @@ async function getStreamById(id) {
 }
 
 async function getStreamByUserId(userId) {
+    // An agent stream is not the channel's live stream: it has its own page and its own slot kind.
     return await get(`
-        SELECT * FROM streams WHERE user_id = ? AND is_live = 1
-        ORDER BY started_at DESC LIMIT 1
+        SELECT s.* FROM streams s
+        LEFT JOIN managed_streams ms ON s.managed_stream_id = ms.id
+        WHERE s.user_id = ? AND s.is_live = 1 AND COALESCE(ms.kind, 'normal') <> 'agent'
+        ORDER BY s.started_at DESC LIMIT 1
     `, [userId]);
 }
 
@@ -296,7 +299,7 @@ async function getLiveStreamsByUserId(userId) {
         FROM streams s
         JOIN users u ON s.user_id = u.id
         LEFT JOIN managed_streams ms ON s.managed_stream_id = ms.id
-        WHERE s.user_id = ? AND s.is_live = 1
+        WHERE s.user_id = ? AND s.is_live = 1 AND COALESCE(ms.kind, 'normal') <> 'agent'
         ORDER BY s.started_at DESC
     `, [userId]);
 }

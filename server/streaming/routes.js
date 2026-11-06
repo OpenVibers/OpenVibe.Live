@@ -1218,7 +1218,14 @@ router.get('/', optionalAuth, async (req, res) => {
                 total_viewer_count: (s.viewer_count || 0) + externalTotal,
             });
         }));
-        res.json({ streams: enriched });
+        // Agent streams are their own row (the design's "Agents live", after people's streams). They are never in
+        // `streams`: an agent's screen is not a person's channel going live.
+        let agents = [];
+        try {
+            const rows = await require('../agent-streams/service').listPublic({ liveOnly: true, limit: 24 });
+            agents = rows.map(require('../agent-streams/service').cardView);
+        } catch { agents = []; }
+        res.json({ streams: enriched, agents });
     } catch (err) {
         console.error('[Streams] List error:', err.message);
         res.status(500).json({ error: 'Failed to list streams' });

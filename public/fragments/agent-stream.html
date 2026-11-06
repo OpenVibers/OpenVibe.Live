@@ -12,8 +12,19 @@
                 <span class="agent-label agent-player-label">AI agent</span>
                 <div class="agent-state" id="agent-state">Loading…</div>
                 <div class="agent-curtain" id="agent-curtain" hidden>Private screen</div>
+                <div id="agent-overlay"></div>
             </div>
             <p class="agent-status-line" id="agent-status-line">Loading…</p>
+            <section class="agent-chapters" id="agent-chapters" hidden aria-label="The recording's chapters">
+                <h2 class="agent-chapters-title" id="agent-chapters-title">Chapters</h2>
+                <p class="agent-chapters-hint" id="agent-chapters-hint"></p>
+                <p class="agent-recording" id="agent-recording" hidden></p>
+                <ol class="agent-chapter-list" id="agent-chapter-list"></ol>
+                <div class="agent-highlights" id="agent-highlights" hidden>
+                    <h3 class="agent-highlights-title">Highlights you can clip</h3>
+                    <div id="agent-highlight-list"></div>
+                </div>
+            </section>
         </div>
         <aside class="agent-side" id="agent-owner" hidden>
             <h2 class="agent-side-title">This stream</h2>
@@ -22,9 +33,9 @@
                 <select id="agent-visibility" class="agent-select">
                     <option value="private">Only me and people I share it with</option>
                     <option value="unlisted">Anyone with the link</option>
-                    <option value="public" disabled>Everyone (coming soon)</option>
+                    <option value="public">Everyone — the Agents tab and Agents live</option>
                 </select>
-                <p class="agent-note">Public agent streams come with the Agents tab.</p>
+                <p class="agent-note">A public stream appears on your channel's Agents tab and in the Agents live row. Public costs nothing extra.</p>
             </div>
             <div class="agent-actions">
                 <button type="button" class="btn btn-outline" data-ov-share-sheet id="agent-share" data-title="An AI agent's screen">Share</button>
