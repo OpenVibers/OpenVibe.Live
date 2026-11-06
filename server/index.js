@@ -598,7 +598,7 @@ app.use(async (req, res, next) => {
 // Serve openvibe-shared browser assets at /shared/ — straight from node_modules/openvibe-shared,
 // the OpenVibe.Shared release package.json pins (the public/ directory is read-only under
 // systemd ProtectSystem=strict on production). The package lists its own browser files.
-const sharedFiles = require('openvibe-shared/files');
+const sharedFiles = require('./web/shared-files');
 const SHARED_BROWSER_FILES = sharedFiles.BROWSER;
 const sharedServePath = sharedFiles.dir;
 assets.setSharedDir(sharedServePath);
@@ -614,13 +614,12 @@ console.log(`[Server] /shared: serving ${SHARED_BROWSER_FILES.length} browser fi
     });
     // The share cards (og:image on every page), before the browser-file allowlist below.
     require('./web/share-cards').register(app);
-    // Serve only the whitelisted browser files — don't expose the entire package — and the brand face the navbar
-    // declares beside itself (files.FONTS, Shared 4.59.0).
-    const SHARED_FONTS = sharedFiles.FONTS || [];
-    const sharedFileSet = new Set([...SHARED_BROWSER_FILES, ...SHARED_FONTS]);
+    // Serve only the files the package lists for sites (scripts, stylesheets, fonts, images: server/web/shared-files.js),
+    // never the entire package, each with its own Content-Type.
     app.use('/shared', (req, res, next) => {
         const fileName = path.basename(req.path);
-        if (!sharedFileSet.has(fileName)) {
+        const type = sharedFiles.typeOf(fileName);
+        if (!type) {
             return res.status(404).type('text/plain').send('Not found');
         }
         const filePath = path.join(sharedServePath, fileName);
@@ -630,7 +629,7 @@ console.log(`[Server] /shared: serving ${SHARED_BROWSER_FILES.length} browser fi
         const hashed = Boolean(req.query.v) && req.query.v === assets.hashOf('/shared/' + fileName);
         res.setHeader('Cache-Control', cache.assetHeaders(req.originalUrl, { hashed }));
         if (hashed) res.setHeader('CDN-Cache-Control', cache.IMMUTABLE);
-        res.setHeader('Content-Type', SHARED_FONTS.includes(fileName) ? 'font/woff2' : 'application/javascript; charset=utf-8');
+        res.setHeader('Content-Type', type);
         res.sendFile(filePath, (err) => {
             // A listed file that cannot be read is this server's fault, and passing: never a cacheable answer
             // (its headers above said immutable; Cloudflare kept a 404 navbar through a deploy on 2026-10-17).
