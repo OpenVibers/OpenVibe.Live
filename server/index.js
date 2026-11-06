@@ -831,6 +831,9 @@ function shareRouterFor(req, res, next) {
                 return { subject: { type: 'user', id: subject }, staff: ['global_mod', 'admin'].includes(request.user.role) };
             },
             describe: async (ref) => {
+                // The Rundown's episodes are shared the same way (kind 'rundown-episode'): the sheet only asks, the
+                // service decides (server/rundown/sharing.js).
+                if (ref.kind === 'rundown-episode') return require('./rundown/sharing').describe(ref);
                 const stream = await require('./agent-streams/service').getByPublicId(ref.id);
                 return stream ? {
                     title: stream.title,

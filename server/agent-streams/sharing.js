@@ -34,26 +34,7 @@ function _setNetwork(client) {
 /** Network's internal JSON client, with Live's service token for each call. */
 function networkClient() {
     if (networkOverride) return networkOverride;
-    const principal = require('../net/network-principal');
-    const base = String(process.env.OV_NETWORK_INTERNAL_URL || 'http://127.0.0.1:4000').replace(/\/+$/, '');
-    return {
-        async json({ path, method = 'GET', query, json }) {
-            const headers = await principal.headersFor(path);
-            const q = query ? `?${new URLSearchParams(query)}` : '';
-            const res = await fetch(`${base}${path}${q}`, {
-                method,
-                headers: { 'Content-Type': 'application/json', ...headers },
-                ...(json === undefined ? {} : { body: JSON.stringify(json) }),
-                signal: AbortSignal.timeout(15_000),
-            });
-            if (!res.ok) {
-                const err = new Error(`Network ${path} answered ${res.status}`);
-                err.status = res.status;
-                throw err;
-            }
-            return await res.json();
-        },
-    };
+    return require('../net/network-json').client();
 }
 
 /** Events go through Live's own outbox, inside the sharing transaction (the SDK outbox refuses otherwise). */

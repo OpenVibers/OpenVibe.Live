@@ -11,6 +11,11 @@
  *   POST /react {type, id, reaction}     one per reader per item (fire, lol, dead, cap, facts); the same again takes it back
  *   POST /hide {type, id}       staff: take a segment, episode or topic down
  *   GET|PUT /opt-out {out}      signed in: keep yourself out of the Rundown (or come back)
+ *   GET|PUT /settings           signed in: "My Rundown" — the default audience for new write-ups
+ *   POST /delete/take           signed in: delete one take of yours
+ *   POST /delete/episode        signed in: delete one episode of yours (with its takes)
+ *   POST /delete/all            signed in: delete all my Rundown
+ *   POST /restore               signed in: "Write this stream up again"
  *   GET  /voice/:user?t=        a line in that streamer's chat voice (server/rundown/voice.js)
  */
 const crypto = require('crypto');
@@ -19,6 +24,8 @@ const { requireAuth, optionalAuth } = require('../auth/auth');
 const permissions = require('../auth/permissions');
 const db = require('../db/database');
 const read = require('./read');
+const settings = require('./settings');
+const del = require('./delete');
 
 const router = express.Router();
 const fail = (res, err, msg) => {
@@ -33,31 +40,42 @@ async function voterKey(req) {
     try { salt = String(await db.getSetting('arena_vote_salt') || ''); } catch { /* */ }
     return `anon:${crypto.createHash('sha256').update(`${ip}|${salt || process.env.JWT_SECRET || 'rundown'}`).digest('hex').slice(0, 24)}`;
 }
+/**
+ * The reader: their voter key (what reactions are counted by) and their account (what the audience rule is counted
+ * by). The account's canonical subject is what the sharing system knows them by.
+ */
+async function viewerOf(req) {
+    const key = await voterKey(req);
+    if (!req.user || !req.user.id) return { key, userId: null, subject: null };
+    let subject = null;
+    try { subject = await require('../auth/identity-sync').subjectOf(req.user.id); } catch { subject = null; }
+    return { key, userId: req.user.id, subject: subject || null };
+}
 // Pages with reactions are per reader; the rest is the same for everyone for a minute.
 const fresh = (res) => res.set('Cache-Control', 'no-store');
 
 router.get('/', optionalAuth, async (req, res) => {
-    try { fresh(res); res.json(await read.home({ viewer: await voterKey(req) })); } catch (err) { fail(res, err, 'The Rundown is unavailable'); }
+    try { fresh(res); res.json(await read.home({ viewer: await viewerOf(req) })); } catch (err) { fail(res, err, 'The Rundown is unavailable'); }
 });
 router.get('/streams', optionalAuth, async (req, res) => {
-    try { fresh(res); res.json(await read.streamsFeed({ before: req.query.before ? String(req.query.before) : null, viewer: await voterKey(req) })); } catch (err) { fail(res, err, 'Failed to load the streams'); }
+    try { fresh(res); res.json(await read.streamsFeed({ before: req.query.before ? String(req.query.before) : null, viewer: await viewerOf(req) })); } catch (err) { fail(res, err, 'Failed to load the streams'); }
 });
-router.get('/topics', async (req, res) => {
+router.get('/topics', optionalAuth, async (req, res) => {
     try {
-        res.set('Cache-Control', 'public, max-age=60');
+        fresh(res);
         res.json(await read.topics({ sort: req.query.sort === 'most' ? 'most' : 'recent', kind: req.query.kind ? String(req.query.kind) : null, offset: parseInt(req.query.offset, 10) || 0 }));
     } catch (err) { fail(res, err, 'Failed to load the topics'); }
 });
 router.get('/t/:slug', optionalAuth, async (req, res) => {
-    try { const t = await read.topic(req.params.slug, { viewer: await voterKey(req) }); if (!t) return res.status(404).json({ error: 'No such topic' }); fresh(res); res.json(t); }
+    try { const t = await read.topic(req.params.slug, { viewer: await viewerOf(req) }); if (!t) return res.status(404).json({ error: 'No such topic' }); fresh(res); res.json(t); }
     catch (err) { fail(res, err, 'Failed to load the topic'); }
 });
 router.get('/e/:streamId', optionalAuth, async (req, res) => {
-    try { const e = await read.episode(req.params.streamId, { viewer: await voterKey(req) }); if (!e) return res.status(404).json({ error: 'No such episode' }); fresh(res); res.json(e); }
+    try { const e = await read.episode(req.params.streamId, { viewer: await viewerOf(req) }); if (!e) return res.status(404).json({ error: 'No such episode' }); fresh(res); res.json(e); }
     catch (err) { fail(res, err, 'Failed to load the episode'); }
 });
 router.get('/s/:username', optionalAuth, async (req, res) => {
-    try { const s = await read.streamer(req.params.username, { viewer: await voterKey(req) }); if (!s) return res.status(404).json({ error: 'No such streamer' }); fresh(res); res.json(s); }
+    try { const s = await read.streamer(req.params.username, { viewer: await viewerOf(req) }); if (!s) return res.status(404).json({ error: 'No such streamer' }); fresh(res); res.json(s); }
     catch (err) { fail(res, err, 'Failed to load the streamer'); }
 });
 router.post('/react', optionalAuth, async (req, res) => {
@@ -73,6 +91,34 @@ router.get('/opt-out', requireAuth, async (req, res) => {
 router.put('/opt-out', requireAuth, async (req, res) => {
     try { res.json(await read.setOptOut(req.user.id, !!(req.body && req.body.out))); } catch (err) { fail(res, err, 'Failed'); }
 });
+
+/** "My Rundown": the streamer's default audience and whether they keep themselves out. */
+router.get('/settings', requireAuth, async (req, res) => {
+    try { res.json(await settings.settingsFor(req.user.id)); } catch (err) { fail(res, err, 'Failed to load your settings'); }
+});
+router.put('/settings', requireAuth, async (req, res) => {
+    try {
+        const audience = String((req.body && req.body.default_audience) || '');
+        await settings.setDefaultAudience(req.user.id, audience);
+        res.json(await settings.settingsFor(req.user.id));
+    } catch (err) { fail(res, err, 'Failed to save your settings'); }
+});
+
+/** Deleting: the streamer's own items only, each with a receipt. */
+router.post('/delete/take', requireAuth, async (req, res) => {
+    try { res.json(await del.deleteTake((req.body || {}).id, req.user)); } catch (err) { fail(res, err, 'Failed to delete that take'); }
+});
+router.post('/delete/episode', requireAuth, async (req, res) => {
+    try { res.json(await del.deleteEpisode((req.body || {}).stream_id, req.user)); } catch (err) { fail(res, err, 'Failed to delete that episode'); }
+});
+router.post('/delete/all', requireAuth, async (req, res) => {
+    try { res.json(await del.deleteAll(req.user, { keepOut: !!(req.body && req.body.keep_out) })); } catch (err) { fail(res, err, 'Failed to delete your Rundown'); }
+});
+/** "Write this stream up again": the desk may read that stream once more. */
+router.post('/restore', requireAuth, async (req, res) => {
+    try { res.json(await del.restore((req.body || {}).stream_id, req.user)); } catch (err) { fail(res, err, 'Failed to write that stream up again'); }
+});
+
 router.get('/voice/:user', optionalAuth, async (req, res) => {
     try {
         const voice = require('./voice');
@@ -92,8 +138,8 @@ function arenaRedirect(path) {
     const segs = String(path || '').split('/').filter(Boolean);
     let seg = '';
     try { seg = segs[1] ? decodeURIComponent(segs[1]) : ''; } catch { seg = ''; }
-    const fighter = segs[0] === 'arena' && segs.length === 2 && /^[A-Za-z0-9_.-]{1,64}$/.test(seg) && !/^(drama|beef|live|topic|chatter)$/i.test(seg);
-    return fighter ? `/rundown/${encodeURIComponent(seg)}` : '/rundown';
+    const fighter = segs[0] === 'arena' && segs.length === 2 && /^[A-Za-z0-9_.-]{1,64}$/.test(segs[1]) && !/^(drama|beef|live|topic|chatter)$/i.test(segs[1]);
+    return fighter ? `/rundown/${encodeURIComponent(segs[1])}` : '/rundown';
 }
 
 module.exports = router;

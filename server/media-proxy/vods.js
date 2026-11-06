@@ -400,7 +400,7 @@ router.post('/bulk-delete-old', requireAuth, async (req, res) => {
             for (const v of (out?.vods || [])) {
                 if (!tooOld(v) || v.is_recording) continue;
                 if (action === 'delete') { if (await media.deleteVod(v.id).then(() => true, () => false)) await purge.afterDelete('vod', v.id); }
-                else await media.updateVod(v.id, { visibility: action }).catch(() => {});
+                else await media.updateVod(v.id, { visibility: action }).then(() => require('../rundown/visibility').noteVodChange(v.id, v.stream_id, action)).catch(() => {});
                 vodCount++;
             }
         }
@@ -689,6 +689,8 @@ router.put('/:id', requireAuth, async (req, res) => {
         else if (is_public !== undefined) fields.visibility = is_public ? 'public' : 'private';
         if (nextLabels !== undefined) fields.labels = nextLabels;
         await media.updateVod(req.params.id, fields);
+        // The recording decides first: the write-up of that stream follows at once (design 2026-11-06).
+        if (fields.visibility) await require('../rundown/visibility').noteVodChange(req.params.id, vod.stream_id, fields.visibility);
         res.json({ vod: await media.getVod(req.params.id).catch(() => ({ ...vod, ...fields })) });
     } catch (err) {
         mediaErr(res, err, 'Failed to update VOD');
@@ -713,7 +715,7 @@ router.post('/bulk', requireAuth, async (req, res) => {
             if (!owns) { skipped++; continue; }
             try {
                 if (action === 'delete') { await media.deleteVod(id); await purge.afterDelete('vod', id); }
-                else await media.updateVod(id, { visibility: action });
+                else { await media.updateVod(id, { visibility: action }); await require('../rundown/visibility').noteVodChange(id, vod.stream_id, action); }
                 done++;
             } catch { skipped++; }
         }
