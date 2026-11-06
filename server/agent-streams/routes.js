@@ -23,6 +23,7 @@ const auth = require('./auth');
 const service = require('./service');
 const tickets = require('./tickets');
 const frames = require('./frames');
+const steps = require('./steps');
 
 const router = express.Router();
 
@@ -99,6 +100,26 @@ async function deskOrOwner(req, res, next) {
     }
 }
 
+// ── The public list (the Agents tab and the home row) ─────────
+// Public agent streams are open; a channel's own page also shows its private and unlisted cards to the owner. This is
+// the S2 list, never mixed into people's streams: the "Agents live" row calls ?live=1.
+
+router.get('/', auth.viewer, async (req, res) => {
+    try {
+        res.set('Cache-Control', 'no-store');
+        const channel = typeof req.query.channel === 'string' ? req.query.channel.trim().slice(0, 64) : null;
+        if (channel) {
+            const rows = await service.listForChannel(channel, req.viewer ? req.viewer.id : null);
+            return res.json({ agents: rows.map(service.cardView) });
+        }
+        const rows = await service.listPublic({ liveOnly: req.query.live === '1' });
+        res.json({ agents: rows.map(service.cardView) });
+    } catch (err) {
+        console.error('[AgentStream] list failed:', err.message);
+        fail(res, 500, 'list_failed', 'The agent streams could not be listed');
+    }
+});
+
 // ── Create ─────────────────────────────────────────────────────
 
 router.post('/', auth.publisher, async (req, res) => {
@@ -124,6 +145,19 @@ router.post('/', auth.publisher, async (req, res) => {
         fail(res, 500, 'create_failed', 'The agent stream could not be created');
     }
 });
+
+/**
+ * Whether this request may see this stream: the owner, a valid view ticket, the unlisted link's secret, a public
+ * stream, or the sharing system's answer for a private one. The same rule the page's GET /:id applies.
+ */
+async function watchable(req, row) {
+    if (req.viewer && Number(req.viewer.id) === Number(row.user_id)) return true;
+    if (typeof req.query.vt === 'string' && await tickets.findViewById(req.query.vt, row.managed_stream_id)) return true;
+    return await service.mayView(row, {
+        viewer: req.viewer,
+        secret: (req.body && typeof req.body.k === 'string') ? req.body.k : (typeof req.query.k === 'string' ? req.query.k : null),
+    });
+}
 
 // ── Read ───────────────────────────────────────────────────────
 
@@ -303,6 +337,89 @@ router.post('/:id/end', deskOrOwner, async (req, res) => {
     } catch (err) {
         console.error('[AgentStream] end failed:', err.message);
         fail(res, 500, 'end_failed', 'The stream could not be ended');
+    }
+});
+
+// ── Steps, chapters and one-tap clips (S2) ─────────────────────
+
+// The steps the overlay draws. `after=<id>` returns only what is newer (the page's live poll); otherwise the newest 20
+// are answered oldest first. A viewer follows the same rule as the page, so a private stream's steps stay private.
+router.get('/:id/steps', auth.viewer, async (req, res) => {
+    try {
+        const row = await load(req, res);
+        if (!row) return;
+        if (!await watchable(req, row)) return fail(res, 404, 'agent_stream_not_found', 'No such agent stream');
+        const after = req.query.after;
+        const stepsOut = after !== undefined
+            ? await steps.after(row.managed_stream_id, after, 50)
+            : await steps.recent(row.managed_stream_id, req.query.limit || 20);
+        res.set('Cache-Control', 'no-store');
+        res.json({ steps: stepsOut });
+    } catch (err) {
+        console.error('[AgentStream] steps read failed:', err.message);
+        fail(res, 500, 'steps_failed', 'The steps could not be read');
+    }
+});
+
+// A step is posted by the desk (publish ticket) or by the person's own session; Codes and Actor use their service
+// token with live.agent_stream.publish, which auth.publisher already accepts. The limits are the design's.
+router.post('/:id/steps', deskOrOwner, async (req, res) => {
+    try {
+        const step = await steps.add(req.agent, req.body || {});
+        res.status(201).json({ step });
+    } catch (err) {
+        if (err && err.status) return fail(res, err.status, err.code, err.message);
+        console.error('[AgentStream] step failed:', err.message);
+        fail(res, 500, 'step_failed', 'The step could not be stored');
+    }
+});
+
+// The recording's chapters: every step that started, at its offset from the stream's start.
+router.get('/:id/chapters', auth.viewer, async (req, res) => {
+    try {
+        const row = await load(req, res);
+        if (!row) return;
+        if (!await watchable(req, row)) return fail(res, 404, 'agent_stream_not_found', 'No such agent stream');
+        const out = await steps.chapters(row);
+        res.set('Cache-Control', 'no-store');
+        res.json(out);
+    } catch (err) {
+        console.error('[AgentStream] chapters failed:', err.message);
+        fail(res, 500, 'chapters_failed', 'The chapters could not be read');
+    }
+});
+
+// One tap: a failed step, or the final passed one, becomes a clip through Media's own clip tools. Only a signed-in
+// viewer who may watch the recording can ask, and the window comes from the step (five seconds before, fifteen after).
+router.post('/:id/clips', auth.viewer, async (req, res) => {
+    try {
+        const row = await load(req, res);
+        if (!row) return;
+        if (!req.viewer) return fail(res, 401, 'authentication_required', 'Sign in to clip a step');
+        if (!await watchable(req, row)) return fail(res, 404, 'agent_stream_not_found', 'No such agent stream');
+        if (!row.vod_id) return fail(res, 409, 'no_recording', 'This stream has no recording to clip');
+        const window = await steps.clipWindow(row, req.body && req.body.step_id);
+        const step = window.step;
+        if (step.status !== 'failed' && step.status !== 'passed') {
+            return fail(res, 409, 'not_clippable', 'Only a failed step or the final passed one can be clipped');
+        }
+        if (step.status === 'passed') {
+            const later = await require('../db/database').get('SELECT id FROM agent_stream_steps WHERE managed_stream_id = ? AND id > ? LIMIT 1', [row.managed_stream_id, step.id]);
+            if (later) return fail(res, 409, 'not_final', 'Only the final passed step can be clipped');
+        }
+        const media = require('../media-client');
+        const made = await media.createClip({
+            vod_id: row.vod_id,
+            start_s: window.start_s,
+            end_s: window.end_s,
+            title: String(step.title).slice(0, 120),
+            user_id: req.viewer.id,
+        }).catch((err) => { throw Object.assign(new Error(err.message || 'Media refused the clip'), { status: 502, code: 'clip_failed' }); });
+        res.status(201).json({ clip: made });
+    } catch (err) {
+        if (err && err.status) return fail(res, err.status, err.code, err.message);
+        console.error('[AgentStream] clip failed:', err.message);
+        fail(res, 500, 'clip_failed', 'The clip could not be made');
     }
 });
 

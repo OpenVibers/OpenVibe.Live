@@ -76,6 +76,8 @@ const SELECT = `
            a.started_at, a.ended_at, a.worked_seconds, a.last_frame_path, a.last_frame_at, a.vod_id, a.allow_sites,
            a.unlisted_secret_hash,
            (SELECT s.id FROM streams s WHERE s.managed_stream_id = ms.id AND s.is_live = 1 ORDER BY s.started_at DESC LIMIT 1) AS live_session_id,
+           (SELECT st.title FROM agent_stream_steps st WHERE st.managed_stream_id = ms.id ORDER BY st.id DESC LIMIT 1) AS latest_step_title,
+           (SELECT st.status FROM agent_stream_steps st WHERE st.managed_stream_id = ms.id ORDER BY st.id DESC LIMIT 1) AS latest_step_status,
            (SELECT la.subject_id FROM linked_accounts la WHERE la.service = 'network' AND la.user_id = ms.user_id) AS owner_subject,
            u.username, u.display_name, u.avatar_url, u.profile_color, u.is_banned, u.is_owner
     FROM managed_streams ms
@@ -159,7 +161,51 @@ function publicView(row) {
         vod_id: row.vod_id || null,
         page_url: pageUrl(row),
         label: 'AI agent',
+        // The chat room a public or unlisted stream carries (S2): people only, the agent reads it in S5.
+        chat_room: (row.visibility === 'public' || row.visibility === 'unlisted') ? `agent:${row.public_id}` : null,
     };
+}
+
+/**
+ * The compact card the Agents tab and the "Agents live" row draw. It carries the facts a card needs and nothing that
+ * belongs to the owner alone (no reason, no link secret, no stream key — an agent row never has one).
+ */
+function cardView(row) {
+    const stream = publicView(row);
+    return {
+        id: stream.id,
+        channel: stream.channel,
+        title: stream.title,
+        task: stream.task,
+        visibility: stream.visibility,
+        state: stream.state,
+        viewers: stream.viewers,
+        started_at: stream.started_at,
+        ended_at: stream.ended_at,
+        worked_seconds: stream.worked_seconds,
+        last_frame_url: stream.last_frame_url,
+        vod_id: stream.vod_id,
+        page_url: stream.page_url,
+        label: stream.label,
+        chat_room: stream.chat_room,
+        current_step: row.latest_step_title ? { title: row.latest_step_title, status: row.latest_step_status || 'started' } : null,
+    };
+}
+
+/** Public agent streams (live or ended), newest first, for the home row and a channel's Agents tab. */
+async function listPublic({ channel = null, liveOnly = false, limit = 60 } = {}) {
+    const params = [];
+    let where = "a.visibility = 'public'";
+    if (liveOnly) where += " AND a.state = 'live'";
+    if (channel) { where += ' AND LOWER(u.username) = LOWER(?)'; params.push(String(channel)); }
+    params.push(Math.min(100, Math.max(1, Number(limit) || 60)));
+    return await db.all(`${SELECT} WHERE ${where} ORDER BY (a.state = 'live') DESC, COALESCE(a.started_at, a.created_at) DESC LIMIT ?`, params);
+}
+
+/** One channel's agent streams for its owner: public ones, and every visibility for the owner. */
+async function listForChannel(username, viewerId, limit = 60) {
+    const rows = await db.all(`${SELECT} WHERE LOWER(u.username) = LOWER(?) ORDER BY (a.state = 'live') DESC, COALESCE(a.started_at, a.created_at) DESC LIMIT ?`, [String(username), Math.min(100, Math.max(1, Number(limit) || 60))]);
+    return rows.filter((row) => row.visibility === 'public' || Number(row.user_id) === Number(viewerId || 0));
 }
 
 // ── Creating ───────────────────────────────────────────────────
@@ -349,7 +395,7 @@ module.exports = {
     PUBLISH_TICKET_TTL_MS, VIEW_TICKET_TTL_MS, MAX_FRAME_BYTES,
     sha256, token, agentId, iso, pageUrl, whipUrl, shareRef,
     getByPublicId, getByManagedStreamId, liveSession, listByUser, countLiveByUser, liveLimit, ownerSubject,
-    viewersNow, workedSeconds, publicView,
+    viewersNow, workedSeconds, publicView, cardView, listPublic, listForChannel,
     create, update, markPublishing, end, setVisibility, rotateLink, setCurtain, setFrame, setVod,
     mayView,
 };

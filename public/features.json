@@ -104,7 +104,8 @@
       "fragment": "channel",
       "css": [
         "/css/features/channel.css",
-        "/shared/kit.css"
+        "/shared/kit.css",
+        "/css/features/agent-stream.css"
       ],
       "deps": [
         "player",
@@ -118,7 +119,8 @@
         "/js/channel-chat-resize.js",
         "/js/channel-support.js",
         "/js/app-channel.js",
-        "/js/bench-stream-watch.js"
+        "/js/bench-stream-watch.js",
+        "/js/agent-cards.js"
       ],
       "stubs": [
         "toggleChannelChat"
@@ -318,6 +320,7 @@
       ],
       "js": [
         "/js/agent-player.js",
+        "/js/agent-overlay.js",
         "/js/agent-stream.js",
         "/shared/ov-share.js"
       ]

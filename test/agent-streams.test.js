@@ -321,9 +321,10 @@ async function check(name, fn) {
             // End asks in the page; a browser dialog is never used.
             assert.match(fragment, /id="agent-end-confirm"/);
             assert.ok(!/\bconfirm\(/.test(page), 'no confirm()');
-            // Public is disabled, with the note that says where public agent streams come from.
-            assert.match(fragment, /<option value="public" disabled/);
-            assert.match(fragment, /Public agent streams come with the Agents tab\./);
+            // S2 turns Public on: the owner's switch lists the Agents tab and the Agents live row as its home.
+            assert.match(fragment, /<option value="public">Everyone/);
+            assert.doesNotMatch(fragment, /<option value="public"[^>]*disabled/);
+            assert.match(fragment, /Agents tab and Agents live/);
             // The Reset link hint says the old links stop working.
             assert.match(page, /old links stop working/);
         });

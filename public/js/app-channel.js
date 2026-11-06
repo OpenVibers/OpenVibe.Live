@@ -818,6 +818,10 @@ async function loadChannelPage(username, managedStreamRef = null, legacySessionI
         _applyBotEmbed(data.bot_embed, username);
         _offerBotBind(username);
         _applyChannelHashTab(); // deep-link: #ai-timeline / #about / #videos … opens that tab
+        // The Agents tab is revealed only when the channel has agent streams this viewer may see (S2).
+        _agentsPaging = { username: null, grid: null };
+        try { loadChannelAgents(username); } catch {}
+        try { loadMoreChannelAgents = window.loadMoreChannelAgents; } catch {}
         // Reveal the Media Request tab if the streamer has it enabled (non-blocking).
         _initMediaRequestTab(username);
 
@@ -1973,6 +1977,49 @@ function _renderChStreamAi(overview, short) {
 
 // ── Channel below-fold tabs ──────────────────────────────────
 let _channelTab = 'videos';
+// ── Agents tab (Agent Streams S2): this channel's AI agent streams, live and past ─────────────
+// The API answers only what this viewer may see (public ones for everyone, everything for the owner). The tab stays
+// hidden when there is nothing to show, so a channel without agents looks exactly as it did.
+let _agentsPaging = { username: null, grid: null };
+
+async function loadChannelAgents(username, { force = false } = {}) {
+    if (!username) return;
+    if (!force && _agentsPaging.username === username && _agentsPaging.grid) return;
+    const grid = document.getElementById('ch-agents-grid');
+    const more = document.getElementById('ch-agents-more');
+    if (!grid) return;
+    let data = null;
+    try { data = await api(`/streams/agent?channel=${encodeURIComponent(username)}`); } catch { data = null; }
+    if (username !== currentChannelUsername) return;   // the page moved on while this was in flight
+    const cards = (data && Array.isArray(data.agents)) ? data.agents : [];
+    const tab = document.getElementById('ch-tab-btn-agents');
+    const badge = document.getElementById('ch-tab-badge-agents');
+    if (tab) tab.style.display = cards.length ? '' : 'none';
+    if (badge) {
+        const live = cards.filter((entry) => entry.state === 'live').length;
+        badge.hidden = !live;
+        badge.textContent = live ? String(live) : '';
+    }
+    grid.replaceChildren();
+    _agentsPaging = { username, grid: null };
+    if (!cards.length) {
+        const empty = document.createElement('p');
+        empty.className = 'agent-empty';
+        empty.textContent = 'No AI agent streams on this channel yet.';
+        grid.appendChild(empty);
+        if (more) more.hidden = true;
+        return;
+    }
+    if (!window.AgentCards) return;
+    _agentsPaging.grid = window.AgentCards.fill(grid, cards, { perPage: 12, moreButton: more });
+}
+
+function loadMoreChannelAgents(button) {
+    if (!_agentsPaging.grid) return;
+    if (button) button.disabled = true;
+    try { _agentsPaging.grid.more(); } finally { if (button) button.disabled = false; }
+}
+
 function switchChannelTab(tab, btn) {
     _channelTab = tab;
     document.querySelectorAll('#ch-tabs .ch-tab').forEach(b => {
@@ -1995,6 +2042,9 @@ function switchChannelTab(tab, btn) {
     if (tab === 'clips-taken' && currentChannelUsername && !_chTabLoaded.clipsTaken) {
         _chTabLoaded.clipsTaken = true;
         try { loadClipsTaken(currentChannelUsername, { reset: true }); } catch {}
+    }
+    if (tab === 'agents' && currentChannelUsername) {
+        try { loadChannelAgents(currentChannelUsername); } catch {}
     }
     if (tab === 'ai-timeline' && currentChannelUsername && !_chTabLoaded.aiTimeline) {
         _chTabLoaded.aiTimeline = true;
@@ -2030,7 +2080,7 @@ async function _loadGameBadge(username) {
 
 // A URL hash like #ai-timeline / #about / #videos auto-opens that channel tab on load and
 // scrolls the tab content into view (used by "view full AI timeline" links, deep links, etc.).
-const CHANNEL_TAB_HASHES = ['about', 'videos', 'clips', 'clips-taken', 'pastes', 'media', 'analytics', 'ai-timeline'];
+const CHANNEL_TAB_HASHES = ['about', 'videos', 'agents', 'clips', 'clips-taken', 'pastes', 'media', 'analytics', 'ai-timeline'];
 function _applyChannelHashTab() {
     const h = (location.hash || '').replace(/^#/, '').toLowerCase();
     if (!h || !CHANNEL_TAB_HASHES.includes(h)) return;

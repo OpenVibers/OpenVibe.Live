@@ -18,6 +18,10 @@
     let liveViewers = null;
     let renewTimer = null;
     let pollTimer = null;
+    let stepsTimer = null;
+    let steps = [];            // the overlay's feed, oldest first (at most the last 200)
+    let overlay = null;
+    let chaptersFor = null;    // the stream id whose chapters are rendered (they never change while the page lives)
     let generation = 0;   // bumped on every page leave, so a slow request from the last page changes nothing
 
     function $(id) { return document.getElementById(id); }
@@ -29,6 +33,10 @@
         liveViewers = null;
         if (renewTimer) { clearTimeout(renewTimer); renewTimer = null; }
         if (pollTimer) { clearTimeout(pollTimer); pollTimer = null; }
+        if (stepsTimer) { clearTimeout(stepsTimer); stepsTimer = null; }
+        if (overlay) { try { overlay.destroy(); } catch { /* */ } overlay = null; }
+        steps = [];
+        chaptersFor = null;
         state = null;
         ticket = null;
     }
@@ -115,6 +123,143 @@
         }
     }
 
+    /** The overlay exists once per page; each render only hands it the newest steps and the clock. */
+    function ensureOverlay(data) {
+        const host = $('agent-overlay');
+        if (!host || !window.AgentOverlay) return;
+        if (!overlay) {
+            overlay = window.AgentOverlay.create({ host, title: data.stream.title, initial: steps });
+        }
+        overlay.update({
+            steps,
+            task: data.stream.task,
+            workedSeconds: data.stream.worked_seconds,
+            state: data.stream.state,
+        });
+    }
+
+    /** Keep the overlay's feed current while the work is live: only the steps after the newest one are fetched. */
+    function scheduleSteps(data) {
+        if (stepsTimer) { clearTimeout(stepsTimer); stepsTimer = null; }
+        if (data.stream.state !== 'live') return;
+        const gen = generation;
+        const id = data.stream.id;
+        stepsTimer = setTimeout(async () => {
+            if (gen !== generation) return;
+            try {
+                const after = steps.length ? steps[steps.length - 1].id : null;
+                const next = await api(`/streams/agent/${encodeURIComponent(id)}/steps${after ? `?after=${after}` : ''}`);
+                if (gen !== generation) return;
+                if (next && Array.isArray(next.steps) && next.steps.length) {
+                    const known = new Set(steps.map((step) => step.id));
+                    for (const step of next.steps) if (!known.has(step.id)) steps.push(step);
+                    if (steps.length > 200) steps = steps.slice(-200);
+                    if (state && state.stream) ensureOverlay(state);
+                }
+            } catch { /* the next turn tries again */ }
+            if (gen === generation) scheduleSteps(state);
+        }, 2500);
+    }
+
+    /** Chapters come from the steps that started; a failed step and the final passed one can be clipped in one tap. */
+    async function renderRecording(data) {
+        const section = $('agent-chapters');
+        if (!section) return;
+        const stream = data.stream;
+        if (stream.state !== 'ended') { section.hidden = true; return; }
+        if (chaptersFor === stream.id) return;
+        try {
+            const out = await api(`/streams/agent/${encodeURIComponent(stream.id)}/chapters`);
+            if (!out || !out.chapters || !out.chapters.length) { section.hidden = true; chaptersFor = stream.id; return; }
+            section.hidden = false;
+            const list = $('agent-chapter-list');
+            list.replaceChildren();
+            const vodBase = out.vod_id ? `https://openvibe.video/v/${encodeURIComponent(out.vod_id)}` : null;
+            for (const chapter of out.chapters) {
+                const li = document.createElement('li');
+                li.className = 'agent-chapter';
+                const time = document.createElement('a');
+                time.className = 'agent-chapter-time';
+                time.textContent = clock(chapter.at);
+                time.href = vodBase ? `${vodBase}?t=${chapter.at}` : '#';
+                if (!vodBase) time.removeAttribute('href');
+                const title = document.createElement('span');
+                title.className = 'agent-chapter-title';
+                title.textContent = chapter.title;
+                li.append(time, title);
+                list.appendChild(li);
+            }
+            const hint = $('agent-chapters-hint');
+            if (hint) hint.textContent = 'Each step that started became a chapter of the recording.';
+            const recording = $('agent-recording');
+            if (recording) {
+                recording.replaceChildren();
+                if (vodBase) {
+                    const a = document.createElement('a');
+                    a.href = vodBase;
+                    a.textContent = 'Watch the recording on OpenVibe.Video';
+                    recording.appendChild(a);
+                    recording.hidden = false;
+                } else recording.hidden = true;
+            }
+            renderHighlights(stream);
+            chaptersFor = stream.id;
+        } catch { section.hidden = true; }
+    }
+
+    function clock(seconds) {
+        const s = Math.max(0, Math.round(Number(seconds) || 0));
+        const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
+        return `${h ? `${h}:${String(m).padStart(2, '0')}` : m}:${String(sec).padStart(2, '0')}`;
+    }
+
+    function renderHighlights(stream) {
+        const wrap = $('agent-highlights');
+        const list = $('agent-highlight-list');
+        if (!wrap || !list) return;
+        const failed = steps.filter((step) => step.status === 'failed');
+        const passed = steps.filter((step) => step.status === 'passed');
+        const finalPassed = passed.length && (!steps.length || steps[steps.length - 1].status === 'passed') ? passed[passed.length - 1] : null;
+        const wanted = [...failed, ...(finalPassed ? [finalPassed] : [])];
+        list.replaceChildren();
+        if (!wanted.length || !stream.vod_id) { wrap.hidden = true; return; }
+        wrap.hidden = false;
+        wanted.forEach((step) => {
+            const row = document.createElement('div');
+            row.className = 'agent-highlight';
+            const badge = document.createElement('span');
+            badge.className = `agent-highlight-status is-${step.status}`;
+            badge.textContent = step.status;
+            const title = document.createElement('span');
+            title.className = 'agent-highlight-title';
+            title.textContent = step.title;
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'btn btn-small btn-outline agent-clip-btn';
+            button.textContent = 'Clip it';
+            button.addEventListener('click', async () => {
+                button.disabled = true;
+                try {
+                    const made = await api(`/streams/agent/${encodeURIComponent(stream.id)}/clips`, { method: 'POST', body: { step_id: step.id } });
+                    const clipId = made && made.clip ? (made.clip.clip_id || made.clip.id) : null;
+                    button.textContent = clipId ? 'Clip made' : 'Clip queued';
+                    if (clipId) {
+                        const a = document.createElement('a');
+                        a.href = `https://openvibe.video/c/${encodeURIComponent(clipId)}`;
+                        a.textContent = 'Open the clip';
+                        a.style.marginLeft = '8px';
+                        row.appendChild(a);
+                    }
+                } catch (err) {
+                    button.disabled = false;
+                    button.textContent = (err && err.message) || 'Try again';
+                }
+            });
+            row.append(badge, title, button);
+            list.appendChild(row);
+        });
+    }
+
     function render(data) {
         state = data;
         ticket = data.view_ticket || ticket;
@@ -141,9 +286,13 @@
         renderCurtain(!!(stream.curtain && stream.curtain.up));
         renderStatus(stream, liveViewers);
         mountPlays(data);
+        ensureOverlay(data);
         renderOwner(data);
         scheduleRenew(data);
         schedulePoll(stream.id);
+        if (!steps.length) loadInitialSteps(stream.id).then(() => { if (state && state.stream) { ensureOverlay(state); if (state.stream.state === 'ended') renderRecording(state); } });
+        scheduleSteps(data);
+        if (stream.state === 'ended') renderRecording(data);
     }
 
     function renderOwner(data) {
@@ -215,6 +364,7 @@
                 if (structural) { render(next); return; }
                 state = next;
                 ticket = next.view_ticket || ticket;
+                ensureOverlay(next);
                 renderStatus(next.stream, liveViewers);
                 renderOwner(next);
                 schedulePoll(id);
@@ -300,6 +450,15 @@
                 }
             } catch { /* shown by the hint below */ }
         });
+    }
+
+    /** The newest 20 steps, once per page (and after the state poll finds the desk went live). */
+    async function loadInitialSteps(id) {
+        if (steps.length) return;
+        try {
+            const out = await api(`/streams/agent/${encodeURIComponent(id)}/steps`);
+            if (out && Array.isArray(out.steps)) steps = out.steps;
+        } catch { /* the overlay shows "waiting for the first step" */ }
     }
 
     async function loadAgentStreamPage(username, publicId) {

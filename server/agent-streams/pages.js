@@ -64,10 +64,12 @@ function html(publicId) {
                 <span class="agent-embed-viewers" id="agent-embed-viewers" hidden></span>
                 <div class="agent-embed-state" id="agent-embed-state">Connecting…</div>
                 <div class="agent-embed-curtain" id="agent-embed-curtain" hidden>Private screen</div>
+                <div id="agent-embed-overlay"></div>
             </div>
         </div>
     </div>
     <script src="/js/agent-player.js" defer></script>
+    <script src="/js/agent-overlay.js" defer></script>
     <script src="/js/agent-embed.js" defer></script>
 </body>
 </html>`;

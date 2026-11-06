@@ -4,7 +4,7 @@
  * cookies), and this page joins the stream with it. It shows the player, the "AI agent" label, the curtain state and the
  * viewer count; no chat in S1. It renews its own ticket while it stays open, up to the server's four-hour ceiling.
  */
-/* global window, document, location, URLSearchParams, setTimeout, AgentPlayer */
+/* global window, document, location, URLSearchParams, setTimeout, clearTimeout, AgentPlayer, AgentOverlay */
 (function () {
     'use strict';
     const body = document.body;
@@ -14,6 +14,11 @@
     let ticket = new URLSearchParams(location.search).get('vt') || '';
     let player = null;
     let renewTimer = null;
+    let stepsTimer = null;
+    let steps = [];
+    let overlay = null;
+    let streamState = null;
+    let streamView = null;
 
     async function json(path, options) {
         const res = await fetch(path, { credentials: 'omit', headers: { 'Content-Type': 'application/json' }, ...options });
@@ -34,11 +39,38 @@
         }, 8 * 60 * 1000);
     }
 
+    /** The overlay (S2): the same band the page draws, from the same steps feed, never burned into the video. */
+    function drawOverlay(stream) {
+        const host = $('agent-embed-overlay');
+        if (!host || !window.AgentOverlay) return;
+        if (!overlay) overlay = window.AgentOverlay.create({ host, title: stream.title, initial: steps });
+        overlay.update({ steps, task: stream.task, workedSeconds: stream.worked_seconds, state: stream.state });
+    }
+
+    function pollSteps() {
+        if (stepsTimer) { clearTimeout(stepsTimer); stepsTimer = null; }
+        if (streamState !== 'live') return;
+        stepsTimer = setTimeout(async () => {
+            try {
+                const after = steps.length ? steps[steps.length - 1].id : null;
+                const q = after ? `?after=${after}` : '';
+                const out = await json(`/api/streams/agent/${encodeURIComponent(id)}/steps${q}`);
+                const known = new Set(steps.map((step) => step.id));
+                for (const step of (out.steps || [])) if (!known.has(step.id)) steps.push(step);
+                if (steps.length > 200) steps = steps.slice(-200);
+                if (streamView) drawOverlay(streamView);
+            } catch { /* the next turn tries again */ }
+            pollSteps();
+        }, 2500);
+    }
+
     async function load() {
         const query = ticket ? `?vt=${encodeURIComponent(ticket)}` : '';
         const data = await json(`/api/streams/agent/${encodeURIComponent(id)}${query}`);
         const stream = data.stream;
         ticket = data.view_ticket || ticket;
+        streamState = stream.state;
+        streamView = stream;
 
         const title = $('agent-embed-title');
         if (title) title.textContent = stream.title || '';
@@ -68,6 +100,12 @@
                 stateEl.textContent = stream.state === 'ended' ? 'This agent’s work has ended.' : "This agent isn't streaming right now.";
             }
         }
+        drawOverlay(stream);
+        if (!steps.length) {
+            try { const out = await json(`/api/streams/agent/${encodeURIComponent(id)}/steps`); steps = out.steps || []; } catch { /* */ }
+            drawOverlay(stream);
+        }
+        pollSteps();
         renewSoon();
         // The state changes on the server (the desk starts publishing, or the work ends); look again in a minute.
         setTimeout(() => { if (!player && document.visibilityState !== 'hidden') load().catch(() => {}); }, 60000);
