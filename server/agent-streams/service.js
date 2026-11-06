@@ -250,7 +250,7 @@ async function end(row, { reason = 'ended' } = {}) {
         set: { state: 'ended', ended_at: now, worked_seconds: worked, curtain_up: 0, curtain_since: null, curtain_reason: null },
         event: { kind: 'ended', extra: { reason } },
     });
-    await require('./publish-tickets').revokeAll(row.managed_stream_id);
+    await require('./tickets').revokeAll(row.managed_stream_id);
     if (session) {
         try {
             const whip = require('../streaming/whip-handler');
