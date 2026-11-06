@@ -4853,7 +4853,7 @@ button.uai-tl-more { background: none; border: none; cursor: pointer; padding: 0
 }
 .chat-stream-hop:hover { filter: brightness(1.1); }
 .chat-time-inline {
-    font-size: 0.7rem; color: var(--text-muted); margin-right: 4px;
+    font-size: 0.75rem; color: var(--text-muted); margin-right: 4px;
 }
 
 .btn-follow.following { background: var(--text-muted); }
