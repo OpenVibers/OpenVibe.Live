@@ -3,6 +3,7 @@
  * /api/streams/agent — the agent streams API (live.agent-stream@1 and the publish/view routes around it).
  *
  *   POST   /                             create the stream and its publish ticket      { stream, publish } 201
+ *   GET    /                             the caller's own streams, the live one first  { streams } (Dock K-D3)
  *   GET    /:id                          the stream (view rule), plus what its page needs
  *   PUT    /:id/visibility               the owner's switch
  *   POST   /:id/rotate-link              a fresh unlisted link secret (the old links stop working)
@@ -126,6 +127,28 @@ router.post('/', auth.publisher, async (req, res) => {
 });
 
 // ── Read ───────────────────────────────────────────────────────
+
+/**
+ * GET / — the caller's own agent streams, newest first with the live one at the front, at most 20, and `?live=1` for
+ * only the live one. This is the lookup Codes, Actor and the Dock make to find out which stream is the person's ("the
+ * signed-in person's own live agent stream", Agent Streams S1: the embed is minted server-side with their token). It is
+ * never a directory: no session carries nobody's rows, and another person's stream is never in the answer.
+ */
+router.get('/', auth.viewer, async (req, res) => {
+    try {
+        res.set('Cache-Control', 'no-store');
+        if (!req.viewer) return res.json({ streams: [] });
+        const onlyLive = String(req.query.live || '') === '1';
+        const rows = (await service.listByUser(req.viewer.id))
+            .filter((row) => !onlyLive || row.state === 'live')
+            .sort((a, b) => ((b.state === 'live') - (a.state === 'live')))
+            .slice(0, 20);
+        res.json({ streams: rows.map(service.publicView) });
+    } catch (err) {
+        console.error('[AgentStream] list failed:', err.message);
+        fail(res, 500, 'list_failed', 'The agent streams could not be read');
+    }
+});
 
 router.get('/:id', auth.viewer, async (req, res) => {
     try {
