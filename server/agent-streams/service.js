@@ -239,6 +239,13 @@ async function markPublishing(row) {
 }
 
 /** The stream ended. Worked seconds are frozen, the session (if any) and every publish ticket go. */
+let reportClient = null;
+/** Live's client for OpenVibe.Report (the session report of an agent stream). */
+function reportClientFor() {
+    if (!reportClient) reportClient = require('../report').createReportClient({ config, log: console });
+    return reportClient;
+}
+
 async function end(row, { reason = 'ended' } = {}) {
     if (row.state === 'ended') return row;
     const session = await liveSession(row.managed_stream_id);
@@ -259,6 +266,29 @@ async function end(row, { reason = 'ended' } = {}) {
         } catch (err) { console.warn(`[AgentStream] ending session ${session.id} failed: ${err.message}`); }
     }
     try { require('../streaming/curtains').lower(session ? session.id : null, { notify: false }); } catch { /* */ }
+    // Agent Streams S3: the stream part of the session report. The report the tool wrote for this task gets the
+    // stream added to it; when no tool finished the session, a stream-only report is written instead. A report that
+    // cannot be written never changes the stream: it ended either way.
+    try {
+        await reportClientFor().sendStream({
+            source: (row.task && row.task.source) || 'desk',
+            task_ref: (row.task && row.task.ref) || null,
+            ags_id: row.public_id,
+            vod_id: row.vod_id || null,
+            owner: row.owner_subject || null,
+            task: {
+                title: (row.task && row.task.title) || row.title || 'An agent session',
+                ref: (row.task && row.task.ref) || row.public_id,
+                url: (row.task && row.task.url) || null,
+            },
+            started_at: row.started_at || null,
+            ended_at: next.ended_at || null,
+            worked_seconds: worked,
+            visibility: row.visibility || 'private',
+        });
+    } catch (err) {
+        console.warn('[AgentStream] the session report of ' + row.public_id + ' failed: ' + String((err && err.message) || err).slice(0, 200));
+    }
     return next;
 }
 
