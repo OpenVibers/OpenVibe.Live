@@ -3,8 +3,12 @@
  * All authentication is via OpenVibe.Tools OAuth2 SSO.
  * No local login/register — users sign in at openvibe.network.
  *
+ * The OAuth half is openvibe-sdk/sso's (createSsoClient): the authorize URL, the PKCE S256 pair, the code, refresh and
+ * FedCM grants and GET /api/auth/health. The state is compared with the flow cookie in constant time.
+ *
  * GET  /api/auth/sso/login    — Redirect to openvibe.network OAuth (?silent=1, ?prompt=select_account|login, ?login_hint, ?next)
- * GET  /api/auth/callback     — OAuth callback
+ * GET  /api/auth/callback     — OAuth callback (exchanges the code with the PKCE verifier)
+ * GET  /api/auth/health       — Does the Network accept this OAuth client? 503 only when it refuses it
  * GET  /api/auth/me           — Current user
  * PUT  /api/auth/profile      — Update profile
  * POST /api/auth/avatar       — Upload avatar
@@ -13,11 +17,13 @@
  * GET  /api/auth/user/:username
  * GET  /api/auth/sso/status
  */
+const crypto = require('crypto');
 const express = require('express');
 const { v4: uuidv4 } = require('uuid');
 const multer = require('multer');
 const fs = require('fs');
 const db = require('../db/database');
+const { createSsoClient, failurePage } = require('openvibe-sdk/sso');
 const { requireAuth, optionalAuth } = require('./auth');
 const permissions = require('./permissions');
 const config = require('../config');
@@ -272,13 +278,52 @@ function getNetworkTokenBase() {
     return config.openvibeToolsInternalUrl || getNetworkBase();
 }
 
-function getNetworkHttpModule() {
-    const url = new URL(getNetworkTokenBase());
-    return url.protocol === 'http:' ? require('http') : require('https');
-}
-
 function getNetworkRedirectUri() {
     return `${config.baseUrl.toLowerCase()}/api/auth/callback`;
+}
+
+const VERIFIER_COOKIE = 'ov_oauth_verifier';
+
+/** Compare two strings in constant time (the state and verifier must match the browser that started the flow). */
+function sameString(a, b) {
+    const x = Buffer.from(String(a || ''));
+    const y = Buffer.from(String(b || ''));
+    return x.length === y.length && x.length > 0 && crypto.timingSafeEqual(x, y);
+}
+
+let ssoClient = null;
+let ssoClientKey = null;
+/**
+ * openvibe-sdk/sso with this site's OAuth client. The registry can change the Network URLs while the process runs
+ * (config.refreshRegistry), so the client is rebuilt when the URLs it was built with change.
+ */
+function getSsoClient() {
+    const key = [config.baseUrl, getNetworkBase(), getNetworkTokenBase(), OV_CLIENT_ID].join('\n');
+    if (!ssoClient || ssoClientKey !== key) {
+        ssoClient = createSsoClient({
+            site: 'live',
+            siteName: 'OpenVibe.Live',
+            baseUrl: config.baseUrl,
+            clientId: OV_CLIENT_ID,
+            clientSecret: OV_CLIENT_SECRET,
+            redirectUri: getNetworkRedirectUri(),
+            scope: 'profile theme',
+            networkUrl: getNetworkBase(),
+            networkInternalUrl: getNetworkTokenBase(),
+            secureCookies: config.baseUrl.startsWith('https'),
+            fetch: globalThis.fetch,
+            log: console,
+        });
+        ssoClientKey = key;
+    }
+    return ssoClient;
+}
+
+/** Clear the short-lived cookies of a sign-in flow (the verifier only ever lived on the callback path). */
+function clearFlowCookies(res) {
+    res.clearCookie('oauth_state');
+    res.clearCookie(VERIFIER_COOKIE, { path: '/api/auth' });
+    res.clearCookie('oauth_next');
 }
 
 /**
@@ -292,10 +337,8 @@ const HINT_COOKIE = { httpOnly: false, path: '/', maxAge: 365 * 24 * 60 * 60 * 1
 
 // ── Initiate OAuth Login (redirect to openvibe.network) ───────────
 router.get('/sso/login', async (req, res) => {
-    const state = require('crypto').randomBytes(16).toString('hex');
-    // Store state in a short-lived cookie for CSRF protection
     const isSecure = config.baseUrl.startsWith('https');
-    res.cookie('oauth_state', state, { httpOnly: true, maxAge: 5 * 60 * 1000, sameSite: 'Lax', secure: isSecure });
+    const flow = { httpOnly: true, maxAge: 5 * 60 * 1000, sameSite: 'Lax', secure: isSecure };
     // Where to go afterwards (the fanout chain, or the page that asked to sign in).
     const next = safeNext(req.query.next);
     // Already signed in here (a link hand-off from another OpenVibe site, or a stale hint): no
@@ -303,28 +346,27 @@ router.get('/sso/login', async (req, res) => {
     if (req.query.silent) {
         try {
             const have = req.cookies?.token || req.cookies?.ov_token;
-            if (have && await require('./auth').verifyToken(have)) return res.redirect(next);
+            if (have && await require('./auth').verifyToken(have)) {
+                clearFlowCookies(res);
+                return res.redirect(next);
+            }
         } catch { /* fall through to the network */ }
     }
-    if (next !== '/') res.cookie('oauth_next', next, { httpOnly: true, maxAge: 5 * 60 * 1000, sameSite: 'Lax', secure: isSecure });
-    else res.clearCookie('oauth_next');
 
-    const params = new URLSearchParams({
-        client_id: OV_CLIENT_ID,
-        redirect_uri: getNetworkRedirectUri(),
-        response_type: 'code',
-        scope: 'profile theme',
-        state,
-    });
     // ?silent=1: continue as the account openvibe.network already knows (no chooser); if the
     // network has no session either, it bounces back with error=login_required and we stay quiet.
-    if (req.query.silent) params.set('prompt', 'none');
     // "Switch account" (the chooser) and "use another account" (the sign-in form); login_hint names the account to
-    // continue as when this browser has it (Network docs/sign-in.md).
-    else if (['select_account', 'login'].includes(String(req.query.prompt || ''))) params.set('prompt', String(req.query.prompt));
-    const hint = String(req.query.login_hint || '').trim();
-    if (/^@?[A-Za-z0-9_.-]{1,64}$/.test(hint)) params.set('login_hint', hint);
-    res.redirect(`${getNetworkBase()}/oauth/authorize?${params.toString()}`);
+    // continue as when this browser has it (Network docs/sign-in.md). openvibe-sdk/sso drops anything else.
+    const started = getSsoClient().authorizeUrl({
+        silent: !!req.query.silent,
+        prompt: String(req.query.prompt || ''),
+        loginHint: String(req.query.login_hint || ''),
+    });
+    res.cookie('oauth_state', started.state, flow);
+    res.cookie(VERIFIER_COOKIE, started.verifier, { ...flow, path: '/api/auth' });
+    if (next !== '/') res.cookie('oauth_next', next, flow);
+    else res.clearCookie('oauth_next');
+    res.redirect(started.url);
 });
 
 /**
@@ -417,30 +459,6 @@ async function establishNetworkSession(req, res, tokenData) {
     return { localUser, openvibeToolsToken, openvibeRefreshToken };
 }
 
-/** POST to the network's /oauth/token (server-to-server) and parse the JSON answer. */
-function networkTokenRequest(payload) {
-    return new Promise((resolve, reject) => {
-        const body = JSON.stringify(payload);
-        const url = new URL(`${getNetworkTokenBase()}/oauth/token`);
-        const httpModule = getNetworkHttpModule();
-        const reqOpts = {
-            hostname: url.hostname,
-            port: url.port || (url.protocol === 'https:' ? 443 : 80),
-            path: url.pathname + url.search,
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) },
-        };
-        const httpReq = httpModule.request(reqOpts, (httpRes) => {
-            let data = '';
-            httpRes.on('data', chunk => data += chunk);
-            httpRes.on('end', () => { try { resolve(JSON.parse(data)); } catch { reject(new Error('Invalid token response')); } });
-        });
-        httpReq.on('error', reject);
-        httpReq.write(body);
-        httpReq.end();
-    });
-}
-
 // ── FedCM sign-in ────────────────────────────────────────────
 // The browser obtained an assertion from openvibe.network for this origin (shared sso-client.js);
 // exchange it server-to-server for the usual token pair and open the same session the OAuth
@@ -453,11 +471,16 @@ router.post('/fedcm', express.json({ limit: '8kb' }), async (req, res) => {
         let claims = null;
         try { claims = JSON.parse(Buffer.from(String(token).split('.')[1] || '', 'base64url').toString('utf8')); } catch { /* */ }
         if (!claims || (nonce && claims.nonce !== nonce)) return res.status(400).json({ error: 'Assertion does not match this request' });
-        const tokenData = await networkTokenRequest({
-            grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
-            assertion: token, client_id: OV_CLIENT_ID, client_secret: OV_CLIENT_SECRET,
-        });
-        if (tokenData.error) return res.status(401).json({ error: tokenData.error, error_description: tokenData.error_description || null });
+        let tokenData;
+        try {
+            tokenData = await getSsoClient().tokenGrant({ grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer', assertion: token });
+        } catch (err) {
+            if (err.status && err.status < 500) {
+                return res.status(401).json({ error: err.error || 'invalid_grant', error_description: err.error_description || null });
+            }
+            throw err;
+        }
+        if (!tokenData.access_token) throw Object.assign(new Error('No access token in response'), { status: 401 });
         const { localUser } = await establishNetworkSession(req, res, tokenData);
         res.set('Cache-Control', 'no-store');
         res.json({ ok: true, user: { id: localUser.id, username: localUser.username, display_name: localUser.display_name || localUser.username, avatar_url: localUser.avatar_url || null } });
@@ -475,19 +498,20 @@ router.get('/callback', async (req, res) => {
         res.clearCookie('oauth_next');
         if (!code && req.query.error) {
             // Silent sign-in found no network session — go on quietly as a guest.
-            res.clearCookie('oauth_state');
+            clearFlowCookies(res);
             const sep = next.includes('?') ? '&' : '?';
             return res.redirect(`${next}${sep}sso=none`);
         }
         if (!code) return res.status(400).send('Missing authorization code');
 
-        // Validate CSRF state
+        // Validate CSRF state and the PKCE verifier
         // The state cookie is required, not just compared when present. Skipping the check when the
         // cookie was missing let a crafted link sign a visitor into someone else's account (login CSRF).
-        // Only /sso/login starts this flow, and it always sets the cookie.
+        // Only /sso/login starts this flow, and it always sets both cookies; the comparison is constant time.
         const savedState = req.cookies?.oauth_state;
-        if (!savedState || !state || savedState !== state) {
-            res.clearCookie('oauth_state');
+        const verifier = req.cookies?.[VERIFIER_COOKIE];
+        if (!savedState || !state || !verifier || !sameString(state, savedState)) {
+            clearFlowCookies(res);
             return res.status(403).type('html').send('<!doctype html><meta charset="utf-8"><title>Sign-in expired</title>'
                 + '<body style="font-family:system-ui;background:#0f0f14;color:#eee;display:grid;place-items:center;min-height:100vh;margin:0">'
                 + '<div style="text-align:center"><h1 style="font-size:1.3rem">That sign-in link expired</h1>'
@@ -495,19 +519,31 @@ router.get('/callback', async (req, res) => {
                 + '<p><a style="color:#c4a1ff" href="/api/auth/sso/login">Sign in again</a> · <a style="color:#c4a1ff" href="/">Home</a></p></div>');
         }
         res.clearCookie('oauth_state');
+        res.clearCookie(VERIFIER_COOKIE, { path: '/api/auth' });
 
-        // Exchange code for tokens
-        const tokenData = await networkTokenRequest({
-            grant_type: 'authorization_code',
-            client_id: OV_CLIENT_ID,
-            client_secret: OV_CLIENT_SECRET,
-            code,
-            redirect_uri: getNetworkRedirectUri(),
-        });
-
-        if (tokenData.error) {
-            console.error('[Auth/SSO] Token exchange failed:', tokenData.error_description || tokenData.error);
-            return res.status(400).send(`OAuth error: ${tokenData.error_description || tokenData.error}`);
+        // Exchange code for tokens (openvibe-sdk/sso adds the client credentials and posts the verifier).
+        let tokenData;
+        try {
+            tokenData = await getSsoClient().tokenGrant({
+                grant_type: 'authorization_code',
+                redirect_uri: getNetworkRedirectUri(),
+                code: String(code),
+                code_verifier: verifier,
+            });
+        } catch (err) {
+            if (err.status === 401 || err.error === 'invalid_client' || err.error === 'unauthorized_client') {
+                console.error(`[Auth/SSO] the Network refuses this site's OAuth client (${err.error || err.status}): check OV_OAUTH_CLIENT_ID / OV_OAUTH_CLIENT_SECRET`);
+                return res.status(500).type('html').send(failurePage({
+                    siteName: 'OpenVibe.Live',
+                    title: 'Sign-in isn\'t working on OpenVibe.Live right now',
+                    text: 'This is a problem on our side, not with your account, and it has been logged. Please try again a little later.',
+                    retryHref: `/api/auth/sso/login${next !== '/' ? `?next=${encodeURIComponent(next)}` : ''}`,
+                    backHref: next || '/',
+                }));
+            }
+            console.error('[Auth/SSO] Token exchange failed:', err.error_description || err.error || err.message);
+            if (err.status && err.status < 500) return res.status(400).send(`OAuth error: ${err.error_description || err.error}`);
+            return res.status(500).send('OAuth login failed. Please try again.');
         }
 
         const { localUser, openvibeToolsToken, openvibeRefreshToken } = await establishNetworkSession(req, res, tokenData);
@@ -537,6 +573,17 @@ router.get('/callback', async (req, res) => {
     }
 });
 
+// ── Health: does the Network accept this site's OAuth client? ───────────────
+// 503 only when the Network refuses it (invalid_client); an unreachable Network is 'unknown', not a failure of the
+// site's credentials. Cached 10 minutes by the SDK. Exposed at /api/auth/health for this site's API and at
+// /auth/health for the network-wide sign-in canary (OpenVibe.Host docs/auth-health.md).
+async function healthHandler(_req, res) {
+    const client = await getSsoClient().checkClient();
+    res.set('Cache-Control', 'no-store');
+    return res.status(client === 'invalid' ? 503 : 200).json({ ok: client !== 'invalid', client });
+}
+router.get('/health', healthHandler);
+
 // ── Token Refresh (server-to-server using httpOnly refresh cookie) ──
 router.post('/refresh', async (req, res) => {
     const refreshToken = req.cookies?.ov_refresh;
@@ -547,38 +594,12 @@ router.post('/refresh', async (req, res) => {
         return res.json({ access_token: null, user: null });
     }
     try {
-        const tokenData = await new Promise((resolve, reject) => {
-            const body = JSON.stringify({
-                grant_type: 'refresh_token',
-                client_id: OV_CLIENT_ID,
-                client_secret: OV_CLIENT_SECRET,
-                refresh_token: refreshToken,
-            });
-            const url = new URL(`${getNetworkTokenBase()}/oauth/token`);
-            const httpModule = getNetworkHttpModule();
-            const httpReq = httpModule.request({
-                hostname: url.hostname,
-                port: url.port || (url.protocol === 'https:' ? 443 : 80),
-                path: url.pathname + url.search,
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) },
-            }, (httpRes) => {
-                let data = '';
-                httpRes.on('data', chunk => data += chunk);
-                httpRes.on('end', () => {
-                    try { resolve(JSON.parse(data)); }
-                    catch { reject(new Error('Invalid response')); }
-                });
-            });
-            httpReq.on('error', reject);
-            httpReq.write(body);
-            httpReq.end();
-        });
+        const tokenData = await getSsoClient().tokenGrant({ grant_type: 'refresh_token', refresh_token: refreshToken });
 
-        if (tokenData.error || !tokenData.access_token) {
+        if (!tokenData.access_token) {
             // Refresh failed — clear stale cookies
             res.clearCookie('ov_refresh', { path: '/api/auth' });
-            return res.status(401).json({ error: tokenData.error_description || 'Refresh failed' });
+            return res.status(401).json({ error: 'Refresh failed' });
         }
 
         const isSecure = (process.env.BASE_URL || '').startsWith('https');
@@ -588,6 +609,11 @@ router.post('/refresh', async (req, res) => {
         }
         res.json({ access_token: tokenData.access_token, expires_in: tokenData.expires_in || 86400 });
     } catch (err) {
+        if (err.status && err.status < 500) {
+            // The Network rejected the refresh token — clear the stale cookie, as before.
+            res.clearCookie('ov_refresh', { path: '/api/auth' });
+            return res.status(401).json({ error: err.error_description || 'Refresh failed' });
+        }
         console.error('[Auth] Refresh error:', err.message);
         res.status(500).json({ error: 'Token refresh failed' });
     }
@@ -873,3 +899,7 @@ router.get('/ice-servers', optionalAuth, (req, res) => {
 });
 
 module.exports = router;
+// The network-wide sign-in canary probes <origin>/auth/health; this site's auth API lives under /api/auth.
+module.exports.health = healthHandler;
+// Exported for the sign-in tests: the constant-time comparison the callback uses for the state.
+module.exports.sameString = sameString;

@@ -172,7 +172,8 @@ openvibe.network /api/admin/streamer-mod/*  →  OpenVibe.Live /api/mod/*</code>
 <thead><tr><th>Method</th><th>Path</th><th>Auth</th><th>Notes</th></tr></thead>
 <tbody>
 <tr><td>GET</td><td>/api/auth/sso/login</td><td>No</td><td>302 &rarr; openvibe.network OAuth authorize</td></tr>
-<tr><td>GET</td><td>/api/auth/callback?code&amp;state</td><td>No</td><td>OAuth code&rarr;token exchange; sets cookies</td></tr>
+<tr><td>GET</td><td>/api/auth/callback?code&amp;state</td><td>No</td><td>OAuth code&rarr;token exchange (PKCE); sets cookies</td></tr>
+<tr><td>GET</td><td>/api/auth/health</td><td>No</td><td>OAuth client health; 503 only when the Network refuses this site's client</td></tr>
 <tr><td>POST</td><td>/api/auth/refresh</td><td>Cookie</td><td>Refresh access token via httpOnly <code>ov_refresh</code> cookie</td></tr>
 <tr><td>POST</td><td>/api/auth/logout</td><td>No</td><td>Clear auth cookies</td></tr>
 <tr><td>GET</td><td>/api/auth/sso/status</td><td>No</td><td>SSO enabled flag + login URL</td></tr>
