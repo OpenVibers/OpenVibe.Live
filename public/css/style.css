@@ -7388,15 +7388,24 @@ body.fabs-tucked .messenger-toggle, body.fabs-tucked .floating-chat-fab, body.fa
     justify-content: center;
     font-weight: 700;
 }
+/* The floating buttons' names (Global, DM) hang below the button, over whatever the page shows there: a small pill of
+   their own ground keeps them legible on any page and theme, at the phone minimum of 12 px (was 9.6 px and the
+   page's muted grey, 1.01:1 over a violet page in the light theme: phone sweep 11-05). It straddles the button's lower
+   edge like a tag, so it never reaches past the screen's bottom. */
 .fab-label {
     position: absolute;
-    bottom: -16px;
+    bottom: -9px;
     left: 50%;
     transform: translateX(-50%);
-    font-size: 0.6rem;
+    font-size: 0.75rem;
+    line-height: 1.3;
     font-weight: 700;
-    letter-spacing: 0.5px;
-    color: var(--text-muted, #888);
+    letter-spacing: 0.3px;
+    padding: 1px 7px;
+    border-radius: 999px;
+    background: var(--bg-secondary, #1a1f2e);
+    color: var(--text-secondary, #c3cad8);
+    box-shadow: 0 0 0 1px var(--border, rgba(127, 127, 127, 0.25));
     white-space: nowrap;
     pointer-events: none;
 }
