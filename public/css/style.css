@@ -480,6 +480,12 @@ body.ov-nav-overlay .navbar.ovnav-top {
 @keyframes eggShakeSlot { 20% { transform: translateX(-4px); } 40% { transform: translateX(4px); } 60% { transform: translateX(-3px); } 80% { transform: translateX(3px); } }
 .egg-key { min-width: 34px; height: 34px; padding: 0 8px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-tertiary); color: var(--text-primary); font: inherit; font-weight: 800; cursor: pointer; transition: transform var(--ov-dur-1, .1s), background var(--ov-dur-2, .15s), border-color var(--ov-dur-2, .15s); }
 .egg-key--letter { min-width: 0; height: 30px; padding: 0; font-size: 0.8rem; text-transform: uppercase; }
+/* Touch (2026-11-06 phone pass, round two): every key of the easter-egg keypad is a 44 px target on the key
+   itself — the four arrows, the two control keys and the 26 letter keys. A mouse keeps the small keys. */
+@media (pointer: coarse) {
+    .egg-key { min-width: 44px; height: 44px; }
+    .egg-key--letter { min-width: 44px; height: 44px; }
+}
 
 /* Celebration effects */
 .egg-confetti { position: fixed; inset: 0; pointer-events: none; z-index: 100000; overflow: hidden; }

@@ -510,3 +510,18 @@ a.cf-recap-band:hover .cf-recap-sub { text-decoration: underline; text-underline
     box-shadow: 0 0 0 3px color-mix(in srgb, #fff 22%, transparent), 0 8px 24px rgba(0, 0, 0, .45); }
 .cf-who-letter { display: grid; place-items: center; width: 30%; max-width: 84px; aspect-ratio: 1; border-radius: 50%; font-size: clamp(1.4rem, 7vw, 2.4rem); font-weight: 800;
     color: var(--on-accent-strong, var(--on-accent, #fff)); background: var(--accent-strong, var(--accent)); box-shadow: 0 0 0 3px color-mix(in srgb, #fff 18%, transparent), 0 8px 24px rgba(0, 0, 0, .35); }
+/* ── Touch (2026-11-06 phone pass, round two) ─────────────────────────────────
+   Every control of the feed carries a 44 px hit area on the element itself: the crosslink in the header, the
+   filter chips, the sort segments and the three links inside a card (its title, the channel it came from and
+   the "read" links). Nothing is hidden to make room — the cards simply get taller. */
+@media (pointer: coarse) {
+    .cf-crosslink { min-height: 44px; }
+    .cf-chip { min-height: 44px; min-width: 44px; }
+    .cf-seg button { min-height: 44px; }
+    /* The title keeps its own two-line clamp; the padding centres the words in the 44 px box instead of
+       leaving the space under them. */
+    .cf-title { min-height: 44px; padding: 11px 0; }
+    .cf-chan { min-height: 44px; }
+    .cf-moment-link { min-height: 44px; }
+    .cf-recap-read { min-height: 44px; }
+}
