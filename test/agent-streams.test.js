@@ -157,6 +157,33 @@ async function check(name, fn) {
             const anon = await call('GET', `/api/streams/agent/${agent.public_id}`, { as: 0 });
             assert.strictEqual(anon.status, 404);
         });
+        await check('only the person\'s own streams are listed, the live one first, and no ticket comes with them', async () => {
+            // A second stream of ann's, live, so the list has to put it first and the filter has something to keep.
+            const second = await service.create({
+                user: ann, title: 'Second desk', task: { source: 'desk', ref: 'desk_2', title: 'Second' }, visibility: 'private',
+            });
+            await raw.prepare("UPDATE agent_streams SET state = 'live', started_at = now() WHERE managed_stream_id = ?").run(second.managed_stream_id);
+
+            const mine = await call('GET', '/api/streams/agent/mine', { as: 1 });
+            assert.strictEqual(mine.status, 200, JSON.stringify(mine.data));
+            assert.deepStrictEqual(mine.data.streams.map((s) => s.id), [second.public_id, agent.public_id], 'live first, then the newest');
+            for (const s of mine.data.streams) {
+                assert.match(s.id, /^ags_/);
+                assert.deepStrictEqual(serializers.findSecrets(s), [], 'nothing secret in a listed stream');
+            }
+            assert.ok(!JSON.stringify(mine.data).includes('wvt_'), 'the list mints no view ticket');
+            assert.ok(!JSON.stringify(mine.data).includes('wpt_'), 'and no publish ticket');
+
+            const live = await call('GET', '/api/streams/agent/mine?live=1', { as: 1 });
+            assert.deepStrictEqual(live.data.streams.map((s) => s.id), [second.public_id], '?live=1 keeps the live one only');
+
+            const theirs = await call('GET', '/api/streams/agent/mine', { as: 2 });
+            assert.deepStrictEqual(theirs.data.streams, [], 'nobody else\'s streams, not even an empty-looking one of theirs');
+            const anon = await call('GET', '/api/streams/agent/mine', { as: 0 });
+            assert.deepStrictEqual(anon.data.streams, [], 'no session, nothing');
+            // Back to ended: the rest of the file is about one stream, and a live one would take ann's slot.
+            await raw.prepare("UPDATE agent_streams SET state = 'ended', ended_at = now() WHERE managed_stream_id = ?").run(second.managed_stream_id);
+        });
         await check('a person the stream is shared with can read it and gets a view ticket', async () => {
             assert.ok(sharing.available(), 'the pinned openvibe-sdk has sharing');
             // Through the public surface the Share sheet uses: the owner makes it people-only and adds bob.
