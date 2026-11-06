@@ -103,7 +103,8 @@
     "channel": {
       "fragment": "channel",
       "css": [
-        "/css/features/channel.css"
+        "/css/features/channel.css",
+        "/shared/kit.css"
       ],
       "deps": [
         "player",
@@ -186,7 +187,8 @@
     },
     "guide": {
       "css": [
-        "/css/ov-guide.css"
+        "/css/ov-guide.css",
+        "/shared/kit.css"
       ],
       "js": [
         "/js/ov-guide.js",
@@ -253,7 +255,8 @@
     "rundown": {"fragment": "rundown", "css": ["/css/features/rundown.css"], "js": ["/js/rundown.js"]},
     "recap": {
       "css": [
-        "/css/recap.css"
+        "/css/recap.css",
+        "/shared/kit.css"
       ],
       "js": [
         "/js/recap.js"

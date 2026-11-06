@@ -2391,6 +2391,8 @@ async function pollDVR(streamId) {
     if ((dvrState.seekable && (dvrState.vodFile || dvrState.hlsUrl)) || dvrState.earlier.length) {
         dvrState.active = true;
         showDVRControls();
+        // The stream's recording is playing: the Share button now shares that recording's page.
+        try { window.dispatchEvent(new CustomEvent('ov-live:dvr-ready')); } catch (_) { /* the page may be gone */ }
     }
 
     // Continue polling every 20s

@@ -20,7 +20,14 @@ const stub = {
 };
 const mediaPath = require.resolve('../server/media-client');
 require.cache[mediaPath] = { id: mediaPath, filename: mediaPath, loaded: true, exports: stub };
-const { isExplicit, guardAutoClip } = require('../server/ai/explicit');
+// Vision's report record, stubbed before explicit.js loads its client.
+const reports = [];
+const reviewPath = require.resolve('../server/ai/review-client');
+require.cache[reviewPath] = { id: reviewPath, filename: reviewPath, loaded: true, exports: {
+    reportMinorSexual: async (x) => { reports.push(x); return { review: { id: 'vir_x', report: { id: 'vor_x', status: 'open' } } }; },
+    enabled: () => true,
+} };
+const { isExplicit, classifyText, guardAutoClip, CATEGORIES, PLAIN } = require('../server/ai/explicit');
 
 let pass = 0;
 const ok = (m) => { pass++; console.log(`  ✓ ${m}`); };
@@ -53,14 +60,22 @@ const ok = (m) => { pass++; console.log(`  ✓ ${m}`); };
     ]) assert.ok(!isExplicit(t), `not explicit: ${t}`);
     ok('the detector: sex acts and porn, and a child with nudity; not nudity alone and not ordinary streams');
 
+    // The three categories, in plain words, are the only labels.
+    assert.deepStrictEqual(CATEGORIES, ['fine', 'sex_acts', 'minor_sexual']);
+    assert.deepStrictEqual(classifyText('a nude figure drawing'), { category: 'fine', reason: 'the text describes nudity, which is allowed' });
+    assert.strictEqual(classifyText('pornographic footage').category, 'sex_acts');
+    assert.strictEqual(classifyText('a naked child').category, 'minor_sexual');
+    assert.match(PLAIN.minor_sexual, /always blocked and reported/);
+    assert.match(PLAIN.sex_acts, /never public/);
+
     // An AI clip with an explicit overview goes private and loses its description.
     clips.set(1, { id: 1, auto_generated: true, visibility: 'public' });
     assert.strictEqual(await guardAutoClip({ id: 1, auto_generated: true, visibility: 'public' }, 'close-up footage of sexual acts'), true);
     assert.deepStrictEqual(calls.pop(), ['update', 1, { visibility: 'private', description: '' }]);
-    // A person's own clip is theirs: nothing changes.
+    // A person's own clip keeps its sex-act choice; the hard line is blocked whoever made it.
     calls.length = 0;
     assert.strictEqual(await guardAutoClip({ id: 2, auto_generated: false, visibility: 'public' }, 'close-up footage of sexual acts'), false);
-    assert.strictEqual(calls.length, 0, 'no Media call for a person\'s clip');
+    assert.strictEqual(calls.length, 0, 'no Media call for a person\'s sex-act clip');
     // An ordinary overview: nothing, not even a lookup.
     assert.strictEqual(await guardAutoClip({ id: 3 }, 'A clutch round in Fortnite'), false);
     assert.strictEqual(calls.length, 0, 'no Media call for an ordinary overview');
@@ -73,7 +88,20 @@ const ok = (m) => { pass++; console.log(`  ✓ ${m}`); };
     clips.set(5, { id: 5, auto_generated: true, visibility: 'private' });
     assert.strictEqual(await guardAutoClip({ id: 5 }, 'explicit adult content'), false);
     assert.deepStrictEqual(calls.map((c) => c[0]), ['get']);
-    ok('an AI-made clip with an explicit overview goes private; people\'s clips and ordinary overviews are untouched');
+    // Category 3: even a person's clip is blocked, and Vision gets the operator report record.
+    reports.length = 0;
+    clips.set(6, { id: 6, auto_generated: false, visibility: 'public' });
+    assert.strictEqual(await guardAutoClip({ id: 6 }, 'a naked child runs across the frame'), true);
+    assert.deepStrictEqual(calls.pop(), ['update', 6, { visibility: 'private', description: '' }]);
+    assert.strictEqual(reports.length, 1);
+    assert.strictEqual(reports[0].text, 'a naked child runs across the frame');
+    // Already private: still reported, nothing rewritten.
+    calls.length = 0;
+    clips.set(7, { id: 7, auto_generated: true, visibility: 'private' });
+    assert.strictEqual(await guardAutoClip({ id: 7, auto_generated: true, visibility: 'private' }, 'two kids appear nude in the background'), false);
+    assert.strictEqual(reports.length, 2);
+    assert.deepStrictEqual(calls, [], 'already private is not updated again');
+    ok('an AI-made clip with an explicit overview goes private; a category-3 clip is blocked and reported');
 
     // The writers use it.
     const read = (p) => fs.readFileSync(path.join(__dirname, '..', p), 'utf8');
