@@ -52,10 +52,11 @@ function connectionNeverMade(err) {
 }
 
 /**
- * One call. opts: { body, idempotencyKey, trace (incoming request headers, for traceparent) }.
+ * One call. opts: { body, idempotencyKey, trace (incoming request headers, for traceparent),
+ * assertion (the person's own subject assertion, ADR-003's 2026-11-06 amendment) }.
  * Resolves the parsed JSON body of a 2xx (plus `_replayed` when Billing replayed the key).
  */
-async function request(method, path, { body, idempotencyKey, trace, retried = false } = {}) {
+async function request(method, path, { body, idempotencyKey, trace, assertion, retried = false } = {}) {
     const write = method !== 'GET';
     if (write && !KEY_RE.test(String(idempotencyKey || ''))) throw new Error(`billing-client: ${method} ${path} needs a valid Idempotency-Key`);
     let auth;
@@ -66,6 +67,8 @@ async function request(method, path, { body, idempotencyKey, trace, retried = fa
     }
     const headers = { Accept: 'application/json', ...auth, ...http.outboundHeaders(http.requestContext(trace || {})) };
     if (write) headers['Idempotency-Key'] = idempotencyKey;
+    // The person's own subject assertion: Billing checks it against the person the money is for.
+    if (assertion) headers['X-OV-Subject-Assertion'] = String(assertion);
     let payload;
     if (body !== undefined) { headers['Content-Type'] = 'application/json'; payload = JSON.stringify(body); }
     let res;
@@ -81,7 +84,7 @@ async function request(method, path, { body, idempotencyKey, trace, retried = fa
     try { json = text ? JSON.parse(text) : {}; } catch { /* not JSON */ }
     if (res.status === 401 && !retried) {           // token rotated/expired under us: once more with a fresh one
         principal.invalidate(AUDIENCE);
-        return await request(method, path, { body, idempotencyKey, trace, retried: true });
+        return await request(method, path, { body, idempotencyKey, trace, assertion, retried: true });
     }
     if (res.ok) {
         const out = json || {};

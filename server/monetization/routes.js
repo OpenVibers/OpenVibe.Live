@@ -169,7 +169,7 @@ router.post('/recycle', requireAuth, money.guardWrite, async (req, res) => {
 // ── Transaction History ──────────────────────────────────────
 router.get('/history', requireAuth, async (req, res) => {
     const limit = Math.min(parseInt(req.query.limit || '50'), 200);
-    try { return res.json({ transactions: await billingActions.history(req.user.id, limit) }); }
+    try { return res.json({ transactions: await billingActions.history(req.user.id, limit, req.headers) }); }
     catch (err) {
         if (billingActions.sendError(res, err, { unavailable: 'Vibes history unavailable right now — the billing service is not answering.' })) return;
         return res.status(503).json({ error: 'Vibes history unavailable right now', unavailable: true });

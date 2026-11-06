@@ -77,7 +77,7 @@ router.post('/subscribe', requireAuth, money.guardWrite, async (req, res) => {
 
 // My subscriptions
 router.get('/subscriptions/mine', requireAuth, async (req, res) => {
-    try { return res.json({ subscriptions: await billingActions.mySubscriptions(req.user.id) }); }
+    try { return res.json({ subscriptions: await billingActions.mySubscriptions(req.user.id, req.headers) }); }
     catch (err) {
         if (billingActions.sendError(res, err, { unavailable: 'Subscriptions unavailable right now — the billing service is not answering.' })) return;
         return res.status(503).json({ error: 'Subscriptions unavailable right now', unavailable: true });
@@ -97,7 +97,7 @@ router.get('/channel/:username', optionalAuth, async (req, res) => {
     const streamer = await db.getUserByUsername(req.params.username);
     if (!streamer) return res.status(404).json({ error: 'Not found' });
     let subscribed = false, subscriberCount = null, billingUnavailable = false, billingPriceCents = null;
-    try { ({ subscribed, subscriberCount, priceCents: billingPriceCents } = await billingActions.channelState(streamer, req.user || null)); }
+    try { ({ subscribed, subscriberCount, priceCents: billingPriceCents } = await billingActions.channelState(streamer, req.user || null, req.headers)); }
     catch { billingUnavailable = true; }
     const priceUsd = billingPriceCents ? billingPriceCents / 100 : await pay._num('sub_price_usd', 4.99);
     let powerchat = { direct: false, site: false };
