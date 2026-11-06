@@ -225,6 +225,29 @@ async function check(name, fn) {
             assert.strictEqual(pub.data.encode, true);
         });
 
+        await check('ending the stream and revoking the ticket answer 200 and stop the desk', async () => {
+            const made = await call('POST', '/api/streams/agent', {
+                as: 1,
+                body: { title: 'Ended', task: { source: 'node', ref: 'n1', title: 'End' }, visibility: 'private' },
+            });
+            assert.strictEqual(made.status, 201);
+            const id = made.data.stream.id;
+            const ended = await call('POST', `/api/streams/agent/${id}/end`, { as: 1, body: {} });
+            assert.strictEqual(ended.status, 200);
+            assert.strictEqual(ended.data.stream.state, 'ended');
+            const stale = await call('GET', `/api/streams/agent/${id}/state`, { as: 1, headers: { Authorization: `Bearer ${made.data.publish.ticket}` } });
+            assert.strictEqual(stale.status, 401, 'the publish ticket is gone with the stream');
+
+            const second = await call('POST', '/api/streams/agent', {
+                as: 1,
+                body: { title: 'Revoked', task: { source: 'node', ref: 'n2', title: 'Revoke' }, visibility: 'private' },
+            });
+            assert.strictEqual(second.status, 201);
+            const revoked = await call('DELETE', `/api/streams/agent/${second.data.stream.id}/ticket`, { as: 1 });
+            assert.strictEqual(revoked.status, 200);
+            assert.strictEqual(revoked.data.stream.state, 'ended');
+        });
+
         quiet('agent streams: the curtain');
         await check('up pauses every viewer consumer, down resumes exactly those', async () => {
             const roomId = 'stream-999';
