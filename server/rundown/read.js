@@ -431,4 +431,7 @@ async function setOptOut(userId, out) {
     return { opted_out: !!out };
 }
 
-module.exports = { home, lead, streamsFeed, topics, topic, episode, streamer, react, hide, optedOut, setOptOut, trending, voices, onAir, audiencesFor, who, REACTIONS, KINDS, person };
+// The bar's own module (server/rundown/browse.js) reads with the same rules as the pages: the same visibility
+// helpers, the same columns and the same people.
+module.exports = { home, lead, streamsFeed, topics, topic, episode, streamer, react, hide, optedOut, setOptOut, trending, voices, onAir, audiencesFor, who, REACTIONS, KINDS, person,
+    VISIBLE, AUDIENCE_JOINS, SEGMENT_COLS, EPISODE_COLS, people, segmentsOut, episodesOut };

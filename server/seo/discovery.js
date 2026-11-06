@@ -36,7 +36,7 @@ async function buildSitemap(liveStreams = []) {
         }
         return names.get(id);
     };
-    const statics = [['/', 'daily', 1.0], ['/content', 'hourly', 0.9], ['/moments', 'hourly', 0.7], ['/vods', 'hourly', 0.8], ['/clips', 'hourly', 0.8], ['/pastes', 'hourly', 0.7], ['/chat', 'daily', 0.5], ['/rundown', 'hourly', 0.7], ['/rundown/topics', 'hourly', 0.6]];
+    const statics = [['/', 'daily', 1.0], ['/content', 'hourly', 0.9], ['/moments', 'hourly', 0.7], ['/vods', 'hourly', 0.8], ['/clips', 'hourly', 0.8], ['/pastes', 'hourly', 0.7], ['/chat', 'daily', 0.5], ['/rundown', 'hourly', 0.7]];
     // Rendered docs (server/docs/routes.js): /docs is the index (README.md), the rest by file name.
     try {
         for (const f of fs.readdirSync(DOCS_DIR)) {
