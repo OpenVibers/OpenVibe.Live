@@ -24,7 +24,7 @@ const pick = (name) => {
 
 const ctx = { console };
 vm.createContext(ctx);
-vm.runInContext(pick('_rdHow'), ctx);
+vm.runInContext(pick('_rdEsc') + pick('_rdMe') + pick('_rdHow'), ctx);
 
 const line = ctx._rdHow();
 assert.match(line, /Catch up, follow a topic, jump to the moment, get written up/, 'the line says what the page is for');
@@ -32,5 +32,8 @@ assert.match(line, /class="rd-how-link" href="#rd-about-h"/, 'and how it works p
 assert.ok(!line.includes('rd-use'), 'the four tiles are one line now');
 assert.ok(!js.includes('class="rd-uses"'), 'and the tiles are gone from the page');
 assert.match(css, /\.rd-how \{/, 'the line has a style of its own');
+assert.ok(!line.includes('your Rundown'), 'a signed-out visitor has no Rundown of their own');
+vm.runInContext("var currentUser = { username: 'goosely' };", ctx);
+assert.match(ctx._rdHow(), /href="\/rundown\/goosely#mine">your Rundown<\/a>/, 'a signed-in person reaches their own Rundown from the line');
 
 console.log('rundown uses: all checks passed');

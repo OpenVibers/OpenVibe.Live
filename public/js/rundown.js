@@ -102,14 +102,14 @@ function _rdTake(s, { topic = true, user = true } = {}) {
                 ${mentions ? `<p class="rd-cross"><i class="fa-solid fa-arrows-left-right" aria-hidden="true"></i> Brought up ${mentions}</p>` : ''}
             </div>
         </div>
-        <div class="rd-card-foot">${_rdReactions('segment', s.id, s.reactions, s.my_reaction)}${_rdWatch(s.vod_id, s.sec)}</div>
+        <div class="rd-card-foot">${_rdReactions('segment', s.id, s.reactions, s.my_reaction)}${_rdWatch(s.vod_id, s.sec)}${_rdOwnX(s)}</div>
     </article>`;
 }
 function _rdEpisodeCard(e, { user = true } = {}) {
     const href = `/rundown/e/${e.stream_id}`;
     const chapters = (e.chapters || []).slice(0, 4);
     return `<article class="rd-card rd-episode">
-        <div class="rd-card-top"><span class="rd-kicker">Episode</span><time datetime="${_rdEsc(e.aired_at)}">${_rdEsc(_rdDay(e.aired_at))}${e.minutes ? ` · ${_rdLength(e.minutes)}` : ''}</time></div>
+        <div class="rd-card-top"><span class="rd-kicker">Episode</span>${_rdAudChip(e)}<time datetime="${_rdEsc(e.aired_at)}">${_rdEsc(_rdDay(e.aired_at))}${e.minutes ? ` · ${_rdLength(e.minutes)}` : ''}</time></div>
         <div class="rd-take-body">
             ${user ? `<div class="rd-take-who">${_rdAv(e.user, 48)}</div>` : ''}
             <div class="rd-take-text">
@@ -184,7 +184,7 @@ function _rdMast(counts) {
 // What a visitor can do here, under the masthead of the front page. The page said what it is and never what it is for
 // ("still don't rly know wtf to do with this feature", a viewer, 2026-10-20). "Jump to the moment" opens the top take's.
 function _rdHow() {
-    return `<p class="rd-how">Catch up, follow a topic, jump to the moment, get written up: <a class="rd-how-link" href="#rd-about-h">how it works <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></a></p>`;
+    return `<p class="rd-how">Catch up, follow a topic, jump to the moment, get written up: <a class="rd-how-link" href="#rd-about-h">how it works <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></a>${_rdMe() && _rdMe().username ? ` · <a class="rd-how-link" href="/rundown/${encodeURIComponent(_rdMe().username)}#mine">your Rundown</a>` : ''}</p>`;
 }
 function _rdOnAir(list) {
     if (!list.length) return '';
@@ -261,15 +261,17 @@ async function _rdTopic(root, slug) {
 async function _rdEpisode(root, id) {
     const d = await api(`/rundown/e/${encodeURIComponent(id)}`);
     const e = d.episode, s = d.stream, u = s.user;
+    _rdOwner = d.mine && u ? String(u.username).toLowerCase() : null;
     _rdPreset = u ? { key: 'streamer', value: u.username, label: _rdName(u) } : null;
     const title = e ? e.title : (s.is_live ? `${_rdName(u)} is live` : `${_rdName(u)}'s stream`);
     root.innerHTML = `<article class="rd-page">
         <p class="rd-crumbs">${_rdA('/rundown', 'The Rundown')} / ${u ? _rdA(_rdUserHref(u), _rdEsc(_rdName(u))) : ''}</p>
         <header class="rd-page-head rd-ep-head">
-            <div class="rd-ep-who">${_rdAv(u, 56)}<div><span class="rd-kicker">${s.is_live ? '<span class="rd-dot" aria-hidden="true"></span> On air now' : 'Episode'}</span><p class="rd-by">${_rdUser(u)} · ${_rdEsc(_rdDay(s.started_at))}${e && e.minutes ? ` · ${_rdLength(e.minutes)}` : ''}</p></div></div>
+            <div class="rd-ep-who">${_rdAv(u, 56)}<div><span class="rd-kicker">${s.is_live ? '<span class="rd-dot" aria-hidden="true"></span> On air now' : 'Episode'}</span>${e && !d.mine ? _rdAudChip(e) : ''}<p class="rd-by">${_rdUser(u)} · ${_rdEsc(_rdDay(s.started_at))}${e && e.minutes ? ` · ${_rdLength(e.minutes)}` : ''}</p></div></div>
             <h1 class="rd-h1">${_rdEsc(title)}</h1>
             ${e && e.logline ? `<p class="rd-deck">${_rdEsc(e.logline)}</p>` : ''}
             <p class="rd-actions">${e ? _rdWatch(e.vod_id, 0, 'Watch the stream') : ''}${s.is_live && u ? _rdA(_rdChannelHref(u), '<i class="fa-solid fa-tower-broadcast" aria-hidden="true"></i> Watch live', 'rd-watch') : ''}</p>
+            ${e && d.mine ? _rdOwnTools(e) : ''}
         </header>
         ${e && e.recap ? `<div class="rd-recap">${_rdParas(e.recap)}</div>` : (s.is_live ? '<p class="rd-quiet">The episode is written when the stream ends. Here is what the desk has heard so far.</p>' : '')}
         ${e && e.chapters.length ? `<section aria-labelledby="rd-ch-h"><h2 id="rd-ch-h" class="rd-h2">Chapters</h2><ol class="rd-chapters rd-chapters-big">${e.chapters.map((c) => `<li>${e.vod_id ? _rdA(videoHref('vod', e.vod_id, c.sec), `<span class="rd-stamp">${_rdStamp(c.sec)}</span>`) : `<span class="rd-stamp">${_rdStamp(c.sec)}</span>`} ${c.segment_id ? `<a href="#rd-take-${c.segment_id}">${_rdEsc(c.title)}</a>` : _rdEsc(c.title)}</li>`).join('')}</ol></section>` : ''}
@@ -286,20 +288,201 @@ async function _rdStreamer(root, username) {
     const d = await api(`/rundown/s/${encodeURIComponent(username)}`);
     const u = d.user;
     _rdPreset = { key: 'streamer', value: u.username, label: _rdName(u) };
-    const mine = _rdMe() && _rdMe().username && _rdMe().username.toLowerCase() === u.username.toLowerCase();
+    const mine = !!d.mine || _rdIsMine(u);
+    _rdOwner = mine ? String(u.username).toLowerCase() : null;
     const head = `<p class="rd-crumbs">${_rdA('/rundown', 'The Rundown')}</p>
         <header class="rd-page-head rd-streamer-head">${_rdAv(u, 72)}<div><h1 class="rd-h1">${_rdEsc(_rdName(u))}</h1>
             <p class="rd-meta">${d.opted_out ? 'Kept out of The Rundown' : `${d.episodes.length} episode${d.episodes.length === 1 ? '' : 's'} · ${d.topics.length} topic${d.topics.length === 1 ? '' : 's'}`} · ${_rdA(_rdChannelHref(u), 'Channel')}</p>
-            ${mine ? `<p><button type="button" class="rd-link" data-rd-optout="${d.opted_out ? '0' : '1'}">${d.opted_out ? 'Come back to The Rundown' : 'Keep me out of The Rundown'}</button></p>` : ''}</div></header>`;
-    if (d.opted_out) { root.innerHTML = `<article class="rd-page">${head}${_rdEmpty('fa-eye-slash', `${_rdEsc(_rdName(u))} keeps themselves out of The Rundown.`)}</article>`; return; }
-    root.innerHTML = `<article class="rd-page">${head}
+            </div></header>`;
+    let box = '';
+    if (mine) {
+        const st = await api('/rundown/settings').catch(() => null);
+        if (st) box = _rdMineBox(st);
+    }
+    if (d.opted_out) { root.innerHTML = `<article class="rd-page">${head}${box}${_rdEmpty('fa-eye-slash', `${_rdEsc(_rdName(u))} keeps themselves out of The Rundown.`)}</article>`; _rdToMine(); return; }
+    root.innerHTML = `<article class="rd-page">${head}${box}
         ${d.topics.length ? `<section aria-labelledby="rd-st-t"><h2 id="rd-st-t" class="rd-h2">What they talk about</h2><div class="rd-chips">${d.topics.map((t) => _rdTopicChip(t, t.takes > 1 ? ` <b>${t.takes}</b>` : '')).join('')}</div></section>` : ''}
         ${d.lines.length ? `<section aria-labelledby="rd-st-l"><h2 id="rd-st-l" class="rd-h2">Best lines</h2><div class="rd-lines">${d.lines.flatMap((s) => (s.quotes || []).slice(0, 1).map((q) => `<figure class="rd-line"><blockquote>“${_rdEsc(q.text)}”</blockquote>${q.en ? `<p class="rd-quote-en">${_rdEsc(q.en)}</p>` : ''}<figcaption>${_rdTopicChip(s.topic)} ${_rdSpeakBtn(q.text, u)} ${_rdWatch(s.vod_id, q.sec, 'Hear it')}</figcaption></figure>`)).join('')}</div></section>` : ''}
         <section aria-labelledby="rd-st-e"><h2 id="rd-st-e" class="rd-h2">Episodes</h2>${d.episodes.map((e) => _rdEpisodeCard(e, { user: false })).join('') || _rdEmpty('fa-film', 'No episodes yet. Every stream with talk in it becomes one.')}</section>
         ${d.crossovers.length ? `<section aria-labelledby="rd-st-c"><h2 id="rd-st-c" class="rd-h2">Crossovers</h2>${d.crossovers.map((s) => _rdTake(s)).join('')}</section>` : ''}
     </article>`;
     document.title = `${_rdName(u)} · The Rundown · OpenVibe.Live`;
+    _rdToMine();
 }
+
+// ── Yours: who sees it, and deleting (RUNDOWN-CONTROLS design 2026-11-06) ─────────────────────────────────────
+// Who sees an episode is the sharing system's setting (Everyone / Anyone with the link / Specific people / Only me),
+// changed in the Shared Share sheet on the episode's page; the streamer's default decides what new write-ups start as.
+// A recording that is stricter wins (the episode follows it). Deleting removes the rows; the recording always stays.
+const RD_AUD = {
+    public: ['Everyone', 'fa-earth-americas', 'Anyone can find it on The Rundown.'],
+    link: ['Anyone with the link', 'fa-link', 'Left off The Rundown’s pages; its link opens it.'],
+    people: ['Specific people', 'fa-user-group', 'Only the people you add on each episode.'],
+    private: ['Only me', 'fa-lock', 'Nobody else sees it.'],
+};
+function _rdToast(msg, kind) { if (typeof toast === 'function') toast(msg, kind); }
+// The page's owner as the server said (a read answers `mine`), so the owner's tools do not wait for currentUser.
+let _rdOwner = null;
+function _rdIsMine(u) {
+    if (!u || !u.username) return false;
+    const name = String(u.username).toLowerCase();
+    if (_rdOwner && _rdOwner === name) return true;
+    const me = _rdMe();
+    return !!(me && me.username && String(me.username).toLowerCase() === name);
+}
+/** What a non-public item is, next to its kicker. Lists show those only to their owner; the page shows everyone. */
+function _rdAudChip(item) {
+    if (!item || !item.audience || item.audience === 'public') return '';
+    const [label, icon] = RD_AUD[item.audience] || RD_AUD.public;
+    return `<span class="rd-aud-chip"><i class="fa-solid ${icon}" aria-hidden="true"></i>${_rdEsc(item.audience_chip || label)}</span>`;
+}
+/** A take's delete button, for its streamer only. */
+function _rdOwnX(s) {
+    if (!s || !_rdIsMine(s.user)) return '';
+    return `<button type="button" class="rd-own-x" data-rd-del="take:${Number(s.id)}" aria-label="Delete this take" title="Delete this take"><i class="fa-solid fa-trash-can" aria-hidden="true"></i></button>`;
+}
+/** The episode page's tools for its streamer: who sees it, Share (which changes that), and Delete. */
+function _rdOwnTools(e) {
+    const [label, icon, line] = RD_AUD[e.audience] || RD_AUD.public;
+    const why = e.following_vod
+        ? `The recording is ${_rdEsc(e.following_vod_label || 'private')}, so this episode is too. Open the recording up on openvibe.video to change it.`
+        : `${_rdEsc(line)} Share changes who sees it.`;
+    // The Shared Share sheet (the navbar opens it for any [data-ov-share-sheet]); kind and id add "Who can open it".
+    const share = `<button type="button" class="rd-own-btn" data-ov-share-sheet data-kind="rundown-episode" data-id="${Number(e.stream_id)}"
+        data-url="${_rdEsc(`${location.origin}/rundown/e/${e.stream_id}`)}" data-title="${_rdEsc(e.title)}"${e.logline ? ` data-text="${_rdEsc(e.logline)}"` : ''}><i class="fa-solid fa-arrow-up-from-bracket" aria-hidden="true"></i> Share</button>`;
+    return `<section class="rd-own" aria-label="Your episode">
+        <div class="rd-own-aud"><span class="rd-own-icon"><i class="fa-solid ${icon}" aria-hidden="true"></i></span>
+            <div><p class="rd-own-who">Who sees it: <b>${_rdEsc(e.audience_chip || label)}</b></p><p class="rd-own-line">${why}</p></div></div>
+        <div class="rd-own-actions">${share}<button type="button" class="rd-own-btn is-danger" data-rd-del="episode:${Number(e.stream_id)}"><i class="fa-solid fa-trash-can" aria-hidden="true"></i> Delete episode</button></div>
+    </section>`;
+}
+/** "Your Rundown", on the streamer's own page: the default for new write-ups, keeping out, and deleting it all. */
+function _rdMineBox(st) {
+    const opts = ['public', 'link', 'private'].concat(st.default_audience === 'people' ? ['people'] : []);
+    const radios = opts.map((a) => {
+        const [label, icon, line] = RD_AUD[a];
+        return `<label class="rd-aud-opt"><input type="radio" name="rd-default-aud" value="${a}"${st.default_audience === a ? ' checked' : ''} data-rd-default-aud>
+            <span class="rd-own-icon"><i class="fa-solid ${icon}" aria-hidden="true"></i></span><span class="rd-aud-text"><b>${_rdEsc(label)}</b><small>${_rdEsc(line)}</small></span></label>`;
+    }).join('');
+    return `<section class="rd-box rd-mine" id="mine" aria-labelledby="rd-mine-h">
+        <h2 id="rd-mine-h" class="rd-h2">Your Rundown</h2>
+        <fieldset class="rd-aud-pick"${st.opted_out ? ' disabled' : ''}><legend>Who sees what the desk writes up next</legend>
+            <div class="rd-aud-opts">${radios}</div>
+            <p class="rd-quiet">Episodes already written keep their own setting: change one with Share on its page.</p>
+        </fieldset>
+        <div class="rd-mine-row"><div><p class="rd-mine-t" id="rd-out-l">Keep me out of The Rundown</p><p class="rd-quiet">${st.opted_out ? 'On: nothing about your streams is shown, and the desk does not read them.' : 'Hides everything written about your streams and stops the desk reading them. You can come back any time.'}</p></div>
+            <button type="button" class="rd-switch" role="switch" aria-checked="${st.opted_out ? 'true' : 'false'}" aria-labelledby="rd-out-l" data-rd-optout="${st.opted_out ? '0' : '1'}"></button></div>
+        <div class="rd-mine-row"><div><p class="rd-mine-t">Delete my Rundown</p><p class="rd-quiet">Every episode and take written about your streams, for everyone. Your recordings stay.</p></div>
+            <button type="button" class="rd-own-btn is-danger" data-rd-del="all">Delete…</button></div>
+    </section>`;
+}
+/** Arriving at /rundown/<me>#mine scrolls to the box. */
+function _rdToMine() {
+    if (location.hash !== '#mine') return;
+    const box = document.getElementById('mine');
+    if (box) box.scrollIntoView({ block: 'start' });
+}
+/** Draw the current Rundown page again, in place. */
+function _rdReload() { loadRundownPage(location.pathname.split('/').filter(Boolean)); }
+
+/** An in-page confirmation (role alertdialog): resolves { ok, checked }. Escape and the backdrop cancel. */
+function _rdConfirm({ title, body, confirm, check = '', danger = true }) {
+    return new Promise((resolve) => {
+        const before = document.activeElement;
+        document.body.insertAdjacentHTML('beforeend', `<div class="rd-dlg-wrap"><div class="rd-sheet-backdrop" data-rd-dlg="no"></div>
+            <div class="rd-sheet rd-dlg" role="alertdialog" aria-modal="true" aria-labelledby="rd-dlg-h" aria-describedby="rd-dlg-b">
+                <div class="rd-dlg-body"><h2 id="rd-dlg-h" class="rd-dlg-title">${_rdEsc(title)}</h2><p id="rd-dlg-b">${_rdEsc(body)}</p>
+                ${check ? `<label class="rd-dlg-check"><input type="checkbox" id="rd-dlg-check"><span>${_rdEsc(check)}</span></label>` : ''}</div>
+                <div class="rd-sheet-foot"><button type="button" class="btn btn-secondary" data-rd-dlg="no">Cancel</button><button type="button" class="btn ${danger ? 'btn-danger' : 'btn-primary'}" data-rd-dlg="yes">${_rdEsc(confirm)}</button></div>
+            </div></div>`);
+        const wrap = document.body.lastElementChild;
+        const buttons = [...wrap.querySelectorAll('button, input')];
+        const key = (ev) => {
+            if (ev.key === 'Escape') { ev.preventDefault(); done(false); return; }
+            if (ev.key !== 'Tab' || !buttons.length) return;
+            const first = buttons[0], last = buttons[buttons.length - 1];
+            if (ev.shiftKey && document.activeElement === first) { ev.preventDefault(); last.focus(); }
+            else if (!ev.shiftKey && document.activeElement === last) { ev.preventDefault(); first.focus(); }
+        };
+        function done(ok) {
+            const c = wrap.querySelector('#rd-dlg-check');
+            const checked = !!(c && c.checked);
+            wrap.remove();
+            document.removeEventListener('keydown', key, true);
+            document.body.classList.remove('rd-sheet-open');
+            if (before && typeof before.focus === 'function') before.focus();
+            resolve({ ok, checked });
+        }
+        document.addEventListener('keydown', key, true);
+        wrap.addEventListener('click', (ev) => { const b = ev.target.closest('[data-rd-dlg]'); if (b) done(b.dataset.rdDlg === 'yes'); });
+        document.body.classList.add('rd-sheet-open');
+        wrap.querySelector('.btn[data-rd-dlg="no"]').focus();
+    });
+}
+
+const RD_DELETE_ASK = {
+    take: { title: 'Delete this take?', body: 'It is removed for everyone, and its topic is recounted. The recording stays.', confirm: 'Delete take' },
+    episode: { title: 'Delete this episode?', body: 'The write-up and all its takes are removed for everyone, and the desk will not write this stream up again unless you ask. The recording stays.', confirm: 'Delete episode' },
+    all: { title: 'Delete your whole Rundown?', body: 'Every episode and take written about your streams is removed for everyone. This cannot be undone. Your recordings stay.', confirm: 'Delete everything', check: 'Keep me out of The Rundown from now on, too' },
+};
+async function _rdDelete(spec) {
+    const [what, rawId] = String(spec || '').split(':');
+    const ask = RD_DELETE_ASK[what];
+    if (!ask) return;
+    const answer = await _rdConfirm(ask);
+    if (!answer.ok) return;
+    const id = Number(rawId);
+    try {
+        if (what === 'take') {
+            const r = await api('/rundown/delete/take', { method: 'POST', body: { id } });
+            const card = document.getElementById(`rd-take-${id}`);
+            if (card) card.remove();
+            _rdToast(r.message || 'Deleted', 'success');
+        } else if (what === 'episode') {
+            const r = await api('/rundown/delete/episode', { method: 'POST', body: { stream_id: id } });
+            const page = document.querySelector('#rundown-root .rd-page');
+            if (page) page.innerHTML = _rdGone(r, id);
+            _rdToast(r.message || 'Deleted', 'success');
+        } else {
+            const r = await api('/rundown/delete/all', { method: 'POST', body: { keep_out: answer.checked } });
+            _rdToast(r.message || 'Deleted', 'success');
+            _rdReload();
+        }
+    } catch (err) { _rdToast(err.message || 'That did not work', 'error'); }
+}
+/** What an episode page says once its streamer deleted it: the receipt, and the way back. */
+function _rdGone(r, streamId) {
+    const me = _rdMe();
+    return `<div class="rd-gone" role="status">
+        <span class="rd-own-icon"><i class="fa-solid fa-check" aria-hidden="true"></i></span>
+        <h1 class="rd-h2">${_rdEsc(r.message || 'Deleted')}</h1>
+        <p>The recording is still yours on openvibe.video. The desk will not write this stream up again unless you ask it to.</p>
+        <p class="rd-gone-actions"><button type="button" class="rd-own-btn" data-rd-restore="${Number(streamId)}"><i class="fa-solid fa-rotate-right" aria-hidden="true"></i> Write this stream up again</button>
+            ${me && me.username ? _rdA(`/rundown/${encodeURIComponent(me.username)}#mine`, 'Your Rundown', 'rd-own-btn') : ''}</p>
+    </div>`;
+}
+async function _rdRestore(btn) {
+    btn.disabled = true;
+    try {
+        await api('/rundown/restore', { method: 'POST', body: { stream_id: Number(btn.dataset.rdRestore) } });
+        const p = btn.closest('.rd-gone');
+        if (p) p.innerHTML = `<span class="rd-own-icon"><i class="fa-solid fa-pen-nib" aria-hidden="true"></i></span><h1 class="rd-h2">The desk will write it up again</h1><p>It reads the stream once more and the episode comes back here when it is done, with your default audience.</p>`;
+    } catch (err) { btn.disabled = false; _rdToast(err.message || 'That did not work', 'error'); }
+}
+// The default for new write-ups saves as soon as it is picked.
+document.addEventListener('change', async (e) => {
+    const radio = e.target.closest && e.target.closest('[data-rd-default-aud]');
+    if (!radio) return;
+    try {
+        const st = await api('/rundown/settings', { method: 'PUT', body: { default_audience: radio.value } });
+        _rdToast(`New write-ups: ${(RD_AUD[st.default_audience] || RD_AUD.public)[0]}`, 'success');
+    } catch (err) { _rdToast(err.message || 'That did not save', 'error'); _rdReload(); }
+});
+// After the Share sheet changes who sees an episode, the page says the new setting.
+document.addEventListener('ov-share:change', (e) => {
+    const d = e.detail || {};
+    if (d.kind === 'rundown-episode' && location.pathname.startsWith('/rundown/e/')) _rdReload();
+});
 
 // ── The bar: search and filters ────────────────────────────────────────────────
 // The state of a view is its URL: /rundown?streamer=goosely&topic=drake-and-objectives&when=week&q=baron. Every
@@ -507,7 +690,7 @@ function _rdTakeResult(s) {
         (s.topic ? _rdTopicFilter(s.topic) : '') + '<time datetime="' + _rdEsc(s.said_at) + '">' + _rdEsc(_rdAgo(s.said_at)) + '</time></div>' +
         '<h3 class="rd-h3">' + _rdEsc(s.title) + '</h3>' +
         (q ? '<blockquote class="rd-quote"><p>“' + _rdEsc(q.text) + '”</p></blockquote>' : '<p class="rd-what">' + _rdEsc(s.what) + '</p>') +
-        '<div class="rd-card-foot">' + _rdReactions('segment', s.id, s.reactions, s.my_reaction) + _rdWatch(s.vod_id, s.sec) + '</div>' +
+        '<div class="rd-card-foot">' + _rdReactions('segment', s.id, s.reactions, s.my_reaction) + _rdWatch(s.vod_id, s.sec) + _rdOwnX(s) + '</div>' +
     '</article>';
 }
 // One take inside an episode: a line, with the moment it was said.
@@ -528,7 +711,7 @@ function _rdEpisodeResult(e) {
           '<div class="rd-fold-more" data-rd-fold-body="' + e.stream_id + '" hidden>' + rest.map(_rdTakeMini).join('') + '</div>'
         : '';
     return '<article class="rd-card rd-episode" id="rd-episode-' + e.stream_id + '">' +
-        '<div class="rd-card-top"><span class="rd-kicker">Episode</span><span class="rd-ep-count">' + (e.takes_total || takes.length) + ' take' + ((e.takes_total || takes.length) === 1 ? '' : 's') + '</span>' +
+        '<div class="rd-card-top"><span class="rd-kicker">Episode</span>' + _rdAudChip(e) + '<span class="rd-ep-count">' + (e.takes_total || takes.length) + ' take' + ((e.takes_total || takes.length) === 1 ? '' : 's') + '</span>' +
         '<time datetime="' + _rdEsc(e.aired_at) + '">' + _rdEsc(_rdDay(e.aired_at)) + '</time></div>' +
         '<h3 class="rd-h3">' + _rdA('/rundown/e/' + e.stream_id, _rdEsc(e.title)) + '</h3>' +
         (e.logline ? '<p class="rd-logline">' + _rdEsc(e.logline) + '</p>' : '') +
@@ -743,6 +926,7 @@ async function loadRundownPage(segments = []) {
     if (!root) return;
     const [, first, second] = segments;
     _rdPreset = null;
+    _rdOwner = null;
     try {
         if (first === 'topics') await _rdTopics(root, new URLSearchParams(location.search));
         else if (first === 't' && second) await _rdTopic(root, decodeURIComponent(second));
@@ -780,10 +964,18 @@ document.addEventListener('click', async (e) => {
     if (opt) {
         e.preventDefault();
         const out = opt.dataset.rdOptout === '1';
-        if (out && !confirm('Keep yourself out of The Rundown? Everything written about your streams is hidden and the desk stops reading them. You can come back any time.')) return;
-        try { await api('/rundown/opt-out', { method: 'PUT', body: { out } }); if (typeof toast === 'function') toast(out ? 'You are out of The Rundown.' : 'Welcome back to The Rundown.', 'success'); loadRundownPage(location.pathname.split('/').filter(Boolean)); }
-        catch (err) { if (typeof toast === 'function') toast(err.message || 'That did not work', 'error'); }
+        if (out) {
+            const ok = await _rdConfirm({ title: 'Keep yourself out of The Rundown?', body: 'Everything written about your streams is hidden from everyone, and the desk stops reading them. You can come back any time.', confirm: 'Keep me out', danger: false });
+            if (!ok.ok) return;
+        }
+        try { await api('/rundown/opt-out', { method: 'PUT', body: { out } }); _rdToast(out ? 'You are out of The Rundown.' : 'Welcome back to The Rundown.', 'success'); _rdReload(); }
+        catch (err) { _rdToast(err.message || 'That did not work', 'error'); }
+        return;
     }
+    const del = e.target.closest('[data-rd-del]');
+    if (del) { e.preventDefault(); _rdDelete(del.dataset.rdDel); return; }
+    const restore = e.target.closest('[data-rd-restore]');
+    if (restore) { e.preventDefault(); _rdRestore(restore); }
 });
 
 // ── The bar's events ────────────────────────────────────────────────────────

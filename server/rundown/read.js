@@ -354,6 +354,14 @@ async function episode(streamId, { viewer = null } = {}) {
     const eff = await visibility.effective(id);
     const ownerUserId = e ? e.user_id : stream.user_id;
     if (!sharing.maySee(eff, { ownerUserId, viewer: v })) return null;
+    const mine = v.userId != null && Number(v.userId) === Number(ownerUserId);
+    // An episode written up before the sharing system has no share row, and the Share sheet answers 404 for it. Its
+    // audience was Everyone, so the owner's first visit registers it as Everyone: nothing changes for anybody else.
+    if (mine && e) {
+        let subject = v.subject;
+        if (!subject) { try { subject = await require('../auth/identity-sync').subjectOf(ownerUserId); } catch { subject = null; } }
+        await sharing.register(id, subject, 'public');
+    }
     const segs = await db.all(`SELECT ${SEGMENT_COLS} FROM rundown_segments s WHERE s.stream_id = @id AND s.status = 'live' ORDER BY s.start_sec ASC LIMIT 60`, { id });
     if (!e && !segs.length) return null;
     const others = await db.all(`SELECT ${EPISODE_COLS} FROM rundown_episodes r ${AUDIENCE_JOINS('r')}
@@ -367,7 +375,7 @@ async function episode(streamId, { viewer = null } = {}) {
         episodeOut.audience = eff.audience;
         episodeOut.audience_chip = eff.audience === 'public' ? null : visibility.label(eff.audience, eff.member_count);
     }
-    return { episode: episodeOut, stream: { id: Number(stream.id), title: stream.title || null, is_live: !!Number(stream.is_live), started_at: stream.started_at, ended_at: stream.ended_at, user: ppl.get(Number(stream.user_id)) || null },
+    return { mine, episode: episodeOut, stream: { id: Number(stream.id), title: stream.title || null, is_live: !!Number(stream.is_live), started_at: stream.started_at, ended_at: stream.ended_at, user: ppl.get(Number(stream.user_id)) || null },
         segments: await segmentsOut(segs, v.key), more: await episodesOut(others, v.key) };
 }
 
@@ -377,7 +385,8 @@ async function streamer(username, { viewer = null } = {}) {
     const u = await db.get('SELECT id, username, display_name, avatar_url, profile_color FROM users WHERE lower(username) = lower(?)', [String(username || '').replace(/^@/, '').slice(0, 64)]);
     if (!u) return null;
     const out = !!await db.get('SELECT 1 FROM arena_opt_outs WHERE user_id = ?', [u.id]);
-    if (out) return { user: person(u), opted_out: true, episodes: [], topics: [], lines: [], crossovers: [] };
+    const mine = v.userId != null && Number(v.userId) === Number(u.id);
+    if (out) return { mine, user: person(u), opted_out: true, episodes: [], topics: [], lines: [], crossovers: [] };
     const eps = await db.all(`SELECT ${EPISODE_COLS} FROM rundown_episodes r ${AUDIENCE_JOINS('r')}
         WHERE r.user_id = @user AND r.status = 'live' AND ${VISIBLE('r')} ORDER BY r.aired_at DESC LIMIT 30`, { user: u.id, viewer: v.userId });
     const tops = await db.all(`SELECT t.slug, t.title, t.kind, COUNT(*) AS n, MAX(s.said_at) AS last FROM rundown_segments s JOIN rundown_topics t ON t.id = s.topic_id
@@ -389,7 +398,7 @@ async function streamer(username, { viewer = null } = {}) {
     // another streamer's page and never tells them they were named.
     const cross = await db.all(`SELECT ${SEGMENT_COLS} FROM rundown_segments s ${AUDIENCE_JOINS('s')}
         WHERE s.status = 'live' AND (@user = ANY(s.mentions) OR (s.user_id = @user AND cardinality(s.mentions) > 0)) AND ${VISIBLE('s')} ORDER BY s.said_at DESC LIMIT 12`, { user: u.id, viewer: v.userId });
-    return { user: person(u), opted_out: false, episodes: await episodesOut(eps, v.key), topics: tops.map((t) => ({ slug: t.slug, title: t.title, kind: t.kind, takes: Number(t.n), last_seen_at: t.last })),
+    return { mine, user: person(u), opted_out: false, episodes: await episodesOut(eps, v.key), topics: tops.map((t) => ({ slug: t.slug, title: t.title, kind: t.kind, takes: Number(t.n), last_seen_at: t.last })),
         lines: await segmentsOut(lines, v.key), crossovers: await segmentsOut(cross, v.key) };
 }
 
