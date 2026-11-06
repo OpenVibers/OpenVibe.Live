@@ -82,7 +82,7 @@
                 ${clips}
                 ${vod}
                 <div class="recap-share">
-                    <button type="button" class="btn btn-primary" data-ov-share-sheet data-url="${esc(shareUrl)}" data-title="${esc(w.headline || s.title)}" data-text="${esc(shareText)}"${r.vod && r.vod.thumbnail_url ? ` data-image="${esc(r.vod.thumbnail_url)}"` : ''}><i class="fa-solid fa-share-nodes"></i> Share</button>
+                    ${shareButtonHtml({ url: shareUrl, title: w.headline || s.title, text: shareText, image: (r.vod && r.vod.thumbnail_url) || '' })}
                     <a class="btn btn-outline" ${go(path)}><i class="fa-solid fa-user"></i> ${esc(u.display_name)}'s channel</a>
                     ${owner ? `<button type="button" class="btn btn-outline" id="recap-regen"><i class="fa-solid fa-rotate"></i> Rewrite report</button>` : ''}
                 </div>

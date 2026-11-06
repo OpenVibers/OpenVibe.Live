@@ -1252,7 +1252,7 @@ function _placeShareButton(where) {
     if (!host || b.parentElement === host) return;
     if (live) host.appendChild(b);
     else host.insertBefore(b, host.firstChild);
-    b.className = 'btn btn-outline';
+    b.className = 'ovk-btn ovk-btn--quiet';
     b.title = live ? 'Share this stream' : 'Share this channel';
 }
 

@@ -1105,6 +1105,26 @@ function whenRouteReady(pageId, render) {
 }
 
 /**
+ * The Share button, exactly as the shared kit builds it (openvibe-shared 4.114.0 kit.share): the same quiet button
+ * with the same share icon on every OpenVibe site. Live draws its pages in the browser, so this is the kit's markup.
+ *
+ *   url:      the page's own public address — the link that is shared
+ *   title:    what the thing is called
+ *   text:     a line sent with it (the thing's own summary)
+ *   image:    a picture of it (a thumbnail), for the places that take one
+ *   timeFrom: the player whose moment can be shared (a selector), so the sheet can offer "Start at …"
+ */
+function shareButtonHtml({ url = '', title = '', text = '', image = '', timeFrom = '' } = {}) {
+    const attrs = ['data-ov-share-sheet'];
+    if (title) attrs.push(`data-title="${esc(title)}"`);
+    if (url) attrs.push(`data-url="${esc(url)}"`);
+    if (text) attrs.push(`data-text="${esc(text)}"`);
+    if (image) attrs.push(`data-image="${esc(image)}"`);
+    if (timeFrom) attrs.push(`data-time-from="${esc(timeFrom)}"`);
+    return `<button type="button" class="ovk-btn ovk-btn--quiet" ${attrs.join(' ')}><svg class="ovk-i" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 20V9M7 14l5-5 5 5M5 4h14"/></svg><span>Share</span></button>`;
+}
+
+/**
  * A recording's or clip's page on openvibe.video (the shell's ov-video-base meta names the origin): videoHref('vod', 12),
  * videoHref('clip', 7), videoHref('vod', 12, 95) for a moment. Plain links: they leave Live, so no SPA navigation.
  */
