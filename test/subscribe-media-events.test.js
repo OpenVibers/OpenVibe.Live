@@ -48,7 +48,8 @@ const logs = () => { const lines = []; const log = (s) => lines.push(String(s));
 const noSecret = (lines) => { for (const l of lines) for (const s of [SECRET, CLIENT_SECRET, 'tok-live']) assert.ok(!l.includes(s), `printed a secret: ${l}`); };
 
 (async () => {
-    assert.deepStrictEqual(TOPICS, ['media.vod.*', 'media.clip.*', 'media.storage.*']);
+    // media.object.* carries Media's visibility changes (media.object.visibility_changed): the Rundown follows them.
+    assert.deepStrictEqual(TOPICS, ['media.vod.*', 'media.clip.*', 'media.storage.*', 'media.object.*']);
     assert.strictEqual(DEFAULT_ENDPOINT, 'http://127.0.0.1:3000/internal/media-events');
 
     // Create: one per topic, Live's secret, the media-events endpoint; one already there is reported.
@@ -56,11 +57,12 @@ const noSecret = (lines) => { for (const l of lines) for (const s of [SECRET, CL
         { id: 'sub_openre', topic_pattern: 'openre.session.*', endpoint: 'http://127.0.0.1:3000/internal/openre-events', enabled: true }] });
     let log = logs();
     let r = await run({ env: ENV, fetchImpl: s.fetchImpl, log });
-    assert.deepStrictEqual(r.subscriptions.map(x => [x.topic, x.created]), [['media.vod.*', true], ['media.clip.*', false], ['media.storage.*', true]]);
+    assert.deepStrictEqual(r.subscriptions.map(x => [x.topic, x.created]), [['media.vod.*', true], ['media.clip.*', false], ['media.storage.*', true], ['media.object.*', true]]);
     const posts = s.calls.filter((c) => c.method === 'POST' && c.url.endsWith('/api/v1/subscriptions')).map(c => JSON.parse(c.body));
     assert.deepStrictEqual(posts, [
         { topic_pattern: 'media.vod.*', endpoint: DEFAULT_ENDPOINT, secret: SECRET },
         { topic_pattern: 'media.storage.*', endpoint: DEFAULT_ENDPOINT, secret: SECRET },
+        { topic_pattern: 'media.object.*', endpoint: DEFAULT_ENDPOINT, secret: SECRET },
     ]);
     noSecret(log.lines);
 
@@ -76,7 +78,7 @@ const noSecret = (lines) => { for (const l of lines) for (const s of [SECRET, CL
     r = await run({ action: 'list', env: ENV, fetchImpl: s2.fetchImpl, log });
     assert.ok(r.subscriptions.every(x => !x.existed));
     assert.ok(!s2.calls.some(c => c.method === 'POST' && !c.url.endsWith('/oauth/token')));
-    assert.strictEqual(log.lines.filter(l => /would create/.test(l)).length, 3);
+    assert.strictEqual(log.lines.filter(l => /would create/.test(l)).length, 4);
 
     // --disable / --enable (rollback and undo).
     r = await run({ action: 'disable', env: ENV, fetchImpl: s.fetchImpl, log: logs() });
