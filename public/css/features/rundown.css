@@ -434,3 +434,10 @@ body.rd-sheet-open { overflow: hidden; }
   .rd-own-actions { width: 100%; }
   .rd-own-actions > * { flex: 1 1 auto; justify-content: center; }
 }
+/* The owner's controls on a touch screen: every one a 44 px target (the switch keeps its look; its hit area grows). */
+@media (pointer: coarse) {
+  .rd-own-btn { min-height: 44px; }
+  .rd-own-x { width: 44px; height: 44px; }
+  .rd-switch::before { content: ""; position: absolute; inset: -7px -2px; }
+  .rd-gone-actions .rd-own-btn, .rd-mine-row .rd-own-btn { min-height: 44px; }
+}
