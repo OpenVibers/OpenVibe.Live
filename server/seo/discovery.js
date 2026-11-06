@@ -106,10 +106,13 @@ async function buildSitemap(liveStreams = []) {
     // is live, and keeps it afterwards when its recording exists (the design's "with its VOD after"). A private or
     // unlisted stream is never listed, whatever else is true of it.
     try {
-        const agentLive = await require('../agent-streams/service').listPublic({ liveOnly: true, limit: 100 });
-        for (const a of agentLive) {
+        // A public stream is listed while live and kept afterwards when its recording exists (the design's "with its
+        // VOD after"); one that ended without a recording leaves the sitemap.
+        const agents = await require('../agent-streams/service').listPublic({ limit: 100 });
+        for (const a of agents) {
             if (!a.username || !a.public_id) continue;
-            entry(`/@${encodeURIComponent(a.username)}/agents/${a.public_id}`, isoTime(a.started_at) || releasedAt, 'hourly', 0.5);
+            if (a.state !== 'live' && !a.vod_id) continue;
+            entry(`/@${encodeURIComponent(a.username)}/agents/${a.public_id}`, (a.state === 'ended' ? isoTime(a.ended_at) : isoTime(a.started_at)) || releasedAt, 'hourly', 0.5);
         }
     } catch { /* an agent list failure never takes the sitemap down */ }
     return seo.sitemapXml(urls);

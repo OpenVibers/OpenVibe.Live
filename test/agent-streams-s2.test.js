@@ -265,6 +265,8 @@ async function check(name, fn) {
         assert.ok(!String(xml).includes(`/@ann/agents/${privateStream.public_id}`), 'the private one is not');
         const llms = await discovery.llmsTxt();
         assert.ok(String(llms).includes(`/@ann/agents/${publicStream.public_id}`));
+        const after = await discovery.buildSitemap([]);
+        assert.ok(String(after).includes('/agents/') && String(after).includes(`/@ann/agents/`), 'an ended public stream with a recording stays');
     });
 
     server.close();
