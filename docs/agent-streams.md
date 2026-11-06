@@ -92,6 +92,12 @@ CORS is the WHIP endpoint's (every origin, because the player is usually on some
 ordinary room consumer, so the curtain pauses it like any other viewer's, and a WHEP viewer counts as a viewer: the desk
 keeps encoding while one is connected.
 
+**Production check, 2026-11-06:** OpenVibe.Node v0.41.0's `stream --probe` published a private agent stream from an
+Xvfb display; a WHEP viewer watched for 60 s and measured **p50 148.5 ms, p95 168.5 ms, max 186 ms** (597 QR frames),
+inside S1's p95-under-1000 ms pass line. The curtain was raised and lowered once: the embed showed "Private screen"
+and cleared it. The stream was then ended and its publish ticket revoked — both answered 200, and the old ticket
+answered 401.
+
 ## The curtain
 
 The desk blanks its own picture before this runs; Live is the second, independent enforcement. While the curtain is up,
