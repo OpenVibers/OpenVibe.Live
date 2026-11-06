@@ -23,7 +23,7 @@ async function check(name, fn) {
 const CHROME = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36';
 const FIREFOX = 'Mozilla/5.0 (X11; Linux x86_64; rv:128.0) Gecko/20100101 Firefox/128.0';
 const SUBJECT = 'usr_01J8ZQ4K7M2N3P4Q5R6S7T8V9W';
-const ANALYTICS_TABLES = ['analytics_events', 'analytics_hourly', 'analytics_daily', 'analytics_visitor_days', 'analytics_day_salts'];
+const ANALYTICS_TABLES = ['analytics_events', 'analytics_hourly', 'analytics_daily', 'analytics_bot_api_hourly', 'analytics_bot_api_daily', 'analytics_visitor_days', 'analytics_day_salts'];
 
 (async () => {
     // ── Path templating ──────────────────────────────────────
