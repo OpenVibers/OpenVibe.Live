@@ -56,7 +56,10 @@
         if (task) body.appendChild(el('p', 'agent-card-task', task));
         const meta = el('p', 'agent-card-meta');
         if (entry.current_step && entry.current_step.title) {
-            meta.appendChild(el('span', `is-${entry.current_step.status || 'started'}`, entry.current_step.title));
+            // The status in words as well as colour: "Failed: Run the parser tests" reads without the red.
+            const st = entry.current_step.status || 'started';
+            const word = { passed: 'Passed', failed: 'Failed', skipped: 'Skipped' }[st];
+            meta.appendChild(el('span', `is-${st}`, word ? `${word}: ${entry.current_step.title}` : entry.current_step.title));
         }
         if (entry.state === 'ended') meta.appendChild(el('span', '', `${meta.childNodes.length ? '· ' : ''}worked ${minutes(entry.worked_seconds)}`));
         if (meta.childNodes.length) body.appendChild(meta);

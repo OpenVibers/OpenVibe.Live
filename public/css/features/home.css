@@ -1393,7 +1393,6 @@ body.egg-rainbow { animation: eggRainbow 2.6s linear; }
 
 /* The Agents live row (Agent Streams S2): public AI agent streams, their own row after people's streams. */
 .home-agents { margin: 26px 0 0; }
-.home-agents-title { margin: 0 0 10px; font-size: 1.05rem; font-weight: 800; }
 .home-agents .agent-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 14px; }
 .home-agents .agent-card { display: flex; flex-direction: column; overflow: hidden; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-card); text-decoration: none; color: inherit; }
 .home-agents .agent-card-media { position: relative; aspect-ratio: 16 / 9; background: #0b0d10; }
