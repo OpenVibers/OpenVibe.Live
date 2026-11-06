@@ -336,6 +336,7 @@ async function check(name, fn) {
         const REVIEWED = {
             'server/net/egress.js': 'the guard itself',
             'server/drill.js': 'the restore-drill guard (refuses connections)',
+            'server/report.js': 'OpenVibe.Report (OV_REPORT_INTERNAL_URL, configured) for the report of an agent stream, and the Network token endpoint (OV_NETWORK_INTERNAL_URL, configured) for the Live service token; the paths are fixed, no URL from a person',
             'server/config.js': 'Network registry (configured)',
             'server/media-client.js': 'OpenVibe.Media (configured)',
             'server/media-proxy/live-thumbs.js': 'OpenVibe.Media (configured)',

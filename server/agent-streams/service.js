@@ -285,6 +285,13 @@ async function markPublishing(row) {
 }
 
 /** The stream ended. Worked seconds are frozen, the session (if any) and every publish ticket go. */
+let reportClient = null;
+/** Live's client for OpenVibe.Report (the session report of an agent stream). */
+function reportClientFor() {
+    if (!reportClient) reportClient = require('../report').createReportClient({ config, log: console });
+    return reportClient;
+}
+
 async function end(row, { reason = 'ended' } = {}) {
     if (row.state === 'ended') return row;
     const session = await liveSession(row.managed_stream_id);
@@ -305,6 +312,14 @@ async function end(row, { reason = 'ended' } = {}) {
         } catch (err) { console.warn(`[AgentStream] ending session ${session.id} failed: ${err.message}`); }
     }
     try { require('../streaming/curtains').lower(session ? session.id : null, { notify: false }); } catch { /* */ }
+    // Agent Streams S3: the stream part of the session report. The report the tool wrote for this task gets the
+    // stream added to it; when no tool finished the session, a stream-only report is written instead. A report that
+    // cannot be written never changes the stream: it ended either way.
+    try {
+        await reportClientFor().sendStream(require('./report').buildStreamReport(row, next, worked));
+    } catch (err) {
+        console.warn('[AgentStream] the session report of ' + row.public_id + ' failed: ' + String((err && err.message) || err).slice(0, 200));
+    }
     return next;
 }
 
