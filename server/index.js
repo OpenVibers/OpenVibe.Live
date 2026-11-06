@@ -443,6 +443,10 @@ app.use(require('./web/whip-host').createWhipHostRedirect({ whipUrl: () => (conf
 // that is what lets a static, backend-less site publish from the browser (docs/whip.md).
 // It must therefore bypass the credentialed allowlist below, which would 403 the preflight.
 app.use('/whip', whipHandler.whipCors);
+// A WHEP player is usually on someone else's page (Node's latency probe, a third-party player), so /whep takes a view
+// ticket, never a cookie, and is open to every origin for the same reason /whip is.
+const whepHandler = require('./streaming/whep-handler');
+app.use('/whep', whepHandler.whepCors);
 // Views counted from openvibe.video's watch pages (a beacon from the viewer's browser): its own narrow
 // origin rule and no cookie, so it sits before the credentialed allowlist too.
 app.use('/api/views', require('./media-proxy/view-beacon').createViewBeacon({ rateLimit }));
@@ -470,6 +474,7 @@ const allowlistedCors = cors({
 });
 app.use((req, res, next) => {
     if (req.path === '/whip' || req.path.startsWith('/whip/')) return next();
+    if (req.path === '/whep' || req.path.startsWith('/whep/')) return next();
     return allowlistedCors(req, res, next);
 });
 app.use(express.json({ limit: '1mb', verify: (req, res, buf) => { req.rawBody = buf; } }));
@@ -1151,6 +1156,12 @@ app.get('/privacy', (req, res) => {
 // ── WHIP Endpoint (WebRTC-HTTP Ingestion Protocol) ───────────
 // OBS and other WHIP-compatible encoders send WebRTC media via HTTP POST.
 // Body is raw SDP (application/sdp), auth via Bearer token.
+// WHEP for agent streams: the viewer's offer in, an SDP answer out; a view ticket, not a cookie, authorises it.
+app.options('/whep/agent/:id', whepHandler.handleWhepOptions);
+app.options('/whep/agent/:id/:resourceId', whepHandler.handleWhepOptions);
+app.post('/whep/agent/:id', express.text({ type: 'application/sdp', limit: '64kb' }), whepHandler.handleWhepPost);
+app.patch('/whep/agent/:id/:resourceId', express.text({ type: 'application/trickle-ice-sdpfrag', limit: '16kb' }), whepHandler.handleWhepPatch);
+app.delete('/whep/agent/:id/:resourceId', whepHandler.handleWhepDelete);
 app.options('/whip/agent/:id', whipHandler.handleWhipOptions);
 app.options('/whip/agent/:id/:resourceId', whipHandler.handleWhipOptions);
 // An agent stream publishes with a wpt_ publish ticket, not a stream key; these paths are matched before the

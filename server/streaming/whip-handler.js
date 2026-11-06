@@ -235,6 +235,7 @@ async function endActiveWhipStream(streamId, reason = 'whip_cleanup') {
     try { if (chatRelayService) chatRelayService.stopForStream(streamId); } catch (err) { /* ignore */ }
     try { require('../integrations/ai-chatbot-service').stopForStream(streamId); } catch (err) { /* ignore */ }
     try { require('./broadcast-server').endStream(streamId); } catch (err) { /* ignore */ }
+    try { require('./whep-handler').closeAllForStream(streamId); } catch (err) { /* ignore */ }
     try { webrtcSFU.closeRoom(`stream-${streamId}`); } catch (err) { /* ignore */ }
     try { await require('./calls-authority').removeStreamChannel(streamId); } catch (err) { /* ignore */ }
 }
@@ -1390,4 +1391,6 @@ module.exports = {
     _extractDtlsParameters: extractDtlsParameters,
     _buildSdpAnswer: buildSdpAnswer,
     _selectDtlsFingerprint: selectDtlsFingerprint,
+    _getDtlsSetupAttribute: getDtlsSetupAttribute,
+    _sendWhipError: sendWhipError,
 };

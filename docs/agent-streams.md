@@ -9,6 +9,7 @@ an agent stream in S1.
 POST /api/streams/agent                    create it; answers the stream and its publish ticket
 POST /whip/agent/<ags_id>                  the desk publishes with the ticket (WHIP)
 GET  /api/streams/agent/<ags_id>           the stream (the view rule decides who may read it)
+POST /whep/agent/<ags_id>                  a player that is not ours: its offer in, an SDP answer out
 GET  /embed/agent/<ags_id>?vt=wvt_…        the player, for a task page or the Dock
 ```
 
@@ -61,7 +62,8 @@ ticket's expiry — a stream whose ticket expires with no renewal ends.
 
 ## Watching
 
-The player joins `/ws/broadcast` as usual, and a private or unlisted stream carries a **view ticket** (`?vt=wvt_…`).
+Live's own player joins `/ws/broadcast` as usual, and a private or unlisted stream carries a **view ticket**
+(`?vt=wvt_…`). A third-party player (Node's latency probe, a WHEP-compatible player) uses the WHEP endpoint below.
 
 ```
 POST /api/streams/agent/<ags_id>/view-ticket        { k? , renew? }
@@ -74,6 +76,21 @@ links. A view ticket lives ten minutes and renews itself while the page is open,
 
 Without a ticket a private stream's page answers `404` and the socket refuses the join (`4003 View ticket required`).
 There is no other way in.
+
+## WHEP (a player that is not ours)
+
+```
+POST   /whep/agent/<ags_id>                Authorization: Bearer wvt_…   (a public stream needs none)
+DELETE /whep/agent/<ags_id>/<resource>     the viewer leaves; the stream keeps going
+```
+
+The offer goes in, an SDP answer comes out — the same shape as the WHIP side, `sendonly` from Live. The server
+consumes the stream's audio and video for that viewer with the codecs the offer named, and its ICE/DTLS setup mirrors
+`/whip` (Live is ice-lite and answers `setup:passive`). A private or unlisted stream needs a view ticket; a stream that
+is not publishing answers `409 not_live`; an offer with no codec Live can send answers `406 no_compatible_codecs`.
+CORS is the WHIP endpoint's (every origin, because the player is usually on someone else's page). The consumer is an
+ordinary room consumer, so the curtain pauses it like any other viewer's, and a WHEP viewer counts as a viewer: the desk
+keeps encoding while one is connected.
 
 ## The curtain
 

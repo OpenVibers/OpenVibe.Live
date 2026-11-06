@@ -104,6 +104,14 @@ async function isUp(sessionId) {
     } catch { return false; }
 }
 
+/** A consumer is gone (a WHEP viewer left, a transport closed): stop tracking it. */
+function forget(sessionId, consumerIds = []) {
+    const set = paused.get(Number(sessionId));
+    if (!set) return;
+    for (const id of consumerIds) set.delete(id);
+    if (!set.size) paused.delete(Number(sessionId));
+}
+
 function _reset() { paused.clear(); }
 
-module.exports = { raise, lower, apply, applyToConsumer, isUp, consumersOf, _reset };
+module.exports = { raise, lower, apply, applyToConsumer, isUp, consumersOf, forget, _reset };

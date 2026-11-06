@@ -111,13 +111,17 @@ function liveLimit(user) { return user && user.is_owner ? 5 : 1; }
 /** The owner's Network subject, or null for an account Network has never named. */
 async function ownerSubject(userId) { return await identity.subjectOf(userId); }
 
-/** Viewers watching now: the sockets attached to the stream's live session. */
+/** Viewers watching now: the sockets attached to the stream's live session, plus any WHEP player. */
 function viewersNow(sessionId) {
     if (!sessionId) return 0;
+    let sockets = 0;
     try {
         const room = require('../streaming/broadcast-server').rooms.get(Number(sessionId));
-        return room ? room.viewers.size : 0;
-    } catch { return 0; }
+        sockets = room ? room.viewers.size : 0;
+    } catch { /* no socket server in a test */ }
+    let whep = 0;
+    try { whep = require('../streaming/whep-handler').countForStream(sessionId); } catch { /* WHEP optional */ }
+    return sockets + whep;
 }
 
 /** How long the agent has worked: up to now while live, the stored total once ended. */

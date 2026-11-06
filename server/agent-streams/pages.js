@@ -55,16 +55,16 @@ function html(publicId) {
 </head>
 <body class="agent-embed" data-agent-id="${id}">
     <div class="agent-embed-frame">
-        <div class="agent-embed-head">
-            <span class="agent-label">AI agent</span>
-            <span class="agent-embed-title" id="agent-embed-title"></span>
-            <span class="agent-embed-viewers" id="agent-embed-viewers" hidden></span>
-        </div>
         <div class="agent-embed-stage" id="agent-embed-stage">
-            <video id="agent-embed-video" playsinline muted autoplay></video>
-            <img id="agent-embed-still" alt="" hidden>
-            <div class="agent-embed-state" id="agent-embed-state">Connecting…</div>
-            <div class="agent-embed-curtain" id="agent-embed-curtain" hidden>Private screen</div>
+            <div class="agent-embed-media" id="agent-embed-media">
+                <video id="agent-embed-video" playsinline muted autoplay></video>
+                <img id="agent-embed-still" alt="" hidden>
+                <span class="agent-label agent-embed-label">AI agent</span>
+                <span class="agent-embed-title" id="agent-embed-title"></span>
+                <span class="agent-embed-viewers" id="agent-embed-viewers" hidden></span>
+                <div class="agent-embed-state" id="agent-embed-state">Connecting…</div>
+                <div class="agent-embed-curtain" id="agent-embed-curtain" hidden>Private screen</div>
+            </div>
         </div>
     </div>
     <script src="/js/agent-player.js" defer></script>

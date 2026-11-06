@@ -1,22 +1,32 @@
 /* The agent stream page (Agent Streams S1): /@person/agents/<ags_id>.
  *
- * The owner sees the player, the task, the visibility switch, the Share sheet, Curtain now and End; anyone else sees the
+ * The owner sees the player, the task, the visibility switch, the Share sheet, the curtain and End; anyone else sees the
  * player and the "AI agent" label. The view ticket the API mints is what the socket joins with, and it is renewed while
  * the page stays open (at most four hours, the server's rule).
+ *
+ * One status line carries the whole state — Live, N watching, worked 42 min; or Waiting for the desk; or Ended, worked
+ * 42 min. The player is only rebuilt when the stream or its live session changes, so the 20-second poll never interrupts
+ * playback.
  */
-/* global window, document, location, setTimeout, clearTimeout, URLSearchParams, api, currentUser, AgentPlayer */
+/* global window, document, location, setTimeout, clearTimeout, URLSearchParams, api, AgentPlayer, navigator */
 (function () {
     'use strict';
     let player = null;
+    let mountedStreamId = null;
     let state = null;
     let ticket = null;
+    let liveViewers = null;
     let renewTimer = null;
     let pollTimer = null;
+    let generation = 0;   // bumped on every page leave, so a slow request from the last page changes nothing
 
     function $(id) { return document.getElementById(id); }
 
     function stop() {
+        generation++;
         if (player) { try { player.close(); } catch { /* */ } player = null; }
+        mountedStreamId = null;
+        liveViewers = null;
         if (renewTimer) { clearTimeout(renewTimer); renewTimer = null; }
         if (pollTimer) { clearTimeout(pollTimer); pollTimer = null; }
         state = null;
@@ -32,6 +42,77 @@
         if (!task) return '';
         const where = { codes: 'Codes', actor: 'Actor', desk: 'Desk', node: 'Node' }[task.source] || task.source;
         return `${where} task: ${task.title}`;
+    }
+
+    /** The one status line: what the stream is doing, and for how long. */
+    function renderStatus(stream, viewers = liveViewers) {
+        const line = $('agent-status-line');
+        if (!line) return;
+        if (stream.state === 'live') {
+            const count = Number(viewers == null ? stream.viewers : viewers) || 0;
+            line.textContent = `Live · ${count} watching · worked ${minutes(stream.worked_seconds)}`;
+            line.classList.add('is-live');
+        } else if (stream.state === 'ended') {
+            line.textContent = stream.worked_seconds ? `Ended · worked ${minutes(stream.worked_seconds)}` : 'Ended';
+            line.classList.remove('is-live');
+        } else {
+            line.textContent = 'Waiting for the desk';
+            line.classList.remove('is-live');
+        }
+    }
+
+    function renderCurtain(up) {
+        const curtain = $('agent-curtain');
+        if (curtain) curtain.hidden = !up;
+        const btn = $('agent-curtain-btn');
+        if (btn) btn.textContent = up ? 'Lift the curtain' : 'Curtain now';
+    }
+
+    function mountPlays(data) {
+        const stream = data.stream;
+        const video = $('agent-video');
+        const still = $('agent-still');
+        const stateEl = $('agent-state');
+        const wanted = stream.state === 'live' && data.live_stream_id ? data.live_stream_id : null;
+
+        // Already playing this very session: keep it (a poll must never interrupt the picture).
+        if (wanted && mountedStreamId === wanted && player) return;
+
+        if (player) { try { player.close(); } catch { /* */ } player = null; }
+        mountedStreamId = null;
+
+        if (wanted) {
+            still.hidden = true;
+            video.hidden = false;
+            stateEl.hidden = false;
+            stateEl.textContent = 'Connecting…';
+            player = AgentPlayer.create({
+                streamId: wanted,
+                viewTicket: ticket || '',
+                video,
+                state: stateEl,
+                curtain: $('agent-curtain'),
+                onViewers: (count) => {
+                    liveViewers = count;
+                    if (state && state.stream) renderStatus(state.stream, count);
+                },
+            });
+            mountedStreamId = wanted;
+            return;
+        }
+
+        video.hidden = true;
+        stateEl.hidden = false;
+        stateEl.textContent = stream.state === 'ended'
+            ? `This agent's work ended after ${minutes(stream.worked_seconds)}.`
+            : "This agent isn't streaming right now.";
+        if (stream.last_frame_url) {
+            still.src = `${stream.last_frame_url}${ticket ? `?vt=${encodeURIComponent(ticket)}` : ''}`;
+            still.hidden = false;
+            stateEl.hidden = true;
+        } else {
+            still.hidden = true;
+        }
     }
 
     function render(data) {
@@ -57,51 +138,9 @@
             task.appendChild(a);
         }
 
-        const status = $('agent-status');
-        status.textContent = stream.state === 'live' ? 'Live' : stream.state === 'ended' ? 'Ended' : 'Ready';
-        status.classList.toggle('is-live', stream.state === 'live');
-
-        const worked = $('agent-worked');
-        worked.textContent = `Worked ${minutes(stream.worked_seconds)}`;
-        worked.hidden = !(stream.state === 'ended' && stream.worked_seconds);
-
-        const video = $('agent-video');
-        const still = $('agent-still');
-        const stateEl = $('agent-state');
-        const curtain = $('agent-curtain');
-        const viewers = $('agent-viewers');
-
-        if (player) { try { player.close(); } catch { /* */ } player = null; }
-        curtain.hidden = !(stream.curtain && stream.curtain.up);
-
-        if (stream.state === 'live' && data.live_stream_id) {
-            still.hidden = true;
-            video.hidden = false;
-            stateEl.hidden = false;
-            stateEl.textContent = 'Connecting…';
-            player = AgentPlayer.create({
-                streamId: data.live_stream_id,
-                viewTicket: ticket || '',
-                video,
-                state: stateEl,
-                curtain,
-                viewers,
-            });
-        } else {
-            video.hidden = true;
-            stateEl.hidden = false;
-            stateEl.textContent = stream.state === 'ended'
-                ? `This agent's work ended after ${minutes(stream.worked_seconds)}.`
-                : "This agent isn't streaming right now.";
-            if (stream.last_frame_url) {
-                still.src = `${stream.last_frame_url}${ticket ? `?vt=${encodeURIComponent(ticket)}` : ''}`;
-                still.hidden = false;
-                stateEl.hidden = true;
-            } else {
-                still.hidden = true;
-            }
-        }
-
+        renderCurtain(!!(stream.curtain && stream.curtain.up));
+        renderStatus(stream, liveViewers);
+        mountPlays(data);
         renderOwner(data);
         scheduleRenew(data);
         schedulePoll(stream.id);
@@ -130,39 +169,56 @@
         if (rotate) rotate.hidden = stream.visibility !== 'unlisted';
         const hint = $('agent-hint');
         if (hint) {
-            hint.textContent = stream.visibility === 'unlisted'
-                ? (stream.page_url.includes('?k=') ? 'Anyone with this link can watch. "New link" closes the old one.' : 'Anyone with the link can watch. Press "New link" to get the link to send.')
-                : 'Only you and the people you share it with can watch.';
+            if (stream.visibility === 'unlisted') {
+                hint.textContent = stream.page_url.includes('?k=')
+                    ? 'Anyone with this link can watch. Resetting the link closes the old one.'
+                    : 'Anyone with the link can watch. Press "Reset link" to get the link to send; old links stop working.';
+            } else {
+                hint.textContent = 'Only you and the people you share it with can watch.';
+            }
         }
-        const curtainBtn = $('agent-curtain-btn');
-        if (curtainBtn) curtainBtn.textContent = stream.curtain && stream.curtain.up ? 'Curtain down' : 'Curtain now';
+        renderCurtain(!!(stream.curtain && stream.curtain.up));
         const endBtn = $('agent-end');
         if (endBtn) endBtn.hidden = stream.state === 'ended';
+        const confirm = $('agent-end-confirm');
+        if (confirm && stream.state === 'ended') confirm.hidden = true;
     }
 
     function scheduleRenew(data) {
         if (renewTimer) { clearTimeout(renewTimer); renewTimer = null; }
         if (!ticket || data.stream.visibility === 'public') return;
+        const gen = generation;
         renewTimer = setTimeout(async () => {
+            if (gen !== generation) return;
             try {
                 const next = await api(`/streams/agent/${encodeURIComponent(data.stream.id)}/view-ticket`, { method: 'POST', body: { renew: ticket } });
-                ticket = next.ticket;
+                if (gen === generation) ticket = next.ticket;
             } catch { /* the page keeps the ticket it has until it stops working */ }
         }, 8 * 60 * 1000);
     }
 
+    /** Look again for a state the socket cannot tell us (the desk started, the work ended), without remounting a player. */
     function schedulePoll(id) {
         if (pollTimer) { clearTimeout(pollTimer); pollTimer = null; }
+        const gen = generation;
         pollTimer = setTimeout(async () => {
             try {
-                const params = new URLSearchParams(location.search);
-                const k = params.get('k');
+                const k = new URLSearchParams(location.search).get('k');
                 const next = await api(`/streams/agent/${encodeURIComponent(id)}${k ? `?k=${encodeURIComponent(k)}` : ''}`);
-                if (!document.getElementById('agent-title')) return;   // the page is gone
-                const wasLive = state && state.stream.state === 'live';
-                render(next);
-                if (!wasLive && next.stream.state === 'live') return;   // the player has been mounted
-            } catch { /* try again next time */ }
+                if (gen !== generation) return;   // the page is gone
+                const previous = state && state.stream;
+                const structural = !previous
+                    || previous.state !== next.stream.state
+                    || previous.visibility !== next.stream.visibility
+                    || !!previous.curtain.up !== !!next.stream.curtain.up
+                    || (state && state.live_stream_id) !== next.live_stream_id;
+                if (structural) { render(next); return; }
+                state = next;
+                ticket = next.view_ticket || ticket;
+                renderStatus(next.stream, liveViewers);
+                renderOwner(next);
+                schedulePoll(id);
+            } catch { if (gen === generation) schedulePoll(id); }
         }, 20000);
     }
 
@@ -186,7 +242,7 @@
             } catch (err) {
                 select.value = state ? state.stream.visibility : 'private';
                 const hint = $('agent-hint');
-                if (hint) hint.textContent = (err && (err.data && err.data.code === 'not_unlisted')) || (err && err.message) || 'That did not save.';
+                if (hint) hint.textContent = (err && err.message) || 'That did not save.';
             }
         });
 
@@ -197,22 +253,37 @@
             try {
                 await api(`/streams/agent/${encodeURIComponent(id)}/curtain`, { method: 'POST', body: { up, reason: 'manual' } });
                 if (state) state.stream.curtain = { up };
+                renderCurtain(up);
                 renderOwner(state);
-                const curtain = $('agent-curtain');
-                if (curtain) curtain.hidden = !up;
             } catch { /* the desk still owns the curtain */ }
         });
 
-        $('agent-end').addEventListener('click', async () => {
+        $('agent-end').addEventListener('click', () => {
+            const confirm = $('agent-end-confirm');
+            const end = $('agent-end');
+            if (confirm) confirm.hidden = false;
+            if (end) end.hidden = true;
+        });
+
+        $('agent-end-no').addEventListener('click', () => {
+            const confirm = $('agent-end-confirm');
+            const end = $('agent-end');
+            if (confirm) confirm.hidden = true;
+            if (end) end.hidden = !!(state && state.stream && state.stream.state === 'ended');
+        });
+
+        $('agent-end-yes').addEventListener('click', async () => {
             const id = idOf();
             if (!id) return;
-            if (!window.confirm('End this agent stream? The card stays with its last frame.')) return;
             try {
                 await api(`/streams/agent/${encodeURIComponent(id)}/end`, { method: 'POST', body: {} });
                 const k = new URLSearchParams(location.search).get('k');
                 const next = await api(`/streams/agent/${encodeURIComponent(id)}${k ? `?k=${encodeURIComponent(k)}` : ''}`);
                 render(next);
-            } catch { /* the stream may have ended already */ }
+            } catch {
+                const confirm = $('agent-end-confirm');
+                if (confirm) confirm.hidden = true;
+            }
         });
 
         $('agent-rotate').addEventListener('click', async () => {
@@ -239,6 +310,8 @@
         if (title) title.textContent = 'Agent stream';
         const stateEl = $('agent-state');
         if (stateEl) { stateEl.hidden = false; stateEl.textContent = 'Loading…'; }
+        const line = $('agent-status-line');
+        if (line) line.textContent = 'Loading…';
         const k = new URLSearchParams(location.search).get('k');
         try {
             const data = await api(`/streams/agent/${encodeURIComponent(publicId)}${k ? `?k=${encodeURIComponent(k)}` : ''}`);
@@ -251,6 +324,7 @@
         } catch (err) {
             if (stateEl) stateEl.textContent = err && err.status === 404 ? 'This agent stream is private or gone.' : 'The stream could not be loaded.';
             if (title) title.textContent = 'Agent stream';
+            if (line) line.textContent = '';
         }
     }
 

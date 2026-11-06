@@ -21,7 +21,7 @@
     }
 
     function create(options) {
-        const { streamId, viewTicket = '', video, state: stateEl, curtain: curtainEl, viewers: viewersEl } = options;
+        const { streamId, viewTicket = '', video, state: stateEl, curtain: curtainEl, viewers: viewersEl, onViewers } = options;
         const setState = (text) => { if (stateEl) { stateEl.textContent = text; stateEl.hidden = !text; } };
         let ws = null;
         let closed = false;
@@ -143,6 +143,7 @@
                         if (curtainEl) curtainEl.hidden = !msg.up;
                         break;
                     case 'viewer-count':
+                        if (typeof onViewers === 'function') { try { onViewers(msg.count); } catch { /* the page's own problem */ } }
                         if (viewersEl) {
                             viewersEl.textContent = msg.count === 1 ? '1 watching' : `${msg.count} watching`;
                             viewersEl.hidden = false;
