@@ -164,7 +164,7 @@ async function check(name, fn) {
             });
             await raw.prepare("UPDATE agent_streams SET state = 'live', started_at = now() WHERE managed_stream_id = ?").run(second.managed_stream_id);
 
-            const mine = await call('GET', '/api/streams/agent', { as: 1 });
+            const mine = await call('GET', '/api/streams/agent/mine', { as: 1 });
             assert.strictEqual(mine.status, 200, JSON.stringify(mine.data));
             assert.deepStrictEqual(mine.data.streams.map((s) => s.id), [second.public_id, agent.public_id], 'live first, then the newest');
             for (const s of mine.data.streams) {
@@ -174,12 +174,12 @@ async function check(name, fn) {
             assert.ok(!JSON.stringify(mine.data).includes('wvt_'), 'the list mints no view ticket');
             assert.ok(!JSON.stringify(mine.data).includes('wpt_'), 'and no publish ticket');
 
-            const live = await call('GET', '/api/streams/agent?live=1', { as: 1 });
+            const live = await call('GET', '/api/streams/agent/mine?live=1', { as: 1 });
             assert.deepStrictEqual(live.data.streams.map((s) => s.id), [second.public_id], '?live=1 keeps the live one only');
 
-            const theirs = await call('GET', '/api/streams/agent', { as: 2 });
+            const theirs = await call('GET', '/api/streams/agent/mine', { as: 2 });
             assert.deepStrictEqual(theirs.data.streams, [], 'nobody else\'s streams, not even an empty-looking one of theirs');
-            const anon = await call('GET', '/api/streams/agent', { as: 0 });
+            const anon = await call('GET', '/api/streams/agent/mine', { as: 0 });
             assert.deepStrictEqual(anon.data.streams, [], 'no session, nothing');
             // Back to ended: the rest of the file is about one stream, and a live one would take ann's slot.
             await raw.prepare("UPDATE agent_streams SET state = 'ended', ended_at = now() WHERE managed_stream_id = ?").run(second.managed_stream_id);
