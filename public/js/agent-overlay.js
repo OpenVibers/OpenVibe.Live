@@ -91,7 +91,9 @@
         const testsLine = el('span', 'agent-overlay-tests');
         const costLine = el('span', 'agent-overlay-cost');
         const workedLine = el('span', 'agent-overlay-worked');
-        foot.append(testsLine, costLine, workedLine);
+        // S4: the voice label: which voice is speaking, and in which personality.
+        const voiceLine = el('span', 'agent-overlay-voice');
+        foot.append(testsLine, costLine, workedLine, voiceLine);
 
         const sheet = el('div', 'agent-overlay-sheet');
         sheet.hidden = true;
@@ -169,8 +171,12 @@
             if (voice && voice.personality) {
                 const label = voice.muted ? 'Voice muted' : (voice.paused ? 'Voice paused' : voice.personality);
                 root.setAttribute('data-voice', label);
+                voiceLine.textContent = voice.voice ? `${voice.personality} voice · ${voice.voice}` : `${voice.personality} voice`;
+                voiceLine.hidden = false;
             } else {
                 root.removeAttribute('data-voice');
+                voiceLine.textContent = '';
+                voiceLine.hidden = true;
             }
             const cur = current(steps);
             const task = data.task && data.task.title ? data.task.title : (options.title || 'An AI agent is working');

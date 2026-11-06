@@ -81,6 +81,9 @@
 /* S4: the caption under the step: the line the agent is saying right now. */
 .agent-overlay-caption { margin: 0; color: #f3f4f6; font-size: 0.8rem; font-style: italic; line-height: 1.25; }
 .agent-overlay-caption[hidden] { display: none; }
+/* S4: the voice label in the overlay's foot: which voice is speaking, and in which personality. */
+.agent-overlay-voice { color: #cfc7ff; font-weight: 600; }
+.agent-overlay-voice[hidden] { display: none; }
 .agent-overlay-caption::before { content: '\201C'; }
 .agent-overlay-caption::after { content: '\201D'; }
 .agent-overlay-foot span[hidden] { display: none; }
