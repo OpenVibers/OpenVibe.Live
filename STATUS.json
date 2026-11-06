@@ -5,8 +5,8 @@
   "runtime": "node 22, express, PostgreSQL, node-media-server, mediasoup; no build step",
   "port": 3000,
   "domain": "openvibe.live (www, ingest, whip)",
-  "contracts": "openvibe-contracts v0.294.0",
-  "sdk": "openvibe-sdk v0.82.0",
+  "contracts": "openvibe-contracts v0.297.0",
+  "sdk": "openvibe-sdk v0.90.0",
   "shared": "openvibe-shared v4.115.1",
   "capabilities": [
     "live.chat_context.read",

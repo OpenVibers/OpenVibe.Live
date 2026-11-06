@@ -27,6 +27,7 @@ const crypto = require('crypto');
 const db = require('../db/database');
 const config = require('../config');
 const billing = require('./billing-client');
+const { assertionFor } = require('../net/subject-assertion');
 const { BillingCallError, subjectFor, ref, api } = billing;
 
 const base = () => config.baseUrl.replace(/\/+$/, '');
@@ -49,6 +50,10 @@ function refOf(out) {
  * calling Billing; a key already used with another body is refused; anything else is (re)sent.
  */
 async function perform({ action, method = 'POST', path, body, key, liveUserId = null, liveRef = null, trace }) {
+    // The person's own subject assertion (ADR-003, the 2026-11-06 amendment; plan H1): Billing checks
+    // it against the person the money is for. Live mints it from the person's own token on the
+    // request; without that token there is none, and the call travels the old way (the flag decides).
+    const assertion = await assertionFor(trace, personOf(body));
     const d = db.getDb();
     const requestJson = JSON.stringify(body || {});
     const row = await d.prepare('SELECT * FROM billing_actions WHERE idempotency_key = ?').get(key);
@@ -62,7 +67,7 @@ async function perform({ action, method = 'POST', path, body, key, liveUserId = 
     const id = (await d.prepare('SELECT id FROM billing_actions WHERE idempotency_key = ?').get(key)).id;
     await d.prepare('UPDATE billing_actions SET attempts = attempts + 1, updated_at = ov_now() WHERE id = ?').run(id);
     try {
-        const out = await billing.request(method, path, { body, idempotencyKey: key, trace });
+        const out = await billing.request(method, path, { body, idempotencyKey: key, trace, assertion });
         await d.prepare(`UPDATE billing_actions SET status = 'done', http_status = 200, billing_ref = ?, response_json = ?, error = NULL, updated_at = ov_now() WHERE id = ?`)
             .run(refOf(out), JSON.stringify(out), id);
         return { out, replayed: !!out._replayed, actionId: id };
@@ -130,6 +135,17 @@ function normalizeMessage(message, max) {
 }
 
 const streamTarget = (streamId) => (streamId ? { service: 'live', type: 'stream', id: String(streamId) } : undefined);
+
+/** The person a money body is about: the payer, the subscriber, the cash-out's owner. */
+function personOf(body) {
+    const b = body || {};
+    for (const field of ['from', 'subject', 'subscriber', 'on_behalf_of']) {
+        const v = b[field];
+        const id = v && typeof v === 'object' ? v.id : v;
+        if (typeof id === 'string' && /^usr_[0-9A-HJKMNP-TV-Z]{26}$/.test(id)) return id;
+    }
+    return null;
+}
 
 /** POST /api/funds/donate under Billing. Same result shape as vibes.donate() plus `balance`. */
 async function donate(req, { toUserId, streamId, amount, message, goalId = null }) {
@@ -220,7 +236,7 @@ async function recycle(req, amount) {
 /** GET /api/funds/balance shape. Throws BillingCallError when Billing cannot answer. */
 async function balance(liveUserId, trace) {
     const sid = await subjectFor(liveUserId);
-    const b = await api.balance(sid, { trace });
+    const b = await api.balance(sid, { trace, assertion: await assertionFor(trace, sid) });
     const per = Number(b.bits_per_usd) || 100;
     const usd = (n) => (Math.round(Number(n) || 0) / per).toFixed(2);
     return {
@@ -232,9 +248,9 @@ async function balance(liveUserId, trace) {
 
 const LIVE_TYPE = { cashout_request: 'cashout', cashout_denied: 'refund', cashout_paid: 'cashout_paid' };
 /** GET /api/funds/history rows in Live's transaction shape (the dashboard renders these). */
-async function history(liveUserId, limit = 50) {
+async function history(liveUserId, limit = 50, trace = null) {
     const sid = await subjectFor(liveUserId);
-    const page = await api.transactions(sid, { limit: Math.min(200, Math.max(1, limit)) });
+    const page = await api.transactions(sid, { limit: Math.min(200, Math.max(1, limit)) }, { trace, assertion: await assertionFor(trace, sid) });
     const txns = page.transactions || [];
     const people = await billing.liveUsersForSubjects(txns.flatMap((t) => [t.from_subject, t.to_subject]));
     return txns.map((t) => {
@@ -311,12 +327,12 @@ function vipClient() {
     });
     return _vip;
 }
-async function entitlementOf(member, creator) {
+async function entitlementOf(member, creator, trace = null) {
     if (process.env.LIVE_VIP_ENTITLEMENTS !== 'off') {
         const e = await vipClient().checkEntitlement({ subject: member, creator, product: 'live' });
         if (e && e.status !== 'unknown') return { active: !!e.active, via: 'vip' };
     }
-    const e = await api.entitlement(member, creator);
+    const e = await api.entitlement(member, creator, { trace, assertion: await assertionFor(trace, member) });
     return { active: !!(e && e.active), via: 'billing' };
 }
 
@@ -325,7 +341,7 @@ function viewerOrNull(fn) { return fn().catch((e) => { if (e instanceof BillingC
 async function subscribe(req, { streamer, provider, autoRenewRaw }) {
     const subscriber = await subjectFor(req.user.id);
     const to = await subjectFor(streamer.id, { role: 'recipient' });
-    const ent = await api.entitlement(subscriber, to, { trace: req.headers });
+    const ent = await api.entitlement(subscriber, to, { trace: req.headers, assertion: await assertionFor(req.headers, subscriber) });
     if (ent && ent.active) return { status: 409, body: { error: 'Already subscribed' } };
 
     if (provider === 'bucks') {
@@ -406,9 +422,9 @@ function presentSub(s, people) {
     };
 }
 
-async function mySubscriptions(liveUserId) {
+async function mySubscriptions(liveUserId, trace = null) {
     const sid = await subjectFor(liveUserId);
-    const out = await api.listSubscriptions({ subscriber: sid });
+    const out = await api.listSubscriptions({ subscriber: sid }, { trace, assertion: await assertionFor(trace, sid) });
     const subs = out.subscriptions || [];
     const people = await billing.liveUsersForSubjects(subs.map((s) => s.streamer && s.streamer.id));
     return subs.map((s) => presentSub(s, people));
@@ -423,12 +439,12 @@ function tierOnePrice(t) {
     return cents > 0 ? cents : null;
 }
 
-async function channelState(streamer, viewer) {
+async function channelState(streamer, viewer, trace = null) {
     const to = await viewerOrNull(() => subjectFor(streamer.id, { role: 'recipient' }));
     if (!to) return { subscribed: false, subscriberCount: 0 };
     const me = viewer ? await viewerOrNull(() => subjectFor(viewer.id)) : null;
     const [ent, list, tiers] = await Promise.all([
-        me ? await entitlementOf(me, to) : Promise.resolve(null),
+        me ? await entitlementOf(me, to, trace) : Promise.resolve(null),
         api.listSubscriptions({ streamer: to, status: 'active' }),
         api.tiers(to).catch(() => null),
     ]);
@@ -439,7 +455,7 @@ async function channelState(streamer, viewer) {
 
 async function cancelSubscription(req, { id, streamerId }) {
     const sid = await subjectFor(req.user.id);
-    const out = await api.listSubscriptions({ subscriber: sid }, { trace: req.headers });
+    const out = await api.listSubscriptions({ subscriber: sid }, { trace: req.headers, assertion: await assertionFor(req.headers, sid) });
     const subs = (out.subscriptions || []).filter((s) => s.subscriber && s.subscriber.id === sid);
     let sub = subs.find((s) => String(s.id) === String(id));
     if (!sub && streamerId) {
