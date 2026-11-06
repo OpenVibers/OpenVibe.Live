@@ -50,8 +50,8 @@ Speech-to-text hears a stream's whole audio track. On 2026-10-18 the Arena's "qu
 A streamer decides who sees their Rundown with the same Share sheet the rest of the network uses: **Everyone**, **Anyone with the link**, **Specific people**, **Only me** (`server/rundown/visibility.js`, `server/rundown/sharing.js`).
 
 - **One setting per episode, not per take.** An episode is registered in the sharing system when the desk writes it up (`kind rundown-episode`, service `live`, the stream id as its resource), and its Share sheet changes it afterwards. **A segment follows its episode:** the pages read the episode's setting, never a second one. The share row goes when the episode is deleted (see [Deleting](#deleting)).
-- **The default** is in **My Rundown** (`GET|PUT /api/rundown/settings`, `server/rundown/settings.js`): Everyone until the streamer changes it. It applies to the write-ups made from then on. An episode that already has its own setting keeps it; a default never overrules the sheet.
-- **Each episode has its own Share sheet.** That is the only place its setting is changed (`/api/v1/<kind>/<id>/share`, the network's own share API, `server/rundown/sharing.js` and `shareRouterFor` in `server/index.js`); there is no second Rundown-only control.
+- **The default** is in **Your Rundown**, the box at the top of the streamer's own Rundown page (`/rundown/<username>#mine`; the line under the Rundown's title links to it when signed in) (`GET|PUT /api/rundown/settings`, `server/rundown/settings.js`): Everyone until the streamer changes it. It applies to the write-ups made from then on. An episode that already has its own setting keeps it; a default never overrules the sheet.
+- **Each episode has its own Share sheet.** That is the only place its setting is changed (`/api/v1/<kind>/<id>/share`, the network's own share API, `server/rundown/sharing.js` and `shareRouterFor` in `server/index.js`); there is no second Rundown-only control. On their own episode the streamer sees **Who sees it** (and, when the recording is stricter, that the episode follows it and where to change that), **Share** and **Delete episode**; the episode and streamer reads answer `mine`, so these never wait for the page's signed-in state. An episode written up before the sharing system had no share row, so its owner's first visit registers it as Everyone, which it already was.
 - **Keep me out** stays and is stronger: it means Only me for everything and no new write-ups at all while it is on. Coming back restores the write-ups, never anything staff took down.
 - **The streamer sees all their own items everywhere**, each non-public one marked with a small chip ("Only me", "Link", "3 people").
 - **A take that names another streamer** never reaches that streamer's page and never notifies them while it is not Everyone.
@@ -84,13 +84,13 @@ An episode is the write-up of one stream, and its VOD is that same stream. They 
 
 ## Deleting
 
-The streamer can delete their own items, with a confirm each time (`POST /api/rundown/delete/*`, `server/rundown/delete.js`):
+The streamer can delete their own items. Each delete asks first, in the page (a sheet on the phone, a card on a wide screen), and says what goes (`POST /api/rundown/delete/*`, `server/rundown/delete.js`):
 
 | What | From where | What goes |
 |---|---|---|
-| **One take** | its ⋯ menu | that take |
-| **One episode** | the episode page's ⋯ menu | the episode, all its takes, its after-show report |
-| **All my Rundown** | My Rundown settings | every take and episode of theirs, and the after-show reports, plus an offer to also "Keep me out" from now on (`keep_out`) |
+| **One take** | the bin button on the take, wherever it is listed | that take |
+| **One episode** | **Delete episode** on the episode page, next to Share | the episode, all its takes, its after-show report; the page then offers **Write this stream up again** (`POST /api/rundown/restore`) |
+| **All my Rundown** | **Delete my Rundown** in Your Rundown | every take and episode of theirs, and the after-show reports, plus an offer to also "Keep me out" from now on (`keep_out`) |
 
 - **Deleted is deleted.** The rows are removed, not hidden. Topics recount and a topic left with nothing is removed, its page cleared. The sharing row goes with the episode.
 - **The receipt:** "Deleted 1 episode and 12 takes".
@@ -133,7 +133,7 @@ The streamer can delete their own items, with a confirm each time (`POST /api/ru
 | POST | `/react {type, id, reaction}` | segment or episode; fire, lol, dead, cap, facts; the same again takes it back |
 | POST | `/hide {type, id}` | staff |
 | GET, PUT | `/opt-out {out}` | signed in: keep yourself out (or come back) |
-| GET, PUT | `/settings` | signed in: "My Rundown" — the default audience for new write-ups, and whether you keep yourself out |
+| GET, PUT | `/settings` | signed in: "Your Rundown": the default audience for new write-ups, and whether you keep yourself out |
 | POST | `/delete/take {id}` | signed in: delete one of your takes |
 | POST | `/delete/episode {stream_id}` | signed in: delete one of your episodes with its takes |
 | POST | `/delete/all {keep_out}` | signed in: delete all your Rundown, optionally keeping yourself out from now on |
