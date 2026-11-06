@@ -851,6 +851,8 @@ async function loadChannelPage(username, managedStreamRef = null, legacySessionI
             document.getElementById('ch-live-area').style.display = '';
             document.getElementById('ch-offline-area').style.display = 'none';
             _setChannelLive(true);
+            _placeShareButton('live');
+            updateShareButton(null);
             _channelFooter(true);
             _placeBelowFold();
 
@@ -934,6 +936,8 @@ async function loadChannelPage(username, managedStreamRef = null, legacySessionI
             document.getElementById('ch-offline-area').style.display = '';
             _channelFooter(false);
             _setChannelLive(false);
+            _placeShareButton('offline');
+            updateShareButton(null);
             _wireCamButton();
             _updateCamButton(null);
             _placeBelowFold();
@@ -1232,15 +1236,46 @@ function scrollActiveTabIntoView() {
 }
 
 /**
- * Copy the current stream-specific URL to clipboard.
+ * The channel's Share button (the one share sheet every OpenVibe site opens, openvibe-shared 4.114.0).
+ *
+ * Where it sits: in the stream's own action row (the info bar under the player) while the channel is live, and in
+ * the header's actions when the channel is not, so the channel page always has one Share button and never two.
+ *
+ * What it shares: the channel's own address, its name and its description. While a recording plays (the DVR), the
+ * recording's own page on OpenVibe.Video is what is shared, so the sheet can offer "Start at …" on the player.
  */
-function shareStreamUrl() {
-    const url = window.location.href;
-    navigator.clipboard.writeText(url).then(
-        () => toast('Stream link copied!', 'success'),
-        () => toast('Failed to copy link', 'error')
-    );
+function _placeShareButton(where) {
+    const b = document.getElementById('ch-btn-share');
+    if (!b) return;
+    const live = where !== 'offline';
+    const host = live ? document.getElementById('ch-share-slot') : document.querySelector('#ch-offline-area .ch-actions');
+    if (!host || b.parentElement === host) return;
+    if (live) host.appendChild(b);
+    else host.insertBefore(b, host.firstChild);
+    b.className = 'btn btn-outline';
+    b.title = live ? 'Share this stream' : 'Share this channel';
 }
+
+/** What the channel's Share button shares: the address, the name, a line about it, and the picture. */
+function updateShareButton(stream) {
+    const b = document.getElementById('ch-btn-share');
+    if (!b) return;
+    const dvr = (typeof dvrState !== 'undefined' && dvrState) ? dvrState : null;
+    const recording = dvr && dvr.active && dvr.vodId ? videoHref('vod', dvr.vodId) : '';
+    b.dataset.url = recording || `${location.origin}${location.pathname}`;
+    const s = stream || currentStreamData || null;
+    const name = (s && (s.display_name || s.username)) || '';
+    const title = (s && s.title) || name || document.title;
+    b.dataset.title = title;
+    const text = (s && s.description ? String(s.description) : '').replace(/\s+/g, ' ').trim().slice(0, 240);
+    if (text) b.dataset.text = text; else b.removeAttribute('data-text');
+    const face = document.querySelector('#ch-avatar img, #ch-avatar-offline img');
+    if (face && face.src) b.dataset.image = face.src; else b.removeAttribute('data-image');
+    if (recording) b.dataset.timeFrom = '#video-element'; else b.removeAttribute('data-time-from');
+}
+
+// The DVR found the stream's recording: what the Share button shares is now the recording's own page.
+document.addEventListener('ov-live:dvr-ready', () => updateShareButton(currentStreamData));
 
 /**
  * Load tabs for the current channel's live streams.
@@ -1620,11 +1655,6 @@ function updateCumulativeViewers(liveStreams, rsRestream = {}, restreamLinks = n
         }
     }
 
-    // Share button (copies stream-specific URL)
-    if (streamCount > 1) {
-        html += `<button class="ch-share-stream" onclick="shareStreamUrl()" title="Copy link to this specific stream"><i class="fa-solid fa-link"></i> Share stream</button>`;
-    }
-
     if (html) {
         el.innerHTML = html;
         el.style.display = '';
@@ -1856,6 +1886,7 @@ function activateChannelStream(stream) {
     currentStreamData = stream;
     document.getElementById('ch-stream-title').textContent = stream.title || 'Untitled Stream';
     setPageTitle(`${stream.title || 'Live'} — ${stream.display_name || stream.username || ''}`.trim());
+    updateShareButton(stream);
     // Category pill reflects THIS live slot's category (set in /broadcast), not the
     // channel's stale default.
     if (stream.category) _setCategoryBadge(document.getElementById('ch-category-badge'), stream.category, _isInferredCategory(stream));

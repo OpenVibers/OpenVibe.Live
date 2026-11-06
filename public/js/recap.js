@@ -82,15 +82,12 @@
                 ${clips}
                 ${vod}
                 <div class="recap-share">
-                    <button type="button" class="btn btn-primary" id="recap-copy"><i class="fa-solid fa-link"></i> Copy link</button>
-                    <a class="btn btn-outline" target="_blank" rel="noopener" href="https://twitter.com/intent/tweet?text=${encodeURIComponent(shareText)}&url=${encodeURIComponent(shareUrl)}"><i class="fa-brands fa-x-twitter"></i> Post</a>
+                    <button type="button" class="btn btn-primary" data-ov-share-sheet data-url="${esc(shareUrl)}" data-title="${esc(w.headline || s.title)}" data-text="${esc(shareText)}"${r.vod && r.vod.thumbnail_url ? ` data-image="${esc(r.vod.thumbnail_url)}"` : ''}><i class="fa-solid fa-share-nodes"></i> Share</button>
                     <a class="btn btn-outline" ${go(path)}><i class="fa-solid fa-user"></i> ${esc(u.display_name)}'s channel</a>
                     ${owner ? `<button type="button" class="btn btn-outline" id="recap-regen"><i class="fa-solid fa-rotate"></i> Rewrite report</button>` : ''}
                 </div>
                 ${more}
             </article>`;
-        const copy = root.querySelector('#recap-copy');
-        if (copy) copy.onclick = async () => { try { await navigator.clipboard.writeText(shareUrl); copy.innerHTML = '<i class="fa-solid fa-check"></i> Copied'; setTimeout(() => { copy.innerHTML = '<i class="fa-solid fa-link"></i> Copy link'; }, 1800); } catch { prompt('Copy this link', shareUrl); } };
         const regen = root.querySelector('#recap-regen');
         if (regen) regen.onclick = async () => { regen.disabled = true; regen.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Rewriting…'; try { await api(`/recap/${id}/regenerate`, { method: 'POST' }); await loadRecapPage(id); } catch (e) { regen.disabled = false; regen.innerHTML = '<i class="fa-solid fa-rotate"></i> Rewrite report'; } };
         try { document.title = `${w.headline || s.title} — ${u.display_name}'s stream report | OpenVibe.Live`; } catch { /* */ }
