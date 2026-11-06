@@ -47,6 +47,15 @@ function warn(msg) {
     console.warn(`[AI service] ${msg}`);
 }
 
+/**
+ * The last problem AI answered with, for the caller that shows it to a person: today only `ai.resting` (503:
+ * every provider is out of balance, paused or busy). A product asks this instead of inventing an error, and
+ * shows the human sentence AI sent. Cleared when a run succeeds.
+ */
+let _lastProblem = null;
+function lastProblem() { return _lastProblem; }
+const RESTING = { code: 'ai.resting', detail: 'AI is resting for a moment' };
+
 async function _fetchJson(method, path, body, timeoutMs, retried = false) {
     let headers;
     try { headers = await principal.serviceHeaders(AUDIENCE); } catch (e) { warn(`no service token for ${AUDIENCE}: ${e.message}`); return null; }
@@ -65,7 +74,12 @@ async function _fetchJson(method, path, body, timeoutMs, retried = false) {
         return await _fetchJson(method, path, body, timeoutMs, true);
     }
     if (res.status === 429) { warn(`quota: ${(json && json.detail) || 'refused'} (retry after ${res.headers.get('retry-after') || '?'}s)`); return null; }
-    if (!res.ok && res.status !== 202) { warn(`${method} ${path} -> ${res.status} ${(json && (json.code || json.detail)) || ''}`); return null; }
+    if (!res.ok && res.status !== 202) {
+        // AI is resting (ai.resting): keep its sentence so a product can show it instead of "could not answer".
+        if (res.status === 503 && json && json.code === 'ai.resting') _lastProblem = { ...RESTING, retry_after_seconds: Number(res.headers.get('retry-after')) || null };
+        warn(`${method} ${path} -> ${res.status} ${(json && (json.code || json.detail)) || ''}`);
+        return null;
+    }
     return json;
 }
 
@@ -75,6 +89,7 @@ async function _fetchJson(method, path, body, timeoutMs, retried = false) {
  */
 async function run(workflow, input, { target, attribution, idempotencyKey, waitMs = 60000, pollMs = 0, credentialSubject = null } = {}) {
     if (!enabled()) return null;
+    _lastProblem = null;
     const wait = Math.max(0, Math.min(60000, waitMs));
     const created = await _fetchJson('POST', `/api/v1/runs?wait=${wait}`, {
         workflow, input, target: target || undefined, attribution: attribution || undefined, idempotency_key: idempotencyKey || undefined,
@@ -91,6 +106,7 @@ async function run(workflow, input, { target, attribution, idempotencyKey, waitM
         if (!again || !again.run) return null;
         r = again.run;
     }
+    if (r.error && r.error.code === 'ai.resting') _lastProblem = { ...RESTING, detail: r.error.detail || RESTING.detail };
     return r;
 }
 
@@ -181,4 +197,4 @@ async function complete(o = {}, { toVisionJpeg } = {}) {
     };
 }
 
-module.exports = { enabled, run, structured, complete, usable, meter, imageInput, ownerRef, workflowFor, setRecorder, KIND_TO_WORKFLOW, AUDIENCE };
+module.exports = { enabled, run, structured, complete, usable, meter, imageInput, ownerRef, workflowFor, setRecorder, lastProblem, KIND_TO_WORKFLOW, AUDIENCE };
