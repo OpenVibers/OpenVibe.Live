@@ -33,6 +33,8 @@ const PERSONALITIES = ['calm', 'hype', 'dry', 'roast'];
 const SOURCE = 'agent_voice';
 const PAUSED_ALLOWANCE = 'allowance_spent';
 const PAUSED_MESSAGE = 'voice paused: allowance spent';
+// Where the public Live lives: the captions address has to be absolute, because the VOD player is another app.
+const PUBLIC_BASE = (process.env.LIVE_PUBLIC_ORIGIN || 'https://openvibe.live').replace(/\/+$/, '');
 
 /** How each personality says a thing. The rules below are added to every one of them. */
 const STYLE = {
@@ -283,6 +285,16 @@ async function linesAfter(managedStreamId, afterId, limit = 20) {
     }));
 }
 
+/**
+ * Where the recording's captions live: the WebVTT a player can attach as a text track. Media has no caption
+ * attachment API yet (captions on the timeline are still open in its own plan), so Live hands out the track's
+ * address instead of the file riding inside the VOD.
+ */
+function captionsUrl(row) {
+    if (!row || !row.public_id) return null;
+    return `${PUBLIC_BASE}/api/streams/agent/${encodeURIComponent(row.public_id)}/captions.vtt`;
+}
+
 /** The lines of a recording, as WebVTT: the captions the VOD carries. */
 async function captions(managedStreamId, startedAt) {
     const rows = await db.all(
@@ -345,5 +357,5 @@ module.exports = {
     MAX_CHARS, GAP_MS, QUEUE_MAX, IDLE_MS, PERSONALITIES, SOURCE, PAUSED_ALLOWANCE, PAUSED_MESSAGE,
     Writer, writer,
     allowed, clamp, doxxes, factsFor, idleFacts, kindOf, personalityOf, voiceState, allowanceSpent, pause, taskOf,
-    linesAfter, captions, webvtt,
+    linesAfter, captions, captionsUrl, webvtt,
 };

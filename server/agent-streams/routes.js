@@ -304,6 +304,8 @@ router.get('/:id/state', deskOrOwner, async (req, res) => {
             // them in. The state contract's v2 shape carries both; Live never mixes the audio, the desk does.
             lines: await voice.linesAfter(row.managed_stream_id, req.query.after, 20),
             voice: voice.voiceState(row),
+            // S4: where the recording's captions live, so a VOD player can attach the WebVTT as a text track.
+            captions_url: voice.captionsUrl(row),
         });
     } catch (err) {
         console.error('[AgentStream] state failed:', err.message);

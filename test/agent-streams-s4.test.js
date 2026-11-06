@@ -273,6 +273,7 @@ async function check(name, fn) {
         assert.ok(Array.isArray(r.data.lines) && r.data.lines.length, 'the state carries the lines');
         assert.strictEqual(r.data.lines[r.data.lines.length - 1].text, 'The checkout tests are green.');
         assert.ok(r.data.voice, 'the state carries the voice');
+        assert.ok(String(r.data.captions_url || '').endsWith('/captions.vtt'), 'the state points at the captions track');
     });
 
     await check('the desk asks for the lines it has not read yet', async () => {
