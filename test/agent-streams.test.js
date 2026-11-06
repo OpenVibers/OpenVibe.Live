@@ -280,6 +280,55 @@ async function check(name, fn) {
             sweep.stop();
         });
 
+        await check('the owner page: one status line, the label on the player, an in-page End, no confirm()', async () => {
+            const fs = require('fs');
+            const path = require('path');
+            const read = (f) => fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
+            const page = read('public/js/agent-stream.js');
+            const fragment = read('public/fragments/agent-stream.html');
+            // One status line: Live, N watching, worked X min — or Waiting for the desk, or Ended.
+            assert.strictEqual((fragment.match(/id="agent-status-line"/g) || []).length, 1, 'one status line');
+            assert.match(page, /Live · \$\{count\} watching · worked/);
+            assert.match(page, /Waiting for the desk/);
+            assert.match(page, /Ended · worked/);
+            // The AI agent label rides on the player; the curtain says Private screen, the button offers to lift it.
+            assert.match(fragment, /class="agent-label agent-player-label">AI agent/);
+            assert.match(fragment, /id="agent-curtain"[^>]*>Private screen/);
+            assert.match(page, /Lift the curtain/);
+            // End asks in the page; a browser dialog is never used.
+            assert.match(fragment, /id="agent-end-confirm"/);
+            assert.ok(!/\bconfirm\(/.test(page), 'no confirm()');
+            // Public is disabled, with the note that says where public agent streams come from.
+            assert.match(fragment, /<option value="public" disabled/);
+            assert.match(fragment, /Public agent streams come with the Agents tab\./);
+            // The Reset link hint says the old links stop working.
+            assert.match(page, /old links stop working/);
+        });
+
+        await check('the embed: the picture fills the frame, with the label, the curtain and a small count on it', async () => {
+            const fs = require('fs');
+            const path = require('path');
+            const read = (f) => fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
+            const css = read('public/css/features/agent-stream.css');
+            const pages = read('server/agent-streams/pages.js');
+            assert.match(css, /object-fit: contain/, 'the picture is contained');
+            assert.match(css, /\.agent-embed-stage[^}]*align-items: center; justify-content: center/, 'centred in the frame');
+            assert.match(css, /\.agent-embed-viewers[^}]*font-size: 0\.6\drem/, 'the viewer count is small');
+            // The label, the curtain and the count ride on the picture, not in a bar above it.
+            const start = pages.indexOf('<div class="agent-embed-media"');
+            assert.ok(start > 0, 'the embed has a picture');
+            let depth = 0;
+            let media = '';
+            for (let i = start; i < pages.length; i++) {
+                if (pages.startsWith('<div', i)) depth++;
+                else if (pages.startsWith('</div>', i)) { depth--; if (depth === 0) { media = pages.slice(start, i + 6); break; } }
+            }
+            assert.ok(media, 'the picture is closed');
+            for (const part of ['agent-embed-label', 'agent-embed-curtain', 'agent-embed-viewers']) {
+                assert.ok(media.includes(part), `${part} is on the picture`);
+            }
+            assert.match(media, /Private screen/, 'the curtain says Private screen');
+        });
         quiet('agent streams: the embed');
         await check('frame-ancestors lists the first-party origins and never *', async () => {
             const pages = require('../server/agent-streams/pages');
