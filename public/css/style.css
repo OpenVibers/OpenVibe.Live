@@ -3098,11 +3098,11 @@ a.pulse-card:hover { border-color: var(--accent); transform: translateY(-2px); }
     position: absolute; right: 4px; bottom: 4px;
     padding: 6px 8px; background: var(--accent-dark);
     border: none; border-radius: var(--radius);
-    color: var(--text-primary); font-size: 0.85rem;
+    color: var(--on-accent, #fff); font-size: 0.85rem;
     cursor: pointer; transition: background var(--ov-dur-2, 0.15s);
     z-index: 1;
 }
-.chat-send-btn:hover { background: var(--accent); color: #000; }
+.chat-send-btn:hover { background: var(--accent-dark); color: var(--on-accent, #fff); filter: brightness(1.18); }
 .chat-tools-row {
     display: flex; gap: 4px; align-items: center;
     padding: 4px 0 0;
@@ -7766,7 +7766,6 @@ body.fabs-tucked .messenger-toggle, body.fabs-tucked .floating-chat-fab, body.fa
 @media (hover: none) {
     .stream-card:hover { transform: none; border-color: var(--border); box-shadow: none; }
     .paste-card:hover { transform: none; border-color: var(--border); box-shadow: none; }
-    .chat-send-btn:hover { background: var(--accent-dark); color: var(--text-primary); }
     .btn:hover { filter: none; }
 }
 
