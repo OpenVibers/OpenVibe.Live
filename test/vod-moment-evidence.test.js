@@ -155,7 +155,7 @@ console.warn = () => {};
     assert.strictEqual(clip.evidence.chatters, 5);
     assert.ok(clip.evidence.spike.avg > 0.9 && clip.evidence.spike.avg < 1.1, 'the average counts the quiet stretches: 240 messages over 240 buckets');
     assert.ok(clip.evidence.speechWords >= 10, 'the words come from the whole transcript near the moment, not a sample');
-    assert.strictEqual(clip.evidence.sounds[0].label, 'Laughter');
+    assert.strictEqual(clip.evidence.sounds[0].label, 'laughter', 'the sound is said by its tag (sound-captions.evidence)');
 
     // ── The AI may abstain: no weaker signal is tried in its place ──
     ai.isEnabled = async () => true; ai.withinBudget = async () => true;

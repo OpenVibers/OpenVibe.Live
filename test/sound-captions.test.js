@@ -22,4 +22,14 @@ assert.deepStrictEqual(sc.cues([ev(50, 'Explosion', 0.9, 51), ev(70, 'Gunshot, g
     [{ start: 50, end: 51.5, text: '[explosion]' }], 'one rare explosion is news; gunfire below 0.85 is not captioned');
 assert.deepStrictEqual(sc.cues(null), []);
 assert.strictEqual(sc.tagOf('Dog').tag, 'dog barking');
+
+// What a model may hear (evidence): 2026-11-07, a rare misheard "Livestock" in a trading stream became the moment
+// "Live chaos: farm noises clash". The long tail never passes; a tag passes above its bar, by its tag; a rare-only tag
+// only where it is rare; music is the bed, not a sound.
+const heard = sc.evidence([ev(10, 'Livestock, farm animals, working animals', 0.7), ev(12, 'Animal', 0.9), ev(20, 'Chuckle, chortle', 0.8),
+    ev(30, 'Laughter', 0.5), ev(40, 'Explosion', 0.9), ev(45, 'Music', 0.9)], { spanSec: 3600 });
+assert.deepStrictEqual(heard.map((e) => [e.start_sec, e.label]), [[20, 'laughter'], [40, 'explosion']], 'only tagged sounds above their bar, by tag');
+assert.deepStrictEqual(sc.evidence(shooter, { spanSec: 3600 }), [], 'a shooter\'s constant explosions are not evidence');
+assert.deepStrictEqual(sc.evidence(null), []);
+assert.strictEqual(sc.evidence([ev(5, 'Applause', 0.8)]).length, 1, 'no span given: the events\' own range');
 console.log('sound captions: all checks passed');
