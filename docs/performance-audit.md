@@ -209,20 +209,21 @@ anything. It is now a feature (`public/features.json` → `chatUI`) that only th
 ask for, and `public/js/chat-core.js` (19 KB: the toast, the chat settings, the floating button,
 the `?vcInvite=` link) stays in the shell for the pages that need those.
 
-`npm run perf:budget` (the server's own render of "/", deterministic):
+`npm run perf:budget` (the server's own render of "/", deterministic — before is `main` at 71ba7ec,
+openvibe-shared 4.133.0):
 
 | | before | after |
 |---|---:|---:|
 | home HTML | 137.7 KB (23.8 br) | 138.6 KB (24.1 br) — the asset manifest now carries the chatUI feature |
-| home JS | 26 files, 1308.1 KB (306 br) | **25 files, 952.9 KB (233.2 br)** |
+| home JS | 26 files, 1310.5 KB (306.5 br) | **25 files, 955.2 KB (233.7 br)** |
 | home CSS | 5 files, 177.5 KB (35.4 br) | 5 files, 177.5 KB (35.4 br) — `chat-shared.css` left with the chat |
 
 What the browser asked for, on a 390×844 phone (`tools/phone-speed.js` profile, local server):
 
 | page | before | after |
 |---|---|---|
-| `/` | 41 scripts (1785 KB) + 13 stylesheets (862.5 KB) | 40 scripts (1429.7 KB) + 12 stylesheets (843.6 KB) — **−374 KB, −14%** |
-| `/@admin` | 63 js/css requests (2886 KB) | 64 js/css requests (2890.4 KB) — unchanged |
+| `/` | 41 scripts (1787.3 KB) + 13 stylesheets (862.5 KB) | 40 scripts (1432.1 KB) + 12 stylesheets (843.6 KB) — **−374 KB, −14%** |
+| `/@admin` | 50 scripts (2072.4 KB) + 13 stylesheets (815.9 KB) | 51 scripts (2076.8 KB) + 13 stylesheets (815.9 KB) — unchanged |
 
 The channel page is unchanged because the server still puts the chat in its HTML: a direct visit to
 `/@x` downloads the chat in parallel with the rest of the page, exactly as before. What moved is
@@ -232,13 +233,13 @@ channel is entered rather than at the home page, so on a cold phone the chat's f
 0.5 s later (91.6 KB of Brotli at 1.6 Mbps); a repeat visit is unaffected (the browser has it), and
 the loader's intent prefetch (hover, focus or touch on a channel link) warms it before the click.
 
-Timings on the throttled phone profile (4× CPU, 1.6 Mbps, 150 ms), 3 runs each, same box, both
-states on local servers: the home page's DOMContentLoaded fell from 13938/14659/14006 ms to
-11865/10879/11308 ms (the page has 374 KB less JavaScript to parse — this held in every run). The
-LCP (the hero quip, which waits for `/api/home/hero`) moved 3996 → 4724 ms at the median; that is
-inside the noise band of this shared box and was not reproducible outside the throttled profile, so
-it is not claimed as a result. The channel page's DOMContentLoaded moved 5338/5480/5599 →
-7368/7447/7457 ms: the chat's download moved from the home page to the channel page.
+Timings on the throttled phone profile (4× CPU, 1.6 Mbps, 150 ms), two runs each, same box, both
+states on local servers: the home page's DOMContentLoaded fell from 14078/14520 ms to 11488/12219 ms
+(the page has 374 KB less JavaScript to parse — this held in every run). The LCP (the hero quip,
+which waits for `/api/home/hero`) is inside the noise band of this shared box: the runs gave
+3888/4964 ms before and 3952/15776 ms after, the second "after" run being an outlier on the API
+call, so no LCP result is claimed. The channel page's DOMContentLoaded moved 5381/5458 →
+7381/7491 ms: the chat's download moved from the home page to the channel page.
 
 `scripts/perf/check-budgets.js` now refuses to let `/js/chat.js`, `/js/chat-shared.js` or
 `/css/chat-shared.css` back onto the home page, next to the size budgets it just lowered.

@@ -81,4 +81,31 @@ function cues(events, { spanSec = 0 } = {}) {
     return out.map((c) => ({ start: Math.round(c.start * 100) / 100, end: Math.round(c.end * 100) / 100, text: c.text }));
 }
 
-module.exports = { cues, tagOf, TAGS };
+/**
+ * The sounds an AI prompt may hear (2026-11-07: a rare misheard "Livestock" in a trading stream became the moment
+ * "Live chaos: farm noises clash"). Only a label with a tag above that tag's bar passes, a rare-only tag (explosion,
+ * gunfire) only where it is rare in the stream, and each is said by its tag ("laughter", not "Chuckle, chortle"), so
+ * the long tail never reaches a model. `spanSec` defaults to the events' own time range.
+ *
+ *   evidence(events, { spanSec }) → [{ ...event, label: tag }]
+ */
+function evidence(events, { spanSec } = {}) {
+    const list = (Array.isArray(events) ? events : []).filter((e) => e && e.label && e.label !== 'Music');
+    if (!list.length) return [];
+    let span = Number(spanSec);
+    if (!Number.isFinite(span) || span <= 0) {
+        const times = list.map((e) => Number(e.start_sec) || 0);
+        span = Math.max(...times) - Math.min(...times);
+    }
+    const rare = new Set(clipScore.rareSounds(list, span).map((e) => String(e.label || '')));
+    const out = [];
+    for (const e of list) {
+        const t = tagOf(e.label);
+        if (!t || Number(e.confidence || 0) < t.min) continue;
+        if (t.rareOnly && !rare.has(String(e.label))) continue;
+        out.push({ ...e, label: t.tag });
+    }
+    return out;
+}
+
+module.exports = { cues, tagOf, evidence, TAGS };
