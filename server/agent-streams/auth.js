@@ -24,11 +24,9 @@ const AUDIENCE = 'openvibe.live';
 // before the registry entry is pinned still works.
 const CAPABILITIES = ['live.agent_stream.publish', 'live.agent-stream.publish'];
 const CAPABILITY = CAPABILITIES[0];
-// The sandbox worker (S6): the capability that lets OpenVibe's sandbox worker register itself. The
-// registry's id carries no hyphen; the design's spelling is accepted too, so a token minted before the
-// registry entry is pinned still works.
-const SANDBOX_CAPABILITIES = ['live.agent_sandbox.register', 'live.agent-sandbox.register'];
-const SANDBOX_CAPABILITY = SANDBOX_CAPABILITIES[0];
+// The sandbox worker (S6): the capability that lets OpenVibe's sandbox worker register itself, as the
+// pinned Contracts release names it (a capability id carries no hyphen).
+const SANDBOX_CAPABILITY = 'live.agent_sandbox.register';
 const FIRST_PARTY_SUB = /^(svc|node):/;
 
 /** The local account linked to a Network subject, or null. */
@@ -109,15 +107,11 @@ async function publisher(req, res, next) {
     }
 }
 
-/** The capability on a service token, with the pinned registry's check when it knows the id. */
+/** The sandbox registration capability on a service token, checked against the pinned registry. */
 function holdsSandboxCapability(claims) {
     const c = claims || {};
-    if (!Array.isArray(c.cap)) return false;
-    return SANDBOX_CAPABILITIES.some((capability) => {
-        if (!c.cap.includes(capability)) return false;
-        if (contracts.capabilities.get(capability)) return contracts.capabilities.check(c, capability).allowed;
-        return contracts.capabilities.grants(c.cap, capability);
-    });
+    if (!Array.isArray(c.cap) || !c.cap.includes(SANDBOX_CAPABILITY)) return false;
+    return contracts.capabilities.check(c, SANDBOX_CAPABILITY).allowed;
 }
 
 /**
@@ -185,4 +179,4 @@ async function userFromToken(token) {
     return decoded ? await resolveNetworkUser(decoded) : null;
 }
 
-module.exports = { publisher, viewer, viewerSubject, userForSubject, userFromToken, holdsCapability, holdsSandboxCapability, sandboxRegistrar, AUDIENCE, CAPABILITY, CAPABILITIES, SANDBOX_CAPABILITY, SANDBOX_CAPABILITIES };
+module.exports = { publisher, viewer, viewerSubject, userForSubject, userFromToken, holdsCapability, holdsSandboxCapability, sandboxRegistrar, AUDIENCE, CAPABILITY, CAPABILITIES, SANDBOX_CAPABILITY };
