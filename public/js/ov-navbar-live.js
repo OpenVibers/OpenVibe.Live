@@ -83,7 +83,7 @@
                 { id: 'vibes', icon: 'fa-wallet', tone: 'green', value: '0', valueId: 'nav-balance-amount', label: 'Vibes', title: 'Vibes balance', onClick: () => call('showModal', 'buy-funds') },
             ],
             // DMs beside the bell (Shared 4.25): the button opens the messenger panel; without it, Chat's inbox.
-            messages: { onOpen: () => { if (window.messengerWidget && window.messengerWidget.toggle) window.messengerWidget.toggle(); else location.href = 'https://openvibe.chat/messages'; }, href: 'https://openvibe.chat/messages' },
+            messages: { onOpen: () => { if (window.messengerWidget && window.messengerWidget.toggle) window.messengerWidget.toggle(); else if (window.ov && ov.load) ov.load('messenger').then(() => { if (window.messengerWidget && window.messengerWidget.toggle) window.messengerWidget.toggle(); else location.href = 'https://openvibe.chat/messages'; }).catch(() => { location.href = 'https://openvibe.chat/messages'; }); else location.href = 'https://openvibe.chat/messages'; }, href: 'https://openvibe.chat/messages' },
             // Same-origin links are routes of this single-page app.
             onNavigate: (href, e) => (typeof handleLinkClick === 'function' ? handleLinkClick(e, href) : true),
             // No speculation rules: the router answers same-site links, so a prefetched page was never used, and the

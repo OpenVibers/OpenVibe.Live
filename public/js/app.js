@@ -530,7 +530,13 @@ async function loadOpenVibeAppMeta(force = false) {
 }
 
 /* ── Modal ────────────────────────────────────────────────────── */
+const MONEY_MODALS = new Set(['donate', 'buy-funds', 'cashout', 'add-reward']);
 function showModal(id) {
+    // Vibes, tips and channel rewards live in features.json → money, which most pages never load: fetch it first.
+    if (MONEY_MODALS.has(id) && typeof openvibeBucksDonateModal !== 'function' && window.ov && ov.load) {
+        ov.load('money').then(() => showModal(id)).catch(() => { if (typeof toast === 'function') toast('That could not load. Check your connection and try again.', 'error'); });
+        return;
+    }
     const overlay = document.getElementById('modal-overlay');
     const content = document.getElementById('modal-content');
     const templates = {
@@ -548,12 +554,12 @@ function showModal(id) {
                 <i class="fa-solid fa-network-wired"></i> Sign in with OpenVibe
             </a>
             <p style="text-align:center;margin-top:12px;font-size:12px;color:var(--text-muted)">Registration is handled on openvibe.network</p>`,
-        donate: openvibeBucksDonateModal(),
-        'buy-funds': openvibeBucksBuyModal(),
-        cashout: openvibeBucksCashoutModal(),
+        donate: () => openvibeBucksDonateModal(),
+        'buy-funds': () => openvibeBucksBuyModal(),
+        cashout: () => openvibeBucksCashoutModal(),
         'stream-key': streamKeyModal(),
         'add-goal': addGoalModal(),
-        'add-reward': addRewardModal(),
+        'add-reward': () => addRewardModal(),
         'redeem-reward': (data) => redeemRewardModal(data),
         'create-managed-stream': createManagedStreamModal,
     };
@@ -762,6 +768,8 @@ function onAuthChange() {
     // The navbar is the network's shared component; tell it who is here (js/ov-navbar-live.js).
     if (window.LiveNav) window.LiveNav.sync(currentUser || null);
     if (currentUser) loadBalance();
+    // The DM panel is for a signed-in person only (features.json → messenger).
+    if (currentUser && window.ov && ov.load) ov.load('messenger').catch(() => { /* in ov.diagnostics() */ });
 
     try {
         window.dispatchEvent(new CustomEvent('openvibe-auth-changed', {
@@ -813,6 +821,7 @@ async function updateChannelPointsNav(streamerId) {
 }
 function openChannelRewards() {
     if (typeof toggleRewardsPanel === 'function') toggleRewardsPanel();
+    else if (window.ov && ov.load) ov.load('money').then(() => { if (typeof toggleRewardsPanel === 'function') toggleRewardsPanel(); }).catch(() => {});
 }
 
 function isModifiedLinkClick(event) {

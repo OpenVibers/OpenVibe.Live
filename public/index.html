@@ -99,7 +99,7 @@
     .ov-route-error>div{flex:1;min-width:180px;display:grid;gap:2px}
     .ov-route-error span{color:var(--text-muted,#8b93ad);font-size:.9rem}
     @media (prefers-reduced-motion:reduce){.ov-route-skel span{animation:none}}
-    /* Widgets their scripts build before cosmetics.css / messenger.css land (both load without blocking): closed, they
+    /* Widgets their scripts build before cosmetics.css / messenger.css land (neither blocks): closed, they
        stay out of the page instead of painting unstyled under the footer, and the toggle sits where it will. */
     .cosmetics-modal-overlay:not(.active),.messenger-panel:not(.open){display:none}
     .messenger-toggle{position:fixed;bottom:20px;left:20px;width:52px;height:52px;border:0;border-radius:50%;background:var(--accent-strong,#3472d8);color:var(--on-accent-strong,#fff)}
@@ -121,13 +121,11 @@
          for it there, and a page without chat does not download it. -->
     <link rel="stylesheet" href="/css/broadcast.css" media="print" onload="this.media='all';this.onload=null">
     <link rel="stylesheet" href="/css/cosmetics.css" media="print" onload="this.media='all';this.onload=null">
-    <link rel="stylesheet" href="/css/messenger.css" media="print" onload="this.media='all';this.onload=null">
     <noscript>
         <!-- Without JavaScript the chat never fills, but the pages that have one still show it. -->
         <link rel="stylesheet" href="/css/chat-shared.css">
         <link rel="stylesheet" href="/css/broadcast.css">
         <link rel="stylesheet" href="/css/cosmetics.css">
-        <link rel="stylesheet" href="/css/messenger.css">
     </noscript>
     
     <!-- JSON-LD Structured Data -->
@@ -496,10 +494,8 @@
     </div>
 </div>
 
-<script src="/js/vibes.js" defer></script>
-<script src="/js/opencoins.js" defer></script>
+<!-- vibes.js, opencoins.js, messenger.js: features.json → money, messenger (on demand). -->
 <script src="/js/draggable-fab.js" defer></script>
-<script src="/js/messenger.js" defer></script>
 <script src="/shared/footer.js" defer></script>
 <script src="/js/footer-live.js" defer></script>
 

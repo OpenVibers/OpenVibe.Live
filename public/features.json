@@ -136,6 +136,7 @@
         "/css/features/agent-stream.css"
       ],
       "deps": [
+        "money",
         "player",
         "context",
         "chatExtras",
@@ -237,6 +238,7 @@
         "/css/features/broadcast.css"
       ],
       "deps": [
+        "money",
         "chatExtras",
         "guide",
         "aiViewers",
@@ -262,12 +264,38 @@
         "captureScreenshot"
       ]
     },
+    "money": {
+      "js": [
+        "/js/vibes.js",
+        "/js/opencoins.js"
+      ],
+      "stubs": [
+        "openSubscribeForCurrentStream",
+        "openvibeSubscribeModal",
+        "showSubscribeModal",
+        "toggleRewardsPanel",
+        "rewardClick",
+        "saveDashPointsConfig"
+      ]
+    },
+    "messenger": {
+      "css": [
+        "/css/messenger.css"
+      ],
+      "js": [
+        "/js/messenger.js"
+      ],
+      "stubs": [
+        "openMessengerDm"
+      ]
+    },
     "dashboard": {
       "fragment": "dashboard",
       "css": [
         "/css/features/dashboard.css"
       ],
       "deps": [
+        "money",
         "pastes",
         "aiViewers"
       ],
