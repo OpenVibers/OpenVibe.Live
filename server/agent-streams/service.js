@@ -26,6 +26,7 @@ const SUBJECT_RE = /^usr_[0-9A-HJKMNP-TV-Z]{26}$/;
 const AGENT_ID_RE = /^ags_[0-9A-HJKMNP-TV-Z]{26}$/;
 const VISIBILITIES = ['private', 'unlisted', 'public'];
 const MODES = ['watch', 'narrated', 'copilot', 'chatplays'];
+const CONTROLS = ['pause', 'curtain', 'mute', 'end'];
 const TASK_SOURCES = ['codes', 'actor', 'desk', 'node'];
 const CURTAIN_REASONS = ['password_field', 'secret_file', 'env_print', 'manual', 'site', 'detector'];
 const PUBLISH_TICKET_TTL_MS = 4 * 60 * 60 * 1000;
@@ -75,6 +76,7 @@ const SELECT = `
            a.task, a.visibility, a.mode, a.state, a.curtain_up, a.curtain_since, a.curtain_reason,
            a.started_at, a.ended_at, a.worked_seconds, a.last_frame_path, a.last_frame_at, a.vod_id, a.allow_sites,
            a.voice, a.personality, a.voice_muted, a.voice_own, a.voice_own_consent_at, a.voice_paused,
+           a.copilot_ready, a.paused, a.paused_by, a.paused_by_role, a.paused_at,
            a.unlisted_secret_hash,
            (SELECT s.id FROM streams s WHERE s.managed_stream_id = ms.id AND s.is_live = 1 ORDER BY s.started_at DESC LIMIT 1) AS live_session_id,
            (SELECT st.title FROM agent_stream_steps st WHERE st.managed_stream_id = ms.id ORDER BY st.id DESC LIMIT 1) AS latest_step_title,
@@ -217,7 +219,7 @@ async function listForChannel(username, viewerId, limit = 60) {
  *
  * `visibility` 'unlisted' gets a link secret here; only its sha256 is stored, and the raw secret is returned once.
  */
-async function create({ user, title, task, visibility = 'private', allowSites = [], mode = 'watch' }) {
+async function create({ user, title, task, visibility = 'private', allowSites = [], mode = 'watch', copilotReady = false }) {
     const subject = await ownerSubject(user.id);
     if (!SUBJECT_RE.test(String(subject || ''))) {
         const err = new Error('this account has no OpenVibe subject yet; sign in again');
@@ -235,15 +237,16 @@ async function create({ user, title, task, visibility = 'private', allowSites = 
             [user.id, channel.id, String(title).slice(0, 200), labels, publicId]
         );
         await db.run(
-            `INSERT INTO agent_streams (managed_stream_id, task, visibility, mode, state, allow_sites, unlisted_secret_hash)
-             VALUES (?, ?::jsonb, ?, ?, 'idle', ?::jsonb, ?)`,
-            [slot.lastInsertRowid, JSON.stringify(task), visibility, mode, JSON.stringify(allowSites || []), secret ? sha256(secret) : null]
+            `INSERT INTO agent_streams (managed_stream_id, task, visibility, mode, state, allow_sites, unlisted_secret_hash, copilot_ready)
+             VALUES (?, ?::jsonb, ?, ?, 'idle', ?::jsonb, ?, ?)`,
+            [slot.lastInsertRowid, JSON.stringify(task), visibility, mode, JSON.stringify(allowSites || []), secret ? sha256(secret) : null, !!copilotReady]
         );
         return slot.lastInsertRowid;
     });
     const row = await getByManagedStreamId(result);
     if (secret) row.unlisted_secret = secret;   // the one time the raw link secret exists outside the page
     await sharing.register(row);
+    syncChatRoom(row);
     return row;
 }
 
@@ -301,7 +304,7 @@ async function end(row, { reason = 'ended' } = {}) {
     const worked = started ? Math.max(0, Math.round((now.getTime() - Date.parse(started)) / 1000)) : workedSeconds(row);
     const current = await getByManagedStreamId(row.managed_stream_id);
     const next = await update(current, {
-        set: { state: 'ended', ended_at: now, worked_seconds: worked, curtain_up: 0, curtain_since: null, curtain_reason: null },
+        set: { state: 'ended', ended_at: now, worked_seconds: worked, curtain_up: 0, curtain_since: null, curtain_reason: null, paused: 0, paused_by: null, paused_by_role: null, paused_at: null },
         event: { kind: 'ended', extra: { reason } },
     });
     await require('./tickets').revokeAll(row.managed_stream_id);
@@ -313,6 +316,7 @@ async function end(row, { reason = 'ended' } = {}) {
         } catch (err) { console.warn(`[AgentStream] ending session ${session.id} failed: ${err.message}`); }
     }
     try { require('../streaming/curtains').lower(session ? session.id : null, { notify: false }); } catch { /* */ }
+    closeChatRoom(next);
     // Agent Streams S3: the stream part of the session report. The report the tool wrote for this task gets the
     // stream added to it; when no tool finished the session, a stream-only report is written instead. A report that
     // cannot be written never changes the stream: it ended either way.
@@ -324,6 +328,33 @@ async function end(row, { reason = 'ended' } = {}) {
     return next;
 }
 
+/**
+ * Co-pilot: the task's service says it can read the room's digest (Codes and Actor do; a desk does not). The owner
+ * can then choose the mode, if the stream is public or unlisted.
+ */
+async function setCopilotReady(row, ready) {
+    return await update(row, { set: { copilot_ready: !!ready } });
+}
+
+/**
+ * Pause or resume. A moderator may not resume a pause the owner set: `by.role` says who is asking. Returns the
+ * updated row and whether the press was allowed.
+ */
+async function setPaused(row, { paused, by }) {
+    if (!paused && Number(row.paused) && row.paused_by_role === 'owner' && by.role !== 'owner') {
+        return { row, allowed: false, code: 'owner_pause' };
+    }
+    const next = await update(row, {
+        set: {
+            paused: !!paused,
+            paused_by: paused ? by.handle : null,
+            paused_by_role: paused ? by.role : null,
+            paused_at: paused ? new Date() : null,
+        },
+    });
+    return { row: next, allowed: true };
+}
+
 async function setVisibility(row, visibility) {
     if (!VISIBILITIES.includes(visibility)) return null;
     const secret = visibility === 'unlisted' && !row.unlisted_secret_hash ? linkSecret() : null;
@@ -332,8 +363,33 @@ async function setVisibility(row, visibility) {
         event: { kind: 'visibility', extra: { visibility } },
     });
     await sharing.setAudience(row, visibility);
+    syncChatRoom(next);
     if (secret) next.unlisted_secret = secret;
     return next;
+}
+
+/**
+ * The Co-pilot room of a public or unlisted stream (Agent Streams S5, §1): Live makes it on OpenVibe.Chat when the
+ * stream becomes visible. A private stream has none. Fire-and-forget: Chat being down never breaks the stream.
+ */
+function syncChatRoom(row) {
+    if (!row || !['public', 'unlisted'].includes(row.visibility)) return;
+    try {
+        const chat = require('../chat/chat-client');
+        if (!chat.available()) return;
+        chat.agentRoom({ agent_stream_id: row.public_id, owner_subject: row.owner_subject || null, name: row.title })
+            .catch(() => { /* logged by the client */ });
+    } catch { /* Chat is optional for a stream */ }
+}
+
+/** The stream ended: the room stays readable, but its Co-pilot reading is over. */
+function closeChatRoom(row) {
+    if (!row || !['public', 'unlisted'].includes(row.visibility)) return;
+    try {
+        const chat = require('../chat/chat-client');
+        if (!chat.available()) return;
+        chat.agentRoom({ agent_stream_id: row.public_id, close: true }).catch(() => { /* */ });
+    } catch { /* */ }
 }
 
 /** A fresh unlisted link secret: the old links stop working at once. */
@@ -407,11 +463,12 @@ function secureEqual(a, b) {
 }
 
 module.exports = {
+    CONTROLS,
     AGENT_ID_RE, VISIBILITIES, MODES, TASK_SOURCES, CURTAIN_REASONS, SHARE_KIND,
     PUBLISH_TICKET_TTL_MS, VIEW_TICKET_TTL_MS, MAX_FRAME_BYTES,
     sha256, token, agentId, iso, pageUrl, whipUrl, shareRef,
     getByPublicId, getByManagedStreamId, liveSession, listByUser, countLiveByUser, liveLimit, ownerSubject,
     viewersNow, workedSeconds, publicView, cardView, listPublic, listForChannel,
-    create, update, markPublishing, end, setVisibility, rotateLink, setCurtain, setFrame, setVod,
-    mayView,
+    create, update, markPublishing, end, setVisibility, rotateLink, setCurtain, setFrame, setVod, setCopilotReady, setPaused,
+    mayView, syncChatRoom, closeChatRoom,
 };

@@ -44,7 +44,7 @@
         const host = $('agent-embed-overlay');
         if (!host || !window.AgentOverlay) return;
         if (!overlay) overlay = window.AgentOverlay.create({ host, title: stream.title, initial: steps });
-        overlay.update({ steps, task: stream.task, workedSeconds: stream.worked_seconds, state: stream.state });
+        overlay.update({ steps, task: stream.task, workedSeconds: stream.worked_seconds, state: stream.state, pausedBy: streamView && streamView.__pausedBy });
     }
 
     function pollSteps() {
@@ -71,6 +71,7 @@
         ticket = data.view_ticket || ticket;
         streamState = stream.state;
         streamView = stream;
+        streamView.__pausedBy = data.paused_by || null;
 
         const title = $('agent-embed-title');
         if (title) title.textContent = stream.title || '';

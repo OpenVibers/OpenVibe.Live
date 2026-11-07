@@ -82,6 +82,9 @@
         const dot = el('span', 'agent-overlay-dot');
         const stepTitle = el('span', 'agent-overlay-step-title');
         stepLine.append(dot, stepTitle);
+        // S5: whose pause is in force ("Paused by @mod"), so a viewer knows why the work stopped.
+        const pausedLine = el('p', 'agent-overlay-paused');
+        pausedLine.hidden = true;
 
         const ticks = el('div', 'agent-overlay-ticks');
         ticks.setAttribute('role', 'list');
@@ -100,7 +103,7 @@
         const sheetList = el('ol', 'agent-overlay-sheet-list');
         sheet.appendChild(sheetList);
 
-        body.append(taskLine, stepLine, captionLine, ticks, foot);
+        body.append(taskLine, stepLine, pausedLine, captionLine, ticks, foot);
         root.append(foldBtn, body, sheet);
         host.appendChild(root);
 
@@ -178,6 +181,9 @@
                 voiceLine.textContent = '';
                 voiceLine.hidden = true;
             }
+            const pausedBy = data.pausedBy ? String(data.pausedBy).replace(/^@/, '') : '';
+            pausedLine.textContent = pausedBy ? `Paused by @${pausedBy}` : '';
+            pausedLine.hidden = !pausedBy;
             const cur = current(steps);
             const task = data.task && data.task.title ? data.task.title : (options.title || 'An AI agent is working');
             taskLine.textContent = task;

@@ -163,3 +163,35 @@ counted "More (N)" after twelve.
 
 **Not in S2:** the agent's own chat room (`agent:<ags_id>`), which needs a Chat-side room kind, and the voice work of
 S4. Chat is for people; the agent reading it is S5.
+
+## S5: Co-pilot (Contracts 0.303.0)
+
+A stream can be in **Co-pilot** mode, which implies Narrated and turns on the agent's reading of its chat room. The
+owner chooses it with the voice controls (`PUT /api/streams/agent/<ags_id>/voice { "mode": "copilot" }`); it needs a
+public or unlisted stream and a task's service that says it can read a digest:
+
+```
+POST /api/streams/agent/<ags_id>/copilot { "ready": true }   (the task's service, with its publish token)
+```
+
+Live makes the Chat room `agent:<ags_id>` when the stream becomes public or unlisted; a private stream has none.
+Codes and Actor read Chat's ten-item, 1,500-character digest between steps, always inside the fixed untrusted frame,
+and post an answer line, a poll or a credit ("Suggested by @mira") through Chat's `chat.agent-digest@1` and
+`chat.agent-poll@1`.
+
+**The four controls.** The owner and the channel's moderators have Pause, Curtain, Mute and End on the stream page,
+in the Dock and on the phone:
+
+```
+POST /api/streams/agent/<ags_id>/control  { "control": "pause", "paused": true }
+                                          { "control": "curtain", "up": true }
+                                          { "control": "mute", "muted": true }
+                                          { "control": "end" }
+GET  /api/streams/agent/<ags_id>/controls   the log (newest first), for the owner and moderators
+```
+
+Pause is relayed to the task's service in the state it polls (`paused`, `paused_by`); it stops at the next safe point.
+A moderator may not resume a pause the owner set. The overlay says "Paused by @mod". Every press is stored in
+`agent_stream_controls` with who pressed it, which control and when; End also stops the room's Co-pilot reading while
+the task keeps running off camera. Curtain is S1's curtain, mute is S4's voice mute, and all four act within their
+design limits (2 s for pause and end, 1 s for curtain and mute).

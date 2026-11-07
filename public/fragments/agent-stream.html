@@ -4,6 +4,20 @@
         <h1 id="agent-title" class="agent-title">Agent stream</h1>
         <p id="agent-task" class="agent-task"></p>
     </header>
+    <section class="agent-controls" id="agent-controls" aria-labelledby="agent-controls-title" hidden>
+        <h2 class="agent-controls-title" id="agent-controls-title">Stream controls</h2>
+        <div class="agent-controls-row">
+            <button type="button" class="btn btn-outline" id="agent-ctl-pause">Pause the agent</button>
+            <button type="button" class="btn btn-outline" id="agent-ctl-curtain">Curtain</button>
+            <button type="button" class="btn btn-outline" id="agent-ctl-mute">Mute voice</button>
+            <button type="button" class="btn btn-danger" id="agent-ctl-end">End</button>
+        </div>
+        <p class="agent-hint" id="agent-controls-state"></p>
+        <details class="agent-controls-log" id="agent-controls-log" hidden>
+            <summary>Control log</summary>
+            <ol class="agent-controls-log-list" id="agent-controls-log-list"></ol>
+        </details>
+    </section>
     <div class="agent-layout">
         <div class="agent-main">
             <div class="agent-stage" id="agent-stage">
@@ -46,7 +60,9 @@
                 <select id="agent-voice-mode" class="agent-select">
                     <option value="watch">Watch — the agent stays quiet</option>
                     <option value="narrated">Narrated — the agent says what it is doing</option>
+                    <option value="copilot">Co-pilot — it also reads the chat and may answer</option>
                 </select>
+                <p class="agent-note" id="agent-copilot-note" hidden>Co-pilot needs a public or unlisted stream and a task's service that can read a digest.</p>
             </div>
             <div class="agent-field">
                 <label class="agent-field-label" for="agent-voice-personality">How it says it</label>

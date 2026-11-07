@@ -211,6 +211,14 @@ async function soundAsset(body) {
     return null;
 }
 
+/**
+ * Make (or close) a Co-pilot room on Chat for an agent stream: Live owns the room's creation (Agent Streams S5).
+ * Chat answers with the room; a failure is logged in Chat's keys and returns null (the stream still works).
+ */
+async function agentRoom(body) {
+    return await send('agent-room', body, '/internal/chat/agent-room');
+}
+
 module.exports = {
     CHAT_URL,
     available,
@@ -223,6 +231,6 @@ module.exports = {
     invalidate: async (body) => await send('invalidate', body),
     presence,
     readStats, readMessages, readTimeline, readFirstChat, readPendingIp, readRelayUsers, readRelayUser, readTtsOverride,
-    readSounds, readSoundByCommand, readDmBlockState, soundAsset,
+    readSounds, readSoundByCommand, readDmBlockState, soundAsset, agentRoom,
     _setRetryMs(ms) { retryMs = ms || RETRY_MS; },
 };
