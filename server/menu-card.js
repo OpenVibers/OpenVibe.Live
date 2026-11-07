@@ -12,6 +12,7 @@
 // there is one (https on openvibe.live or an openvibe.* host); a stream without a picture gets no image.
 const db = require('./db/database');
 const contentLabels = require('./labels');
+const { menuCard, menuRoute } = require('openvibe-sdk/menu');
 
 const SITE = 'live';
 const BASE = 'https://openvibe.live';
@@ -62,16 +63,17 @@ function cardFrom(rows, at = Date.now()) {
             if (image) item.image = image;
             return item;
         });
-    return {
+    return menuCard({
         id: 'live-now',
         site: SITE,
         title: 'Live now',
         kind: 'rail',
+        origin: BASE,
         items,
         more: { label: 'See all', url: `${BASE}/` },
-        updated_at: new Date(at).toISOString(),
-        ttl_s: CARD_TTL_S,
-    };
+        ttlSeconds: CARD_TTL_S,
+        updatedAt: at,
+    });
 }
 
 /**
@@ -104,13 +106,8 @@ function createMenuCard({ load = () => db.getLiveStreams(), now = Date.now } = {
         return pending;
     }
 
-    async function handler(_req, res) {
-        const body = await card();
-        res.set('Cache-Control', `public, max-age=${CARD_TTL_S}`)
-            .set('Access-Control-Allow-Origin', '*')
-            .set('Cross-Origin-Resource-Policy', 'cross-origin')
-            .json([body]);
-    }
+    // openvibe-sdk/menu answers the file (CORS *, the public cache) and turns a build failure into [], never a 500.
+    const handler = menuRoute(async () => [await card()], { maxAgeSeconds: CARD_TTL_S });
 
     return { card, handler, cardFrom, cacheMs: CACHE_MS };
 }
