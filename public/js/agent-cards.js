@@ -93,5 +93,35 @@
         };
     }
 
-    window.AgentCards = { card, fill, minutes };
+    /** A scheduled stream's card: the time, the task and the reminder count (never who opted in). */
+    function scheduleCard(entry) {
+        const a = el('a', 'agent-schedule-card');
+        a.href = entry.page_url || '#';
+        const when = el('span', 'agent-schedule-when');
+        const at = new Date(entry.starts_at);
+        when.textContent = Number.isNaN(at.getTime()) ? '' : at.toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+        a.appendChild(when);
+        a.appendChild(el('b', 'agent-schedule-title', entry.title || 'An AI agent stream'));
+        const task = where(entry.task);
+        if (task) a.appendChild(el('span', 'agent-schedule-task', task));
+        const meta = el('span', 'agent-schedule-meta');
+        const bits = [entry.mode === 'chatplays' ? 'Chat plays · waits for Go' : { narrated: 'Narrated', copilot: 'Co-pilot', watch: 'Watch' }[entry.mode] || 'Watch'];
+        if (entry.reminders) bits.push(`${entry.reminders} reminder${entry.reminders === 1 ? '' : 's'}`);
+        if (entry.waits_for_go) bits.push('waiting for the owner\'s Go');
+        if (entry.state === 'missed' && entry.missed_reason === 'desk_offline') bits.push("Didn't start: the desk was offline");
+        meta.textContent = bits.join(' · ');
+        a.appendChild(meta);
+        return a;
+    }
+
+    /** Fill a schedule rail; the caller hides it when it is empty. */
+    function fillSchedules(grid, entries) {
+        if (!grid) return 0;
+        grid.replaceChildren();
+        const all = Array.isArray(entries) ? entries : [];
+        for (const entry of all) grid.appendChild(scheduleCard(entry));
+        return all.length;
+    }
+
+    window.AgentCards = { card, fill, scheduleCard, fillSchedules, minutes };
 })();

@@ -47,6 +47,13 @@ async function sweep() {
         }
     } catch (err) { console.warn('[AgentStream] idle voice failed:', err.message); }
 
+    // S7: a due schedule nobody claimed is marked missed ('didn't start: the desk was offline'); a chatplays one
+    // keeps its time and waits for the owner's Go. Nothing is started here.
+    try {
+        const out = await require('./schedules').startDue();
+        if (out.missed || out.waiting) console.warn(`[AgentStream] schedules: ${out.missed} missed, ${out.waiting} waiting for Go`);
+    } catch (err) { console.warn('[AgentStream] schedule sweep failed:', err.message); }
+
     try { await tickets.prune(); } catch (err) { console.warn('[AgentStream] ticket prune failed:', err.message); }
     try {
         const sharing = require('./sharing');

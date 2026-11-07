@@ -28,6 +28,13 @@
                 <div class="agent-curtain" id="agent-curtain" hidden>Private screen</div>
                 <div id="agent-overlay"></div>
             </div>
+            <div class="agent-scenes" id="agent-scenes" hidden role="group" aria-label="The stream's scenes">
+                <button type="button" class="agent-scene is-on" id="agent-scene-desk" data-agent-scene="desk" aria-pressed="true">Desk</button>
+                <button type="button" class="agent-scene" id="agent-scene-robot" data-agent-scene="robot" aria-pressed="false">Robot camera</button>
+            </div>
+            <div class="agent-robot" id="agent-robot" hidden>
+                <iframe id="agent-robot-frame" title="Robot camera" loading="lazy" allow="camera; microphone; fullscreen"></iframe>
+            </div>
             <p class="agent-status-line" id="agent-status-line">Loading…</p>
             <section class="agent-chapters" id="agent-chapters" hidden aria-label="The recording's chapters">
                 <h2 class="agent-chapters-title" id="agent-chapters-title">Chapters</h2>

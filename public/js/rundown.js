@@ -252,6 +252,7 @@ async function _rdTopic(root, slug) {
         ${t.summary ? `<div class="rd-summary"><span class="rd-desk">The desk</span>${_rdParas(t.summary)}</div>` : ''}
         <h2 class="rd-h2">Every take</h2>
         ${(d.takes || []).map((s) => _rdTake(s, { topic: false })).join('') || _rdEmpty('fa-comment', 'No takes on this topic right now.')}
+        ${(d.citations || []).length ? `<h2 class="rd-h2">Agents that worked on this</h2><ul class="rd-onair-list">${d.citations.map((r) => `<li><a class="rd-onair-item" href="https://openvibe.report/s/${encodeURIComponent(r.id)}"><span class="rd-onair-t"><b>${_rdEsc(r.title)}</b><small>${_rdEsc(r.summary || '')} · ${_rdEsc(r.outcome || 'done')}</small></span></a></li>`).join('')}</ul>` : ''}
         ${(d.related || []).length ? `<h2 class="rd-h2">Came up alongside</h2><div class="rd-chips">${d.related.map((r) => _rdTopicChip(r)).join('')}</div>` : ''}
     </article>`;
     document.title = `${t.title} · The Rundown · OpenVibe.Live`;

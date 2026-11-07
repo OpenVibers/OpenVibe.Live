@@ -1992,9 +1992,14 @@ async function loadChannelAgents(username, { force = false } = {}) {
     try { data = await api(`/streams/agent?channel=${encodeURIComponent(username)}`); } catch { data = null; }
     if (username !== currentChannelUsername) return;   // the page moved on while this was in flight
     const cards = (data && Array.isArray(data.agents)) ? data.agents : [];
+    const planned = (data && Array.isArray(data.schedules)) ? data.schedules : [];
+    const schedulesEl = document.getElementById('ch-agents-schedules');
+    const schedulesTitle = document.getElementById('ch-agents-schedules-title');
+    const plannedCount = (window.AgentCards && schedulesEl) ? window.AgentCards.fillSchedules(schedulesEl, planned) : 0;
+    if (schedulesTitle) schedulesTitle.hidden = !plannedCount;
     const tab = document.getElementById('ch-tab-btn-agents');
     const badge = document.getElementById('ch-tab-badge-agents');
-    if (tab) tab.style.display = cards.length ? '' : 'none';
+    if (tab) tab.style.display = (cards.length || plannedCount) ? '' : 'none';
     if (badge) {
         const live = cards.filter((entry) => entry.state === 'live').length;
         badge.hidden = !live;
@@ -2005,7 +2010,7 @@ async function loadChannelAgents(username, { force = false } = {}) {
     if (!cards.length) {
         const empty = document.createElement('p');
         empty.className = 'agent-empty';
-        empty.textContent = 'No AI agent streams on this channel yet.';
+        empty.textContent = plannedCount ? 'No AI agent stream is live right now; the next one is above.' : 'No AI agent streams on this channel yet.';
         grid.appendChild(empty);
         if (more) more.hidden = true;
         return;
