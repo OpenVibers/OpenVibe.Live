@@ -80,7 +80,7 @@ async function documentFor(kind, row) {
     const doc = {
         owner: 'live', type: kind, id: String(row.id), deleted: false, visibility: 'public',
         // The canonical page is OpenVibe.Video's (web/video-url.js), as Live's own page says.
-        canonical_url: videoUrl(kind, row.id),
+        canonical_url: videoUrl(kind, row.id, null, row.watch_id),
         title: clean(row.title || fallbackTitle, 500),
         summary,
         body: [clean(row.description, 4000), clean(ai.overview, 8000), ai.transcript].filter(Boolean).join('\n').slice(0, 40000),

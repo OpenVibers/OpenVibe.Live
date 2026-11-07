@@ -71,7 +71,7 @@ function publicBenchPoll(row) {
 // storage keys, owner subjects, AI state). Copied through an allow-list, so a field a source adds
 // later never reaches the public feed by accident.
 const FEED_ITEM_FIELDS = {
-    kind: 'string', id: 'id', href: 'string', title: 'string', created_at: 'string',
+    kind: 'string', id: 'id', watch_id: 'string', href: 'string', title: 'string', created_at: 'string',
     views: 'number', likes: 'number', duration_seconds: 'number',
     thumbnail_url: 'string', preview_url: 'string', image_url: 'string',
     excerpt: 'string', paste_type: 'string', language: 'string', nsfw: 'boolean',

@@ -23,7 +23,9 @@ console.warn = () => {};
 
 const ISS = 'https://openvibe.network';
 const SUBJECT = 'usr_01J0000000000000000000000C1';
-const viewerToken = () => jwt.sign({ sub: '77', username: 'alice', subject_id: SUBJECT, role: 'user' }, keys.privateKey, { algorithm: 'RS256', issuer: ISS, expiresIn: 600 });
+// One token for the whole run: jwt.sign stamps iat in seconds, so two calls a second apart differ (CI, 11-07).
+const VIEWER_TOKEN = jwt.sign({ sub: '77', username: 'alice', subject_id: SUBJECT, role: 'user' }, keys.privateKey, { algorithm: 'RS256', issuer: ISS, expiresIn: 600 });
+const viewerToken = () => VIEWER_TOKEN;
 
 (async () => {
     const db = require('../server/db/database');

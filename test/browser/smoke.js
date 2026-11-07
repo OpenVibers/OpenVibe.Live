@@ -215,6 +215,37 @@ const pageState = `(() => ({
         cdp.close();
     }
 
+    // 3b2. The home page carries no chat: it never loads the chat UI as a script, and the global chat
+    // button brings it when someone uses it. Once the page has settled, the idle prefetch may warm it
+    // (a <link rel="prefetch">, type Other, skipped on Save-Data and 2G), so the channel most people open
+    // next from here has its chat cached (Opus, 11-07: the home -> channel path is the common one).
+    if (!ONLY_SIGNED && !ROUTES_ONLY) {
+        // Wide: under 760 px the shared app bar takes the place of the floating buttons.
+        const { cdp, errors, scripts } = await openPage(1366);
+        await cdp.send('Page.navigate', { url: BASE + '/' });
+        // Long enough for the idle prefetch (the loader waits for the page to settle, then idles).
+        await sleep(SETTLE + 6000);
+        const chatScripts = scripts.filter((u) => /\/js\/chat(-shared)?\.js(\?|$)/.test(u));
+        if (chatScripts.length) fail(`the home page downloaded the chat UI: ${chatScripts.map((u) => u.split('/').pop()).join(', ')}`);
+        else pass('the home page does not download the chat UI');
+        const fab = await cdp.evaluate(`(() => { const b = document.getElementById('floating-chat-fab'); return { visible: !!b && getComputedStyle(b).display !== 'none' && b.getBoundingClientRect().width > 0 }; })()`);
+        if (!fab.visible) fail('the floating global chat button is not on the home page');
+        else {
+            await cdp.evaluate(`document.getElementById('floating-chat-fab').click()`);
+            await sleep(SETTLE);
+            const st = await cdp.evaluate(`(() => {
+                const w = document.getElementById('floating-chat-widget');
+                return { open: !!w && getComputedStyle(w).display !== 'none' && w.getBoundingClientRect().width > 0 };
+            })()`);
+            const brought = scripts.some((u) => /\/js\/chat\.js(\?|$)/.test(u));
+            if (!brought) fail('the global chat button did not bring the chat UI');
+            else if (!st.open) fail('the global chat widget did not open');
+            else pass('the global chat button brings the chat UI and opens the widget');
+        }
+        if (errors.length) fail(`errors on the home page: ${errors.slice(0, 3).join(' | ')}`);
+        cdp.close();
+    }
+
     // 3c. A guest on /broadcast gets the sign-in gate, not the slot workspace, and sends no write.
     if (!ONLY_SIGNED && !ROUTES_ONLY) {
         const { cdp, errors } = await openPage(412);

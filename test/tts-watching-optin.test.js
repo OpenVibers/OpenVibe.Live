@@ -16,9 +16,12 @@ const fs = require('fs');
 const path = require('path');
 
 const chat = fs.readFileSync(path.join(__dirname, '..', 'public', 'js', 'chat.js'), 'utf8');
+// The settings live in chat-core.js since 2026-11-07 (the part of chat every page needs); the
+// panel and the viewer branches stay with the chat itself.
+const chatCore = fs.readFileSync(path.join(__dirname, '..', 'public', 'js', 'chat-core.js'), 'utf8');
 
-assert.match(chat, /\n {4}ttsHearWatching: false, /, 'off by default');
-assert.match(chat, /\n {4}ttsEnabled: true, /, 'the sender switch keeps its default');
+assert.match(chatCore, /\n {4}ttsHearWatching: false, /, 'off by default');
+assert.match(chatCore, /\n {4}ttsEnabled: true, /, 'the sender switch keeps its default');
 
 // Both viewer branches (browser speech and server audio) need the new setting.
 const viewerSpeak = chat.match(/\} else if \(([^)]*?)isChatTTSEnabled\(\) && !_isOwnTtsMessage\(msg\) && _isTTSEnabledForSource\(msg\.source_platform\)\) \{\n\s*(speakTTS|playTTSAudio)\(/g) || [];
@@ -31,7 +34,7 @@ assert.ok(chat.includes('<span>Read TTS Aloud On Channels I Watch</span>') && ch
 assert.ok(chat.includes("if (key === 'ttsHearWatching' && !chatSettings.ttsHearWatching && typeof cancelAllTTS === 'function') cancelAllTTS();"));
 
 // Not part of the synced record (Chat's chat.tts_defaults schema has no such field).
-const ttsModule = chat.slice(chat.indexOf('function _ttsModuleFromSettings'), chat.indexOf('const CHAT_MODULES'));
+const ttsModule = chatCore.slice(chatCore.indexOf('function _ttsModuleFromSettings'), chatCore.indexOf('const CHAT_MODULES'));
 assert.ok(!ttsModule.includes('ttsHearWatching'), 'local to this browser');
 
 console.log('tts watching opt-in: viewers hear TTS from the stream only, unless they turn on reading it here');
