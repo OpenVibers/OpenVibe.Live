@@ -9,6 +9,11 @@ Every stream that ran at least 8 minutes gets a report a couple of minutes after
   chatters (the host excluded), busiest 5-minute window, sound commands, new follows during the
   stream, tips (`transactions` type donation), The Rundown's best takes on the stream (server/rundown), clips + the VOD (from Media).
 - **The room, minute by minute** — viewer curve with chat bars, peak marker.
+- **Who sees it** — the report follows its stream's Rundown audience: the stricter of the episode's
+  own setting and its VOD's visibility (see [rundown.md](rundown.md#the-recording-decides-first)).
+  Everyone and Anyone with the link read it; Specific people and Only me are for those people and the
+  streamer; `GET /api/recap/:streamId` answers 404 to a reader the episode is not shared with, and a
+  list of reports shows Everyone ones plus the streamer's own.
 - Announced in the channel's chat room when it lands. Stored in `stream_recaps` (one JSON row per
   stream). Owner/admin can rebuild it (`POST /api/recap/:id/regenerate`).
 - Crawlable: `/recap/:id` gets OG/Twitter meta + Article JSON-LD (`server/seo/pages.js`), so a

@@ -99,13 +99,19 @@ function reportLinkedAccount(user) { _reportLinkedAccount(user).catch(err => con
  * sign-in report above (which only fills an empty picture), this one replaces whatever the Network had.
  */
 async function _reportAvatarChange(user) {
-    if (!user?.id || !require('../net/network-principal').configured()) return;
+    if (!user?.id || !require('../net/network-principal').configured()) return null;
     const networkId = await toNetworkId(user.id);
-    if (!networkId) return;
-    _post('/internal/user-avatar', { user_id: networkId, avatar_url: user.avatar_url || null, origin: 'live' })
-        .then(r => { if (r && !r.ok) console.warn(`[Notify] avatar sync refused (${r.status})`); }).catch(() => {});
+    if (!networkId) return null;
+    const r = await _post('/internal/user-avatar', { user_id: networkId, avatar_url: user.avatar_url || null, origin: 'live' });
+    if (!r) return null;
+    if (!r.ok) { console.warn(`[Notify] avatar sync refused (${r.status})`); return null; }
+    // Network copies the picture into the person's own avatar object and answers the address to store: Live keeps
+    // that object, never the source (a paste screenshot another product may clean up).
+    try { return await r.json(); } catch { return null; }
 }
-function reportAvatarChange(user) { _reportAvatarChange(user).catch(err => console.warn('[Notify] Avatar error:', err.message)); }
+/** Awaited form: how the avatar routes learn the copied address. → { avatar_url } or null. */
+function syncAvatarChange(user) { return _reportAvatarChange(user).catch(err => { console.warn('[Notify] Avatar error:', err.message); return null; }); }
+function reportAvatarChange(user) { syncAvatarChange(user).catch(() => {}); }
 
 /**
  * Push the same notification to many LIVE users (translated, deduped, chunked to the
@@ -150,4 +156,4 @@ async function _markNotificationsRead(userId, type, urlPattern) {
 }
 function markNotificationsRead(userId, type, urlPattern) { _markNotificationsRead(userId, type, urlPattern).catch(err => console.warn('[Notify] Mark-read error:', err.message)); }
 
-module.exports = { reportAvatarChange, pushNotification, pushBulkNotification, actorInfo, markNotificationsRead, reportLinkedAccount, toNetworkId, toNetworkIds, OV_NETWORK_INTERNAL_URL };
+module.exports = { reportAvatarChange, syncAvatarChange, pushNotification, pushBulkNotification, actorInfo, markNotificationsRead, reportLinkedAccount, toNetworkId, toNetworkIds, OV_NETWORK_INTERNAL_URL };

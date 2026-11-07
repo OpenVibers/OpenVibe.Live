@@ -114,6 +114,19 @@ async function topicFor(title, kind, at) {
     }
     return row;
 }
+/**
+ * The episode's own setting (design 2026-11-06): the write-up registers itself with the streamer's default audience
+ * the first time the desk writes it up, and the Share sheet changes it afterwards. A write-up the streamer deleted is
+ * never written again unless they ask for it ("Write this stream up again").
+ */
+async function ensureShare(streamId, userId) {
+    let subject = null;
+    try { subject = await require('../auth/identity-sync').subjectOf(userId); } catch { subject = null; }
+    if (!subject) return false;
+    const audience = await require('./settings').defaultAudience(userId);
+    return await require('./sharing').register(streamId, subject, audience);
+}
+
 async function recountTopic(topicId) {
     await db.run(`UPDATE rundown_topics SET
         takes = (SELECT COUNT(*) FROM rundown_segments WHERE topic_id = ? AND status = 'live'),
@@ -163,6 +176,7 @@ async function candidates() {
             COALESCE(p.read_to_sec, -1) AS read_to_sec
         FROM streams s LEFT JOIN rundown_progress p ON p.stream_id = s.id
         WHERE COALESCE(p.done, 0) = 0 AND (s.is_live = 1 OR s.ended_at >= ? OR s.started_at >= ?)
+          AND s.id NOT IN (SELECT stream_id FROM rundown_deleted)
           AND EXISTS (SELECT 1 FROM stream_timeline_events e WHERE e.stream_id = s.id AND e.kind = 'speech')
         ORDER BY s.is_live DESC, COALESCE(s.ended_at, s.started_at) DESC
         LIMIT 60`, [daysAgo(BACKFILL_DAYS), daysAgo(BACKFILL_DAYS)]);
@@ -317,6 +331,7 @@ async function keepSegments(stream, stretch, segments, user, others = []) {
         [stream.id, user.id, topic ? topic.id : null, Number(s.start) || 0, Number(s.end) || Number(s.start) || 0, title, what, take, quip,
             score, JSON.stringify(quotes), await mentionsIn(spanText, user.id), vod, at]);
         if (topic) await recountTopic(topic.id);
+        await ensureShare(stream.id, user.id);
         kept++;
     }
     return kept;
@@ -380,6 +395,7 @@ async function writeEpisode(stream, user) {
         chapters_json = excluded.chapters_json, vod_id = excluded.vod_id, minutes = excluded.minutes`,
     [stream.id, user.id, title, clean(out.logline, 220), recap ? recap.replace(/ ¶ /g, '\n\n') : null, JSON.stringify(chapters), vod, minutes, stream.started_at || sqlTime(Date.now())]);
     await setProgress(stream.id, stream.read_to_sec, 1);
+    await ensureShare(stream.id, user.id);
     if (!rewrite) await announce(stream, user, title).catch(() => {});   // written again (a re-read): announced once already
     return { called: true, episode: true };
 }
@@ -462,4 +478,4 @@ function start() {
 }
 function stop() { if (typeof _job === 'function') _job(); _job = null; }
 
-module.exports = { start, stop, tick, readStretch, writeEpisode, refreshTopic, keepSegments, topicFor, nextStretch, ready, optedOut, forgetVod, MAX_LINES, _test: { reset() { _calls = []; _announced = []; _fails = new Map(); _repeated = { at: 0, set: new Set() }; _langs = new Map(); _people = { at: 0, entries: [] }; _chat = new Map(); } } };
+module.exports = { start, stop, tick, readStretch, writeEpisode, refreshTopic, keepSegments, topicFor, nextStretch, ready, optedOut, forgetVod, ensureShare, MAX_LINES, _test: { reset() { _calls = []; _announced = []; _fails = new Map(); _repeated = { at: 0, set: new Set() }; _langs = new Map(); _people = { at: 0, entries: [] }; _chat = new Map(); } } };

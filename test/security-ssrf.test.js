@@ -335,6 +335,7 @@ async function check(name, fn) {
         // URLs in these files go through egress (noted).
         const REVIEWED = {
             'server/net/egress.js': 'the guard itself',
+            'server/net/network-json.js': 'OpenVibe.Network internal identity API for the sharing system (configured OV_NETWORK_INTERNAL_URL, fixed paths, no URL from a person)',
             'server/drill.js': 'the restore-drill guard (refuses connections)',
             'server/report.js': 'OpenVibe.Report (OV_REPORT_INTERNAL_URL, configured) for the report of an agent stream, and the Network token endpoint (OV_NETWORK_INTERNAL_URL, configured) for the Live service token; the paths are fixed, no URL from a person',
             'server/config.js': 'Network registry (configured)',
