@@ -3773,7 +3773,9 @@ async function toggleChannelFollow(username) {
  */
 const LIVE_ALERTS_DECLINED_KEY = 'ov_live_alerts_declined_at';
 async function offerLiveAlerts(name) {
-    const n = window.OpenVibeNotifications;
+    let n = window.OpenVibeNotifications;
+    // Not on every page any more (index.html): load it the moment it is wanted, if the bar has not yet.
+    if (!n && window.ov && typeof ov.loadScript === 'function') { try { await ov.loadScript('/shared/notification-ui.js'); } catch { /* */ } n = window.OpenVibeNotifications; }
     const box = document.getElementById('toast-container');
     if (!box || !n || typeof n.pushStatus !== 'function' || typeof n.enablePush !== 'function') return;
     if (document.getElementById('live-alerts-offer')) return;
