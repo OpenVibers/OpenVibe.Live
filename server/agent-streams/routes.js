@@ -22,6 +22,8 @@
 const express = require('express');
 const auth = require('./auth');
 const service = require('./service');
+const plays = require('./plays');
+const sandbox = require('./sandbox');
 const tickets = require('./tickets');
 const frames = require('./frames');
 const steps = require('./steps');
@@ -396,6 +398,123 @@ router.post('/:id/end', deskOrOwner, async (req, res) => {
     }
 });
 
+// ── The chat plays mode (S6) ───────────────────────────────────────
+
+/**
+ * PUT /:id/plays — the owner's controls on the owner page: the time box (5 to 30 minutes), the cap (money) and
+ * Go. Go arms the session once: the first request of a session waits for it. The owner may change the time box
+ * and the cap at any time; a new Go after a Wipe now arms the session again.
+ */
+router.put('/:id/plays', auth.publisher, async (req, res) => {
+    try {
+        const row = await load(req, res);
+        if (!row) return;
+        if (Number(row.user_id) !== Number(req.publisher.user.id)) return fail(res, 403, 'not_your_stream', 'This agent stream belongs to another account');
+        const body = req.body || {};
+        const set = {};
+        if (body.time_box_minutes !== undefined) {
+            const box = plays.cleanTimeBox(body.time_box_minutes);
+            if (box === null) return fail(res, 400, 'invalid_time_box', 'The time box is 5 to 30 minutes');
+            set.plays_time_box_minutes = box;
+        }
+        if (body.cap_cents !== undefined) {
+            const cap = plays.cleanCap(body.cap_cents);
+            if (cap === null) return fail(res, 400, 'invalid_cap', 'That cap is not a number');
+            set.plays_cap_cents = cap;
+        }
+        if (body.go === true) {
+            // Go arms the session: it waits for a sandbox worker, like the mode does.
+            const worker = await sandbox.workerFor(row.owner_subject);
+            if (!worker.ok) return fail(res, 409, 'chatplays_needs_sandbox_worker', worker.reason);
+            set.plays_armed_at = new Date();
+        }
+        if (!Object.keys(set).length) return fail(res, 400, 'nothing_to_change', 'Nothing to change');
+        const next = await service.update(row, { set });
+        res.set('Cache-Control', 'no-store');
+        res.json({ plays: plays.playsState(next) });
+    } catch (err) {
+        console.error('[AgentStream] the plays settings failed:', err.message);
+        fail(res, 500, 'plays_settings_failed', 'The chat plays settings could not be saved');
+    }
+});
+
+/**
+ * POST /:id/plays/queue — the desk reports the queue it works: the requests with their votes and the current
+ * one. Live keeps the last report and the overlay draws its top three.
+ */
+router.post('/:id/plays/queue', deskOrOwner, async (req, res) => {
+    try {
+        const row = await load(req, res);
+        if (!row) return;
+        const next = await service.update(row, { set: { plays_queue: plays.cleanQueue(req.body || {}) } });
+        res.set('Cache-Control', 'no-store');
+        res.json({ plays: plays.playsState(next), top: plays.queueTop(next, 3) });
+    } catch (err) {
+        console.error('[AgentStream] the queue report failed:', err.message);
+        fail(res, 500, 'plays_queue_failed', 'The queue could not be reported');
+    }
+});
+
+/**
+ * POST /:id/plays/worker — the sandbox worker checks in for the stream's owner. The publish ticket (or the
+ * owner's session) names the stream, so the worker is registered for that owner and for nobody else.
+ * GET  /:id/plays/worker — what the owner page shows: is there a worker, and is it healthy?
+ */
+router.post('/:id/plays/worker', auth.sandboxRegistrar, async (req, res) => {
+    try {
+        const row = await load(req, res);
+        if (!row) return;
+        // The worker says whose sandbox it is, and it must be this stream's owner: a worker registered for
+        // somebody else does not make this stream safe to run in.
+        if (String(row.owner_subject || '') !== String(req.sandboxWorker.subject)) {
+            return fail(res, 403, 'sandbox_worker.not_yours', 'This worker works for another account');
+        }
+        const body = req.body || {};
+        const out = await sandbox.checkIn({
+            subject: row.owner_subject,
+            service: req.sandboxWorker.service,
+            isolation: body.isolation || null,
+        });
+        if (!out.ok) {
+            return fail(res, 422, out.code, 'A worker that cannot say it is isolated is not registered');
+        }
+        res.set('Cache-Control', 'no-store');
+        res.json({ worker: await sandbox.state(row.owner_subject) });
+    } catch (err) {
+        console.error('[AgentStream] the worker check-in failed:', err.message);
+        fail(res, 500, 'plays_worker_failed', 'The worker could not check in');
+    }
+});
+
+router.get('/:id/plays/queue', auth.viewer, async (req, res) => {
+    try {
+        const row = await load(req, res);
+        if (!row) return;
+        if (!await watchable(req, row)) return fail(res, 404, 'agent_stream_not_found', 'No such agent stream');
+        // The queue the desk reported: the current request with who asked for it, and the next three with
+        // their votes. The overlay draws this; it is the room's own business, so it is what the viewers see.
+        const top = plays.queueTop(row, 3);
+        res.set('Cache-Control', 'no-store');
+        res.json({ queue: top });
+    } catch (err) {
+        console.error('[AgentStream] the queue read failed:', err.message);
+        fail(res, 500, 'plays_queue_failed', 'The queue could not be read');
+    }
+});
+
+router.get('/:id/plays/worker', auth.publisher, async (req, res) => {
+    try {
+        const row = await load(req, res);
+        if (!row) return;
+        if (Number(row.user_id) !== Number(req.publisher.user.id)) return fail(res, 403, 'not_your_stream', 'This agent stream belongs to another account');
+        res.set('Cache-Control', 'no-store');
+        res.json({ worker: await sandbox.state(row.owner_subject) });
+    } catch (err) {
+        console.error('[AgentStream] the worker state failed:', err.message);
+        fail(res, 500, 'plays_worker_failed', 'The worker state could not be read');
+    }
+});
+
 // ── The four controls (S5) ────────────────────────────────────
 
 /**
@@ -412,8 +531,8 @@ router.post('/:id/control', auth.viewer, async (req, res) => {
         const role = await roleOn(row, req.viewer);
         if (!role) return fail(res, 403, 'not_moderator', 'Only the owner or a channel moderator may press this');
         const body = req.body || {};
-        const control = service.CONTROLS.includes(body.control) ? body.control : null;
-        if (!control) return fail(res, 400, 'invalid_control', 'control is pause, curtain, mute or end');
+        const control = (service.CONTROLS.includes(body.control) || body.control === 'wipe') ? body.control : null;
+        if (!control) return fail(res, 400, 'invalid_control', 'control is pause, curtain, mute, end or wipe');
         const handle = String(req.viewer.username || '').toLowerCase().slice(0, 32);
         if (!/^[a-z0-9_]{2,32}$/.test(handle)) return fail(res, 409, 'no_handle', 'This account has no handle to log');
         const by = { handle, role };
@@ -434,6 +553,9 @@ router.post('/:id/control', auth.viewer, async (req, res) => {
             next = await service.update(row, { set: { voice_muted: !!muted } });
         } else if (control === 'end') {
             next = await service.end(row, { reason: `ended_by_${role}` });
+        } else if (control === 'wipe') {
+            // S6: Wipe now stops the run and resets the sandbox. The desk reads it in the state it polls.
+            next = await service.update(row, { set: { plays_wiped_at: new Date() } });
         }
         await require('../db/database').run(
             `INSERT INTO agent_stream_controls (managed_stream_id, control, by_handle, by_role, paused, paused_by)
@@ -649,7 +771,16 @@ router.put('/:id/voice', auth.publisher, async (req, res) => {
         const body = req.body || {};
         const set = {};
         if (body.mode !== undefined) {
-            if (!['watch', 'narrated', 'copilot'].includes(body.mode)) return fail(res, 400, 'invalid_mode', 'mode is watch, narrated or copilot');
+            if (!['watch', 'narrated', 'copilot', 'chatplays'].includes(body.mode)) return fail(res, 400, 'invalid_mode', 'mode is watch, narrated, copilot or chatplays');
+            if (body.mode === 'chatplays') {
+                // Chat plays needs a sandbox worker: a request runs in a network-isolated worker, not in the
+                // owner's own Codes worker, Node or desk. There is no such worker yet, so the mode is refused.
+                const worker = await sandbox.workerFor(row.owner_subject);
+                if (!worker.ok) return fail(res, 409, 'chatplays_needs_sandbox_worker', worker.reason);
+                if (!['public', 'unlisted'].includes(row.visibility)) return fail(res, 422, 'chatplays_needs_public', 'Chat plays needs a public or unlisted stream');
+                if (!Number(row.copilot_ready)) return fail(res, 422, 'chatplays_not_ready', "This task's service cannot work the queue yet");
+                if (!Number(row.plays_cap_cents)) return fail(res, 422, 'chatplays_needs_budget', 'Chat plays needs a budget: set the cap first');
+            }
             if (body.mode === 'copilot') {
                 // Co-pilot needs a public or unlisted stream and a task's service that can read a digest.
                 if (!['public', 'unlisted'].includes(row.visibility)) return fail(res, 422, 'copilot_needs_public', 'Co-pilot needs a public or unlisted stream');

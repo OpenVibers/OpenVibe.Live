@@ -195,3 +195,48 @@ A moderator may not resume a pause the owner set. The overlay says "Paused by @m
 `agent_stream_controls` with who pressed it, which control and when; End also stops the room's Co-pilot reading while
 the task keeps running off camera. Curtain is S1's curtain, mute is S4's voice mute, and all four act within their
 design limits (2 s for pause and end, 1 s for curtain and mute).
+
+## Chat plays (S6)
+
+The mode `chatplays` works the room's queue: the viewers of the stream ask for something with `!do <request>`
+in the room on OpenVibe.Chat, vote for it with a thumbs up or `!vote <n>`, and the top request (pinned first,
+then the most votes, then the oldest) is the next task for the desk on OpenVibe.Codes.
+
+The owner page carries the controls: **Chat plays** with the time box (5 to 30 minutes, the default 10), the
+cap (money) and **Go**. Go arms the session once, so a stream never starts acting on chat unattended.
+**Wipe now** joins pause, curtain, mute and end: it stops the run and resets the sandbox, and every press is
+logged with who pressed it.
+
+The mode needs a public or unlisted stream, a task's service that can work the queue, and a budget the owner
+set. The desk reports the queue it works; the overlay draws the current request (with who asked for it) and
+the next three with their votes.
+
+### The sandbox worker
+
+A chat plays request runs in a network-isolated worker: a container or namespace with no host network, no
+credentials, no access to the owner's files, and every egress request through the proxy that applies the
+guard. It is never the owner's own Codes worker, Node or desk. That worker does not exist yet, so Live
+refuses the mode (409 `chatplays_needs_sandbox_worker`) and the owner page says "Needs the sandbox worker;
+coming soon" in as many words.
+
+Only OpenVibe's sandbox worker may register one. It checks in with a Network service token whose principal
+holds the capability `live.agent_sandbox.register`, and it names the person it works for in
+`X-OV-Subject`; the person must be the stream's owner.
+
+```
+POST /api/streams/agent/<ags_id>/plays/worker   the worker checks in (service token, X-OV-Subject)
+    body: { "isolation": { "host_network": false, "credentials": false, "profile": false,
+                            "egress_proxy": true, "workspace": "ephemeral" } }
+GET  /api/streams/agent/<ags_id>/plays/worker   is there a worker, and is it healthy? (the owner)
+```
+
+The owner's own session is refused (403 `sandbox_worker.not_the_worker`), a desk ticket is refused, and a token
+without the capability is refused (403 `capability.denied`). An owner who could register a worker would
+declare their own unisolated machine a sandbox, and the gate would mean nothing.
+
+Health comes only from the worker's own check-ins: a check-in within the last minute (60 s) that reports the
+isolation Live requires. A worker that cannot say it is isolated is not registered at all (422
+`sandbox_worker_not_isolated`). The owner can read that state and cannot change it. A worker that falls
+silent makes the mode unavailable again.
+
+Live stores no endpoint and never calls the worker: the worker reports, it is not called.
