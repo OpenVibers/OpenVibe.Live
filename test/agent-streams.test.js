@@ -400,6 +400,30 @@ async function check(name, fn) {
                 assert.strictEqual(bad.status, 404);
             } finally { s.close(); }
         });
+
+        await check('AGENT_EMBED_EXTENSION_ORIGINS adds exactly one chrome-extension id, and only that', async () => {
+            const p = require('../server/agent-streams/pages');
+            const id = 'a'.repeat(32);
+            const origin = `chrome-extension://${id}`;
+            // Unset: today's header, no extension origin at all.
+            assert.ok(!p.embedCsp().includes('chrome-extension://'), 'unset: the CSP is unchanged');
+            assert.ok(!p.frameAncestors().includes('chrome-extension:'), 'unset: no extension may frame it');
+            // A valid id is added to the header the page serves.
+            delete process.env.AGENT_EMBED_EXTENSION_ORIGINS;
+            process.env.AGENT_EMBED_EXTENSION_ORIGINS = `${origin},${'b'.repeat(32)}`;
+            delete require.cache[require.resolve('../server/agent-streams/pages')];
+            const set = require('../server/agent-streams/pages');
+            assert.ok(set.frameAncestors().includes(origin), 'the valid id is added');
+            assert.ok(set.embedCsp().includes(origin), 'and it frames the page in the CSP');
+            assert.ok(!set.frameAncestors().includes('chrome-extension://bb'), 'a bare 32 letters without the scheme is ignored');
+            // Anything that is not one exact origin is dropped, with one warning at boot.
+            const warned = [];
+            assert.deepStrictEqual(p.parseExtensionOrigins(`${origin}, chrome-extension:, moz-extension://abc, chrome-extension://${'A'.repeat(32)}, https://evil.example`, { warn: (m) => warned.push(m) }), [origin]);
+            assert.strictEqual(warned.length, 1, 'one warning at boot');
+            assert.ok(!p.frameAncestors(p.parseExtensionOrigins('chrome-extension:, moz-extension://abc', { warn() {} })).includes('moz-extension:'), 'never a scheme-wide source');
+            delete process.env.AGENT_EMBED_EXTENSION_ORIGINS;
+            delete require.cache[require.resolve('../server/agent-streams/pages')];
+        });
     } finally {
         server.close();
     }

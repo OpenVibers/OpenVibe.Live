@@ -306,6 +306,34 @@
         });
     }
 
+    // S7: a channel bound to a Bot robot may show the robot's camera as a second scene beside the desk. The panel is
+    // Bot's own embed; Live only switches which scene is on, and the overlay stays the same on both.
+    function renderScenes(stream) {
+        const bar = document.getElementById('agent-scenes');
+        const robot = document.getElementById('agent-robot');
+        const frame = document.getElementById('agent-robot-frame');
+        const stage = document.getElementById('agent-stage');
+        if (!bar || !robot || !stage) return;
+        const scene = stream && stream.robot_scene;
+        if (!scene || !scene.embed_url) { bar.hidden = true; robot.hidden = true; stage.hidden = false; return; }
+        if (frame && frame.getAttribute('src') !== scene.embed_url) frame.setAttribute('src', scene.embed_url);
+        bar.hidden = false;
+        const show = (name) => {
+            const isRobot = name === 'robot';
+            stage.hidden = isRobot;
+            robot.hidden = !isRobot;
+            for (const btn of bar.querySelectorAll('[data-agent-scene]')) {
+                const on = btn.getAttribute('data-agent-scene') === name;
+                btn.classList.toggle('is-on', on);
+                btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+            }
+        };
+        for (const btn of bar.querySelectorAll('[data-agent-scene]')) {
+            btn.onclick = () => show(btn.getAttribute('data-agent-scene'));
+        }
+        show('desk');
+    }
+
     function render(data) {
         state = data;
         ticket = data.view_ticket || ticket;
@@ -330,6 +358,7 @@
         }
 
         renderCurtain(!!(stream.curtain && stream.curtain.up));
+        renderScenes(stream);
         renderStatus(stream, liveViewers);
         mountPlays(data);
         ensureOverlay(data);
@@ -422,6 +451,7 @@
             }
         }
         renderCurtain(!!(stream.curtain && stream.curtain.up));
+        renderScenes(stream);
         renderVoice();
         const endBtn = $('agent-end');
         if (endBtn) endBtn.hidden = stream.state === 'ended';
