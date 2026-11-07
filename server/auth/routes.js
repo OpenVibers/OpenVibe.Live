@@ -227,9 +227,17 @@ router.post('/avatar', requireAuth, avatarUpload.single('avatar'), async (req, r
         const screenshotUrl = media.publicUrl(paste.screenshot_url) || media.pasteScreenshotUrl(paste.slug);
         await db.updateUserAvatar(req.user.id, screenshotUrl, paste.id || null);
 
-        const updated = await db.getUserById(req.user.id);
-        try { require('../utils/notify').reportAvatarChange(updated); } catch { /* the Network learns the new picture on the next sign-in */ }
-        res.json({ user: await sanitizeUser(updated), avatar_url: screenshotUrl });
+        // The Network copies the picture into the person's own avatar object (the paste stays as the source, and
+        // can be cleaned up without breaking the avatar); Live then keeps that object's address.
+        let view = await db.getUserById(req.user.id);
+        try {
+            const synced = await require('../utils/notify').syncAvatarChange(view);
+            if (synced && synced.avatar_url && synced.avatar_url !== view.avatar_url) {
+                await db.updateUserAvatar(req.user.id, synced.avatar_url, paste.id || null);
+                view = await db.getUserById(req.user.id);
+            }
+        } catch { /* the Network copies it on the next report; the paste still works until then */ }
+        res.json({ user: await sanitizeUser(view), avatar_url: view.avatar_url || screenshotUrl });
     } catch (err) {
         if (req.file) try { fs.unlinkSync(req.file.path); } catch { }
         console.error('[Auth] Avatar upload error:', err.message);

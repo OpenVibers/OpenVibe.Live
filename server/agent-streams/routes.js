@@ -25,6 +25,7 @@ const service = require('./service');
 const tickets = require('./tickets');
 const frames = require('./frames');
 const steps = require('./steps');
+const voice = require('./voice');
 
 const router = express.Router();
 
@@ -299,6 +300,12 @@ router.get('/:id/state', deskOrOwner, async (req, res) => {
                 ...(Number(row.curtain_up) && row.curtain_reason ? { reason: row.curtain_reason } : {}),
             },
             ends_at: service.iso(await tickets.currentExpiry(row.managed_stream_id)),
+            // S4: the lines the desk has not read yet (it polls with the last id it spoke), and the voice it speaks
+            // them in. The state contract's v2 shape carries both; Live never mixes the audio, the desk does.
+            lines: await voice.linesAfter(row.managed_stream_id, req.query.after, 20),
+            voice: voice.voiceState(row),
+            // S4: where the recording's captions live, so a VOD player can attach the WebVTT as a text track.
+            captions_url: voice.captionsUrl(row),
         });
     } catch (err) {
         console.error('[AgentStream] state failed:', err.message);
@@ -389,6 +396,9 @@ router.get('/:id/steps', auth.viewer, async (req, res) => {
 router.post('/:id/steps', deskOrOwner, async (req, res) => {
     try {
         const step = await steps.add(req.agent, req.body || {});
+        // S4: in narrated mode the voice writes a line about this step. A refused line (the house filters) or a spent
+        // allowance is silent, never an error: the step itself is what the caller came for.
+        try { await voice.writer.onStep(req.agent, step); } catch (err) { console.warn('[AgentStream] voice line failed:', err.message); }
         res.status(201).json({ step });
     } catch (err) {
         if (err && err.status) return fail(res, err.status, err.code, err.message);
@@ -470,6 +480,125 @@ router.post('/:id/view-ticket', auth.viewer, async (req, res) => {
     } catch (err) {
         console.error('[AgentStream] view ticket failed:', err.message);
         fail(res, 500, 'view_ticket_failed', 'A view ticket could not be minted');
+    }
+});
+
+// ── The agent's voice (S4) ───────────────────────────────────
+
+// The owner chooses the mode (Watch or Narrated), the voice, the personality and the mute; a channel moderator can
+// mute it too. A cloned voice is the person's own and only with their explicit opt-in, so `own` needs `own_consent`.
+// The lines themselves are read by the desk (the state poll) and shown to the page as captions.
+function cleanVoiceId(value) {
+    if (value === null || value === '') return null;
+    if (typeof value !== 'string') return undefined;
+    const id = value.trim();
+    return /^[A-Za-z0-9_.:-]{1,64}$/.test(id) ? id : undefined;
+}
+
+// The voice state: the mode, the personality, the voice, the mute and (when the allowance ran out) the message.
+router.get('/:id/voice', auth.viewer, async (req, res) => {
+    try {
+        const row = await load(req, res);
+        if (!row) return;
+        if (!await watchable(req, row)) return fail(res, 404, 'agent_stream_not_found', 'No such agent stream');
+        res.set('Cache-Control', 'no-store');
+        res.json({ voice: voice.voiceState(row) });
+    } catch (err) {
+        console.error('[AgentStream] voice read failed:', err.message);
+        fail(res, 500, 'voice_failed', 'The voice could not be read');
+    }
+});
+
+router.put('/:id/voice', auth.publisher, async (req, res) => {
+    try {
+        const row = await load(req, res);
+        if (!row) return;
+        if (Number(row.user_id) !== Number(req.publisher.user.id)) return fail(res, 403, 'not_your_stream', 'This agent stream belongs to another account');
+        const body = req.body || {};
+        const set = {};
+        if (body.mode !== undefined) {
+            if (!['watch', 'narrated'].includes(body.mode)) return fail(res, 400, 'invalid_mode', 'mode is watch or narrated');
+            set.mode = body.mode;
+        }
+        if (body.personality !== undefined) {
+            if (!voice.PERSONALITIES.includes(body.personality)) return fail(res, 400, 'invalid_personality', 'personality is calm, hype, dry or roast');
+            set.personality = body.personality;
+        }
+        if (body.voice !== undefined) {
+            const id = cleanVoiceId(body.voice);
+            if (id === undefined) return fail(res, 400, 'invalid_voice', 'That voice name is not allowed');
+            set.voice = id;
+        }
+        if (body.own !== undefined) {
+            const own = !!body.own;
+            // The person's own cloned voice: only with their explicit opt-in, and the moment they said yes is kept.
+            if (own && body.own_consent !== true) return fail(res, 422, 'own_voice_needs_consent', 'Your own cloned voice needs your consent');
+            set.voice_own = own;
+            set.voice_own_consent_at = own ? new Date() : null;
+        }
+        if (body.muted !== undefined) set.voice_muted = !!body.muted;
+        if (!Object.keys(set).length) return fail(res, 400, 'nothing_to_change', 'Nothing to change');
+        // A new choice gets a new try at the allowance: the pause was about the old one.
+        if (set.mode || set.personality || set.voice) set.voice_paused = null;
+        const next = await service.update(row, { set });
+        res.json({ voice: voice.voiceState(next) });
+    } catch (err) {
+        console.error('[AgentStream] voice settings failed:', err.message);
+        fail(res, 500, 'voice_settings_failed', 'The voice settings could not be saved');
+    }
+});
+
+// The mute: the owner's kill switch, and a channel moderator's. It takes effect within a second (the desk checks
+// it on every poll and stops speaking at once).
+router.post('/:id/voice/mute', auth.viewer, async (req, res) => {
+    try {
+        const row = await load(req, res);
+        if (!row) return;
+        const body = req.body || {};
+        if (typeof body.muted !== 'boolean') return fail(res, 400, 'invalid_muted', 'muted is true or false');
+        const isOwner = !!(req.viewer && Number(req.viewer.id) === Number(row.user_id));
+        let allowed = isOwner;
+        if (!allowed) {
+            const permissions = require('../auth/permissions');
+            allowed = await permissions.canModerateChannel(req.viewer, row.channel_id);
+        }
+        if (!allowed) return fail(res, 403, 'cannot_mute_voice', 'You cannot mute this voice');
+        const next = await service.update(row, { set: { voice_muted: body.muted } });
+        res.json({ voice: voice.voiceState(next) });
+    } catch (err) {
+        console.error('[AgentStream] voice mute failed:', err.message);
+        fail(res, 500, 'voice_mute_failed', 'The voice could not be muted');
+    }
+});
+
+// The lines the page draws as captions (the desk has its own copy in the state poll).
+router.get('/:id/lines', auth.viewer, async (req, res) => {
+    try {
+        const row = await load(req, res);
+        if (!row) return;
+        if (!await watchable(req, row)) return fail(res, 404, 'agent_stream_not_found', 'No such agent stream');
+        const lines = await voice.linesAfter(row.managed_stream_id, req.query.after, 50);
+        res.set('Cache-Control', 'no-store');
+        res.json({ lines, voice: voice.voiceState(row) });
+    } catch (err) {
+        console.error('[AgentStream] lines read failed:', err.message);
+        fail(res, 500, 'lines_failed', 'The lines could not be read');
+    }
+});
+
+// The recording's captions as WebVTT: the same lines, timed from the start of the stream.
+router.get('/:id/captions.vtt', auth.viewer, async (req, res) => {
+    try {
+        const row = await load(req, res);
+        if (!row) return;
+        if (!await watchable(req, row)) return fail(res, 404, 'agent_stream_not_found', 'No such agent stream');
+        const cues = await voice.captions(row.managed_stream_id, row.started_at);
+        res.set('Content-Type', 'text/vtt; charset=utf-8');
+        res.set('Cache-Control', 'no-store');
+        res.send(voice.webvtt(cues));
+    } catch (err) {
+        console.error('[AgentStream] captions failed:', err.message);
+        fail(res, 500, 'captions_failed', 'The captions could not be read');
     }
 });
 

@@ -10,7 +10,7 @@
 - [Vibe Coding](vibe-coding.md) — moved to OpenVibe Chat feeds (openvibe.chat/feeds); what Live answers now
 - [VOD & Clips](vods-and-clips.md) — Recordings, DVR seeking, clip creation
 - [API Tokens](api-tokens.md) — Bot/integration authentication
-- [The Rundown](rundown.md) — What streamers talked about, written up: topics, takes in their own words, episodes (replaced the Arena, 2026-10-19)
+- [The Rundown](rundown.md) — What streamers talked about, written up: topics, takes in their own words, episodes; who sees it, and deleting it (replaced the Arena, 2026-10-19)
 
 ## Streamer Tools
 - [Dashboard](dashboard.md) — Streamer dashboard features: emotes, rewards, chat logs, media management
