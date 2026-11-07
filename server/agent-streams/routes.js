@@ -23,6 +23,7 @@ const express = require('express');
 const auth = require('./auth');
 const service = require('./service');
 const plays = require('./plays');
+const sandbox = require('./sandbox');
 const tickets = require('./tickets');
 const frames = require('./frames');
 const steps = require('./steps');
@@ -421,7 +422,12 @@ router.put('/:id/plays', auth.publisher, async (req, res) => {
             if (cap === null) return fail(res, 400, 'invalid_cap', 'That cap is not a number');
             set.plays_cap_cents = cap;
         }
-        if (body.go === true) set.plays_armed_at = new Date();
+        if (body.go === true) {
+            // Go arms the session: it waits for a sandbox worker, like the mode does.
+            const worker = await sandbox.workerFor(row.owner_subject);
+            if (!worker.ok) return fail(res, 409, 'chatplays_needs_sandbox_worker', worker.reason);
+            set.plays_armed_at = new Date();
+        }
         if (!Object.keys(set).length) return fail(res, 400, 'nothing_to_change', 'Nothing to change');
         const next = await service.update(row, { set });
         res.set('Cache-Control', 'no-store');
@@ -446,6 +452,43 @@ router.post('/:id/plays/queue', deskOrOwner, async (req, res) => {
     } catch (err) {
         console.error('[AgentStream] the queue report failed:', err.message);
         fail(res, 500, 'plays_queue_failed', 'The queue could not be reported');
+    }
+});
+
+/**
+ * POST /:id/plays/worker — the sandbox worker checks in for the stream's owner. The publish ticket (or the
+ * owner's session) names the stream, so the worker is registered for that owner and for nobody else.
+ * GET  /:id/plays/worker — what the owner page shows: is there a worker, and is it healthy?
+ */
+router.post('/:id/plays/worker', deskOrOwner, async (req, res) => {
+    try {
+        const row = await load(req, res);
+        if (!row) return;
+        const body = req.body || {};
+        const out = await sandbox.checkIn({
+            subject: row.owner_subject,
+            service: String(body.service || 'unknown').slice(0, 40),
+            endpoint: body.endpoint ? String(body.endpoint).slice(0, 200) : null,
+        });
+        if (!out.ok) return fail(res, 422, out.code, 'The worker could not check in');
+        res.set('Cache-Control', 'no-store');
+        res.json({ worker: await sandbox.state(row.owner_subject) });
+    } catch (err) {
+        console.error('[AgentStream] the worker check-in failed:', err.message);
+        fail(res, 500, 'plays_worker_failed', 'The worker could not check in');
+    }
+});
+
+router.get('/:id/plays/worker', auth.publisher, async (req, res) => {
+    try {
+        const row = await load(req, res);
+        if (!row) return;
+        if (Number(row.user_id) !== Number(req.publisher.user.id)) return fail(res, 403, 'not_your_stream', 'This agent stream belongs to another account');
+        res.set('Cache-Control', 'no-store');
+        res.json({ worker: await sandbox.state(row.owner_subject) });
+    } catch (err) {
+        console.error('[AgentStream] the worker state failed:', err.message);
+        fail(res, 500, 'plays_worker_failed', 'The worker state could not be read');
     }
 });
 
@@ -707,8 +750,10 @@ router.put('/:id/voice', auth.publisher, async (req, res) => {
         if (body.mode !== undefined) {
             if (!['watch', 'narrated', 'copilot', 'chatplays'].includes(body.mode)) return fail(res, 400, 'invalid_mode', 'mode is watch, narrated, copilot or chatplays');
             if (body.mode === 'chatplays') {
-                // Chat plays needs a public or unlisted stream, a task's service that can work the queue, and a
-                // budget the owner set.
+                // Chat plays needs a sandbox worker: a request runs in a network-isolated worker, not in the
+                // owner's own Codes worker, Node or desk. There is no such worker yet, so the mode is refused.
+                const worker = await sandbox.workerFor(row.owner_subject);
+                if (!worker.ok) return fail(res, 409, 'chatplays_needs_sandbox_worker', worker.reason);
                 if (!['public', 'unlisted'].includes(row.visibility)) return fail(res, 422, 'chatplays_needs_public', 'Chat plays needs a public or unlisted stream');
                 if (!Number(row.copilot_ready)) return fail(res, 422, 'chatplays_not_ready', "This task's service cannot work the queue yet");
                 if (!Number(row.plays_cap_cents)) return fail(res, 422, 'chatplays_needs_budget', 'Chat plays needs a budget: set the cap first');

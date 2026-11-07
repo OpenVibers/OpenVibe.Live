@@ -19,3 +19,17 @@ DO $$ BEGIN
     ALTER TABLE agent_stream_controls ADD CONSTRAINT agent_stream_controls_control_check
         CHECK (control IN ('pause', 'curtain', 'mute', 'end', 'wipe'));
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+-- The sandbox workers (S6): the network-isolated workers that would run a chat plays request. A worker
+-- checks in for the person it works for and is healthy while it keeps checking in. None exists yet, so the
+-- chat plays mode is refused until one does.
+CREATE TABLE IF NOT EXISTS agent_sandbox_workers (
+    id           text COLLATE "C" PRIMARY KEY,             -- sbw_<ULID>
+    subject      text COLLATE "C" NOT NULL,               -- the person the worker works for (usr_…)
+    service      text COLLATE "C" NOT NULL,               -- the service that owns the worker (codes, actor, …)
+    endpoint     text COLLATE "C",                        -- where the worker listens, when it has one
+    status       text COLLATE "C" NOT NULL DEFAULT 'ready' CHECK (status IN ('ready', 'stopped')),
+    last_seen_at bigint NOT NULL,
+    created_at   bigint NOT NULL DEFAULT (extract(epoch from now()) * 1000)::bigint
+);
+CREATE UNIQUE INDEX IF NOT EXISTS agent_sandbox_workers_subject ON agent_sandbox_workers (subject);
