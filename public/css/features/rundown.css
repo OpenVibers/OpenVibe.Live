@@ -239,3 +239,22 @@ a.rd-use:hover b { color: var(--accent); }
 .rd-more[open] > summary::before { transform: translateY(-4px) rotate(45deg); }
 .rd-more > .rd-topic-grid { padding: 4px 12px 14px; }
 @media (prefers-reduced-motion: reduce) { .rd-more > summary::before { transition: none; } }
+/* ── Touch (2026-11-06 phone pass, round two) ─────────────────────────────────
+   Every control of the Rundown carries a 44 px hit area on the element itself: the tabs, the avatars, the names,
+   the watch and read links, the topic chips, the reaction buttons and the speaker buttons. Nothing is hidden to
+   make room — the cards simply get taller. */
+@media (pointer: coarse) {
+    #rundown-root .rd-tab { min-height: 44px; display: inline-flex; align-items: center; }
+    /* A linked face only: a face inside another link (the rails) is not a target and keeps its size. */
+    #rundown-root a.rd-av { min-width: 44px; min-height: 44px; }
+    #rundown-root .rd-user { min-width: 44px; min-height: 44px; display: inline-flex; align-items: center; }
+    #rundown-root .rd-speak { width: 44px; height: 44px; }
+    #rundown-root .rd-react-btn { min-height: 44px; min-width: 44px; }
+    #rundown-root .rd-watch { min-height: 44px; }
+    #rundown-root .rd-h3 a { min-height: 44px; display: inline-flex; align-items: center; }
+    #rundown-root .rd-brief-play { min-height: 44px; }
+    #rundown-root .rd-chip { min-height: 44px; }
+    #rundown-root .rd-read { min-height: 44px; display: inline-flex; align-items: center; }
+    #rundown-root .rd-loadmore { min-height: 44px; }
+    #rundown-root .rd-more-link { min-height: 44px; display: inline-flex; align-items: center; }
+}
