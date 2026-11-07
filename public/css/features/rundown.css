@@ -239,6 +239,209 @@ a.rd-use:hover b { color: var(--accent); }
 .rd-more[open] > summary::before { transform: translateY(-4px) rotate(45deg); }
 .rd-more > .rd-topic-grid { padding: 4px 12px 14px; }
 @media (prefers-reduced-motion: reduce) { .rd-more > summary::before { transition: none; } }
+
+/* ── The bar: search and filters (public/js/rundown.js) ──────────────────────────────────
+   Sticky under the navbar on every Rundown page. The phone gets the search box and one
+   "Filters (N)" button, which opens a sheet with the same sections. */
+.rd-bar { position: sticky; top: var(--navbar-h); z-index: 30; margin: 0 0 10px; padding: 10px 0;
+  background: var(--bg-primary, var(--bg-secondary)); border-bottom: 1px solid var(--border); }
+.rd-bar-row { display: flex; gap: 10px; align-items: center; }
+.rd-search { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; height: 44px; padding: 0 12px;
+  border-radius: 12px; background: var(--bg-card); border: 1px solid var(--border); }
+.rd-search:focus-within { border-color: var(--accent); }
+.rd-search i { flex: none; color: var(--text-muted); }
+.rd-search-input { flex: 1; min-width: 0; height: 100%; border: 0; background: none; outline: none;
+  color: var(--text-primary); font: inherit; font-size: 0.98rem; }
+.rd-search-input::placeholder { color: var(--text-muted); }
+.rd-search-clear { flex: none; display: grid; place-items: center; width: 28px; height: 28px; padding: 0; border: 0;
+  border-radius: 50%; background: var(--bg-tertiary); color: var(--text-secondary); cursor: pointer; }
+.rd-chipbar { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.rd-pick-btn, .rd-toggle { display: inline-flex; align-items: center; gap: 6px; min-height: 34px; padding: 5px 12px;
+  border-radius: 999px; border: 1px solid var(--border); background: var(--bg-card); color: var(--text-secondary);
+  font: inherit; font-size: 0.88rem; font-weight: 700; cursor: pointer; }
+.rd-pick-btn:hover, .rd-toggle:hover { color: var(--text-primary); border-color: var(--accent); }
+.rd-pick-btn b { color: var(--accent); }
+.rd-toggle.is-on { color: var(--text-primary); border-color: var(--accent); background: color-mix(in srgb, var(--accent) 16%, transparent); }
+.rd-sheet-btn { display: none; min-height: 44px; padding: 0 14px; border-radius: 12px; border: 1px solid var(--border);
+  background: var(--bg-card); color: var(--text-primary); font: inherit; font-weight: 700; cursor: pointer; white-space: nowrap; }
+
+/* The pickers: a small list of choices under the bar. */
+.rd-pickers { margin-top: 8px; }
+.rd-picker { padding: 12px; border-radius: 14px; background: var(--bg-card); border: 1px solid var(--border); }
+.rd-picker-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
+.rd-picker-head .rd-h3 { margin: 0; font-size: 1rem; }
+.rd-icon-btn { display: grid; place-items: center; width: 32px; height: 32px; padding: 0; border: 1px solid var(--border);
+  border-radius: 50%; background: var(--bg-tertiary); color: var(--text-secondary); cursor: pointer; }
+.rd-picker-search { width: 100%; height: 40px; margin-bottom: 8px; padding: 0 12px; border-radius: 10px;
+  border: 1px solid var(--border); background: var(--bg-tertiary); color: var(--text-primary); font: inherit; }
+.rd-picker-list { list-style: none; margin: 0; padding: 0; max-height: 320px; overflow-y: auto; }
+.rd-picker-list li + li { border-top: 1px solid var(--border); }
+.rd-pick-item { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 44px; padding: 8px 6px; border: 0;
+  background: none; color: var(--text-primary); font: inherit; text-align: left; cursor: pointer; }
+.rd-pick-item:hover { background: var(--bg-tertiary); }
+.rd-pick-item.is-on { color: var(--accent-light, var(--accent)); font-weight: 700; }
+.rd-pick-item.is-on::after { content: '\2713'; margin-left: auto; }
+.rd-pick-name { flex: 1; min-width: 0; }
+.rd-pick-count { flex: none; color: var(--text-muted); font-size: 0.8rem; }
+
+/* The filters that are on, and the way out of all of them. */
+.rd-active { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0 0 12px; }
+.rd-active-chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 6px 4px 10px; border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 16%, transparent); border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  color: var(--text-primary); font-size: 0.85rem; font-weight: 700; }
+.rd-active-x { display: grid; place-items: center; width: 22px; height: 22px; padding: 0; border: 0; border-radius: 50%;
+  background: none; color: var(--text-secondary); cursor: pointer; font-size: 0.72rem; }
+.rd-active-x:hover { color: var(--text-primary); background: var(--bg-tertiary); }
+.rd-clear-all { font-size: 0.85rem; }
+
+/* The count line and the one line under the title. */
+.rd-count { margin: 4px 0 12px; color: var(--text-secondary); font-size: 0.9rem; font-weight: 700; }
+.rd-how { margin: 0 0 12px; color: var(--text-secondary); font-size: 0.94rem; }
+.rd-how-link { color: var(--accent-light, var(--accent)); font-weight: 700; text-decoration: none; }
+.rd-how-link:hover { text-decoration: underline; }
+
+/* Compact cards: a take, and an episode folded to its top takes. */
+.rd-compact-top { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
+.rd-compact-who { font-weight: 700; font-size: 0.9rem; }
+.rd-compact-top time { margin-left: auto; color: var(--text-muted); font-size: 0.8rem; }
+.rd-take .rd-quote { margin: 0 0 4px; }
+.rd-take .rd-quote p { font-size: 1rem; }
+.rd-mini { display: flex; align-items: center; gap: 8px; padding: 7px 0; border-top: 1px dashed var(--border); }
+.rd-mini:first-child { border-top: 0; }
+.rd-mini-title { flex: 1; min-width: 0; font-size: 0.94rem; font-weight: 700; }
+.rd-fold { margin: 6px 0 0; }
+.rd-fold-btn { display: block; width: 100%; margin-top: 6px; padding: 9px 12px; border-radius: 10px; border: 1px solid var(--border);
+  background: var(--bg-tertiary); color: var(--text-primary); font: inherit; font-size: 0.88rem; font-weight: 700; cursor: pointer; }
+.rd-fold-btn:hover { border-color: var(--accent); }
+.rd-ep-count { color: var(--text-secondary); font-size: 0.82rem; font-weight: 700; }
+.rd-kinds { margin: 0 0 12px; }
+
+/* The phone's sheet: the same sections as the pickers, one under the other. */
+/* Over the Shared app bar (9990): the sheet is modal, so nothing of the page shows through it. */
+.rd-sheet-wrap { position: fixed; inset: 0; z-index: 10000; }
+.rd-sheet-backdrop { position: absolute; inset: 0; background: rgba(0, 0, 0, 0.55); }
+.rd-sheet { position: absolute; left: 0; right: 0; bottom: 0; display: flex; flex-direction: column; max-height: 88vh;
+  border-radius: 18px 18px 0 0; background: var(--bg-primary, var(--bg-secondary)); border-top: 1px solid var(--border); }
+.rd-sheet-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 14px;
+  border-bottom: 1px solid var(--border); }
+.rd-sheet-head .rd-h2 { margin: 0; }
+.rd-sheet-body { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 4px 14px 14px; -webkit-overflow-scrolling: touch; }
+.rd-sheet-sec { padding: 10px 0; border-bottom: 1px solid var(--border); }
+.rd-sheet-sec:last-child { border-bottom: 0; }
+.rd-sheet-sec .rd-h3 { margin: 0 0 8px; font-size: 0.95rem; }
+.rd-sheet-list { display: flex; flex-direction: column; gap: 4px; }
+.rd-sheet-btn-row { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 44px; padding: 8px 10px;
+  border-radius: 10px; border: 1px solid transparent; background: none; color: var(--text-primary); font: inherit;
+  font-size: 0.95rem; text-align: left; cursor: pointer; }
+.rd-sheet-btn-row:hover { background: var(--bg-tertiary); }
+.rd-sheet-btn-row.is-on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); font-weight: 700; }
+.rd-sheet-foot { display: flex; gap: 10px; padding: 12px 14px calc(12px + env(safe-area-inset-bottom)); border-top: 1px solid var(--border); }
+.rd-sheet-foot .btn { flex: 1; min-height: 44px; }
+body.rd-sheet-open { overflow: hidden; }
+
+/* Trending and who's been talking: two rails under the bar on the phone. */
+.rd-rails { display: none; }
+.rd-rail .rd-h2 { margin: 0 0 4px; }
+.rd-rail-track { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: thin; padding-bottom: 4px; }
+.rd-rail-track .rd-chip { flex: none; }
+.rd-rail-item { display: inline-flex; align-items: center; gap: 6px; flex: none; padding: 4px 10px 4px 4px; border-radius: 999px;
+  background: var(--bg-card); border: 1px solid var(--border); color: var(--text-primary); text-decoration: none;
+  font-size: 0.85rem; font-weight: 700; }
+
+@media (max-width: 960px) {
+  .rd-rails { display: flex; flex-direction: column; gap: 10px; margin: 0 0 14px; }
+  .rd-side .rd-trend-box, .rd-side .rd-voices-box { display: none; }
+}
+@media (max-width: 720px) {
+  /* The phone: the search box and one button that opens the sheet with the same sections. */
+  .rd-chipbar { display: none; }
+  .rd-sheet-btn { display: inline-flex; align-items: center; }
+  .rd-pickers { display: none; }
+}
+@media (max-width: 560px) {
+  .rd-bar { padding: 8px 0; }
+  .rd-search { height: 44px; }
+  .rd-pick-btn, .rd-toggle, .rd-search-clear, .rd-icon-btn { min-height: 44px; min-width: 44px; }
+  .rd-active-chip { padding: 6px 6px 6px 12px; }
+  .rd-active-x { width: 32px; height: 32px; }
+  .rd-sheet { max-height: 92vh; }
+  .rd-compact-top time { margin-left: 0; }
+  .rd-mini { flex-wrap: wrap; }
+}
+
+/* ── Yours: who sees it, and deleting (RUNDOWN-CONTROLS 2026-11-06) ── */
+.rd-aud-chip { display: inline-flex; align-items: center; gap: 5px; margin-left: 8px; padding: 2px 8px; border-radius: 999px;
+  border: 1px solid var(--border); background: var(--bg-tertiary); color: var(--text-secondary); font-size: 0.76rem; font-weight: 700; white-space: nowrap; }
+.rd-aud-chip i { font-size: 0.7rem; }
+.rd-card-top .rd-aud-chip { margin-left: 0; margin-right: auto; }
+.rd-own-icon { flex: none; display: grid; place-items: center; width: 36px; height: 36px; border-radius: 10px;
+  background: var(--bg-tertiary); color: var(--accent-light, var(--accent)); }
+.rd-own { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-top: 14px;
+  padding: 12px 14px; border-radius: 14px; border: 1px solid var(--border); background: var(--bg-card); }
+.rd-own-aud { display: flex; align-items: flex-start; gap: 10px; min-width: 0; flex: 1 1 260px; }
+.rd-own-who { margin: 0; font-size: 0.95rem; }
+.rd-own-line { margin: 2px 0 0; color: var(--text-secondary); font-size: 0.86rem; }
+.rd-own-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.rd-own-btn { display: inline-flex; align-items: center; gap: 7px; min-height: 40px; padding: 0 14px; border-radius: 10px;
+  border: 1px solid var(--border); background: var(--bg-tertiary); color: var(--text-primary); font: inherit; font-size: 0.9rem;
+  font-weight: 700; text-decoration: none; cursor: pointer; }
+.rd-own-btn:hover { border-color: var(--accent); }
+.rd-own-btn.is-danger { color: var(--danger); }
+.rd-own-btn.is-danger:hover { border-color: var(--danger); }
+.rd-own-btn:disabled { opacity: 0.6; cursor: default; }
+.rd-own-x { display: grid; place-items: center; width: 36px; height: 36px; padding: 0; border-radius: 10px; border: 1px solid transparent;
+  background: none; color: var(--text-muted); cursor: pointer; }
+.rd-own-x:hover { color: var(--danger); border-color: var(--border); }
+.rd-card-foot:has(.rd-own-x) { justify-content: flex-start; }
+.rd-card-foot:has(.rd-own-x) > .rd-watch { margin-left: auto; }
+.rd-mine { display: flex; flex-direction: column; gap: 14px; margin: 0 0 18px; scroll-margin-top: 150px; }
+.rd-aud-pick { margin: 0; padding: 0; border: 0; min-width: 0; }
+.rd-aud-pick legend { padding: 0; margin: 0 0 8px; font-weight: 800; }
+.rd-aud-pick[disabled] { opacity: 0.55; }
+.rd-aud-opts { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 8px; margin-bottom: 8px; }
+.rd-aud-opt { position: relative; display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border-radius: 12px;
+  border: 1px solid var(--border); background: var(--bg-tertiary); cursor: pointer; }
+.rd-aud-opt input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.rd-aud-opt:has(input:checked) { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.rd-aud-opt:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
+.rd-aud-text { display: flex; flex-direction: column; min-width: 0; }
+.rd-aud-text small { color: var(--text-secondary); font-size: 0.82rem; }
+.rd-mine-row { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding-top: 14px; border-top: 1px solid var(--border); }
+.rd-mine-row > div { min-width: 0; }
+.rd-mine-t { margin: 0 0 2px; font-weight: 800; }
+.rd-switch { position: relative; flex: none; width: 50px; height: 30px; padding: 0; border-radius: 999px; border: 1px solid var(--border);
+  background: var(--bg-tertiary); cursor: pointer; }
+.rd-switch::after { content: ""; position: absolute; top: 3px; left: 3px; width: 22px; height: 22px; border-radius: 50%;
+  background: var(--text-secondary); transition: transform 0.15s ease; }
+.rd-switch[aria-checked="true"] { background: var(--accent); border-color: var(--accent); }
+.rd-switch[aria-checked="true"]::after { transform: translateX(20px); background: #fff; }
+.rd-gone { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; padding: 28px 0; }
+.rd-gone .rd-h2 { margin: 4px 0 0; }
+.rd-gone p { margin: 0; color: var(--text-secondary); max-width: 60ch; }
+.rd-gone-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px !important; }
+/* The confirmation: a sheet on the phone, a card in the middle of the screen on a wide one. Over the app bar too. */
+.rd-dlg-wrap { position: fixed; inset: 0; z-index: 10001; }
+.rd-dlg-body { padding: 18px 16px 8px; }
+.rd-dlg-title { margin: 0 0 8px; font-size: 1.15rem; font-weight: 800; letter-spacing: 0; text-transform: none; color: var(--text-primary); }
+.rd-dlg-body p { margin: 0; color: var(--text-secondary); }
+.rd-dlg-check { display: flex; align-items: center; gap: 10px; margin-top: 14px; min-height: 44px; cursor: pointer; }
+.rd-dlg-check input { width: 18px; height: 18px; accent-color: var(--accent); }
+@media (min-width: 700px) {
+  .rd-dlg { left: 50%; right: auto; top: 50%; bottom: auto; width: min(440px, calc(100vw - 32px)); transform: translate(-50%, -50%);
+    border-radius: 18px; border: 1px solid var(--border); }
+}
+@media (max-width: 520px) {
+  .rd-own-actions { width: 100%; }
+  .rd-own-actions > * { flex: 1 1 auto; justify-content: center; }
+}
+/* The owner's controls on a touch screen: every one a 44 px target (the switch keeps its look; its hit area grows). */
+@media (pointer: coarse) {
+  .rd-own-btn { min-height: 44px; }
+  .rd-own-x { width: 44px; height: 44px; }
+  .rd-switch::before { content: ""; position: absolute; inset: -7px -2px; }
+  .rd-gone-actions .rd-own-btn, .rd-mine-row .rd-own-btn { min-height: 44px; }
+}
+
 /* ── Touch (2026-11-06 phone pass, round two) ─────────────────────────────────
    Every control of the Rundown carries a 44 px hit area on the element itself: the tabs, the avatars, the names,
    the watch and read links, the topic chips, the reaction buttons and the speaker buttons. Nothing is hidden to

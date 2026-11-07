@@ -3,6 +3,9 @@
  * /api/rundown — The Rundown (docs/rundown.md): what streamers talked about, written up by the desk (desk.js).
  *
  *   GET  /                      on air now, the latest (episodes + the best segments), trending topics, who's been talking
+ *   GET  /browse?q=&streamer=&topic=&when=&show=&sort=&video=&following=&mentions=
+ *                                the bar: the results the filters ask for, with the counts (server/rundown/browse.js)
+ *   GET  /options                the lists the filter pickers show: the streamers, the topics
  *   GET  /latest?before=        the next page of the latest
  *   GET  /topics?sort=&kind=    every topic (sort recent | most)
  *   GET  /t/:slug               one topic and every take on it
@@ -24,6 +27,7 @@ const { requireAuth, optionalAuth } = require('../auth/auth');
 const permissions = require('../auth/permissions');
 const db = require('../db/database');
 const read = require('./read');
+const browse = require('./browse');
 const settings = require('./settings');
 const del = require('./delete');
 
@@ -56,6 +60,14 @@ const fresh = (res) => res.set('Cache-Control', 'no-store');
 
 router.get('/', optionalAuth, async (req, res) => {
     try { fresh(res); res.json(await read.home({ viewer: await viewerOf(req) })); } catch (err) { fail(res, err, 'The Rundown is unavailable'); }
+});
+router.get('/browse', optionalAuth, async (req, res) => {
+    try { fresh(res); res.json(await browse.browse(req.query || {}, { viewer: await viewerOf(req) })); }
+    catch (err) { fail(res, err, 'The search could not be run'); }
+});
+router.get('/options', optionalAuth, async (req, res) => {
+    try { fresh(res); res.json(await browse.options()); }
+    catch (err) { fail(res, err, 'The filters could not be loaded'); }
 });
 router.get('/streams', optionalAuth, async (req, res) => {
     try { fresh(res); res.json(await read.streamsFeed({ before: req.query.before ? String(req.query.before) : null, viewer: await viewerOf(req) })); } catch (err) { fail(res, err, 'Failed to load the streams'); }

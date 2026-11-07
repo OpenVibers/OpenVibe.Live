@@ -195,7 +195,7 @@ function iso8601Duration(sec) {
 // Returns { title, description, canonicalPath, image, ogType, robots, jsonLd:[...], snapshot }
 // or null to fall through (unknown / private / not found).
 
-async function _pageMeta(routePath, { page = 1 } = {}) {
+async function _pageMeta(routePath, { page = 1, query = null } = {}) {
     const p = routePath.replace(/\/+$/, '') || '/';
     const bu = baseUrl();
 
@@ -214,7 +214,7 @@ async function _pageMeta(routePath, { page = 1 } = {}) {
     if ((m = p.match(/^\/p\/([A-Za-z0-9_-]+)$/))) return await _pasteMeta(m[1]);
     if ((m = p.match(CHANNEL_PATH_RE))) return await _channelMeta(m[1], page);
     if ((m = p.match(/^\/recap\/(\d+)$/))) return await _recapMeta(parseInt(m[1], 10));
-    if (p === '/rundown' || p.startsWith('/rundown/')) return await _rundownMeta(p);
+    if (p === '/rundown' || p.startsWith('/rundown/')) return await _rundownMeta(p, query);
     // Search results (public/js/app-search.js) are never indexed; the page itself is findable.
     if (p === '/search') return { title: `Search | ${SITE_NAME}`, description: 'Search channels, VODs and clips on OpenVibe.Live.', canonicalPath: '/search', ogType: 'website', robots: 'noindex,follow', jsonLd: [] };
     // The global chat room: its own title and canonical (the shell left it with neither; browser check, WS-Q task 3).
@@ -387,11 +387,50 @@ async function _clipperOf(c) { return c.display_name || c.username || _nameOf(aw
 // The Rundown (server/rundown/): what streamers talked about, written up by the desk. The front page and the topic index
 // are collection pages people browse, so they are indexed; a topic, an episode and a streamer's page are AI-written text
 // about real people, so they are noindex,follow, like the AI recap and the Wiki's AI pages until a person reviews them.
-async function _rundownMeta(p) {
+/**
+ * A filtered or searched view of The Rundown is never indexed: the words a reader typed and the filters they
+ * picked would give a crawler an endless space of the same page. The canonical points at the nearest page a
+ * crawler may keep: the plain front page, the one streamer's page or the one topic's page (design 2026-11-06).
+ */
+function _rundownCanonical(p, query) {
+    const q = query || {};
+    const has = (k) => String(q[k] || '').trim() !== '';
+    const filters = ['q', 'streamer', 'topic', 'when', 'show', 'sort', 'video', 'following', 'mentions', 'kind'].filter(has);
+    if (!filters.length) return null;
+    let m;
+    if ((m = p.match(/^\/rundown\/t\/([a-z0-9-]{1,80})$/))) return '/rundown/t/' + m[1];
+    if ((m = p.match(/^\/rundown\/(?:s\/)?([A-Za-z0-9_.-]{1,64})$/))) return '/rundown/' + m[1];
+    if (filters.length === 1 && filters[0] === 'topic') {
+        const slug = String(q.topic || '').toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 80);
+        if (slug) return '/rundown/t/' + slug;
+    }
+    if (filters.length === 1 && filters[0] === 'streamer') {
+        const name = String(q.streamer || '').split(',')[0].trim().replace(/[^A-Za-z0-9_.-]/g, '').slice(0, 64);
+        if (name) return '/rundown/' + name;
+    }
+    return '/rundown';
+}
+
+/** The parts of a query that change a Rundown page's head. The words of a search do not: every search has the
+ *  same head (noindex, and the canonical of the plain page). */
+function _rundownKey(query) {
+    const q = query || {};
+    const parts = [];
+    for (const k of ['topic', 'streamer', 'show', 'kind']) if (String(q[k] || '').trim()) parts.push(k + '=' + String(q[k]).trim().slice(0, 80));
+    if (String(q.q || '').trim()) parts.push('q');
+    return parts.join('&');
+}
+async function _rundownMeta(p, query) {
     const read = require('../rundown/read');
     const crumbs = [{ name: 'Home', url: '/' }, { name: 'The Rundown', url: '/rundown' }];
     const base = { image: shareCard('live-rundown'), ogType: 'website' };
     let m;
+    const combo = _rundownCanonical(p, query);
+    if (combo) {
+        const plain = await _rundownMeta(p, null);
+        if (!plain) return null;
+        return { ...plain, canonicalPath: combo, robots: 'noindex,follow', jsonLd: [], snapshot: null };
+    }
     if (p === '/rundown') {
         let home = null;
         try { home = await read.home({}); } catch { home = null; }
@@ -406,6 +445,8 @@ async function _rundownMeta(p) {
             snapshot: _detailSnapshot({ title: 'The Rundown', byline: topics.length ? `Trending: ${topics.slice(0, 6).join(', ')}` : null, desc, overview: eps.slice(0, 6).map((e) => e.title).join(' · ') || null, transcript: null, canonicalPath: '/rundown', watchLabel: 'Open The Rundown' }) };
     }
     if (p === '/rundown/topics') {
+        const plain = await _rundownMeta('/rundown', null);
+        if (plain) return { ...plain, canonicalPath: '/rundown', robots: 'noindex,follow', jsonLd: [], snapshot: null };
         let list = [];
         try { list = (await read.topics({})).topics; } catch { list = []; }
         const desc = clean(`Every topic streamers on OpenVibe.Live talked about, with each streamer's take.${list.length ? ` Lately: ${list.slice(0, 5).map((t) => t.title).join(', ')}.` : ''}`, 200);
@@ -418,7 +459,7 @@ async function _rundownMeta(p) {
         if (!d) return null;
         const t = d.topic;
         const desc = clean(t.summary || t.headline || `${t.streamers} streamer${t.streamers === 1 ? '' : 's'} on ${t.title}.`, 200);
-        return { ...base, title: `${clean(t.title, 80)} — The Rundown | ${SITE_NAME}`, description: desc, canonicalPath: `/rundown/t/${t.slug}`, robots: 'noindex,follow',
+        return { ...base, title: `${clean(t.title, 80)} — The Rundown | ${SITE_NAME}`, description: desc, canonicalPath: `/rundown/t/${t.slug}`, robots: 'index,follow',
             jsonLd: [_breadcrumb([...crumbs, { name: 'Topics', url: '/rundown/topics' }, { name: t.title, url: `/rundown/t/${t.slug}` }])] };
     }
     if ((m = p.match(/^\/rundown\/e\/(\d{1,12})$/))) {
@@ -431,13 +472,13 @@ async function _rundownMeta(p) {
         return { ...base, title: `${clean(title, 80)} — ${clean(who, 40)} | The Rundown`, description: desc, canonicalPath: `/rundown/e/${d.stream.id}`, robots: 'noindex,follow',
             jsonLd: [_breadcrumb([...crumbs, { name: title, url: `/rundown/e/${d.stream.id}` }])] };
     }
-    if ((m = p.match(/^\/rundown\/([A-Za-z0-9_.-]{1,64})$/))) {
+    if ((m = p.match(/^\/rundown\/(?:s\/)?([A-Za-z0-9_.-]{1,64})$/))) {
         let d = null;
         try { d = await read.streamer(m[1]); } catch { d = null; }
         if (!d) return null;
         const who = d.user.display_name || d.user.username;
         const desc = clean(d.opted_out ? `${who} keeps themselves out of The Rundown.` : `What ${who} talks about on stream: ${d.topics.slice(0, 5).map((t) => t.title).join(', ') || 'episodes and takes'}.`, 200);
-        return { ...base, title: `${clean(who, 40)} — The Rundown | ${SITE_NAME}`, description: desc, canonicalPath: `/rundown/${encodeURIComponent(d.user.username)}`, robots: 'noindex,follow',
+        return { ...base, title: `${clean(who, 40)} — The Rundown | ${SITE_NAME}`, description: desc, canonicalPath: `/rundown/${encodeURIComponent(d.user.username)}`, robots: 'index,follow',
             jsonLd: [_breadcrumb([...crumbs, { name: who, url: `/rundown/${encodeURIComponent(d.user.username)}` }])] };
     }
     return null;
@@ -922,7 +963,7 @@ function _cacheSet(key, html, ttl = CACHE_TTL_MS) {
     _cache.set(key, { html, at: Date.now(), ttl });
 }
 
-const SEO_ROUTE_RE = /^\/(?:$|content$|moments$|vods$|clips$|pastes$|rundown(?:\/(?:topics|t\/[a-z0-9-]{1,80}|e\/\d{1,12}|[A-Za-z0-9_.-]{1,64}))?$|chat$|search$|documentation$|updates$|vod\/\d+$|clip\/\d+$|recap\/\d+$|p\/[A-Za-z0-9_-]+$|@[A-Za-z0-9_]{3,24}$)/;
+const SEO_ROUTE_RE = /^\/(?:$|content$|moments$|vods$|clips$|pastes$|rundown(?:\/(?:topics|s\/[A-Za-z0-9_.-]{1,64}|t\/[a-z0-9-]{1,80}|e\/\d{1,12}|[A-Za-z0-9_.-]{1,64}))?$|chat$|search$|documentation$|updates$|vod\/\d+$|clip\/\d+$|recap\/\d+$|p\/[A-Za-z0-9_-]+$|@[A-Za-z0-9_]{3,24}$)/;
 
 /** ?page=N on a channel page (its video list); 1 everywhere else and for anything that is not a number. */
 function _pageParam(p, query) {
@@ -946,7 +987,8 @@ async function middleware(req, res, next) {
     // */* got the home page's title and canonical for every channel, VOD and clip.) Nothing fetches
     // these paths for data: the API is under /api.
     const page = _pageParam(p, req.query);
-    const key = page > 1 ? `${p}?page=${page}` : p;
+    const combo = p.startsWith('/rundown') ? _rundownKey(req.query) : '';
+    const key = combo ? `${p}?${combo}` : (page > 1 ? `${p}?page=${page}` : p);
     // This renderer and the SPA fallback's status check share one wait on upstreams (page-status.js).
     req.ovLookupDeadlineAt = Date.now() + pageStatus.LOOKUP_DEADLINE_MS;
     const send = (html, ttl) => {
@@ -967,7 +1009,7 @@ async function middleware(req, res, next) {
             if (!cached.html.includes('"isLiveBroadcast":true')) return send(cached.html, cached.ttl);
             _cache.delete(key);
         }
-        const meta = await _pageMeta(p, { page });
+        const meta = await _pageMeta(p, { page, query: req.query });
         if (!meta) return next(); // unknown, private or not found: the SPA fallback answers (404 when it names nothing)
         const html = render(meta, p);
         if (!html) return next();
