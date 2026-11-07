@@ -26,6 +26,8 @@ const EVENT_TYPES = {
     'clip.failed': 'media.clip.failed',
     'storage.alert': 'media.storage.alert',
     'storage.recovered': 'media.storage.recovered',
+    // Media's own visibility change (Media publishes it for every object whose visibility moves).
+    'object.visibility_changed': 'media.object.visibility_changed',
 };
 const OUTCOME_NAMES = Object.fromEntries(Object.entries(EVENT_TYPES).map(([k, v]) => [v, k]));
 
@@ -46,6 +48,14 @@ function subjectOf(event, data) {
     const type = String(event).startsWith('clip.') ? 'clip' : String(event).startsWith('vod.') ? 'vod' : 'object';
     const id = data && (data.object_id || data.id);
     return { type, id: String(id == null ? 'unknown' : id) };
+}
+
+/** The recording an object event is about: Media's legacy reference first (legacy:live:vod:<id>), then a numeric id. */
+function vodIdOf(data) {
+    const m = /^legacy:[^:]+:vod:(\d+)$/.exec(String((data && data.legacy_ref) || ''));
+    if (m) return Number(m[1]);
+    const id = Number(data && data.object_id);
+    return Number.isSafeInteger(id) && id > 0 ? id : null;
 }
 
 function dedupeKey(eventId, subject) {
@@ -169,6 +179,16 @@ async function apply(event, data) {
         case 'clip.failed':
             if (data.id) { try { await db.setClipTranscriptStatus(data.id, 'failed', data.error || 'media reported failure'); } catch { /* */ } }
             return { outcome: 'clip_failed', after: () => console.warn(`[MediaOutcome] Clip ${data.id} failed:`, data.error || '(no detail)') };
+        case 'object.visibility_changed': {
+            // The recording decides first (design 2026-11-06): the write-up of that stream follows at once, wherever
+            // the change was made (MediaHub, openvibe.video, Live's own pages).
+            const kind = String(data.kind || 'vod');
+            if (kind !== 'vod') return { outcome: 'ignored' };
+            const vodId = vodIdOf(data);
+            if (!vodId) return { outcome: 'ignored' };
+            await require('../rundown/visibility').noteVodChange(vodId, data.stream_id || null, data.visibility);
+            return { outcome: 'object_visibility_changed' };
+        }
         case 'storage.alert':
         case 'storage.recovered':
             // Media's VOD volume needs a human (drain stalled / disk critical) or is fine again.
