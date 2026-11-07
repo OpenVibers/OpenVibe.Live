@@ -360,32 +360,35 @@
           </div><!-- /.stream-layout -->
         </div>
 
-        <!-- Channel content — tabbed (below stream) -->
+        <!-- Channel content (below stream): every section on the page, never behind a tab (owner 10-31: content is never
+             hidden to shorten a page). The row is a jump bar with counts; AI timeline and Analytics are counted folds. -->
         <div class="channel-below-fold">
             <div class="container">
-                <div class="ch-tabs" id="ch-tabs" role="tablist" aria-label="Channel sections">
-                    <button class="ch-tab" id="ch-tab-btn-about" role="tab" aria-selected="false" data-tab="about" onclick="switchChannelTab('about', this)" style="display:none"><i class="fa-solid fa-circle-info"></i> About<span class="ch-tab-edit" id="ch-tab-about-edit" role="button" tabindex="0" title="Edit About" onclick="event.stopPropagation(); editAboutFromTab();" style="display:none"><i class="fa-solid fa-pen"></i></span></button>
-                    <button class="ch-tab active" id="ch-tab-btn-videos" role="tab" aria-selected="true" data-tab="videos" onclick="switchChannelTab('videos', this)"><i class="fa-solid fa-video"></i> Videos<span class="ch-tab-badge" id="ch-tab-badge-videos" hidden></span></button>
-                    <button class="ch-tab" id="ch-tab-btn-agents" role="tab" aria-selected="false" data-tab="agents" onclick="switchChannelTab('agents', this)" style="display:none"><i class="fa-solid fa-robot"></i> Agents<span class="ch-tab-badge" id="ch-tab-badge-agents" hidden></span></button>
-                    <button class="ch-tab" id="ch-tab-btn-clips" role="tab" aria-selected="false" data-tab="clips" onclick="switchChannelTab('clips', this)"><i class="fa-solid fa-scissors"></i> Clips<span class="ch-tab-badge" id="ch-tab-badge-clips" hidden></span></button>
-                    <button class="ch-tab" id="ch-tab-btn-clips-taken" role="tab" aria-selected="false" data-tab="clips-taken" onclick="switchChannelTab('clips-taken', this)"><i class="fa-solid fa-film"></i> Clips Taken<span class="ch-tab-badge" id="ch-tab-badge-clips-taken" hidden></span></button>
-                    <button class="ch-tab" id="ch-tab-btn-pastes" role="tab" aria-selected="false" data-tab="pastes" onclick="switchChannelTab('pastes', this)"><i class="fa-solid fa-paste"></i> Pastes<span class="ch-tab-badge" id="ch-tab-badge-pastes" hidden></span></button>
-                    <button class="ch-tab" id="ch-tab-btn-ai-timeline" role="tab" aria-selected="false" data-tab="ai-timeline" onclick="switchChannelTab('ai-timeline', this)"><i class="fa-solid fa-brain"></i> AI Timeline<span class="ch-tab-badge" id="ch-tab-badge-ai-timeline" hidden></span></button>
-                    <button class="ch-tab" id="ch-tab-btn-media" role="tab" aria-selected="false" data-tab="media" onclick="switchChannelTab('media', this)" style="display:none"><i class="fa-solid fa-music"></i> Media Request</button>
-                    <button class="ch-tab" role="tab" aria-selected="false" data-tab="analytics" onclick="switchChannelTab('analytics', this)"><i class="fa-solid fa-chart-line"></i> Analytics</button>
-                </div>
+                <nav class="ch-tabs ch-jump" id="ch-tabs" aria-label="Jump to a section">
+                    <button class="ch-tab" id="ch-tab-btn-about" data-tab="about" onclick=\"switchChannelTab('about', this, true)\" style="display:none"><i class="fa-solid fa-circle-info"></i> About<span class="ch-tab-edit" id="ch-tab-about-edit" role="button" tabindex="0" title="Edit About" onclick="event.stopPropagation(); editAboutFromTab();" style="display:none"><i class="fa-solid fa-pen"></i></span></button>
+                    <button class="ch-tab active" id="ch-tab-btn-videos" data-tab="videos" onclick=\"switchChannelTab('videos', this, true)\"><i class="fa-solid fa-video"></i> Videos<span class="ch-tab-badge" id="ch-tab-badge-videos" hidden></span></button>
+                    <button class="ch-tab" id="ch-tab-btn-agents" data-tab="agents" onclick=\"switchChannelTab('agents', this, true)\" style="display:none"><i class="fa-solid fa-robot"></i> Agents<span class="ch-tab-badge" id="ch-tab-badge-agents" hidden></span></button>
+                    <button class="ch-tab" id="ch-tab-btn-clips" data-tab="clips" onclick=\"switchChannelTab('clips', this, true)\"><i class="fa-solid fa-scissors"></i> Clips<span class="ch-tab-badge" id="ch-tab-badge-clips" hidden></span></button>
+                    <button class="ch-tab" id="ch-tab-btn-clips-taken" data-tab="clips-taken" onclick=\"switchChannelTab('clips-taken', this, true)\"><i class="fa-solid fa-film"></i> Clips Taken<span class="ch-tab-badge" id="ch-tab-badge-clips-taken" hidden></span></button>
+                    <button class="ch-tab" id="ch-tab-btn-pastes" data-tab="pastes" onclick=\"switchChannelTab('pastes', this, true)\"><i class="fa-solid fa-paste"></i> Pastes<span class="ch-tab-badge" id="ch-tab-badge-pastes" hidden></span></button>
+                    <button class="ch-tab" id="ch-tab-btn-ai-timeline" data-tab="ai-timeline" onclick=\"switchChannelTab('ai-timeline', this, true)\"><i class="fa-solid fa-brain"></i> AI Timeline<span class="ch-tab-badge" id="ch-tab-badge-ai-timeline" hidden></span></button>
+                    <button class="ch-tab" id="ch-tab-btn-media" data-tab="media" onclick=\"switchChannelTab('media', this, true)\" style="display:none"><i class="fa-solid fa-music"></i> Media Request</button>
+                    <button class="ch-tab" data-tab="analytics" onclick=\"switchChannelTab('analytics', this, true)\"><i class="fa-solid fa-chart-line"></i> Analytics</button>
+                </nav>
 
                 <!-- Agents (Agent Streams S2): this channel's AI agent streams, live and past. -->
-                <div class="ch-tab-panel" id="ch-panel-agents" role="tabpanel">
+                <section class="ch-tab-panel" id="ch-panel-agents" aria-labelledby="ch-h-agents">
+                    <h2 class="ch-sec-h" id="ch-h-agents">Agents</h2>
                     <p class="ch-panel-hint"><i class="fa-solid fa-robot"></i> AI agents working on this channel — live now, and what they finished.</p>
                     <h3 class="agent-schedules-title" id="ch-agents-schedules-title" hidden>Coming up</h3>
                     <div class="agent-schedules" id="ch-agents-schedules"></div>
                     <div class="agent-cards" id="ch-agents-grid"></div>
                     <button class="btn btn-small btn-outline agent-more" id="ch-agents-more" type="button" hidden onclick="loadMoreChannelAgents(this)">More</button>
-                </div>
+                </section>
 
                 <!-- Videos -->
-                <div class="ch-tab-panel active" id="ch-panel-videos" role="tabpanel">
+                <section class="ch-tab-panel" id="ch-panel-videos" aria-labelledby="ch-h-videos">
+                    <h2 class="ch-sec-h" id="ch-h-videos">Videos</h2>
                     <div class="ch-panel-bar">
                         <div id="ch-vods-filter-bar" class="ch-vods-filter-bar" style="display:none"></div>
                         <a id="ch-vods-video-link" class="btn btn-small btn-outline" href="#" style="display:none" title="This channel's recordings and clips on OpenVibe.Video, with AI chapters, captions and playlists"><i class="fa-solid fa-film"></i> On OpenVibe.Video</a>
@@ -393,10 +396,11 @@
                     </div>
                     <div class="stream-grid" id="ch-vods-grid"><p class="muted">Loading videos…</p></div>
                     <div id="ch-vods-pagination" class="pastes-pagination" style="display:none"></div>
-                </div>
+                </section>
 
                 <!-- Clips (clips OF this streamer's streams) -->
-                <div class="ch-tab-panel" id="ch-panel-clips" role="tabpanel">
+                <section class="ch-tab-panel" id="ch-panel-clips" aria-labelledby="ch-h-clips">
+                    <h2 class="ch-sec-h" id="ch-h-clips">Clips</h2>
                     <p class="ch-panel-hint" id="ch-clips-of-header"><i class="fa-solid fa-scissors"></i> Moments viewers clipped from these streams.</p>
                     <div class="stream-grid" id="ch-clips-of-grid"><p class="muted">Loading clips…</p></div>
                     <div id="ch-clips-of-pagination" class="pastes-pagination" style="display:none"></div>
@@ -406,10 +410,11 @@
                         <div class="stream-grid" id="ch-ai-clips-grid"></div>
                         <div id="ch-ai-clips-pagination" class="pastes-pagination" style="display:none"></div>
                     </div>
-                </div>
+                </section>
 
                 <!-- Clips Taken (clips this streamer made of others) -->
-                <div class="ch-tab-panel" id="ch-panel-clips-taken" role="tabpanel">
+                <section class="ch-tab-panel" id="ch-panel-clips-taken" aria-labelledby="ch-h-clips-taken">
+                    <h2 class="ch-sec-h" id="ch-h-clips-taken">Clips taken</h2>
                     <p class="ch-panel-hint"><i class="fa-solid fa-film"></i> Clips this streamer made from other channels' streams.</p>
                     <div class="ch-panel-bar">
                         <div class="clips-taken-filters" id="clips-taken-filters" style="display:none"></div>
@@ -417,24 +422,27 @@
                     </div>
                     <div class="stream-grid" id="ch-clips-grid"><p class="muted">Loading clips…</p></div>
                     <div id="ch-clips-pagination" class="pastes-pagination" style="display:none"></div>
-                </div>
+                </section>
 
                 <!-- Pastes -->
-                <div class="ch-tab-panel" id="ch-panel-pastes" role="tabpanel">
+                <section class="ch-tab-panel" id="ch-panel-pastes" aria-labelledby="ch-h-pastes">
+                    <h2 class="ch-sec-h" id="ch-h-pastes">Pastes</h2>
                     <div class="ch-panel-bar" id="ch-pastes-header">
                         <button class="btn btn-small btn-outline sel-all-btn" data-sel-container="ch-pastes-grid" style="display:none" onclick="_selAllToggle(this.dataset.selContainer)"><i class="fa-solid fa-check-double"></i> <span class="sel-all-label">Select all</span></button>
                     </div>
                     <div id="ch-pastes-grid" class="pastes-grid"><p class="muted">Loading pastes…</p></div>
                     <div id="ch-pastes-pagination" class="pastes-pagination" style="display:none"></div>
-                </div>
+                </section>
 
                 <!-- Media Request -->
-                <div class="ch-tab-panel" id="ch-panel-media" role="tabpanel">
+                <section class="ch-tab-panel" id="ch-panel-media" aria-labelledby="ch-h-media">
+                    <h2 class="ch-sec-h" id="ch-h-media">Media requests</h2>
                     <div id="ch-media-content"><div class="loading">Loading…</div></div>
-                </div>
+                </section>
 
                 <!-- Analytics -->
-                <div class="ch-tab-panel" id="ch-panel-analytics" role="tabpanel">
+                <section class="ch-tab-panel" id="ch-panel-analytics" aria-labelledby="ch-h-analytics">
+                    <details class="ch-fold" data-ch-fold="analytics"><summary><h2 class="ch-sec-h" id="ch-h-analytics">Analytics</h2><span class="ch-fold-say">Show</span></summary>
                     <div class="ch-panel-bar" id="ch-analytics-header">
                         <div class="ch-analytics-period-btns" id="ch-analytics-period-btns">
                             <button class="btn btn-sm btn-ghost active" data-days="7">7d</button>
@@ -460,17 +468,21 @@
                             </div>
                         </div>
                     </div>
-                </div>
+                    </details>
+                </section>
 
                 <!-- AI Timeline — the streamer's whole AI-observed history -->
-                <div class="ch-tab-panel" id="ch-panel-ai-timeline" role="tabpanel">
+                <section class="ch-tab-panel" id="ch-panel-ai-timeline" aria-labelledby="ch-h-ai-timeline">
+                    <details class="ch-fold" data-ch-fold="ai-timeline"><summary><h2 class="ch-sec-h" id="ch-h-ai-timeline">AI timeline</h2><span class="ch-fold-n" id="ch-fold-n-ai-timeline"></span><span class="ch-fold-say">Show</span></summary>
                     <div id="ch-ai-timeline"><div class="loading">Loading AI timeline…</div></div>
-                </div>
+                    </details>
+                </section>
 
                 <!-- About (weather is now an optional panel inside here) -->
-                <div class="ch-tab-panel" id="ch-panel-about" role="tabpanel">
+                <section class="ch-tab-panel" id="ch-panel-about" aria-labelledby="ch-h-about">
+                    <h2 class="ch-sec-h" id="ch-h-about">About</h2>
                     <div id="ch-about-content" class="ch-about-content"></div>
-                </div>
+                </section>
             </div>
         </div>
 

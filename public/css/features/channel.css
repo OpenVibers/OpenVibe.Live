@@ -1735,3 +1735,35 @@ button.viewer-badge:focus-visible { outline: 2px solid #93c5fd; outline-offset: 
     }
     #page-channel.ch-is-live .stream-layout:has(.video-container.is-vertical) > .chat-sidebar :is(.emote-picker-btn, .chat-tts-toggle) { color: #fff; }
 }
+
+/* ── Sections, not tabs (owner 10-31: content is never hidden behind a tab to shorten a page) ──
+   Every channel section is on the page in the order people look for them; the row above is a sticky jump bar with
+   counts (it follows the section in view); long lists ride sideways on a phone; AI timeline and Analytics are counted
+   folds. Scoped to the channel: the dashboard's settings tabs keep their tabs. */
+#page-channel .channel-below-fold > .container { display: flex; flex-direction: column; }
+#page-channel #ch-tabs { order: 0; position: sticky; top: var(--ovnav-h, 56px); z-index: 6; margin: 0 0 16px; background: var(--bg-primary); }
+#page-channel .ch-tab-panel { display: block; order: 50; margin: 0 0 30px; animation: none; scroll-margin-top: calc(var(--ovnav-h, 56px) + 56px); }
+#page-channel .ch-tab-panel[hidden] { display: none; }
+#page-channel #ch-panel-about { order: 1; } #page-channel #ch-panel-videos { order: 2; } #page-channel #ch-panel-clips { order: 3; }
+#page-channel #ch-panel-agents { order: 4; } #page-channel #ch-panel-clips-taken { order: 5; } #page-channel #ch-panel-pastes { order: 6; }
+#page-channel #ch-panel-media { order: 7; } #page-channel #ch-panel-ai-timeline { order: 8; } #page-channel #ch-panel-analytics { order: 9; }
+#page-channel .ch-sec-h { margin: 0 0 10px; font-size: 1.12rem; font-weight: 800; letter-spacing: -.01em; }
+#page-channel .ch-tab-panel > .ch-panel-hint:first-of-type { margin-top: -4px; }
+#page-channel .ch-fold > summary { display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 6px 14px; cursor: pointer; list-style: none;
+    border: 1px solid var(--border); border-radius: 12px; background: color-mix(in srgb, var(--text-primary) 3%, transparent); }
+#page-channel .ch-fold > summary::-webkit-details-marker { display: none; }
+#page-channel .ch-fold > summary .ch-sec-h { margin: 0; }
+#page-channel .ch-fold-n { color: var(--text-muted); font-size: .85rem; font-weight: 700; }
+#page-channel .ch-fold-say { margin-left: auto; color: var(--accent); font-size: .85rem; font-weight: 700; }
+#page-channel .ch-fold[open] > summary { margin-bottom: 12px; }
+#page-channel .ch-fold[open] .ch-fold-say { font-size: 0; }
+#page-channel .ch-fold[open] .ch-fold-say::after { content: "Hide"; font-size: .85rem; }
+@media (hover: hover) { #page-channel .ch-fold > summary:hover { border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); } }
+@media (max-width: 760px) {
+    /* Long lists ride sideways on a phone: every card is there, the page stays a few screens tall. */
+    #page-channel .ch-tab-panel .stream-grid { display: grid; grid-auto-flow: column; grid-template-columns: none; grid-auto-columns: minmax(220px, 78%);
+        gap: 12px; overflow-x: auto; overscroll-behavior-x: contain; scroll-snap-type: x mandatory; padding-bottom: 6px; scrollbar-width: thin; }
+    #page-channel .ch-tab-panel .stream-grid > * { scroll-snap-align: start; min-width: 0; }
+    #page-channel .ch-tab-panel .stream-grid > p.muted { grid-column: auto; }
+}
+@media (prefers-reduced-motion: reduce) { #page-channel .ch-tab-panel { scroll-margin-top: calc(var(--ovnav-h, 56px) + 56px); } }
