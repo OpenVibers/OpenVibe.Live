@@ -637,8 +637,20 @@
             return pressControl({ control: 'curtain', up });
         });
         $('agent-ctl-mute').addEventListener('click', () => pressControl({ control: 'mute', muted: !(voice && voice.muted) }));
+        // End is not a one-tap accident: the first press arms it, the second within five seconds ends it.
+        let endArmed = false;
+        let endTimer = null;
         $('agent-ctl-end').addEventListener('click', () => {
-            if (!window.confirm('End this agent stream? The task keeps running off camera.')) return;
+            const btn = $('agent-ctl-end');
+            if (!endArmed) {
+                endArmed = true;
+                if (btn) btn.textContent = 'Press again to end';
+                endTimer = setTimeout(() => { endArmed = false; if (btn) btn.textContent = 'End'; }, 5000);
+                return undefined;
+            }
+            if (endTimer) clearTimeout(endTimer);
+            endArmed = false;
+            if (btn) btn.textContent = 'End';
             return pressControl({ control: 'end' });
         });
 
