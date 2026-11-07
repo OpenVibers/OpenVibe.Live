@@ -68,80 +68,7 @@ body.egg-shake { animation: eggShake 0.9s var(--ov-ease-out, cubic-bezier(.36,.0
 body.egg-rainbow { animation: eggRainbow 2.6s linear; }
 @media (prefers-reduced-motion: reduce) { .egg-confetti, body.egg-shake, body.egg-rainbow { animation: none !important; } .egg-confetti { display: none; } }
 
-.network-hub {
-    background: linear-gradient(135deg, var(--bg-secondary) 0%, var(--bg-primary) 50%, var(--bg-secondary) 100%);
-    border-top: 1px solid var(--border);
-    border-bottom: 1px solid var(--border);
-    padding: 32px 24px;
-    overflow: hidden;
-}
-.network-hub-header {
-    display: flex; align-items: center; gap: 14px; justify-content: center;
-    margin-bottom: 24px; text-align: center;
-}
-.network-hub-grid {
-    display: grid;
-    /* minmax(0, 1fr): a plain 1fr floors at the card's min-content, and a nowrap description made
-       two columns wider than a 390px phone (the third card was cut off at the edge). */
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 12px;
-    max-width: 960px; margin: 0 auto;
-}
-.network-card {
-    display: flex; align-items: center; gap: 12px;
-    background: var(--bg-card); border: 1px solid var(--border);
-    border-radius: 12px; padding: 14px 16px;
-    text-decoration: none; color: var(--text-primary);
-    transition: all var(--ov-dur-2, 0.2s) var(--ov-ease-out, ease);
-}
-.network-card-featured {
-    border-color: rgba(231,76,60,0.25);
-    background: rgba(231,76,60,0.04);
-}
-.network-card-featured:hover { border-color: rgba(231,76,60,0.5); }
-.network-card-icon {
-    width: 40px; height: 40px; border-radius: 10px;
-    background: color-mix(in srgb, var(--card-accent, var(--accent)) 12%, transparent);
-    display: flex; align-items: center; justify-content: center;
-    font-size: 1.1rem; color: var(--card-accent, var(--accent));
-    flex-shrink: 0;
-}
-.network-card-arrow {
-    color: var(--text-secondary); font-size: 0.75rem;
-    opacity: 0; transition: opacity var(--ov-dur-2, 0.2s), transform var(--ov-dur-2, 0.2s);
-    flex-shrink: 0;
-}
-.network-card:hover .network-card-arrow { opacity: 1; transform: translateX(3px); }
-
-@media (max-width: 960px) {
-    .network-hub-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
-}
-@media (max-width: 768px) {
-    .network-hub-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
-    .network-hub { padding: 24px 16px; }
-    .network-hub-header { flex-direction: column; gap: 8px; }
-}
-@media (max-width: 480px) {
-    .network-hub-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
-    .network-hub { padding: 20px 12px; }
-    .network-card { padding: 12px; gap: 10px; }
-    .network-card-icon { width: 36px; height: 36px; font-size: 1rem; border-radius: 8px; }
-    .network-card-arrow { display: none; }
-}
-@media (max-width: 360px) {
-    .network-hub-grid { grid-template-columns: 1fr; gap: 8px; }
-    .network-hub { padding: 16px 10px; }
-}
-/* Phones (2026-10-29): the fourteen services are two rows that scroll sideways, not a screen and a half of tiles;
-   every one is still a tap away, and the footer lists them too. */
 @media (max-width: 599px) {
-    .network-hub-grid {
-        grid-template-columns: none; grid-template-rows: repeat(2, auto); grid-auto-flow: column; grid-auto-columns: 66%;
-        overflow-x: auto; scroll-snap-type: x mandatory; scroll-padding-inline: 12px; scrollbar-width: none;
-        margin: 0 -12px; padding: 0 12px 4px;
-    }
-    .network-hub-grid::-webkit-scrollbar { display: none; }
-    .network-hub-grid > .network-card { scroll-snap-align: start; min-width: 0; }
     /* The pulse (goals, the latest activity, the week's leaders) is one row that scrolls sideways, not five stacked cards. */
     .pulse-grid { display: flex; flex-wrap: nowrap; overflow-x: auto; scroll-snap-type: x mandatory; scroll-padding-inline: 16px; scrollbar-width: none; gap: 10px; margin-left: -16px; margin-right: -16px; padding: 0 16px 4px; }
     .pulse-grid::-webkit-scrollbar { display: none; }
@@ -1193,15 +1120,6 @@ body.egg-rainbow { animation: eggRainbow 2.6s linear; }
 .home-changelog-toggle > i { transition: rotate var(--ov-dur-3, 0.3s) var(--ov-ease-out, cubic-bezier(.2, 1, .3, 1)); }
 .home-changelog-toggle[aria-expanded="true"] > i { rotate: 180deg; }
 
-/* Network hub two-up on a phone: the icon beside the text left ~90px, and "OpenVibe.Community"
-   ran out of its card. Icon above text there; names may break after "OpenVibe." (<wbr>). */
-.network-card-info strong { overflow-wrap: break-word; }
-@media (min-width: 361px) and (max-width: 480px) {
-    .network-card { flex-direction: column; align-items: flex-start; gap: 8px; }
-    .network-card-info { width: 100%; }
-}
-/* The ≤480px rule hiding the arrow lost to Font Awesome's later .fa-solid display rule. */
-@media (max-width: 480px) { .network-card > .network-card-arrow { display: none; } }
 
 /* Terms · Privacy · DMCA wrap as one group ("DMCA" was stranded alone at 360px). */
 .hero-legal { display: inline-flex; align-items: center; gap: inherit; white-space: nowrap; }
@@ -1317,38 +1235,7 @@ body.egg-rainbow { animation: eggRainbow 2.6s linear; }
     #page-home .hero-egg-reveal { min-height: 44px; padding: 0 16px; display: inline-flex; align-items: center; gap: 8px; }
 }
 
-/* New here? (2026-10-30, the short-pages rule): on a phone the explainer at the foot of the home is a row of tabs and
-   one section at a time. The content blocks above it (Catch up, Around OpenVibe) are never tabbed: every section shows
-   on every screen (the owner, 2026-10-31: "now I can't see the videos and clips on the homepage"). The breakpoint is
-   app-home.js's _narrow. */
-.home-tabs { display: none; }
 @media (max-width: 759px) {
-    .home-tabs {
-        display: flex; gap: 6px; margin: 30px -16px 6px; padding: 2px 16px 4px;
-        overflow-x: auto; scrollbar-width: none; overscroll-behavior-x: contain; scroll-padding-inline: 16px;
-    }
-    .home-tabs::-webkit-scrollbar { display: none; }
-    .home-tabs[hidden] { display: none !important; }
-    .home-tabs [role="tab"] {
-        --sc-on: color-mix(in srgb, var(--sc) 45%, var(--accent));
-        flex: none; display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 16px;
-        font: inherit; font-size: 0.86rem; font-weight: 750; white-space: nowrap; cursor: pointer;
-        color: var(--text-secondary); background: transparent;
-        border: 1px solid var(--border); border-radius: 999px;
-        transition: color var(--ov-dur-2, 0.18s), background var(--ov-dur-2, 0.18s), border-color var(--ov-dur-2, 0.18s);
-    }
-    .home-tabs [role="tab"][hidden] { display: none; }
-    .home-tabs [role="tab"] i { font-size: 0.78rem; color: var(--sc-on); }
-    .home-tabs [role="tab"][aria-selected="true"] {
-        color: color-mix(in srgb, var(--sc-on) 30%, var(--text-primary));
-        background: color-mix(in srgb, var(--sc-on) 14%, transparent);
-        border-color: color-mix(in srgb, var(--sc-on) 48%, transparent);
-    }
-    .home-tabs [role="tab"]:focus-visible { outline: 2px solid var(--sc-on); outline-offset: 2px; }
-    .home-tabbox:not([data-tab="tour"]) [data-panel="tour"],
-    .home-tabbox:not([data-tab="about"]) [data-panel="about"],
-    .home-tabbox:not([data-tab="network"]) [data-panel="network"] { display: none !important; }
-    .home-tabbox [data-panel="network"] .network-hub-header h3 { display: none; }
 
     /* Catch up on a phone: each rail is one row of cards that scrolls sideways, so all five fit in a few screens
        and nothing is behind a tab. Recent Pastes rides the same rail (2026-11-02): it was two cards a row with a
@@ -1386,7 +1273,6 @@ body.egg-rainbow { animation: eggRainbow 2.6s linear; }
 .home-rail-tail { display: none; }
 @keyframes homeRailPulse { from { opacity: 1; } to { opacity: .55; } }
 @media (prefers-reduced-motion: reduce) { .home-rail-skel { animation: none; } }
-@media (max-width: 759px) and (prefers-reduced-motion: reduce) { .home-tabs [role="tab"] { transition: none; } }
 
 /* 2026-10-31, the phone home, shorter again: the featured stream's card leaves the Live Now grid on a phone (the
    featured block above already shows it), and when it was the only stream there the grid's header goes too; the
@@ -1397,7 +1283,6 @@ body.egg-rainbow { animation: eggRainbow 2.6s linear; }
         #stream-grid-live:not(:has(.stream-card:not(.is-featured))):has(.stream-card) { display: none; }
         .section-header:has(+ #stream-grid-live:not(:has(.stream-card:not(.is-featured))):has(.stream-card)) { display: none; }
     }
-    .home-tabbox[data-tab=""] .home-tabs { margin-bottom: 0; }
 }
 
 /* The Agents live row (Agent Streams S2): public AI agent streams, their own row after people's streams. */
@@ -1411,3 +1296,165 @@ body.egg-rainbow { animation: eggRainbow 2.6s linear; }
 .home-agents .agent-card-body { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px 12px; }
 .home-agents .agent-card-title { margin: 0; font-size: 0.92rem; font-weight: 700; overflow-wrap: anywhere; }
 .home-agents .agent-card-meta { margin: 0; color: var(--text-secondary); font-size: 0.76rem; }
+
+/* ── The OpenVibe network (2026-11-07 redesign) ──────────────────────────────────────────────────────────────
+   Every open site of the network, by what people come to do (scripts/build-network-section.js writes the inside from
+   OpenVibe.Network's frame). A deep surface with a slow aurora and a field of twinkling points, the count of sites,
+   jump links to each group (links, not tabs: nothing is hidden), and one tile per site with its ring icon. Wide
+   screens show each group as a grid; a phone shows each as one row that scrolls sideways. Tiles rise in, in order,
+   the first time the section is seen (app-home.js initHomeNetwork adds .is-in). Motion stops for reduced motion. */
+.ovnet {
+    --ovnet-ink: var(--text-primary, #e6edf7);
+    --ovnet-soft: var(--text-secondary, #a8b3c4);
+    --ovnet-mute: var(--text-muted, #7d8aa0);
+    --ovnet-card: color-mix(in srgb, var(--bg-card, #111a2b) 88%, transparent);
+    --ovnet-line: color-mix(in srgb, var(--text-primary, #fff) 9%, transparent);
+    position: relative; isolation: isolate; overflow: hidden;
+    margin: 34px 0 8px; padding: 46px clamp(14px, 4vw, 40px) 34px;
+    border-radius: 24px; border: 1px solid var(--ovnet-line);
+    background:
+        radial-gradient(120% 80% at 10% 0%, color-mix(in srgb, #3b82f6 22%, transparent), transparent 60%),
+        radial-gradient(90% 70% at 95% 10%, color-mix(in srgb, #a855f7 20%, transparent), transparent 60%),
+        radial-gradient(80% 60% at 50% 110%, color-mix(in srgb, #14b8a6 14%, transparent), transparent 70%),
+        var(--bg-secondary, #0c1322);
+}
+.ovnet::before {   /* the aurora: two soft bands drifting across the top */
+    content: ''; position: absolute; inset: -40% -20% auto; height: 120%; z-index: -1; pointer-events: none;
+    background: conic-gradient(from 200deg at 50% 50%, transparent 0 30%, color-mix(in srgb, #38bdf8 22%, transparent) 40%, transparent 52%, color-mix(in srgb, #f472b6 16%, transparent) 64%, transparent 76%);
+    filter: blur(48px); opacity: .7; animation: ovnetAurora 22s ease-in-out infinite alternate;
+}
+@keyframes ovnetAurora { from { transform: translate3d(-6%, 0, 0) rotate(0deg); } to { transform: translate3d(6%, 4%, 0) rotate(14deg); } }
+.ovnet-sky { position: absolute; inset: 0; z-index: -1; pointer-events: none; }
+.ovnet-sky i {
+    position: absolute; width: 3px; height: 3px; border-radius: 50%; background: #fff; opacity: .0;
+    box-shadow: 0 0 8px 1px color-mix(in srgb, #93c5fd 70%, transparent); animation: ovnetTwinkle 5.5s ease-in-out infinite;
+}
+.ovnet-sky i:nth-child(1) { left: 6%; top: 14%; animation-delay: -.4s; }
+.ovnet-sky i:nth-child(2) { left: 18%; top: 34%; animation-delay: -1.8s; }
+.ovnet-sky i:nth-child(3) { left: 31%; top: 9%; animation-delay: -3.1s; }
+.ovnet-sky i:nth-child(4) { left: 44%; top: 26%; animation-delay: -.9s; }
+.ovnet-sky i:nth-child(5) { left: 57%; top: 6%; animation-delay: -2.6s; }
+.ovnet-sky i:nth-child(6) { left: 68%; top: 31%; animation-delay: -4.2s; }
+.ovnet-sky i:nth-child(7) { left: 79%; top: 12%; animation-delay: -1.2s; }
+.ovnet-sky i:nth-child(8) { left: 91%; top: 27%; animation-delay: -3.7s; }
+.ovnet-sky i:nth-child(9) { left: 12%; top: 58%; animation-delay: -2.2s; }
+.ovnet-sky i:nth-child(10) { left: 86%; top: 62%; animation-delay: -.2s; }
+.ovnet-sky i:nth-child(11) { left: 49%; top: 84%; animation-delay: -4.8s; }
+.ovnet-sky i:nth-child(12) { left: 72%; top: 88%; animation-delay: -1.5s; }
+@keyframes ovnetTwinkle { 0%, 100% { opacity: 0; transform: scale(.6); } 45% { opacity: .85; transform: scale(1); } 60% { opacity: .35; } }
+
+.ovnet-head { max-width: 760px; margin: 0 auto 26px; text-align: center; }
+.ovnet-eyebrow {
+    display: inline-flex; align-items: center; gap: 8px; margin: 0 0 14px; padding: 6px 12px; border-radius: 999px;
+    border: 1px solid var(--ovnet-line); background: color-mix(in srgb, var(--bg-primary, #0a0f1c) 55%, transparent);
+    color: var(--ovnet-soft); font-size: .72rem; font-weight: 700; letter-spacing: .12em; text-transform: uppercase;
+}
+.ovnet-dot { width: 8px; height: 8px; border-radius: 50%; background: #22c55e; box-shadow: 0 0 0 0 color-mix(in srgb, #22c55e 60%, transparent); animation: ovnetPing 2.2s ease-out infinite; }
+@keyframes ovnetPing { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, #22c55e 55%, transparent); } 80%, 100% { box-shadow: 0 0 0 10px transparent; } }
+.ovnet-head h2 {
+    margin: 0; color: var(--ovnet-ink); font-size: clamp(1.7rem, 4.6vw, 2.9rem); line-height: 1.08; font-weight: 850;
+    letter-spacing: -.035em; text-wrap: balance;
+}
+.ovnet-count {
+    display: inline-block; min-width: 2ch; font-variant-numeric: tabular-nums;
+    background: linear-gradient(100deg, #38bdf8, #a78bfa 45%, #f472b6 90%); -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+.ovnet-lede { max-width: 620px; margin: 14px auto 0; color: var(--ovnet-soft); font-size: clamp(.95rem, 2.2vw, 1.06rem); line-height: 1.6; text-wrap: pretty; }
+.ovnet-jump { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 22px; }
+.ovnet-jump a {
+    display: inline-flex; align-items: center; gap: 7px; min-height: 36px; padding: 0 12px; border-radius: 999px;
+    border: 1px solid color-mix(in srgb, var(--g) 34%, transparent); background: color-mix(in srgb, var(--g) 10%, transparent);
+    color: var(--ovnet-ink); font-size: .8rem; font-weight: 650; text-decoration: none;
+    transition: background-color var(--ov-dur-2, .15s), transform var(--ov-dur-2, .15s), border-color var(--ov-dur-2, .15s);
+}
+.ovnet-jump a i { color: var(--g); font-size: .78rem; }
+.ovnet-jump a b { padding: 1px 7px; border-radius: 999px; background: color-mix(in srgb, var(--g) 22%, transparent); font-size: .7rem; font-weight: 800; }
+.ovnet-jump a:hover { background: color-mix(in srgb, var(--g) 18%, transparent); border-color: color-mix(in srgb, var(--g) 60%, transparent); transform: translateY(-1px); }
+.ovnet-jump a:focus-visible, .ovnet-site:focus-visible, .ovnet-cta:focus-visible, .ovnet-switch:focus-visible { outline: 2px solid var(--g, var(--accent, #3b82f6)); outline-offset: 3px; }
+
+.ovnet-groups { display: grid; grid-template-columns: minmax(0, 1fr); gap: 30px; max-width: 1180px; margin: 0 auto; }
+.ovnet-group { min-width: 0; scroll-margin-top: 84px; }
+.ovnet-group h3 { display: flex; align-items: center; gap: 10px; margin: 0; color: var(--ovnet-ink); font-size: 1.05rem; font-weight: 800; letter-spacing: -.01em; }
+.ovnet-group h3 i {
+    display: grid; place-items: center; width: 30px; height: 30px; border-radius: 10px; font-size: .82rem;
+    color: var(--g); background: color-mix(in srgb, var(--g) 16%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--g) 30%, transparent);
+}
+.ovnet-group h3::after { content: ''; flex: 1; height: 1px; margin-left: 4px; background: linear-gradient(90deg, color-mix(in srgb, var(--g) 45%, transparent), transparent); }
+.ovnet-n { order: 3; padding: 2px 8px; border-radius: 999px; background: color-mix(in srgb, var(--g) 16%, transparent); color: color-mix(in srgb, var(--g) 68%, var(--ovnet-ink)); font-size: .72rem; font-weight: 800; }
+.ovnet-gline { margin: 6px 0 12px 40px; color: var(--ovnet-mute); font-size: .82rem; }
+.ovnet-sites { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 212px), 1fr)); gap: 10px; }
+.ovnet-site {
+    --lift: 0px;
+    position: relative; display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 12px;
+    height: 100%; padding: 12px 14px; border-radius: 16px; text-decoration: none; color: var(--ovnet-ink);
+    background: var(--ovnet-card); border: 1px solid var(--ovnet-line);
+    box-shadow: 0 1px 0 color-mix(in srgb, #fff 4%, transparent) inset;
+    transform: translateY(var(--lift));
+    transition: transform var(--ov-dur-2, .18s) var(--ov-ease-out, ease), border-color var(--ov-dur-2, .18s), box-shadow var(--ov-dur-2, .18s), background-color var(--ov-dur-2, .18s);
+}
+.ovnet-site::after {   /* the group's glow, lit on hover */
+    content: ''; position: absolute; inset: -1px; border-radius: inherit; pointer-events: none; opacity: 0;
+    background: radial-gradient(120% 140% at 0% 0%, color-mix(in srgb, var(--g) 22%, transparent), transparent 55%);
+    transition: opacity var(--ov-dur-2, .18s);
+}
+@media (hover: hover) {
+    .ovnet-site:hover { --lift: -3px; border-color: color-mix(in srgb, var(--g) 55%, transparent); box-shadow: 0 12px 28px -14px color-mix(in srgb, var(--g) 70%, transparent); }
+    .ovnet-site:hover::after { opacity: 1; }
+}
+.ovnet-site .ov-icon { --ovi-accent: var(--g); display: grid; place-items: center; width: 40px; height: 40px; flex: none; }
+.ovnet-site .ov-icon:empty::before {   /* before the ring icons draw: a ring of the group's colour */
+    content: ''; width: 34px; height: 34px; border-radius: 50%; box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--g) 55%, transparent);
+    background: color-mix(in srgb, var(--g) 10%, transparent);
+}
+.ovnet-txt { display: grid; min-width: 0; gap: 1px; }
+.ovnet-txt b { font-size: .95rem; font-weight: 750; letter-spacing: -.01em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ovnet-txt small { color: color-mix(in srgb, var(--g) 68%, var(--ovnet-ink)); font-size: .7rem; font-weight: 650; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; opacity: .9; }
+.ovnet-txt span { color: var(--ovnet-soft); font-size: .8rem; line-height: 1.35; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+
+/* The first time the section is seen, its tiles rise in, one after another. */
+.ovnet.is-armed .ovnet-site { opacity: 0; --lift: 14px; }
+.ovnet.is-in .ovnet-site { opacity: 1; --lift: 0px; transition-delay: calc(min(var(--i, 0), 40) * 22ms); transition-property: transform, opacity, border-color, box-shadow; transition-duration: .55s, .55s, .18s, .18s; }
+
+.ovnet-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 10px 14px; margin-top: 30px; }
+.ovnet-cta {
+    display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 20px; border-radius: 999px;
+    background: linear-gradient(100deg, #3b82f6, #8b5cf6); color: #fff; font-weight: 750; text-decoration: none;
+    box-shadow: 0 10px 24px -12px #6366f1; transition: transform var(--ov-dur-2, .15s), box-shadow var(--ov-dur-2, .15s);
+}
+.ovnet-cta:hover { transform: translateY(-1px); box-shadow: 0 14px 28px -12px #6366f1; }
+.ovnet-switch {
+    display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 16px; border-radius: 999px; cursor: pointer;
+    border: 1px solid var(--ovnet-line); background: color-mix(in srgb, var(--bg-primary, #0a0f1c) 45%, transparent); color: var(--ovnet-soft); font: inherit; font-size: .85rem;
+}
+.ovnet-switch b { color: var(--ovnet-ink); }
+.ovnet-switch:hover { color: var(--ovnet-ink); border-color: color-mix(in srgb, var(--text-primary, #fff) 22%, transparent); }
+
+/* A phone: each group is one row of tiles that scrolls sideways (every site is still there and a swipe away). */
+@media (max-width: 640px) {
+    .ovnet { margin: 26px -4px 4px; padding: 34px 0 26px; border-radius: 20px; }
+    .ovnet-head { padding: 0 16px; margin-bottom: 20px; }
+    .ovnet-jump { flex-wrap: nowrap; justify-content: flex-start; overflow-x: auto; scrollbar-width: none; margin: 18px -16px 0; padding: 0 16px 2px; scroll-padding-inline: 16px; }
+    .ovnet-jump::-webkit-scrollbar { display: none; }
+    .ovnet-jump a { flex: none; min-height: 44px; }
+    .ovnet-groups { gap: 24px; }
+    .ovnet-group h3, .ovnet-gline { padding: 0 16px; }
+    .ovnet-gline { margin-left: 40px; }
+    .ovnet-sites {
+        display: flex; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none;
+        padding: 2px 16px 6px; scroll-padding-inline: 16px; gap: 10px;
+    }
+    .ovnet-sites::-webkit-scrollbar { display: none; }
+    .ovnet-sites > li { flex: 0 0 min(78%, 280px); scroll-snap-align: start; }
+    .ovnet-site { min-height: 76px; }
+    .ovnet-foot { padding: 0 16px; }
+    .ovnet-cta, .ovnet-switch { width: 100%; justify-content: center; }
+}
+/* Light themes: the surface follows the page, the aurora softens. */
+@media (prefers-color-scheme: light) { :root:not([data-theme]) .ovnet::before { opacity: .35; } }
+[data-theme-mode="light"] .ovnet::before, html.light .ovnet::before { opacity: .35; }
+@media (prefers-reduced-motion: reduce) {
+    .ovnet::before, .ovnet-sky i, .ovnet-dot { animation: none; }
+    .ovnet-sky i { opacity: .45; }
+    .ovnet.is-armed .ovnet-site { opacity: 1; --lift: 0px; }
+    .ovnet-site, .ovnet-jump a, .ovnet-cta { transition: none; }
+}
