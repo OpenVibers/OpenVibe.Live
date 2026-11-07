@@ -1268,7 +1268,11 @@ button.viewer-badge:focus-visible { outline: 2px solid #93c5fd; outline-offset: 
 .ov-pip.is-dragging, .ov-pip.is-resizing { user-select: none; }
 .ov-pip.is-hidden { display: none; }
 
-.ov-pip-video { width: 100%; height: 100%; object-fit: cover; display: block; background: #000; }
+/* The box takes the source's own shape (stream-pip.js sets aspect-ratio from the video), so contain shows it whole: a
+   portrait camera is never cut to 16:9 (2026-11-07). */
+.ov-pip-video { width: 100%; height: 100%; object-fit: contain; display: block; background: #000; }
+.ov-pip:focus-visible { outline: 2px solid var(--accent, #3b82f6); outline-offset: 2px; }
+.ov-pip.is-portrait .ov-pip-bar { padding-inline: 4px; }
 .ov-pip:hover .ov-pip-bar, .ov-pip.is-dragging .ov-pip-bar { opacity: 1; pointer-events: auto; }
 .ov-pip-title {
     font-size: .72rem; color: #fff; font-weight: 600;
