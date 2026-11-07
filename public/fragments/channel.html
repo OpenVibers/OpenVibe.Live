@@ -133,6 +133,9 @@
                                  stream's own action row while the channel is live and in the header's actions when it is
                                  not, so the page always has one Share button and never two. -->
                             <span id="ch-share-slot"><button class="ovk-btn ovk-btn--quiet" id="ch-btn-share" type="button" data-ov-share-sheet><svg class="ovk-i" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 20V9M7 14l5-5 5 5M5 4h14"/></svg><span>Share</span></button></span>
+                            <!-- Ask your agent (openvibe-shared 4.135.0): the SEO renderer fills this with the channel's
+                                 own chip, live or offline; app-channel.js keeps it beside Share in the same row. -->
+                            <span id="ch-ask-slot"></span>
                             <span class="ch-follower-count" id="ch-follower-count">0 followers</span>
                             <a class="ch-game-badge" id="ch-game-badge" href="https://openvibe.games/" target="_blank" rel="noopener" hidden></a>
                             <button class="btn btn-outline" id="btn-cam" title="Take a still" style="display:none"><i class="fa-solid fa-camera"></i> Still</button>

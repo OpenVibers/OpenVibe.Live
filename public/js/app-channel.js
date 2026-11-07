@@ -1253,9 +1253,14 @@ function _placeShareButton(where) {
     if (!b) return;
     const live = where !== 'offline';
     const host = live ? document.getElementById('ch-share-slot') : document.querySelector('#ch-offline-area .ch-actions');
-    if (!host || b.parentElement === host) return;
-    if (live) host.appendChild(b);
-    else host.insertBefore(b, host.firstChild);
+    if (!host) return;
+    if (b.parentElement !== host) {
+        if (live) host.appendChild(b);
+        else host.insertBefore(b, host.firstChild);
+    }
+    // The Ask your agent chip (openvibe-shared 4.135.0) sits beside Share, in the same row, live or offline.
+    const ask = document.getElementById('ch-ask-slot');
+    if (ask && ask.parentElement !== host) host.insertBefore(ask, b.nextSibling);
     b.className = 'ovk-btn ovk-btn--quiet';
     b.title = live ? 'Share this stream' : 'Share this channel';
 }
