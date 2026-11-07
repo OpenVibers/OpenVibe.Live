@@ -82,7 +82,9 @@ async function summarizeStreamMemories(memories, streamId = null) {
     if (streamId) {
         try {
             input.speech = (await db.getTimeline(streamId, { kind: 'speech', limit: 400 }) || []).slice(-200).map(r => ({ start_sec: Number(r.start_sec) || 0, text: String(r.text || '').slice(0, 2000) }));
-            input.sounds = (await db.getTimeline(streamId, { kind: 'sound', limit: 120 }) || []).slice(-60).map(r => ({ start_sec: Number(r.start_sec) || 0, label: String(r.label || '').slice(0, 120), confidence: Number(r.confidence || 0) }));
+            // Tagged sounds above their bar only, by tag (sound-captions.evidence): the long tail is mostly wrong.
+            input.sounds = require('./sound-captions').evidence((await db.getTimeline(streamId, { kind: 'sound', limit: 120 }) || []).slice(-60)
+                .map(r => ({ start_sec: Number(r.start_sec) || 0, label: String(r.label || '').slice(0, 120), confidence: Number(r.confidence || 0) })));
         } catch { /* timeline optional */ }
     }
     // The same run also classifies the stream: the category is inferred from what is actually on

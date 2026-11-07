@@ -41,7 +41,7 @@ console.warn = () => {};
     assert.ok(m, 'a clip moment is found');
     assert.strictEqual(m.offset, 3000, 'the laugh, not the first explosion');
     assert.strictEqual(m.evidence.picked_by, 'sound');
-    assert.deepStrictEqual(m.evidence.sounds.map((e) => e.label), ['Laughter'], 'the explosions nearby are not evidence');
+    assert.deepStrictEqual(m.evidence.sounds.map((e) => e.label), ['laughter'], 'the explosions nearby are not evidence; the laugh is said by its tag');
 
     db.getTimeline = async () => evening.filter((e) => e.label === 'Explosion');
     assert.strictEqual(await moments.findBestMoment(v, { flavor: 'clip' }), null, 'a stream of nothing but its background gives no clip');

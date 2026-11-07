@@ -25,6 +25,7 @@ const clipPolicy = require('./clip-policy');
 const dedupe = require('./clip-dedupe');
 const explicit = require('./explicit');
 const clipScore = require('./clip-score');
+const soundCaptions = require('./sound-captions');
 let cfg = null; try { cfg = require('../config'); } catch { /* */ }
 let thumb = null; try { thumb = require('../media-proxy/live-thumbs'); } catch { /* optional */ }
 const FRAMES_TMP_DIR = path.join(os.tmpdir(), 'openvibe-live-moments');
@@ -170,11 +171,14 @@ async function _momentContext(streamId, vodId) {
             // Background music (audio-events.js spans) is the stream's bed, not a moment.
             .filter(e => Number(e.confidence || 0) >= 0.45 && e.label !== 'Music');
     } catch { /* timeline optional */ }
-    const sounds = _sample(heard, 30);
     // The stream's average chat per 30 s, empty stretches counted (C07/C08: averaging only the busy buckets made every
     // spike look small on a quiet channel and every lull look big on a busy one).
     let chatAvg = 0;
     const spanSec = started > 0 ? Math.max(0, ((ms(span.ended_at) || Date.now()) - started) / 1000) : 0;
+    // Only sounds with a tag above its bar, said by that tag, reach the prompts below (sound-captions.evidence): the
+    // detector's long tail ("Animal", "Vehicle", "Livestock") is mostly wrong and once titled a trading stream's moment.
+    heard = soundCaptions.evidence(heard, { spanSec });
+    const sounds = _sample(heard, 30);
     try {
         if (spanSec >= 60) chatAvg = (Number((await chatReads.streamStats(streamId) || {}).messages) || 0) / (spanSec / 30);
     } catch { /* chat optional */ }
