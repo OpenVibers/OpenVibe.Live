@@ -33,4 +33,9 @@ assert.match(js, /panel\.hidden = b\.style\.display === 'none';/, 'a section hid
 assert.match(js, /function _watchChannelSections\(\)/);
 assert.match(js, /new IntersectionObserver\([\s\S]{0,200}_ensureChannelSection\(e\.target\.id\.replace\('ch-panel-', ''\), true\)/, 'a section loads as it nears the screen');
 assert.match(js, /if \(passing && \(tab === 'analytics' \|\| tab === 'ai-timeline'\)\) return;/, 'the folds load when opened, not on the way past');
-console.log('channel sections: every section on the page, a jump bar, two counted folds');
+// Every inline handler in the fragment parses (11-07: a stray backslash, onclick=\"...\", broke every jump link).
+assert.ok(!/onclick=\\"/.test(html), 'no backslash-escaped onclick attributes');
+const handlers = [...html.matchAll(/\son(click|change|input|submit)="([^"]*)"/g)].map((m) => m[2]);
+assert.ok(handlers.length > 9, 'the handlers were found');
+handlers.forEach((code) => assert.doesNotThrow(() => new Function('event', code), `the handler parses: ${code.slice(0, 80)}`));
+console.log('channel sections: every section on the page, a jump bar, two counted folds, every handler parses');
