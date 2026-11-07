@@ -11,6 +11,12 @@
     const id = body && body.dataset ? body.dataset.agentId : '';
     if (!id) return;
     const $ = (name) => document.getElementById(name);
+    // A page embedding this one cannot see a `frame-ancestors` refusal (the blocked frame shows an error page, and a
+    // parent may not read it). This one message says the embed really loaded; the Dock falls back to the still and a
+    // link to the stream when it never arrives. It carries nothing: no ticket, no stream.
+    try {
+        if (window.parent && window.parent !== window) window.parent.postMessage({ type: 'ov-agent-embed', v: 1 }, '*');
+    } catch { /* no parent to tell */ }
     let ticket = new URLSearchParams(location.search).get('vt') || '';
     let player = null;
     let renewTimer = null;
