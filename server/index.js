@@ -306,6 +306,10 @@ function getAllowedOrigins() {
         allowed.add('https://openvibe.network');
     }
 
+    // The account hub on its own origin (Network, since 2026-11-07): its go-live widget follows /api/live-events
+    // and its Today card reads who is live, as it did on openvibe.network/my.
+    allowed.add('https://openvibe.my');
+
     // openvibe.games game client calls cosmetics API cross-origin
     allowed.add('https://openvibe.games');
 
