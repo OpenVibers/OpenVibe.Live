@@ -440,6 +440,7 @@ body.rd-sheet-open { overflow: hidden; }
   .rd-own-x { width: 44px; height: 44px; }
   .rd-switch::before { content: ""; position: absolute; inset: -7px -2px; }
   .rd-gone-actions .rd-own-btn, .rd-mine-row .rd-own-btn { min-height: 44px; }
+}
 
 /* ── Touch (2026-11-06 phone pass, round two) ─────────────────────────────────
    Every control of the Rundown carries a 44 px hit area on the element itself: the tabs, the avatars, the names,
