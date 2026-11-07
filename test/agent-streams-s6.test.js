@@ -42,6 +42,12 @@ async function check(name, fn) {
          VALUES (1, 'ann', 'ann', 'ann@x', 'x', 'streamer', 0) ON CONFLICT (id) DO NOTHING`).run();
     await raw.prepare("INSERT INTO linked_accounts (user_id, service, service_user_id, subject_id) VALUES (1, 'network', '101', ?) ON CONFLICT DO NOTHING").run(SID.ann);
 
+    // The capability is the one the pinned Contracts release names, and the old hyphen spelling is not a grant.
+    const contracts = require('openvibe-contracts');
+    const cap = contracts.capabilities.get('live.agent_sandbox.register');
+    assert.ok(cap, 'the pinned contracts know live.agent_sandbox.register');
+    assert.strictEqual(cap.owner, 'live');
+    assert.ok(cap.implementedBy.includes('POST /api/streams/agent/:id/plays/worker'), 'the capability names the registration route');
     // The Network is not here: a service token is verified by this stand-in. The worker's token holds the
     // sandbox capability; the other one does not.
     const sdkAuth = require('openvibe-sdk/auth');
@@ -51,6 +57,9 @@ async function check(name, fn) {
         if (token === 'tok-person') return { ok: true, claims: { sub: SID.ann, cap: ['live.agent_sandbox.register'] } };
         return { ok: false, code: 'token.invalid' };
     };
+    const auth = require('../server/agent-streams/auth');
+    assert.strictEqual(auth.holdsSandboxCapability({ cap: ['live.agent_sandbox.register'] }), true);
+    assert.strictEqual(auth.holdsSandboxCapability({ cap: ['live.agent-sandbox.register'] }), false, 'the design spelling carries no grant');
 
     const config = require('../server/config');
     config.baseUrl = 'https://openvibe.live';
