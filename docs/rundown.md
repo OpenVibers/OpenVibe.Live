@@ -1,9 +1,12 @@
-# The Rundown (2026-10-19)
+# The Rundown (2026-11-06)
 
 **The Rundown** (`/rundown`) is what streamers talked about, written up: the topics, each streamer's take in their own words with a link to the moment, and every stream as an episode with a recap and chapters. It replaced the Arena (the competitive drama desk: viewer-crash stories, the Lolcow Index, Clout Rankings, mic ratings and beefs). In the owner's words: "gathers topics and stuff the streamers talk about and is less about competing with eachother and more about talking shit and fleshing out stories and creating content for people to look through".
 
 - [The desk](#the-desk)
 - [What is kept, and what never is](#what-is-kept-and-what-never-is)
+- [Who sees it](#who-sees-it)
+- [The recording decides first](#the-recording-decides-first)
+- [Deleting](#deleting)
 - [Pages](#pages)
 - [API](#api)
 - [Data](#data)
@@ -42,6 +45,59 @@ Speech-to-text hears a stream's whole audio track. On 2026-10-18 the Arena's "qu
 - **Opting out.** A streamer can keep themselves out ("Keep me out of The Rundown" on their page, `PUT /api/rundown/opt-out`; the Arena's opt-outs carry over). The desk stops reading their streams, and what was written about them is set aside (status `out`). Coming back restores it, never anything staff took down.
 - **Staff** take an item down with `POST /api/rundown/hide {type, id}` (segment, episode or topic).
 
+## Who sees it
+
+A streamer decides who sees their Rundown with the same Share sheet the rest of the network uses: **Everyone**, **Anyone with the link**, **Specific people**, **Only me** (`server/rundown/visibility.js`, `server/rundown/sharing.js`).
+
+- **One setting per episode, not per take.** An episode is registered in the sharing system when the desk writes it up (`kind rundown-episode`, service `live`, the stream id as its resource), and its Share sheet changes it afterwards. **A segment follows its episode:** the pages read the episode's setting, never a second one. The share row goes when the episode is deleted (see [Deleting](#deleting)).
+- **The default** is in **Your Rundown**, the box at the top of the streamer's own Rundown page (`/rundown/<username>#mine`; the line under the Rundown's title links to it when signed in) (`GET|PUT /api/rundown/settings`, `server/rundown/settings.js`): Everyone until the streamer changes it. It applies to the write-ups made from then on. An episode that already has its own setting keeps it; a default never overrules the sheet.
+- **Each episode has its own Share sheet.** That is the only place its setting is changed (`/api/v1/<kind>/<id>/share`, the network's own share API, `server/rundown/sharing.js` and `shareRouterFor` in `server/index.js`); there is no second Rundown-only control. On their own episode the streamer sees **Who sees it** (and, when the recording is stricter, that the episode follows it and where to change that), **Share** and **Delete episode**; the episode and streamer reads answer `mine`, so these never wait for the page's signed-in state. An episode written up before the sharing system had no share row, so its owner's first visit registers it as Everyone, which it already was.
+- **Keep me out** stays and is stronger: it means Only me for everything and no new write-ups at all while it is on. Coming back restores the write-ups, never anything staff took down.
+- **The streamer sees all their own items everywhere**, each non-public one marked with a small chip ("Only me", "Link", "3 people").
+- **A take that names another streamer** never reaches that streamer's page and never notifies them while it is not Everyone.
+
+### Gathered pages show Everyone only
+
+The pages that put many people's items together show Everyone items and nothing else:
+
+- the front page and stream by stream, the topics index, topic pages, trending, who's been talking, the streamer list, and the "more from the streamer" on an episode page;
+- the counts ("789 takes", "4 streamers") count Everyone items only;
+- a topic whose takes are all non-public disappears from those pages, and its page answers 404;
+- **the after-show report follows the same setting** (`/recap/:streamId`, `server/recap/routes.js`): a list of reports shows Everyone ones plus the streamer's own, and `GET /api/recap/:streamId` answers 404 to a reader the episode is not shared with.
+
+Who may open one episode: Everyone and Anyone with the link are open to anybody; Specific people is the people on the list; Only me is the streamer.
+
+## The recording decides first
+
+An episode is the write-up of one stream, and its VOD is that same stream. They must not disagree in the direction that leaks, so **the recording decides first**.
+
+- **The rule:** the episode's audience is the stricter of its own setting and its VOD's visibility. Order of strictness: **Only me**, then **Specific people**, then **Anyone with the link**, then **Everyone**. A segment, the whole episode and the after-show report all follow it.
+- **Specific people on both sides:** the people on both lists.
+- **A stricter VOD** (unlisted or private) takes the episode, its segments and its report with it at once, and the episode page says **"Following the VOD: unlisted"**.
+- **A VOD that becomes public again** gives the episode back its own setting. It never becomes wider than the streamer chose for the episode.
+- **Where the VOD's setting comes from** (`server/rundown/visibility.js`):
+  - Live's own VOD pages apply it in the same request (`server/media-proxy/vods.js`, including bulk);
+  - a change made elsewhere (MediaHub, openvibe.video) arrives as Media's `media.object.visibility_changed` event (`server/media-proxy/outcomes.js`);
+  - until that event lands, the episode page re-checks through `media-client` when it is opened, cached 60 s.
+- **Media's words** map onto the four: `public` → Everyone, `unlisted` → Anyone with the link, `private` → Only me. Media has no Specific people, so a VOD's people list is Live's own, and the two lists are intersected.
+- **Segments with no VOD** (nothing was recorded) follow the episode alone. **A deleted VOD** removes its write-ups (Live #605, unchanged).
+
+## Deleting
+
+The streamer can delete their own items. Each delete asks first, in the page (a sheet on the phone, a card on a wide screen), and says what goes (`POST /api/rundown/delete/*`, `server/rundown/delete.js`):
+
+| What | From where | What goes |
+|---|---|---|
+| **One take** | the bin button on the take, wherever it is listed | that take |
+| **One episode** | **Delete episode** on the episode page, next to Share | the episode, all its takes, its after-show report; the page then offers **Write this stream up again** (`POST /api/rundown/restore`) |
+| **All my Rundown** | **Delete my Rundown** in Your Rundown | every take and episode of theirs, and the after-show reports, plus an offer to also "Keep me out" from now on (`keep_out`) |
+
+- **Deleted is deleted.** The rows are removed, not hidden. Topics recount and a topic left with nothing is removed, its page cleared. The sharing row goes with the episode.
+- **The receipt:** "Deleted 1 episode and 12 takes".
+- **The VOD stays.** Deleting a write-up never touches the recording.
+- **The desk does not write that stream up again** unless the streamer asks: `POST /api/rundown/restore` ("Write this stream up again") lets the desk read that stream once more.
+- **Staff hiding** (`status 'hidden'`) stays as it is, for moderation.
+
 ## Pages
 
 - `/rundown`, the front page:
@@ -54,6 +110,7 @@ Speech-to-text hears a stream's whole audio track. On 2026-10-18 the Arena's "qu
 - `/rundown/t/<slug>` is one topic: the desk's summary, every take (newest first), and the topics that came up in the same streams.
 - `/rundown/e/<streamId>` is one episode: logline, recap, chapters, what they talked about, and more from the streamer. A live stream shows what the desk has heard so far.
 - `/rundown/<username>` is a streamer's page: what they talk about (topics with counts), best lines, episodes and crossovers.
+- **Everyone sees the same pages; what is on them differs.** A signed-out reader, or anybody but the streamer, gets Everyone items only (see [Who sees it](#who-sees-it)). The streamer sees their own items everywhere, each non-public one marked with its audience chip.
 - **Every card:**
   - reactions (🔥 😂 💀 🧢 💯), one per reader;
   - ▶ to the moment in the VOD;
@@ -75,7 +132,12 @@ Speech-to-text hears a stream's whole audio track. On 2026-10-18 the Arena's "qu
 | GET | `/s/:username` | `user`, `episodes`, `topics`, `lines`, `crossovers` (or `opted_out`) |
 | POST | `/react {type, id, reaction}` | segment or episode; fire, lol, dead, cap, facts; the same again takes it back |
 | POST | `/hide {type, id}` | staff |
-| GET, PUT | `/opt-out {out}` | signed in |
+| GET, PUT | `/opt-out {out}` | signed in: keep yourself out (or come back) |
+| GET, PUT | `/settings` | signed in: "Your Rundown": the default audience for new write-ups, and whether you keep yourself out |
+| POST | `/delete/take {id}` | signed in: delete one of your takes |
+| POST | `/delete/episode {stream_id}` | signed in: delete one of your episodes with its takes |
+| POST | `/delete/all {keep_out}` | signed in: delete all your Rundown, optionally keeping yourself out from now on |
+| POST | `/restore {stream_id}` | signed in: "Write this stream up again" |
 | GET | `/voice/:user?t=` | a line in the streamer's chat voice |
 
 A person in any answer is `{ id, username, display_name, avatar_url, profile_color }`. A stream in `on_air` or `streams` also carries `thumbnail_url`: its public VOD's thumbnail once it has ended, its live frame while it is on air, and `null` for an NSFW stream or when Media has no picture.
@@ -90,6 +152,14 @@ Migration `0010_rundown.sql`:
 - `rundown_progress`: how far the desk has read each stream.
 - `rundown_reactions`: readers' reactions.
 
+Migration `0029_rundown_audiences.sql` (expand only, 2026-11-06) holds what the sharing system does not know:
+
+- `rundown_visibility`: per stream, what the recording decides as the last thing Live heard about it (`vod_audience`, and `vod_members` for Specific people, which Media has no notion of). A stream with no row is Everyone.
+- `rundown_prefs`: the streamer's default audience for new write-ups. No row is Everyone.
+- `rundown_deleted`: a write-up the streamer deleted; the desk never writes that stream up again on its own.
+
+An episode's own setting is not here: it is the sharing system's share row (`kind rundown-episode`, service `live`, `resource_id` the stream id), in the SDK's `shares` and `share_members` tables (Live's migration `0027`). `scripts/rundown-vod-backfill.js` fills `rundown_visibility` from Media for every stream already written up.
+
 The Arena's tables are no longer written. Its pages, styles and readers are gone (the recap, the home digest, the star pick and the VOD stats read The Rundown); its server code and `/api/arena` went on 2026-10-19 (Live#264), and its tables with migration `0015_drop_arena` (applied after 2026-10-23 18:34 UTC). `arena_opt_outs` stays: it is The Rundown's list of streamers who keep themselves out.
 
 ## Chat
@@ -103,4 +173,4 @@ When an episode is written within 6 hours of its stream ending, it is announced 
 | `rundown_enabled` | `true` | `false` stops the desk (pages keep what was written) |
 | `ai_timeline_enabled` | `false` | the speech-to-text the desk reads: must be on |
 
-Tests: `test/rundown.test.js` (filters, the desk on a stubbed AI, topics, episodes, opt-outs, the API and the redirects).
+Tests: `test/rundown.test.js` (filters, the desk on a stubbed AI, topics, episodes, opt-outs, the API and the redirects) and `test/rundown-audiences.test.js` (the four audiences and who may see each, the gathered pages and their counts, a non-public take never reaching the streamer it names, the recording's rule, and deleting). `test/recap-audience.test.js` covers the after-show report's setting.
