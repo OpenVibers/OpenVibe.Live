@@ -506,7 +506,8 @@
 <!-- ── OpenVibe shared libs (notifications, account sync, themes) ── -->
 <script src="/shared/theme-loader.js" defer></script>
 <script defer src="/js/ov-display-menu.js"></script>
-<script src="/shared/notification-ui.js" defer></script>
+<!-- notification-ui.js is not on every page (11-07: 29 KB a signed-out visitor never used): the navbar loads it, by its
+     content hash, when it mounts a signed-in person's bell, and the live-alerts offer loads it when asked. -->
 <!-- The requested route's scripts (public/features.json), added by the server after the core ones.
      Other routes load theirs on navigation through js/ov-loader.js. -->
 <!--ov:route-js-->
