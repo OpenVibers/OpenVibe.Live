@@ -199,6 +199,17 @@ async function readSoundByCommand(params) {
     } catch (err) { note(`sound-by-command: ${err.message}`); }
     return null;
 }
+/** How many listed watch parties a public agent stream has (S7). The answer is a count; Chat never names the people. */
+async function partyCount(agentStreamId) {
+    if (!available()) return null;
+    try {
+        const { status, data } = await request('GET', `/internal/chat/parties/count${qs({ agent_stream: agentStreamId })}`);
+        if (status === 200 && data && data.ok !== false) return data;
+        note(`party-count: Chat answered ${status}${data && data.error ? ` (${data.error})` : ''}`);
+    } catch (err) { note(`party-count: ${err.message}`); }
+    return null;
+}
+
 /** Record where Live's asset sync uploaded a channel sound (idempotent; Chat applies the same write once). */
 async function soundAsset(body) {
     if (!available()) return null;
@@ -231,6 +242,6 @@ module.exports = {
     invalidate: async (body) => await send('invalidate', body),
     presence,
     readStats, readMessages, readTimeline, readFirstChat, readPendingIp, readRelayUsers, readRelayUser, readTtsOverride,
-    readSounds, readSoundByCommand, readDmBlockState, soundAsset, agentRoom,
+    readSounds, readSoundByCommand, readDmBlockState, soundAsset, agentRoom, partyCount,
     _setRetryMs(ms) { retryMs = ms || RETRY_MS; },
 };

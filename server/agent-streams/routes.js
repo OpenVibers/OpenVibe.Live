@@ -26,6 +26,7 @@ const tickets = require('./tickets');
 const frames = require('./frames');
 const steps = require('./steps');
 const voice = require('./voice');
+const schedules = require('./schedules');
 
 const router = express.Router();
 
@@ -126,7 +127,9 @@ router.get('/', auth.viewer, async (req, res) => {
         const channel = typeof req.query.channel === 'string' ? req.query.channel.trim().slice(0, 64) : null;
         if (channel) {
             const rows = await service.listForChannel(channel, req.viewer ? req.viewer.id : null);
-            return res.json({ agents: rows.map(service.cardView) });
+            const subject = req.viewer ? await auth.viewerSubject(req.viewer) : null;
+            const planned = await schedules.listForChannel(channel, req.viewer ? req.viewer.id : null, { subject });
+            return res.json({ agents: rows.map(service.cardView), schedules: planned });
         }
         const rows = await service.listPublic({ liveOnly: req.query.live === '1' });
         res.json({ agents: rows.map(service.cardView) });
@@ -176,6 +179,138 @@ async function watchable(req, row) {
     });
 }
 
+
+// ── Schedules (S7) ─────────────────────────────────────────────
+//
+// An owner schedules a public agent stream; the record shows on the channel's Agents tab and in Today 24 hours before
+// its time. The desk says it is online with a heartbeat, claims a due schedule and receives the one publish ticket.
+// A schedule nobody claims says "didn't start: the desk was offline" and starts nothing. A chatplays schedule waits
+// for the owner's Go. Reminders are opt-in and the answer is a count, never a name.
+
+/** POST /desk/heartbeat — the owner's desk says it is online (a fact, not a stream). */
+router.post('/desk/heartbeat', auth.publisher, async (req, res) => {
+    try {
+        const out = await schedules.heartbeat(req.publisher.user, (req.body || {}).version);
+        res.set('Cache-Control', 'no-store');
+        res.json(out);
+    } catch (err) {
+        console.error('[AgentStream] desk heartbeat failed:', err.message);
+        fail(res, 500, 'heartbeat_failed', 'The heartbeat could not be stored');
+    }
+});
+
+/** POST /schedules — the owner writes a schedule. */
+router.post('/schedules', auth.publisher, async (req, res) => {
+    try {
+        const body = req.body || {};
+        const task = schedules.cleanTask(body.task);
+        if (!task) return fail(res, 400, 'invalid_task', 'task needs source (codes, actor, desk, node), ref and title');
+        const schedule = await schedules.create({
+            user: req.publisher.user,
+            title: body.title,
+            task,
+            mode: body.mode,
+            startsAt: body.starts_at,
+        });
+        res.status(201).json({ schedule });
+    } catch (err) {
+        if (err.status) return fail(res, err.status, err.code, err.message);
+        console.error('[AgentStream] schedule create failed:', err.message);
+        fail(res, 500, 'schedule_failed', 'The schedule could not be stored');
+    }
+});
+
+/** GET /schedules — the caller's own (?mine=1) or a channel's public window (the channel's Agents tab). */
+router.get('/schedules', auth.viewer, async (req, res) => {
+    try {
+        res.set('Cache-Control', 'no-store');
+        const subject = req.viewer ? await auth.viewerSubject(req.viewer) : null;
+        if (String(req.query.mine || '') === '1') {
+            if (!req.viewer) return res.json({ schedules: [] });
+            return res.json({ schedules: await schedules.listMine(req.viewer.id, { subject }) });
+        }
+        if (String(req.query.public || '') === '1') {
+            return res.json({ schedules: await schedules.listPublic({ subject }) });
+        }
+        const channel = typeof req.query.channel === 'string' ? req.query.channel.trim().slice(0, 64) : null;
+        if (!channel) return fail(res, 400, 'channel_required', 'channel is required (or mine=1 or public=1)');
+        const viewerId = req.viewer ? req.viewer.id : null;
+        const rows = await schedules.listForChannel(channel, viewerId, { subject });
+        res.json({ schedules: rows });
+    } catch (err) {
+        console.error('[AgentStream] schedules read failed:', err.message);
+        fail(res, 500, 'schedules_failed', 'The schedules could not be read');
+    }
+});
+
+/** GET /schedules/:id — one schedule (the owner's own, or a public one inside its 24-hour window). */
+router.get('/schedules/:id', auth.viewer, async (req, res) => {
+    try {
+        const subject = req.viewer ? await auth.viewerSubject(req.viewer) : null;
+        const schedule = await schedules.get(req.params.id, { subject });
+        if (!schedule) return fail(res, 404, 'schedule_not_found', 'No such schedule');
+        const mine = req.viewer && schedule.owner && schedule.owner === subject;
+        const soon = schedule.visibility === 'public' && schedule.state === 'scheduled'
+            && Date.parse(schedule.starts_at) <= Date.now() + schedules.AHEAD_MS;
+        if (!mine && !soon) return fail(res, 404, 'schedule_not_found', 'No such schedule');
+        res.set('Cache-Control', 'no-store');
+        res.json({ schedule });
+    } catch (err) {
+        console.error('[AgentStream] schedule read failed:', err.message);
+        fail(res, 500, 'schedule_failed', 'The schedule could not be read');
+    }
+});
+
+/** DELETE /schedules/:id — cancel it. */
+router.delete('/schedules/:id', auth.publisher, async (req, res) => {
+    try {
+        const schedule = await schedules.cancel(req.params.id, req.publisher.user);
+        res.json({ schedule });
+    } catch (err) {
+        if (err.status) return fail(res, err.status, err.code, err.message);
+        console.error('[AgentStream] schedule cancel failed:', err.message);
+        fail(res, 500, 'schedule_failed', 'The schedule could not be cancelled');
+    }
+});
+
+/** POST /schedules/:id/remind — opt in to the reminder. The answer is the count, never the people. */
+router.post('/schedules/:id/remind', auth.viewer, async (req, res) => {
+    try {
+        if (!req.viewer) return fail(res, 401, 'authentication_required', 'Sign in to set a reminder');
+        const subject = await auth.viewerSubject(req.viewer);
+        const out = await schedules.remind(req.params.id, subject);
+        res.json(out);
+    } catch (err) {
+        if (err.status) return fail(res, err.status, err.code, err.message);
+        console.error('[AgentStream] schedule reminder failed:', err.message);
+        fail(res, 500, 'reminder_failed', 'The reminder could not be set');
+    }
+});
+
+/** POST /schedules/:id/claim — the owner's online desk starts it: the stream and its one publish ticket. */
+router.post('/schedules/:id/claim', auth.publisher, async (req, res) => {
+    try {
+        const out = await schedules.claim(req.params.id, req.publisher.user, { go: false });
+        res.status(201).json(out);
+    } catch (err) {
+        if (err.status) return fail(res, err.status, err.code, err.message);
+        console.error('[AgentStream] schedule claim failed:', err.message);
+        fail(res, 500, 'schedule_failed', 'The schedule could not be started');
+    }
+});
+
+/** POST /schedules/:id/go — the owner's Go for a chatplays schedule; it starts the stream like a claim. */
+router.post('/schedules/:id/go', auth.publisher, async (req, res) => {
+    try {
+        const out = await schedules.claim(req.params.id, req.publisher.user, { go: true });
+        res.status(201).json(out);
+    } catch (err) {
+        if (err.status) return fail(res, err.status, err.code, err.message);
+        console.error('[AgentStream] schedule go failed:', err.message);
+        fail(res, 500, 'schedule_failed', 'The schedule could not be started');
+    }
+});
+
 // ── Read ───────────────────────────────────────────────────────
 
 /**
@@ -220,8 +355,14 @@ router.get('/:id', auth.viewer, async (req, res) => {
             : null;
         const moderation = await channelModeration(row.channel_id);
         const isMod = !isOwner && !!(req.viewer && moderation.moderator_ids.includes(Number(req.viewer.id)));
+        let parties = null;
+        try {
+            const count = await require('../chat/chat-client').partyCount(row.public_id);
+            if (count && Number.isInteger(Number(count.count))) parties = { count: Math.max(0, Number(count.count)) };
+        } catch { /* Chat is optional for a stream */ }
         res.json({
             stream,
+            parties,
             live_stream_id: row.live_session_id ? Number(row.live_session_id) : null,
             can_manage: isOwner,
             can_moderate: isOwner || isMod,

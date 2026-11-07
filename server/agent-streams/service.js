@@ -82,10 +82,12 @@ const SELECT = `
            (SELECT st.title FROM agent_stream_steps st WHERE st.managed_stream_id = ms.id ORDER BY st.id DESC LIMIT 1) AS latest_step_title,
            (SELECT st.status FROM agent_stream_steps st WHERE st.managed_stream_id = ms.id ORDER BY st.id DESC LIMIT 1) AS latest_step_status,
            (SELECT la.subject_id FROM linked_accounts la WHERE la.service = 'network' AND la.user_id = ms.user_id) AS owner_subject,
-           u.username, u.display_name, u.avatar_url, u.profile_color, u.is_banned, u.is_owner
+           u.username, u.display_name, u.avatar_url, u.profile_color, u.is_banned, u.is_owner,
+           c.bot_robot_id
     FROM managed_streams ms
     JOIN agent_streams a ON a.managed_stream_id = ms.id
-    JOIN users u ON u.id = ms.user_id`;
+    JOIN users u ON u.id = ms.user_id
+    LEFT JOIN channels c ON c.id = ms.channel_id`;
 
 async function getByPublicId(publicId) {
     if (!AGENT_ID_RE.test(String(publicId || ''))) return null;
@@ -166,6 +168,9 @@ function publicView(row) {
         label: 'AI agent',
         // The chat room a public or unlisted stream carries (S2): people only, the agent reads it in S5.
         chat_room: (row.visibility === 'public' || row.visibility === 'unlisted') ? `agent:${row.public_id}` : null,
+        // S7: a channel bound to a Bot robot can show the robot's camera as a second scene beside the desk. The
+        // binding and Bot's own embed_public decide whether it appears; Live only names the panel.
+        robot_scene: robotScene(row),
     };
 }
 
@@ -193,6 +198,19 @@ function cardView(row) {
         chat_room: stream.chat_room,
         current_step: row.latest_step_title ? { title: row.latest_step_title, status: row.latest_step_status || 'started' } : null,
     };
+}
+
+/** The robot camera scene for a channel bound to a Bot robot, or null (S7). */
+function robotScene(row) {
+    try {
+        const bot = require('../bot/embed');
+        if (!bot.enabled() || !bot.validRobotId(row.bot_robot_id)) return null;
+        return {
+            robot_id: row.bot_robot_id,
+            label: 'Robot camera',
+            embed_url: bot.embedUrl(row.bot_robot_id),
+        };
+    } catch { return null; }
 }
 
 /** Public agent streams (live or ended), newest first, for the home row and a channel's Agents tab. */
@@ -308,6 +326,9 @@ async function end(row, { reason = 'ended' } = {}) {
         event: { kind: 'ended', extra: { reason } },
     });
     await require('./tickets').revokeAll(row.managed_stream_id);
+    // S7: the schedule that started this stream ends with it, and a robot the channel is bound to is stopped.
+    try { await require('./schedules').markEnded(row.managed_stream_id); } catch (err) { console.warn('[AgentStream] schedule end: ' + err.message); }
+    try { require('../bot/kill').stop(row); } catch (err) { console.warn('[AgentStream] bot stop: ' + err.message); }
     if (session) {
         try {
             const whip = require('../streaming/whip-handler');

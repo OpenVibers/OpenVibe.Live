@@ -30,6 +30,7 @@ const read = require('./read');
 const browse = require('./browse');
 const settings = require('./settings');
 const del = require('./delete');
+const { createCitations } = require('./citations');
 
 const router = express.Router();
 const fail = (res, err, msg) => {
@@ -79,8 +80,14 @@ router.get('/topics', optionalAuth, async (req, res) => {
     } catch (err) { fail(res, err, 'Failed to load the topics'); }
 });
 router.get('/t/:slug', optionalAuth, async (req, res) => {
-    try { const t = await read.topic(req.params.slug, { viewer: await viewerOf(req) }); if (!t) return res.status(404).json({ error: 'No such topic' }); fresh(res); res.json(t); }
-    catch (err) { fail(res, err, 'Failed to load the topic'); }
+    try {
+        const t = await read.topic(req.params.slug, { viewer: await viewerOf(req) });
+        if (!t) return res.status(404).json({ error: 'No such topic' });
+        // S7: a public agent report may cite the topic when the agent worked on it. Report being down is no citations.
+        t.citations = await createCitations().forTopic((t.topic && t.topic.title) || t.title);
+        fresh(res);
+        res.json(t);
+    } catch (err) { fail(res, err, 'Failed to load the topic'); }
 });
 router.get('/e/:streamId', optionalAuth, async (req, res) => {
     try { const e = await read.episode(req.params.streamId, { viewer: await viewerOf(req) }); if (!e) return res.status(404).json({ error: 'No such episode' }); fresh(res); res.json(e); }

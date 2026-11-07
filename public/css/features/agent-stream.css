@@ -171,3 +171,19 @@
 .agent-controls-log-list { margin: 6px 0 0; padding-left: 18px; font-size: .85rem; color: var(--text-secondary, #96a7c2); }
 .agent-overlay-paused { margin: 2px 0 0; font-size: .8rem; font-weight: 600; color: var(--warning-text, #fbbf24); }
 @media (max-width: 480px) { .agent-controls-row .btn { flex: 1 1 calc(50% - 8px); } }
+
+
+/* ── S7: the robot camera as a second scene, and the scheduled cards ──────────────────────────── */
+.agent-scenes { display: flex; gap: 6px; margin: 10px 0 0; }
+.agent-scene { padding: 6px 12px; border-radius: 999px; border: 1px solid var(--ov-border, #2a3140); background: var(--ov-surface, #121722); color: var(--ov-text, #e6e9ef); font: inherit; cursor: pointer; }
+.agent-scene.is-on { background: var(--ov-accent, #6ea8fe); color: #06101f; border-color: transparent; }
+.agent-robot { position: relative; aspect-ratio: 16 / 9; border-radius: 14px; overflow: hidden; background: #000; margin-top: 10px; }
+.agent-robot iframe { width: 100%; height: 100%; border: 0; display: block; }
+.agent-schedules { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; margin: 0 0 16px; }
+.agent-schedules-title { margin: 18px 0 10px; font-size: 1rem; }
+.agent-schedule-card { display: flex; flex-direction: column; gap: 5px; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--ov-border, #2a3140); background: var(--ov-surface, #121722); color: inherit; text-decoration: none; }
+.agent-schedule-card:hover { border-color: var(--ov-accent, #6ea8fe); }
+.agent-schedule-when { font-size: .78rem; text-transform: uppercase; letter-spacing: .04em; opacity: .8; }
+.agent-schedule-title { font-size: .98rem; line-height: 1.25; }
+.agent-schedule-task, .agent-schedule-meta { font-size: .82rem; opacity: .8; }
+@media (max-width: 640px) { .agent-scene { min-height: 44px; } }
