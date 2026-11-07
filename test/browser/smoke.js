@@ -215,8 +215,10 @@ const pageState = `(() => ({
         cdp.close();
     }
 
-    // 3b2. The home page carries no chat: it does not download the chat UI, not even in the idle
-    // prefetch, and the global chat button brings it when someone uses it.
+    // 3b2. The home page carries no chat: it never loads the chat UI as a script, and the global chat
+    // button brings it when someone uses it. Once the page has settled, the idle prefetch may warm it
+    // (a <link rel="prefetch">, type Other, skipped on Save-Data and 2G), so the channel most people open
+    // next from here has its chat cached (Opus, 11-07: the home -> channel path is the common one).
     if (!ONLY_SIGNED && !ROUTES_ONLY) {
         // Wide: under 760 px the shared app bar takes the place of the floating buttons.
         const { cdp, errors, scripts } = await openPage(1366);

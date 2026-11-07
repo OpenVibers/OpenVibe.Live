@@ -47,7 +47,8 @@
       "idle": [
         "guide",
         "player",
-        "channel"
+        "channel",
+        "chatUI"
       ]
     },
     "feeds": {
