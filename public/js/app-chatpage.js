@@ -8,7 +8,7 @@
 function loadChatPage() {
     // Connect to global chat (no streamId). initChat loads the history itself — this page used to
     // load and render all 500 rows a second time right after it.
-    initChat(null);
+    withChatUi(() => initChat(null));
     // Global chat AI overview + timeline (refreshed periodically)
     loadGlobalChatAi();
     if (window._globalAiPollTimer) clearInterval(window._globalAiPollTimer);

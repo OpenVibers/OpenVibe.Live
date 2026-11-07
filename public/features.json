@@ -1,6 +1,33 @@
 {
   "_comment": "Feature and route registry, read by server/web/assets.js (first paint: which assets the requested route needs) and by public/js/ov-loader.js (navigation: what to load before a route renders). Scripts in a feature run in the listed order, after the feature's dependencies. `fragment` names public/fragments/<name>.html, inserted into section #page-<section> before any of the feature's scripts run. `after` names a global function called once when the feature has loaded. `stubs` are global functions that inline handlers call; until the feature is loaded they load it and then call the real function. See docs/architecture.md#frontend-loading.",
   "features": {
+    "chatUI": {
+      "_comment": "The chat UI: the socket, the messages, the panels. Only the pages that have chat ask for it (the routes below name it); the part of chat every page needs is public/js/chat-core.js.",
+      "css": [
+        "/css/chat-shared.css"
+      ],
+      "js": [
+        "/js/chat-shared.js",
+        "/js/chat.js"
+      ],
+      "stubs": [
+        "sendChat",
+        "toggleChatTTS",
+        "toggleChatSettings",
+        "toggleChatUsers",
+        "toggleChatLimitsPopover",
+        "toggleMobileChat",
+        "popoutStreamChat",
+        "popoutGlobalChat",
+        "onChatModeChange",
+        "fcwToggle",
+        "fcwMinimize",
+        "fcwClose",
+        "fcwSendChat",
+        "fcwStartDrag",
+        "fcwStartResize"
+      ]
+    },
     "home": {
       "fragment": "home",
       "css": [
@@ -20,7 +47,8 @@
       "idle": [
         "guide",
         "player",
-        "channel"
+        "channel",
+        "chatUI"
       ]
     },
     "feeds": {
@@ -360,12 +388,14 @@
     {
       "path": "^/broadcast",
       "features": [
+        "chatUI",
         "broadcast"
       ]
     },
     {
       "path": "^/chat",
       "features": [
+        "chatUI",
         "chatpage"
       ]
     },
@@ -392,6 +422,7 @@
     {
       "path": "^/stream/",
       "features": [
+        "chatUI",
         "channel"
       ]
     },
@@ -404,6 +435,7 @@
     {
       "path": "^/@",
       "features": [
+        "chatUI",
         "channel"
       ]
     }
