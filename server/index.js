@@ -678,6 +678,9 @@ app.use('/fragments', assets.versionedStatic('/fragments'), express.static(path.
 require('./web/paste-handover').register(app);
 require('./web/video-handover').register(app);
 try { require('./seo').register(app); } catch (e) { console.warn('[SEO] not registered:', e.message); }
+// The menu's network cards (frame.menu-card@1): the "Live now" rail every site's Frame can show. Public, CORS *,
+// 30 s cache; it reads only the rows GET /api/streams already serves anonymously.
+app.get('/.well-known/openvibe-menu.json', require('./menu-card').handler);
 // The agent layer (openvibe-shared/agent-layer): /.well-known/agent.json, and the Markdown twins of the home,
 // channel pages and VOD/clip lists. Mounted after the SEO middleware, so a browser keeps the page's own head and
 // cache (which now names the twin) and only a twin request reaches this renderer; before the static files and the
