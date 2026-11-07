@@ -737,8 +737,28 @@
     function bindPlays() {
         const go = $('agent-plays-go');
         const wipe = $('agent-plays-wipe');
+        const note = $('agent-plays-note');
+        const box = $('agent-plays-timebox');
+        const cap = $('agent-plays-cap');
         if (!go && !wipe) return;
         const tell = (text) => { const line = $('agent-plays-state'); if (line) line.textContent = text; };
+        // The mode waits for a sandbox worker: until one is registered and healthy the controls stay grey and
+        // the note says so.
+        const setReady = (ready) => {
+            if (go) go.disabled = !ready;
+            if (box) box.disabled = !ready;
+            if (cap) cap.disabled = !ready;
+            if (note) note.hidden = !!ready;
+        };
+        setReady(false);
+        (async () => {
+            try {
+                const res = await fetch(`/api/streams/agent/${encodeURIComponent(publicId)}/plays/worker`, { credentials: 'same-origin' });
+                if (!res.ok) return;
+                const data = await res.json();
+                setReady(!!(data && data.worker && data.worker.ready));
+            } catch { /* the controls stay grey: the worker is not here */ }
+        })();
         if (go) go.addEventListener('click', async () => {
             const box = $('agent-plays-timebox');
             const cap = $('agent-plays-cap');
