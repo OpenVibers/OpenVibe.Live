@@ -23,7 +23,7 @@ assert.deepStrictEqual(card.items, [
     { title: 'Nova', meta: '12 watching', url: 'https://openvibe.live/@nova' },
     { title: 'Kitchen radio', meta: '3 watching', url: 'https://openvibe.live/@kitchen' },
 ]);
-assert.deepStrictEqual(card.more, { label: 'See all', url: 'https://openvibe.live/live' });
+assert.deepStrictEqual(card.more, { label: 'See all', url: 'https://openvibe.live/' });
 assert.ok(card.items.length <= 6 && card.title.length <= 60);
 for (const item of card.items) assert.ok(item.title.length <= 80 && item.meta.length <= 120 && item.url.startsWith('https://openvibe.live/'));
 

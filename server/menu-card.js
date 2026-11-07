@@ -46,7 +46,7 @@ function cardFrom(rows, at = Date.now()) {
         title: 'Live now',
         kind: 'rail',
         items,
-        more: { label: 'See all', url: `${BASE}/live` },
+        more: { label: 'See all', url: `${BASE}/` },
         updated_at: new Date(at).toISOString(),
         ttl_s: CARD_TTL_S,
     };
