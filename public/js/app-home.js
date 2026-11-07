@@ -87,13 +87,25 @@ function ovUserTag(u, label) {
         + ` onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();ovUserMenu(event);}">${esc(name)}</span>`;
 }
 
-/** Open the chat user menu; if chat has not loaded, fall back to the channel. */
+/**
+ * Open the chat user menu.
+ *
+ * The chat UI is a lazy feature (public/features.json → chatUI) and this page has no chat of its
+ * own, so the menu is not here yet: fetch the chat UI and open the same menu. If it cannot be
+ * loaded, fall back to the channel — the name is a link to it.
+ */
 function ovUserMenu(event) {
     if (typeof showChatContextMenu === 'function') return showChatContextMenu(event);
     const el = event.currentTarget;
     const core = el && el.dataset && el.dataset.coreUsername;
     if (!core) return;
     event.preventDefault();
+    if (window.ov && typeof window.ov.load === 'function') {
+        window.ov.load('chatUI').then(() => {
+            if (typeof showChatContextMenu === 'function') showChatContextMenu(event);
+        }).catch(() => { navigate(`/@${core}`); });
+        return;
+    }
     navigate(`/@${core}`);
 }
 

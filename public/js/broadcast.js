@@ -851,7 +851,7 @@ function ensureBroadcastChat(streamId) {
     if (sidebar) sidebar.style.display = '';
     // The broadcast page is the signed-in streamer's own channel: say so, or chat takes it for someone else's and
     // never reads the streamer's own messages aloud (chat.js _isOwnChannelChat).
-    if (typeof initChat === 'function' && streamId) initChat(streamId, (typeof currentUser !== 'undefined' && currentUser && currentUser.id) || null);
+    if (streamId) withChatUi(() => initChat(streamId, (typeof currentUser !== 'undefined' && currentUser && currentUser.id) || null));
 }
 
 /* ── Sign-in gate ────────────────────────────────────────────── */

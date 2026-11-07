@@ -117,11 +117,13 @@
          their rules sit in the cascade exactly where they sat inside style.css. -->
     <meta name="ov-css-anchor">
     <link rel="stylesheet" href="/css/i18n-star.css">
-    <link rel="stylesheet" href="/css/chat-shared.css" media="print" onload="this.media='all';this.onload=null">
+    <!-- chat-shared.css belongs to the chat (features.json → chatUI): the pages that have chat ask
+         for it there, and a page without chat does not download it. -->
     <link rel="stylesheet" href="/css/broadcast.css" media="print" onload="this.media='all';this.onload=null">
     <link rel="stylesheet" href="/css/cosmetics.css" media="print" onload="this.media='all';this.onload=null">
     <link rel="stylesheet" href="/css/messenger.css" media="print" onload="this.media='all';this.onload=null">
     <noscript>
+        <!-- Without JavaScript the chat never fills, but the pages that have one still show it. -->
         <link rel="stylesheet" href="/css/chat-shared.css">
         <link rel="stylesheet" href="/css/broadcast.css">
         <link rel="stylesheet" href="/css/cosmetics.css">
@@ -443,12 +445,12 @@
 <script src="/shared/navbar.js" defer></script>
 <script src="/js/app.js" defer></script>
 <script src="/js/ov-navbar-live.js" defer></script>
-<script src="/js/chat-shared.js" defer></script>
 <script src="/js/lang-detect.js" defer></script>
 <script src="/js/chat-core.js" defer></script>
-<script src="/js/chat.js" defer></script>
 <!-- (js/admin.js removed — 130KB of unreachable code; /admin redirects off-site.) -->
-<!-- ── Floating Global Chat Widget (visible on non-chat pages) ── -->
+<!-- ── Floating Global Chat Widget (visible on non-chat pages) ──
+     The chat UI is a lazy feature (features.json → chatUI), so the handlers below are stubs
+     until it has loaded: the first click fetches it and then does the thing. -->
 <div id="floating-chat-widget" class="floating-chat-widget" style="display:none">
     <div class="fcw-header" onmousedown="fcwStartDrag(event)">
         <span><i class="fa-solid fa-comments"></i> Global Chat</span>

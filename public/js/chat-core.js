@@ -141,6 +141,22 @@ function _applyChatUi() {
     if (typeof syncTTSToggleButtons === 'function') syncTTSToggleButtons();
 }
 
+/**
+ * Run `fn` with the chat UI in place.
+ *
+ * The chat UI (public/js/chat.js — the socket, the messages, the panels) is a lazy feature
+ * (public/features.json → chatUI): only the pages that have chat ask for it. A page that has
+ * chat but has not loaded it yet — the route's scripts and the chat's arrive side by side — asks
+ * for it here first, so the socket is never missing when the page talks to it.
+ */
+function withChatUi(fn) {
+    if (typeof initChat !== 'function' && window.ov && typeof window.ov.load === 'function') {
+        window.ov.load('chatUI').then(() => { try { fn(); } catch (e) { console.warn('[chat]', e); } }, () => { });
+        return;
+    }
+    try { fn(); } catch (e) { console.warn('[chat]', e); }
+}
+
 // Portable chat preferences live in OpenVibe.Network (user modules chat.preferences and chat.tts_defaults),
 // read and written through OpenVibe.Chat at /api/chat/preferences and /api/chat/tts-settings. Only the
 // settings mapped below have fields there; the rest of chatSettings stays in Live's /api/auth/preferences. A patch value of null removes the

@@ -73,6 +73,15 @@ public/js/chat-core.js   the part of chat every page needs: toast(), the chat se
   Community cannot answer, the page is 200, never a false 404.
 - **Stubs.** Inline handlers such as `onclick="openSetupHub()"` work before a feature is loaded: the
   stub loads the feature, then calls the real function.
+- **The chat is a lazy feature.** The chat UI (`public/js/chat.js` — the socket, the messages, the
+  panels, the moderation — with `public/js/chat-shared.js` and `public/css/chat-shared.css`) is 340 KB
+  of JavaScript, so only the pages that have chat ask for it: the routes `/@…`, `/stream/…`, `/chat`
+  and `/broadcast` name the feature `chatUI` (public/features.json). It is a route feature and not a
+  dependency of `channel`, so the home page's idle prefetch of the channel page does not carry it.
+  The part of chat that every page needs — `toast()`, the chat settings, the floating chat button's
+  visibility, the `?vcInvite=` deep link — is `public/js/chat-core.js`. The chat UI's inline handlers
+  (the floating button, the chat pane's buttons) are in the feature's `stubs`, so a click before it
+  has loaded fetches it and then does the thing (`test/chat-ui-lazy.test.js`).
 - **Prefetch.** Hover or keyboard focus on an in-site link prefetches that route's files
   (`<link rel=prefetch>`, download only); a route's `idle` list is prefetched after load. Skipped on
   Save-Data, 2G and low-memory devices.

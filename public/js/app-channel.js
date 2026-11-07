@@ -966,7 +966,7 @@ async function loadChannelPage(username, managedStreamRef = null, legacySessionI
 
             // Offline: join the streamer's PERSISTENT chat room (not global) so
             // viewers can keep chatting + see history while the streamer is offline.
-            initChat(null, ch.user_id);
+            withChatUi(() => initChat(null, ch.user_id));
 
             // Hide stream tabs on offline channels
             const tabsC = document.getElementById('live-stream-tabs');
@@ -1924,7 +1924,7 @@ function activateChannelStream(stream) {
             console.error('[Player] init failed', e);
         }
     }
-    if (typeof initChat === 'function') initChat(stream.id, stream.user_id || _activeChannelUserId);
+    withChatUi(() => initChat(stream.id, stream.user_id || _activeChannelUserId));
     if (typeof startCoinHeartbeat === 'function') startCoinHeartbeat(stream.id);
     if (typeof updateChannelPointsNav === 'function') updateChannelPointsNav(stream.user_id);
     startUptime(stream.started_at);
@@ -3814,7 +3814,7 @@ async function openStream(streamId) {
         document.getElementById('follower-count').textContent = `${s.follower_count || 0} followers`;
 
         if (typeof initPlayer === 'function') initPlayer(s);
-        if (typeof initChat === 'function') initChat(streamId, s.user_id || _activeChannelUserId);
+        withChatUi(() => initChat(streamId, s.user_id || _activeChannelUserId));
         if (typeof startCoinHeartbeat === 'function') startCoinHeartbeat(streamId);
         if (typeof updateChannelPointsNav === 'function') updateChannelPointsNav(s.user_id);
         loadStreamGoals(streamId);
