@@ -121,6 +121,13 @@ async function check(name, fn) {
         assert.ok(!all.includes('bob'), 'no name in a schedule view');
         const signedOut = await call('POST', `/api/streams/agent/schedules/${soon.id}/remind`, { as: 0 });
         assert.strictEqual(signedOut.status, 401);
+        // Only a schedule the person may see: one beyond the 24-hour window, or a private one, is a 404.
+        const tooEarly = await call('POST', `/api/streams/agent/schedules/${later.id}/remind`, { as: 2 });
+        assert.strictEqual(tooEarly.status, 404, 'a schedule outside its public window is not offered');
+        await db.run("UPDATE agent_stream_schedules SET visibility = 'private' WHERE id = ?", [soon.id]);
+        const hidden = await call('POST', `/api/streams/agent/schedules/${soon.id}/remind`, { as: 2 });
+        assert.strictEqual(hidden.status, 404, "a private schedule's id is not an invitation");
+        await db.run("UPDATE agent_stream_schedules SET visibility = 'public' WHERE id = ?", [soon.id]);
     });
     await check('a due schedule with the desk offline says so and starts nothing', async () => {
         const missed = await makeSchedule({ title: 'Offline desk' });

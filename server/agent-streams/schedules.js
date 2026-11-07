@@ -172,6 +172,9 @@ async function remind(id, subject) {
     if (!/^usr_[0-9A-HJKMNP-TV-Z]{26}$/.test(String(subject || ''))) throw new ScheduleError(409, 'no_subject', 'This account has no OpenVibe subject yet; sign in again');
     const row = await rowOf(id);
     if (!row) throw new ScheduleError(404, 'schedule_not_found', 'No such schedule');
+    // Only a schedule this person may see: a public one inside its 24-hour window (a private one's id is not an
+    // invitation; the answer is the same 404 as a missing one).
+    if (row.visibility !== 'public' || Date.parse(service.iso(row.starts_at)) > Date.now() + AHEAD_MS) throw new ScheduleError(404, 'schedule_not_found', 'No such schedule');
     if (row.state !== 'scheduled' || Date.parse(service.iso(row.starts_at)) < Date.now()) throw new ScheduleError(409, 'schedule_over', 'This schedule has already started or ended');
     await db.run('INSERT INTO agent_schedule_reminders (schedule_id, subject_id) VALUES (?, ?) ON CONFLICT (schedule_id, subject_id) DO NOTHING', [id, subject]);
     const n = Number((await db.get('SELECT COUNT(*) AS n FROM agent_schedule_reminders WHERE schedule_id = ?', [id]))?.n || 0);
