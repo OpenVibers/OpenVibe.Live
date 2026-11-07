@@ -195,3 +195,18 @@ A moderator may not resume a pause the owner set. The overlay says "Paused by @m
 `agent_stream_controls` with who pressed it, which control and when; End also stops the room's Co-pilot reading while
 the task keeps running off camera. Curtain is S1's curtain, mute is S4's voice mute, and all four act within their
 design limits (2 s for pause and end, 1 s for curtain and mute).
+
+## Chat plays (S6)
+
+The mode `chatplays` works the room's queue: the viewers of the stream ask for something with `!do <request>`
+in the room on OpenVibe.Chat, vote for it with a thumbs up or `!vote <n>`, and the top request (pinned first,
+then the most votes, then the oldest) is the next task for the desk on OpenVibe.Codes.
+
+The owner page carries the controls: **Chat plays** with the time box (5 to 30 minutes, the default 10), the
+cap (money) and **Go**. Go arms the session once, so a stream never starts acting on chat unattended.
+**Wipe now** joins pause, curtain, mute and end: it stops the run and resets the sandbox, and every press is
+logged with who pressed it.
+
+The mode needs a public or unlisted stream, a task's service that can work the queue, and a budget the owner
+set. The desk reports the queue it works; the overlay draws the current request (with who asked for it) and
+the next three with their votes.
