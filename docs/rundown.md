@@ -152,7 +152,7 @@ Migration `0010_rundown.sql`:
 - `rundown_progress`: how far the desk has read each stream.
 - `rundown_reactions`: readers' reactions.
 
-Migration `0029_rundown_audiences.sql` (expand only, 2026-11-06) holds what the sharing system does not know:
+Migration `0030_rundown_audiences.sql` (expand only, 2026-11-06) holds what the sharing system does not know:
 
 - `rundown_visibility`: per stream, what the recording decides as the last thing Live heard about it (`vod_audience`, and `vod_members` for Specific people, which Media has no notion of). A stream with no row is Everyone.
 - `rundown_prefs`: the streamer's default audience for new write-ups. No row is Everyone.
