@@ -49,6 +49,9 @@ public/js/ov-loader.js   configures /shared/web-runtime.js (openvibe-shared): ov
                          route generations, scopes, stubs, transactional asset groups, ov.diagnostics()/ov.leaks()
 public/js/app.js         core: router, auth, API helper, shared renderers, connection pill
 public/js/app-*.js       route code split out of app.js: home, channel, media, chatpage, docs
+public/js/chat-core.js   the part of chat every page needs: toast(), the chat settings, the floating chat
+                         button's visibility, the ?vcInvite= deep link. The chat UI itself (public/js/chat.js)
+                         belongs to the pages that have chat.
 ```
 
 - **First paint.** `server/web/assets.js` renders `index.html` for the requested path: the route's
