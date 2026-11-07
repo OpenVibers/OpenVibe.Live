@@ -138,6 +138,29 @@ async function check(name, fn) {
         assert.strictEqual(top.current.author, 'mira', 'the current request says who asked for it');
     });
 
+    await check('the overlay reads the queue: the current request and the next three', async () => {
+        await raw.prepare(
+            `INSERT INTO agent_sandbox_workers (id, subject, service, status, last_seen_at, created_at)
+             VALUES ('sbw_test', ?, 'codes', 'ready', ?, ?)
+             ON CONFLICT (subject) DO UPDATE SET last_seen_at = excluded.last_seen_at`).run(SID.ann, Date.now(), Date.now());
+        await raw.prepare('UPDATE agent_streams SET plays_queue = ? WHERE managed_stream_id = ?').run(
+            JSON.stringify({
+                requests: [
+                    { request_id: 'req_1', text: 'build a snake game', votes: 12, author: { handle: 'mira' } },
+                    { request_id: 'req_2', text: 'draw a house', votes: 7, author: { handle: 'bob' } },
+                    { request_id: 'req_3', text: 'make a quiz', votes: 3, author: { handle: 'ann' } },
+                    { request_id: 'req_4', text: 'make a meme', votes: 1, author: { handle: 'jo' } },
+                ],
+                current: { request_id: 'req_1', text: 'build a snake game', author: { handle: 'mira' } },
+            }), stream.managed_stream_id);
+        const r = await call('GET', `/api/streams/agent/${stream.public_id}/plays/queue`);
+        assert.strictEqual(r.status, 200, JSON.stringify(r.data));
+        assert.strictEqual(r.data.queue.top.length, 3, 'the overlay shows the queue\'s top three');
+        assert.strictEqual(r.data.queue.top[0].request_id, 'req_1');
+        assert.strictEqual(r.data.queue.top[0].votes, 12);
+        assert.strictEqual(r.data.queue.current.author, 'mira', 'the current request says who asked for it');
+    });
+
     await check('a play request is never dispatched from here', async () => {
         const before = chatCalls.length;
         const r = await call('POST', `/api/streams/agent/${stream.public_id}/plays/queue`, { body: { requests: [], current: null } });

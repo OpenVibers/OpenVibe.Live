@@ -479,6 +479,22 @@ router.post('/:id/plays/worker', deskOrOwner, async (req, res) => {
     }
 });
 
+router.get('/:id/plays/queue', auth.viewer, async (req, res) => {
+    try {
+        const row = await load(req, res);
+        if (!row) return;
+        if (!await watchable(req, row)) return fail(res, 404, 'agent_stream_not_found', 'No such agent stream');
+        // The queue the desk reported: the current request with who asked for it, and the next three with
+        // their votes. The overlay draws this; it is the room's own business, so it is what the viewers see.
+        const top = plays.queueTop(row, 3);
+        res.set('Cache-Control', 'no-store');
+        res.json({ queue: top });
+    } catch (err) {
+        console.error('[AgentStream] the queue read failed:', err.message);
+        fail(res, 500, 'plays_queue_failed', 'The queue could not be read');
+    }
+});
+
 router.get('/:id/plays/worker', auth.publisher, async (req, res) => {
     try {
         const row = await load(req, res);

@@ -86,6 +86,10 @@
         const pausedLine = el('p', 'agent-overlay-paused');
         pausedLine.hidden = true;
 
+        // S6: the chat plays queue — the request the desk is on, and the next three with their votes.
+        const queueLine = el('p', 'agent-overlay-queue');
+        queueLine.hidden = true;
+
         const ticks = el('div', 'agent-overlay-ticks');
         ticks.setAttribute('role', 'list');
         ticks.setAttribute('aria-label', 'The last steps');
@@ -102,8 +106,12 @@
         sheet.hidden = true;
         const sheetList = el('ol', 'agent-overlay-sheet-list');
         sheet.appendChild(sheetList);
+        // S6: the queue's next three, with their votes.
+        const queueList = el('ol', 'agent-overlay-queue-list');
+        queueList.hidden = true;
+        sheet.appendChild(queueList);
 
-        body.append(taskLine, stepLine, pausedLine, captionLine, ticks, foot);
+        body.append(taskLine, stepLine, pausedLine, captionLine, queueLine, ticks, foot);
         root.append(foldBtn, body, sheet);
         host.appendChild(root);
 
@@ -162,6 +170,29 @@
             });
         }
 
+        /** S6: the queue the desk reported — the current request, and the next three with their votes. */
+        function renderQueue(queue) {
+            const q = queue || {};
+            const current = q.current || null;
+            const top = Array.isArray(q.top) ? q.top : [];
+            if (current) {
+                const who = current.author ? ` — ${current.author}` : '';
+                queueLine.textContent = `Working on: ${current.text}${who}`;
+                queueLine.hidden = false;
+            } else {
+                queueLine.textContent = '';
+                queueLine.hidden = true;
+            }
+            queueList.replaceChildren();
+            top.forEach((r, i) => {
+                const li = el('li', 'agent-overlay-queue-row');
+                li.append(el('span', 'agent-overlay-queue-place', `#${i + 1}`), el('span', 'agent-overlay-queue-text', r.text),
+                    el('span', 'agent-overlay-queue-votes', `${r.votes} vote${r.votes === 1 ? '' : 's'}`));
+                queueList.appendChild(li);
+            });
+            queueList.hidden = !top.length;
+        }
+
         function update(next) {
             const data = next || {};
             const steps = Array.isArray(data.steps) ? data.steps : lastSteps;
@@ -197,6 +228,8 @@
             }
             renderTicks(steps);
             renderSheet(steps);
+            // S6: the queue, when the desk reported one.
+            renderQueue(data.queue || null);
             const tests = lastTests(steps);
             testsLine.textContent = tests ? `${tests.passed} of ${tests.passed + tests.failed} passing` : '';
             testsLine.hidden = !tests;
