@@ -87,7 +87,7 @@ function createMenuCard({ load = () => db.getLiveStreams(), now = Date.now } = {
         res.set('Cache-Control', `public, max-age=${CARD_TTL_S}`)
             .set('Access-Control-Allow-Origin', '*')
             .set('Cross-Origin-Resource-Policy', 'cross-origin')
-            .json(body);
+            .json([body]);
     }
 
     return { card, handler, cardFrom, cacheMs: CACHE_MS };

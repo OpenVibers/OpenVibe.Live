@@ -64,7 +64,8 @@ assert.strictEqual(cardFrom([row({ display_name: '   ', username: 'quiet' })]).i
     await menu.handler({}, res);
     assert.strictEqual(headers['Access-Control-Allow-Origin'], '*');
     assert.strictEqual(headers['Cache-Control'], 'public, max-age=30');
-    assert.strictEqual(body.site, 'live');
+    assert.ok(Array.isArray(body) && body.length === 1, 'the file is an array of cards');
+    assert.strictEqual(body[0].site, 'live');
 
     // A failing database keeps the last good card instead of publishing an empty rail.
     let fail = false;
