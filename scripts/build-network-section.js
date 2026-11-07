@@ -34,7 +34,7 @@ const GROUPS = {
     games: { accent: '#a855f7', icon: 'fa-gamepad', line: 'Play in the browser, laugh, explore' },
     answers: { accent: '#f59e0b', icon: 'fa-newspaper', line: 'News, reports, reviews and answers' },
     make: { accent: '#3b82f6', icon: 'fa-wand-magic-sparkles', line: 'Tools, sites, bots, designs and code' },
-    shop: { accent: '#22c55e', icon: 'fa-bag-shopping', line: 'Deals, jobs, food, homes and trades' },
+    shop: { accent: '#22c55e', icon: 'fa-basket-shopping', line: 'Deals, jobs, food, homes and trades' },
     people: { accent: '#ec4899', icon: 'fa-user-group', line: 'Your people, your account, your stuff' },
     build: { accent: '#14b8a6', icon: 'fa-code', line: 'APIs and services to build on' },
 };
