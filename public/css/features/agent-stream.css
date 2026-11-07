@@ -83,6 +83,14 @@
 .agent-overlay-caption[hidden] { display: none; }
 /* S4: the voice label in the overlay's foot: which voice is speaking, and in which personality. */
 .agent-overlay-voice { color: #cfc7ff; font-weight: 600; }
+.agent-overlay-queue { margin: 2px 0 0; font-size: .82rem; color: #e8e2ff; }
+.agent-overlay-queue[hidden] { display: none; }
+.agent-overlay-queue-list { margin: 6px 0 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; }
+.agent-overlay-queue-list[hidden] { display: none; }
+.agent-overlay-queue-row { display: flex; align-items: baseline; gap: 8px; font-size: .82rem; }
+.agent-overlay-queue-place { color: #cfc7ff; font-weight: 600; }
+.agent-overlay-queue-text { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.agent-overlay-queue-votes { color: var(--text-secondary, #96a7c2); white-space: nowrap; }
 .agent-overlay-voice[hidden] { display: none; }
 .agent-overlay-caption::before { content: '\201C'; }
 .agent-overlay-caption::after { content: '\201D'; }

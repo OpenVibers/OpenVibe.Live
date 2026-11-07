@@ -763,6 +763,68 @@
         }
     }
 
+    /** S6: the chat plays controls on the owner page: the time box, the cap, Go and Wipe now. */
+    function bindPlays() {
+        const go = $('agent-plays-go');
+        const wipe = $('agent-plays-wipe');
+        const note = $('agent-plays-note');
+        const box = $('agent-plays-timebox');
+        const cap = $('agent-plays-cap');
+        if (!go && !wipe) return;
+        const tell = (text) => { const line = $('agent-plays-state'); if (line) line.textContent = text; };
+        // The mode waits for a sandbox worker: until one is registered and healthy the controls stay grey and
+        // the note says so.
+        const setReady = (ready) => {
+            if (go) go.disabled = !ready;
+            if (box) box.disabled = !ready;
+            if (cap) cap.disabled = !ready;
+            if (note) note.hidden = !!ready;
+        };
+        setReady(false);
+        (async () => {
+            try {
+                const res = await fetch(`/api/streams/agent/${encodeURIComponent(publicId)}/plays/worker`, { credentials: 'same-origin' });
+                if (!res.ok) return;
+                const data = await res.json();
+                setReady(!!(data && data.worker && data.worker.ready));
+            } catch { /* the controls stay grey: the worker is not here */ }
+        })();
+        if (go) go.addEventListener('click', async () => {
+            const box = $('agent-plays-timebox');
+            const cap = $('agent-plays-cap');
+            try {
+                const res = await fetch(`/api/streams/agent/${encodeURIComponent(publicId)}/plays`, {
+                    method: 'PUT', credentials: 'same-origin',
+                    headers: { 'content-type': 'application/json' },
+                    body: JSON.stringify({
+                        time_box_minutes: Number(box && box.value) || 10,
+                        cap_cents: Math.round((Number(cap && cap.value) || 0) * 100),
+                        go: true,
+                    }),
+                });
+                if (!res.ok) throw new Error('The chat plays settings could not be saved');
+                tell('Go: the desk may work the queue. The first request waits for it.');
+            } catch (err) {
+                tell((err && err.message) || 'That did not work');
+            }
+        });
+        if (wipe) wipe.addEventListener('click', async () => {
+            try {
+                const res = await fetch(`/api/streams/agent/${encodeURIComponent(publicId)}/control`, {
+                    method: 'POST', credentials: 'same-origin',
+                    headers: { 'content-type': 'application/json' },
+                    body: JSON.stringify({ control: 'wipe' }),
+                });
+                if (!res.ok) throw new Error('The desk could not be wiped');
+                tell('Wiped: the run stopped and the sandbox is empty.');
+            } catch (err) {
+                tell((err && err.message) || 'That did not work');
+            }
+        });
+    }
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', bindPlays);
+    else bindPlays();
+
     window.loadAgentStreamPage = loadAgentStreamPage;
     window.stopAgentStreamPage = stop;
 })();

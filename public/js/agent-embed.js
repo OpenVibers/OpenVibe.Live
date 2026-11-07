@@ -11,6 +11,12 @@
     const id = body && body.dataset ? body.dataset.agentId : '';
     if (!id) return;
     const $ = (name) => document.getElementById(name);
+    // A page embedding this one cannot see a `frame-ancestors` refusal (the blocked frame shows an error page, and a
+    // parent may not read it). This one message says the embed really loaded; the Dock falls back to the still and a
+    // link to the stream when it never arrives. It carries nothing: no ticket, no stream.
+    try {
+        if (window.parent && window.parent !== window) window.parent.postMessage({ type: 'ov-agent-embed', v: 1 }, '*');
+    } catch { /* no parent to tell */ }
     let ticket = new URLSearchParams(location.search).get('vt') || '';
     let player = null;
     let renewTimer = null;
@@ -39,12 +45,23 @@
         }, 8 * 60 * 1000);
     }
 
+    let queueView = null;
+
     /** The overlay (S2): the same band the page draws, from the same steps feed, never burned into the video. */
     function drawOverlay(stream) {
         const host = $('agent-embed-overlay');
         if (!host || !window.AgentOverlay) return;
         if (!overlay) overlay = window.AgentOverlay.create({ host, title: stream.title, initial: steps });
-        overlay.update({ steps, task: stream.task, workedSeconds: stream.worked_seconds, state: stream.state, pausedBy: streamView && streamView.__pausedBy });
+        overlay.update({ steps, task: stream.task, workedSeconds: stream.worked_seconds, state: stream.state, pausedBy: streamView && streamView.__pausedBy, queue: queueView });
+    }
+
+    /** S6: the chat plays queue the desk reported: the current request and the next three. */
+    async function pollQueue() {
+        try {
+            const out = await json(`/api/streams/agent/${encodeURIComponent(id)}/plays/queue`);
+            queueView = out && out.queue ? out.queue : null;
+        } catch { queueView = null; }
+        drawOverlay(streamView || {});
     }
 
     function pollSteps() {
@@ -60,6 +77,7 @@
                 if (steps.length > 200) steps = steps.slice(-200);
                 if (streamView) drawOverlay(streamView);
             } catch { /* the next turn tries again */ }
+            await pollQueue();
             pollSteps();
         }, 2500);
     }
@@ -102,6 +120,7 @@
             }
         }
         drawOverlay(stream);
+        await pollQueue();
         if (!steps.length) {
             try { const out = await json(`/api/streams/agent/${encodeURIComponent(id)}/steps`); steps = out.steps || []; } catch { /* */ }
             drawOverlay(stream);

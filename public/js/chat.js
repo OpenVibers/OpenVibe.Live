@@ -2833,6 +2833,10 @@ function addChatMessage(msg) {
         _fcwAddMessage(msg);
         return;
     }
+    // A go-live or Rundown notice is an event card, like the deploy card (2026-11-07, the owner: "make it more
+    // properly styled like the rest of chat").
+    const ev = _chatEventOf(msg);
+    if (ev) { renderChatEventCard(ev, { isGlobal: chatEl.isGlobal }); return; }
     const el = buildChatMessageEl(msg, { isGlobal: chatEl.isGlobal });
     if (!_loadingHistory) el.classList.add('chat-msg-new');
 
@@ -2982,6 +2986,166 @@ function addRichSystemMessage(html, style = 'info') {
     else if (style === 'conn') el.classList.add('chat-conn-note');
     el.innerHTML = html;
     container.appendChild(el);
+    scrollChat();
+    if (_chatUserScrolledUp) _onNewChatMessageWhileScrolledUp();
+}
+
+/* ── Event cards: someone went live, a Rundown episode is out ──────────────────
+ * Live posts these as system rows ("🔴 <name> is live. Share the stream: <url>", metadata.kind 'live_link';
+ * "📰 <name>: “<title>” → <url>", metadata.rundown_episode). They were italic blue sentences with a bare URL; now
+ * each is a small card like the deploy card: what happened, who, when (with the viewer's timestamp setting, always in
+ * global chat as messages are), a Watch/Read button and a copy-link button. Old rows are recognised by their text.
+ * The same person going live again within 15 minutes updates the card instead of adding another. Built from DOM
+ * nodes; a link is used only when it is an OpenVibe address. */
+const _CHAT_EV_LIVE_RE = /^\s*\u{1F534}\s*(.+?) is live\. Share the stream:\s*(https?:\/\/\S+)\s*$/u;
+const _CHAT_EV_RUNDOWN_RE = /^\s*\u{1F4F0}\s*(.+?):\s*[“"](.+)[”"]\s*→\s*(https?:\/\/\S+)\s*$/u;
+const _CHAT_EV_FOLD_MS = 15 * 60 * 1000;
+function _chatEvSafeUrl(u) {
+    try {
+        let x; try { x = new URL(String(u || '')); } catch { x = new URL(String(u || ''), window.location.origin); }
+        if (x.protocol !== 'https:' && x.origin !== window.location.origin) return null;
+        const h = x.hostname.toLowerCase();
+        if (x.origin === window.location.origin || h === 'openvibe.live' || h.endsWith('.openvibe.live')) return x.href;
+    } catch { /* not a URL */ }
+    return null;
+}
+function _chatEventOf(m) {
+    if (!m || m.message_type !== 'system') return null;
+    let meta = null; try { meta = typeof m.metadata === 'string' ? JSON.parse(m.metadata) : m.metadata; } catch { meta = null; }
+    const text = String(m.message || m.text || '');
+    const at = m.timestamp || m.created_at || null;
+    const live = text.match(_CHAT_EV_LIVE_RE);
+    if ((meta && meta.kind === 'live_link') || live) {
+        const url = _chatEvSafeUrl((meta && meta.url) || (live && live[2]));
+        if (!url) return null;
+        const handle = (url.match(/\/@([^/?#]+)/) || [])[1];
+        const name = (live && live[1]) || (handle ? decodeURIComponent(handle) : 'Someone');
+        return { kind: 'live', id: m.id, name, url, at, key: `live:${name.toLowerCase()}` };
+    }
+    const rd = text.match(_CHAT_EV_RUNDOWN_RE);
+    if ((meta && meta.rundown_episode) || rd) {
+        const url = _chatEvSafeUrl((meta && meta.url) || (rd && rd[3]));
+        if (!url) return null;
+        return { kind: 'rundown', id: m.id, name: rd ? rd[1] : 'A streamer', title: rd ? rd[2] : 'A new episode', url, at, key: `rundown:${url}` };
+    }
+    return null;
+}
+function _chatEvCss() {
+    if (document.getElementById('chat-ev-css')) return;
+    const st = document.createElement('style'); st.id = 'chat-ev-css';
+    st.textContent = `.chat-msg.system.chat-ev,.chat-msg.system.chat-ev *{font-style:normal}
+.chat-ev{--ev:var(--accent,#3b82f6);container-type:inline-size;display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:4px 10px;margin:6px 0;padding:8px 8px 8px 10px;border-radius:12px;border:1px solid color-mix(in srgb,var(--ev) 30%,transparent);background:linear-gradient(90deg,color-mix(in srgb,var(--ev) 12%,transparent),color-mix(in srgb,var(--ev) 4%,transparent) 70%);color:var(--text-secondary,#a8b3c4);font-size:.84rem;line-height:1.35}
+.chat-ev--live{--ev:var(--live,#ef4444)}
+.chat-ev.chat-msg-new{animation:chatEvIn .32s var(--ov-ease-out,cubic-bezier(.2,.8,.2,1)) both}
+@keyframes chatEvIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+.chat-ev-icon{position:relative;display:grid;place-items:center;width:30px;height:30px;border-radius:50%;background:color-mix(in srgb,var(--ev) 18%,transparent);color:var(--ev);font-size:.85rem}
+.chat-ev--live .chat-ev-icon::before{content:'';width:10px;height:10px;border-radius:50%;background:var(--ev);box-shadow:0 0 0 0 color-mix(in srgb,var(--ev) 60%,transparent);animation:chatEvPulse 1.8s ease-out infinite}
+@keyframes chatEvPulse{0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--ev) 55%,transparent)}70%{box-shadow:0 0 0 9px transparent}100%{box-shadow:0 0 0 0 transparent}}
+.chat-ev-body{min-width:0}
+.chat-ev-line{display:flex;flex-wrap:wrap;column-gap:.3em;color:var(--text-primary,#e6edf7)}.chat-ev-line b{min-width:0;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:700}
+.chat-ev-title{display:block;flex-basis:100%;min-width:0;margin-top:2px;color:var(--text-secondary,#a8b3c4);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chat-ev-meta{display:block;margin-top:2px;font-size:.72rem;color:var(--text-muted,#7d8aa0)}
+.chat-ev-acts{display:flex;align-items:center;gap:4px}
+.chat-ev-cta{display:inline-flex;align-items:center;gap:6px;min-height:30px;padding:0 11px;border-radius:999px;background:var(--ev);color:#fff;font-weight:700;font-size:.76rem;text-decoration:none;white-space:nowrap}
+.chat-ev-cta:hover{filter:brightness(1.1)}.chat-ev-cta:focus-visible,.chat-ev-copy:focus-visible{outline:2px solid var(--ev);outline-offset:2px}
+.chat-ev-copy{display:grid;place-items:center;width:30px;height:30px;border-radius:50%;border:0;background:transparent;color:var(--text-muted,#7d8aa0);cursor:pointer}
+.chat-ev-copy:hover{background:color-mix(in srgb,var(--text-primary,#fff) 8%,transparent);color:var(--text-primary,#e6edf7)}
+@media (pointer:coarse){.chat-ev-cta{min-height:44px;padding:0 14px}.chat-ev-copy{width:44px;height:44px}}
+@container (max-width:360px){.chat-ev-cta{padding:0;width:36px;justify-content:center;font-size:0}.chat-ev-cta i{font-size:.8rem}}
+@container (max-width:360px){@media (pointer:coarse){.chat-ev-cta{width:44px}}}
+@media (prefers-reduced-motion:reduce){.chat-ev.chat-msg-new{animation:none}.chat-ev--live .chat-ev-icon::before{animation:none}}`;
+    document.head.appendChild(st);
+}
+function _chatEvTime(at) {
+    const d = at ? _parseMsgTime(at) : new Date();
+    const t = d instanceof Date && !isNaN(d) ? d : new Date();
+    const opts = chatSettings.timestampFormat === '24h' ? { hour: '2-digit', minute: '2-digit', hour12: false } : { hour: '2-digit', minute: '2-digit' };
+    return { date: t, text: t.toLocaleTimeString([], opts) };
+}
+function renderChatEventCard(ev, opts = {}) {
+    const { messages: container } = getChatEl();
+    if (!container || !ev) return;
+    _chatEvCss();
+    if (ev.id != null && container.querySelector(`[data-msg-id="${CSS.escape(String(ev.id))}"]`)) return;
+    const when = _chatEvTime(ev.at);
+    const showTime = !!opts.isGlobal || !!chatSettings.showTimestamps;
+    // The same person going live again within 15 minutes: the card they already have is brought up to date.
+    if (ev.kind === 'live') {
+        const recent = [...container.children].slice(-12).reverse().find((c) => c.dataset && c.dataset.evKey === ev.key);
+        if (recent && Math.abs(when.date - Number(recent.dataset.evAt || 0)) < _CHAT_EV_FOLD_MS) {
+            recent.dataset.evAt = String(when.date.getTime());
+            let meta = recent.querySelector('.chat-ev-meta');
+            if (!meta) { meta = document.createElement('span'); meta.className = 'chat-ev-meta'; recent.querySelector('.chat-ev-body').appendChild(meta); }
+            meta.textContent = showTime ? `${when.text} · went live again` : 'Went live again';
+            return;
+        }
+    }
+    const el = document.createElement('div');
+    el.className = `chat-msg system chat-ev chat-ev--${ev.kind}`;
+    if (!_loadingHistory) el.classList.add('chat-msg-new');
+    if (ev.id != null) el.dataset.msgId = String(ev.id);
+    el.dataset.evKey = ev.key;
+    el.dataset.evAt = String(when.date.getTime());
+    el.setAttribute('role', 'article');
+
+    const icon = document.createElement('span');
+    icon.className = 'chat-ev-icon';
+    icon.setAttribute('aria-hidden', 'true');
+    if (ev.kind === 'rundown') icon.innerHTML = '<i class="fa-solid fa-newspaper"></i>';
+
+    const body = document.createElement('div');
+    body.className = 'chat-ev-body';
+    const line = document.createElement('div');
+    line.className = 'chat-ev-line';
+    const who = document.createElement('b');
+    who.textContent = ev.name;
+    if (ev.kind === 'live') {
+        line.append(who, ' is live');
+    } else {
+        line.append(who, ' on The Rundown');
+        const title = document.createElement('span'); title.className = 'chat-ev-title'; title.textContent = `“${ev.title}”`;
+        line.append(title);
+    }
+    body.appendChild(line);
+    // The time, with the viewer's timestamp setting (the Watch/Read button is the link, so no address is repeated).
+    if (showTime) {
+        const meta = document.createElement('span');
+        meta.className = 'chat-ev-meta';
+        meta.textContent = when.text;
+        body.appendChild(meta);
+    }
+
+    const acts = document.createElement('div');
+    acts.className = 'chat-ev-acts';
+    const cta = document.createElement('a');
+    cta.className = 'chat-ev-cta';
+    cta.href = ev.url;
+    cta.innerHTML = ev.kind === 'live' ? '<i class="fa-solid fa-play" aria-hidden="true"></i> Watch' : '<i class="fa-solid fa-book-open" aria-hidden="true"></i> Read';
+    cta.setAttribute('aria-label', ev.kind === 'live' ? `Watch ${ev.name} live` : `Read ${ev.name}'s Rundown episode`);
+    cta.addEventListener('click', (e) => {
+        try {
+            const u = new URL(ev.url);
+            if (u.origin === window.location.origin && typeof handleLinkClick === 'function') handleLinkClick(e, u.pathname + u.search + u.hash);
+        } catch { /* a normal link */ }
+    });
+    const copy = document.createElement('button');
+    copy.type = 'button';
+    copy.className = 'chat-ev-copy';
+    copy.title = 'Copy the link';
+    copy.setAttribute('aria-label', 'Copy the link');
+    copy.innerHTML = '<i class="fa-solid fa-link" aria-hidden="true"></i>';
+    copy.addEventListener('click', async () => {
+        try { await navigator.clipboard.writeText(ev.url); toast('Link copied', 'success'); } catch { toast('Could not copy the link', 'error'); }
+    });
+    acts.append(cta, copy);
+    el.append(icon, body, acts);
+    container.appendChild(el);
+    if (!_loadingHistory) {
+        if (typeof _chatTrim === 'function') _chatTrim(container, MAIN_CHAT_MAX_MESSAGES);
+        if (typeof queueFullscreenChatEntry === 'function') {
+            queueFullscreenChatEntry({ kind: 'system', html: `<div class="fullscreen-chat-text">${esc(ev.kind === 'live' ? `${ev.name} went live` : `${ev.name} on The Rundown: “${ev.title}”`)}</div>` });
+        }
+    }
     scrollChat();
     if (_chatUserScrolledUp) _onNewChatMessageWhileScrolledUp();
 }
@@ -3762,6 +3926,8 @@ function _renderGlobalHistoryMessages(msgs) {
     _foldDeployRows(msgs).forEach(m => {
         if (m.__deploy) {
             renderDeployCard(m.__deploy);
+        } else if (m.message_type === 'system' && _chatEventOf(m)) {
+            renderChatEventCard(_chatEventOf(m), { isGlobal: true });
         } else if (m.message_type === 'system') {
             // Other system messages keep the plain system styling
             addRichSystemMessage(esc(m.message), 'update');

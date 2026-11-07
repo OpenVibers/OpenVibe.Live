@@ -71,6 +71,22 @@
                 </select>
                 <p class="agent-note" id="agent-copilot-note" hidden>Co-pilot needs a public or unlisted stream and a task's service that can read a digest.</p>
             </div>
+            <div class="agent-field" id="agent-plays">
+                <label class="agent-field-label" for="agent-plays-timebox">Chat plays</label>
+                <p class="agent-note">The desk works the room's queue. Set the time box and the cap, then press Go: the first request waits for it, so a stream never starts acting on chat unattended.</p>
+                <p class="agent-note" id="agent-plays-note">Needs the sandbox worker; coming soon. A request runs in a network-isolated worker, and there is none yet.</p>
+                <div class="agent-field-row">
+                    <label class="agent-field-label" for="agent-plays-timebox">Minutes per request</label>
+                    <input id="agent-plays-timebox" type="number" min="5" max="30" step="1" value="10" class="agent-input" inputmode="numeric" disabled>
+                    <label class="agent-field-label" for="agent-plays-cap">Cap in dollars</label>
+                    <input id="agent-plays-cap" type="number" min="0" step="0.5" value="5" class="agent-input" inputmode="decimal" disabled>
+                </div>
+                <div class="agent-actions">
+                    <button type="button" class="btn btn-primary" id="agent-plays-go" disabled>Go — arm the desk</button>
+                    <button type="button" class="btn btn-danger" id="agent-plays-wipe">Wipe now</button>
+                </div>
+                <p class="agent-note" id="agent-plays-state"></p>
+            </div>
             <div class="agent-field">
                 <label class="agent-field-label" for="agent-voice-personality">How it says it</label>
                 <select id="agent-voice-personality" class="agent-select">

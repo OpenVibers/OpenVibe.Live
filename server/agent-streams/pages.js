@@ -22,9 +22,30 @@ const SERVICE_SITES = [
 ];
 
 /** The CSP frame-ancestors list: first-party origins, plus a deployment's extra ones from the environment. */
-function frameAncestors() {
+const EXTENSION_ORIGIN_RE = /^chrome-extension:\/\/[a-p]{32}$/;
+const EXTENSION_ORIGINS_ENV = 'AGENT_EMBED_EXTENSION_ORIGINS';
+
+/**
+ * The Companion extension's exact origin (`chrome-extension://<32 letters a-p>`), the Chrome Web Store id the owner
+ * sets once the extension is published. Only exact origins, comma-separated: never a scheme-wide `chrome-extension:`
+ * or `moz-extension:`, because any installed extension could then frame a person's private screen and trick a click.
+ * Anything else is ignored, with one warning at boot. Empty by default: today's header, unchanged.
+ */
+function parseExtensionOrigins(raw, log = console) {
+    const kept = [];
+    const ignored = [];
+    for (const value of String(raw || '').split(',').map((v) => v.trim()).filter(Boolean)) {
+        (EXTENSION_ORIGIN_RE.test(value) ? kept : ignored).push(value);
+    }
+    if (ignored.length) log.warn(`[AgentStream] ${EXTENSION_ORIGINS_ENV}: ignoring ${ignored.join(', ')} (each entry must be exactly chrome-extension://<32 letters a-p>)`);
+    return [...new Set(kept)];
+}
+
+const EXTENSION_ORIGINS = parseExtensionOrigins(process.env[EXTENSION_ORIGINS_ENV]);
+
+function frameAncestors(extensions = EXTENSION_ORIGINS) {
     const extra = String(process.env.AGENT_EMBED_FRAME_ANCESTORS || '').split(/[\s,]+/).filter(Boolean);
-    return ["'self'", ...SERVICE_SITES, ...extra].join(' ');
+    return ["'self'", ...SERVICE_SITES, ...extra, ...extensions].join(' ');
 }
 
 function embedCsp() {
@@ -89,4 +110,4 @@ async function embed(req, res) {
     res.type('html').send(html(id));
 }
 
-module.exports = { embed, embedCsp, frameAncestors, SERVICE_SITES };
+module.exports = { embed, embedCsp, frameAncestors, parseExtensionOrigins, EXTENSION_ORIGINS, EXTENSION_ORIGIN_RE, SERVICE_SITES };
