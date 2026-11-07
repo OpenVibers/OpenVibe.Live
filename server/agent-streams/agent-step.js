@@ -18,7 +18,7 @@ const iso = (v) => {
     return Number.isNaN(d.getTime()) ? null : d.toISOString();
 };
 
-/** The stream's page on Live (its own address, with the unlisted link's secret when the caller has it). */
+/** The stream's public page on Live (its own address); the step carries no unlisted link's secret. */
 function pageUrl(row, baseUrl = 'https://openvibe.live') {
     const base = String(baseUrl || 'https://openvibe.live').replace(/\/+$/, '');
     return `${base}/@${encodeURIComponent(row.username || '')}/agents/${encodeURIComponent(row.public_id)}`;
