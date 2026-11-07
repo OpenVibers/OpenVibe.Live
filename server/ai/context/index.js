@@ -24,6 +24,7 @@ const crypto = require('crypto');
 const db = require('../../db/database');
 const chatReads = require('../../chat/chat-reads');
 const insightClient = require('../../chat/insight-client');
+const soundCaptions = require('../sound-captions');
 
 function clip(str, n) { return (str == null ? '' : String(str)).replace(/\s+/g, ' ').trim().slice(0, n); }
 function clipWords(str, n) { const t = clip(str, n * 8); return t.length > n ? t.slice(0, n).replace(/\s+\S*$/, '') + '…' : t; }
@@ -143,13 +144,15 @@ async function heardBlock(stream, settings) {
     let lastEnd = null;
     for (const r of rows) {
         if (r.kind === 'speech') { const t = scrubSpeech(r.text); if (hasWords(t)) { speech.push(`[${mmss(r.start_sec)}] ${t}`); lastEnd = r.end_sec || r.start_sec; } }
-        else if (r.kind === 'sound' && r.label) sounds.push({ label: r.label, at: r.start_sec, confidence: r.confidence });
+        else if (r.kind === 'sound' && r.label) sounds.push({ label: r.label, start_sec: r.start_sec, confidence: r.confidence });
     }
+    // Only tagged sounds above their bar, by tag (sound-captions.evidence); the detector's long tail is mostly wrong.
+    const heardSounds = soundCaptions.evidence(sounds, { spanSec: settings.hear_window_sec || 90 }).map((e) => ({ label: e.label, at: e.start_sec, confidence: e.confidence }));
     let text = speech.join('\n');
     if (text.length > 900) text = text.slice(-900).replace(/^[^\[]*/, '');
-    const uniqSounds = [...new Set(sounds.map(s => s.label))].slice(0, 6);
+    const uniqSounds = [...new Set(heardSounds.map(s => s.label))].slice(0, 6);
     const ageMs = lastEnd != null ? Math.max(0, (off - lastEnd) * 1000) : null;
-    return { text, ageMs, count: speech.length, sounds: uniqSounds, latestSound: sounds.length ? sounds[sounds.length - 1] : null };
+    return { text, ageMs, count: speech.length, sounds: uniqSounds, latestSound: heardSounds.length ? heardSounds[heardSounds.length - 1] : null };
 }
 
 async function seenBlock(stream) {
