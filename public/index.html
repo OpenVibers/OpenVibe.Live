@@ -107,7 +107,7 @@
 
     <!-- Stylesheets.
          Blocking set = what the home page paints with. Everything else belongs to another route
-         (the broadcast desk, the messenger, the cosmetics modal, after-show reports, the guide
+         (the messenger, the cosmetics modal, after-show reports, the guide
          overlay) and is fetched without blocking the first paint: media="print" makes the browser
          treat it as non-critical, and the onload flips it back to all once it has arrived. -->
     <link rel="stylesheet" href="/css/style.css">
@@ -119,12 +119,10 @@
     <link rel="stylesheet" href="/css/i18n-star.css">
     <!-- chat-shared.css belongs to the chat (features.json → chatUI): the pages that have chat ask
          for it there, and a page without chat does not download it. -->
-    <link rel="stylesheet" href="/css/broadcast.css" media="print" onload="this.media='all';this.onload=null">
     <link rel="stylesheet" href="/css/cosmetics.css" media="print" onload="this.media='all';this.onload=null">
     <noscript>
         <!-- Without JavaScript the chat never fills, but the pages that have one still show it. -->
         <link rel="stylesheet" href="/css/chat-shared.css">
-        <link rel="stylesheet" href="/css/broadcast.css">
         <link rel="stylesheet" href="/css/cosmetics.css">
     </noscript>
     

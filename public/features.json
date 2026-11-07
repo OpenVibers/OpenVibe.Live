@@ -235,7 +235,8 @@
     "broadcast": {
       "fragment": "broadcast",
       "css": [
-        "/css/features/broadcast.css"
+        "/css/features/broadcast.css",
+        "/css/broadcast.css"
       ],
       "deps": [
         "money",
@@ -292,7 +293,8 @@
     "dashboard": {
       "fragment": "dashboard",
       "css": [
-        "/css/features/dashboard.css"
+        "/css/features/dashboard.css",
+        "/css/broadcast.css"
       ],
       "deps": [
         "money",
