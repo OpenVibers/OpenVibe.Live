@@ -2030,16 +2030,34 @@ function loadMoreChannelAgents(button) {
     try { _agentsPaging.grid.more(); } finally { if (button) button.disabled = false; }
 }
 
-function switchChannelTab(tab, btn) {
+// The channel's sections are all on the page (owner 10-31: content is never hidden behind a tab). The row above them is a
+// jump bar: a press scrolls to the section (and opens a fold); the section loads its data the first time it comes near
+// the screen, or when it is jumped to. Inline handlers keep this name (features.json stubs).
+function switchChannelTab(tab, btn, jump) {
     _channelTab = tab;
+    _markChannelJump(tab);
+    _ensureChannelSection(tab);
+    if (!jump) return;
+    const panel = document.getElementById('ch-panel-' + tab);
+    if (!panel || panel.hidden) return;
+    const fold = panel.querySelector('details.ch-fold');
+    if (fold && !fold.open) fold.open = true;
+    const reduce = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+    panel.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' });
+}
+function _markChannelJump(tab) {
     document.querySelectorAll('#ch-tabs .ch-tab').forEach(b => {
         const on = b.dataset.tab === tab;
         b.classList.toggle('active', on);
-        b.setAttribute('aria-selected', on ? 'true' : 'false');
+        if (on) b.setAttribute('aria-current', 'true'); else b.removeAttribute('aria-current');
     });
-    document.querySelectorAll('.ch-tab-panel').forEach(p => p.classList.remove('active'));
-    const panel = document.getElementById('ch-panel-' + tab);
-    if (panel) panel.classList.add('active');
+}
+// A section's data: once, the first time it is near the screen or jumped to. The two folds (AI timeline, Analytics)
+// load when opened, not on the way past; the media queue reloads when it comes back into view (it changes constantly).
+let _chMediaAt = 0;
+function _ensureChannelSection(tab, passing) {
+    if (passing && (tab === 'analytics' || tab === 'ai-timeline')) return;
+    if (tab === 'media') { if (Date.now() - _chMediaAt < 15000) return; _chMediaAt = Date.now(); }
     // Lazy-load the fetched-separately tabs the first time they're opened.
     if (tab === 'analytics' && currentChannelUsername && !_chTabLoaded.analytics) {
         _chTabLoaded.analytics = true;
@@ -2053,7 +2071,8 @@ function switchChannelTab(tab, btn) {
         _chTabLoaded.clipsTaken = true;
         try { loadClipsTaken(currentChannelUsername, { reset: true }); } catch {}
     }
-    if (tab === 'agents' && currentChannelUsername) {
+    if (tab === 'agents' && currentChannelUsername && !_chTabLoaded.agents) {
+        _chTabLoaded.agents = true;
         try { loadChannelAgents(currentChannelUsername); } catch {}
     }
     if (tab === 'ai-timeline' && currentChannelUsername && !_chTabLoaded.aiTimeline) {
@@ -2064,6 +2083,32 @@ function switchChannelTab(tab, btn) {
     if (tab === 'media' && currentChannelUsername) {
         try { loadChannelMedia(currentChannelUsername); } catch {}
     }
+}
+// A section whose jump link is hidden (no About, no agents, Media requests off) is hidden with it: it has nothing in it.
+function _syncChannelSections() {
+    document.querySelectorAll('#ch-tabs .ch-tab[data-tab]').forEach(b => {
+        const panel = document.getElementById('ch-panel-' + b.dataset.tab);
+        if (panel) panel.hidden = b.style.display === 'none';
+    });
+}
+let _chSecObs = null, _chSpyObs = null, _chTabsObs = null;
+function _watchChannelSections() {
+    _syncChannelSections();
+    const tabs = document.getElementById('ch-tabs');
+    if (!_chTabsObs && tabs && window.MutationObserver) {
+        _chTabsObs = new MutationObserver(_syncChannelSections);
+        _chTabsObs.observe(tabs, { subtree: true, attributes: true, attributeFilter: ['style'] });
+    }
+    const panels = document.querySelectorAll('#page-channel .ch-tab-panel');
+    if (!('IntersectionObserver' in window)) { panels.forEach(p => _ensureChannelSection(p.id.replace('ch-panel-', ''), true)); return; }
+    if (!_chSecObs) _chSecObs = new IntersectionObserver((es) => es.forEach(e => { if (e.isIntersecting) _ensureChannelSection(e.target.id.replace('ch-panel-', ''), true); }), { rootMargin: '600px 0px' });
+    if (!_chSpyObs) _chSpyObs = new IntersectionObserver((es) => es.forEach(e => { if (e.isIntersecting) _markChannelJump(e.target.id.replace('ch-panel-', '')); }), { rootMargin: '-35% 0px -60% 0px' });
+    panels.forEach(p => { _chSecObs.observe(p); _chSpyObs.observe(p); });
+    document.querySelectorAll('#page-channel details.ch-fold').forEach(f => {
+        if (f._ovBound) return;
+        f._ovBound = true;
+        f.addEventListener('toggle', () => { if (f.open) _ensureChannelSection(f.dataset.chFold); });
+    });
 }
 
 // The owner's public game progress (roadmap WS-M task 2): GET /api/streams/channel/:username/game answers
@@ -2096,12 +2141,8 @@ function _applyChannelHashTab() {
     if (!h || !CHANNEL_TAB_HASHES.includes(h)) return;
     const btn = document.querySelector(`#ch-tabs .ch-tab[data-tab="${h}"]`);
     if (!btn || btn.style.display === 'none') return; // tab hidden / not present for this channel
-    switchChannelTab(h, btn);
-    // Jump to the tab strip once the panel has had a beat to render its content.
-    setTimeout(() => {
-        (document.getElementById('ch-tabs') || document.getElementById('ch-panel-' + h))
-            ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }, 200);
+    // Jump to the section once it has had a beat to render its content.
+    setTimeout(() => switchChannelTab(h, btn, true), 200);
 }
 let _chTabLoaded = {};
 let _chAnalyticsDays = 7;
@@ -2171,6 +2212,7 @@ function _resetChannelTabs(ch) {
     // Default to About when it has real content (bio/panels or a shown AI overview).
     const defTab = (hasAbout || hasAiOverview) ? 'about' : 'videos';
     switchChannelTab(defTab, document.querySelector(`#ch-tabs .ch-tab[data-tab="${defTab}"]`));
+    _watchChannelSections();
     // Media tab starts hidden; revealed by _initMediaRequestTab when applicable.
     // (Controls are no longer a tab — they render in a section under the player.)
     const medBtn = document.getElementById('ch-tab-btn-media');
@@ -2670,6 +2712,7 @@ function _applyChannelTabMeta(data) {
     setBadge('ch-tab-badge-clips-taken', data.clipsTakenTotal);
     setBadge('ch-tab-badge-pastes', data.pasteTotal);
     setBadge('ch-tab-badge-ai-timeline', data.aiEventTotal);
+    { const n = document.getElementById('ch-fold-n-ai-timeline'), b = document.getElementById('ch-tab-badge-ai-timeline'); if (n && b) n.textContent = b.hidden ? '' : `${b.textContent} moments`; }
 
     // Never hide tabs for the channel owner — they manage their own content.
     const isOwner = !!(currentUser && currentChannelUsername && currentUser.username === currentChannelUsername);
@@ -2774,10 +2817,13 @@ function _aboutRowCard(kind, it) {
 function _renderAboutRecent() {
     const host = document.getElementById('ch-about-recent');
     if (!host) return;
+    // Sections, not tabs (11-07): the Videos and Clips sections follow About on the page, so these preview rows would
+    // show the same cards twice. They were there so an About tab was never a one-line bio over empty space.
+    if (document.getElementById('ch-panel-videos')) { host.innerHTML = ''; return; }
     const r = _aboutRecent;
     if (!r || r.username !== currentChannelUsername) { host.innerHTML = ''; return; }
     const row = (title, icon, tab, kind, items) => items.length ? `<section class="ch-about-sec">
-        <h3 class="ch-about-h"><i class="fa-solid ${icon}"></i> ${title}<button type="button" class="ch-about-more" onclick="switchChannelTab('${tab}', document.querySelector('.ch-tab[data-tab=${tab}]'))">See all <i class="fa-solid fa-arrow-right"></i></button></h3>
+        <h3 class="ch-about-h"><i class="fa-solid ${icon}"></i> ${title}<button type="button" class="ch-about-more" onclick="switchChannelTab('${tab}', document.querySelector('.ch-tab[data-tab=${tab}]'), true)">See all <i class="fa-solid fa-arrow-right"></i></button></h3>
         <div class="ch-about-row">${items.map((it) => _aboutRowCard(kind, it)).join('')}</div>
     </section>` : '';
     host.innerHTML = row('Latest videos', 'fa-video', 'videos', 'vod', r.vods) + row('Popular clips', 'fa-scissors', 'clips', 'clip', r.clips);
@@ -3168,7 +3214,7 @@ async function confirmMediaRequest() {
 function editAboutFromTab() {
     if (!_aboutCanEdit) return;
     const btn = document.getElementById('ch-tab-btn-about');
-    switchChannelTab('about', btn);
+    switchChannelTab('about', btn, true);
     if (!_aboutEditMode) toggleAboutEdit();
 }
 function toggleAboutEdit() {
