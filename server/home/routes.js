@@ -66,8 +66,24 @@ async function _mediaContent() {
     return _mediaPool;
 }
 
+// Community's public address: a screenshot paste's bytes are served by its guarded /p/<slug>/screenshot.
+const COMMUNITY_PUBLIC_URL = String(process.env.OV_COMMUNITY_PUBLIC_URL || 'https://openvibe.community').replace(/\/+$/, '');
+const MEDIA_OBJECT_RE = /\/o\/med_[0-9A-HJKMNP-TV-Z]{26}(?:[/?#]|$)/;
+
+/**
+ * A moment frame or paste image that can actually load. Screenshots are private Media objects since the sharing work,
+ * so a stored https://openvibe.media/o/med_… is a 404 in a browser (2026-11-07: every AI moment frame was broken). A
+ * frame that came from a paste is read through Community's guarded /p/<slug>/screenshot; one without a paste to point
+ * at is dropped rather than drawn broken.
+ */
+function _loadableShot(url, pasteSlug) {
+    if (!url) return null;
+    if (!MEDIA_OBJECT_RE.test(String(url))) return url;
+    return pasteSlug && /^[A-Za-z0-9_-]{1,80}$/.test(String(pasteSlug)) ? `${COMMUNITY_PUBLIC_URL}/p/${encodeURIComponent(pasteSlug)}/screenshot` : null;
+}
+
 function _pasteThumb(p) {
-    if (p.screenshot_url) return media.publicUrl(p.screenshot_url);
+    if (p.screenshot_url) return _loadableShot(media.publicUrl(p.screenshot_url), p.slug);
     if (p.type === 'screenshot' && p.slug) return media.pasteScreenshotUrl(p.slug);
     return null;
 }
@@ -103,7 +119,7 @@ async function heroMedia() {
         for (const m of (hm.moments || [])) {
             if (!m || !m.vodId) continue;
             items.push({
-                kind: 'moment', title: m.title || 'AI Moment', thumbnail: m.thumbnail || null,
+                kind: 'moment', title: m.title || 'AI Moment', thumbnail: _loadableShot(m.thumbnail, m.pasteSlug),
                 href: videoUrl('vod', m.vodId, m.offset || 0), username: m.username,
             });
         }
@@ -120,7 +136,8 @@ async function heroMoments() {
     try {
         const hm = JSON.parse(await db.getState('home_hero_moments') || '{}');
         return (hm.moments || [])
-            .filter(m => m && m.vodId && m.thumbnail && require('./front-page-text').frontPageOk(m.title || ''))
+            .map(m => (m && m.vodId ? { ...m, thumbnail: _loadableShot(m.thumbnail, m.pasteSlug) } : null))
+            .filter(m => m && m.thumbnail && require('./front-page-text').frontPageOk(m.title || ''))
             .map(m => ({ title: m.title || 'AI Moment', thumbnail: m.thumbnail, href: videoUrl('vod', m.vodId, m.offset || 0), username: m.username }));
     } catch { return []; }
 }
@@ -628,3 +645,4 @@ module.exports.heroMoments = heroMoments;
 // after a deploy). The timer is unref'd so it never holds the process open.
 // A restore drill runs no timers (and its hero would only find Media and Network down).
 if (!require('../drill').enabled) setTimeout(() => { buildHero(null).catch(() => {}); }, 15000).unref?.();
+module.exports._loadableShot = _loadableShot;
