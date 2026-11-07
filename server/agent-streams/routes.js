@@ -408,6 +408,7 @@ router.post('/:id/control', auth.viewer, async (req, res) => {
     try {
         const row = await load(req, res);
         if (!row) return;
+        if (req.viewer && req.viewer.is_banned) return fail(res, 403, 'user_banned', 'A banned account cannot press a control');
         const role = await roleOn(row, req.viewer);
         if (!role) return fail(res, 403, 'not_moderator', 'Only the owner or a channel moderator may press this');
         const body = req.body || {};
@@ -462,6 +463,7 @@ router.get('/:id/controls', auth.viewer, async (req, res) => {
     try {
         const row = await load(req, res);
         if (!row) return;
+        if (req.viewer && req.viewer.is_banned) return fail(res, 403, 'user_banned', 'A banned account cannot read the controls');
         const role = await roleOn(row, req.viewer);
         if (!role) return fail(res, 403, 'not_moderator', 'Only the owner or a channel moderator may read this');
         const rows = await require('../db/database').all(
