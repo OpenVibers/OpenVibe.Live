@@ -21,6 +21,7 @@ const db = require('../db/database');
 const contracts = require('openvibe-contracts');
 const identity = require('../auth/identity-sync');
 const sharing = require('./sharing');
+const { agentStepEnvelope, stepChangeOf } = require('./agent-step');
 
 const SUBJECT_RE = /^usr_[0-9A-HJKMNP-TV-Z]{26}$/;
 const AGENT_ID_RE = /^ags_[0-9A-HJKMNP-TV-Z]{26}$/;
@@ -286,15 +287,21 @@ async function update(row, { set = {}, event = null }) {
         priority: event.kind === 'started' || event.kind === 'ended' ? 'important' : 'normal',
         payload: { stream_id: row.public_id, kind: event.kind, at: new Date().toISOString(), ...(event.extra || {}) },
     } : null;
+    // The agent's step (design 2026-11-07): the stream starts as a running step and ends as a stopped one. A pause,
+    // a curtain or a mute is not a step; the stream is the one step, and a mode change is the next stream's.
+    const stepChange = stepChangeOf(row, set, event);
+    const stepEnv = stepChange ? agentStepEnvelope(row, { ...stepChange, baseUrl: config.baseUrl }) : null;
     let outbox;
+    let stepOutbox;
     await db.getDb().tx(async () => {
         await db.run(
             `UPDATE agent_streams SET ${names.map((n) => `${n} = ?`).join(', ')}, updated_at = now() WHERE managed_stream_id = ?`,
             [...names.map((n) => set[n]), row.managed_stream_id]
         );
         if (env) outbox = await require('../events/stream-events').enqueue(env);
+        if (stepEnv) stepOutbox = await require('../events/stream-events').enqueue(stepEnv);
     });
-    if (outbox) require('../events/stream-events').kick();
+    if (outbox || stepOutbox) require('../events/stream-events').kick();
     return await getByManagedStreamId(row.managed_stream_id);
 }
 
