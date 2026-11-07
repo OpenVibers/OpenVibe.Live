@@ -16,6 +16,7 @@
  */
 'use strict';
 const seo = require('openvibe-shared/seo');
+const kit = require('openvibe-shared/kit');
 const { esc } = seo;
 const { setRobotsHeader } = require('../web/robots-header');
 const db = require('../db/database');
@@ -356,11 +357,16 @@ async function _channelMeta(username, page = 1) {
     }
     body += `<p><a href="${esc(abs(basePath))}">Visit ${esc(name)}'s channel</a> on ${SITE_NAME}.</p></article>`;
 
+    // The Ask your agent chip (openvibe-shared 4.135.0, plan Z3): the stream while live, the channel offline.
+    const askText = liveNow
+        ? `About this stream on OpenVibe.Live: ${name} — ${clean(liveNow.title || `${name} is streaming`, 110)}. `
+        : `About ${name}'s channel on OpenVibe.Live. `;
+
     return {
         title: `${name} (${handle})${pageLabel} — ${SITE_NAME}`, description: desc,
         canonicalPath, image, ogType: 'profile',
         robots: acct.banned || pastEnd ? 'noindex,follow' : 'index,follow',
-        jsonLd: ld, snapshot: body,
+        jsonLd: ld, snapshot: body, askText,
         cacheTtlMs: track.partial ? SHORT_CACHE_MS : CHANNEL_CACHE_MS,
     };
 }
@@ -873,6 +879,10 @@ function render(meta, urlPath) {
     let html = _base();
     if (!html) return null;
     html = assets.renderRoute(html, urlPath || meta.canonicalPath || '/');
+
+    // The channel page's Ask your agent chip (openvibe-shared 4.135.0, plan Z3): the channel fragment leaves a slot,
+    // filled here where the channel and its stream are known. kit.askAgent escapes the text; other routes have no slot.
+    if (meta.askText) html = html.replace('<span id="ch-ask-slot"></span>', `<span id="ch-ask-slot">${kit.askAgent({ text: meta.askText })}</span>`);
 
     // Only the <head> is rewritten, so only the <head> is scanned.
     //
