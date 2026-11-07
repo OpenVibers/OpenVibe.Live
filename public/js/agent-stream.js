@@ -20,6 +20,10 @@
     let pollTimer = null;
     let stepsTimer = null;
     let steps = [];            // the overlay's feed, oldest first (at most the last 200)
+    let lines = [];            // S4: the lines the agent said, oldest first (the overlay's caption)
+    let voice = null;          // S4: the voice settings (mode, personality, voice, muted, paused)
+    let voicesLoaded = false;
+    let linesTimer = null;
     let overlay = null;
     let chaptersFor = null;    // the stream id whose chapters are rendered (they never change while the page lives)
     let generation = 0;   // bumped on every page leave, so a slow request from the last page changes nothing
@@ -34,8 +38,12 @@
         if (renewTimer) { clearTimeout(renewTimer); renewTimer = null; }
         if (pollTimer) { clearTimeout(pollTimer); pollTimer = null; }
         if (stepsTimer) { clearTimeout(stepsTimer); stepsTimer = null; }
+        if (linesTimer) { clearTimeout(linesTimer); linesTimer = null; }
         if (overlay) { try { overlay.destroy(); } catch { /* */ } overlay = null; }
         steps = [];
+        lines = [];
+        voice = null;
+        voicesLoaded = false;
         chaptersFor = null;
         state = null;
         ticket = null;
@@ -135,7 +143,42 @@
             task: data.stream.task,
             workedSeconds: data.stream.worked_seconds,
             state: data.stream.state,
+            caption: captionText(),
+            voice,
         });
+    }
+
+    /** S4: the newest line the agent said, for the overlay's caption. */
+    function captionText() {
+        if (!lines.length) return '';
+        const line = lines[lines.length - 1];
+        return line && line.text ? line.text : '';
+    }
+
+    /**
+     * S4: the lines the agent said. The page polls the same feed the desk reads, so the caption follows the voice.
+     */
+    function scheduleLines(data) {
+        if (linesTimer) { clearTimeout(linesTimer); linesTimer = null; }
+        if (data.stream.state === 'ended') return;
+        const gen = generation;
+        const id = data.stream.id;
+        linesTimer = setTimeout(async () => {
+            if (gen !== generation) return;
+            try {
+                const after = lines.length ? lines[lines.length - 1].id : null;
+                const next = await api(`/streams/agent/${encodeURIComponent(id)}/lines${after ? `?after=${after}` : ''}`);
+                if (gen !== generation) return;
+                if (next && next.voice) { voice = next.voice; renderVoice(); }
+                if (next && Array.isArray(next.lines) && next.lines.length) {
+                    const known = new Set(lines.map((line) => line.id));
+                    for (const line of next.lines) if (!known.has(line.id)) lines.push(line);
+                    if (lines.length > 100) lines = lines.slice(-100);
+                    if (state && state.stream) ensureOverlay(state);
+                }
+            } catch { /* the next turn tries again */ }
+            if (gen === generation && state) scheduleLines(state);
+        }, 2500);
     }
 
     /** Keep the overlay's feed current while the work is live: only the steps after the newest one are fetched. */
@@ -288,7 +331,10 @@
         mountPlays(data);
         ensureOverlay(data);
         renderOwner(data);
+        renderVoice();
+        loadVoices();
         scheduleRenew(data);
+        scheduleLines(data);
         schedulePoll(stream.id);
         if (!steps.length) loadInitialSteps(stream.id).then(() => { if (state && state.stream) { ensureOverlay(state); if (state.stream.state === 'ended') renderRecording(state); } });
         scheduleSteps(data);
@@ -327,10 +373,71 @@
             }
         }
         renderCurtain(!!(stream.curtain && stream.curtain.up));
+        renderVoice();
         const endBtn = $('agent-end');
         if (endBtn) endBtn.hidden = stream.state === 'ended';
         const confirm = $('agent-end-confirm');
         if (confirm && stream.state === 'ended') confirm.hidden = true;
+    }
+
+    /** S4: the voice panel. The mode, the personality, the voice and the mute, and the allowance message. */
+    function renderVoice() {
+        const panel = $('agent-owner');
+        if (!panel || panel.hidden || !voice) return;
+        const mode = $('agent-voice-mode');
+        if (mode) mode.value = voice.mode === 'narrated' ? 'narrated' : 'watch';
+        const personality = $('agent-voice-personality');
+        if (personality) personality.value = voice.personality || 'calm';
+        const own = $('agent-voice-own');
+        if (own) own.value = voice.own ? 'yes' : 'no';
+        const pick = $('agent-voice-pick');
+        if (pick && voice.voice && !pick.value) pick.value = voice.voice;
+        const mute = $('agent-voice-mute');
+        if (mute) {
+            mute.textContent = voice.muted ? 'Unmute voice' : 'Mute voice';
+            mute.classList.toggle('btn-outline', !voice.muted);
+            mute.classList.toggle('btn-danger', !!voice.muted);
+        }
+        const state = $('agent-voice-state');
+        if (state) {
+            if (voice.paused === 'allowance_spent') {
+                state.textContent = 'voice paused: allowance spent';
+            } else if (voice.muted) {
+                state.textContent = 'The voice is muted.';
+            } else if (voice.mode === 'narrated') {
+                state.textContent = `Narrated, in a ${voice.personality || 'calm'} voice.`;
+            } else {
+                state.textContent = 'The agent is silent (Watch mode).';
+            }
+        }
+    }
+
+    /** S4: the voice list, from Chat's public catalogue. A site without Chat keeps the current voice. */
+    async function loadVoices() {
+        if (voicesLoaded) return;
+        voicesLoaded = true;
+        const pick = $('agent-voice-pick');
+        if (!pick) return;
+        try {
+            const res = await fetch('/api/tts/voices', { headers: { Accept: 'application/json' } });
+            if (!res.ok) throw new Error('no voices');
+            const data = await res.json();
+            const list = Array.isArray(data && data.voices) ? data.voices : [];
+            pick.replaceChildren();
+            for (const entry of list) {
+                const id = typeof entry === 'string' ? entry : entry && entry.id;
+                if (!id) continue;
+                const name = (typeof entry === 'object' && entry.name) || id;
+                const option = document.createElement('option');
+                option.value = String(id);
+                option.textContent = String(name);
+                pick.appendChild(option);
+            }
+            if (voice && voice.voice) pick.value = voice.voice;
+        } catch {
+            const note = $('agent-voice-note');
+            if (note) note.textContent = 'The voice list is unavailable right now.';
+        }
     }
 
     function scheduleRenew(data) {
@@ -392,6 +499,45 @@
             } catch (err) {
                 select.value = state ? state.stream.visibility : 'private';
                 const hint = $('agent-hint');
+                if (hint) hint.textContent = (err && err.message) || 'That did not save.';
+            }
+        });
+
+        // S4: the voice controls. Every change is one PUT; the mute is one POST (a moderator may do it too).
+        const saveVoice = async (body) => {
+            const id = idOf();
+            if (!id) return;
+            try {
+                const next = await api(`/streams/agent/${encodeURIComponent(id)}/voice`, { method: 'PUT', body });
+                if (next && next.voice) { voice = next.voice; renderVoice(); }
+            } catch (err) {
+                const hint = $('agent-voice-state');
+                if (hint) hint.textContent = (err && err.message) || 'That did not save.';
+            }
+        };
+
+        $('agent-voice-mode').addEventListener('change', (event) => {
+            saveVoice({ mode: event.currentTarget.value });
+        });
+        $('agent-voice-personality').addEventListener('change', (event) => {
+            saveVoice({ personality: event.currentTarget.value });
+        });
+        $('agent-voice-pick').addEventListener('change', (event) => {
+            saveVoice({ voice: event.currentTarget.value || null });
+        });
+        $('agent-voice-own').addEventListener('change', (event) => {
+            // The person's own cloned voice: the consent flag travels with it, so it can never be switched on quietly.
+            saveVoice({ own: event.currentTarget.value === 'yes', own_consent: event.currentTarget.value === 'yes' });
+        });
+        $('agent-voice-mute').addEventListener('click', async () => {
+            const id = idOf();
+            if (!id) return;
+            const muted = !(voice && voice.muted);
+            try {
+                const next = await api(`/streams/agent/${encodeURIComponent(id)}/voice/mute`, { method: 'POST', body: { muted } });
+                if (next && next.voice) { voice = next.voice; renderVoice(); }
+            } catch (err) {
+                const hint = $('agent-voice-state');
                 if (hint) hint.textContent = (err && err.message) || 'That did not save.';
             }
         });

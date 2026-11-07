@@ -35,6 +35,18 @@ async function sweep() {
         }
     }
 
+    // S4: a narrated stream that has gone quiet says something small on its own (the voice's own idle gap rules).
+    try {
+        const voice = require('./voice');
+        const quiet = await db.all(`SELECT ms.id AS managed_stream_id FROM agent_streams a
+            JOIN managed_streams ms ON ms.id = a.managed_stream_id
+            WHERE a.state = 'live' AND a.mode = 'narrated' AND a.voice_muted = false LIMIT 50`);
+        for (const q of quiet) {
+            const row = await service.getByManagedStreamId(q.managed_stream_id);
+            if (row) await voice.writer.maybeIdle(row);
+        }
+    } catch (err) { console.warn('[AgentStream] idle voice failed:', err.message); }
+
     try { await tickets.prune(); } catch (err) { console.warn('[AgentStream] ticket prune failed:', err.message); }
     try {
         const sharing = require('./sharing');

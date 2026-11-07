@@ -78,6 +78,14 @@
 .agent-overlay-tick.is-skipped { background: #94a3b8; }
 .agent-overlay-tick:hover, .agent-overlay-tick.is-open { opacity: 1; transform: scaleY(1.35); }
 .agent-overlay-foot { margin: 1px 0 0; display: flex; flex-wrap: wrap; gap: 4px 12px; color: #c3c8ce; font-size: 0.74rem; }
+/* S4: the caption under the step: the line the agent is saying right now. */
+.agent-overlay-caption { margin: 0; color: #f3f4f6; font-size: 0.8rem; font-style: italic; line-height: 1.25; }
+.agent-overlay-caption[hidden] { display: none; }
+/* S4: the voice label in the overlay's foot: which voice is speaking, and in which personality. */
+.agent-overlay-voice { color: #cfc7ff; font-weight: 600; }
+.agent-overlay-voice[hidden] { display: none; }
+.agent-overlay-caption::before { content: '\201C'; }
+.agent-overlay-caption::after { content: '\201D'; }
 .agent-overlay-foot span[hidden] { display: none; }
 .agent-overlay-tests { color: #e5e7eb; }
 .agent-overlay-fold { position: absolute; right: 6px; bottom: 8px; width: 26px; height: 26px; padding: 0; border: 1px solid rgba(255, 255, 255, 0.22); border-radius: 7px; background: rgba(10, 12, 16, 0.8); color: #e5e7eb; cursor: pointer; font-size: 0.7rem; }
@@ -100,6 +108,7 @@
 @media (max-width: 640px) {
     .agent-overlay { padding: 6px 8px; font-size: 0.76rem; }
     .agent-overlay-task, .agent-overlay-ticks, .agent-overlay-foot { display: none; }
+    .agent-overlay-caption { font-size: 0.76rem; }
     .agent-overlay-body { padding-right: 30px; }
 }
 

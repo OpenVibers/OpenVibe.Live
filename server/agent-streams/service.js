@@ -74,6 +74,7 @@ const SELECT = `
            ms.created_at AS slot_created_at,
            a.task, a.visibility, a.mode, a.state, a.curtain_up, a.curtain_since, a.curtain_reason,
            a.started_at, a.ended_at, a.worked_seconds, a.last_frame_path, a.last_frame_at, a.vod_id, a.allow_sites,
+           a.voice, a.personality, a.voice_muted, a.voice_own, a.voice_own_consent_at, a.voice_paused,
            a.unlisted_secret_hash,
            (SELECT s.id FROM streams s WHERE s.managed_stream_id = ms.id AND s.is_live = 1 ORDER BY s.started_at DESC LIMIT 1) AS live_session_id,
            (SELECT st.title FROM agent_stream_steps st WHERE st.managed_stream_id = ms.id ORDER BY st.id DESC LIMIT 1) AS latest_step_title,

@@ -84,8 +84,13 @@ communityRouter.post('/:slug/set-avatar', requireAuth, async (req, res) => {
         if (paste.type !== 'screenshot' || !paste.screenshot_url) return res.status(400).json({ error: 'That paste is not an image' });
         const avatarUrl = media.publicUrl(paste.screenshot_url) || paste.screenshot_url;
         await db.updateUserAvatar(req.user.id, avatarUrl, null);
-        try { require('../utils/notify').reportAvatarChange({ id: req.user.id, avatar_url: avatarUrl }); } catch { /* next sign-in */ }
-        res.json({ success: true, avatar_url: avatarUrl });
+        // The Network copies the screenshot into the person's own avatar object; the paste stays untouched.
+        let stored = avatarUrl;
+        try {
+            const synced = await require('../utils/notify').syncAvatarChange({ id: req.user.id, avatar_url: avatarUrl });
+            if (synced && synced.avatar_url) { stored = synced.avatar_url; await db.updateUserAvatar(req.user.id, stored, null); }
+        } catch { /* next report */ }
+        res.json({ success: true, avatar_url: stored });
     } catch (err) {
         console.warn('[Pastes → Community] set-avatar:', err.message);
         res.status(500).json({ error: 'Failed to set avatar' });
