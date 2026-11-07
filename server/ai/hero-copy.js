@@ -19,12 +19,16 @@ const MINOR_SKIN = { test: (s) => MINOR.test(s) && SKIN.test(s) };
 const CRUDE = /\b(cum|horny|porn\w*|nsfw|fuck\w*|shit\w*|piss\w*|bitch\w*|cunt|wank\w*|poop\w*|fart\w*|turds?|ass(hole)?s?|butthole)\b/i;
 // A keyboard mash taken for a name ("qeqweqwe watchers").
 const MASH = /(qwe|ewq|asdf|sdfg|zxcv|qeqw)/i;
+// A test account taken for an audience ("Live streaming for testing_testers crew testing", 2026-11-07): a name that
+// starts or ends a snake_case part with "test", or "test"/"tester"/"testing" followed by digits. "contest_king",
+// "Tesla" and the word "testing" on its own are not test accounts.
+const TEST_ACCOUNT = /\btest\w*_\w+|\b\w+_test\w*|\btest(er|ing)?\d+\b/i;
 
-const RULES = [NO_FREE, MINOR_SKIN, CRUDE, MASH];
+const RULES = [NO_FREE, MINOR_SKIN, CRUDE, MASH, TEST_ACCOUNT];
 
 function publicOk(text) {
     const s = String(text == null ? '' : text);
     return !RULES.some((re) => re.test(s));
 }
 
-module.exports = { publicOk, NO_FREE, MINOR_SKIN, CRUDE, MASH };
+module.exports = { publicOk, NO_FREE, MINOR_SKIN, CRUDE, MASH, TEST_ACCOUNT };
