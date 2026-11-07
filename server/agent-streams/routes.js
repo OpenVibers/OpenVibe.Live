@@ -460,17 +460,24 @@ router.post('/:id/plays/queue', deskOrOwner, async (req, res) => {
  * owner's session) names the stream, so the worker is registered for that owner and for nobody else.
  * GET  /:id/plays/worker — what the owner page shows: is there a worker, and is it healthy?
  */
-router.post('/:id/plays/worker', deskOrOwner, async (req, res) => {
+router.post('/:id/plays/worker', auth.sandboxRegistrar, async (req, res) => {
     try {
         const row = await load(req, res);
         if (!row) return;
+        // The worker says whose sandbox it is, and it must be this stream's owner: a worker registered for
+        // somebody else does not make this stream safe to run in.
+        if (String(row.owner_subject || '') !== String(req.sandboxWorker.subject)) {
+            return fail(res, 403, 'sandbox_worker.not_yours', 'This worker works for another account');
+        }
         const body = req.body || {};
         const out = await sandbox.checkIn({
             subject: row.owner_subject,
-            service: String(body.service || 'unknown').slice(0, 40),
-            endpoint: body.endpoint ? String(body.endpoint).slice(0, 200) : null,
+            service: req.sandboxWorker.service,
+            isolation: body.isolation || null,
         });
-        if (!out.ok) return fail(res, 422, out.code, 'The worker could not check in');
+        if (!out.ok) {
+            return fail(res, 422, out.code, 'A worker that cannot say it is isolated is not registered');
+        }
         res.set('Cache-Control', 'no-store');
         res.json({ worker: await sandbox.state(row.owner_subject) });
     } catch (err) {

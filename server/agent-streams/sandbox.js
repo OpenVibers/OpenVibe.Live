@@ -7,18 +7,31 @@
  * That worker is not built yet. Until one is registered and healthy, Live refuses the chat plays mode: the
  * mode may not be switched on, Go may not be pressed, and the owner page says so in as many words.
  *
- * A worker checks in for the person it works for (the publish ticket or the service token names the stream,
- * so the worker is registered for the stream's owner and nobody else) and is healthy while it keeps checking
- * in: a worker that stopped checking in is not there, and the mode is refused again.
+ * Who may register a worker: only OpenVibe's sandbox worker itself. It checks in with a Network service
+ * token whose principal holds the capability live.agent_sandbox.register, and it names the person it works
+ * for. The owner cannot register one, a desk ticket cannot, and nobody else can: an owner who could would
+ * declare their own unisolated machine a sandbox, and the gate would mean nothing.
  *
- * The registry is a table, not a process: Live may run in more than one process, and the worker checks in
- * from another machine.
+ * Health comes only from the worker's own check-ins: a check-in within the last WORKER_STALE_MS (a minute)
+ * that reports the isolation Live requires. The owner can read that state and cannot change it.
+ *
+ * Live never stores an endpoint and never calls the worker: the worker reports, it is not called.
  */
 const crypto = require('crypto');
 const db = require('../db/database');
 
-const WORKER_STALE_MS = 2 * 60 * 1000;
+const WORKER_STALE_MS = 60 * 1000;
 const REASON = 'Needs the sandbox worker; coming soon';
+
+// The isolation a worker must report: no host network, no credentials, no profile, and every egress
+// request through the proxy that applies the guard.
+const REQUIRED_ISOLATION = {
+    host_network: false,
+    credentials: false,
+    profile: false,
+    egress_proxy: true,
+    workspace: 'ephemeral',
+};
 
 const ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
 function ulid(now = Date.now()) {
@@ -28,6 +41,15 @@ function ulid(now = Date.now()) {
     let rand = '';
     for (let i = 0; i < 16; i++) rand += ALPHABET[bytes[i] % 32];
     return time + rand;
+}
+
+/** Does the report say the worker is isolated the way Live requires? */
+function isolationOk(report) {
+    if (!report || typeof report !== 'object') return false;
+    for (const [key, want] of Object.entries(REQUIRED_ISOLATION)) {
+        if (report[key] !== want) return false;
+    }
+    return true;
 }
 
 /**
@@ -49,21 +71,31 @@ async function workerFor(subject, { now = Date.now() } = {}) {
     if (!seen || now - seen > WORKER_STALE_MS) {
         return { ok: false, code: 'sandbox_worker_stale', reason: REASON, worker: row };
     }
+    // The worker must still report the isolation Live requires.
+    let isolation = null;
+    try { isolation = typeof row.isolation === 'string' ? JSON.parse(row.isolation) : row.isolation; } catch { isolation = null; }
+    if (!isolationOk(isolation)) {
+        return { ok: false, code: 'sandbox_worker_not_isolated', reason: REASON, worker: row };
+    }
     return { ok: true, worker: row };
 }
 
-/** The worker checks in: it is there, now. */
-async function checkIn({ subject, service = 'unknown', endpoint = null, now = Date.now() }) {
+/** The worker checks in: it is there, now, and it says how it is isolated. */
+async function checkIn({ subject, service = 'unknown', isolation = null, now = Date.now() }) {
     if (!subject) return { ok: false, code: 'sandbox_worker_no_subject' };
+    if (!isolationOk(isolation)) {
+        // A worker that cannot say it is isolated is not one: it is not registered at all.
+        return { ok: false, code: 'sandbox_worker_not_isolated' };
+    }
     const at = Number(now);
     const existing = await db.getDb().prepare('SELECT id FROM agent_sandbox_workers WHERE subject = ? LIMIT 1').get(String(subject));
     const id = (existing && existing.id) || ('sbw_' + ulid(at));
     await db.getDb().prepare(
-        `INSERT INTO agent_sandbox_workers (id, subject, service, endpoint, status, last_seen_at, created_at)
+        `INSERT INTO agent_sandbox_workers (id, subject, service, isolation, status, last_seen_at, created_at)
          VALUES (?, ?, ?, ?, 'ready', ?, ?)
          ON CONFLICT (subject) DO UPDATE SET status = 'ready', service = excluded.service,
-             endpoint = excluded.endpoint, last_seen_at = excluded.last_seen_at`)
-        .run(id, String(subject), String(service || 'unknown'), endpoint ? String(endpoint) : null, at, at);
+             isolation = excluded.isolation, last_seen_at = excluded.last_seen_at`)
+        .run(id, String(subject), String(service || 'unknown'), JSON.stringify(isolation), at, at);
     return { ok: true, id, subject: String(subject), last_seen_at: at };
 }
 
@@ -79,4 +111,4 @@ async function state(subject, { now = Date.now() } = {}) {
     };
 }
 
-module.exports = { WORKER_STALE_MS, REASON, workerFor, checkIn, state, ulid };
+module.exports = { WORKER_STALE_MS, REASON, REQUIRED_ISOLATION, isolationOk, workerFor, checkIn, state, ulid };

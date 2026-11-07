@@ -210,3 +210,33 @@ logged with who pressed it.
 The mode needs a public or unlisted stream, a task's service that can work the queue, and a budget the owner
 set. The desk reports the queue it works; the overlay draws the current request (with who asked for it) and
 the next three with their votes.
+
+### The sandbox worker
+
+A chat plays request runs in a network-isolated worker: a container or namespace with no host network, no
+credentials, no access to the owner's files, and every egress request through the proxy that applies the
+guard. It is never the owner's own Codes worker, Node or desk. That worker does not exist yet, so Live
+refuses the mode (409 `chatplays_needs_sandbox_worker`) and the owner page says "Needs the sandbox worker;
+coming soon" in as many words.
+
+Only OpenVibe's sandbox worker may register one. It checks in with a Network service token whose principal
+holds the capability `live.agent_sandbox.register`, and it names the person it works for in
+`X-OV-Subject`; the person must be the stream's owner.
+
+```
+POST /api/streams/agent/<ags_id>/plays/worker   the worker checks in (service token, X-OV-Subject)
+    body: { "isolation": { "host_network": false, "credentials": false, "profile": false,
+                            "egress_proxy": true, "workspace": "ephemeral" } }
+GET  /api/streams/agent/<ags_id>/plays/worker   is there a worker, and is it healthy? (the owner)
+```
+
+The owner's own session is refused (403 `sandbox_worker.not_the_worker`), a desk ticket is refused, and a token
+without the capability is refused (403 `capability.denied`). An owner who could register a worker would
+declare their own unisolated machine a sandbox, and the gate would mean nothing.
+
+Health comes only from the worker's own check-ins: a check-in within the last minute (60 s) that reports the
+isolation Live requires. A worker that cannot say it is isolated is not registered at all (422
+`sandbox_worker_not_isolated`). The owner can read that state and cannot change it. A worker that falls
+silent makes the mode unavailable again.
+
+Live stores no endpoint and never calls the worker: the worker reports, it is not called.

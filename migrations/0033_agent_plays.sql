@@ -20,14 +20,15 @@ DO $$ BEGIN
         CHECK (control IN ('pause', 'curtain', 'mute', 'end', 'wipe'));
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
--- The sandbox workers (S6): the network-isolated workers that would run a chat plays request. A worker
--- checks in for the person it works for and is healthy while it keeps checking in. None exists yet, so the
--- chat plays mode is refused until one does.
+-- The sandbox workers (S6): the network-isolated workers that would run a chat plays request. Only
+-- OpenVibe's sandbox worker may register one (a Network service token holding live.agent_sandbox.register),
+-- and it reports how it is isolated: no host network, no credentials, no profile, and every egress request
+-- through the proxy that applies the guard. Live never stores an endpoint and never calls the worker.
 CREATE TABLE IF NOT EXISTS agent_sandbox_workers (
     id           text COLLATE "C" PRIMARY KEY,             -- sbw_<ULID>
     subject      text COLLATE "C" NOT NULL,               -- the person the worker works for (usr_…)
-    service      text COLLATE "C" NOT NULL,               -- the service that owns the worker (codes, actor, …)
-    endpoint     text COLLATE "C",                        -- where the worker listens, when it has one
+    service      text COLLATE "C" NOT NULL,               -- the worker's own service identity (svc:…)
+    isolation    jsonb,                                   -- what the worker reports about its isolation
     status       text COLLATE "C" NOT NULL DEFAULT 'ready' CHECK (status IN ('ready', 'stopped')),
     last_seen_at bigint NOT NULL,
     created_at   bigint NOT NULL DEFAULT (extract(epoch from now()) * 1000)::bigint
