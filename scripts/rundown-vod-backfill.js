@@ -18,6 +18,9 @@ const PACE_MS = 120;
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
 (async () => {
+    // The database opens at boot in the service; a script has to open it itself (the first run, 2026-11-07, stopped
+    // at "the database is not open").
+    await db.initDb();
     const rows = await db.getDb().prepare(`SELECT DISTINCT stream_id, vod_id FROM (
             SELECT stream_id, vod_id FROM rundown_episodes WHERE vod_id IS NOT NULL
             UNION SELECT stream_id, vod_id FROM rundown_segments WHERE vod_id IS NOT NULL) x ORDER BY stream_id`).all();
