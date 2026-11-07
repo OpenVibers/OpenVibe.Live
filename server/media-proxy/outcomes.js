@@ -186,7 +186,7 @@ async function apply(event, data) {
             if (kind !== 'vod') return { outcome: 'ignored' };
             const vodId = vodIdOf(data);
             if (!vodId) return { outcome: 'ignored' };
-            await require('../rundown/visibility').noteVodChange(vodId, data.stream_id || null, data.visibility);
+            await require('../rundown/visibility').noteVodChange(vodId, data.stream_id || null, data.audience || data.visibility, data.members);
             return { outcome: 'object_visibility_changed' };
         }
         case 'storage.alert':
