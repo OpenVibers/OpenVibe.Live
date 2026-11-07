@@ -1,8 +1,8 @@
 /**
- * Home tabs (2026-10-30, the owner's short-pages rule: a phone page is one or two screens).
+ * Home tabs: there are none any more (2026-11-07, the owner's rule: never hide content behind tabs).
  *
- * Only the explainer at the foot is tabbed (New here?: the restream tour, the About banner, the network hub). The
- * content blocks are never tabbed again (the owner, 2026-10-31: "now I can't see the videos and clips on the homepage…
+ * The explainer at the foot (New here?: the restream tour and the About banner) shows both, one after the other, and
+ * the OpenVibe network is its own section with every site. The content blocks are never tabbed again (the owner, 2026-10-31: "now I can't see the videos and clips on the homepage…
  * don't reduce size by removing features"): Around OpenVibe (the digest, the star spotlight, the pulse) shows every
  * section on every screen, and test/home-catchup.test.js holds the rails. Wider screens never see the tabs. The
  * block is real here, not a string: the test opens the rendered home page in a DOM and drives it.
@@ -88,11 +88,10 @@ function openHome({ views = 0 } = {}) {
 
 console.log('Home tabs');
 
-const INTRO = ['tour', 'about', 'network'];
 const aroundStart = home.indexOf('<div class="home-around" id="home-around"');
 const aroundEnd = home.indexOf('</div><!-- /home-around -->');
 const around = home.slice(aroundStart, aroundEnd);
-const introStart = home.indexOf('<div class="home-tabbox home-intro" id="home-intro"');
+const introStart = home.indexOf('<div class="home-intro" id="home-intro"');
 const introEnd = home.indexOf('</div><!-- /home-intro -->');
 const intro = home.slice(introStart, introEnd);
 
@@ -106,101 +105,87 @@ check('Around OpenVibe shows its three sections, in their order, with the egg wh
     assert.ok(!/\[data-panel="(lately|star|happening)"\]/.test(css), 'no CSS hides one of them');
 });
 
-check('one tab per section, named for screen readers, pointing at its section', () => {
-    assert.ok(intro.includes('<div class="home-tabs" role="tablist" aria-label="New here?">'), 'the New here? tab list');
-    for (const [key, block, box] of [['tour', intro, 'home-tour-mount'], ['about', intro, 'home-cta-banner'], ['network', intro, 'home-network-hub']]) {
-        const tab = (new RegExp(`<button type="button" role="tab" id="[a-z]+-tab-${key}" data-tab="${key}"[^>]*>`).exec(block) || [])[0];
-        assert.ok(tab, `the ${key} tab`);
-        const controls = (/aria-controls="([^"]+)"/.exec(tab) || [])[1];
-        assert.strictEqual(controls, box, `${key} controls its section`);
-        assert.ok(block.includes(`id="${controls}"`), `${controls} is inside the block`);
+check('New here? has no tab row: the tour and the About banner both show, and no CSS hides one', () => {
+    assert.ok(introStart > 0 && introEnd > introStart, 'the block opens and closes on the home page');
+    assert.ok(!home.includes('role="tablist"') && !home.includes('role="tab"'), 'no tab row anywhere on the home');
+    assert.ok(!/data-panel=/.test(home), 'no panels');
+    assert.ok(!/home-tabbox|\[data-panel|\.home-tabs/.test(css), 'no tab CSS left');
+    assert.ok(intro.includes('id="home-tour-mount"') && intro.includes('id="home-cta-banner"'), 'both introductions are in the block');
+    assert.ok(!/function initHomeTabs|function initHomeIntro/.test(js), 'the tab controller is gone');
+});
+
+const net = home.slice(home.indexOf('<div class="ovnet" id="home-network"'), home.indexOf('<!--/ov:network-->'));
+check('the OpenVibe network is its own section: every site a real link, by group, for crawlers too', () => {
+    assert.ok(home.indexOf('id="home-network"') > introEnd, 'after New here?, outside it');
+    assert.match(net, /<h2 id="ovnet-title">One account\. <span class="ovnet-count" data-count="(\d+)">\1<\/span> sites\.<\/h2>/, 'the headline counts the sites in the page');
+    const sites = [...net.matchAll(/<a class="ovnet-site" href="([^"]+)" data-site="([a-z0-9-]+)"/g)];
+    assert.ok(sites.length >= 40, `every site of the network (${sites.length})`);
+    for (const [, href] of sites) {
+        const u = new URL(href);
+        assert.strictEqual(u.protocol, 'https:', href);
+        assert.ok(/(^|\.)(openvibe\.[a-z]+|open\.shoes|openre\.stream)$/.test(u.hostname), `an OpenVibe address: ${href}`);
+        assert.ok(!/(^|\.)(openvibe\.(fund|ai|recipes|page)|openvalve\.games|therecipelist\.com)$/i.test(u.hostname), `never a private name: ${href}`);
     }
+    const groups = [...net.matchAll(/<div class="ovnet-group" id="ovnet-g-([a-z0-9-]+)" role="group" aria-labelledby="ovnet-gh-\1"/g)].map((m) => m[1]);
+    assert.ok(groups.length >= 5, 'grouped by what people come to do');
+    for (const g of groups) assert.ok(net.includes(`<a href="#ovnet-g-${g}"`), `a jump link to ${g}`);
+    assert.ok(/<span class="ov-icon" data-icon="[a-z0-9-]+" data-size="40" aria-hidden="true"><\/span>/.test(net), 'ring icons are drawn later, not inlined');
+    assert.ok(net.includes('data-ovnet-switcher') && net.includes('data-ovnet-signin'), 'the switcher button and the sign-up');
 });
 
-check('How it works is the default tab of New here?', () => {
-    assert.match(intro, /id="hi-tab-tour" data-tab="tour" aria-selected="true"/);
-    assert.match(intro, /<div class="home-tabbox home-intro" id="home-intro" data-tab="tour">/);
+check('the network section is built by its script, between its markers, and nothing in it is a tab', () => {
+    const frag = fs.readFileSync(path.join(__dirname, '../public/fragments/home.html'), 'utf8');
+    assert.strictEqual(frag.split('<!--ov:network-->').length, 2, 'one start marker');
+    assert.strictEqual(frag.split('<!--/ov:network-->').length, 2, 'one end marker');
+    const build = require('../scripts/build-network-section');
+    const out = build.render({ groups: [{ id: 'streams', name: 'Streams & places' }], nav: [
+        { id: 'live', name: 'Live', url: 'https://openvibe.live/', icon: 'live', tagline: 'Go live <b>now</b>', group: 'streams' },
+        { id: 'x', name: 'Bad', url: 'https://openvibe.fund/', group: 'streams' },
+        { id: 'y', name: 'Plain', url: 'http://openvibe.food/', group: 'streams' },
+        { id: 'z', name: 'Elsewhere', url: 'https://example.com/', group: 'streams' },
+        { id: 'w', name: 'Wanderer', url: 'https://openvibe.wiki/', group: 'nowhere' },
+    ] });
+    assert.ok(out.includes('href="https://openvibe.live/"') && out.includes('Go live &lt;b&gt;now&lt;/b&gt;'), 'escaped');
+    assert.ok(!/openvibe\.fund|http:\/\/openvibe\.food|example\.com/.test(out), 'only https OpenVibe addresses, never a private name');
+    assert.ok(out.includes('id="ovnet-g-more"') && out.includes('openvibe.wiki'), 'a site in no known group goes to More');
+    assert.ok(!/role="tab/.test(out));
 });
 
-check('the tabs and the one-section-at-a-time rule exist only under 760 px', () => {
-    assert.match(css, /\.home-tabs \{ display: none; \}/, 'no tabs by default');
-    const phone = css.slice(css.indexOf('.home-tabs { display: none; }'));
-    const block = phone.slice(phone.indexOf('@media (max-width: 759px) {'));
-    for (const key of INTRO) assert.ok(block.includes(`.home-tabbox:not([data-tab="${key}"]) [data-panel="${key}"]`), `${key} hides when another tab is open`);
-    assert.match(block, /min-height: 44px/, 'a tab is a 44 px target');
-    assert.match(js, /const _narrow = typeof window !== 'undefined' && window\.matchMedia\('\(max-width: 759px\)'\)/, 'the same breakpoint as the rails\' phone sizing');
-});
-
-check('the network hub\'s heading goes while its tab names it', () => {
-    assert.ok(css.includes('[data-panel="network"] .network-hub-header h3'), 'the network heading goes');
-});
-
-check('a tab shows once its section does: the ids the script watches are the sections\' own', () => {
-    const introIds = /const _HOME_INTRO_SHOWN = \{([^}]+)\}/.exec(js);
-    assert.ok(introIds, 'the map of watched sections');
-    assert.ok(!/initHomeAround|initHomeCatchup|_HOME_AROUND_SHOWN|_HOME_CATCHUP_SHOWN/.test(js), 'the content blocks have no tabs to set up');
-    for (const id of introIds[1].match(/'([a-z-]+)'/g).map((s) => s.slice(1, -1))) assert.ok(intro.includes(`id="${id}"`), `${id} is in the block`);
-});
-
-check('the demotion moves the whole block, not the sections one by one', () => {
-    const demote = /function demoteHomeIntroSections\(\) \{([\s\S]*?)\n\}/.exec(js);
-    assert.ok(demote, 'the function');
-    assert.match(demote[1], /getElementById\('home-intro'\)/, 'it moves the block');
-    assert.match(demote[1], /last\.appendChild\(block\)/, 'it appends the block');
-    assert.ok(!/"home-tour-mount", "home-cta-banner"/.test(js), 'the two sections are no longer moved on their own');
-});
-
-check('the tour loads when its tab opens, not only when the mount nears the viewport', () => {
-    assert.match(js, /if \(key === 'tour'\) _lazyHomeTour\(true\);/, 'opening the tab loads the tour');
-    assert.match(js, /function _lazyHomeTour\(force\)/, 'the loader can be forced');
+check('the tour still loads when its mount nears the viewport', () => {
+    assert.match(js, /function _lazyHomeTour\(force\)/, 'the loader');
 });
 
 (async () => {
-    await check('a tab appears once its section has something, and a block with nothing drops its tab row', async () => {
+    await check('initHomeNetwork adds a site that opened since the page was built, and only an OpenVibe one', async () => {
         const p = openHome();
-        p.run('initHomeIntro();');
+        const before = p.window.document.querySelectorAll('.ovnet-site').length;
+        p.window.OpenVibeFrame = { get: () => ({ groups: [], nav: [
+            { id: 'brandnew', name: 'Brand New', url: 'https://openvibe.brandnew/', icon: 'ov', tagline: 'Just opened', group: 'games' },
+            { id: 'evil', name: 'Evil', url: 'https://evil.example/', group: 'games' },
+            { id: 'secret', name: 'Secret', url: 'https://openvibe.recipes/', group: 'games' },
+            { id: 'live', name: 'Live', url: 'https://openvibe.live/', group: 'streams' },
+        ] }) };
+        p.run('initHomeNetwork();');
         await tick();
-        for (const id of ['home-tour-mount', 'home-cta-banner', 'home-network-hub']) hide(p.el(id));
-        await tick();
-        assert.strictEqual(p.el('home-intro').querySelector('[role="tablist"]').hidden, true, 'nothing to show, so no tab row');
-        show(p.el('home-cta-banner'));
-        await tick();
-        assert.strictEqual(p.el('hi-tab-about').hidden, false, 'the banner arrived, so its tab is there');
-        assert.strictEqual(p.el('hi-tab-network').hidden, true, 'the hub has nothing, so its tab is hidden');
+        const sites = [...p.window.document.querySelectorAll('.ovnet-site')];
+        assert.strictEqual(sites.length, before + 1, 'one new site, the rest refused or already there');
+        const added = sites.find((a) => a.dataset.site === 'brandnew');
+        assert.ok(added && added.closest('.ovnet-group').dataset.group === 'games', 'in its group');
+        assert.strictEqual(added.querySelector('b').textContent, 'Brand New');
+        assert.strictEqual(p.window.document.querySelector('.ovnet-count').textContent, String(before + 1), 'the count follows');
     });
 
-    await check('the tour loads when its tab opens', async () => {
+    await check('the sign-up is only for a reader who is not signed in', async () => {
         const p = openHome();
-        p.run('initHomeIntro();');
+        p.window.currentUser = { id: 1, username: 'a' };
+        p.run('initHomeNetwork();');
         await tick();
-        assert.deepStrictEqual(p.loaded, [], 'nothing loads on its own in a page that never scrolls');
-        p.click('hi-tab-tour');
-        await tick();
-        assert.deepStrictEqual(p.loaded, ['homeTour'], 'opening the tab loads the tour');
-    });
-
-    await check('on a phone the intro starts closed; a tap opens a section, a second tap closes it, and that is kept', async () => {
-        const p = openHome();
-        p.run('initHomeIntro();');
-        await tick();
-        const block = p.el('home-intro');
-        assert.strictEqual(block.dataset.tab, '', 'nothing open at first: three tabs at the foot of the page');
-        assert.ok(['tour', 'about', 'network'].every((k) => p.el(`hi-tab-${k}`).getAttribute('aria-selected') === 'false'), 'no tab says it is open');
-        const first = ['tour', 'about', 'network'].map((k) => p.el(`hi-tab-${k}`)).find((t) => !t.hidden);
-        assert.ok(first && first.getAttribute('tabindex') === '0', 'the first tab that shows still takes the focus stop');
-        p.click('hi-tab-about');
-        await tick();
-        assert.strictEqual(block.dataset.tab, 'about', 'a tap opens its section');
-        p.click('hi-tab-about');
-        await tick();
-        assert.strictEqual(block.dataset.tab, '', 'the same tab again closes it');
-        assert.strictEqual(p.store.get('ov_home_intro'), '', 'closed is kept for the next visit');
-        assert.match(css, /\.home-tabbox:not\(\[data-tab="tour"\]\) \[data-panel="tour"\]/, 'with nothing open, the CSS hides every section');
+        assert.strictEqual(p.window.document.querySelector('[data-ovnet-signin]').hidden, true);
     });
 
     await check('a first visit leaves the block where it is', async () => {
         const p = openHome();
-        p.run('initHomeIntro(); demoteHomeIntroSections();');
+        p.run('initHomeNetwork(); demoteHomeIntroSections();');
         await tick();
         const block = p.el('home-intro');
         assert.strictEqual(block.dataset.ovDemoted, undefined, 'it was not demoted');
@@ -211,7 +196,7 @@ check('the tour loads when its tab opens, not only when the mount nears the view
 
     await check('after enough visits the whole block moves to the end of the page, and still works there', async () => {
         const p = openHome({ views: 18 });
-        p.run('initHomeIntro(); demoteHomeIntroSections();');
+        p.run('initHomeNetwork(); demoteHomeIntroSections();');
         await tick();
         const block = p.el('home-intro');
         assert.strictEqual(block.dataset.ovDemoted, '1', 'it was demoted');
@@ -219,17 +204,10 @@ check('the tour loads when its tab opens, not only when the mount nears the view
         const container = p.el('home-changelog-wrapper').parentElement;
         assert.strictEqual(block.parentElement, container, 'it moved into the changelog\'s container');
         assert.strictEqual(container.lastElementChild, block, 'and to the end of it');
-        for (const id of ['home-tour-mount', 'home-cta-banner', 'home-network-hub']) {
+        for (const id of ['home-tour-mount', 'home-cta-banner']) {
             assert.ok(block.contains(p.el(id)), `${id} travelled with it`);
         }
-        // The tabs still work where it landed.
-        p.click('hi-tab-network');
-        await tick();
-        assert.strictEqual(block.dataset.tab, 'network', 'the tab opened its section');
-        assert.strictEqual(p.el('hi-tab-network').getAttribute('aria-selected'), 'true', 'and says so');
-        p.click('hi-tab-tour');
-        await tick();
-        assert.deepStrictEqual(p.loaded, ['homeTour'], 'the tour loads from its new place too');
+        assert.ok(!block.contains(p.el('home-network')), 'the network section stays where it is');
     });
 
     console.log(failures ? `\n${failures} failed` : '\nall passed');

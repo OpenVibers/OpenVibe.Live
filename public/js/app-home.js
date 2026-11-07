@@ -1197,9 +1197,8 @@ const _introSeen = new Set();
 /**
  * One sighting of the introductions: the reader has seen both of them during this visit.
  *
- * The tour and the About banner are two panels of the same "New here?" block now, and on a phone only one of
- * them is on screen at a time — so the About banner is seen when its tab is opened (initHomeIntro), not only
- * when it scrolls past.
+ * The tour and the About banner are the two parts of the "New here?" block, one after the other on every screen
+ * (2026-11-07: no tab row); each is seen when it scrolls past.
  */
 function _introSeenNow(id) {
     if (_introCounted) return;
@@ -1266,111 +1265,130 @@ function demoteHomeIntroSections() {
     try { last.appendChild(block); } catch { /* */ }
 }
 
-/**
- * Tabs for a block of home sections. Only the explainer at the foot (New here?) uses them: the content blocks (Catch
- * up, Around OpenVibe) show every section on every screen again (the owner, 2026-10-31: "now I can't see the videos
- * and clips on the homepage… don't reduce size by removing features"). On a phone the block shows one section at a
- * time behind a row of tabs; wider screens never see the tabs. The tabs and the CSS live in the home fragment and
- * features/home.css.
- *
- *   initHomeTabs(boxId, shownIds, storageKey, onOpen, { closable })
- *     boxId      the block's element id. It carries data-tab — the section that is open — and its tab row.
- *     shownIds   tab key → the id of the element that says the section has something. Each loader already hides
- *                that element when its section is empty, so the tab goes with it.
- *     storageKey where the reader's last tab is kept for their next visit.
- *     onOpen     called with the key of the section that just opened (the tour loads when its tab opens).
- *     closable   the block may have no section open: it starts closed (data-tab="") unless the reader left one open,
- *                and pressing the open tab closes it again (2026-10-31: the intro at the foot of the home was 1.5
- *                phone screens open by default, under everything a returning viewer came for).
- *
- * A tab shows once its section has something; arrow keys, Home and End move between the tabs that show; the kept
- * tab opens in the first few seconds only, so a section that arrives later never moves the page under the reader;
- * a section that empties out falls back to one that has something, and a block with nothing left in it drops its
- * tab row.
- */
-function initHomeTabs(boxId, shownIds, storageKey, onOpen, { closable = false } = {}) {
-    const box = document.getElementById(boxId);
-    if (!box || box._ovTabs) return;
-    const list = box.querySelector('[role="tablist"]');
-    const tabs = list ? [...list.querySelectorAll('[role="tab"]')] : [];
-    if (!list || !tabs.length) return;
-    box._ovTabs = true;
-    const fallback = closable ? '' : (box.dataset.tab || tabs[0].dataset.tab);
-    const has = (key) => { const el = shownIds[key] && document.getElementById(shownIds[key]); return !el || el.style.display !== 'none'; };
-    let wanted = fallback;
-    try { const kept = localStorage.getItem(storageKey); if (kept !== null && (kept || closable)) wanted = kept; } catch { /* */ }
-    const pick = (key, { remember = false, focus = false } = {}) => {
-        box.dataset.tab = key;
-        for (const t of tabs) {
-            const on = t.dataset.tab === key;
-            t.setAttribute('aria-selected', on ? 'true' : 'false');
-            if (on && focus) t.focus();
-        }
-        focusStop();
-        if (remember) { wanted = key; try { localStorage.setItem(storageKey, key); } catch { /* */ } }
-        if (key && onOpen) { try { onOpen(key); } catch { /* */ } }
-    };
-    // The row's one focus stop: the open tab, or with nothing open the first tab that shows, so it can be reached.
-    function focusStop() {
-        const key = box.dataset.tab;
-        const first = tabs.find((x) => !x.hidden);
-        for (const t of tabs) t.setAttribute('tabindex', (key ? t.dataset.tab === key : t === first) ? '0' : '-1');
-    }
-    if (closable) pick(wanted && has(wanted) ? wanted : '');
-    // The kept tab opens if its section arrives in the first few seconds; later, a section arriving never moves the
-    // page under the reader. A section that empties out falls back to one that has something.
-    const settleBy = Date.now() + 3000;
-    const sync = () => {
-        for (const t of tabs) t.hidden = !has(t.dataset.tab);
-        const shown = tabs.filter((t) => !t.hidden);
-        list.hidden = !shown.length;
-        if (!shown.length) return;
-        const cur = box.dataset.tab;
-        if (closable && !cur) { focusStop(); return; }   // closed stays closed until the reader opens a section
-        if (!has(cur)) pick(closable ? '' : shown[0].dataset.tab);
-        else if (cur !== wanted && has(wanted) && Date.now() < settleBy) pick(wanted);
-    };
-    list.addEventListener('click', (e) => {
-        const t = e.target.closest('[role="tab"]');
-        if (!t) return;
-        // A closable block: pressing the open tab closes it again.
-        pick(closable && box.dataset.tab === t.dataset.tab ? '' : t.dataset.tab, { remember: true });
-    });
-    // Arrow keys, Home and End move between the tabs that are showing (the tabs pattern).
-    list.addEventListener('keydown', (e) => {
-        const shown = tabs.filter((t) => !t.hidden);
-        const i = shown.indexOf(document.activeElement);
-        if (i < 0) return;
-        const to = { ArrowRight: i + 1, ArrowLeft: i - 1, Home: 0, End: shown.length - 1 }[e.key];
-        if (to == null) return;
-        e.preventDefault();
-        const t = shown[(to + shown.length) % shown.length];
-        pick(t.dataset.tab, { remember: true, focus: true });
-        t.scrollIntoView({ block: 'nearest', inline: 'nearest' });
-    });
-    const watch = new MutationObserver(sync);
-    for (const id of Object.values(shownIds)) {
-        const el = document.getElementById(id);
-        if (el) watch.observe(el, { attributes: true, attributeFilter: ['style'] });
-    }
-    sync();
+/* ── The OpenVibe network (2026-11-07 redesign) ──────────────────────────────────────────────────────────────
+ * The section's tiles are in the page already (scripts/build-network-section.js, from OpenVibe.Network's frame), so
+ * crawlers and a reader without scripts get every site. Here it comes alive:
+ *   - the first time it nears the screen its tiles rise in, in order, and the count of sites counts up;
+ *   - the ring icons are drawn by openvibe-shared's ov-icons (loaded then, not with the page);
+ *   - the jump links glide to their group; the "OV mark" button opens the network's site switcher;
+ *   - "Create your free account" is only for a reader who is not signed in;
+ *   - the frame the navbar already holds is read again, and a site that opened since the page was built is added to
+ *     its group (DOM nodes, https OpenVibe addresses only), so the section is never behind for long. */
+const _OVNET_HOST = /(^|\.)(openvibe\.[a-z]+|open\.shoes|openre\.stream)$/i;
+const _OVNET_NEVER = /(^|\.)(openvibe\.(fund|ai|recipes|page)|openvalve\.games|therecipelist\.com)$/i;
+function _ovnetSignedIn(root) {
+    const cta = root.querySelector('[data-ovnet-signin]');
+    if (cta) cta.hidden = !!window.currentUser;
 }
-
-/** New here?: the tour, the About banner and the network hub share one place on a phone. */
-const HOME_INTRO_KEY = 'ov_home_intro';
-const _HOME_INTRO_SHOWN = { tour: 'home-tour-mount', about: 'home-cta-banner', network: 'home-network-hub' };
-function initHomeIntro() {
-    // On a phone the intro starts closed: three tabs at the foot of the page, each opening its section.
-    initHomeTabs('home-intro', _HOME_INTRO_SHOWN, HOME_INTRO_KEY, (key) => {
-        // The tour's code loads when its mount nears the viewport; opening its tab is that moment.
-        if (key === 'tour') _lazyHomeTour(true);
-        // The About banner is behind a tab on a phone, so opening that tab is the reader seeing it.
-        if (key === 'about') _introSeenNow('home-cta-banner');
-    }, { closable: window.matchMedia('(max-width: 640px)').matches });
+function _ovnetCount(root) {
+    const el = root.querySelector('.ovnet-count');
+    const n = Number(root.querySelector('.ovnet-groups')?.dataset.sites || el?.dataset.count || 0);
+    if (!el || !n) return;
+    el.dataset.count = String(n);
+    if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) { el.textContent = String(n); return; }
+    const clock = window.performance || Date;
+    const t0 = clock.now(), dur = 900;
+    const step = (t) => {
+        const k = Math.min(1, (t - t0) / dur);
+        el.textContent = String(Math.round(n * (1 - Math.pow(1 - k, 3))));
+        if (k < 1) requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+}
+function _ovnetIcons() {
+    if (window.OpenVibeIcons) { try { window.OpenVibeIcons.mount(document.getElementById('home-network')); } catch { /* */ } return; }
+    if (document.querySelector('script[data-ovnet-icons]')) return;
+    const sc = document.createElement('script');
+    sc.src = '/shared/ov-icons.js'; sc.defer = true; sc.dataset.ovnetIcons = '1';
+    sc.onload = () => { try { window.OpenVibeIcons && window.OpenVibeIcons.mount(document.getElementById('home-network')); } catch { /* */ } };
+    document.head.appendChild(sc);
+}
+/** A site the frame lists that the page does not have yet: added to its group, built from DOM nodes. */
+function _ovnetAddMissing(root, frame) {
+    const nav = frame && Array.isArray(frame.nav) ? frame.nav : [];
+    const have = new Set([...root.querySelectorAll('.ovnet-site[data-site]')].map((a) => a.dataset.site));
+    let added = 0;
+    for (const s of nav) {
+        if (!s || typeof s.url !== 'string' || typeof s.name !== 'string' || !s.id) continue;
+        const id = String(s.id).toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 32);
+        if (!id || have.has(id)) continue;
+        let u; try { u = new URL(s.url); } catch { continue; }
+        if (u.protocol !== 'https:' || !_OVNET_HOST.test(u.hostname) || _OVNET_NEVER.test(u.hostname)) continue;
+        const gid = String(s.group || '').toLowerCase().replace(/[^a-z0-9-]/g, '');
+        const group = (gid && root.querySelector(`.ovnet-group[data-group="${gid}"] .ovnet-sites`)) || root.querySelector('.ovnet-group:last-of-type .ovnet-sites');
+        if (!group) continue;
+        const li = document.createElement('li');
+        const a = document.createElement('a');
+        a.className = 'ovnet-site'; a.href = u.href; a.dataset.site = id; a.style.setProperty('--i', String(have.size + added));
+        const ic = document.createElement('span');
+        ic.className = 'ov-icon'; ic.dataset.icon = String(s.icon || id).replace(/[^a-z0-9-]/gi, '').slice(0, 32); ic.dataset.size = '40'; ic.setAttribute('aria-hidden', 'true');
+        const txt = document.createElement('span'); txt.className = 'ovnet-txt';
+        const b = document.createElement('b'); b.textContent = String(s.name).slice(0, 40);
+        const small = document.createElement('small'); small.textContent = u.hostname;
+        txt.append(b, small);
+        if (s.tagline) { const line = document.createElement('span'); line.textContent = String(s.tagline).slice(0, 90); txt.append(line); }
+        a.append(ic, txt); li.append(a); group.append(li);
+        added++;
+    }
+    if (!added) return;
+    for (const g of root.querySelectorAll('.ovnet-group')) {
+        const n = g.querySelectorAll('.ovnet-site').length;
+        const badge = g.querySelector('.ovnet-n'); if (badge) badge.textContent = String(n);
+        const jump = [...root.querySelectorAll('.ovnet-jump a')].find((x) => x.getAttribute('href') === `#${g.id}`); const jb = jump && jump.querySelector('b'); if (jb) jb.textContent = String(n);
+    }
+    const total = root.querySelectorAll('.ovnet-site').length;
+    const groups = root.querySelector('.ovnet-groups'); if (groups) groups.dataset.sites = String(total);
+    const count = root.querySelector('.ovnet-count'); if (count) { count.dataset.count = String(total); count.textContent = String(total); }
+    if (window.OpenVibeIcons) { try { window.OpenVibeIcons.mount(root); } catch { /* */ } }
+}
+function initHomeNetwork() {
+    const root = document.getElementById('home-network');
+    if (!root || root._ovnet) return;
+    root._ovnet = true;
+    _ovnetSignedIn(root);
+    window.addEventListener('openvibe-auth-changed', () => _ovnetSignedIn(root));
+    // Glide to a group; the address keeps the group, so the link can be shared.
+    root.addEventListener('click', (e) => {
+        const jump = e.target.closest('.ovnet-jump a[href^="#"]');
+        if (jump) {
+            const to = document.getElementById(jump.getAttribute('href').slice(1));
+            if (to) { e.preventDefault(); to.scrollIntoView({ behavior: 'smooth', block: 'start' }); try { history.replaceState(history.state, '', jump.getAttribute('href')); } catch { /* */ } }
+            return;
+        }
+        if (e.target.closest('[data-ovnet-switcher]')) {
+            const mark = document.getElementById('openvibe-switch-btn');
+            if (mark) { window.scrollTo({ top: 0, behavior: 'smooth' }); mark.click(); }
+        }
+    });
+    // The first time it nears the screen: tiles rise in, the count counts up, the ring icons load.
+    const wake = () => {
+        if (root._ovnetAwake) return;
+        root._ovnetAwake = true;
+        root.classList.add('is-in');
+        _ovnetCount(root);
+        _ovnetIcons();
+    };
+    if ('IntersectionObserver' in window && !(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches)) {
+        root.classList.add('is-armed');
+        const io = new IntersectionObserver((entries) => {
+            if (entries.some((en) => en.isIntersecting)) { io.disconnect(); requestAnimationFrame(wake); }
+        }, { rootMargin: '0px 0px -10% 0px', threshold: 0.05 });
+        io.observe(root);
+        // Never left invisible: if the observer has not fired in a few seconds of the section being on screen, show it.
+        setTimeout(() => { try { if (!root._ovnetAwake && root.getBoundingClientRect().top < window.innerHeight) wake(); } catch { wake(); } }, 4000);
+    } else wake();
+    // Sites that opened since the page was built.
+    try {
+        const F = window.OpenVibeFrame;
+        if (F && typeof F.get === 'function') {
+            const now = F.get((d) => _ovnetAddMissing(root, d));
+            if (now) _ovnetAddMissing(root, now);
+        }
+    } catch { /* the built list stands */ }
 }
 
 async function loadHome() {
-    initHomeIntro();      // the tour, the About banner and the network hub share one place on a phone
+    initHomeNetwork();    // the OpenVibe network: every site, alive (no tabs: everything shows)
     demoteHomeIntroSections();
     void loadHomeChangelog();
     _initHomeAbout();

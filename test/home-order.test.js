@@ -61,7 +61,7 @@ check('nothing was removed', () => {
         'home-about-body']) {
         at(`id="${id}"`);
     }
-    assert.ok(home.includes('class="network-hub"'));
+    assert.ok(home.includes('<div class="ovnet" id="home-network"'));
 });
 
 console.log(failures ? `\n${failures} check(s) failed` : '\nhome order: all checks passed');
