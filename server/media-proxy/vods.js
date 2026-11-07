@@ -25,6 +25,7 @@ function chunkOpensVod(stream, buffer) {
 const { requireAuth, optionalAuth } = require('../auth/auth');
 const permissions = require('../auth/permissions');
 const access = require('./access');
+const { inVodTime } = require('./vod-time');
 const purge = require('./purge');
 const { commentCount } = require('./comments');
 const contentLabels = require('../labels');
@@ -420,28 +421,6 @@ router.post('/bulk-delete-old', requireAuth, async (req, res) => {
     }
 });
 
-/**
- * A stream's rows (stream time, in `key`) in this VOD's own time. The first part of a joined recording answers for the
- * whole video: every row that was recorded, in the video's time (streaming/recordings.js; the gaps between parts were
- * not). A VOD that is one part of its stream (the broadcaster reconnected) keeps the rows inside it, moved to its time:
- * its chapters (OpenVibe.Video) pointed eleven minutes late on part 2 of stream 2795. `round` keeps whole seconds.
- */
-async function inVodTime(vod, rows, key, { round = true } = {}) {
-    const fix = (v) => (round ? Math.round(v) : Math.round(v * 100) / 100);
-    if (vod.recording && Number(vod.recording.vod_id) === Number(vod.id) && vod.recording.hls_url && (vod.recording.parts || []).length > 1) {
-        const recordings = require('../streaming/recordings');
-        const parts = await recordings.presentParts(vod.recording);
-        return rows.map((r) => ({ r, at: recordings.toRecordingTime(parts, Number(r[key])) }))
-            .filter((x) => x.at != null).map(({ r, at }) => ({ ...r, [key]: fix(at), ...(r.end != null ? { end: fix(at + (Number(r.end) - Number(r[key]))) } : {}) }));
-    }
-    const part = await require('../streaming/stream-history').partForVod(vod.id);
-    if (!part) return rows;
-    const len = part.end != null ? part.end - part.at : Infinity;
-    return rows
-        .filter((r) => Number(r[key]) >= part.at && Number(r[key]) - part.at <= len)
-        .map((r) => ({ ...r, [key]: fix(Number(r[key]) - part.at), ...(r.end != null ? { end: fix(Number(r.end) - part.at) } : {}) }));
-}
-
 // AI "memory" timeline for a VOD (stream_memories stays in live.db).
 router.get('/:id/memories', optionalAuth, async (req, res) => {
     try {
@@ -478,6 +457,34 @@ router.get('/:id/sounds', optionalAuth, async (req, res) => {
         res.json({ cues: await inVodTime(vod, cues, 'start', { round: false }) });
     } catch {
         res.status(500).json({ error: 'Failed to load the sounds' });
+    }
+});
+
+/**
+ * GET /api/vods/:id/descriptions.vtt — the VOD's audio description as a WebVTT `kind="descriptions"` track
+ * (X1, consent plan 2026-10-31): short AI scene notes from Live's timeline, timed into the silences between
+ * speech. Public and link VODs are described for anyone; a private VOD only answers its owner (or staff), so
+ * the same visibility rule as every other VOD read applies. People are described; sex acts never are
+ * (server/ai/descriptions.js + explicit.js). 404 when there is nothing to describe.
+ */
+router.get('/:id/descriptions.vtt', optionalAuth, async (req, res) => {
+    try {
+        if (!/^\d+$/.test(String(req.params.id))) return vodNotFound(res);
+        const vod = await loadVisibleVod(req, res, req.params.id);
+        if (!vod) return;
+        if (vod.app_id && vod.app_id !== 'live') return vodNotFound(res);
+        if (vod.is_recording || vod.status === 'recording') return vodNotFound(res);
+        const vtt = await require('../ai/descriptions').vodVtt(vod);
+        if (!vtt) return vodNotFound(res);
+        res.set({
+            'Content-Type': 'text/vtt; charset=utf-8',
+            'Cache-Control': access.isPrivate(vod) ? 'private, no-store' : 'public, max-age=60',
+            'X-Content-Type-Options': 'nosniff',
+        });
+        res.send(vtt);
+    } catch (err) {
+        console.error('[VODs] descriptions error:', err.message);
+        if (!res.headersSent) res.status(500).json({ error: 'Failed to load the descriptions' });
     }
 });
 
