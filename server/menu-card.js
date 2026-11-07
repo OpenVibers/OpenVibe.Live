@@ -8,7 +8,8 @@
 //
 // Only what GET /api/streams already shows anonymously is read: getLiveStreams() rows, with the 18+ channels
 // the home page leaves out, capped at the schema's six items. No ingest key, channel ZIP or owner field is
-// copied into the card — the items are built field by field.
+// copied into the card — the items are built field by field. An entry carries the stream's own thumbnail when
+// there is one (https on openvibe.live or an openvibe.* host); a stream without a picture gets no image.
 const db = require('./db/database');
 const contentLabels = require('./labels');
 
@@ -27,6 +28,24 @@ function plain(value, max) {
         .slice(0, max);
 }
 
+/**
+ * The entry's own live picture ({ src }) or null. Live's stream thumbnail is usually the ephemeral local
+ * `/api/thumbnails/stream-…jpg` (made absolute here) or an absolute Media URL, and only an https picture on
+ * openvibe.live or an openvibe.* host is sent. A stream with no picture keeps no image; no placeholder is made.
+ */
+function imageOf(stream) {
+    let raw = String((stream && stream.thumbnail_url) || '').trim();
+    if (!raw) return null;
+    if (raw.startsWith('/api/thumbnails/')) raw = `${BASE}${raw}`;
+    if (raw.length > 400) return null;
+    let u;
+    try { u = new URL(raw); } catch { return null; }
+    if (u.protocol !== 'https:' || u.username || u.password) return null;
+    const host = u.hostname.toLowerCase();
+    if (host !== 'openvibe.live' && !host.startsWith('openvibe.')) return null;
+    return { src: raw };
+}
+
 /** The card itself. `rows` are Live's live rows in their own order (viewer_count DESC, started_at DESC). */
 function cardFrom(rows, at = Date.now()) {
     const items = (Array.isArray(rows) ? rows : [])
@@ -34,11 +53,14 @@ function cardFrom(rows, at = Date.now()) {
         .slice(0, 6)
         .map((s) => {
             const viewers = Number(s.viewer_count);
-            return {
+            const item = {
                 title: plain(s.display_name, 80) || plain(s.username, 80) || 'Live',
                 meta: `${Number.isFinite(viewers) && viewers > 0 ? Math.round(viewers) : 0} watching`,
                 url: `${BASE}/@${encodeURIComponent(String(s.username))}`,
             };
+            const image = imageOf(s);
+            if (image) item.image = image;
+            return item;
         });
     return {
         id: 'live-now',
@@ -93,4 +115,4 @@ function createMenuCard({ load = () => db.getLiveStreams(), now = Date.now } = {
     return { card, handler, cardFrom, cacheMs: CACHE_MS };
 }
 
-module.exports = { ...createMenuCard(), createMenuCard, cardFrom, plain, SITE, CARD_TTL_S };
+module.exports = { ...createMenuCard(), createMenuCard, cardFrom, imageOf, plain, SITE, CARD_TTL_S };

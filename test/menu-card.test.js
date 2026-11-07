@@ -3,7 +3,8 @@
 // rail — the public channels live right now, most watched first — with no items when nobody is live, CORS * and
 // a 30 s cache. The card never carries a row's ingest key or owner-only fields, and 18+ channels stay off it.
 const assert = require('assert');
-const { createMenuCard, cardFrom, plain, CARD_TTL_S } = require('../server/menu-card');
+const contracts = require('openvibe-contracts');
+const { createMenuCard, cardFrom, imageOf, plain, CARD_TTL_S } = require('../server/menu-card');
 
 const row = (over = {}) => ({
     id: 1, user_id: 2, username: 'nova', display_name: 'Nova', viewer_count: 12, is_live: 1,
@@ -26,6 +27,23 @@ assert.deepStrictEqual(card.items, [
 assert.deepStrictEqual(card.more, { label: 'See all', url: 'https://openvibe.live/' });
 assert.ok(card.items.length <= 6 && card.title.length <= 60);
 for (const item of card.items) assert.ok(item.title.length <= 80 && item.meta.length <= 120 && item.url.startsWith('https://openvibe.live/'));
+
+assert.ok(contracts.validate('frame.menu-cards@1', [card]).valid, 'the file validates against frame.menu-cards@1');
+
+// Pictures: each stream's own live thumbnail, made absolute for a local /api/thumbnails path; real pictures only.
+const pictured = cardFrom([
+    row({ id: 1, username: 'nova', viewer_count: 30, thumbnail_url: '/api/thumbnails/stream-1-123.jpg' }),
+    row({ id: 2, username: 'kitchen', viewer_count: 20, thumbnail_url: 'https://openvibe.media/t/vod-2.jpg' }),
+    row({ id: 3, username: 'elsewhere', viewer_count: 10, thumbnail_url: 'https://example.com/x.jpg' }),
+    row({ id: 4, username: 'plainhttp', viewer_count: 5, thumbnail_url: 'http://openvibe.live/api/thumbnails/x.jpg' }),
+    row({ id: 5, username: 'quiet', viewer_count: 1 }),
+]);
+assert.deepStrictEqual(pictured.items[0].image, { src: 'https://openvibe.live/api/thumbnails/stream-1-123.jpg' }, 'a local live thumb becomes an absolute own-origin URL');
+assert.deepStrictEqual(pictured.items[1].image, { src: 'https://openvibe.media/t/vod-2.jpg' }, 'a Media picture is kept as it is');
+assert.ok(!pictured.items[2].image && !pictured.items[3].image && !pictured.items[4].image, 'a third-party, plain-http or missing picture sends no image');
+assert.ok(contracts.validate('frame.menu-cards@1', [pictured]).valid, 'a pictured file validates against frame.menu-cards@1');
+assert.strictEqual(imageOf({ thumbnail_url: 'javascript:alert(1)' }), null);
+assert.strictEqual(imageOf({ thumbnail_url: 'https://openvibe.live/x.jpg'.padEnd(401, 'x') }), null, 'a src over 400 characters is dropped');
 
 // Nobody live: the card is still published, with no items, and Network skips it.
 assert.deepStrictEqual(cardFrom([]).items, []);
