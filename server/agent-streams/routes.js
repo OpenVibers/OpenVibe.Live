@@ -68,6 +68,20 @@ async function load(req, res) {
     return row;
 }
 
+/** The channel's Chat moderation (the moderators the owner set), cached by the client; [] on any failure. */
+async function channelModeration(channelId) {
+    try { return await require('../chat/moderation-client').getChannelModeration(Number(channelId) || 0); }
+    catch { return { moderator_ids: [] }; }
+}
+
+/** The person's role on this stream: the owner, one of its channel's moderators, or null. */
+async function roleOn(row, user) {
+    if (!user) return null;
+    if (Number(user.id) === Number(row.user_id)) return 'owner';
+    const moderation = await channelModeration(row.channel_id);
+    return moderation.moderator_ids.includes(Number(user.id)) ? 'moderator' : null;
+}
+
 /**
  * The desk, or the person: a publish ticket for this stream (state, frame, curtain, end), else the owner's session.
  * A ticket names its stream, so a ticket for another stream is the same as no ticket.
@@ -131,12 +145,13 @@ router.post('/', auth.publisher, async (req, res) => {
         const task = cleanTask(body.task);
         const visibility = service.VISIBILITIES.includes(body.visibility) ? body.visibility : null;
         const allowSites = cleanSites(body.allow_sites);
+        const copilot = body.copilot === true;
         if (!title) return fail(res, 400, 'invalid_title', 'A title of 1–200 characters is required');
         if (!task) return fail(res, 400, 'invalid_task', 'task needs source (codes, actor, desk, node), ref and title');
         if (!visibility) return fail(res, 400, 'invalid_visibility', 'visibility is private, unlisted or public');
         if (allowSites === null) return fail(res, 400, 'invalid_allow_sites', 'allow_sites is a list of at most 50 http(s) addresses');
 
-        const row = await service.create({ user: req.publisher.user, title, task, visibility, allowSites });
+        const row = await service.create({ user: req.publisher.user, title, task, visibility, allowSites, copilotReady: copilot });
         const publish = await tickets.issuePublish(row.managed_stream_id);
         const stream = service.publicView(row);
         if (row.unlisted_secret) stream.page_url = `${stream.page_url}?k=${encodeURIComponent(row.unlisted_secret)}`;
@@ -203,10 +218,17 @@ router.get('/:id', auth.viewer, async (req, res) => {
                 via: isOwner ? 'owner' : (row.visibility === 'unlisted' ? 'link' : 'share'),
             })
             : null;
+        const moderation = await channelModeration(row.channel_id);
+        const isMod = !isOwner && !!(req.viewer && moderation.moderator_ids.includes(Number(req.viewer.id)));
         res.json({
             stream,
             live_stream_id: row.live_session_id ? Number(row.live_session_id) : null,
             can_manage: isOwner,
+            can_moderate: isOwner || isMod,
+            paused: !!Number(row.paused),
+            paused_by: row.paused_by || null,
+            paused_by_role: row.paused_by_role || null,
+            copilot_ready: !!Number(row.copilot_ready),
             // The curtain's reason is the owner's alone; the resource itself never carries it.
             ...(isOwner && Number(row.curtain_up) && row.curtain_reason ? { curtain_reason: row.curtain_reason } : {}),
             ...(view ? { view_ticket: view.ticket, view_ticket_expires_at: view.expires_at } : {}),
@@ -294,6 +316,10 @@ router.get('/:id/state', deskOrOwner, async (req, res) => {
         res.json({
             viewers: service.viewersNow(row.live_session_id),
             encode,
+            mode: row.mode,
+            paused: !!Number(row.paused),
+            paused_by: row.paused_by || null,
+            paused_by_role: row.paused_by_role || null,
             curtain: {
                 up: !!Number(row.curtain_up),
                 since: Number(row.curtain_up) ? service.iso(row.curtain_since) : null,
@@ -367,6 +393,94 @@ router.post('/:id/end', deskOrOwner, async (req, res) => {
     } catch (err) {
         console.error('[AgentStream] end failed:', err.message);
         fail(res, 500, 'end_failed', 'The stream could not be ended');
+    }
+});
+
+// ── The four controls (S5) ────────────────────────────────────
+
+/**
+ * POST /:id/control — pause (paused true/false), curtain (up true/false), mute (muted true/false) or end, pressed by
+ * the owner or the channel's moderators. A moderator may not resume a pause the owner set, and every press is logged
+ * with who pressed it. `end` ends the stream and stops the room's Co-pilot reading; the task keeps running off
+ * camera.
+ */
+router.post('/:id/control', auth.viewer, async (req, res) => {
+    try {
+        const row = await load(req, res);
+        if (!row) return;
+        const role = await roleOn(row, req.viewer);
+        if (!role) return fail(res, 403, 'not_moderator', 'Only the owner or a channel moderator may press this');
+        const body = req.body || {};
+        const control = service.CONTROLS.includes(body.control) ? body.control : null;
+        if (!control) return fail(res, 400, 'invalid_control', 'control is pause, curtain, mute or end');
+        const handle = String(req.viewer.username || '').toLowerCase().slice(0, 32);
+        if (!/^[a-z0-9_]{2,32}$/.test(handle)) return fail(res, 409, 'no_handle', 'This account has no handle to log');
+        const by = { handle, role };
+        let next = row;
+        let paused = null;
+        if (control === 'pause') {
+            const want = body.paused === undefined ? !Number(row.paused) : !!body.paused;
+            const r = await service.setPaused(row, { paused: want, by });
+            if (!r.allowed) return fail(res, 403, 'owner_pause', 'A moderator cannot resume a pause the owner set');
+            next = r.row;
+            paused = !!Number(next.paused);
+        } else if (control === 'curtain') {
+            const up = body.up === undefined ? !Number(row.curtain_up) : !!body.up;
+            next = await service.setCurtain(row, up, 'manual');
+            try { require('../streaming/curtains').apply(next.live_session_id); } catch { /* no SFU in a test */ }
+        } else if (control === 'mute') {
+            const muted = body.muted === undefined ? !Number(row.voice_muted) : !!body.muted;
+            next = await service.update(row, { set: { voice_muted: !!muted } });
+        } else if (control === 'end') {
+            next = await service.end(row, { reason: `ended_by_${role}` });
+        }
+        await require('../db/database').run(
+            `INSERT INTO agent_stream_controls (managed_stream_id, control, by_handle, by_role, paused, paused_by)
+             VALUES (?, ?, ?, ?, ?, ?)`,
+            [row.managed_stream_id, control, handle, role, control === 'pause' ? paused : null,
+                control === 'pause' ? (paused ? handle : null) : (Number(next.paused) ? next.paused_by : null)]
+        );
+        res.set('Cache-Control', 'no-store');
+        res.json({
+            control: { control, by, at: new Date().toISOString(), stream: row.public_id, paused_by: Number(next.paused) ? next.paused_by : null },
+            paused: !!Number(next.paused), paused_by: next.paused_by || null,
+            curtain: { up: !!Number(next.curtain_up) },
+            muted: !!Number(next.voice_muted),
+            state: next.state,
+        });
+    } catch (err) {
+        console.error('[AgentStream] control failed:', err.message);
+        fail(res, 500, 'control_failed', 'The control could not be pressed');
+    }
+});
+
+/**
+ * GET /:id/controls — what the owner (and a moderator) pressed, newest first. `live` is the pause in force, so the
+ * page and a task's service can read it without the log.
+ */
+router.get('/:id/controls', auth.viewer, async (req, res) => {
+    try {
+        const row = await load(req, res);
+        if (!row) return;
+        const role = await roleOn(row, req.viewer);
+        if (!role) return fail(res, 403, 'not_moderator', 'Only the owner or a channel moderator may read this');
+        const rows = await require('../db/database').all(
+            `SELECT control, by_handle, by_role, paused, paused_by, at FROM agent_stream_controls
+              WHERE managed_stream_id = ? ORDER BY id DESC LIMIT 50`, [row.managed_stream_id]);
+        res.set('Cache-Control', 'no-store');
+        res.json({
+            controls: rows.map((r) => ({
+                control: r.control,
+                by: { handle: r.by_handle, role: r.by_role },
+                at: service.iso(r.at),
+                stream: row.public_id,
+                paused_by: r.paused_by || null,
+            })),
+            live: { paused: !!Number(row.paused), paused_by: row.paused_by || null, paused_by_role: row.paused_by_role || null },
+        });
+    } catch (err) {
+        console.error('[AgentStream] controls read failed:', err.message);
+        fail(res, 500, 'controls_failed', 'The controls could not be read');
     }
 });
 
@@ -483,6 +597,22 @@ router.post('/:id/view-ticket', auth.viewer, async (req, res) => {
     }
 });
 
+/**
+ * POST /:id/copilot — the task's service declares whether it can read the room's digest (Codes and Actor do). The
+ * owner's mode switch then allows Co-pilot on a public or unlisted stream.
+ */
+router.post('/:id/copilot', deskOrOwner, async (req, res) => {
+    try {
+        const body = req.body || {};
+        if (typeof body.ready !== 'boolean') return fail(res, 400, 'invalid_ready', 'ready is true or false');
+        const next = await service.setCopilotReady(req.agent, body.ready);
+        res.json({ copilot_ready: !!Number(next.copilot_ready), mode: next.mode });
+    } catch (err) {
+        console.error('[AgentStream] copilot ready failed:', err.message);
+        fail(res, 500, 'copilot_failed', 'The Co-pilot state could not be set');
+    }
+});
+
 // ── The agent's voice (S4) ───────────────────────────────────
 
 // The owner chooses the mode (Watch or Narrated), the voice, the personality and the mute; a channel moderator can
@@ -517,7 +647,12 @@ router.put('/:id/voice', auth.publisher, async (req, res) => {
         const body = req.body || {};
         const set = {};
         if (body.mode !== undefined) {
-            if (!['watch', 'narrated'].includes(body.mode)) return fail(res, 400, 'invalid_mode', 'mode is watch or narrated');
+            if (!['watch', 'narrated', 'copilot'].includes(body.mode)) return fail(res, 400, 'invalid_mode', 'mode is watch, narrated or copilot');
+            if (body.mode === 'copilot') {
+                // Co-pilot needs a public or unlisted stream and a task's service that can read a digest.
+                if (!['public', 'unlisted'].includes(row.visibility)) return fail(res, 422, 'copilot_needs_public', 'Co-pilot needs a public or unlisted stream');
+                if (!Number(row.copilot_ready)) return fail(res, 422, 'copilot_not_ready', "This task's service cannot read a digest yet");
+            }
             set.mode = body.mode;
         }
         if (body.personality !== undefined) {

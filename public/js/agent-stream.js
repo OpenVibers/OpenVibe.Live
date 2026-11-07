@@ -26,6 +26,7 @@
     let linesTimer = null;
     let overlay = null;
     let chaptersFor = null;    // the stream id whose chapters are rendered (they never change while the page lives)
+    let controlsLogFor = null;  // the stream id whose control log is rendered
     let generation = 0;   // bumped on every page leave, so a slow request from the last page changes nothing
 
     function $(id) { return document.getElementById(id); }
@@ -45,6 +46,7 @@
         voice = null;
         voicesLoaded = false;
         chaptersFor = null;
+        controlsLogFor = null;
         state = null;
         ticket = null;
     }
@@ -145,6 +147,7 @@
             state: data.stream.state,
             caption: captionText(),
             voice,
+            pausedBy: data.paused_by || null,
         });
     }
 
@@ -331,6 +334,7 @@
         mountPlays(data);
         ensureOverlay(data);
         renderOwner(data);
+        renderControls(data);
         renderVoice();
         loadVoices();
         scheduleRenew(data);
@@ -339,6 +343,51 @@
         if (!steps.length) loadInitialSteps(stream.id).then(() => { if (state && state.stream) { ensureOverlay(state); if (state.stream.state === 'ended') renderRecording(state); } });
         scheduleSteps(data);
         if (stream.state === 'ended') renderRecording(data);
+    }
+
+    /** S5: the moderators' bar. The owner and the channel's moderators see it; the owner also sees the log. */
+    function renderControls(data) {
+        const bar = $('agent-controls');
+        if (!bar) return;
+        const allowed = !!(data && (data.can_manage || data.can_moderate));
+        bar.hidden = !allowed;
+        if (!allowed) return;
+        const paused = !!(data && data.paused);
+        const pauseBtn = $('agent-ctl-pause');
+        if (pauseBtn) {
+            pauseBtn.textContent = paused ? 'Resume the agent' : 'Pause the agent';
+            // A moderator cannot resume a pause the owner set (the server refuses it too).
+            pauseBtn.disabled = paused && data.paused_by_role === 'owner' && !data.can_manage;
+        }
+        const curtain = data && data.stream ? data.stream.curtain : null;
+        const curtainBtn = $('agent-ctl-curtain');
+        if (curtainBtn) curtainBtn.textContent = curtain && curtain.up ? 'Lift the curtain' : 'Curtain';
+        const muteBtn = $('agent-ctl-mute');
+        if (muteBtn) muteBtn.textContent = voice && voice.muted ? 'Unmute voice' : 'Mute voice';
+        const stateEl = $('agent-controls-state');
+        if (stateEl) {
+            if (paused && data.paused_by) stateEl.textContent = `Paused by @${data.paused_by}`;
+            else if (curtain && curtain.up) stateEl.textContent = 'The curtain is up: viewers see a private screen.';
+            else if (voice && voice.muted) stateEl.textContent = 'The voice is muted.';
+            else stateEl.textContent = '';
+        }
+        const log = $('agent-controls-log');
+        if (log && data.can_manage && data.stream && controlsLogFor !== data.stream.id) {
+            controlsLogFor = data.stream.id;
+            log.hidden = false;
+            const list = $('agent-controls-log-list');
+            if (list) list.replaceChildren();
+            api(`/streams/agent/${encodeURIComponent(data.stream.id)}/controls`).then((out) => {
+                if (!out || !Array.isArray(out.controls) || !list) return;
+                if (!out.controls.length) { list.appendChild(Object.assign(document.createElement('li'), { textContent: 'No control has been pressed.' })); return; }
+                for (const entry of out.controls) {
+                    const li = document.createElement('li');
+                    const when = new Date(entry.at);
+                    li.textContent = `${entry.control} by @${entry.by.handle} (${entry.by.role}) · ${when.toLocaleString()}`;
+                    list.appendChild(li);
+                }
+            }).catch(() => { controlsLogFor = null; });
+        } else if (log && !data.can_manage) log.hidden = true;
     }
 
     function renderOwner(data) {
@@ -385,7 +434,7 @@
         const panel = $('agent-owner');
         if (!panel || panel.hidden || !voice) return;
         const mode = $('agent-voice-mode');
-        if (mode) mode.value = voice.mode === 'narrated' ? 'narrated' : 'watch';
+        if (mode) mode.value = ['narrated', 'copilot'].includes(voice.mode) ? voice.mode : 'watch';
         const personality = $('agent-voice-personality');
         if (personality) personality.value = voice.personality || 'calm';
         const own = $('agent-voice-own');
@@ -404,6 +453,8 @@
                 state.textContent = 'voice paused: allowance spent';
             } else if (voice.muted) {
                 state.textContent = 'The voice is muted.';
+            } else if (voice.mode === 'copilot') {
+                state.textContent = `Co-pilot, in a ${voice.personality || 'calm'} voice: it reads the chat between steps.`;
             } else if (voice.mode === 'narrated') {
                 state.textContent = `Narrated, in a ${voice.personality || 'calm'} voice.`;
             } else {
@@ -474,6 +525,7 @@
                 ensureOverlay(next);
                 renderStatus(next.stream, liveViewers);
                 renderOwner(next);
+                renderControls(next);
                 schedulePoll(id);
             } catch { if (gen === generation) schedulePoll(id); }
         }, 20000);
@@ -552,6 +604,42 @@
                 renderCurtain(up);
                 renderOwner(state);
             } catch { /* the desk still owns the curtain */ }
+        });
+
+        // S5: the moderators' bar, four controls, every press logged by the server.
+        const pressControl = async (body) => {
+            const id = idOf();
+            if (!id) return;
+            const view = state || {};
+            try {
+                const out = await api(`/streams/agent/${encodeURIComponent(id)}/control`, { method: 'POST', body });
+                if (state) {
+                    state.paused = !!out.paused;
+                    state.paused_by = out.paused_by || null;
+                    if (state.stream && out.curtain) state.stream.curtain = out.curtain;
+                    if (state.stream && out.state) state.stream.state = out.state;
+                }
+                if (typeof out.muted === 'boolean' && voice) voice = { ...voice, muted: out.muted };
+                renderControls(state || view);
+                renderCurtain(!!(out.curtain && out.curtain.up));
+                renderVoice();
+                ensureOverlay(state || view);
+                controlsLogFor = null;
+                renderControls(state || view);
+            } catch (err) {
+                const hint = $('agent-controls-state');
+                if (hint) hint.textContent = (err && err.message) || 'That control did not work.';
+            }
+        };
+        $('agent-ctl-pause').addEventListener('click', () => pressControl({ control: 'pause', paused: !(state && state.paused) }));
+        $('agent-ctl-curtain').addEventListener('click', () => {
+            const up = !(state && state.stream && state.stream.curtain && state.stream.curtain.up);
+            return pressControl({ control: 'curtain', up });
+        });
+        $('agent-ctl-mute').addEventListener('click', () => pressControl({ control: 'mute', muted: !(voice && voice.muted) }));
+        $('agent-ctl-end').addEventListener('click', () => {
+            if (!window.confirm('End this agent stream? The task keeps running off camera.')) return;
+            return pressControl({ control: 'end' });
         });
 
         $('agent-end').addEventListener('click', () => {

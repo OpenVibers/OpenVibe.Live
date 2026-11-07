@@ -159,3 +159,15 @@
 .home-agents-title { margin: 0; font-size: 1.05rem; font-weight: 800; }
 .home-agents-note { color: var(--text-muted); font-size: 0.78rem; }
 .home-agents .agent-cards { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); }
+
+/* S5: the moderators' bar and the paused line (Agent Streams S5). */
+.agent-controls { margin: 0 0 12px; padding: 10px 12px; border: 1px solid var(--border, rgba(255,255,255,.12)); border-radius: 12px;
+    background: var(--bg-card, rgba(18,24,38,.72)); }
+.agent-controls-title { margin: 0 0 8px; font-size: .8rem; letter-spacing: .06em; text-transform: uppercase; color: var(--text-secondary, #96a7c2); }
+.agent-controls-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.agent-controls-row .btn { min-height: 44px; }
+.agent-controls-log { margin-top: 8px; }
+.agent-controls-log summary { cursor: pointer; color: var(--text-secondary, #96a7c2); font-size: .85rem; }
+.agent-controls-log-list { margin: 6px 0 0; padding-left: 18px; font-size: .85rem; color: var(--text-secondary, #96a7c2); }
+.agent-overlay-paused { margin: 2px 0 0; font-size: .8rem; font-weight: 600; color: var(--warning-text, #fbbf24); }
+@media (max-width: 480px) { .agent-controls-row .btn { flex: 1 1 calc(50% - 8px); } }

@@ -57,7 +57,7 @@ function personalityOf(row) {
     return PERSONALITIES.includes(p) ? p : 'calm';
 }
 
-function narrated(row) { return !!row && row.mode === 'narrated'; }
+function narrated(row) { return !!row && (row.mode === 'narrated' || row.mode === 'copilot'); }
 function muted(row) { return !!row && !!Number(row.voice_muted); }
 
 /** Doxxing: an email address, a phone number, a street address or a handle. */
