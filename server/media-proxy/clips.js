@@ -266,6 +266,37 @@ router.get('/:id/download-url', optionalAuth, async (req, res) => {
     }
 });
 
+/**
+ * GET /api/clips/:id/descriptions.vtt — the clip's audio description (X1), the source stream's scene notes
+ * inside the clip's window, in the clip's own time and in the silences between speech. Same visibility rule
+ * as GET /api/clips/:id: public and link clips for anyone, a private clip for its owner or staff only.
+ */
+router.get('/:id/descriptions.vtt', optionalAuth, async (req, res) => {
+    try {
+        if (!/^\d+$/.test(String(req.params.id))) return clipNotFound(res);
+        let clip;
+        try { clip = await media.getClip(req.params.id); }
+        catch (err) {
+            if (err && err.name === 'MediaApiError' && err.status === 404) return clipNotFound(res);
+            return mediaErr(res, err, 'Failed to get clip');
+        }
+        if (!clip || !await access.canView(req.user, clip)) return clipNotFound(res);
+        if (clip.app_id && clip.app_id !== 'live') return clipNotFound(res);
+        if (clip.status && clip.status !== 'ready') return clipNotFound(res);
+        const vtt = await require('../ai/descriptions').clipVtt(clip);
+        if (!vtt) return clipNotFound(res);
+        res.set({
+            'Content-Type': 'text/vtt; charset=utf-8',
+            'Cache-Control': access.isPrivate(clip) ? 'private, no-store' : 'public, max-age=60',
+            'X-Content-Type-Options': 'nosniff',
+        });
+        res.send(vtt);
+    } catch (err) {
+        console.error('[Clips] descriptions error:', err.message);
+        if (!res.headersSent) res.status(500).json({ error: 'Failed to load the descriptions' });
+    }
+});
+
 router.get('/:id', optionalAuth, async (req, res) => {
     try {
         if (!/^\d+$/.test(req.params.id)) return clipNotFound(res);
