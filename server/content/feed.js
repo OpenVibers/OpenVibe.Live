@@ -123,7 +123,7 @@ async function vodItem(v) {
     if (banned(owner)) return null;
     // Content is what people made: the card carries no AI overview (the VOD page still has it).
     return {
-        kind: 'vod', id: Number(v.id), href: videoUrl('vod', v.id),
+        kind: 'vod', id: Number(v.id), watch_id: v.watch_id || null, href: videoUrl('vod', v.id, null, v.watch_id),
         title: clean(v.title, 140) || 'Stream recording',
         created_at: iso(v.created_at), views: num(v.view_count),
         duration_seconds: Math.round(num(v.duration_seconds ?? v.duration)),
@@ -146,7 +146,7 @@ async function clipItem(c, { ai }) {
     if (ai) { try { const s = await db.getClipAiState(c.id); summary = s && (s.ai_overview_short || s.ai_overview); } catch { /* */ } }
     const by = !ai && creator && channelOwner && creator.id !== channelOwner.id ? person(creator) : null;
     return {
-        kind: 'clip', id: Number(c.id), href: videoUrl('clip', c.id),
+        kind: 'clip', id: Number(c.id), watch_id: c.watch_id || null, href: videoUrl('clip', c.id, null, c.watch_id),
         title: clean(c.title, 140) || 'Clip',
         created_at: iso(c.created_at), views: num(c.view_count),
         duration_seconds: Math.round(num(c.duration_seconds ?? c.duration)),

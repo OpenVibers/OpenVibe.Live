@@ -20,4 +20,9 @@ assert.match(status, /\/vod\/:id\s+\/clip\/:id\s+a numeric id 301s to OpenVibe\.
 const { videoUrl } = require('../server/web/video-url');
 assert.strictEqual(videoUrl('vod', 12), 'https://openvibe.video/v/12');
 assert.strictEqual(videoUrl('clip', 12), 'https://openvibe.video/c/12');
+// A row's watch id (Media mints one for every VOD and clip) names the page in YouTube's shape, the moment after it.
+assert.strictEqual(videoUrl('vod', 12, null, 'dQw4w9WgXcQ'), 'https://openvibe.video/watch?v=dQw4w9WgXcQ');
+assert.strictEqual(videoUrl('vod', 12, 95, 'dQw4w9WgXcQ'), 'https://openvibe.video/watch?v=dQw4w9WgXcQ&t=95');
+assert.strictEqual(videoUrl('clip', 12, null, 'dQw4w9WgXcQ'), 'https://openvibe.video/watch?v=dQw4w9WgXcQ');
+assert.strictEqual(videoUrl('vod', 12, null, 'too-short'), 'https://openvibe.video/v/12', 'a malformed id is not used');
 console.log('agent stable ids: ok');

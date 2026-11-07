@@ -99,10 +99,10 @@ async function heroMedia() {
     try {
         const pool = await _mediaContent();
         for (const v of pool.vods) {
-            items.push({ kind: 'vod', title: v.title || 'VOD', thumbnail: media.publicUrl(v.thumbnail_url) || media.thumbUrl(`vod-${v.id}`), href: videoUrl('vod', v.id), username: v.username });
+            items.push({ kind: 'vod', title: v.title || 'VOD', thumbnail: media.publicUrl(v.thumbnail_url) || media.thumbUrl(`vod-${v.id}`), href: videoUrl('vod', v.id, null, v.watch_id), username: v.username });
         }
         for (const c of pool.clips) {
-            items.push({ kind: 'clip', title: c.title || 'Clip', thumbnail: media.publicUrl(c.thumbnail_url) || media.thumbUrl(`clip-${c.id}`), href: videoUrl('clip', c.id), username: c.username });
+            items.push({ kind: 'clip', title: c.title || 'Clip', thumbnail: media.publicUrl(c.thumbnail_url) || media.thumbUrl(`clip-${c.id}`), href: videoUrl('clip', c.id, null, c.watch_id), username: c.username });
         }
         for (const p of pool.pastes) {
             items.push({
