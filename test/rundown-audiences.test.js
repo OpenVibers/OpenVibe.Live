@@ -155,6 +155,32 @@ await db.run('UPDATE rundown_visibility SET vod_members = ?::jsonb WHERE stream_
     assert.strictEqual(await read.episode(streamId, { viewer: { key: 'anon:x', userId: null, subject: SUB_OTHER } }), null, 'the person on only one list does not');
 }
 
+// ── A recording shared with Specific people (Media's new audience) ──
+await setAudience('public');
+await db.run("DELETE FROM share_members WHERE service = 'live' AND kind = 'rundown-episode' AND resource_id = ?", [String(streamId)]);
+await visibility.noteVodVisibility(streamId, 'people', [SUB_WATCH]);
+{
+    const eff = await visibility.effective(streamId);
+    assert.strictEqual(eff.vod, 'people', 'Media\'s people audience is recorded, not flattened to private');
+    assert.strictEqual(eff.audience, 'people', 'the recording makes the episode Specific people');
+    assert.deepStrictEqual(eff.members, [SUB_WATCH], 'with the recording\'s member list');
+    assert.ok(await read.episode(streamId, { viewer: { key: `user:${watcher}`, userId: watcher, subject: SUB_WATCH } }), 'a person on the recording opens the episode');
+    assert.strictEqual(await read.episode(streamId, { viewer: { key: 'anon:x', userId: null, subject: SUB_OTHER } }), null, 'somebody else does not');
+    const home = await read.home({ viewer: null });
+    assert.strictEqual(home.counts.takes, 0, 'it is not counted on the gathered front page');
+    // The event path (Media reports the audience and the member list together) writes the same row.
+    await visibility.noteVodChange(4242, streamId, 'people', [SUB_WATCH, SUB_OTHER]);
+    const stored = await db.get('SELECT vod_audience, vod_members FROM rundown_visibility WHERE stream_id = ?', [streamId]);
+    assert.strictEqual(stored.vod_audience, 'people');
+    assert.deepStrictEqual(stored.vod_members.map((m) => m.id), [SUB_WATCH, SUB_OTHER]);
+    // The episode's own link setting is not wider than the recording: people wins.
+    await setAudience('link');
+    assert.strictEqual((await visibility.effective(streamId)).audience, 'people', 'people is stricter than link');
+    // Only me on the episode stays Only me whatever the recording says.
+    await setAudience('private');
+    assert.strictEqual((await visibility.effective(streamId)).audience, 'private', 'the episode can always narrow further');
+}
+
 // ── Deleting ──
 await setAudience('public');
 {

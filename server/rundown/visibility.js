@@ -11,9 +11,9 @@
  * so a VOD that turns stricter is followed at once (the episode, its segments and the after-show report) and a VOD that
  * becomes public again gives the episode back its own setting, never a wider one.
  *
- * Media's own vocabulary (public, unlisted, private) is mapped onto the four audiences. Media has no "specific people"
- * visibility of its own, so the people on a VOD are the ones Live knows about; the people of both sides are the ones on
- * both lists.
+ * Media's own vocabulary is mapped onto the four audiences. Since Media gained "Specific people" (step 5), a VOD can
+ * itself be `people`: Live records that audience and the VOD's member list from Media's API/event (the audience and the
+ * subject ids, never a title). When both the episode and the VOD name people, the people on both lists keep access.
  */
 const db = require('../db/database');
 
@@ -24,9 +24,9 @@ const STRICTNESS = { private: 0, people: 1, link: 2, public: 3 };
 /** Nobody chose anything yet: Everyone. */
 const DEFAULT_AUDIENCE = 'public';
 /** Media's visibility vocabulary, mapped onto the four audiences. */
-const MEDIA_AUDIENCE = { public: 'public', unlisted: 'link', private: 'private' };
+const MEDIA_AUDIENCE = { public: 'public', unlisted: 'link', people: 'people', private: 'private' };
 /** And back again: what the episode page says when it follows the recording ("Following the VOD: unlisted"). */
-const MEDIA_WORD = { public: 'public', link: 'unlisted', private: 'private' };
+const MEDIA_WORD = { public: 'public', link: 'unlisted', people: 'people', private: 'private' };
 /** The chip a streamer sees on their own non-public items. */
 const LABELS = { public: 'Everyone', link: 'Link', private: 'Only me' };
 
@@ -93,13 +93,14 @@ async function memberSubjects(streamId) {
 async function effective(streamId) {
     const own = await ownAudience(streamId);
     const vod = await vodAudience(streamId);
-    let audience = stricter(own, vod);
-    let members = audience === 'people' ? await memberSubjects(streamId) : [];
-    if (own === 'people' && vod === 'people') {
-        // Specific people on both sides: the people on both lists.
-        const vodList = await vodMembers(streamId);
-        members = members.filter((id) => vodList.includes(id));
-        if (!members.length) audience = 'private';   // nobody but the streamer: never wider than the lists say
+    const audience = stricter(own, vod);
+    let members = [];
+    if (audience === 'people') {
+        const ownList = own === 'people' ? await memberSubjects(streamId) : null;
+        const vodList = vod === 'people' ? await vodMembers(streamId) : null;
+        // Specific people on the recording alone: its people. On the episode alone: its people. On both:
+        // the people on both lists. The effective audience is never wider than either list.
+        members = ownList && vodList ? ownList.filter((id) => vodList.includes(id)) : (vodList || ownList || []);
     }
     return { own, vod, audience, members, following_vod: audience !== own, member_count: members.length };
 }
@@ -108,12 +109,16 @@ async function effective(streamId) {
  * Record what the recording decides. Called in the same request as a visibility change made through Live's own pages
  * (server/media-proxy/vods.js) and when Media's own event arrives (server/media-proxy/outcomes.js).
  */
-async function noteVodVisibility(streamId, mediaVisibility) {
+async function noteVodVisibility(streamId, mediaVisibility, members = null) {
     const id = Number(streamId);
     if (!Number.isSafeInteger(id) || id <= 0) return null;
     const audience = mediaAudience(mediaVisibility);
-    await db.run(`INSERT INTO rundown_visibility (stream_id, vod_audience, updated_at) VALUES (?, ?, ov_now())
-        ON CONFLICT (stream_id) DO UPDATE SET vod_audience = excluded.vod_audience, updated_at = excluded.updated_at`, [id, audience]);
+    const list = audience === 'people'
+        ? (Array.isArray(members) ? members : []).map((m) => ({ id: String(m && m.id ? m.id : m) })).filter((m) => m.id)
+        : [];
+    await db.run(`INSERT INTO rundown_visibility (stream_id, vod_audience, vod_members, updated_at) VALUES (?, ?, ?::jsonb, ov_now())
+        ON CONFLICT (stream_id) DO UPDATE SET vod_audience = excluded.vod_audience, vod_members = excluded.vod_members,
+            updated_at = excluded.updated_at`, [id, audience, JSON.stringify(list)]);
     return audience;
 }
 
@@ -121,7 +126,7 @@ async function noteVodVisibility(streamId, mediaVisibility) {
  * A recording changed its visibility: the write-up of that stream follows at once. Called from Live's own pages
  * (server/media-proxy/vods.js) and from Media's event (server/media-proxy/outcomes.js).
  */
-async function noteVodChange(vodId, streamId, mediaVisibility) {
+async function noteVodChange(vodId, streamId, mediaVisibility, members = null) {
     let sid = Number(streamId);
     if (!Number.isSafeInteger(sid) || sid <= 0) {
         const row = await db.get('SELECT stream_id FROM rundown_episodes WHERE vod_id = ?', [Number(vodId)]);
@@ -129,7 +134,7 @@ async function noteVodChange(vodId, streamId, mediaVisibility) {
     }
     if (!Number.isSafeInteger(sid) || sid <= 0) return null;
     forget(sid);
-    return await noteVodVisibility(sid, mediaVisibility);
+    return await noteVodVisibility(sid, mediaVisibility, members);
 }
 
 /** The recording of a stream, when there is one. */
@@ -153,14 +158,17 @@ async function recheck(streamId) {
     if (hit && Date.now() - hit.at < RECHECK_MS) return hit.audience;
     const vodId = await vodIdFor(id);
     if (!vodId) return null;
-    let audience = null;
+    let audience = null, members = null;
     try {
         const vod = await require('../media-client').getVod(vodId);
-        if (vod && vod.visibility) audience = mediaAudience(vod.visibility);
+        // Media's `audience` is the share.v1 answer (people included); `visibility` keeps old servers working.
+        if (vod && (vod.audience || vod.visibility)) audience = mediaAudience(vod.audience || vod.visibility);
+        if (vod && Array.isArray(vod.members)) members = vod.members;
+        else if (vod && Array.isArray(vod.share_members)) members = vod.share_members;
     } catch { /* Media unreachable: the last thing we heard stays */ }
     if (!audience) return null;
     _rechecked.set(id, { at: Date.now(), audience });
-    await noteVodVisibility(id, audience);
+    await noteVodVisibility(id, audience, members);
     return audience;
 }
 
