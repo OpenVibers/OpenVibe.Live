@@ -174,3 +174,33 @@ When an episode is written within 6 hours of its stream ending, it is announced 
 | `ai_timeline_enabled` | `false` | the speech-to-text the desk reads: must be on |
 
 Tests: `test/rundown.test.js` (filters, the desk on a stubbed AI, topics, episodes, opt-outs, the API and the redirects) and `test/rundown-audiences.test.js` (the four audiences and who may see each, the gathered pages and their counts, a non-public take never reaching the streamer it names, the recording's rule, and deleting). `test/recap-audience.test.js` covers the after-show report's setting.
+
+## The bar: search and filters
+
+The state of a view is its URL: `/rundown?streamer=goosely&topic=drake-and-objectives&when=week&q=baron`. Every
+filter is in it, so a view can be shared and the back button works.
+
+| Filter | In the URL | What it does |
+|---|---|---|
+| the search | `q` | the words, over the take titles, what was said, the desk's quips, the quotes, the episode titles and loglines and the topic names (a phrase in quotes is a phrase) |
+| Streamer | `streamer` | one or more names, comma separated |
+| Topic | `topic` | one topic's slug |
+| When | `when` | `day`, `week` or `month` |
+| Show | `show` | `takes`, `episodes` or `topics` (no `show` is the Latest view: takes and episodes) |
+| Sort | `sort` | `newest`, `reacted` or `takes` |
+| With video | `video=1` | only the takes that jump to a moment |
+| Following | `following=1` | only the streamers the reader follows (signed in) |
+| Mentions me | `mentions=1` | only the takes that name the reader (signed in, a streamer) |
+
+- `GET /api/rundown/browse?q=&streamer=&topic=&when=&show=&sort=&video=&following=&mentions=` — the results the
+  filters ask for, the counts (`"34 takes from 6 streamers"`), and, when nothing matches, the filter to drop and
+  the closest topics by name.
+- `GET /api/rundown/options` — the lists the pickers show: the streamers who have been talking, the topics (trending
+  first).
+
+The words come from the `search_tsv` columns migration `0031_rundown_search.sql` fills (a tsvector per row and a
+GIN index, English configuration). A streamer's name is matched by prefix, not by word.
+
+Only the plain front page, a single streamer's page and a single topic's page are indexable. Every filter
+combination and every search is `noindex,follow`, with a canonical to the nearest of those, so a crawler never gets
+an endless filter space.
