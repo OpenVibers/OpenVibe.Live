@@ -5,9 +5,10 @@
  * could creep back:
  *
  *   1. the home page's own HTML must not name chat.js, chat-shared.js or chat-shared.css;
- *   2. the home page's idle prefetch (features.json → home.idle) must not reach the chat UI
- *      either — the prefetch downloads the files, so the chat UI in the channel feature's
- *      dependencies would put it back on every home page;
+ *   2. the home page never loads the chat UI: no home feature depends on it, and it is not a
+ *      dependency of anything the home prefetches. It is prefetched itself, by name, in
+ *      home.idle (Opus, 11-07): a <link rel="prefetch"> once the page has settled, so the channel
+ *      most people open next from home has its chat cached; it never runs on the home page;
  *   3. every inline handler (onclick="…") in the shell or in a fragment that calls a function of
  *      the chat UI must be listed in the chatUI feature's stubs, or the click does nothing on a
  *      page where the chat has not loaded.
@@ -55,7 +56,7 @@ for (const [url, want] of [['/@someone', '/js/app-channel.js'], ['/chat', '/js/a
 }
 ok('the channel, chat and broadcast pages load the chat UI, and it comes first');
 
-// 2. The home page's idle prefetch must not reach the chat UI either.
+// 2. The home page never loads the chat UI; its idle prefetch names it once, directly.
 const featureDeps = (name, seen = new Set()) => {
     if (seen.has(name)) return seen;
     seen.add(name);
@@ -68,12 +69,14 @@ for (const route of reg.routes) {
         const closure = featureDeps(f);
         assert.ok(!closure.has('chatUI'), `the home route's ${f} would pull the chat UI`);
         for (const idle of reg.features[f].idle || []) {
+            if (idle === 'chatUI') continue;
             const idleClosure = featureDeps(idle);
-            assert.ok(!idleClosure.has('chatUI'), `the home page's idle prefetch of ${idle} would pull the chat UI`);
+            assert.ok(!idleClosure.has('chatUI'), `the home page's idle prefetch of ${idle} would pull the chat UI as a dependency`);
         }
     }
 }
-ok('the home page neither loads nor prefetches the chat UI');
+assert.ok((reg.features.home.idle || []).includes('chatUI'), 'the home page warms the chat UI at idle, by name');
+ok('the home page never loads the chat UI, and warms it at idle');
 
 // 3. Every inline handler that calls the chat UI is stubbed.
 const chatFns = new Set();
