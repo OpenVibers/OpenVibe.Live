@@ -5,7 +5,7 @@
  *   search     finds a quote, a take and a streamer by prefix; a phrase in quotes is a phrase
  *   filters    every one of them narrows the results, and the counts follow
  *   no results the page is told which filter to drop, and which topics are closest
- *   the words   come from the tsvector columns the search migration fills (0030_rundown_search.sql)
+ *   the words   come from the tsvector columns the search migration fills (0031_rundown_search.sql)
  *
  *   node test/rundown-search.test.js
  */

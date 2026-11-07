@@ -9,7 +9,7 @@
  *   browse(query, { viewer })   the results the filters ask for, the counts, the closest topics when nothing matches
  *   options()                   the lists the pickers show: the streamers who've been talking, the topics
  *
- * The words come from the tsvector columns the search migration fills (migrations/0030_rundown_search.sql): a take's
+ * The words come from the tsvector columns the search migration fills (migrations/0031_rundown_search.sql): a take's
  * title, what was said, the desk's quip, its quotes and its topic; an episode's title, logline, recap and chapters; a
  * topic's name, headline and summary. A streamer's name is matched by prefix, not by word, so "goos" finds them.
  *
