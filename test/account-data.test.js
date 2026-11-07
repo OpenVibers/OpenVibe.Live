@@ -78,6 +78,7 @@ const ulid = () => ids.ulid();
             exempt.share_access_requests = 'sharing: access requests by subject, erased by subject (eraseSharing)';
             exempt.share_transfers = 'sharing: offers by subject, erased by subject (eraseSharing)';
             exempt.agent_view_tickets = 'agent streams: view tickets carry the viewer\'s subject; the rows go with the stream (managed_streams cascade)';
+            exempt.agent_sandbox_workers = 'agent streams: the sandbox worker registry names the person it works for; the row goes when the worker stops (it is not an account row)';
             // Every other table with a person column is handled by the schema-driven export and erase below.
             const handled = [...cols.keys()].filter((t) => !chatTables.includes(t));
             const missing = await uncovered(d, { taskKeyed: handled, exempt });
