@@ -23,7 +23,7 @@ const { v4: uuidv4 } = require('uuid');
 const multer = require('multer');
 const fs = require('fs');
 const db = require('../db/database');
-const { createSsoClient, failurePage } = require('openvibe-sdk/sso');
+const { createSsoClient, failurePage, withParam } = require('openvibe-sdk/sso');
 const { requireAuth, optionalAuth } = require('./auth');
 const permissions = require('./permissions');
 const config = require('../config');
@@ -507,8 +507,7 @@ router.get('/callback', async (req, res) => {
         if (!code && req.query.error) {
             // Silent sign-in found no network session — go on quietly as a guest.
             clearFlowCookies(res);
-            const sep = next.includes('?') ? '&' : '?';
-            return res.redirect(`${next}${sep}sso=none`);
+            return res.redirect(withParam(next, 'sso', 'none'));
         }
         if (!code) return res.status(400).send('Missing authorization code');
 
