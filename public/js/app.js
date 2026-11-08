@@ -626,9 +626,16 @@ function _recordHistory(pageId) {
         document.head.appendChild(sc);
     }, 1800);
 }
+/** This page was opened from another OpenVibe site (its referrer is first-party, and not Live itself). */
+function _fromOpenVibe() {
+    try { const r = new URL(document.referrer); return r.protocol === 'https:' && r.hostname !== location.hostname && /(^|\.)(openvibe\.[a-z]+|open\.shoes|openre\.stream)$/.test(r.hostname); } catch { return false; }
+}
 /** Try to sign back in through openvibe.network without a chooser — once per tab session. */
-function _trySilentSso() {
+function _trySilentSso(force) {
     if (currentUser || _ssoHint() === 'guest' || /bot|crawl|spider|headless/i.test(navigator.userAgent)) return false;
+    // A reason to think there is a session: the quiet check said yes (force), Live signed them in before, or they came
+    // from another OpenVibe site. Otherwise no redirect (a newcomer from a search engine).
+    if (!force && _ssoHint() !== 'account' && !_fromOpenVibe()) return false;
     if (/[?&]sso=none\b/.test(location.search)) return false;
     try { if (sessionStorage.getItem('ov_silent_sso')) return false; sessionStorage.setItem('ov_silent_sso', '1'); } catch { return false; }
     if (location.pathname.startsWith('/banned') || location.pathname.startsWith('/api/')) return false;
@@ -653,7 +660,48 @@ function _enableHandoff() {
 }
 // Network's session must be read in a top-level navigation: an iframe cannot see it when
 // third-party cookies are blocked. The existing SDK OAuth route uses prompt=none.
-function _checkNetworkSession() { return _trySilentSso(); }
+/**
+ * Signed in to the network but not here. The top-level round trip (/api/auth/sso/login?silent=1 → Network prompt=none)
+ * sees Network's session even where third-party cookies are blocked (phones), but costs a redirect, so it runs when there
+ * is a reason to think the person has one: Live signed them in before ('account'), or they came from another OpenVibe
+ * site (the referrer). A newcomer from anywhere else keeps the quiet iframe check and FedCM: no redirect on a first visit.
+ */
+function _checkNetworkSession() {
+    if (_ssoHint() === 'account' || _fromOpenVibe()) return _trySilentSso();
+    return _quietNetworkCheck();
+}
+/** A guest with no hint and no OpenVibe referrer: ask openvibe.network from a hidden iframe (a yes signs in; FedCM asks the browser otherwise). */
+function _quietNetworkCheck() {
+    if (_ssoHint() === 'guest' || /bot|crawl|spider|headless/i.test(navigator.userAgent)) return;
+    try {
+        const last = +sessionStorage.getItem('ov_sso_check_at') || 0;
+        if (Date.now() - last < 10 * 60 * 1000) return;
+        sessionStorage.setItem('ov_sso_check_at', String(Date.now()));
+    } catch { return; }
+    const base = (window.OV_NETWORK_URL || 'https://openvibe.network').replace(/\/$/, '');
+    let frame = null, timer = null;
+    const done = () => { window.removeEventListener('message', onMsg); clearTimeout(timer); try { frame?.remove(); } catch { /* */ } };
+    const onMsg = (e) => {
+        if (e.origin !== base || !e.data || e.data.type !== 'ov-sso') return;
+        done();
+        if (currentUser) return;
+        if (e.data.signedIn) { _trySilentSso(true); return; }
+        // Not visible from an iframe (guest, or the browser keeps third-party cookies away):
+        // let the browser itself ask the network — FedCM is a no-op for guests.
+        _loadSsoClient().then(async (sso) => {
+            if (!sso || !sso.fedcmAvailable() || currentUser) return;
+            const r = await sso.fedcm({ apiBase: base, fedcmLogin: '/api/auth/fedcm', mediation: 'optional' });
+            if (r && r.ok) { try { sessionStorage.removeItem('ov_silent_sso'); } catch { /* */ } _setSsoHint('account'); location.reload(); }
+        });
+    };
+    window.addEventListener('message', onMsg);
+    frame = document.createElement('iframe');
+    frame.setAttribute('aria-hidden', 'true'); frame.tabIndex = -1;
+    frame.style.cssText = 'position:absolute;width:0;height:0;border:0;opacity:0;pointer-events:none';
+    frame.src = `${base}/sso/check?origin=${encodeURIComponent(location.origin)}`;
+    (document.body || document.documentElement).appendChild(frame);
+    timer = setTimeout(done, 4000);
+}
 /** "Switch account": drop this site's session, keep openvibe.network's, open the account chooser. */
 /** Switch account: OpenVibe.Network's chooser (every account this browser holds), back here as the one chosen. Nothing
  *  is signed out first, so closing the chooser keeps this session. */
