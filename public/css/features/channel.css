@@ -1792,3 +1792,66 @@ html[data-ov-motion="reduced"] #page-channel #ch-tabs { transition: none; }
     #page-channel .ch-tab-panel .stream-grid > p.muted { grid-column: auto; }
 }
 @media (prefers-reduced-motion: reduce) { #page-channel .ch-tab-panel { scroll-margin-top: calc(var(--ovnav-h, 56px) + 56px); } }
+
+/* The stream's actions are one family (owner 11-08, phone screenshot: "ugly and cut off … make it consistent and nice
+   looking"): Share, Ask your agent, Follow, Still and Ban are pills of one height, one type size and one icon size.
+   Follow is the solid one; Following is quiet (it read as a disabled grey button); Ban is a red-tinted one. */
+#page-channel .ch-info-bar-right { gap: 8px; }
+#page-channel .ch-info-bar-right :is(#ch-share-slot, #ch-ask-slot) { display: contents; }
+#page-channel .ch-info-bar-right :is(#ch-btn-share, .ovk-ask, #ch-btn-follow, #ch-btn-ban, #btn-cam) {
+    box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; gap: 7px; flex: none;
+    height: 36px; min-height: 36px; margin: 0; padding: 0 14px; border: 0; border-radius: 999px; box-shadow: none;
+    font: inherit; font-size: 14px; font-weight: 650; line-height: 1; white-space: nowrap; text-decoration: none; cursor: pointer;
+    transition: background-color .15s ease, color .15s ease;
+}
+#page-channel .ch-info-bar-right :is(#ch-btn-share, .ovk-ask, #ch-btn-follow, #ch-btn-ban, #btn-cam) :is(svg, i) { flex: none; width: 16px; height: 16px; font-size: 14px; line-height: 16px; text-align: center; }
+#page-channel .ch-info-bar-right :is(#ch-btn-share, .ovk-ask, #btn-cam) { background: color-mix(in srgb, var(--text-primary) 9%, transparent); color: var(--text-primary); }
+#page-channel .ch-info-bar-right :is(#ch-btn-share, .ovk-ask, #btn-cam):hover { background: color-mix(in srgb, var(--text-primary) 15%, transparent); }
+#page-channel .ch-info-bar-right #ch-btn-follow { background: var(--live-red, #ef4444); color: #fff; }
+#page-channel .ch-info-bar-right #ch-btn-follow:hover { filter: brightness(1.08); }
+#page-channel .ch-info-bar-right #ch-btn-follow.following { background: color-mix(in srgb, var(--text-primary) 9%, transparent); color: var(--text-primary); filter: none; }
+#page-channel .ch-info-bar-right #ch-btn-follow.following:hover { background: color-mix(in srgb, var(--danger, #ef4444) 20%, transparent); color: var(--danger, #ef4444); }
+#page-channel .ch-info-bar-right #ch-btn-ban { background: color-mix(in srgb, var(--danger, #ef4444) 15%, transparent); color: var(--danger, #f87171); }
+#page-channel .ch-info-bar-right #ch-btn-ban:hover { background: color-mix(in srgb, var(--danger, #ef4444) 26%, transparent); }
+#page-channel .ch-info-bar-right :is(#ch-btn-share, .ovk-ask, #ch-btn-follow, #ch-btn-ban, #btn-cam):focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+@media (max-width: 768px) and (orientation: portrait) {
+    /* A phone watching live: who is streaming on one line of its own (never under the buttons), the buttons on the
+       next, Follow first, sliding sideways when a moderator has more of them than fit. */
+    #page-channel.ch-is-live .ch-info-bar { flex-wrap: wrap; align-items: center; row-gap: 10px; padding: 10px 12px; }
+    #page-channel.ch-is-live .ch-info-bar-left { flex: 1 1 100%; align-items: center; gap: 10px; }
+    #page-channel.ch-is-live .ch-info-bar .ch-avatar { width: 40px; height: 40px; }
+    #page-channel.ch-is-live .ch-info-bar-top h2 { font-size: 15px; font-weight: 750; }
+    #page-channel.ch-is-live .ch-stream-title { font-size: 13px; color: var(--text-secondary); }
+    #page-channel.ch-is-live .ch-info-bar-right { flex: 1 1 100%; width: 100%; justify-content: flex-start; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; padding-bottom: 1px; }
+    #page-channel.ch-is-live .ch-info-bar-right::-webkit-scrollbar { display: none; }
+    #page-channel.ch-is-live .ch-info-bar-right #ch-btn-follow { order: -1; }
+    /* The category is a quiet chip beside the name, not a second red button competing with Follow. */
+    #page-channel.ch-is-live .ch-info-bar-top .ch-category-badge { flex: none; padding: 2px 8px; border-radius: 999px; font-size: 11.5px; font-weight: 650;
+        background: color-mix(in srgb, var(--text-primary) 9%, transparent); color: var(--text-secondary); border: 0; }
+}
+
+/* A phone watching live (owner 11-08: "the chat should be collapsible … togglable like it used to be; scrolling past
+   chat feels weird"): the chat fills the screen under the stream as before, and its header's chevron folds it away.
+   Folded, the stream and its line stay on top and the channel's sections follow right under them; a Chat pill at the
+   bottom right brings it back. The choice is kept (toggleChannelChat: ov_ch_chat_hidden). */
+@media (max-width: 768px) and (orientation: portrait) {
+    #page-channel.ch-is-live .chat-header .ch-chat-collapse { display: inline-flex !important; align-items: center; justify-content: center; order: 3; margin: 0 0 0 2px; }
+    #page-channel.ch-is-live .chat-header .ch-chat-collapse i { transform: rotate(90deg); }
+    #page-channel.ch-is-live .chat-sidebar .chat-header { justify-content: flex-start; }
+    #page-channel.ch-is-live .chat-sidebar .chat-header .chat-header-actions { margin-left: auto; }
+    #page-channel.ch-is-live.chat-collapsed .stream-layout { height: auto; }
+    #page-channel.ch-is-live.chat-collapsed .stream-layout > .chat-sidebar { display: none !important; }
+    #page-channel.ch-is-live.chat-revealing .stream-layout > .chat-sidebar { animation: chChatRise var(--ov-dur-3, .32s) var(--ov-ease-out, cubic-bezier(.22,1,.36,1)); }
+    body:has(#page-channel.active.ch-is-live) .ch-chat-reopen:not([hidden]) {
+        display: inline-flex !important; top: auto; transform: none;
+        right: max(16px, env(safe-area-inset-right, 0px)); bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+        height: 44px; padding: 0 18px; gap: 8px; border: 0; border-radius: 999px;
+        background: var(--accent-strong, var(--accent)); color: var(--on-accent-strong, #fff); font: 700 15px/1 inherit;
+        box-shadow: 0 10px 24px -10px rgba(0, 0, 0, .7);
+    }
+    body:has(#page-channel.active.ch-is-live) .ch-chat-reopen .fa-angles-left { display: none; }
+    body:has(#page-channel.active.ch-is-live) .ch-chat-reopen .fa-comments { color: inherit; }
+}
+@keyframes chChatRise { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { #page-channel.chat-revealing .stream-layout > .chat-sidebar { animation: none !important; } }

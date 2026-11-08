@@ -846,8 +846,9 @@ async function loadChannelPage(username, managedStreamRef = null, legacySessionI
                 btn.style.display = '';
                 btn.classList.toggle('following', ch.is_following);
                 btn.innerHTML = ch.is_following
-                    ? '<i class="fa-solid fa-heart-crack"></i> Unfollow'
+                    ? '<i class="fa-solid fa-check"></i> Following'
                     : '<i class="fa-solid fa-heart"></i> Follow';
+                btn.title = ch.is_following ? 'Unfollow' : 'Follow';
                 btn.onclick = () => toggleChannelFollow(username);
             }
         };
@@ -3765,8 +3766,9 @@ async function toggleChannelFollow(username) {
             if (!btn) return;
             btn.classList.toggle('following', data.following);
             btn.innerHTML = data.following
-                ? '<i class="fa-solid fa-heart-crack"></i> Unfollow'
+                ? '<i class="fa-solid fa-check"></i> Following'
                 : '<i class="fa-solid fa-heart"></i> Follow';
+            btn.title = data.following ? 'Unfollow' : 'Follow';
         });
         ['ch-follower-count', 'ch-follower-count-offline'].forEach(id => {
             const el = document.getElementById(id);
