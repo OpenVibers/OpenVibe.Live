@@ -1031,6 +1031,12 @@ function _ovNavStart() {
 }
 function _ovNavEnd() { if (!_ovNavOn) return; _ovNavOn = 0; _ovNavWaiting = false; try { window.OVMark && window.OVMark.navEnd('app'); } catch { /* */ } }
 
+// A floating card carried here from another OpenVibe site (Shared overlay.js) that frames Live's own channel embed is
+// not reopened on a channel page: the page plays the channel itself, and one stream never plays twice.
+window.OVOverlayHere = (card) => {
+    try { return new URL(card.src).origin === location.origin && /^\/embed\//.test(new URL(card.src).pathname) && /^\/(?:@|stream)/.test(location.pathname); } catch { return false; }
+};
+
 function navigate(urlPath, replace = false) {
     if (isOffSite(urlPath)) { if (replace) location.replace(urlPath); else location.href = urlPath; return; }
     urlPath = sameSitePath(urlPath);

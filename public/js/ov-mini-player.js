@@ -170,12 +170,13 @@
     function wireGestures(box) {
         const pts = new Map();
         let drag = null, pinch = null, lastTap = 0, grip = null;
+        const capture = (id) => { try { box.setPointerCapture(id); } catch { /* a pointer the browser no longer tracks */ } };
         const vel = [];
         box.addEventListener('pointerdown', (e) => {
             if (e.target.closest('.ov-mp-b')) return;
-            if (e.target.closest('.ov-mp-grip')) { grip = { x: e.clientX, w: st.w, corner: st.corner }; box.setPointerCapture(e.pointerId); e.preventDefault(); return; }
+            if (e.target.closest('.ov-mp-grip')) { grip = { x: e.clientX, w: st.w, corner: st.corner }; capture(e.pointerId); e.preventDefault(); return; }
             pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
-            box.setPointerCapture(e.pointerId);
+            capture(e.pointerId);
             if (pts.size === 2) {
                 const [a, b] = [...pts.values()];
                 pinch = { d: Math.hypot(a.x - b.x, a.y - b.y) || 1, w: st.w };
@@ -368,6 +369,7 @@
         const onPlayerPage = nextPath && (isChannelPath(nextPath) || String(nextPath).startsWith('/broadcast'));
         if (onPlayerPage) {
             if (st.box) release();
+            try { if (window.OVOverlay) window.OVOverlay.close('live'); } catch { /* */ }
             return false;
         }
         if (st.box) return true;                                   // already a mini player
@@ -399,7 +401,25 @@
         }
         requestAnimationFrame(() => settle(s.corner, w));
         if (!fine()) showUi();
+        declare(true);
         return true;
+    }
+
+    // Across OpenVibe sites (Shared 4.152.0 overlay.js): while the picture is in this mini player, a link to another
+    // OpenVibe site carries it as a floating card that frames Live's own /embed/<name> (a new session there; this one
+    // ends with the page), with the channel's chat beside it. Coming back to the channel closes that card.
+    function declare(on) {
+        const nav = window.OpenVibeNavbar;
+        if (!nav || typeof nav.overlays !== 'function') return;
+        nav.overlays().then((O) => {
+            if (!O) return;
+            if (!on || !st.user) { O.declare('live', null); return; }
+            const u = encodeURIComponent(st.user);
+            O.declare('live', {
+                src: `${location.origin}/embed/${u}`, title: st.title, live: true, href: `${location.origin}/@${u}`,
+                side: { src: `${location.origin}/popout/${u}`, title: `${st.title} \u00b7 chat` },
+            });
+        }).catch(() => { /* the overlay host could not load: the mini player still works here */ });
     }
 
     /** The viewer closed it: the player goes away for good. */
@@ -413,6 +433,7 @@
         if (!st.box) return;
         const box = st.box;
         toggleChat(false);
+        declare(false);
         st.box = null;
         clearTimeout(st.idle);
         if (st.onResize) { removeEventListener('resize', st.onResize); st.onResize = null; }
