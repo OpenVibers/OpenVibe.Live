@@ -626,20 +626,23 @@ function _recordHistory(pageId) {
         document.head.appendChild(sc);
     }, 1800);
 }
+/** This page was opened from another OpenVibe site (its referrer is first-party, and not Live itself). */
+function _fromOpenVibe() {
+    try { const r = new URL(document.referrer); return r.protocol === 'https:' && r.hostname !== location.hostname && /(^|\.)(openvibe\.[a-z]+|open\.shoes|openre\.stream)$/.test(r.hostname); } catch { return false; }
+}
 /** Try to sign back in through openvibe.network without a chooser — once per tab session. */
 function _trySilentSso(force) {
-    if (!force && _ssoHint() !== 'account') return false;
+    if (currentUser || _ssoHint() === 'guest' || /bot|crawl|spider|headless/i.test(navigator.userAgent)) return false;
+    // A reason to think there is a session: the quiet check said yes (force), Live signed them in before, or they came
+    // from another OpenVibe site. Otherwise no redirect (a newcomer from a search engine).
+    if (!force && _ssoHint() !== 'account' && !_fromOpenVibe()) return false;
+    if (/[?&]sso=none\b/.test(location.search)) return false;
     try { if (sessionStorage.getItem('ov_silent_sso')) return false; sessionStorage.setItem('ov_silent_sso', '1'); } catch { return false; }
     if (location.pathname.startsWith('/banned') || location.pathname.startsWith('/api/')) return false;
     // Come back to this exact page once the network has answered.
-    location.href = '/api/auth/sso/login?silent=1&next=' + encodeURIComponent(location.pathname + location.search);
+    location.replace('/api/auth/sso/login?silent=1&next=' + encodeURIComponent(location.pathname + location.search + location.hash));
     return true;
 }
-/**
- * A guest with no hint yet: ask openvibe.network in a hidden iframe whether this browser is
- * signed in there (GET /sso/check → one postMessage). Only a "yes" triggers the silent sign-in,
- * so first-time visitors never see a redirect. Once per tab per 10 minutes.
- */
 let _ssoClientPromise = null;
 function _loadSsoClient() {
     if (window.OpenVibeSSO) return Promise.resolve(window.OpenVibeSSO);
@@ -655,7 +658,20 @@ function _loadSsoClient() {
 function _enableHandoff() {
     _loadSsoClient().then((sso) => { try { sso && sso.handoffLinks({ signedIn: !!currentUser }); } catch { /* */ } });
 }
+// Network's session must be read in a top-level navigation: an iframe cannot see it when
+// third-party cookies are blocked. The existing SDK OAuth route uses prompt=none.
+/**
+ * Signed in to the network but not here. The top-level round trip (/api/auth/sso/login?silent=1 → Network prompt=none)
+ * sees Network's session even where third-party cookies are blocked (phones), but costs a redirect, so it runs when there
+ * is a reason to think the person has one: Live signed them in before ('account'), or they came from another OpenVibe
+ * site (the referrer). A newcomer from anywhere else keeps the quiet iframe check and FedCM: no redirect on a first visit.
+ */
 function _checkNetworkSession() {
+    if (_ssoHint() === 'account' || _fromOpenVibe()) return _trySilentSso();
+    return _quietNetworkCheck();
+}
+/** A guest with no hint and no OpenVibe referrer: ask openvibe.network from a hidden iframe (a yes signs in; FedCM asks the browser otherwise). */
+function _quietNetworkCheck() {
     if (_ssoHint() === 'guest' || /bot|crawl|spider|headless/i.test(navigator.userAgent)) return;
     try {
         const last = +sessionStorage.getItem('ov_sso_check_at') || 0;
