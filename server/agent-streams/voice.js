@@ -3,7 +3,7 @@
  * The agent's voice (Agent Streams S4, design 2026-11-06).
  *
  * In narrated mode the agent says something now and then: a step starts, a step fails, a result lands, and every
- * few minutes a short line when nothing else was said. This module writes those lines; the desk (OpenVibe.Node) makes
+ * few minutes a short line when nothing else was said. This module writes those lines; the desk (OpenVibe Link) makes
  * the sound, so Live never mixes audio.
  *
  * The rules that hold for every personality:
