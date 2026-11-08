@@ -2146,13 +2146,17 @@ router.post('/', requireAuth, async (req, res) => {
         const protocol = cleanProtocol(req.body.protocol);
         const tags = cleanTags(req.body.tags);
         const callMode = cleanCallMode(req.body.call_mode);
+        const placeName = cleanText(req.body.place_name, { maxLength: 120 });
+        const placeUrl = typeof req.body.place_url === 'string' ? req.body.place_url.trim() : '';
+        const placeLinkValid = !placeName && !placeUrl || Boolean(placeName && /^https:\/\/openvibe\.tours\/place\/[a-z0-9-]+-plc_[0-9A-HJKMNP-TV-Z]{26}$/.test(placeUrl));
 
         if ((hasOwn(req.body, 'title') && title === null)
             || (hasOwn(req.body, 'description') && description === null)
             || (hasOwn(req.body, 'category') && category === null)
             || (hasOwn(req.body, 'protocol') && protocol === null)
             || (hasOwn(req.body, 'tags') && tags === null)
-            || (hasOwn(req.body, 'call_mode') && callMode === null)) {
+            || (hasOwn(req.body, 'call_mode') && callMode === null)
+            || !placeLinkValid) {
             return res.status(400).json({ error: 'Invalid stream settings' });
         }
 
@@ -2168,7 +2172,7 @@ router.post('/', requireAuth, async (req, res) => {
             const stream = await db.getStreamById(recent.id);
             return res.status(200).json({ stream, endpoint: goLiveEndpoint(stream, managedStream), reused: true });
         }
-        const creating = createGoLive(req, managedStream, { title, description, category, protocol, tags, callMode });
+        const creating = createGoLive(req, managedStream, { title, description, category, protocol, tags, callMode, placeName, placeUrl });
         _goLiveInFlight.set(managedStream.id, creating);
         try {
             const done = await creating;
@@ -2183,7 +2187,7 @@ router.post('/', requireAuth, async (req, res) => {
 });
 
 /** Create the stream row and start its integrations (POST /api/streams). → { status, body } */
-async function createGoLive(req, managedStream, { title, description, category, protocol, tags, callMode }) {
+async function createGoLive(req, managedStream, { title, description, category, protocol, tags, callMode, placeName, placeUrl }) {
     const channel = await db.ensureChannel(req.user.id);
 
     // Streamer role promotion deferred — applied on first real feed ingest
@@ -2202,6 +2206,8 @@ async function createGoLive(req, managedStream, { title, description, category, 
         category: streamCategory,
         protocol: streamProtocol,
         is_nsfw: channel.force_nsfw ? 1 : (hasOwn(req.body, 'is_nsfw') ? cleanBooleanFlag(req.body.is_nsfw) : !!channel.is_nsfw),
+        place_name: placeName || null,
+        place_url: placeUrl || null,
     });
 
     const streamId = result.lastInsertRowid;

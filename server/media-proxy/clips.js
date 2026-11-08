@@ -48,6 +48,13 @@ function mediaErr(res, err, fallback) {
 // the clipped channel's streamer (source_streamer_* via channel_user_id).
 async function withUserFields(clip) {
     if (!clip) return clip;
+    if (clip.stream_id) {
+        const source = await db.getStreamById(clip.stream_id).catch(() => null);
+        if (source?.place_url) {
+            clip.place_name = source.place_name;
+            clip.place_url = source.place_url;
+        }
+    }
     if (clip.user_id != null) {
         const u = await db.getUserById(clip.user_id);
         if (u) {

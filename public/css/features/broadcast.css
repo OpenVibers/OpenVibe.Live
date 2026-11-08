@@ -3176,6 +3176,8 @@ body.bc-golive-dock-on #page-broadcast { padding-bottom: calc(104px + var(--ovna
 .gl-card { min-width: 0; padding: 16px; border-radius: 18px; border: 1px solid var(--border);
     background: color-mix(in srgb, var(--bg-card) 94%, transparent); box-shadow: 0 1px 0 color-mix(in srgb, var(--text-primary) 4%, transparent) inset; }
 .gl-title-row { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.gl-place-handoff { margin: 8px 0 14px; padding: 10px 12px; border-radius: 10px; background: var(--surface-2, rgba(255,255,255,.06)); color: var(--text-muted); font-size: .86rem; line-height: 1.4; }
+.gl-place-handoff a { color: var(--text-primary, inherit); font-weight: 650; }
 .gl-title { flex: 1 1 auto; min-width: 0; width: 100%; box-sizing: border-box; margin: -5px -8px; padding: 5px 8px; font: inherit; font-size: 1.4rem; font-weight: 800;
     line-height: 1.25; letter-spacing: -0.01em; color: var(--text-primary); background: transparent; border: 1px solid transparent; border-radius: 10px;
     transition: border-color var(--ov-dur-2, .15s), background-color var(--ov-dur-2, .15s); }

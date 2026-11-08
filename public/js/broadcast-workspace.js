@@ -184,6 +184,17 @@ function _wsShowEmpty() {
     if (panel) panel.style.display = 'none';
 }
 
+/** A Tours link may fill the studio. The streamer still presses Go live and can edit the title. */
+function toursPlaceHandoff(search) {
+    try {
+        const q = new URLSearchParams(search);
+        const name = String(q.get('place') || '').trim().slice(0, 120);
+        const url = String(q.get('place_url') || '').trim();
+        if (!name || !/^https:\/\/openvibe\.tours\/place\/[a-z0-9-]+-plc_[0-9A-HJKMNP-TV-Z]{26}$/.test(url)) return null;
+        return { name, url, title: `At ${name}`.slice(0, 200) };
+    } catch { return null; }
+}
+
 function _wsRenderPanel() {
     const empty = document.getElementById('bc-ws-empty');
     const panel = document.getElementById('bc-ws-panel');
@@ -197,6 +208,7 @@ function _wsRenderPanel() {
 
     const p = _wsState.profile;
     const isLive = _wsIsManagedStreamLive(ms.id);
+    const placeHandoff = isLive ? null : toursPlaceHandoff(window.location.search);
     const method = ms.streaming_method || 'browser';
     const streamKey = _wsState.streamKey || _wsState.streamKeyHint || '';
 
@@ -296,7 +308,7 @@ function _wsRenderPanel() {
         <section class="gl-card${isBrowser ? ' is-browser' : ''}" aria-label="Your stream, ready to go live">
             <div class="gl-title-row">
                 <input type="text" id="bc-title" class="gl-title" aria-label="Title"
-                    value="${esc(ms.title || '')}"
+                    value="${esc(placeHandoff?.title || ms.title || '')}"
                     placeholder="What are you streaming?" maxlength="200"
                     oninput="_wsMarkDirty()">
                 <span id="bc-ws-save-status" class="bc-ws-save-status" role="status" aria-live="polite"></span>
@@ -304,6 +316,7 @@ function _wsRenderPanel() {
                     <span aria-hidden="true">\u2728</span> Suggest
                 </button>
             </div>
+            ${placeHandoff ? `<p class="gl-place-handoff">From <a href="${esc(placeHandoff.url)}" rel="noopener">${esc(placeHandoff.name)} on OpenVibe.Tours</a>. Your stream will be linked to this place after you choose Go live.</p><input type="hidden" id="bc-place-name" value="${esc(placeHandoff.name)}"><input type="hidden" id="bc-place-url" value="${esc(placeHandoff.url)}">` : ''}
             <div class="gl-ideas" id="gl-ideas" role="group" aria-label="Title ideas" hidden></div>
             <div class="gl-chips">
                 <label class="gl-chip gl-chip--mature" title="Mature (18+): viewers confirm their age before the stream plays. The category is set automatically from what is on stream.">
