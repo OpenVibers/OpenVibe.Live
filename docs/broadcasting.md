@@ -2,6 +2,8 @@
 
 OpenVibe.Live supports four live broadcast methods, each suited to different use cases.
 
+For a chat-free channel player that can float across OpenVibe sites, see [Channel embeds](embed.md) or visit `/docs/embed`.
+
 ## Broadcast Methods
 
 ### WebRTC (Browser)

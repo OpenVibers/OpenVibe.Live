@@ -167,6 +167,7 @@ async function statusFor(req) {
         const segs = String(req.path || '/').split('/').filter(Boolean);
         if (!segs.length) return OK;
         const [first, second] = segs;
+        if (first === 'embed' && segs.length === 2) return await channelStatus(second.startsWith('@') ? second : `@${second}`);
         if (segs.length === 1 && EXACT.has(first)) return OK;
         if (PREFIX.has(first)) return OK;
         if (first.startsWith('@')) {
