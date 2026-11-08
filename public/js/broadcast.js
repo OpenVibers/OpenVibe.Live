@@ -1564,12 +1564,21 @@ async function createNewStream() {
             body: {
                 title,
                 description,
+                place_name: document.getElementById('bc-place-name')?.value || null,
+                place_url: document.getElementById('bc-place-url')?.value || null,
                 protocol: method,
                 is_nsfw: document.getElementById('bc-nsfw')?.checked || false,
                 managed_stream_id: managedStreamId,
             }
         });
         const streamData = data.stream || data;
+        if (streamData?.place_url) {
+            try {
+                const next = new URL(window.location.href);
+                next.searchParams.delete('place'); next.searchParams.delete('place_url'); next.searchParams.delete('title');
+                history.replaceState(history.state, '', next.pathname + next.search + next.hash);
+            } catch { /* the stream is already created */ }
+        }
         _diagStreamId = streamData?.id;
 
         // Create per-stream state

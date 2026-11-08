@@ -344,7 +344,7 @@ async function fireStreamLifecycle(kind, streamId) {
     try { await getDb().tx(() => streamLifecycleHook(kind, streamId)); } catch (err) { console.warn(`[Events] stream ${kind} event for ${streamId} not queued:`, err.message); }
 }
 
-async function createStream({ user_id, channel_id, managed_stream_id, title, description, category, protocol, is_nsfw, thumbnail_url, content_labels = null }) {
+async function createStream({ user_id, channel_id, managed_stream_id, title, description, category, protocol, is_nsfw, thumbnail_url, content_labels = null, place_name = null, place_url = null }) {
     return await getDb().tx(async () => {
         // The live session starts with the slot's creator labels; the AI's suggestions stay on the session.
         let labels = content_labels;
@@ -354,9 +354,9 @@ async function createStream({ user_id, channel_id, managed_stream_id, title, des
         }
         const labelJson = typeof labels === 'string' ? labels : JSON.stringify(labels || { labels: [], suggested: [] });
         const result = await run(
-            `INSERT INTO streams (user_id, channel_id, managed_stream_id, title, description, category, protocol, is_nsfw, thumbnail_url, content_labels, is_live, started_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ov_now()) RETURNING id`,
-            [user_id, channel_id || null, managed_stream_id || null, title || 'Untitled Stream', description || '', category || null, protocol || 'webrtc', is_nsfw ? 1 : 0, thumbnail_url || null, labelJson]
+            `INSERT INTO streams (user_id, channel_id, managed_stream_id, title, description, category, protocol, is_nsfw, thumbnail_url, content_labels, place_name, place_url, is_live, started_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ov_now()) RETURNING id`,
+            [user_id, channel_id || null, managed_stream_id || null, title || 'Untitled Stream', description || '', category || null, protocol || 'webrtc', is_nsfw ? 1 : 0, thumbnail_url || null, labelJson, place_name, place_url]
         );
         await fireStreamLifecycle('started', result.lastInsertRowid);
         return result;
