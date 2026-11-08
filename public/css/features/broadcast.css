@@ -3064,6 +3064,16 @@ body.bc-golive-dock-on #page-broadcast { padding-bottom: calc(104px + var(--ovna
     background: color-mix(in srgb, var(--accent) 14%, transparent); border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
 }
 .bc-last-replay:hover, .bc-last-replay:focus-visible { background: color-mix(in srgb, var(--accent) 24%, transparent); outline: none; }
+.bc-last-acts { flex: none; display: flex; align-items: center; gap: 6px; }
+.bc-last-delete {
+    display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 0 12px; border-radius: 999px; cursor: pointer;
+    font: inherit; font-size: 0.82rem; font-weight: 700; color: var(--text-secondary);
+    background: transparent; border: 1px solid var(--border);
+}
+.bc-last-delete:hover, .bc-last-delete:focus-visible { color: #fecaca; border-color: color-mix(in srgb, #ef4444 55%, transparent); background: color-mix(in srgb, #ef4444 12%, transparent); outline: none; }
+.bc-last-delete:disabled { opacity: 0.6; cursor: default; }
+@media (pointer: coarse) { .bc-last-replay, .bc-last-delete { min-height: 44px; } }
+@media (max-width: 480px) { .bc-last-item { flex-wrap: wrap; } .bc-last-acts { width: 100%; justify-content: flex-end; } }
 /* The phone bar fades up instead of appearing (and it no longer shows before the page knows the streams). */
 .bcs-golive:not([hidden]) { animation: bcs-dock-in var(--ov-dur-2, 0.2s) var(--ov-ease-out, ease-out); }
 .bcs-golive-t { margin-left: 8px; }

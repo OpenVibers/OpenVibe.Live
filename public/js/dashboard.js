@@ -503,7 +503,7 @@ async function loadDashVods() {
                             ? `<button class="btn btn-small btn-success" onclick="publishVod('${v.id}')"><i class="fa-solid fa-eye"></i> Publish</button>`
                             : `<button class="btn btn-small btn-outline" onclick="unpublishVod('${v.id}')"><i class="fa-solid fa-eye-slash"></i> Private</button>`}
                         <button class="btn btn-small" onclick="location.href=videoHref('vod', '${v.id}')" title="Watch on OpenVibe.Video"><i class="fa-solid fa-play"></i></button>
-                        <button class="btn btn-small btn-danger" onclick="deleteVod('${v.id}')"><i class="fa-solid fa-trash"></i></button>
+                        <button class="btn btn-small btn-danger" onclick="deleteVod('${v.id}')" aria-label="Delete ${esc(v.title || 'this video')}"><i class="fa-solid fa-trash-can" aria-hidden="true"></i> Delete</button>
                     </div>
                 </div>
             </div>
