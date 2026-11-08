@@ -39,6 +39,10 @@ console.warn = () => {};
     assert.strictEqual(u.searchParams.get('prompt'), 'none', 'silent stays silent');
     u = await go('');
     assert.strictEqual(u.searchParams.get('prompt'), null, 'a plain sign-in: the Network shows its chooser');
+    const guestStart = await fetch(`http://127.0.0.1:${server.address().port}/api/auth/sso/login?silent=1&next=%2Fchannel%3Ftab%3Dchat%23latest`, { redirect: 'manual' });
+    const guestCookie = guestStart.headers.getSetCookie().map(c => c.split(';')[0]).join('; ');
+    const guestBack = await fetch(`http://127.0.0.1:${server.address().port}/api/auth/callback?error=login_required`, { redirect: 'manual', headers: { Cookie: guestCookie } });
+    assert.strictEqual(guestBack.headers.get('location'), '/channel?tab=chat&sso=none#latest', 'the quiet-guest marker precedes the fragment');
     server.close();
 
     // The menu's Switch account keeps this session until another account is chosen.
