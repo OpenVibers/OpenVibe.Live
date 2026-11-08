@@ -627,19 +627,15 @@ function _recordHistory(pageId) {
     }, 1800);
 }
 /** Try to sign back in through openvibe.network without a chooser — once per tab session. */
-function _trySilentSso(force) {
-    if (!force && _ssoHint() !== 'account') return false;
+function _trySilentSso() {
+    if (currentUser || _ssoHint() === 'guest' || /bot|crawl|spider|headless/i.test(navigator.userAgent)) return false;
+    if (/[?&]sso=none\b/.test(location.search)) return false;
     try { if (sessionStorage.getItem('ov_silent_sso')) return false; sessionStorage.setItem('ov_silent_sso', '1'); } catch { return false; }
     if (location.pathname.startsWith('/banned') || location.pathname.startsWith('/api/')) return false;
     // Come back to this exact page once the network has answered.
-    location.href = '/api/auth/sso/login?silent=1&next=' + encodeURIComponent(location.pathname + location.search);
+    location.replace('/api/auth/sso/login?silent=1&next=' + encodeURIComponent(location.pathname + location.search + location.hash));
     return true;
 }
-/**
- * A guest with no hint yet: ask openvibe.network in a hidden iframe whether this browser is
- * signed in there (GET /sso/check → one postMessage). Only a "yes" triggers the silent sign-in,
- * so first-time visitors never see a redirect. Once per tab per 10 minutes.
- */
 let _ssoClientPromise = null;
 function _loadSsoClient() {
     if (window.OpenVibeSSO) return Promise.resolve(window.OpenVibeSSO);
@@ -655,37 +651,9 @@ function _loadSsoClient() {
 function _enableHandoff() {
     _loadSsoClient().then((sso) => { try { sso && sso.handoffLinks({ signedIn: !!currentUser }); } catch { /* */ } });
 }
-function _checkNetworkSession() {
-    if (_ssoHint() === 'guest' || /bot|crawl|spider|headless/i.test(navigator.userAgent)) return;
-    try {
-        const last = +sessionStorage.getItem('ov_sso_check_at') || 0;
-        if (Date.now() - last < 10 * 60 * 1000) return;
-        sessionStorage.setItem('ov_sso_check_at', String(Date.now()));
-    } catch { return; }
-    const base = (window.OV_NETWORK_URL || 'https://openvibe.network').replace(/\/$/, '');
-    let frame = null, timer = null;
-    const done = () => { window.removeEventListener('message', onMsg); clearTimeout(timer); try { frame?.remove(); } catch { /* */ } };
-    const onMsg = (e) => {
-        if (e.origin !== base || !e.data || e.data.type !== 'ov-sso') return;
-        done();
-        if (currentUser) return;
-        if (e.data.signedIn) { _trySilentSso(true); return; }
-        // Not visible from an iframe (guest, or the browser keeps third-party cookies away):
-        // let the browser itself ask the network — FedCM is a no-op for guests.
-        _loadSsoClient().then(async (sso) => {
-            if (!sso || !sso.fedcmAvailable() || currentUser) return;
-            const r = await sso.fedcm({ apiBase: base, fedcmLogin: '/api/auth/fedcm', mediation: 'optional' });
-            if (r && r.ok) { try { sessionStorage.removeItem('ov_silent_sso'); } catch { /* */ } _setSsoHint('account'); location.reload(); }
-        });
-    };
-    window.addEventListener('message', onMsg);
-    frame = document.createElement('iframe');
-    frame.setAttribute('aria-hidden', 'true'); frame.tabIndex = -1;
-    frame.style.cssText = 'position:absolute;width:0;height:0;border:0;opacity:0;pointer-events:none';
-    frame.src = `${base}/sso/check?origin=${encodeURIComponent(location.origin)}`;
-    (document.body || document.documentElement).appendChild(frame);
-    timer = setTimeout(done, 4000);
-}
+// Network's session must be read in a top-level navigation: an iframe cannot see it when
+// third-party cookies are blocked. The existing SDK OAuth route uses prompt=none.
+function _checkNetworkSession() { return _trySilentSso(); }
 /** "Switch account": drop this site's session, keep openvibe.network's, open the account chooser. */
 /** Switch account: OpenVibe.Network's chooser (every account this browser holds), back here as the one chosen. Nothing
  *  is signed out first, so closing the chooser keeps this session. */
