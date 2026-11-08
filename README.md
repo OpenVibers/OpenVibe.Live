@@ -175,7 +175,7 @@ Minimum `.env`: `BASE_URL`, `JWT_SECRET`, `OV_NETWORK_URL`, `OV_NETWORK_INTERNAL
 - [docs/restream-branding.md](docs/restream-branding.md) — branding guide for restream channels.
 
 <!-- versions:start -->
-- openvibe-contracts: v0.320.0
+- openvibe-contracts: v0.338.0
 - openvibe-sdk: v0.97.1
 - openvibe-shared: v4.142.0
 <!-- versions:end -->
