@@ -17,7 +17,7 @@ const SERVICE_SITES = [
     'https://openvibe.network',
     'https://openvibe.codes',
     'https://openvibe.actor',
-    'https://node.openvibe.network',
+    'https://openvibe.link',
     'https://openvibe.tools',
 ];
 

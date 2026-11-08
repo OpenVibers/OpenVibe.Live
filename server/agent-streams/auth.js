@@ -7,7 +7,7 @@
  *   - their Live session (the cookie their browser already has); or
  *   - a first-party service token for audience openvibe.live that holds the capability
  *     `live.agent_stream.publish` and names the person — as the token's `sub` (`usr_…`, the design's form, when Network
- *     issues a person token to a Node principal or to Codes/Actor) or in `X-OV-Subject` (`usr_…`, the form Actor
+ *     issues a person token to a Link principal or to Codes/Actor) or in `X-OV-Subject` (`usr_…`, the form Actor
  *     established for a first-party service acting for somebody). A developer-app token and another person's stream are
  *     always refused.
  *

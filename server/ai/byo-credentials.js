@@ -13,7 +13,7 @@
  * channel once). The key is never logged.
  *
  * Or a model on the streamer's own computer (settings_json.byo.provider node, machine dev_… or any; contracts
- * 0.220.0/0.221.0): OpenVibe.AI reaches it through OpenVibe.Bot and their OpenVibe Node, only for them, where they let
+ * 0.220.0/0.221.0): OpenVibe.AI reaches it through OpenVibe.Bot and their OpenVibe Link, only for them, where they let
  * their AI use that computer's models. There is no key, no address and nothing spent; byo_in_ai is set the same way.
  */
 const db = require('../db/database');
