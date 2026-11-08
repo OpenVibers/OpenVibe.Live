@@ -1742,6 +1742,31 @@ button.viewer-badge:focus-visible { outline: 2px solid #93c5fd; outline-offset: 
    folds. Scoped to the channel: the dashboard's settings tabs keep their tabs. */
 #page-channel .channel-below-fold > .container { display: flex; flex-direction: column; }
 #page-channel #ch-tabs { order: 0; position: sticky; top: var(--ovnav-h, 56px); z-index: 6; margin: 0 0 16px; background: var(--bg-primary); }
+/* The sticky section bar (owner 11-08: "the empty space gap above these when they are fixed like this is ugly"):
+   it follows the navbar. While the bar is there it sits under it; when a scroll down slides the navbar away it rises to
+   the top of the screen with the navbar's own easing, so no strip of page shows above it. It runs edge to edge (no
+   page showing down the sides), is frosted, and once it is stuck (app-channel.js sets .is-stuck) it lifts with a soft
+   shadow and an accent hairline. */
+#page-channel #ch-tabs {
+    top: var(--ovnav-h, 56px);
+    transition: top .45s cubic-bezier(.2, .7, .2, 1), box-shadow .25s ease, border-color .25s ease;
+    margin-inline: calc(-1 * clamp(16px, 2vw, 28px));
+    padding-inline: clamp(16px, 2vw, 28px);
+    background: color-mix(in srgb, var(--bg-primary) 88%, transparent);
+    -webkit-backdrop-filter: saturate(1.4) blur(14px);
+    backdrop-filter: saturate(1.4) blur(14px);
+}
+html:has(.openvibe-navbar.ovnav-hide) #page-channel #ch-tabs { top: 0; padding-top: env(safe-area-inset-top, 0px); }
+#page-channel #ch-tabs.is-stuck {
+    border-bottom-color: color-mix(in srgb, var(--accent) 28%, var(--border));
+    box-shadow: 0 12px 20px -16px rgba(0, 0, 0, .7);
+}
+@media (max-width: 768px) {
+    /* The phone's gutter is the container's 16 px plus the fold's own 8 px. */
+    #page-channel #ch-tabs { margin-inline: -24px; padding-inline: 24px; }
+}
+@media (prefers-reduced-motion: reduce) { #page-channel #ch-tabs { transition: none; } }
+html[data-ov-motion="reduced"] #page-channel #ch-tabs { transition: none; }
 #page-channel .ch-tab-panel { display: block; order: 50; margin: 0 0 30px; animation: none; scroll-margin-top: calc(var(--ovnav-h, 56px) + 56px); }
 #page-channel .ch-tab-panel[hidden] { display: none; }
 #page-channel #ch-panel-about { order: 1; } #page-channel #ch-panel-videos { order: 2; } #page-channel #ch-panel-clips { order: 3; }
