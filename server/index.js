@@ -878,6 +878,7 @@ app.use('/api/social', require('./social/routes').router);   // channel social l
 app.get('/embed/x-timeline', require('./social/routes').xTimelinePage);
 // An agent stream's embed for the task page and the Dock (Agent Streams S1): standalone, first-party frames only.
 app.get('/embed/agent/:id', require('./agent-streams/pages').embed);
+app.get('/embed/:username', require('./streaming/channel-embed').page);
 app.use('/api/cam', require('./cam/routes'));                // the cam button: a viewer takes a still of a live stream
 app.use('/api/comments', commentRoutes);
 app.use('/api/admin/openre', require('./openre/routes'));

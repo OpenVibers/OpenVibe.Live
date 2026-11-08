@@ -3594,6 +3594,7 @@ function getSavedVolume() {
 }
 
 function getSavedMuted() {
+    if (window.OVChannelEmbedForceMuted) return true;
     try {
         return localStorage.getItem(PLAYER_MUTED_KEY) === '1';
     } catch {
