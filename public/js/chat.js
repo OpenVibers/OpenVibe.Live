@@ -2838,6 +2838,8 @@ function _chatEvCss() {
 .chat-ev-copy:hover{background:color-mix(in srgb,var(--text-primary,#fff) 8%,transparent);color:var(--text-primary,#e6edf7)}
 @media (pointer:coarse){.chat-ev-cta{min-height:44px;padding:0 14px}.chat-ev-copy{width:44px;height:44px}}
 @container (max-width:360px){.chat-ev-cta{padding:0;width:36px;justify-content:center;font-size:0}.chat-ev-cta i{font-size:.8rem}}
+@container (max-width:240px){.chat-ev{grid-template-columns:auto minmax(0,1fr)}.chat-ev-acts{grid-column:2;justify-self:start}}
+.chat-ev--here{grid-template-columns:auto minmax(0,1fr);padding:6px 10px}.chat-ev--here .chat-ev-icon{width:22px;height:22px}.chat-ev--here .chat-ev-icon::before{width:8px;height:8px}
 @container (max-width:360px){@media (pointer:coarse){.chat-ev-cta{width:44px}}}
 @media (prefers-reduced-motion:reduce){.chat-ev.chat-msg-new{animation:none}.chat-ev--live .chat-ev-icon::before{animation:none}}`;
     document.head.appendChild(st);
@@ -2847,6 +2849,17 @@ function _chatEvTime(at) {
     const t = d instanceof Date && !isNaN(d) ? d : new Date();
     const opts = chatSettings.timestampFormat === '24h' ? { hour: '2-digit', minute: '2-digit', hour12: false } : { hour: '2-digit', minute: '2-digit' };
     return { date: t, text: t.toLocaleTimeString([], opts) };
+}
+/** Is a live card about what this page already is? { mine } on the streamer's own broadcast page, {} on that channel. */
+function _chatEvIsHere(ev) {
+    const name = String(ev.name || '').toLowerCase();
+    if (!name) return null;
+    const me = typeof currentUser !== 'undefined' && currentUser ? String(currentUser.username || '').toLowerCase() : '';
+    const studio = !!document.querySelector('#page-broadcast.active') || /^\/@[^/]+\/studio\b/.test(location.pathname);
+    if (studio && me && me === name) return { mine: true };
+    const m = /^\/@([^/?#]+)/.exec(location.pathname);
+    if (m && decodeURIComponent(m[1]).toLowerCase() === name && !studio) return { mine: false };
+    return null;
 }
 function renderChatEventCard(ev, opts = {}) {
     const { messages: container } = getChatEl();
@@ -2866,8 +2879,12 @@ function renderChatEventCard(ev, opts = {}) {
             return;
         }
     }
+    // A live card that points at what this person is already on: their own studio (they are the stream) or the
+    // channel page they are watching. A quiet line, no Watch button (in the phone studio's narrow chat the button
+    // and the copy link crushed "is live" to a letter per line, moosely 11-08).
+    const here = ev.kind === 'live' && _chatEvIsHere(ev);
     const el = document.createElement('div');
-    el.className = `chat-msg system chat-ev chat-ev--${ev.kind}`;
+    el.className = `chat-msg system chat-ev chat-ev--${ev.kind}${here ? ' chat-ev--here' : ''}`;
     if (!_loadingHistory) el.classList.add('chat-msg-new');
     if (ev.id != null) el.dataset.msgId = String(ev.id);
     el.dataset.evKey = ev.key;
@@ -2885,8 +2902,10 @@ function renderChatEventCard(ev, opts = {}) {
     line.className = 'chat-ev-line';
     const who = document.createElement('b');
     who.textContent = ev.name;
-    if (ev.kind === 'live') {
-        line.append(who, ' is live');
+    if (here && here.mine) {
+        line.append('You went live');
+    } else if (ev.kind === 'live') {
+        line.append(who, here ? ' went live' : ' is live');
     } else {
         line.append(who, ' on The Rundown');
         const title = document.createElement('span'); title.className = 'chat-ev-title'; title.textContent = `“${ev.title}”`;
@@ -2924,7 +2943,8 @@ function renderChatEventCard(ev, opts = {}) {
         try { await navigator.clipboard.writeText(ev.url); toast('Link copied', 'success'); } catch { toast('Could not copy the link', 'error'); }
     });
     acts.append(cta, copy);
-    el.append(icon, body, acts);
+    if (here) el.append(icon, body);
+    else el.append(icon, body, acts);
     container.appendChild(el);
     if (!_loadingHistory) {
         if (typeof _chatTrim === 'function') _chatTrim(container, MAIN_CHAT_MAX_MESSAGES);

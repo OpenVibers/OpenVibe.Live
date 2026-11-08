@@ -1272,11 +1272,33 @@ function _renderEndedStream(s) {
     const thumb = s.vod_thumbnail_url
         ? `<img src="${esc(s.vod_thumbnail_url)}" alt="" loading="lazy" onerror="this.remove()">`
         : '<i class="fa-solid fa-video" aria-hidden="true"></i>';
-    const replay = s.vod_id
-        ? `<a class="bc-last-replay" href="${esc(videoHref('vod', s.vod_id))}"><i class="fa-solid fa-play"></i> Replay</a>`
+    const acts = s.vod_id
+        ? `<span class="bc-last-acts"><a class="bc-last-replay" href="${esc(videoHref('vod', s.vod_id))}"><i class="fa-solid fa-play"></i> Replay</a><button type="button" class="bc-last-delete" data-vod="${esc(String(s.vod_id))}" data-title="${esc(s.title || 'Untitled')}" onclick="bcDeleteRecording(this)" aria-label="Delete the recording of ${esc(s.title || 'this stream')}"><i class="fa-solid fa-trash-can" aria-hidden="true"></i> Delete</button></span>`
         : '';
+    // A stream ended in the last hour with no recording yet is still being saved by OpenVibe.Media.
+    const t = Date.parse(String(s.ended_at || '').replace(' ', 'T') + (String(s.ended_at || '').includes('Z') ? '' : 'Z'));
+    const saving = !s.vod_id && Number.isFinite(t) && Date.now() - t < 60 * 60 * 1000 ? ' · saving the recording…' : '';
     return `<div class="bc-last-item"><span class="bc-last-thumb">${thumb}</span>
-        <span class="bc-last-meta"><b>${esc(s.title || 'Untitled')}</b><small>${esc(_bcAgo(s.ended_at || s.started_at))}${len ? ` · ${esc(len)}` : ''}</small></span>${replay}</div>`;
+        <span class="bc-last-meta"><b>${esc(s.title || 'Untitled')}</b><small>${esc(_bcAgo(s.ended_at || s.started_at))}${len ? ` · ${esc(len)}` : ''}${saving}</small></span>${acts}</div>`;
+}
+
+/** Delete a recording from "Your last streams" (DELETE /api/vods/:id, the same call as the dashboard's). */
+async function bcDeleteRecording(btn) {
+    const id = btn && btn.dataset.vod;
+    if (!id) return;
+    if (!confirm(`Delete the recording of "${btn.dataset.title || 'this stream'}"? It is removed from your channel and OpenVibe.Video for good.`)) return;
+    btn.disabled = true;
+    try {
+        await api(`/vods/${encodeURIComponent(id)}`, { method: 'DELETE' });
+        const item = btn.closest('.bc-last-item');
+        if (item) item.remove();
+        toast('Recording deleted', 'success');
+    } catch (e) { btn.disabled = false; toast(e.message || 'Could not delete the recording', 'error'); }
+}
+window.bcDeleteRecording = bcDeleteRecording;
+/** After a stream ends, list it again once the server has ended it, then once its recording is saved. */
+function _bcRefreshEndedSoon() {
+    for (const ms of [8000, 45000]) setTimeout(() => { try { if (document.querySelector('#page-broadcast.active')) loadExistingStreams(); } catch { /* left the page */ } }, ms);
 }
 
 /** Switch the top-level Go Live tab ('active' | 'mine'). */
@@ -1999,7 +2021,7 @@ async function endSetupStream() {
     hideBroadcastTabs();
     clearGlobalDisplayTimers();
     if (!isStreaming()) setNavLiveIndicator(false);
-    showStreamManager(); loadExistingStreams(endingStreamId); toast('Stream ended', 'info');
+    showStreamManager(); loadExistingStreams(endingStreamId); _bcRefreshEndedSoon(); toast('Stream ended. Its recording shows under Your last streams, where you can keep or delete it.', 'info');
 }
 
 /* Device enumeration functions → broadcast-devices.js */
@@ -2175,7 +2197,7 @@ async function stopBroadcast() {
     hideBroadcastTabs();
     clearGlobalDisplayTimers();
     if (!isStreaming()) setNavLiveIndicator(false);
-    showStreamManager(); loadExistingStreams(activeId); toast('Stream ended', 'info');
+    showStreamManager(); loadExistingStreams(activeId); _bcRefreshEndedSoon(); toast('Stream ended. Its recording shows under Your last streams, where you can keep or delete it.', 'info');
     // Scroll create section into view so user lands on "Create New Stream"
     const createSec = document.getElementById('bc-create-section');
     if (createSec) createSec.scrollIntoView({ behavior: 'smooth', block: 'start' });

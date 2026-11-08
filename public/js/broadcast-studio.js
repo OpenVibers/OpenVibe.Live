@@ -884,7 +884,12 @@
             // A camera gone because the stream ended resets the switches; one gone for a recovery keeps them.
             if (!has && !streamState()) { st.micOff = false; st.camOff = false; st.torch = false; st.dismissedFor = null; }
         }
-        if (wanted()) { if (!st.root) mount(); refresh(); }
+        if (wanted()) {
+            if (!st.root) mount();
+            refresh();
+            const pv = $('bc-video-preview');
+            if (pv && pv.paused && pv.srcObject && pv.style.display !== 'none') pv.play().catch(() => {});
+        }
         else { if (st.root) unmount(); applyTracks(); syncDesktopButtons(); }
         syncGoLiveDock();
         syncLivePill();
