@@ -1945,8 +1945,9 @@ async function toggleFollow() {
         const btn = document.getElementById('btn-follow');
         btn.classList.toggle('following', data.following);
         btn.innerHTML = data.following
-            ? '<i class="fa-solid fa-heart-crack"></i> Unfollow'
+            ? '<i class="fa-solid fa-check"></i> Following'
             : '<i class="fa-solid fa-heart"></i> Follow';
+        btn.title = data.following ? 'Unfollow' : 'Follow';
         toast(data.following ? 'Followed!' : 'Unfollowed', 'info');
     } catch (e) { toast(e.message, 'error'); }
 }
