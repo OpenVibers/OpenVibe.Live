@@ -670,6 +670,18 @@ function _watchTabsClip() {
     t.addEventListener('scroll', upd, { passive: true });
     if ('ResizeObserver' in window) new ResizeObserver(upd).observe(t); else window.addEventListener('resize', upd);
     upd();
+    // Stuck to the top (channel.css lifts it with a shadow then): its box sits at its own sticky offset. One check a
+    // frame while the page scrolls; the listener leaves with the bar when the channel is swapped out.
+    let raf = 0;
+    const stuck = () => {
+        raf = 0;
+        if (!t.isConnected) { window.removeEventListener('scroll', onScroll); return; }
+        const top = parseFloat(getComputedStyle(t).top) || 0;
+        t.classList.toggle('is-stuck', window.scrollY > 0 && t.getBoundingClientRect().top <= top + 1);
+    };
+    const onScroll = () => { if (!raf) raf = requestAnimationFrame(stuck); };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    stuck();
 }
 
 // A direct visit paints the channel's markup before its data. Until the data (ch-data) channel.css keeps the offline
