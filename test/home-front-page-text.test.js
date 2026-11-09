@@ -1,15 +1,14 @@
 'use strict';
 /**
- * The home page's "Lately on OpenVibe" quotes leave out a take with a slur, strong profanity or a hate topic, and show
- * the next best one (server/home/front-page-text.js, the platform rule from openvibe-sdk/front-page); the Rundown keeps every
- * take as said.
+ * The home digest's topic-linked takes leave out a take with a slur, strong profanity or a hate topic, and show
+ * the next best distinct topic (server/home/front-page-text.js, the platform rule from openvibe-sdk/front-page).
+ * The Rundown keeps every take as said.
  *
  *   node test/home-front-page-text.test.js
  */
 const assert = require('assert');
-const fs = require('fs');
-const path = require('path');
 const { frontPageOk } = require('../server/home/front-page-text');
+const { selectTopics } = require('../server/home/digest');
 
 // The strip on 2026-10-24, and more of the same kind.
 for (const t of [
@@ -27,9 +26,20 @@ for (const t of [
 ]) assert.ok(frontPageOk(t), `fine for the front page: ${t}`);
 console.log('  ✓ slurs, strong profanity and hate topics are left off; ordinary takes (and Shitake, Scunthorpe, grape) stay');
 
-const routes = fs.readFileSync(path.join(__dirname, '..', 'server', 'home', 'routes.js'), 'utf8');
-assert.ok(routes.includes("const { frontPageOk } = require('./front-page-text');"));
-assert.ok(routes.includes('.filter((h) => frontPageOk(h.text) && (!h.topic || frontPageOk(h.topic)))') && routes.includes('.slice(0, 3);'), 'the digest filters, then keeps three');
-assert.ok(/ORDER BY s\.score DESC, s\.said_at DESC LIMIT 15/.test(routes), 'from the best fifteen, so a filtered take has a replacement');
-console.log('  ✓ the home digest takes the three best takes that pass');
+const row = (id, topic, title, quote) => ({ id, stream_id: id, topic, title, username: 'annstreams',
+    quotes_json: quote ? JSON.stringify([{ text: quote }]) : '[]' });
+const selected = selectTopics([
+    row(1, 'League autofill', 'A safe title', 'that was some bullshit'),
+    row(2, 'he went full nazi on it', 'A safe title', 'This one sounds fine'),
+    row(3, null, 'An unlabelled take', 'This one sounds fine'),
+    row(4, 'League autofill', 'Autofill put me on support', 'We finally beat the boss on hard mode'),
+    row(5, 'League autofill', 'A duplicate topic', 'This one sounds fine'),
+    row(6, 'The tiny studio', 'The sound is right'),
+    row(7, 'Starters', 'Grape soda forever'),
+    row(8, 'Fourth topic', 'The fourth safe take'),
+]);
+assert.deepStrictEqual(selected.map((r) => r.id), [4, 6, 7], 'filter unsafe and unlabelled takes, keep the best three distinct topics');
+assert.strictEqual(selected[0].text, 'We finally beat the boss on hard mode', 'use the streamer’s quote when safe');
+assert.strictEqual(selected[1].text, 'The sound is right', 'fall back to the headline when there is no quote');
+console.log('  ✓ the home digest filters before taking three distinct topics');
 console.log('home front-page text: all passed');

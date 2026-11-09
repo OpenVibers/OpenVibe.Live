@@ -21,7 +21,7 @@ pills(host, [
     { kind: 'openvibe', url: 'https://openvibe.network/@other', handle: 'other', label: 'My other channel', name: 'OpenVibe', icon: 'fa-solid fa-id-card', color: '#3b82f6' },
 ]);
 const spans = [...host.innerHTML.matchAll(/<span>([^<]*)<\/span>/g)].map((m) => m[1]);
-assert.deepStrictEqual(spans, ['Network profile', '@jog', 'Network profile']);
+assert.deepStrictEqual(spans, ['Network profile', 'Network profile', '@jog']);
 assert.match(host.innerHTML, /href="https:\/\/openvibe\.network\/@JapaneseOldGuy"/, 'the link is unchanged');
 assert.match(host.innerHTML, /title="OpenVibe \(connected\) @JapaneseOldGuy"/, 'the handle stays in its title');
 console.log('channel social pills: Network links name their destination; other handles stay');

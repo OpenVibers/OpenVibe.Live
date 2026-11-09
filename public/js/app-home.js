@@ -1454,38 +1454,8 @@ async function loadHomeDigest() {
     let d;
     try { d = await api(`/home/digest${since ? `?since=${encodeURIComponent(since)}` : ''}`); }
     catch { box.innerHTML = ''; box.style.display = 'none'; return; }
-    if (!d || (!d.liveNow?.length && !d.streamed?.length && !d.hot?.length)) { box.style.display = 'none'; return; }
-    const away = !!(since && currentUser);
-    const n = (v) => Number(v || 0).toLocaleString();
-    const chip = (u, extra, mods) => `
-        <a class="digest-chip ${mods}" href="/@${esc(u.username)}" onclick="return handleLinkClick(event, '/@${esc(u.username)}')" title="${esc(u.last_title || u.title || '')}">
-            ${_avatarSpan(u.avatar_url, u.username, u.profile_color)}
-            <span class="digest-name">${esc(u.display_name || u.username)}</span>
-            <span class="digest-extra">${extra}</span>
-            ${u.followed ? '<span class="digest-follow" title="You follow them"><i class="fa-solid fa-heart"></i></span>' : ''}
-        </a>${u.recap_stream_id ? `<a class="digest-recap" href="/recap/${u.recap_stream_id}" onclick="return handleLinkClick(event, '/recap/${u.recap_stream_id}')" title="After-show report"><i class="fa-solid fa-clipboard-list"></i></a>` : ''}`;
-    const parts = [];
-    for (const u of (d.liveNow || [])) parts.push(chip(u, `<i class="fa-solid fa-circle live-dot"></i> LIVE${u.viewer_count ? ` · ${n(u.viewer_count)} watching` : ' now'}`, `digest-chip--live${u.followed ? ' digest-chip--followed' : ''}`));
-    for (const u of (d.streamed || [])) parts.push(chip(u, `${u.sessions > 1 ? `${u.sessions}× · ` : ''}${u.hours >= 0.1 ? `${u.hours}h · ` : ''}${esc(timeAgo(u.last_at))}${u.peak_viewers > 1 ? ` · peak ${n(u.peak_viewers)}` : ''}`, u.followed ? 'digest-chip--followed' : ''));
-    const st = d.stats || {};
-    const stats = [
-        st.streams ? `<span class="digest-stat"><i class="fa-solid fa-tower-broadcast"></i> <b>${n(st.streams)}</b> stream${st.streams === 1 ? '' : 's'}</span>` : '',
-        st.hours >= 0.5 ? (() => { const hrs = Math.round(st.hours); return `<span class="digest-stat"><i class="fa-regular fa-clock"></i> <b>${n(hrs)}</b> ${hrs === 1 ? 'hour' : 'hours'} live</span>`; })() : '',
-        st.chat_lines ? `<span class="digest-stat"><i class="fa-solid fa-comments"></i> <b>${n(st.chat_lines)}</b> chat line${st.chat_lines === 1 ? '' : 's'}</span>` : '',
-        st.new_follows ? `<span class="digest-stat"><i class="fa-solid fa-heart"></i> <b>${n(st.new_follows)}</b> new follow${st.new_follows === 1 ? '' : 's'}</span>` : '',
-        st.new_members ? `<span class="digest-stat"><i class="fa-solid fa-user-plus"></i> <b>${n(st.new_members)}</b> joined</span>` : '',
-        st.takes ? `<span class="digest-stat"><i class="fa-solid fa-newspaper"></i> <b>${n(st.takes)}</b> Rundown take${st.takes === 1 ? '' : 's'}</span>` : '',
-    ].filter(Boolean).join('');
-    const hot = (d.hot || []).map(h => { const href = h.slug ? `/rundown/t/${h.slug}` : `/rundown/${h.username}`; const t = esc(String(h.text || '').slice(0, 140)); return `<a class="digest-hot-line" href="${esc(href)}" onclick="return handleLinkClick(event, '${esc(href)}')"><i class="fa-solid fa-quote-left"></i> ${h.quoted ? `“${t}”` : t} <b>— ${esc(h.display_name || h.username)}</b></a>`; }).join('');
-    const sinceLabel = d.since ? (away ? `since your last visit · ${esc(timeAgo(d.since))}` : `last ${Math.max(1, Math.round((Date.now() - Date.parse(d.since)) / 3600000))}h`) : '';
-    box.innerHTML = `
-        <div class="digest-head">
-            <span class="digest-title"><i class="fa-solid ${away ? 'fa-clock-rotate-left' : 'fa-bolt'}"></i> ${away ? 'While you were away' : 'Lately on OpenVibe'}</span>
-            <span class="digest-since">${sinceLabel}</span>
-        </div>
-        ${stats ? `<div class="digest-stats">${stats}</div>` : ''}
-        ${parts.length ? `<div class="digest-row">${parts.join('')}</div>` : ''}
-        ${hot ? `<div class="digest-hot">${hot}</div>` : ''}`;
+    if (!d || typeof d.html !== 'string') { box.style.display = 'none'; return; }
+    box.innerHTML = d.html;
     box.style.display = '';
 }
 

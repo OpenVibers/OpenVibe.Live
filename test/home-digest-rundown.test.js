@@ -2,8 +2,7 @@
 /**
  * The home digest ("Lately on OpenVibe") and the star pick read The Rundown, not the Arena's mic moments
  * (server/home/routes.js, server/home/star-job.js):
- *   the digest   counts the live takes since the window opened, and its hot lines are the best takes (score 4 and up):
- *                the quote when there is one, else the headline, linked by topic; never a hidden take or a banned streamer
+ *   the digest counts live takes and shows public, topic-linked takes from streams in the window
  *   the star     a candidate's takes over the last two weeks count toward the pick
  */
 const assert = require('assert');
@@ -44,12 +43,15 @@ const server = http.createServer(app);
 await new Promise((res) => server.listen(0, '127.0.0.1', res));
 try {
     const d = await (await fetch(`http://127.0.0.1:${server.address().port}/api/home/digest`)).json();
-    assert.strictEqual(d.stats.takes, 4, 'every live take since the window opened (the hidden one is not)');
+    assert.strictEqual(d.stats.takes, 3, 'only visible takes by non-banned streamers are counted');
     assert.ok(!('mic_moments' in d.stats), 'the Arena\'s mic moments are gone');
-    assert.deepStrictEqual(d.hot.map((h) => [h.text, h.quoted, h.slug, h.username]), [
-        ['autofill put me on support again chat', true, 'league-autofill', 'annstreams'],
-        ['Bob on his new keyboard', false, null, 'bobstreams'],
-    ], 'the best takes: the quote, else the headline; never hidden, a 3, or a banned streamer');
+    assert.deepStrictEqual(d.topics.map((h) => [h.text, h.topic, h.username]), [
+        ['autofill put me on support again chat', 'League autofill', 'annstreams'],
+    ], 'the digest shows topic-linked takes, never a random ungrouped quote or hidden take');
+    assert.ok(d.html.includes(`/rundown/e/${sa}#rd-take-${d.topics[0].id}`));
+    assert.ok(d.html.includes('What they talked about'));
+    assert.ok(d.html.includes('New here'));
+    assert.ok(!d.html.includes('Bob on his new keyboard'));
     console.log('✅ the digest reads The Rundown');
 } finally {
     server.close();

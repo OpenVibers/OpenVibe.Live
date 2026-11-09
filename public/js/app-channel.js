@@ -87,9 +87,10 @@ let _activeChannelIsOwnerRank = false;
 function _isInferredCategory(row) { return !!(row && row.ai_category && row.ai_category === row.category); }
 function _setCategoryBadge(el, value, inferred) {
     if (!el) return;
-    el.textContent = _capTag(value);
+    const device = { desktop: 'Streams from a computer', mobile: 'Streams from a phone', browser: 'Streams from a browser' }[String(value || '').toLowerCase()];
+    el.textContent = device || _capTag(value);
     el.classList.toggle('is-inferred', !!inferred);
-    if (inferred) {
+    if (inferred && !device) {
         const mark = document.createElement('span');
         mark.className = 'cat-inferred';
         mark.textContent = ' · auto';
@@ -99,12 +100,104 @@ function _setCategoryBadge(el, value, inferred) {
         el.removeAttribute('title');
     }
 }
+function _setChannelPresence(data, liveStreams) {
+    const live = document.getElementById('ch-presence-live');
+    const offline = document.getElementById('ch-presence-offline');
+    if (live && liveStreams.length) {
+        const count = liveStreams.reduce((n, s) => n + (Number(s.viewer_count) || 0), 0);
+        live.textContent = `● Live now · ${count} watching`;
+        live.classList.add('is-live');
+    }
+    if (!offline) return;
+    const last = data.last_session;
+    if (!last || !last.ended_at) { offline.hidden = true; return; }
+    offline.hidden = false;
+    offline.textContent = '';
+    const dot = document.createElement('span');
+    dot.className = 'ch-presence-dot';
+    dot.textContent = '●';
+    const elapsedDays = Math.floor((Date.now() - new Date(last.ended_at).getTime()) / 86400000);
+    const when = elapsedDays > 1 ? `${elapsedDays} days ago` : elapsedDays === 1 ? 'yesterday' : timeAgo(last.ended_at);
+    const duration = Math.max(0, Number(last.duration_seconds) || 0);
+    const hours = Math.floor(duration / 3600);
+    const minutes = Math.floor(duration % 3600 / 60);
+    const length = hours ? `${hours} h ${minutes} m` : `${Math.max(1, minutes)} m`;
+    offline.append(dot, ` Last live ${when} · ${length}`);
+    if (last.title) {
+        offline.append(' · ');
+        if (last.vod_id) {
+            const link = document.createElement('a');
+            link.href = videoHref('vod', last.vod_id);
+            link.textContent = last.title;
+            offline.append(link);
+        } else offline.append(last.title);
+    }
+    const starts = (data.recent_starts || []).map((at) => new Date(at)).filter((date) => !Number.isNaN(date.getTime()) && Date.now() - date.getTime() < 70 * 86400000);
+    if (starts.length >= 8) {
+        const counts = Array.from({ length: 7 }, () => 0);
+        for (const date of starts) counts[date.getDay()]++;
+        const days = counts.map((count, day) => ({ count, day })).filter(({ count }) => count >= 3)
+            .sort((a, b) => b.count - a.count).slice(0, 2).sort((a, b) => a.day - b.day);
+        if (days.length) {
+            const label = days.map(({ day }) => new Intl.DateTimeFormat(undefined, { weekday: 'short' }).format(new Date(2026, 10, 8 + day))).join(' and ');
+            const hours = starts.filter((date) => days.some(({ day }) => day === date.getDay())).map((date) => date.getHours());
+            const evening = hours.length >= 6 && hours.filter((hour) => hour >= 17 && hour <= 22).length / hours.length >= .75;
+            const schedule = document.createElement('span');
+            schedule.className = 'ch-usual-schedule';
+            schedule.textContent = `Usually live ${label}${evening ? ' evenings' : ''}`;
+            offline.append(schedule);
+        }
+    }
+}
 const CHANNEL_VODS_PAGE_SIZE = 12;
 const CHANNEL_CLIPS_PAGE_SIZE = 12;
 const channelVodsPageByUser = Object.create(null);
 const channelClipsPageByUser = Object.create(null);
 const channelClipsOfPageByUser = Object.create(null);
 const channelAiClipsPageByUser = Object.create(null);
+function _channelRail(grid, offset, count, total, loadNext, old = []) {
+    if (!grid) return;
+    if (old.length) grid.prepend(...old);
+    grid.querySelectorAll('img').forEach((img) => { img.width = 320; img.height = 180; img.loading = 'lazy'; });
+    grid._railObserver?.disconnect();
+    const panel = grid.closest('.ch-tab-panel');
+    const bar = panel?.querySelector(':scope > .ch-panel-bar');
+    if (bar && !bar.querySelector(`[data-rail-for="${grid.id}"]`)) {
+        for (const [dir, icon] of [['prev', 'fa-chevron-left'], ['next', 'fa-chevron-right']]) {
+            const arrow = document.createElement('button');
+            arrow.type = 'button';
+            arrow.className = 'ch-rail-arrow';
+            arrow.dataset.railFor = grid.id;
+            arrow.dataset.dir = dir;
+            arrow.setAttribute('aria-label', `${dir === 'prev' ? 'Previous' : 'Next'} ${panel.querySelector('h2')?.textContent || 'items'}`);
+            arrow.innerHTML = `<i class="fa-solid ${icon}" aria-hidden="true"></i>`;
+            arrow.addEventListener('click', () => grid.scrollBy({ left: (dir === 'prev' ? -1 : 1) * grid.clientWidth * .75, behavior: _channelReduceMotion() ? 'auto' : 'smooth' }));
+            bar.append(arrow);
+        }
+        const update = () => {
+            const overflow = grid.scrollWidth > grid.clientWidth + 2;
+            bar.querySelectorAll(`[data-rail-for="${grid.id}"]`).forEach((arrow) => {
+                arrow.hidden = !overflow;
+                arrow.disabled = arrow.dataset.dir === 'prev' ? grid.scrollLeft < 2 : grid.scrollLeft + grid.clientWidth >= grid.scrollWidth - 2;
+            });
+        };
+        grid.addEventListener('scroll', update, { passive: true });
+        window.addEventListener('resize', update, { passive: true });
+        requestAnimationFrame(update);
+    }
+    if (!loadNext || offset + count >= total || !('IntersectionObserver' in window)) return;
+    const sentinel = document.createElement('div');
+    sentinel.className = 'ch-rail-skeleton';
+    sentinel.setAttribute('aria-label', 'Loading more items');
+    grid.append(sentinel);
+    const observer = new IntersectionObserver((entries) => {
+        if (!entries.some((entry) => entry.isIntersecting)) return;
+        observer.disconnect();
+        loadNext();
+    }, { root: grid, rootMargin: '0px 260px 0px 0px' });
+    grid._railObserver = observer;
+    observer.observe(sentinel);
+}
 // Channel VOD filter/sort state
 let currentChannelVodFilter = null;   // numeric managed stream id or null = all
 let currentChannelVodOrder = 'newest'; // newest|oldest|views|peak_viewers
@@ -113,6 +206,7 @@ let currentChannelManagedStreams = [];
 async function renderChannelVodsSection(username, liveStreams, vods, meta = {}) {
     const vodsGrid = document.getElementById('ch-vods-grid');
     if (!vodsGrid) return;
+    const oldCards = meta.offset > 0 ? [...vodsGrid.children].filter((el) => !el.classList.contains('ch-rail-skeleton')) : [];
 
     // Render the VOD filter bar if we have managed streams
     const filterBar = document.getElementById('ch-vods-filter-bar');
@@ -204,7 +298,10 @@ async function renderChannelVodsSection(username, liveStreams, vods, meta = {}) 
         vodsGrid.innerHTML = '<p class="muted">No VODs yet</p>';
     }
 
-    renderVodsPagination('ch-vods-pagination', page, total, pageSize, 'setChannelVodsPage', 'videos');
+    _channelRail(vodsGrid, offset, vods.length, total, () => setChannelVodsPage(page + 1), oldCards);
+    const all = document.getElementById('ch-vods-all');
+    if (all) { all.href = `/@${encodeURIComponent(username)}?section=videos`; all.textContent = `View all (${total})`; }
+    document.getElementById('ch-vods-pagination').style.display = 'none';
     _selSyncAllBtns();
 }
 
@@ -254,6 +351,7 @@ function _reloadChannelContent(username) {
 function renderChannelClipsSection(username, clips, meta = {}) {
     const clipsGrid = document.getElementById('ch-clips-grid');
     if (!clipsGrid) return;
+    const oldCards = meta.offset > 0 ? [...clipsGrid.children].filter((el) => !el.classList.contains('ch-rail-skeleton')) : [];
 
     const pageSize = meta.limit || CHANNEL_CLIPS_PAGE_SIZE;
     const offset = meta.offset || 0;
@@ -282,7 +380,8 @@ function renderChannelClipsSection(username, clips, meta = {}) {
         clipsGrid.innerHTML = '<p class="muted">No clips yet</p>';
     }
 
-    renderVodsPagination('ch-clips-pagination', page, total, pageSize, 'setChannelClipsPage', 'clips');
+    _channelRail(clipsGrid, offset, clips.length, total, () => setChannelClipsPage(page + 1), oldCards);
+    document.getElementById('ch-clips-pagination').style.display = 'none';
     _selSyncAllBtns();
 }
 
@@ -301,7 +400,7 @@ async function loadClipsTaken(username = currentChannelUsername, { reset = false
     const params = new URLSearchParams({ sort: st.sort, limit: String(CLIPS_TAKEN_PAGE_SIZE), offset: String(offset) });
     if (st.of) params.set('of', String(st.of));
     if (st.includeSelf) params.set('includeSelf', '1');
-    if (grid) grid.innerHTML = '<p class="muted">Loading…</p>';
+    if (grid && st.page === 1) grid.innerHTML = '<div class="ch-rail-skeleton"></div>';
     let data;
     try { data = await api(`/streams/channel/${encodeURIComponent(username)}/clips-taken?${params.toString()}`); }
     catch { if (grid) grid.innerHTML = '<p class="muted">Failed to load clips</p>'; return; }
@@ -337,11 +436,12 @@ function _renderClipsTakenGrid(username, data) {
     const grid = document.getElementById('ch-clips-grid');
     if (!grid) return;
     const clips = data.clips || [];
+    const oldCards = data.offset > 0 ? [...grid.children].filter((el) => !el.classList.contains('ch-rail-skeleton')) : [];
     const canManage = _channelCanManage(username);
     _selSetContext(canManage, () => loadClipsTaken(username));
     if (!clips.length) {
         grid.innerHTML = '<p class="muted">No clips found for this filter.</p>';
-        renderVodsPagination('ch-clips-pagination', 1, 0, CLIPS_TAKEN_PAGE_SIZE, 'setClipsTakenPage', 'clips');
+        document.getElementById('ch-clips-pagination').style.display = 'none';
         return;
     }
     grid.innerHTML = clips.map(cl => _selWrap('clip', cl.id, `
@@ -360,7 +460,10 @@ function _renderClipsTakenGrid(username, data) {
             </a>
         `, _activeChannelIsOwnerRank || !!(cl.owner_is_owner || cl.streamer_is_owner))).join('');
     const page = Math.floor((data.offset || 0) / CLIPS_TAKEN_PAGE_SIZE) + 1;
-    renderVodsPagination('ch-clips-pagination', page, data.total || 0, CLIPS_TAKEN_PAGE_SIZE, 'setClipsTakenPage', 'clips');
+    _channelRail(grid, data.offset || 0, clips.length, data.total || 0, () => setClipsTakenPage(page + 1), oldCards);
+    const all = document.getElementById('ch-clips-taken-all');
+    if (all) { all.href = `/@${encodeURIComponent(username)}?section=clips-taken`; all.textContent = `View all (${data.total || 0})`; }
+    document.getElementById('ch-clips-pagination').style.display = 'none';
     _selSyncAllBtns();
 }
 
@@ -377,6 +480,7 @@ function renderChannelClipsOfSection(username, clips, meta = {}) {
     const grid = document.getElementById('ch-clips-of-grid');
     const header = document.getElementById('ch-clips-of-header');
     if (!grid) return;
+    const oldCards = meta.offset > 0 ? [...grid.children].filter((el) => !el.classList.contains('ch-rail-skeleton')) : [];
 
     const pageSize = meta.limit || CHANNEL_CLIPS_PAGE_SIZE;
     const offset = meta.offset || 0;
@@ -404,7 +508,10 @@ function renderChannelClipsOfSection(username, clips, meta = {}) {
         grid.innerHTML = '<p class="muted">No clips yet</p>';
     }
 
-    renderVodsPagination('ch-clips-of-pagination', page, total, pageSize, 'setChannelClipsOfPage', 'clips of streams');
+    _channelRail(grid, offset, clips.length, total, () => setChannelClipsOfPage(page + 1), oldCards);
+    const all = document.getElementById('ch-clips-of-all');
+    if (all) { all.href = `/@${encodeURIComponent(username)}?section=clips`; all.textContent = `View all (${total})`; }
+    document.getElementById('ch-clips-of-pagination').style.display = 'none';
 }
 
 // ── AI Moments on the Clips tab: auto-clips of this channel's streams, after people's clips ──
@@ -508,21 +615,28 @@ function _startChannelPastesAutoRefresh(username) {
     if (_channelPastesTimer) clearInterval(_channelPastesTimer);
     _channelPastesTimer = setInterval(() => {
         if (currentChannelUsername !== username) { clearInterval(_channelPastesTimer); _channelPastesTimer = null; return; }
+        const rail = document.getElementById('ch-pastes-grid');
+        if (rail && (rail.scrollLeft > 0 || rail.querySelectorAll('.ch-paste-card').length > 12)) return;
         loadChannelPastes(username);
     }, 60000);
 }
 
-async function loadChannelPastes(username = currentChannelUsername) {
+async function loadChannelPastes(username = currentChannelUsername, { append = false } = {}) {
     if (!username) return;
     const grid = document.getElementById('ch-pastes-grid');
     const header = document.getElementById('ch-pastes-header');
     const pager = document.getElementById('ch-pastes-pagination');
+    const sortHost = document.getElementById('ch-pastes-sort');
     if (!grid) return;
     const sort = channelPastesSortByUser[username] || 'newest';
+    if (sortHost) sortHost.innerHTML = (typeof sortToggleHTML === 'function') ? sortToggleHTML(sort, 'setChannelPastesSort') : '';
     try {
-        const data = await api(`/pastes/by-user/${encodeURIComponent(username)}?limit=30&sort=${sort}`);
+        const oldCards = append ? [...grid.children].filter((el) => !el.classList.contains('ch-rail-skeleton')) : [];
+        const offset = append ? oldCards.length : 0;
+        const data = await api(`/pastes/by-user/${encodeURIComponent(username)}?limit=12&offset=${offset}&sort=${sort}`);
         const pastes = data.pastes || [];
         if (!pastes.length) {
+            if (append) { grid.querySelector('.ch-rail-skeleton')?.remove(); return; }
             // Tab context: keep the panel readable with an empty state.
             grid.style.display = ''; grid.innerHTML = '<p class="muted">No pastes yet</p>';
             if (pager) { pager.style.display = 'none'; pager.innerHTML = ''; }
@@ -533,10 +647,11 @@ async function loadChannelPastes(username = currentChannelUsername) {
         if (header) header.style.display = '';
         grid.style.display = '';
         grid.innerHTML = pastes.map(p => _selWrap('paste', p.slug, _channelPasteCardHTML(p, canManage), !!(p.owner_is_owner || data.owner_is_owner))).join('');
-        if (pager) {
-            pager.style.display = '';
-            pager.innerHTML = (typeof sortToggleHTML === 'function') ? sortToggleHTML(sort, 'setChannelPastesSort') : '';
-        }
+        const total = Number(data.total) || pastes.length;
+        _channelRail(grid, offset, pastes.length, total, () => loadChannelPastes(username, { append: true }), oldCards);
+        const all = document.getElementById('ch-pastes-all');
+        if (all) { all.href = `/@${encodeURIComponent(username)}?section=pastes`; all.textContent = `View all (${total})`; }
+        if (pager) { pager.style.display = 'none'; pager.innerHTML = ''; }
         _selSyncAllBtns();
     } catch { /* silent */ }
 }
@@ -585,13 +700,7 @@ async function setChannelVodsPage(page) {
     if (safePage === (channelVodsPageByUser[currentChannelUsername] || 1)) return;
 
     channelVodsPageByUser[currentChannelUsername] = safePage;
-    const grid = document.getElementById('ch-vods-grid');
-    if (grid) {
-        grid.innerHTML = '<div class="empty-state"><i class="fa-solid fa-spinner fa-spin fa-2x"></i><p>Loading videos...</p></div>';
-    }
     await refreshChannelVodsPage(currentChannelUsername);
-    const top = document.getElementById('ch-vods-grid');
-    if (top) top.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 async function setChannelClipsPage(page) {
@@ -600,10 +709,6 @@ async function setChannelClipsPage(page) {
     if (safePage === (channelClipsPageByUser[currentChannelUsername] || 1)) return;
 
     channelClipsPageByUser[currentChannelUsername] = safePage;
-    const grid = document.getElementById('ch-clips-grid');
-    if (grid) {
-        grid.innerHTML = '<div class="empty-state"><i class="fa-solid fa-spinner fa-spin fa-2x"></i><p>Loading clips...</p></div>';
-    }
 
     const vodPage = channelVodsPageByUser[currentChannelUsername] || 1;
     const vodOffset = (vodPage - 1) * CHANNEL_VODS_PAGE_SIZE;
@@ -615,8 +720,6 @@ async function setChannelClipsPage(page) {
         offset: data.clipOffset || clipOffset,
     });
 
-    const top = document.getElementById('ch-clips-grid');
-    if (top) top.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 async function setChannelClipsOfPage(page) {
@@ -625,10 +728,6 @@ async function setChannelClipsOfPage(page) {
     if (safePage === (channelClipsOfPageByUser[currentChannelUsername] || 1)) return;
 
     channelClipsOfPageByUser[currentChannelUsername] = safePage;
-    const grid = document.getElementById('ch-clips-of-grid');
-    if (grid) {
-        grid.innerHTML = '<div class="empty-state"><i class="fa-solid fa-spinner fa-spin fa-2x"></i><p>Loading clips...</p></div>';
-    }
 
     const offset = (safePage - 1) * CHANNEL_CLIPS_PAGE_SIZE;
     const data = await api(`/streams/channel/${currentChannelUsername}?clipsOfLimit=${CHANNEL_CLIPS_PAGE_SIZE}&clipsOfOffset=${offset}`);
@@ -638,8 +737,6 @@ async function setChannelClipsOfPage(page) {
         offset,
     });
 
-    const top = document.getElementById('ch-clips-of-grid');
-    if (top) top.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 /** Hide or show the channel page's chat column on desktop (the stream or offline page then takes the full width). Remembered per browser. */
@@ -864,6 +961,9 @@ async function loadChannelPage(username, managedStreamRef = null, legacySessionI
         };
 
         _setupChannelMore(ch);
+        _setWatchAlert(document.getElementById('ch-watch-chip-live'), ch.username);
+        _setWatchAlert(document.getElementById('ch-watch-chip-offline'), ch.username);
+        _setChannelPresence(data, liveStreams);
 
         if (liveStreams.length > 0) {
             // ── LIVE STATE ──
@@ -871,6 +971,7 @@ async function loadChannelPage(username, managedStreamRef = null, legacySessionI
             document.getElementById('ch-offline-area').style.display = 'none';
             _setChannelLive(true);
             _placeShareButton('live');
+            _setChannelOwnerActions(ch.username);
             updateShareButton(null);
             _channelFooter(true);
             _placeBelowFold();
@@ -956,6 +1057,7 @@ async function loadChannelPage(username, managedStreamRef = null, legacySessionI
             _channelFooter(false);
             _setChannelLive(false);
             _placeShareButton('offline');
+            _setChannelOwnerActions(ch.username);
             updateShareButton(null);
             _wireCamButton();
             _updateCamButton(null);
@@ -1281,6 +1383,31 @@ function _placeShareButton(where) {
     if (more && more.parentElement !== moreHost) moreHost.appendChild(more);
     b.className = 'ovk-btn ovk-btn--quiet ch-action';
     b.title = live ? 'Share this stream' : 'Share this channel';
+}
+function _setChannelOwnerActions(username) {
+    const own = !!(currentUser && currentUser.username === username);
+    const live = document.getElementById('ch-live-area').style.display !== 'none';
+    const row = document.querySelector(live ? '#ch-info-bar .ch-info-bar-right' : '#ch-offline-area .ch-actions');
+    for (const id of ['ch-owner-edit', 'ch-owner-live']) document.getElementById(id)?.remove();
+    document.getElementById('ch-btn-follow').hidden = own;
+    document.getElementById('ch-btn-follow-offline').hidden = own;
+    const ask = document.getElementById('ch-ask-slot');
+    const more = document.getElementById('ch-more');
+    if (ask) ask.hidden = own;
+    if (more) more.hidden = own;
+    if (!own || !row) return;
+    for (const [id, label, icon, path, primary] of [
+        ['ch-owner-edit', 'Edit channel', 'fa-pen', '/dashboard', false],
+        ['ch-owner-live', 'Go live', 'fa-video', '/broadcast', true],
+    ]) {
+        const button = document.createElement('button');
+        button.id = id;
+        button.type = 'button';
+        button.className = `ovk-btn ch-action${primary ? ' ch-action--primary' : ''}`;
+        button.innerHTML = `<i class="fa-solid ${icon}" aria-hidden="true"></i><span>${label}</span>`;
+        button.addEventListener('click', () => navigate(path));
+        row.append(button);
+    }
 }
 
 /** What the channel's Share button shares: the address, the name, a line about it, and the picture. */
@@ -2053,22 +2180,70 @@ function loadMoreChannelAgents(button) {
 // the screen, or when it is jumped to. Inline handlers keep this name (features.json stubs).
 function switchChannelTab(tab, btn, jump) {
     _channelTab = tab;
-    _markChannelJump(tab);
+    _markChannelJump(tab, !!jump);
     _ensureChannelSection(tab);
     if (!jump) return;
     const panel = document.getElementById('ch-panel-' + tab);
     if (!panel || panel.hidden) return;
     const fold = panel.querySelector('details.ch-fold');
     if (fold && !fold.open) fold.open = true;
-    const reduce = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+    const reduce = _channelReduceMotion();
+    _chJumpUntil = Date.now() + (reduce ? 180 : 1400);
     panel.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' });
+    setTimeout(_queueChannelSectionSpy, reduce ? 200 : 1450);
 }
-function _markChannelJump(tab) {
+function _channelReduceMotion() {
+    return document.documentElement.dataset.ovMotion === 'reduced' || !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+}
+let _chJumpUntil = 0;
+function _markChannelJump(tab, fromTap = false) {
+    const active = document.querySelector(`#ch-tabs .ch-tab[data-tab="${tab}"]`);
+    if (!active || active.style.display === 'none' || active.closest('[hidden]')) return;
     document.querySelectorAll('#ch-tabs .ch-tab').forEach(b => {
         const on = b.dataset.tab === tab;
         b.classList.toggle('active', on);
         if (on) b.setAttribute('aria-current', 'true'); else b.removeAttribute('aria-current');
     });
+    const strip = document.getElementById('ch-tabs');
+    if (strip) {
+        const inset = 14;
+        const left = active.offsetLeft - strip.offsetLeft;
+        const right = left + active.offsetWidth;
+        const target = left < strip.scrollLeft + inset ? left - inset : right > strip.scrollLeft + strip.clientWidth - inset ? right - strip.clientWidth + inset + 24 : strip.scrollLeft;
+        if (Math.abs(target - strip.scrollLeft) > 2) strip.scrollTo({ left: target, behavior: _channelReduceMotion() ? 'auto' : 'smooth' });
+    }
+    _updateChannelTabArrows();
+    if (fromTap || location.hash !== `#${tab}`) history.replaceState(history.state, '', `${location.pathname}${location.search}#${tab}`);
+}
+function _updateChannelTabArrows() {
+    const strip = document.getElementById('ch-tabs');
+    const wrap = strip && strip.parentElement;
+    if (!wrap || !wrap.classList.contains('ch-tabs-wrap')) return;
+    wrap.classList.toggle('has-overflow', strip.scrollWidth > strip.clientWidth + 2);
+    wrap.querySelectorAll('.ch-tabs-arrow').forEach((arrow) => {
+        arrow.disabled = arrow.dataset.dir === 'prev' ? strip.scrollLeft < 2 : strip.scrollLeft + strip.clientWidth >= strip.scrollWidth - 2;
+    });
+}
+function _initChannelTabArrows() {
+    const strip = document.getElementById('ch-tabs');
+    if (!strip || strip.parentElement.classList.contains('ch-tabs-wrap')) return;
+    const wrap = document.createElement('div');
+    wrap.className = 'ch-tabs-wrap';
+    strip.parentNode.insertBefore(wrap, strip);
+    wrap.append(strip);
+    for (const [dir, icon] of [['prev', 'fa-chevron-left'], ['next', 'fa-chevron-right']]) {
+        const arrow = document.createElement('button');
+        arrow.type = 'button';
+        arrow.className = 'ch-tabs-arrow';
+        arrow.dataset.dir = dir;
+        arrow.setAttribute('aria-label', `${dir === 'prev' ? 'Previous' : 'Next'} sections`);
+        arrow.innerHTML = `<i class="fa-solid ${icon}" aria-hidden="true"></i>`;
+        arrow.addEventListener('click', () => strip.scrollBy({ left: (dir === 'prev' ? -1 : 1) * strip.clientWidth * .7, behavior: _channelReduceMotion() ? 'auto' : 'smooth' }));
+        wrap.append(arrow);
+    }
+    strip.addEventListener('scroll', _updateChannelTabArrows, { passive: true });
+    window.addEventListener('resize', _updateChannelTabArrows, { passive: true });
+    _updateChannelTabArrows();
 }
 // A section's data: once, the first time it is near the screen or jumped to. The two folds (AI timeline, Analytics)
 // load when opened, not on the way past; the media queue reloads when it comes back into view (it changes constantly).
@@ -2108,11 +2283,35 @@ function _syncChannelSections() {
         const panel = document.getElementById('ch-panel-' + b.dataset.tab);
         if (panel) panel.hidden = b.style.display === 'none';
     });
+    _updateChannelTabArrows();
 }
 let _chSecObs = null, _chSpyObs = null, _chTabsObs = null;
+let _chSpyFrame = 0;
+function _channelSectionInView() {
+    _chSpyFrame = 0;
+    if (Date.now() < _chJumpUntil) return;
+    const panels = Array.from(document.querySelectorAll('#page-channel .ch-tab-panel'))
+        .filter(p => !p.hidden).sort((a, b) => a.getBoundingClientRect().top - b.getBoundingClientRect().top);
+    if (!panels.length) return;
+    const bar = document.getElementById('ch-tabs');
+    const margin = parseFloat(getComputedStyle(panels[0]).scrollMarginTop) || 0;
+    const line = bar ? Math.max(bar.getBoundingClientRect().bottom + 24, margin + 8) : 100;
+    const bottom = window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 4;
+    let chosen = panels[0];
+    if (bottom) chosen = panels[panels.length - 1];
+    else for (const panel of panels) {
+        if (panel.getBoundingClientRect().top <= line) chosen = panel;
+        else break;
+    }
+    _markChannelJump(chosen.id.replace('ch-panel-', ''));
+}
+function _queueChannelSectionSpy() {
+    if (!_chSpyFrame) _chSpyFrame = requestAnimationFrame(_channelSectionInView);
+}
 function _watchChannelSections() {
     _syncChannelSections();
     const tabs = document.getElementById('ch-tabs');
+    _initChannelTabArrows();
     if (!_chTabsObs && tabs && window.MutationObserver) {
         _chTabsObs = new MutationObserver(_syncChannelSections);
         _chTabsObs.observe(tabs, { subtree: true, attributes: true, attributeFilter: ['style'] });
@@ -2120,8 +2319,14 @@ function _watchChannelSections() {
     const panels = document.querySelectorAll('#page-channel .ch-tab-panel');
     if (!('IntersectionObserver' in window)) { panels.forEach(p => _ensureChannelSection(p.id.replace('ch-panel-', ''), true)); return; }
     if (!_chSecObs) _chSecObs = new IntersectionObserver((es) => es.forEach(e => { if (e.isIntersecting) _ensureChannelSection(e.target.id.replace('ch-panel-', ''), true); }), { rootMargin: '600px 0px' });
-    if (!_chSpyObs) _chSpyObs = new IntersectionObserver((es) => es.forEach(e => { if (e.isIntersecting) _markChannelJump(e.target.id.replace('ch-panel-', '')); }), { rootMargin: '-35% 0px -60% 0px' });
+    if (!_chSpyObs) _chSpyObs = new IntersectionObserver(_queueChannelSectionSpy, { rootMargin: '-100px 0px -65% 0px' });
     panels.forEach(p => { _chSecObs.observe(p); _chSpyObs.observe(p); });
+    if (!tabs._chSpyBound) {
+        tabs._chSpyBound = true;
+        window.addEventListener('scroll', _queueChannelSectionSpy, { passive: true });
+        window.addEventListener('resize', _queueChannelSectionSpy, { passive: true });
+    }
+    _queueChannelSectionSpy();
     document.querySelectorAll('#page-channel details.ch-fold').forEach(f => {
         if (f._ovBound) return;
         f._ovBound = true;
@@ -3421,6 +3626,7 @@ function _setWatchAlert(a, username) {
     const q = new URLSearchParams({ template: 'event', event: 'live.stream.started', event_filter: username, name: `@${username} goes live` });
     a.href = `https://openvibe.watch/watches/new?${q}`;
     a.title = `An alert when @${username} goes live: by email, a webhook or your agent (OpenVibe.Watch)`;
+    a.setAttribute('aria-label', `Get an alert when @${username} goes live`);
     a.hidden = false;
 }
 
