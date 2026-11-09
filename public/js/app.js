@@ -781,7 +781,8 @@ function onAuthChange() {
     if (currentUser) _enableHandoff(); else if (window.OpenVibeSSO) { try { window.OpenVibeSSO.handoffLinks({ signedIn: false }); } catch { /* */ } }
     // The navbar is the network's shared component; tell it who is here (js/ov-navbar-live.js).
     if (window.LiveNav) window.LiveNav.sync(currentUser || null);
-    if (currentUser) window.OpenVibeNavbar.refreshWallet();
+    // The navbar's wallet chips (Shared 4.170+). Sign-in must never stop here, whatever navbar a page has.
+    if (currentUser && window.OpenVibeNavbar && typeof window.OpenVibeNavbar.refreshWallet === 'function') window.OpenVibeNavbar.refreshWallet();
     // Older notification links point at a Live DM route. Keep the reader here in the Dock.
     if (currentUser && new URLSearchParams(location.search).has('dm')) {
         const params = new URLSearchParams(location.search);
