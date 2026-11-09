@@ -426,6 +426,9 @@ app.use((req, res, next) => {
     }
     next();
 });
+// The shell's early hints (server/web/shell.js): the navbar, the theme loader, the first paint CSS and the app script
+// start downloading in a 103, before the HTML arrives (Shared 4.164.0's worker, early hints and the manifest).
+app.use(require('./web/sw').hints());
 /**
  * Origin check. Exact allowlist first, then a strict suffix rule for the openvibe.tools
  * satellites. Parsed with URL() and matched on hostname + https so a lookalike such as
@@ -620,6 +623,12 @@ console.log(`[Server] /shared: serving ${SHARED_BROWSER_FILES.length} browser fi
         res.setHeader('Service-Worker-Allowed', '/');
         res.setHeader('Cache-Control', 'no-cache');
         res.sendFile(path.join(sharedServePath, 'openvibe-sw.js'));
+    });
+    // The shell the shared worker keeps in its cache (server/web/shell.js): the shared files every page loads, by content
+    // hash, so the worker warms the shell without downloading a second copy of what the page already asks for.
+    app.get('/ov-sw-manifest.json', (req, res) => {
+        res.setHeader('Cache-Control', 'public, max-age=300');
+        res.json(require('./web/sw').manifest());
     });
     // The share cards (og:image on every page), before the browser-file allowlist below.
     require('./web/share-cards').register(app);
