@@ -23,5 +23,6 @@ const vibes = fs.readFileSync(path.join(root, 'public/js/vibes.js'), 'utf8');
 assert(!vibes.includes('openvibeBucksBuyModal') && !vibes.includes('/payments/bucks/checkout'));
 assert(vibes.includes('window.OpenVibeNavbar.openWallet()'));
 const security = fs.readFileSync(path.join(root, 'server/index.js'), 'utf8');
-assert(security.includes('"https://billing.openvibe.network"') && security.includes('"https://inventory.openvibe.network"'));
+assert(!security.includes('"https://billing.openvibe.network"') && !security.includes('"https://inventory.openvibe.network"'),
+    'the shared wallet asks Network\'s relays, so connect-src needs neither host');
 console.log('Live delegates wallet and store to Shared, retaining cosmetic renderers and channel actions');
