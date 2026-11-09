@@ -103,7 +103,7 @@ function render(frame) {
     <div class="ovnet-groups" data-sites="${sites.length}">${blocks}</div>
     <footer class="ovnet-foot">
         <a class="ovnet-cta" href="/api/auth/sso/login?next=%2F" data-ovnet-signin><i class="fa-solid fa-user-plus" aria-hidden="true"></i> Create your free account</a>
-        <button type="button" class="ovnet-switch" data-ovnet-switcher><i class="fa-solid fa-grip" aria-hidden="true"></i> Jump between sites any time from the <b>OV</b> mark</button>
+        <button type="button" class="ovnet-switch" data-ovnet-switcher><svg class="ovnet-orb" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><g fill="currentColor"><circle cx="12" cy="12" r="2.5"/><circle cx="12" cy="5" r="2.15"/><circle cx="19" cy="12" r="2.15"/><circle cx="12" cy="19" r="2.15"/><circle cx="5" cy="12" r="2.15"/><circle cx="5" cy="5" r="2.15" opacity=".55"/><circle cx="19" cy="5" r="2.15" opacity=".55"/><circle cx="19" cy="19" r="2.15" opacity=".55"/><circle cx="5" cy="19" r="2.15" opacity=".55"/></g></svg> Every site is one tap away in the <b>menu</b></button>
     </footer>
     `;
 }
