@@ -870,7 +870,6 @@ const searchMedia = require('./events/search-media-documents');
 app.use('/api/vods', searchMedia.afterChange('vod'), vodRoutes);
 app.use('/api/clips', searchMedia.afterChange('clip'), clipRoutes);
 app.use('/api/chat-ai', require('./ai/chat-ai-routes'));
-app.use('/api/easter-egg', require('./ai/easter-egg-routes'));
 app.use('/api/rundown', require('./rundown/routes'));        // what streamers talked about, written up (docs/rundown.md)
 app.use('/api/today', require('./today/routes').createTodayRoutes());   // a channel's schedule, read from OpenVibe.Today
 app.use('/api/recap', require('./recap/routes'));            // after-show reports (docs/recap.md)
@@ -1577,7 +1576,6 @@ async function start() {
         try { require('./streaming/recordings').start(); } catch (e) { console.warn('[Recordings] sweep not started:', e.message); }
         // When each picture-in-picture was on screen, so a VOD draws it again (streaming/pip-history.js).
         try { require('./streaming/pip-history').start(); } catch (e) { console.warn('[PiP history] not started:', e.message); }
-        try { require('./ai/easter-egg-job').start(); } catch (e) { console.warn('[AI] easter-egg job not started:', e.message); }
         // The Rundown's desk replaced the Arena's jobs (the drama desk, the beef listener and judges, 2026-10-19).
         try { require('./rundown/desk').start(); } catch (e) { console.warn('[Rundown] desk not started:', e.message); }
         try { require('./bench-stream/service').startJobs(); } catch (e) { console.warn('[BenchStream] poll job not started:', e.message); }

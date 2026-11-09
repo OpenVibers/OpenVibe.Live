@@ -29,7 +29,7 @@ console.warn = () => {};
     assert.match(src, /const shown = keepHeroFull\(moments, prev\.moments, TARGET_N\);\s*await db\.setState\(SETTING, JSON\.stringify\(\{ moments: shown,/);
 
     // Every job's command line opens the database first, as a script: the serving pool, no migrations, no boot recovery.
-    for (const f of ['ai-moments-job.js', 'auto-clip-job.js', 'easter-egg-job.js']) {
+    for (const f of ['ai-moments-job.js', 'auto-clip-job.js']) {
         const s = fs.readFileSync(path.join(__dirname, '..', 'server', 'ai', f), 'utf8');
         const cli = s.slice(s.indexOf('if (require.main === module)'));
         assert.match(cli, /initDb\(\{ script: true \}\)\.then\(/, `${f}: its command line opens the database`);

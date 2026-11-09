@@ -1471,39 +1471,24 @@ async function getViewerTrend(hours = 24, maxPoints = 48) {
 
 // ── Home "pulse": goals near completion, latest activity, weekly leaders ──────
 async function getHomePulse() {
-    const safe = async (fn, dflt) => { try { return await fn() ?? dflt; } catch { return dflt; } };
-    return {
-        // Active goals closest to completion, site-wide.
-        goals: await safe(async () => await all(`SELECT g.id, g.title, g.current_amount, g.target_amount, g.image_url,
-                u.username, u.display_name
-            FROM donation_goals g JOIN users u ON u.id = g.user_id
-            WHERE g.is_active = 1 AND g.target_amount > 0
-            ORDER BY (CAST(g.current_amount AS REAL) / g.target_amount) DESC, g.current_amount DESC LIMIT 3`), []),
-        latestTip: await safe(async () => await get(`SELECT t.amount, t.created_at,
-                fu.username AS from_username, COALESCE(fu.display_name, t.username) AS from_display,
-                tu.username AS to_username, tu.display_name AS to_display
-            FROM channel_tips t
-            LEFT JOIN users fu ON fu.id = t.from_user_id
-            JOIN users tu ON tu.id = t.to_user_id
-            WHERE t.amount IS NOT NULL ORDER BY t.id DESC LIMIT 1`), null),
-        newestFollow: await safe(async () => await get(`SELECT f.created_at,
-                fu.username AS follower_username, fu.display_name AS follower_display,
-                su.username AS streamer_username, su.display_name AS streamer_display
-            FROM follows f
-            JOIN users fu ON fu.id = f.follower_id
-            JOIN users su ON su.id = f.streamer_id
-            ORDER BY f.id DESC LIMIT 1`), null),
-        // This week's leaders.
-        topSupporters: await safe(async () => await all(`SELECT MAX(u.username) AS username, MAX(COALESCE(u.display_name, u.username, t.username)) AS display_name,
-                MAX(u.avatar_url) AS avatar_url, SUM(t.amount)::float8 AS total
-            FROM channel_tips t LEFT JOIN users u ON u.id = t.from_user_id
-            WHERE t.amount IS NOT NULL AND t.created_at >= datetime('now', '-7 days')
-            GROUP BY ${TIP_SUPPORTER_T} ORDER BY total DESC LIMIT 3`), []),
-        topEarners: await safe(async () => await all(`SELECT u.username, u.display_name, u.avatar_url, SUM(c.amount)::float8 AS total
-            FROM coin_transactions c JOIN users u ON u.id = c.user_id
-            WHERE c.amount > 0 AND c.created_at >= datetime('now', '-7 days')
-            GROUP BY u.id ORDER BY total DESC LIMIT 3`), []),
-    };
+    const safe = async (fn, fallback = null) => { try { return await fn() || fallback; } catch { return fallback; } };
+    const liveChannels = await safe(() => all(`SELECT s.id AS stream_id, s.viewer_count, u.username, u.display_name, u.avatar_url, u.profile_color
+        FROM streams s JOIN users u ON u.id=s.user_id
+        WHERE s.is_live=1 AND COALESCE(s.is_nsfw,0)=0 AND COALESCE(u.is_banned,0)=0
+        ORDER BY s.viewer_count DESC LIMIT 8`), []);
+    const topStreamer = await safe(() => get(`SELECT u.username,u.display_name,u.avatar_url,u.profile_color,
+        ROUND(SUM(CASE WHEN s.duration_seconds>0 THEN s.duration_seconds
+            WHEN s.ended_at IS NOT NULL THEN (julianday(s.ended_at)-julianday(s.started_at))*86400
+            ELSE (julianday('now')-julianday(s.started_at))*86400 END)/3600.0,1) AS hours,
+        MAX(s.peak_viewers) AS peak_viewers
+        FROM streams s JOIN users u ON u.id=s.user_id
+        WHERE s.started_at >= datetime('now','-7 days') AND COALESCE(s.is_nsfw,0)=0 AND COALESCE(u.is_banned,0)=0
+        GROUP BY u.id ORDER BY hours DESC LIMIT 1`));
+    const topFan = await safe(() => get(`SELECT u.username,u.display_name,u.avatar_url,u.profile_color,
+        SUM(p.delta) AS points FROM channel_points_log p JOIN users u ON u.id=p.user_id
+        WHERE p.delta>0 AND p.created_at >= datetime('now','-7 days') AND COALESCE(u.is_banned,0)=0
+        GROUP BY u.id ORDER BY points DESC LIMIT 1`));
+    return { liveChannels, topStreamer, topFan };
 }
 
 // Nearest active goal per streamer (for Recently Online cards) — one query.
@@ -2321,21 +2306,6 @@ async function powerchatDeliveryIsNew(deliveryId, eventType) {
 async function cleanupPowerchatDeliveries(days = 3) {
     try { return await run(`DELETE FROM powerchat_webhook_deliveries WHERE received_at < datetime('now', ?)`, [`-${Math.max(1, days)} days`]); }
     catch { return null; }
-}
-
-// ── Daily easter egg solves ──────────────────────────────────
-async function recordEasterEggSolve(eggDate, solverKey, userId) {
-    try {
-        const res = await run('INSERT INTO easter_egg_solves (egg_date, solver_key, user_id) VALUES (?, ?, ?) ON CONFLICT DO NOTHING',
-            [eggDate, String(solverKey).slice(0, 80), userId || null]);
-        return !!(res && res.changes); // true = newly solved (first time today)
-    } catch { return false; }
-}
-async function hasSolvedEasterEgg(eggDate, solverKey) {
-    try { return !!await get('SELECT 1 FROM easter_egg_solves WHERE egg_date = ? AND solver_key = ?', [eggDate, String(solverKey).slice(0, 80)]); } catch { return false; }
-}
-async function countEasterEggSolves(eggDate) {
-    try { return (await get('SELECT COUNT(*) AS n FROM easter_egg_solves WHERE egg_date = ?', [eggDate]))?.n || 0; } catch { return 0; }
 }
 
 async function getUserProfile(userId) {
@@ -3773,7 +3743,6 @@ module.exports = {
     deletePowerchatConnection, powerchatDeliveryIsNew, cleanupPowerchatDeliveries,
     isActiveSubscriber,
     getRestreamDestinationsByManagedStream, getRestreamDestinationsForSlot,
-    recordEasterEggSolve, hasSolvedEasterEgg, countEasterEggSolves,
     // Profiles
     getUserProfile, updateUserAvatar,
     getKickChannelCache, setKickChannelCache,

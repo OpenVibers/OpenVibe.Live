@@ -471,29 +471,6 @@ body.ov-nav-overlay .navbar.ovnav-top {
     transition: all var(--ov-dur-2, 0.2s) var(--ov-ease-out, ease);
 }
 
-/* ── Daily easter-egg hero widget ─────────────────────────────── */
-@keyframes eggWobble { 0%, 100% { transform: rotate(-6deg); } 50% { transform: rotate(6deg); } }
-.hero-egg-titles { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; flex: 1; }
-/* Body opens to its real height (the old 340px cap clipped the third clue) */
-.egg-slot.is-filled { border-color: color-mix(in srgb, var(--accent) 70%, transparent); background: color-mix(in srgb, var(--accent) 16%, var(--bg-tertiary)); animation: eggSlotIn var(--ov-dur-2, .18s) var(--ov-ease-spring, cubic-bezier(.2,1.5,.3,1)); }
-@keyframes eggSlotIn { from { transform: scale(0.7); } to { transform: scale(1); } }
-@keyframes eggShakeSlot { 20% { transform: translateX(-4px); } 40% { transform: translateX(4px); } 60% { transform: translateX(-3px); } 80% { transform: translateX(3px); } }
-.egg-key { min-width: 34px; height: 34px; padding: 0 8px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-tertiary); color: var(--text-primary); font: inherit; font-weight: 800; cursor: pointer; transition: transform var(--ov-dur-1, .1s), background var(--ov-dur-2, .15s), border-color var(--ov-dur-2, .15s); }
-.egg-key--letter { min-width: 0; height: 30px; padding: 0; font-size: 0.8rem; text-transform: uppercase; }
-/* Touch (2026-11-06 phone pass, round two): every key of the easter-egg keypad is a 44 px target on the key
-   itself — the four arrows, the two control keys and the 26 letter keys. A mouse keeps the small keys. */
-@media (pointer: coarse) {
-    .egg-key { min-width: 44px; height: 44px; }
-    .egg-key--letter { min-width: 44px; height: 44px; }
-}
-
-/* Celebration effects */
-.egg-confetti { position: fixed; inset: 0; pointer-events: none; z-index: 100000; overflow: hidden; }
-.egg-confetti span { position: absolute; top: -14px; width: 9px; height: 14px; border-radius: 2px; animation: eggFall linear forwards; }
-@keyframes eggFall { to { transform: translateY(105vh) rotate(720deg); opacity: 0.9; } }
-@keyframes eggShake { 10%,90%{transform:translate3d(-2px,0,0)} 20%,80%{transform:translate3d(4px,0,0)} 30%,50%,70%{transform:translate3d(-8px,0,0)} 40%,60%{transform:translate3d(8px,0,0)} }
-@keyframes eggRainbow { 0%{filter:hue-rotate(0)} 100%{filter:hue-rotate(360deg)} }
-
 /* ── OpenVibeApp Popover ─────────────────────────────────────────── */
 .openvibeapp-popover {
     max-height: 0; overflow: hidden; opacity: 0;
