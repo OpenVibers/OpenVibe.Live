@@ -1078,7 +1078,7 @@ async function loadChannelPage(username, managedStreamRef = null, legacySessionI
             setupFollowBtn(document.getElementById('ch-btn-follow-offline'));
 
             // Customizable offline screen (image / video / custom HTML)
-            offlineBlocks = _renderOfflineScreen(ch);
+            offlineBlocks = _renderOfflineScreen(ch, data);
 
             // Offline: join the streamer's PERSISTENT chat room (not global) so
             // viewers can keep chatting + see history while the streamer is offline.
@@ -3634,7 +3634,18 @@ function _setWatchAlert(a, username) {
 // image/video → served asset; html → sandboxed iframe (no same-origin, so the
 // streamer's markup can't touch viewers' session). Falls back to a tasteful default.
 // Resolves once the offline blocks that land above the tabs ("Most watched", the discover board) are in.
-function _renderOfflineScreen(ch) {
+/** When the channel was last on air (ask 57): the newest end among its slots, or its newest recording; and that recording. */
+function _lastLive(data) {
+    const t = (x) => { if (!x) return 0; const s = String(x); const n = Date.parse(s.includes('T') ? s : s.replace(' ', 'T') + 'Z'); return Number.isFinite(n) ? n : 0; };
+    const vod = data && Array.isArray(data.vods) && data.vods.length ? data.vods[0] : null;
+    const cands = ((data && Array.isArray(data.managed_streams)) ? data.managed_streams : []).map((m) => m && m.last_live_at);
+    if (vod) cands.push(vod.ended_at || vod.created_at || vod.started_at);
+    const best = cands.filter(Boolean).map((x) => [x, t(x)]).filter((p) => p[1]).sort((a, b) => b[1] - a[1])[0];
+    return { at: best ? best[0] : null, ms: best ? best[1] : 0, vod };
+}
+
+
+function _renderOfflineScreen(ch, data) {
     const host = document.getElementById('ch-offline-screen');
     if (!host) return;
     _stopOfflineCycler(); // clear any prior offline cycler before re-rendering
@@ -3671,10 +3682,18 @@ function _renderOfflineScreen(ch) {
     } else {
         const av = _avatarInner(ch && ch.avatar_url, ch && (ch.display_name || ch.username));
         const name = esc((ch && (ch.display_name || ch.username)) || 'Streamer');
+        // Offline, said with when (ask 57: "show when they were last live in a nice elegant way"), and the last stream
+        // one tap away when there is a recording of it.
+        const last = _lastLive(data);
+        const when = last.at ? ` · last live <time datetime="${esc(new Date(last.ms).toISOString())}" title="${esc(new Date(last.ms).toLocaleString())}">${esc(timeAgo(last.at))}</time>` : '';
+        const v = last.vod;
+        const secs = v && Number(v.duration_seconds || v.duration || 0);
+        const lastStream = v && v.id ? `<a class="ch-last-stream" href="${videoHref('vod', v.id)}"><span class="ch-last-play" aria-hidden="true"><i class="fa-solid fa-play"></i></span><span class="ch-last-text"><b>${esc(v.title || 'The last stream')}</b><small>${secs ? `${esc(formatDuration(secs))} · ` : ''}the last stream</small></span></a>` : '';
         host.innerHTML = `<div class="ch-offline-default">
             <div class="ch-offline-default-avatar">${av}</div>
             <div class="ch-offline-default-name">${name}</div>
-            <div class="ch-offline-default-sub">is offline — explore their top content, or say hi in chat</div>
+            <p class="ch-offline-state"><span class="ch-offline-dot" aria-hidden="true"></span>Offline${when}</p>
+            ${lastStream}
             <div class="ch-offline-explore" id="ch-offline-explore"></div>
         </div>`;
         return _fillOfflineExplore(ch && ch.username);
