@@ -789,8 +789,6 @@ function onAuthChange() {
         history.replaceState(history.state, '', location.pathname + (params.size ? `?${params}` : '') + location.hash);
         window.OpenVibeNavbar?.openDock('chats');
     }
-    // The DM panel is for a signed-in person only (features.json → messenger).
-    if (currentUser && window.ov && ov.load) ov.load('messenger').catch(() => { /* in ov.diagnostics() */ });
 
     try {
         window.dispatchEvent(new CustomEvent('openvibe-auth-changed', {

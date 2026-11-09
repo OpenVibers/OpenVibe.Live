@@ -342,3 +342,16 @@ async function doCashout() {
         closeModal();
     } catch (e) { toast(e.message || 'Cashout failed', 'error'); }
 }
+
+// Old account-menu and bookmark links to openvibe.live/#vibes open the shared Wallet now: the hash goes, so a reload
+// does not open it again. Pages that never load this file still reach the Wallet from the bar's chip.
+(function openVibesFromLink() {
+    if (location.hash !== '#vibes') return;
+    const open = () => {
+        try { history.replaceState(history.state, '', location.pathname + location.search); } catch { /* keep the hash */ }
+        if (window.OpenVibeNavbar && typeof window.OpenVibeNavbar.openWallet === 'function') window.OpenVibeNavbar.openWallet();
+        else location.assign('https://openvibe.network/wallet');
+    };
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', open, { once: true });
+    else setTimeout(open, 0);
+})();
