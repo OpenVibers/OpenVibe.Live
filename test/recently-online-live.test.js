@@ -71,19 +71,20 @@ const db = require('../server/db/database');
         const fx = body.streamers.find((s) => s.username === 'finditfixit');
         assert.deepStrictEqual(fx.managed_streams.map((m) => m.slug), [null, 'bench'], 'the newest one is listed, first');
         assert.strictEqual(body.total, 6);
+        assert.ok(body.streamers.every(s => s.recent_facts && Array.isArray(s.recent_facts.streams)));
+        assert.ok(body.streamers.find(s => s.username === 'izor').recent_facts.streams.length <= 2);
         console.log('recently-online live: all checks passed');
     } finally { server.close(); }
     process.exit(0);
 })().catch((e) => { console.error(e); process.exit(1); });
 
-// The card (public/js/app-home.js renderRecentlyOnline): an offline row with a recording opens its replay on
-// openvibe.video, with a play mark; a live row, or one with no recording, is the channel (owner, 2026-10-27).
+// The card renders recent streams from actual history and sends a recording to its replay.
 {
     const fs = require('fs');
     const path = require('path');
     const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'js', 'app-home.js'), 'utf8');
     const body = src.slice(src.indexOf('function renderRecentlyOnline('), src.indexOf('async function loadHomeRecentVods('));
-    assert.ok(body.includes("const replay = !ms.is_live && ms.vod_id ? videoHref('vod', ms.vod_id) : null;"));
-    assert.ok(body.includes('const href = replay || channelPath(s.username, ms.slug || ms.managed_stream_id);'));
-    assert.ok(body.includes('<span class="sg-play" aria-hidden="true">') && body.includes('<span class="sg-replay">Replay</span>'));
+    assert.ok(body.includes('const replay = !h.is_live && h.vod_id;'));
+    assert.ok(body.includes("row.href = replay ? videoHref('vod', h.vod_id) : channelHref;"));
+    assert.ok(body.includes("(h.is_live ? 'Live' : 'Replay')"));
 }

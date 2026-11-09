@@ -31,7 +31,7 @@ const TERMINAL = new Set(['succeeded', 'cached', 'failed', 'cancelled']);
 const KIND_TO_WORKFLOW = {
     ai_viewers_director: 'live.viewers.plan', ai_viewers_reply: 'live.viewers.reply', ai_viewers: 'live.viewers.line', ai_viewers_fold: 'live.viewers.fold',
     chat_global: 'live.chat.insight', chat_user: 'live.chat.insight', chat_relay: 'live.chat.insight', chat_anon: 'live.chat.insight', combined_overview: 'live.chat.insight', session_titles: 'live.chat.insight',
-    moment_vod_rank: 'live.moments.rank', moment_pick: 'live.moments.pick', auto_clip_confirm: 'live.clips.confirm', hero_slogans: 'live.hero.slogans', easter_egg: 'live.easter_egg', home_star: 'live.home.star',
+    moment_vod_rank: 'live.moments.rank', moment_pick: 'live.moments.pick', auto_clip_confirm: 'live.clips.confirm', hero_slogans: 'live.hero.slogans', home_star: 'live.home.star',
     status_check: 'live.status_check',
 };
 const ROLES = ['chat', 'vision', 'director', 'summary', 'legacy'];
