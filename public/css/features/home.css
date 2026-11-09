@@ -1458,3 +1458,6 @@ body.egg-rainbow { animation: eggRainbow 2.6s linear; }
     .ovnet.is-armed .ovnet-site { opacity: 1; --lift: 0px; }
     .ovnet-site, .ovnet-jump a, .ovnet-cta { transition: none; }
 }
+
+/* The menu hint carries the menu's own orb (11-09: "Jump between sites… from the OV mark" pointed at the wrong button). */
+.ovnet-switch .ovnet-orb { flex: none; color: var(--accent-light, #60a5fa); }
