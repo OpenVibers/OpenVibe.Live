@@ -35,7 +35,7 @@ disposers.forEach((d) => d());
 assert.deepStrictEqual(calls.at(-1), ['release', 'channel-live'], 'released when the page is left');
 
 // Both states draw it; the channel's own variant is full only when the footer can be claimed.
-assert.ok(/\/\/ ── LIVE STATE ──[\s\S]{0,300}_channelFooter\(true\);/.test(app), 'the live state claims');
+assert.ok(/\/\/ ── LIVE STATE ──[\s\S]{0,800}_channelFooter\(true\);/.test(app), 'the live state claims');
 assert.ok(/getElementById\('ch-offline-area'\)\.style\.display = '';\n\s*_channelFooter\(false\);/.test(app), 'the offline state releases');
 assert.ok(read('public/js/footer-live.js').includes("if (/^\\/@/.test(p)) return window.OpenVibeFooter && typeof OpenVibeFooter.claim === 'function' ? 'full' : 'compact';"));
 

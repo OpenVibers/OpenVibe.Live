@@ -48,7 +48,7 @@ The **Chat AI** tab's **AI Chat Viewers** card, under **Key & Budget**, **AI sou
   The key is kept encrypted in OpenVibe.AI, never in Live, and **Test connection** tries it.
 - **A model on my own computer (free).** Ollama, LM Studio or llama.cpp's server on your own PC, through the OpenVibe
   Node, with no port opened.
-  - **Set it up.** Install it with `--ai` from [openvibe.bot/machines](https://openvibe.bot/machines), then turn on
+  - **Set it up.** Install it with `--ai` from [openvibe.link/machines](https://openvibe.link/machines), then turn on
     "Let my AI use this computer's models" for that computer there.
   - **Fill in the card.** Name the computer (its `dev_` id from that page) or tick **Any of my computers that is on**
     (the fastest first, the next when one is busy), name the model as your model server does, save, then

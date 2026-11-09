@@ -75,6 +75,8 @@ console.warn = () => {};
 
     // The home pulse and stats count every rail.
     const pulse = await db.getHomePulse();
+    // The new home rail no longer draws these; the pulse still answers them for one release, for tabs on the previous
+    // client (test/n-1.test.js). They go in the next release.
     assert.strictEqual(pulse.latestTip.from_username, 'ann', 'the newest tip with an amount');
     assert.strictEqual(Number(pulse.latestTip.amount), 400);
     assert.deepStrictEqual(pulse.topSupporters.map((r) => [r.username, r.display_name, Number(r.total)]), [['ann', 'Ann', 550], [null, 'pcfan', 300]]);

@@ -355,7 +355,7 @@ function _wsRenderPanel() {
             </div>
             ${placeHandoff ? `<p class="gl-place-handoff">From <a href="${esc(placeHandoff.url)}" rel="noopener">${esc(placeHandoff.name)} on OpenVibe.Tours</a>. Your stream will be linked to this place after you choose Go live.</p><input type="hidden" id="bc-place-name" value="${esc(placeHandoff.name)}"><input type="hidden" id="bc-place-url" value="${esc(placeHandoff.url)}">` : ''}
             <div class="gl-ideas" id="gl-ideas" role="group" aria-label="Title ideas" hidden></div>
-            <div class="gl-chips">
+            <div class="gl-chips" data-ovk-scroll>
                 <label class="gl-chip gl-chip--mature" title="Mature (18+): viewers confirm their age before the stream plays. The category is set automatically from what is on stream.">
                     <input type="checkbox" id="bc-nsfw" ${ms.is_nsfw ? 'checked' : ''} onchange="_wsMarkDirty()">
                     <i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i><span>Mature</span><b id="gl-mature-v">${ms.is_nsfw ? 'on' : 'off'}</b>
