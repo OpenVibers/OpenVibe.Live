@@ -80,8 +80,10 @@ function _wsRenderSidebar() {
     const list = document.getElementById('bc-ws-list');
     if (!list) return;
     const add = '<button type="button" class="gl-slot gl-slot--add" onclick="showCreateManagedStreamModal()"><i class="fa-solid fa-plus" aria-hidden="true"></i><span>New slot</span></button>';
+    // No streams yet: the first-run card below has the ways to start, so the row stays empty (two "make one" buttons
+    // that did the same thing confused new streamers).
     if (_wsState.managedStreams.length === 0) {
-        list.innerHTML = add;
+        list.innerHTML = '';
         return;
     }
     list.innerHTML = _wsState.managedStreams.map(ms => {
@@ -182,6 +184,40 @@ function _wsShowEmpty() {
     const panel = document.getElementById('bc-ws-panel');
     if (empty) empty.style.display = '';
     if (panel) panel.style.display = 'none';
+    // "Check the card, press Go live" points at a card that does not exist yet.
+    _wsSubtitle(_wsState.managedStreams.length ? null : 'Make your first stream, then press Go live on its card.');
+}
+
+/** The page's line under Go Live: `text`, or (null) the line for when a stream's card is shown. */
+function _wsSubtitle(text) {
+    const sub = document.getElementById('bc-page-subtitle');
+    if (!sub) return;
+    if (sub.dataset.withCard === undefined) sub.dataset.withCard = sub.textContent;
+    sub.textContent = text || sub.dataset.withCard;
+}
+
+/** First run: make a browser stream in one press and open its card, where Go live is. */
+async function wsFirstBrowserStream(btn) {
+    if (!currentUser) { if (typeof _broadcastSignInGate === 'function') _broadcastSignInGate(false); return; }
+    if (btn) btn.disabled = true;
+    try {
+        const name = String(currentUser.display_name || currentUser.username || '').trim();
+        const data = await api('/streams/managed', {
+            method: 'POST',
+            body: { title: name ? `${name}'s stream`.slice(0, 140) : 'My stream', category: '', protocol: 'webrtc', streaming_method: 'browser' },
+        });
+        if (data && data.managed_stream) await onManagedStreamCreated(data.managed_stream.id);
+    } catch (err) {
+        toast('Your stream could not be made: ' + (err?.message || 'the server did not answer'), 'error');
+    } finally {
+        if (btn) btn.disabled = false;
+    }
+}
+
+/** First run with OBS, an encoder or FFmpeg: the full form, with RTMP picked. */
+function wsFirstAppStream() {
+    showCreateManagedStreamModal();
+    if (typeof _cmsSelectMethod === 'function') _cmsSelectMethod('rtmp');
 }
 
 /** A Tours link may fill the studio. The streamer still presses Go live and can edit the title. */
@@ -204,6 +240,7 @@ function _wsRenderPanel() {
     if (!ms) { _wsShowEmpty(); return; }
 
     if (empty) empty.style.display = 'none';
+    _wsSubtitle(null);
     panel.style.display = '';
 
     const p = _wsState.profile;

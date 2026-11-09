@@ -216,6 +216,31 @@
     padding: 48px 32px;
     text-align: center;
 }
+/* First run: one card, the browser first (the headline: no OBS, no download, no follower minimum), apps second. */
+.bc-first {
+    max-width: 520px; width: 100%;
+    padding: 28px 20px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg, 12px);
+    background: var(--bg-secondary);
+}
+.bc-first-mark {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 52px; height: 52px; margin-bottom: 12px; border-radius: 50%;
+    font-size: 1.35rem; color: var(--live-red, var(--accent));
+    background: color-mix(in srgb, var(--live-red, var(--accent)) 14%, transparent);
+}
+.bc-first-title { margin: 0 0 8px; font-size: 1.25rem; }
+.bc-first-lede { margin: 0 0 18px; color: var(--text-secondary); line-height: 1.5; }
+.bc-first-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; }
+.bc-first-actions .btn { min-height: 44px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
+.bc-first-go { flex: 1 1 220px; }
+.bc-first-app { flex: 0 1 auto; }
+.bc-first-fine { margin: 14px 0 0; font-size: 0.8rem; color: var(--text-muted); }
+@media (max-width: 480px) {
+    .bc-ws-empty { padding: 20px 0; }
+    .bc-first-actions .btn { flex: 1 1 100%; }
+}
 .bc-ws-panel-hd {
     display: flex;
     align-items: flex-start;
