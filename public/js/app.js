@@ -784,8 +784,13 @@ function onAuthChange() {
     // The navbar is the network's shared component; tell it who is here (js/ov-navbar-live.js).
     if (window.LiveNav) window.LiveNav.sync(currentUser || null);
     if (currentUser) loadBalance();
-    // The DM panel is for a signed-in person only (features.json → messenger).
-    if (currentUser && window.ov && ov.load) ov.load('messenger').catch(() => { /* in ov.diagnostics() */ });
+    // Older notification links point at a Live DM route. Keep the reader here in the Dock.
+    if (currentUser && new URLSearchParams(location.search).has('dm')) {
+        const params = new URLSearchParams(location.search);
+        params.delete('dm');
+        history.replaceState(history.state, '', location.pathname + (params.size ? `?${params}` : '') + location.hash);
+        window.OpenVibeNavbar?.openDock('chats');
+    }
 
     try {
         window.dispatchEvent(new CustomEvent('openvibe-auth-changed', {

@@ -17,7 +17,7 @@ assert.ok(phone.startsWith('@media (max-width: 768px) and (orientation: portrait
 // The app bar and every floating button step aside while a stream is live on the open channel page.
 assert.match(phone, /html:has\(#page-channel\.active\.ch-is-live\) \{ --ovnav-appbar-h: 0px; \}/, 'the page keeps no room for the bar');
 assert.match(phone, /html:has\(#page-channel\.active\.ch-is-live\) \.ovnav-appbar,/, 'the bar is hidden');
-assert.match(phone, /:is\(\.mobile-chat-toggle, #messenger-toggle, #floating-chat-fab\) \{ display: none !important; \}/, 'no floating buttons');
+assert.match(phone, /:is\(\.mobile-chat-toggle, #floating-chat-fab\) \{ display: none !important; \}/, 'no floating buttons');
 
 // The chat is in the page under the player, taking what is left: not a sheet behind a button.
 assert.match(phone, /#page-channel\.ch-is-live\.page \.stream-layout > \.chat-sidebar \{[^}]*position: relative;[^}]*flex: 1 1 0;[^}]*transform: none;/, 'the chat is docked');
