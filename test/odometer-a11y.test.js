@@ -49,4 +49,6 @@ assert.strictEqual(el.querySelectorAll('.ovnum-sr').length, 1, 'still one copy a
 
 const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'js', 'ov-odometer.js'), 'utf8');
 assert.ok(/\.ovnum-sr\{position:absolute;width:1px;height:1px;[^}]*clip-path:inset\(50%\)/.test(src), 'the copy is visually hidden, not display:none');
+// Copy: aria-hidden does not stop a selection, so the strips and cells cannot be selected; the hidden copy can.
+assert.ok(/\.ovnum-digit,\.ovnum-cell\{-webkit-user-select:none;user-select:none\}/.test(src), 'copying a counter copies the number, not the strips');
 console.log('odometer: screen readers and copy get the number; the rolling strips are hidden from them');
