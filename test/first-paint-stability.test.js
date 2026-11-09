@@ -57,7 +57,7 @@ assert.ok(home.includes('.hero-latest:empty { visibility: hidden; min-height: 33
 assert.ok(/\.hero-stats \{ margin: 16px 0 10px; gap: 10px; min-height: 120px; \}/.test(home) && home.includes('.hero-stats { min-height: 204px; }') && home.includes('.hero-stats { min-height: 256px; margin-top: 14px; }'),
     'the stats board reserves its loaded height, "Show all" button included');
 const inline = /<style id="ovsk-css">([\s\S]*?)<\/style>/.exec(index)[1];
-assert.ok(inline.includes('.cosmetics-modal-overlay:not(.active),.messenger-panel:not(.open){display:none}') && /\.messenger-toggle\{position:fixed;/.test(inline), 'closed widgets stay out of the page until their stylesheets land');
+assert.ok(inline.includes('.cosmetics-modal-overlay:not(.active){display:none}'), 'closed widgets stay out of the page until their stylesheets land');
 ok('the home hero reserves its late lines and the early widgets stay out of the flow');
 
 // ── Without JavaScript ──

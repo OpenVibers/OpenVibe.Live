@@ -20,7 +20,7 @@ const PRELOAD = path.join(__dirname, 'preload.js');
 const ISSUER = 'https://openvibe.network';
 
 // Served by OpenVibe.Chat on openvibe.live (Chat's deploy/nginx/openvibe.live-chat.locations.conf):
-// Live's chat widget and messenger are Chat's N-1 clients, checked there. /api/emotes is Chat's too
+// Live's chat widget is Chat's N-1 client, checked there. /api/emotes is Chat's too
 // (plan T3; nginx sends it there), and the channel-moderation router Live used to answer at
 // /api/channels/* moved to Chat's /api/chat/channels/* — so an N-1 tab's calls to those are
 // Chat's to answer, and this harness neither records nor replays them against Live. Calls are Chat's too since Live's

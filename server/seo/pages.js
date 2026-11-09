@@ -219,7 +219,7 @@ async function _pageMeta(routePath, { page = 1, query = null } = {}) {
             ? await _channelSectionMeta(m[1], section, page) : await _channelMeta(m[1], page);
     }
     if ((m = p.match(/^\/recap\/(\d+)$/))) return await _recapMeta(parseInt(m[1], 10));
-    if (p === '/rundown' || p.startsWith('/rundown/')) return await _rundownMeta(p, query);
+    if (p === '/rundown' || p.startsWith('/rundown/')) return await _rundownMeta(p, query, page);
     // Search results (public/js/app-search.js) are never indexed; the page itself is findable.
     if (p === '/search') return { title: `Search | ${SITE_NAME}`, description: 'Search channels, VODs and clips on OpenVibe.Live.', canonicalPath: '/search', ogType: 'website', robots: 'noindex,follow', jsonLd: [] };
     // The global chat room: its own title and canonical (the shell left it with neither; browser check, WS-Q task 3).
@@ -502,7 +502,7 @@ function _rundownKey(query) {
     if (String(q.q || '').trim()) parts.push('q');
     return parts.join('&');
 }
-async function _rundownMeta(p, query) {
+async function _rundownMeta(p, query, page = 1) {
     const read = require('../rundown/read');
     const crumbs = [{ name: 'Home', url: '/' }, { name: 'The Rundown', url: '/rundown' }];
     const base = { image: shareCard('live-rundown'), ogType: 'website' };
@@ -516,15 +516,21 @@ async function _rundownMeta(p, query) {
     if (p === '/rundown') {
         let home = null;
         try { home = await read.home({}); } catch { home = null; }
+        let feed = null;
+        try { feed = await require('../rundown/browse').browse({ page }); } catch { feed = null; }
         const topics = (home && home.trending || []).map((t) => t.title);
         const eps = (home && home.streams || []).filter((x) => x.episode).map((x) => ({ title: x.episode.title, stream_id: x.stream_id }));
         const title = 'The Rundown — What Streamers Talked About';
         const desc = clean(`Topics, takes and episodes from OpenVibe.Live streams, in the streamers' own words.${topics.length ? ` Trending: ${topics.slice(0, 4).join(', ')}.` : ''}`, 200);
-        return { ...base, title: `${title} | ${SITE_NAME}`, description: desc, canonicalPath: '/rundown', robots: 'index,follow',
+        const takes = feed && feed.takes || [];
+        const episodes = feed && feed.episodes || [];
+        const body = feed ? `<header class="rd-mast"><h1 class="rd-title">The Rundown</h1><p class="rd-tagline">${esc(desc)}</p></header><main class="rd-ssr-feed"><h2 class="rd-h2">Latest takes</h2>${takes.map((s) => `<article class="rd-card rd-take"><p class="rd-meta">${esc(s.user && (s.user.display_name || s.user.username) || '')} · ${esc(s.topic && s.topic.title || '')}</p><h3 class="rd-h3">${esc(s.title)}</h3><p class="rd-what">${esc((s.quotes && s.quotes[0] && s.quotes[0].text) || s.what || '')}</p></article>`).join('')}<h2 class="rd-h2">Episodes</h2>${episodes.map((e) => `<article class="rd-card rd-episode"><h3 class="rd-h3"><a href="/rundown/e/${Number(e.stream_id)}">${esc(e.title)}</a></h3><p class="rd-logline">${esc(e.logline || '')}</p></article>`).join('')}${feed.next_page ? `<a class="rd-next" rel="next" href="/rundown?page=${feed.next_page}">More takes and episodes</a>` : ''}</main>` : null;
+        return { ...base, title: `${title} | ${SITE_NAME}`, description: desc, canonicalPath: page > 1 ? `/rundown?page=${page}` : '/rundown', robots: 'index,follow', rundownBody: body,
             jsonLd: [seo.jsonLd.webPage({ type: 'CollectionPage', name: title, url: abs('/rundown'), description: desc }),
-                ...(eps.length ? [seo.jsonLd.itemList('Latest episodes', eps.slice(0, 10).map((e) => ({ name: clean(e.title, 110), url: abs(`/rundown/e/${e.stream_id}`) })))] : []),
+                ...(takes.length ? [seo.jsonLd.itemList('Latest takes', takes.map((s) => ({ name: clean(s.title, 110), url: abs(`/rundown/e/${s.stream_id}#rd-take-${s.id}`) })))] : []),
+                ...(episodes.length ? [seo.jsonLd.itemList('Latest episodes', episodes.map((e) => ({ name: clean(e.title, 110), url: abs(`/rundown/e/${e.stream_id}`) })))] : []),
                 _breadcrumb(crumbs)],
-            snapshot: _detailSnapshot({ title: 'The Rundown', byline: topics.length ? `Trending: ${topics.slice(0, 6).join(', ')}` : null, desc, overview: eps.slice(0, 6).map((e) => e.title).join(' · ') || null, transcript: null, canonicalPath: '/rundown', watchLabel: 'Open The Rundown' }) };
+            snapshot: page === 1 ? _detailSnapshot({ title: 'The Rundown', byline: topics.length ? `Trending: ${topics.slice(0, 6).join(', ')}` : null, desc, overview: eps.slice(0, 6).map((e) => e.title).join(' · ') || null, transcript: null, canonicalPath: '/rundown', watchLabel: 'Open The Rundown' }) : null };
     }
     if (p === '/rundown/topics') {
         const plain = await _rundownMeta('/rundown', null);
@@ -955,6 +961,7 @@ function render(meta, urlPath) {
     let html = _base();
     if (!html) return null;
     html = assets.renderRoute(html, urlPath || meta.canonicalPath || '/');
+    if (meta.rundownBody) html = html.replace('<div class="loading-spinner"><i class="fa-solid fa-circle-notch fa-spin"></i></div>', meta.rundownBody);
 
     // The channel page's Ask your agent chip (openvibe-shared 4.135.0, plan Z3): the channel fragment leaves a slot,
     // filled here where the channel and its stream are known. kit.askAgent escapes the text; other routes have no slot.
@@ -1067,12 +1074,13 @@ function _cacheSet(key, html, ttl = CACHE_TTL_MS) {
 
 const SEO_ROUTE_RE = /^\/(?:$|content$|moments$|vods$|clips$|pastes$|rundown(?:\/(?:topics|s\/[A-Za-z0-9_.-]{1,64}|t\/[a-z0-9-]{1,80}|e\/\d{1,12}|[A-Za-z0-9_.-]{1,64}))?$|chat$|search$|documentation$|updates$|vod\/\d+$|clip\/\d+$|recap\/\d+$|p\/[A-Za-z0-9_-]+$|@[A-Za-z0-9_]{3,24}$)/;
 
-/** ?page=N on a channel page (its video list); 1 everywhere else and for anything that is not a number. */
+/** ?page=N on a channel, Content, Moments or the Rundown; 1 on other pages. */
 function _pageParam(p, query) {
     const feed = p === '/content' || p === '/moments';
-    if (!feed && !CHANNEL_PATH_RE.test(p)) return 1;
+    const rundown = p === '/rundown';
+    if (!feed && !rundown && !CHANNEL_PATH_RE.test(p)) return 1;
     const raw = query && typeof query.page === 'string' ? query.page : '';
-    return /^\d{1,4}$/.test(raw) ? Math.min(feed ? FEED_MAX_PAGE : CHANNEL_MAX_PAGE, Math.max(1, parseInt(raw, 10))) : 1;
+    return /^\d{1,4}$/.test(raw) ? Math.min(rundown ? 100 : (feed ? FEED_MAX_PAGE : CHANNEL_MAX_PAGE), Math.max(1, parseInt(raw, 10))) : 1;
 }
 
 async function middleware(req, res, next) {

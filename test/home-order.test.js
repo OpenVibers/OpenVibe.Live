@@ -54,14 +54,15 @@ check('each rail keeps its header right before its grid (the density control rea
     assert.ok(home.slice(header, recent).includes('Recently Online'));
 });
 
-check('nothing was removed', () => {
-    for (const id of ['home-featured', 'stream-grid-live', 'home-digest', 'home-star-section', 'hero-egg', 'home-pulse-section',
+check('the daily quest replaces the secret without moving the other sections', () => {
+    for (const id of ['home-featured', 'stream-grid-live', 'home-digest', 'home-star-section', 'home-daily-quest', 'home-pulse-section',
         'stream-grid-recent', 'stream-grid-recent-pagination', 'home-recent-vods-header', 'home-recent-vods-grid', 'home-clips-header',
         'home-clips-grid', 'home-pastes-header', 'home-pastes-list', 'home-moments-section', 'home-tour-mount', 'home-cta-banner',
         'home-about-body']) {
         at(`id="${id}"`);
     }
     assert.ok(home.includes('<div class="ovnet" id="home-network"'));
+    assert.ok(!home.includes('hero-egg'));
 });
 
 console.log(failures ? `\n${failures} check(s) failed` : '\nhome order: all checks passed');
