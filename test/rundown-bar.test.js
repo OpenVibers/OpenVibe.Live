@@ -53,7 +53,9 @@ assert.strictEqual(ctx._rdQuery(ctx._rdState(new URLSearchParams(ctx._rdQuery(be
     'and the old URL restores the old view');
 
 // ── The bar: the search, the chips, the keyboard ──
-assert.match(js, /placeholder="Search the Rundown: a topic, a streamer, something they said"/, 'the search says what it searches');
+assert.match(js, /placeholder="Search topics, streamers, episodes"/, 'the search says what it searches without truncating a long phrase');
+assert.strictEqual(ctx._rdQuery(ctx._rdState(new URLSearchParams('page=2'))), '?page=2', 'crawler pages have stable links');
+assert.match(js, /rel="next"/, 'the feed exposes its next page');
 assert.match(js, /setTimeout\(\(\) => _rdSearch\(value\), 250\)/, 'the results follow the typing, 250 ms later');
 assert.match(js, /e\.key !== '\/'/, '"/" focuses the search');
 assert.match(js, /data-rd-sheet="open"/, 'the phone has one Filters button');

@@ -99,15 +99,13 @@
     .ov-route-error>div{flex:1;min-width:180px;display:grid;gap:2px}
     .ov-route-error span{color:var(--text-muted,#8b93ad);font-size:.9rem}
     @media (prefers-reduced-motion:reduce){.ov-route-skel span{animation:none}}
-    /* Widgets their scripts build before cosmetics.css / messenger.css land (neither blocks): closed, they
-       stay out of the page instead of painting unstyled under the footer, and the toggle sits where it will. */
-    .cosmetics-modal-overlay:not(.active),.messenger-panel:not(.open){display:none}
-    .messenger-toggle{position:fixed;bottom:20px;left:20px;width:52px;height:52px;border:0;border-radius:50%;background:var(--accent-strong,#3472d8);color:var(--on-accent-strong,#fff)}
+    /* Keep the cosmetics modal out of the page before its stylesheet lands. */
+    .cosmetics-modal-overlay:not(.active){display:none}
     </style>
 
     <!-- Stylesheets.
          Blocking set = what the home page paints with. Everything else belongs to another route
-         (the messenger, the cosmetics modal, after-show reports, the guide
+         (the cosmetics modal, after-show reports, the guide
          overlay) and is fetched without blocking the first paint: media="print" makes the browser
          treat it as non-critical, and the onload flips it back to all once it has arrived. -->
     <link rel="stylesheet" href="/css/style.css">
@@ -492,7 +490,7 @@
     </div>
 </div>
 
-<!-- vibes.js, opencoins.js, messenger.js: features.json → money, messenger (on demand). -->
+<!-- vibes.js, opencoins.js: features.json → money (on demand). -->
 <script src="/js/draggable-fab.js" defer></script>
 <script src="/shared/footer.js" defer></script>
 <script src="/js/footer-live.js" defer></script>

@@ -94,15 +94,19 @@ console.log('OK the layout at phone widths: stacked, scrollable, safe-area aware
 {
     const els = {
         'bc-mobile-chat-toggle': { style: { display: 'none' }, querySelector: () => ({ className: '' }) },
-        'bc-chat-sidebar': { classList: classList() },
+        'bc-chat-sidebar': { classList: classList(), querySelector: () => ({}) },
         'bc-chat-messages': { scrollTop: 0, scrollHeight: 900 },
         'bc-mobile-chat-badge': { style: {}, textContent: '3' },
     };
+    const locks = [];
     const fx = {
         document: { getElementById: (id) => els[id] || null, body: { classList: classList() } },
         window: { innerWidth: 390 },
         broadcastState: { streams: new Map() },
         _bcMobileChatOpen: false,
+        _bcLockSheet: (id) => locks.push('open:' + id),
+        _bcUnlockSheet: (id) => locks.push('close:' + id),
+        _bcDragSheet: () => {},
     };
     const f = run([extract(bc, 'updateBroadcastMobileChatFab'), extract(bc, 'toggleBroadcastMobileChat')].join('\n'), ['updateBroadcastMobileChatFab', 'toggleBroadcastMobileChat'], fx);
     f.updateBroadcastMobileChatFab();
@@ -115,7 +119,10 @@ console.log('OK the layout at phone widths: stacked, scrollable, safe-area aware
     assert.strictEqual(els['bc-mobile-chat-toggle'].style.display, 'none', 'a desktop has the sidebar');
     f.toggleBroadcastMobileChat();
     assert.ok(els['bc-chat-sidebar'].classList.contains('mobile-chat-open') && fx.document.body.classList.contains('mobile-chat-visible'));
+    assert.deepStrictEqual(locks, ['open:chat'], 'phone chat locks the page');
     assert.deepStrictEqual([els['bc-chat-messages'].scrollTop, els['bc-mobile-chat-badge'].textContent], [900, '0'], 'opens at the newest line, unread cleared');
+    f.toggleBroadcastMobileChat();
+    assert.deepStrictEqual(locks, ['open:chat', 'close:chat'], 'closing chat unlocks the page');
     assert.match(fragment, /id="bc-mobile-chat-toggle" onclick="toggleBroadcastMobileChat\(\)"/);
     assert.match(bc, /window\.addEventListener\('resize'[\s\S]{0,200}updateBroadcastMobileChatFab\(\);/, 'rotation and resizing re-decide');
     console.log('OK chat button: only live on a phone, opens the sheet');
