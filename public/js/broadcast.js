@@ -4702,6 +4702,63 @@ function _updatePlatformViewerBadges(places) {
 
 /** Toggle broadcast page mobile chat bottom sheet */
 let _bcMobileChatOpen = false;
+const _bcSheets = new Set();
+const _bcSheetOpeners = new Map();
+let _bcPageBeforeSheet = null;
+let _bcSheetKeysBound = false;
+function _bcLockSheet(id, opener) {
+    if (_bcSheets.has(id)) return;
+    if (!_bcPageBeforeSheet) {
+        const html = document.documentElement, body = document.body, y = window.scrollY;
+        const gap = Math.max(0, window.innerWidth - html.clientWidth);
+        _bcPageBeforeSheet = { y, overflow: html.style.overflow, padding: html.style.paddingRight,
+            position: body.style.position, top: body.style.top, left: body.style.left, right: body.style.right, width: body.style.width };
+        if (gap) html.style.paddingRight = `${(parseFloat(getComputedStyle(html).paddingRight) || 0) + gap}px`;
+        html.style.overflow = 'hidden';
+        body.style.position = 'fixed'; body.style.top = `-${y}px`;
+        body.style.left = '0'; body.style.right = '0'; body.style.width = '100%';
+    }
+    _bcSheets.add(id); _bcSheetOpeners.set(id, opener);
+    if (!_bcSheetKeysBound) {
+        _bcSheetKeysBound = true;
+        document.addEventListener('keydown', (e) => {
+            if (e.key !== 'Escape') return;
+            if (_bcSheets.has('camera')) { e.preventDefault(); closeCameraSwitcher(); }
+            else if (_bcSheets.has('chat')) { e.preventDefault(); toggleBroadcastMobileChat(); }
+        }, true);
+    }
+}
+function _bcUnlockSheet(id) {
+    if (!_bcSheets.delete(id)) return;
+    const opener = _bcSheetOpeners.get(id); _bcSheetOpeners.delete(id);
+    if (!_bcSheets.size && _bcPageBeforeSheet) {
+        const s = _bcPageBeforeSheet, html = document.documentElement, body = document.body;
+        _bcPageBeforeSheet = null;
+        html.style.overflow = s.overflow; html.style.paddingRight = s.padding;
+        body.style.position = s.position; body.style.top = s.top;
+        body.style.left = s.left; body.style.right = s.right; body.style.width = s.width;
+        window.scrollTo(0, s.y);
+    }
+    if (opener?.isConnected) opener.focus({ preventScroll: true });
+}
+function _bcDragSheet(head, panel, close) {
+    if (!head || head.__bcDragSheet) return;
+    head.__bcDragSheet = true;
+    let start = null;
+    head.addEventListener('pointerdown', (e) => {
+        if (e.pointerType !== 'touch' || e.target.closest('button, a, input')) return;
+        start = { id: e.pointerId, y: e.clientY };
+        try { head.setPointerCapture(e.pointerId); } catch (_) { /* interrupted gesture */ }
+    });
+    head.addEventListener('pointermove', (e) => { if (start && start.id === e.pointerId) panel.style.translate = `0 ${Math.max(0, e.clientY - start.y)}px`; });
+    const end = (e) => {
+        if (!start || start.id !== e.pointerId) return;
+        const dy = e.clientY - start.y; start = null; panel.style.translate = '';
+        if (dy > 90) close();
+    };
+    head.addEventListener('pointerup', end);
+    head.addEventListener('pointercancel', end);
+}
 function toggleBroadcastMobileChat() {
     const sidebar = document.getElementById('bc-chat-sidebar');
     const fab = document.getElementById('bc-mobile-chat-toggle');
@@ -4709,6 +4766,10 @@ function toggleBroadcastMobileChat() {
     _bcMobileChatOpen = !_bcMobileChatOpen;
     sidebar.classList.toggle('mobile-chat-open', _bcMobileChatOpen);
     document.body.classList.toggle('mobile-chat-visible', _bcMobileChatOpen);
+    if (_bcMobileChatOpen) {
+        _bcLockSheet('chat', fab);
+        _bcDragSheet(sidebar.querySelector('.chat-header'), sidebar, toggleBroadcastMobileChat);
+    } else _bcUnlockSheet('chat');
     if (fab) {
         const icon = fab.querySelector('i');
         if (icon) icon.className = _bcMobileChatOpen ? 'fa-solid fa-xmark' : 'fa-solid fa-comment';
@@ -4801,6 +4862,7 @@ function _refreshVerticalPreview() {
 function closeCameraSwitcher() {
     const sheet = document.getElementById('bc-camera-sheet');
     if (sheet) sheet.style.display = 'none';
+    _bcUnlockSheet('camera');
 }
 
 function _renderCameraSwitcherChoices(devices, activeCameraId) {
@@ -4842,6 +4904,8 @@ async function openCameraSwitcher() {
     if (!sheet || !list) return;
 
     sheet.style.display = 'flex';
+    _bcLockSheet('camera', document.getElementById('bc-btn-switch-cam'));
+    _bcDragSheet(sheet.querySelector('.bc-camera-sheet-header'), sheet.querySelector('.bc-camera-sheet-panel'), closeCameraSwitcher);
     list.innerHTML = '<div class="bc-camera-sheet-empty"><i class="fa-solid fa-spinner fa-spin"></i><span>Loading cameras…</span></div>';
 
     try {

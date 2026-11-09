@@ -1,10 +1,9 @@
 'use strict';
 /**
- * Vibes, tips, subscriptions and channel points (vibes.js, opencoins.js) and the DM panel (messenger.js) are not on
+ * Vibes, tips, subscriptions and channel points (vibes.js, opencoins.js) are not on
  * every page (11-07, the owner: "make things faster and more optimized"; 31 KB that most visits never ran):
  *   - features.json → money comes with the pages that sell, tip or reward (channel, broadcast, dashboard), its
  *     inline handlers are stubs, and showModal() fetches it for a money modal on any other page;
- *   - features.json → messenger loads once someone is signed in, and the navbar's Messages waits for it.
  *   node test/money-on-demand.test.js
  */
 const assert = require('assert');
@@ -18,14 +17,13 @@ const app = pub('js/app.js');
 const nav = pub('js/ov-navbar-live.js');
 
 // Not on every page.
-for (const f of ['vibes.js', 'opencoins.js', 'messenger.js', 'messenger.css']) {
+for (const f of ['vibes.js', 'opencoins.js']) {
     assert.ok(!new RegExp(`<(script|link)[^>]+/(js|css)/${f.replace('.', '\\.')}`).test(html), `${f} is not on every page`);
 }
 
 // The two features, and who depends on money.
 assert.deepStrictEqual(reg.money.js, ['/js/vibes.js', '/js/opencoins.js']);
-assert.deepStrictEqual(reg.messenger.js, ['/js/messenger.js']);
-assert.deepStrictEqual(reg.messenger.css, ['/css/messenger.css']);
+assert.ok(!reg.messenger, 'the retired messenger is not a feature');
 for (const name of ['channel', 'broadcast', 'dashboard']) assert.ok((reg[name].deps || []).includes('money'), `${name} brings money`);
 // Every money function a fragment calls from an inline handler is a stub (or its page brings money).
 for (const fn of ['openSubscribeForCurrentStream', 'toggleRewardsPanel', 'saveDashPointsConfig']) {
@@ -38,8 +36,8 @@ assert.ok(/donate: \(\) => openvibeBucksDonateModal\(\),/.test(app) && /'buy-fun
 assert.ok(/if \(MONEY_MODALS\.has\(id\) && typeof openvibeBucksDonateModal !== 'function' && window\.ov && ov\.load\) \{\n\s*ov\.load\('money'\)\.then\(\(\) => showModal\(id\)\)/.test(app), 'a money modal fetches money first');
 assert.ok(/function openChannelRewards\(\) \{[\s\S]{0,200}ov\.load\('money'\)/.test(app), 'the rewards button fetches money');
 
-// The DM panel: on sign-in, and from the navbar's Messages.
-assert.ok(/if \(currentUser && window\.ov && ov\.load\) ov\.load\('messenger'\)/.test(app), 'messenger loads on sign-in');
-assert.ok(/messages: \{ onOpen: \(\) => \{[^\n]*ov\.load\('messenger'\)/.test(nav), 'the navbar\'s Messages loads it if needed');
+// The navbar uses Shared's default Messages action, which opens the Dock's Chats tab.
+assert.ok(!/messages:\s*\{/.test(nav), 'Live does not override Shared messages');
+assert.ok(!/ov\.load\('messenger'\)/.test(app), 'Live does not load the retired messenger');
 
-console.log('money on demand: vibes, opencoins and messenger load only where they are used');
+console.log('money on demand: money loads only where it is used; messages use the shared Dock');
