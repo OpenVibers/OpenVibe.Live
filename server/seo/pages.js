@@ -213,7 +213,11 @@ async function _pageMeta(routePath, { page = 1, query = null } = {}) {
     let m;
     // /vod/<id> and /clip/<id> 301 to OpenVibe.Video before this runs (server/web/video-handover.js).
     if ((m = p.match(/^\/p\/([A-Za-z0-9_-]+)$/))) return await _pasteMeta(m[1]);
-    if ((m = p.match(CHANNEL_PATH_RE))) return await _channelMeta(m[1], page);
+    if ((m = p.match(CHANNEL_PATH_RE))) {
+        const section = query && typeof query.section === 'string' ? query.section : '';
+        return ['videos', 'clips', 'clips-taken', 'pastes'].includes(section)
+            ? await _channelSectionMeta(m[1], section, page) : await _channelMeta(m[1], page);
+    }
     if ((m = p.match(/^\/recap\/(\d+)$/))) return await _recapMeta(parseInt(m[1], 10));
     if (p === '/rundown' || p.startsWith('/rundown/')) return await _rundownMeta(p, query);
     // Search results (public/js/app-search.js) are never indexed; the page itself is findable.
@@ -233,6 +237,54 @@ async function _pageMeta(routePath, { page = 1, query = null } = {}) {
 // server/web/page-status.js): anything else is never a channel.
 const CHANNEL_PATH_RE = /^\/@([A-Za-z0-9_]{3,24})$/;
 const CHANNEL_PAGE_SIZE = 12;
+function _channelRailHtml(rows, kind) {
+    if (!rows.length) return '<p class="muted">Nothing here yet.</p>';
+    return rows.map((row) => {
+        const url = kind === 'paste' ? pasteHref(row.slug) : videoUrl(kind, row.id, null, row.watch_id);
+        const title = clean(row.title || (kind === 'paste' ? 'Untitled paste' : 'Untitled video'), 120);
+        const image = kind === 'paste' ? row.screenshot_url : row.thumbnail_url;
+        const when = isoDate(row.created_at);
+        const thumb = image ? `<img src="${esc(abs(image))}" alt="" loading="lazy" width="320" height="180">` : '';
+        if (kind === 'paste') return `<a class="ch-paste-card" href="${esc(url)}"><div class="ch-paste-thumb">${thumb}</div><div class="ch-paste-info"><div class="ch-paste-title">${esc(title)}</div><time class="ch-paste-meta" datetime="${esc(when || '')}">${esc(_day(row.created_at) || '')}</time></div></a>`;
+        return `<a class="stream-card" href="${esc(url)}"><div class="stream-card-thumb">${thumb}</div><div class="stream-card-info"><div class="stream-card-title">${esc(title)}</div><time class="stream-card-streamer muted" datetime="${esc(when || '')}">${esc(_day(row.created_at) || '')}</time></div></a>`;
+    }).join('');
+}
+async function _channelSectionMeta(username, section, page) {
+    const acct = await _channelAccount(username);
+    if (!acct || acct.banned) return null;
+    page = Math.min(CHANNEL_MAX_PAGE, Math.max(1, Math.floor(Number(page) || 1)));
+    const offset = (page - 1) * CHANNEL_PAGE_SIZE;
+    const name = acct.displayName;
+    const title = { videos: 'Videos', clips: 'Clips', 'clips-taken': 'Clips taken', pastes: 'Pastes' }[section];
+    let result = null;
+    try {
+        if (section === 'videos') result = await media.listVods({ user_id: acct.userId, order: 'newest', limit: CHANNEL_PAGE_SIZE, offset }, { timeoutMs: 5000, whole: true });
+        else if (section === 'clips') result = await media.listClips({ channel_user_id: acct.userId, auto_generated: 0, limit: CHANNEL_PAGE_SIZE, offset }, { timeoutMs: 5000 });
+        else if (section === 'clips-taken') result = await media.listClips({ user_id: acct.userId, auto_generated: 0, limit: CHANNEL_PAGE_SIZE, offset }, { timeoutMs: 5000 });
+        else result = await require('../media-proxy/lookups').userPastes({ id: acct.userId, username: acct.username }, { limit: CHANNEL_PAGE_SIZE, offset });
+    } catch { result = null; }
+    const rows = ((result && (result.vods || result.clips || result.pastes)) || []).filter(_pub);
+    const total = result && Number.isFinite(Number(result.total)) ? Number(result.total) : null;
+    const pages = total == null ? null : Math.max(1, Math.ceil(total / CHANNEL_PAGE_SIZE));
+    const basePath = `/@${acct.username}?section=${section}`;
+    const canonicalPath = page > 1 ? `${basePath}&page=${page}` : basePath;
+    const items = rows.map((row) => ({
+        url: section === 'pastes' ? pasteHref(row.slug) : videoUrl(section === 'videos' ? 'vod' : 'clip', row.id, null, row.watch_id),
+        name: row.title || (section === 'pastes' ? 'Untitled paste' : 'Untitled video'),
+        meta: [_day(row.created_at), section === 'pastes' ? null : _fmtDur(row.duration_seconds ?? row.duration)].filter(Boolean).join(' · '),
+    }));
+    const ld = [{ '@context': 'https://schema.org', '@type': 'ItemList', name: `${name}'s ${title.toLowerCase()}`, itemListElement: items.map((item, i) => ({ '@type': 'ListItem', position: offset + i + 1, url: abs(item.url), name: clean(item.name, 110) })) }];
+    const href = (n) => esc(abs(n > 1 ? `${basePath}&page=${n}` : basePath));
+    const hasNext = pages ? page < pages : rows.length === CHANNEL_PAGE_SIZE;
+    const pager = `<nav class="pagination" aria-label="Pages">${page > 1 ? `<a rel="prev" href="${href(page - 1)}">Previous</a>` : ''}<span>Page ${page}${pages ? ` of ${pages}` : ''}</span>${hasNext ? `<a rel="next" href="${href(page + 1)}">Next</a>` : ''}</nav>`;
+    const list = items.length ? `<ol>${items.map((item) => `<li><a href="${esc(abs(item.url))}">${esc(clean(item.name, 120))}</a><time>${esc(item.meta)}</time></li>`).join('')}</ol>` : '<p>No items on this page.</p>';
+    const snapshot = `<p><a href="${esc(abs(`/@${acct.username}`))}">← ${esc(name)}'s channel</a></p><h1>${esc(name)} · ${esc(title)}</h1>${list}${pager}`;
+    return {
+        title: `${name} — ${title}, page ${page} | ${SITE_NAME}`, description: `Browse ${name}'s ${title.toLowerCase()} on ${SITE_NAME}.`,
+        canonicalPath, robots: page > 1 && !rows.length ? 'noindex,follow' : 'index,follow',
+        jsonLd: ld, snapshot, standalone: true, cacheTtlMs: CHANNEL_CACHE_MS,
+    };
+}
 const CHANNEL_MAX_PAGE = 500;
 const CHANNEL_CACHE_MS = 60_000;   // the page says who is live, so it is kept a minute, not five
 
@@ -278,16 +330,20 @@ async function _channelMeta(username, page = 1) {
     // streams, then what the AI cut from them, labelled (roadmap 33.6: made, then derived).
     const track = { partial: false };
     const offset = (page - 1) * CHANNEL_PAGE_SIZE;
-    const [vr, cr, ar] = acct.banned ? [null, null, null] : await Promise.all([
+    const [vr, cr, ar, tr, pr] = acct.banned ? [null, null, null, null, null] : await Promise.all([
         _listWithin(`chv:${acct.userId}:${offset}`, async () => await media.listVods({ user_id: acct.userId, order: 'newest', limit: CHANNEL_PAGE_SIZE, offset }, { timeoutMs: 5000, whole: true }), track),
-        page === 1 ? _listWithin(`chc:${acct.userId}`, async () => await media.listClips({ channel_user_id: acct.userId, auto_generated: 0, limit: 8 }, { timeoutMs: 5000 }), track) : null,
+        page === 1 ? _listWithin(`chc:${acct.userId}`, async () => await media.listClips({ channel_user_id: acct.userId, auto_generated: 0, limit: CHANNEL_PAGE_SIZE }, { timeoutMs: 5000 }), track) : null,
         page === 1 ? _listWithin(`cha:${acct.userId}`, async () => await media.listClips({ channel_user_id: acct.userId, auto_generated: 1, limit: 6 }, { timeoutMs: 5000 }), track) : null,
+        page === 1 ? _listWithin(`cht:${acct.userId}`, async () => await media.listClips({ user_id: acct.userId, auto_generated: 0, limit: CHANNEL_PAGE_SIZE }, { timeoutMs: 5000 }), track) : null,
+        page === 1 ? _listWithin(`chp:${acct.userId}`, async () => await require('../media-proxy/lookups').userPastes({ id: acct.userId, username: acct.username }, { limit: CHANNEL_PAGE_SIZE }), track) : null,
     ]);
     const vods = ((vr && vr.vods) || []).filter((v) => _pub(v) && !v.is_recording && v.status !== 'failed');
     const vodTotal = vr && Number.isFinite(Number(vr.total)) ? Number(vr.total) : null;
     const pages = vodTotal != null ? Math.max(1, Math.ceil(vodTotal / CHANNEL_PAGE_SIZE)) : null;
     const clips = ((cr && cr.clips) || []).filter((c) => _pub(c) && !isAiClip(c));
     const aiClips = ((ar && ar.clips) || []).filter((c) => _pub(c) && isAiClip(c));
+    const taken = ((tr && tr.clips) || []).filter((c) => _pub(c) && !isAiClip(c));
+    const pastes = ((pr && pr.pastes) || []).filter(_pub);
     // A page past the end has nothing on it: not a page to index, and its canonical is page 1.
     const pastEnd = page > 1 && !track.partial && (!vods.length || (pages != null && page > pages));
     const canonicalPath = page > 1 && !pastEnd ? `${basePath}?page=${page}` : basePath;
@@ -325,6 +381,11 @@ async function _channelMeta(username, page = 1) {
             itemListElement: vods.map((v, i) => ({ '@type': 'ListItem', position: offset + i + 1, url: videoUrl('vod', v.id, null, v.watch_id), name: clean(v.title || 'Stream recording', 110) })),
         });
     }
+    for (const [heading, rows, kind] of [['Clips', clips, 'clip'], ['Clips taken', taken, 'clip'], ['Pastes', pastes, 'paste']]) {
+        if (!rows.length) continue;
+        ld.push({ '@context': 'https://schema.org', '@type': 'ItemList', name: `${name}'s ${heading.toLowerCase()}`,
+            itemListElement: rows.map((row, i) => ({ '@type': 'ListItem', position: i + 1, url: abs(kind === 'paste' ? pasteHref(row.slug) : videoUrl('clip', row.id, null, row.watch_id)), name: clean(row.title || heading, 110) })) });
+    }
     ld.push(_breadcrumb([{ name: 'Home', url: '/' }, { name, url: basePath }, ...(page > 1 ? [{ name: `Videos, page ${page}`, url: canonicalPath }] : [])]));
 
     // The page body, for crawlers and for anyone reading without JavaScript.
@@ -346,6 +407,8 @@ async function _channelMeta(username, page = 1) {
     })), vods.length || page > 1 ? null : (track.partial ? null : 'No videos yet.'));
     if (vods.length || page > 1) body += _pager(basePath, page, pages, vods.length === CHANNEL_PAGE_SIZE, 'videos');
     if (clips.length) body += _itemSection('Clips', (await Promise.all(clips.map(async (c) => ({ url: videoUrl('clip', c.id, null, c.watch_id), name: c.title || 'Clip', meta: [await _clipperOf(c) ? `clipped by ${await _clipperOf(c)}` : null, _fmtDur(c.duration_seconds ?? c.duration)].filter(Boolean).join(' · ') })))));
+    if (taken.length) body += _itemSection('Clips taken', taken.map((c) => ({ url: videoUrl('clip', c.id, null, c.watch_id), name: c.title || 'Clip', meta: [_day(c.created_at), _fmtDur(c.duration_seconds ?? c.duration)].filter(Boolean).join(' · ') })));
+    if (pastes.length) body += _itemSection('Pastes', pastes.map((p) => ({ url: pasteHref(p.slug), name: p.title || 'Paste', meta: _day(p.created_at) })));
     if (aiClips.length) {
         body += _itemSection('AI Moments', aiClips.map((c) => ({ url: videoUrl('clip', c.id, null, c.watch_id), name: c.title || 'AI clip', meta: ['AI clip', _fmtDur(c.duration_seconds ?? c.duration)].filter(Boolean).join(' · ') })),
             null, `<p class="ai-disclosure">Clips OpenVibe's AI cut from ${esc(name)}'s streams when chat reacted. No one clipped these.</p>`);
@@ -367,6 +430,19 @@ async function _channelMeta(username, page = 1) {
         canonicalPath, image, ogType: 'profile',
         robots: acct.banned || pastEnd ? 'noindex,follow' : 'index,follow',
         jsonLd: ld, snapshot: body, askText,
+        rails: page === 1 ? {
+            'ch-vods-grid': _channelRailHtml(vods, 'vod'),
+            'ch-clips-of-grid': _channelRailHtml(clips, 'clip'),
+            'ch-clips-grid': _channelRailHtml(taken, 'clip'),
+            'ch-pastes-grid': _channelRailHtml(pastes, 'paste'),
+        } : null,
+        railCounts: page === 1 ? {
+            videos: vodTotal ?? vods.length,
+            clips: Number(cr?.total) || clips.length,
+            'clips-taken': Number(tr?.total) || taken.length,
+            pastes: Number(pr?.total) || pastes.length,
+        } : null,
+        channelUsername: acct.username,
         cacheTtlMs: track.partial ? SHORT_CACHE_MS : CHANNEL_CACHE_MS,
     };
 }
@@ -883,6 +959,18 @@ function render(meta, urlPath) {
     // The channel page's Ask your agent chip (openvibe-shared 4.135.0, plan Z3): the channel fragment leaves a slot,
     // filled here where the channel and its stream are known. kit.askAgent escapes the text; other routes have no slot.
     if (meta.askText) html = html.replace('<span id="ch-ask-slot"></span>', `<span id="ch-ask-slot">${kit.askAgent({ text: meta.askText })}</span>`);
+    if (meta.rails) {
+        for (const [id, cards] of Object.entries(meta.rails)) {
+            const open = new RegExp(`<div[^>]*\\bid="${id}"[^>]*>`).exec(html);
+            if (!open) continue;
+            const contentStart = open.index + open[0].length;
+            const contentEnd = html.indexOf('</div>', contentStart);
+            if (contentEnd !== -1) html = html.slice(0, contentStart) + cards + html.slice(contentEnd);
+        }
+        for (const [section, id] of [['videos', 'ch-vods-all'], ['clips', 'ch-clips-of-all'], ['clips-taken', 'ch-clips-taken-all'], ['pastes', 'ch-pastes-all']]) {
+            html = html.replace(`id="${id}" href="#">View all`, `id="${id}" href="/@${esc(meta.channelUsername)}?section=${section}">View all (${Number(meta.railCounts[section]) || 0})`);
+        }
+    }
 
     // Only the <head> is rewritten, so only the <head> is scanned.
     //
@@ -911,6 +999,10 @@ function render(meta, urlPath) {
     html = headEnd === -1
         ? head.replace(/<\/head>/i, _headBlock(meta) + '</head>')
         : head + _headBlock(meta) + rest;
+    if (meta.standalone) {
+        const page = `<body class="ch-list-page"><main class="ch-list-content">${meta.snapshot}</main></body></html>`;
+        return html.replace(/<body[^>]*>[\s\S]*$/i, page);
+    }
     // Server-rendered crawlable content, right after <body>. It's REAL content (so AI text
     // extractors read it — unlike <noscript>, which many strip), but visually-hidden so users
     // never see a flash, and the SPA removes #seo-prerender on boot (see app.js). Not cloaking:
@@ -998,7 +1090,8 @@ async function middleware(req, res, next) {
     // these paths for data: the API is under /api.
     const page = _pageParam(p, req.query);
     const combo = p.startsWith('/rundown') ? _rundownKey(req.query) : '';
-    const key = combo ? `${p}?${combo}` : (page > 1 ? `${p}?page=${page}` : p);
+    const section = CHANNEL_PATH_RE.test(p) && ['videos', 'clips', 'clips-taken', 'pastes'].includes(req.query.section) ? req.query.section : '';
+    const key = combo ? `${p}?${combo}` : (section ? `${p}?section=${section}${page > 1 ? `&page=${page}` : ''}` : (page > 1 ? `${p}?page=${page}` : p));
     // This renderer and the SPA fallback's status check share one wait on upstreams (page-status.js).
     req.ovLookupDeadlineAt = Date.now() + pageStatus.LOOKUP_DEADLINE_MS;
     const send = (html, ttl) => {

@@ -390,6 +390,9 @@ router.get('/channel/:username', optionalAuth, async (req, res) => {
         const isFollowing = req.user ? await networkFollows.isFollowing(req.user.id, channel.user_id) : false;
         // Managed streams for this channel
         const managedStreams = await db.getManagedStreamsByUserId(channel.user_id) || [];
+        const history = pollOnly ? [] : await db.getStreamsByUserId(channel.user_id, 16).catch(() => []);
+        const lastSession = history.find((s) => !s.is_live && s.ended_at);
+        const lastVod = lastSession && vods.find((v) => Number(v.stream_id) === Number(lastSession.id));
 
         // Include RS restream status + per-slot external viewer counts for each live stream.
         // Everything is keyed by the stream's own managed_stream_id (slot) so a channel
@@ -594,6 +597,13 @@ router.get('/channel/:username', optionalAuth, async (req, res) => {
             clipsTakenTotal,
             aiEventTotal,
             channel: publicChannel,
+            last_session: lastSession ? {
+                title: lastSession.title || null,
+                ended_at: lastSession.ended_at,
+                duration_seconds: lastSession.duration_seconds || 0,
+                vod_id: lastVod ? lastVod.id : null,
+            } : null,
+            recent_starts: history.filter((s) => s.started_at && !s.is_live).map((s) => s.started_at),
             // The language this channel lives in (explicit setting or detected from the bio) —
             // drives the chat auto-translation notice, the live-captions panel and bio translation.
             language: await i18n.channelMeta(channel.user_id),

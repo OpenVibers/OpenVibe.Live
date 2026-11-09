@@ -120,7 +120,8 @@
                                     <span id="ch-protocol-badge"></span>
                                 </div>
                                 <span class="ch-username" id="ch-username">@username</span>
-                                <div class="ch-meta"><span class="ch-follower-count" id="ch-follower-count">0 followers</span><span class="ch-category-badge" id="ch-category-badge">Live</span><a class="ch-game-badge" id="ch-game-badge" href="https://openvibe.games/" target="_blank" rel="noopener" hidden></a></div>
+                                <p class="ch-presence" id="ch-presence-live"></p>
+                                <div class="ch-meta"><span class="ch-follower-count" id="ch-follower-count">0 followers</span><a class="ch-alert-chip" id="ch-watch-chip-live" href="https://openvibe.watch/" target="_blank" rel="noopener" hidden><i class="fa-regular fa-bell" aria-hidden="true"></i><span>Get an alert</span></a><span class="ch-category-badge" id="ch-category-badge">Live</span><a class="ch-game-badge" id="ch-game-badge" href="https://openvibe.games/" target="_blank" rel="noopener" hidden></a></div>
                                 <div class="ch-social-pills" id="ch-socials-live" hidden></div>
                                 <p class="ch-stream-title" id="ch-stream-title">Stream Title</p>
                                 <div id="stream-labels" class="stream-labels"></div>
@@ -263,8 +264,10 @@
                 <div class="ch-offline-header-info">
                     <h1 id="ch-display-name-offline">Channel</h1>
                     <p class="ch-username" id="ch-username-offline">username</p>
+                    <p class="ch-presence" id="ch-presence-offline"></p>
                     <div class="ch-meta">
                         <span class="ch-follower-count" id="ch-follower-count-offline">0 followers</span>
+                        <a class="ch-alert-chip" id="ch-watch-chip-offline" href="https://openvibe.watch/" target="_blank" rel="noopener" hidden><i class="fa-regular fa-bell" aria-hidden="true"></i><span>Get an alert</span></a>
                         <a class="ch-game-badge" id="ch-game-badge-offline" href="https://openvibe.games/" target="_blank" rel="noopener" hidden></a>
                         <span class="ch-category-badge" id="ch-category-badge-offline">Offline</span>
                     </div>
@@ -395,6 +398,7 @@
                 <section class="ch-tab-panel" id="ch-panel-videos" aria-labelledby="ch-h-videos">
                     <h2 class="ch-sec-h" id="ch-h-videos">Videos</h2>
                     <div class="ch-panel-bar">
+                        <a class="ch-view-all" id="ch-vods-all" href="#">View all videos</a>
                         <div id="ch-vods-filter-bar" class="ch-vods-filter-bar" style="display:none"></div>
                         <a id="ch-vods-video-link" class="btn btn-small btn-outline" href="#" style="display:none" title="This channel's recordings and clips on OpenVibe.Video, with AI chapters, captions and playlists"><i class="fa-solid fa-film"></i> On OpenVibe.Video</a>
                         <button class="btn btn-small btn-outline sel-all-btn" data-sel-container="ch-vods-grid" style="display:none" onclick="_selAllToggle(this.dataset.selContainer)"><i class="fa-solid fa-check-double"></i> <span class="sel-all-label">Select all</span></button>
@@ -406,6 +410,7 @@
                 <!-- Clips (clips OF this streamer's streams) -->
                 <section class="ch-tab-panel" id="ch-panel-clips" aria-labelledby="ch-h-clips">
                     <h2 class="ch-sec-h" id="ch-h-clips">Clips</h2>
+                    <div class="ch-panel-bar"><a class="ch-view-all" id="ch-clips-of-all" href="#">View all clips</a></div>
                     <p class="ch-panel-hint" id="ch-clips-of-header"><i class="fa-solid fa-scissors"></i> Moments viewers clipped from these streams.</p>
                     <div class="stream-grid" id="ch-clips-of-grid"><p class="muted">Loading clips…</p></div>
                     <div id="ch-clips-of-pagination" class="pastes-pagination" style="display:none"></div>
@@ -422,6 +427,7 @@
                     <h2 class="ch-sec-h" id="ch-h-clips-taken">Clips taken</h2>
                     <p class="ch-panel-hint"><i class="fa-solid fa-film"></i> Clips this streamer made from other channels' streams.</p>
                     <div class="ch-panel-bar">
+                        <a class="ch-view-all" id="ch-clips-taken-all" href="#">View all clips taken</a>
                         <div class="clips-taken-filters" id="clips-taken-filters" style="display:none"></div>
                         <button class="btn btn-small btn-outline sel-all-btn" data-sel-container="ch-clips-grid" style="display:none" onclick="_selAllToggle(this.dataset.selContainer)"><i class="fa-solid fa-check-double"></i> <span class="sel-all-label">Select all</span></button>
                     </div>
@@ -433,6 +439,8 @@
                 <section class="ch-tab-panel" id="ch-panel-pastes" aria-labelledby="ch-h-pastes">
                     <h2 class="ch-sec-h" id="ch-h-pastes">Pastes</h2>
                     <div class="ch-panel-bar" id="ch-pastes-header">
+                        <a class="ch-view-all" id="ch-pastes-all" href="#">View all pastes</a>
+                        <span id="ch-pastes-sort"></span>
                         <button class="btn btn-small btn-outline sel-all-btn" data-sel-container="ch-pastes-grid" style="display:none" onclick="_selAllToggle(this.dataset.selContainer)"><i class="fa-solid fa-check-double"></i> <span class="sel-all-label">Select all</span></button>
                     </div>
                     <div id="ch-pastes-grid" class="pastes-grid"><p class="muted">Loading pastes…</p></div>

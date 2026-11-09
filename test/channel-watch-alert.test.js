@@ -16,7 +16,7 @@ assert.ok(fn, '_setWatchAlert exists');
 assert.match(src, /_setWatchAlert\(document\.getElementById\('ch-watch-offline'\), username\);/, 'More fills it for either header');
 
 const run = (viewer, username) => {
-    const a = { hidden: true, href: 'https://openvibe.watch/', title: '' };
+    const a = { hidden: true, href: 'https://openvibe.watch/', title: '', setAttribute(name, value) { this[name] = value; } };
     const ctx = { currentUser: viewer, URLSearchParams };
     vm.createContext(ctx);
     vm.runInContext(`${fn[0]}\n_setWatchAlert(a, ${JSON.stringify(username)});`, Object.assign(ctx, { a }));
@@ -29,6 +29,7 @@ const u = new URL(a.href);
 assert.strictEqual(u.origin + u.pathname, 'https://openvibe.watch/watches/new');
 assert.deepStrictEqual(Object.fromEntries(u.searchParams), { template: 'event', event: 'live.stream.started', event_filter: 'goosely', name: '@goosely goes live' });
 assert.match(a.title, /@goosely goes live: by email, a webhook or your agent/);
+assert.strictEqual(a['aria-label'], 'Get an alert when @goosely goes live');
 assert.strictEqual(run(null, 'goosely').hidden, false, 'signed out too: Watch asks them to sign in');
 assert.strictEqual(run({ username: 'goosely' }, 'goosely').hidden, true, 'not on one\'s own channel');
 assert.strictEqual(run(null, '').hidden, true, 'not before the channel is known');

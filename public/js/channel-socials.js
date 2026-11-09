@@ -18,10 +18,50 @@
     /** Pills: one line of links (the offline screen). */
     function pills(host, links) {
         if (!host) return;
+        host._sheet?.remove();
         // This link opens the person's OpenVibe.Network profile.
         const text = (l) => (l.kind === 'openvibe' ? 'Network profile' : l.auto ? l.name : label(l));
-        host.innerHTML = (links || []).map((l) => `<a class="ch-social-pill" style="--sc:${escH(l.color)}" href="${escH(l.url)}" target="_blank" rel="noopener me" title="${escH(l.name)}${l.auto ? ' (connected)' : ''}${l.kind === 'openvibe' ? ` ${escH(label(l))}` : ''}"><i class="${escH(l.icon)}" aria-hidden="true"></i><span>${escH(text(l))}</span></a>`).join('');
+        const ordered = [...(links || [])].sort((a, b) => (a.kind === 'openvibe' ? -1 : 0) - (b.kind === 'openvibe' ? -1 : 0));
+        host.innerHTML = ordered.map((l) => `<a class="ch-social-pill" style="--sc:${escH(l.color)}" href="${escH(l.url)}" target="_blank" rel="noopener me" title="${escH(l.name)}${l.auto ? ' (connected)' : ''}${l.kind === 'openvibe' ? ` ${escH(label(l))}` : ''}"><i class="${escH(l.icon)}" aria-hidden="true"></i><span>${escH(text(l))}</span></a>`).join('');
         host.hidden = !(links || []).length;
+        const fold = () => {
+            if (host.hidden || !host.getClientRects().length) return;
+            host.querySelector('.ch-social-more')?.remove();
+            const chips = [...host.querySelectorAll('.ch-social-pill')];
+            chips.forEach((chip) => { chip.hidden = false; });
+            if (!chips.length) return;
+            const firstTop = chips[0].offsetTop;
+            const secondTop = chips.find((chip) => chip.offsetTop > firstTop + 2)?.offsetTop;
+            if (secondTop == null) return;
+            let hidden = chips.filter((chip) => chip.offsetTop > secondTop + 2);
+            if (!hidden.length) return;
+            const more = document.createElement('button');
+            more.type = 'button';
+            more.className = 'ch-social-more';
+            host.append(more);
+            do {
+                hidden.forEach((chip) => { chip.hidden = true; });
+                more.textContent = `+${hidden.length}`;
+                more.setAttribute('aria-label', `Show ${hidden.length} more profile links`);
+                if (more.offsetTop <= secondTop + 2) break;
+                const last = chips.filter((chip) => !chip.hidden).pop();
+                if (!last) break;
+                hidden.unshift(last);
+            } while (hidden.length < chips.length);
+            const sheet = host._sheet || document.createElement('dialog');
+            sheet.className = 'ch-social-sheet';
+            sheet.innerHTML = `<strong>Profile links</strong><div class="ch-social-sheet-links"></div><button type="button" class="ovk-btn">Close</button>`;
+            sheet.querySelector('.ch-social-sheet-links').append(...chips.map((chip) => { const copy = chip.cloneNode(true); copy.hidden = false; return copy; }));
+            sheet.querySelector('button').onclick = () => sheet.close();
+            if (!sheet.isConnected) document.body.append(sheet);
+            host._sheet = sheet;
+            more.onclick = () => sheet.showModal();
+        };
+        if (typeof requestAnimationFrame === 'function') requestAnimationFrame(fold);
+        if (!host._resizeObserver && window.ResizeObserver) {
+            host._resizeObserver = new ResizeObserver(fold);
+            host._resizeObserver.observe(host);
+        }
     }
 
     /** Rich cards (About): the card is a link at once; its preview fills in when it scrolls into view. */

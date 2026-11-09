@@ -22,6 +22,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const cache = require('openvibe-shared/cache-policy');
+const { transformSync } = require('esbuild');
 
 // Where static files are read from on every request. By default the public/ next to this file. In the
 // release layout (deploy/scripts/deploy.sh) the unit sets OV_APP_ROOT=/opt/openvibe.live/current: the
@@ -51,6 +52,22 @@ let sharedDir = null;
 let generation = 0;                 // bumps whenever any tracked file's hash changes
 const files = new Map();            // urlPath -> { file, mtimeMs, size, hash, checkedAt }
 const history = new Map();          // `${root}\0${urlPath}` -> hash (releases are immutable)
+const MINIFIED = new Set(['/js/app-channel.js', '/js/channel-socials.js', '/css/features/channel.css']);
+const minified = new Map();
+
+/** Channel assets are transformed on first request and cached by the file's real version. */
+function bytesFor(file, urlPath) {
+    if (!MINIFIED.has(urlPath)) return fs.readFileSync(file);
+    const st = fs.statSync(file);
+    const key = `${fs.realpathSync(file)}:${st.mtimeMs}:${st.size}`;
+    const hit = minified.get(key);
+    if (hit) return hit;
+    const source = fs.readFileSync(file, 'utf8');
+    const bytes = Buffer.from(transformSync(source, { loader: urlPath.endsWith('.css') ? 'css' : 'js', minify: true, target: 'es2020', legalComments: 'inline' }).code);
+    minified.set(key, bytes);
+    if (minified.size > 24) minified.delete(minified.keys().next().value);
+    return bytes;
+}
 
 function setSharedDir(dir) { sharedDir = dir || null; }
 
@@ -88,7 +105,7 @@ function hashOf(urlPath, { fresh = false } = {}) {
         return entry.hash;
     }
     let hash;
-    try { hash = sha(fs.readFileSync(file)); } catch { return entry ? entry.hash : null; }
+    try { hash = sha(bytesFor(file, urlPath)); } catch { return entry ? entry.hash : null; }
     if (!entry || entry.hash !== hash) generation++;
     files.set(urlPath, { file, mtimeMs: st.mtimeMs, size: st.size, hash, checkedAt: now });
     return hash;
@@ -140,7 +157,7 @@ function findPrevious(urlPath, hash) {
         const key = `${root}\0${urlPath}`;
         let h = history.get(key);
         if (h === undefined) {
-            try { h = sha(fs.readFileSync(file)); } catch { h = null; }
+            try { h = sha(bytesFor(file, urlPath)); } catch { h = null; }
             history.set(key, h);
             if (history.size > 4000) history.delete(history.keys().next().value);
         }
@@ -436,13 +453,29 @@ function versionedStatic(mount) {
         const v = typeof req.query.v === 'string' ? req.query.v : '';
         const urlPath = mount + decodeURIComponent(req.path);
         res.locals.ovVersioned = false;
-        if (!v) return next();
+        if (!v && !MINIFIED.has(urlPath)) return next();
         const current = hashOf(urlPath, { fresh: true });
-        if (current && v === current) { res.locals.ovVersioned = true; return next(); }
-        const previous = current !== v ? findPrevious(urlPath, v) : null;
+        if (current && v === current) {
+            res.locals.ovVersioned = true;
+            if (!MINIFIED.has(urlPath)) return next();
+            try {
+                setImmutable(res);
+                res.type(urlPath.endsWith('.css') ? 'css' : 'js');
+                return res.send(bytesFor(resolveIn(PUBLIC_DIR, urlPath), urlPath));
+            } catch { return next(); }
+        }
+        const previous = v && current !== v ? findPrevious(urlPath, v) : null;
         if (previous) {
             setImmutable(res);
+            if (MINIFIED.has(urlPath)) {
+                try { res.type(urlPath.endsWith('.css') ? 'css' : 'js'); res.set('X-OV-Asset', 'previous-release'); return res.send(bytesFor(previous, urlPath)); }
+                catch { return next(); }
+            }
             return res.sendFile(previous, { headers: { 'X-OV-Asset': 'previous-release' } }, (err) => { if (err && !res.headersSent) next(); });
+        }
+        if (MINIFIED.has(urlPath) && current) {
+            try { setNoCache(res); res.type(urlPath.endsWith('.css') ? 'css' : 'js'); return res.send(bytesFor(resolveIn(PUBLIC_DIR, urlPath), urlPath)); }
+            catch { return next(); }
         }
         return next();
     };
