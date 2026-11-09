@@ -23,10 +23,14 @@ const rel = (name) => path.join(base, 'releases', name, 'public');
 for (const name of ['old', 'new']) {
     fs.mkdirSync(path.join(rel(name), 'js'), { recursive: true });
     fs.mkdirSync(path.join(rel(name), 'css'), { recursive: true });
+    fs.mkdirSync(path.join(rel(name), 'css', 'features'), { recursive: true });
 }
 fs.writeFileSync(path.join(rel('old'), 'js', 'app.js'), 'console.log("old");');
 fs.writeFileSync(path.join(rel('new'), 'js', 'app.js'), 'console.log("new");');
 fs.writeFileSync(path.join(rel('new'), 'css', 'style.css'), 'body{color:red}');
+fs.writeFileSync(path.join(rel('old'), 'js', 'app-channel.js'), 'function channelProof() { return 1 + 2; }');
+fs.writeFileSync(path.join(rel('new'), 'js', 'app-channel.js'), 'function channelProof() { return 3 + 4; }');
+fs.writeFileSync(path.join(rel('new'), 'css', 'features', 'channel.css'), '.channel-proof { color: red; }');
 fs.writeFileSync(path.join(rel('new'), 'index.html'),
     '<link rel="stylesheet" href="/css/style.css?v=216"><script src="/js/app.js" defer></script>' +
     '<script>load(\'/js/app.js?v=9\')</script><img src="/js/missing.js"><!--ov:asset-manifest-->');
@@ -94,6 +98,7 @@ async function check(name, fn) {
     const express = require('express');
     const app = express();
     app.use('/js', assets.versionedStatic('/js'), express.static(path.join(rel('new'), 'js'), { setHeaders: assets.staticHeaders }));
+    app.use('/css', assets.versionedStatic('/css'), express.static(path.join(rel('new'), 'css'), { setHeaders: assets.staticHeaders }));
     const server = http.createServer(app).listen(0);
     if (!server.listening) await new Promise((r) => server.once('listening', r));
     const get = (p) => new Promise((resolve, reject) => {
@@ -125,6 +130,21 @@ async function check(name, fn) {
             assert.strictEqual(r.headers['cache-control'], 'no-cache');
             assert.strictEqual(r.headers['cdn-cache-control'], 'no-store');
         }
+    });
+
+    await check('channel JS and CSS are minified before hashing, including prior release bytes', async () => {
+        const jsHash = assets.hashOf('/js/app-channel.js');
+        const current = await get(`/js/app-channel.js?v=${jsHash}`);
+        assert.ok(current.body.length < fs.readFileSync(path.join(rel('new'), 'js', 'app-channel.js')).length);
+        assert.strictEqual(sha(current.body), jsHash, 'the URL hashes the served bytes');
+        assert.match(current.headers['cache-control'], /immutable/);
+        const cssHash = assets.hashOf('/css/features/channel.css');
+        const css = await get(`/css/features/channel.css?v=${cssHash}`);
+        assert.strictEqual(sha(css.body), cssHash);
+        const oldHash = sha(require('esbuild').transformSync(fs.readFileSync(path.join(rel('old'), 'js', 'app-channel.js'), 'utf8'), { loader: 'js', minify: true, target: 'es2020', legalComments: 'inline' }).code);
+        const old = await get(`/js/app-channel.js?v=${oldHash}`);
+        assert.strictEqual(sha(old.body), oldHash);
+        assert.strictEqual(old.headers['x-ov-asset'], 'previous-release');
     });
 
     await check('the public static mount never serves index.html for "/" (it would skip rendering)', () => {

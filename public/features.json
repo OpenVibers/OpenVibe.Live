@@ -36,6 +36,7 @@
         "/css/home-tour.css"
       ],
       "js": [
+        "/shared/kit-web.js",
         "/js/ov-rail.js",
         "/js/ov-live-realtime.js",
         "/js/app-home.js",
@@ -247,6 +248,7 @@
         "viewerPlaces"
       ],
       "js": [
+        "/shared/kit-web.js",
         "/js/broadcast-state.js",
         "/js/broadcast-media-setup.js",
         "/js/broadcast-devices.js",

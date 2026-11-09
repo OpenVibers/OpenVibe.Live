@@ -30,7 +30,7 @@ const buttons = channel.match(/data-ov-share-sheet/g) || [];
 assert.strictEqual(buttons.length, 1, 'the channel page has one Share button');
 assert.ok(channel.includes('id="ch-btn-share"'), "it is the channel's Share button");
 assert.ok(channel.includes('id="ch-share-slot"'), "and it sits in the stream's own action row");
-assert.ok(channel.includes('class="ovk-btn ovk-btn--quiet"'), 'the kit\'s button');
+assert.ok(channel.includes('class="ovk-btn ovk-btn--quiet ch-action"'), 'the kit\'s button uses the channel action family');
 assert.ok(!appChannel.includes('shareStreamUrl'), 'the old copy-the-link button is gone');
 assert.ok(!read('public/css/features/channel.css').includes('ch-share-stream'), 'and so is its CSS');
 

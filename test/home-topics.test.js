@@ -106,7 +106,7 @@ const routes = fs.readFileSync(path.join(__dirname, '..', 'server', 'streaming',
 assert.match(routes, /router\.get\('\/following', requireAuth,[\s\S]{0,120}'private, no-store'/, 'Following is private');
 assert.ok(routes.indexOf("router.get('/following'") < routes.indexOf("router.get('/:id'"), 'before the /:id route');
 const frag = fs.readFileSync(path.join(__dirname, '..', 'public', 'fragments', 'home.html'), 'utf8');
-assert.match(frag, /<div class="home-topics" id="home-topics" role="group" aria-label="[^"]+" hidden><\/div>\s*<div class="stream-grid" id="stream-grid-live">/);
+assert.match(frag, /<div class="home-topics"(?: data-ovk-scroll)? id="home-topics" role="group" aria-label="[^"]+" hidden><\/div>\s*<div class="stream-grid" id="stream-grid-live">/);
 const css = fs.readFileSync(path.join(__dirname, '..', 'public', 'css', 'features', 'home.css'), 'utf8');
 assert.match(css, /\.stream-grid > \.stream-card\[hidden\] \{ display: none; \}/, 'a filtered card really goes');
 assert.match(css, /\.home-topics \{[^}]*overflow-x: auto/, 'one sideways row, never a fold');

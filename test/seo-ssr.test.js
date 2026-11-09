@@ -63,6 +63,7 @@ media.listVods = async (q = {}) => {
 media.listClips = async (q = {}) => {
     if (slow) await new Promise((r) => setTimeout(r, slow));
     const rows = CLIPS.filter((c) => c.is_public
+        && (q.user_id == null || String(c.user_id) === String(q.user_id))
         && (q.channel_user_id == null || String(c.channel_user_id) === String(q.channel_user_id))
         && (q.vod_id == null || String(c.vod_id) === String(q.vod_id))
         && (q.auto_generated == null || Number(c.auto_generated) === Number(q.auto_generated)));
@@ -74,6 +75,7 @@ media.request = async () => { throw new media.MediaApiError('stubbed', 0, null);
 const pastesClient = require('../server/pastes-client');
 pastesClient.listPastes = async () => ({ pastes: [] });
 pastesClient.getPaste = async () => { throw missing(); };
+require('../server/media-proxy/lookups').userPastes = async () => ({ pastes: [{ slug: 'alice-note', title: 'Alice notes', visibility: 'public', created_at: day(28) }], total: 1 });
 
 // ── The app, mounted as server/index.js mounts it ──
 const express = require('express');
@@ -172,6 +174,30 @@ const server = http.createServer(app).listen(0, '127.0.0.1', async () => {
         assert.ok(b.slice(aiAt).includes('Chat lost it') && b.slice(aiAt).includes('AI clip'));
         const list = ldOf((await get('/@alice')).body).find((n) => n['@type'] === 'ItemList');
         assert.strictEqual(list.itemListElement.length, 12);
+    });
+
+    await check('channel rails contain twelve server-rendered links and ItemLists for each content type', async () => {
+        const html = (await get('/@alice')).body;
+        const rail = (id) => { const at = html.indexOf(`id="${id}"`); return html.slice(at, at + 2500); };
+        assert.ok(rail('ch-vods-grid').includes('Build night 100'));
+        assert.ok(rail('ch-clips-of-grid').includes('Bob clipped the saw'));
+        assert.ok(rail('ch-pastes-grid').includes('Alice notes'), rail('ch-pastes-grid').slice(0, 320));
+        assert.ok(html.includes('href="/@alice?section=pastes"'));
+        assert.ok(ldOf(html).filter((node) => node['@type'] === 'ItemList').length >= 3);
+    });
+
+    await check('full lists are server-rendered, paginated and self-canonical', async () => {
+        const first = (await get('/@alice?section=videos')).body;
+        assert.deepStrictEqual(canonicalsOf(first), ['https://openvibe.live/@alice?section=videos']);
+        assert.ok(first.includes('<main class="ch-list-content">'));
+        assert.ok(first.includes('Build night 100'));
+        assert.ok(first.includes('rel="next"'));
+        assert.ok(!first.includes('id="app"'));
+        const second = (await get('/@alice?section=videos&page=2')).body;
+        assert.deepStrictEqual(canonicalsOf(second), ['https://openvibe.live/@alice?section=videos&amp;page=2']);
+        assert.ok(second.includes('rel="prev"'));
+        assert.ok(second.includes('Build night 112'));
+        assert.ok((await get('/@alice?section=pastes')).body.includes('Alice notes'));
     });
 
     await check('/@alice?page=2 and ?page=3: self-canonical pages with prev/next; past the end is noindex', async () => {

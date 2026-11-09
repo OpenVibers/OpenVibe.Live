@@ -274,11 +274,11 @@ async function topContentRanges(user) {
 // ── Pastes (OpenVibe.Community) ─────────────────────────────────────────────────────────────
 
 /** Throws when the upstream fails (so a count cache never keeps a failure as zero). */
-async function _listUserPastes(user, { limit = 30, type, hidden = false }) {
+async function _listUserPastes(user, { limit = 30, offset = 0, type, hidden = false }) {
     // Community lists one person's pastes by username. Hidden ones only for the owner (act as them)
     // or staff (X-OV-Staff): Live says which, after its own check of the caller.
     const act = hidden === 'owner' ? { liveUserId: user.id } : (hidden === 'staff' ? { staff: true } : {});
-    const out = await pastesClient.request('GET', '', { query: { username: user.username, include_unlisted: hidden ? 1 : undefined, type, limit }, act, timeoutMs: TIMEOUT_MS });
+    const out = await pastesClient.request('GET', '', { query: { username: user.username, include_unlisted: hidden ? 1 : undefined, type, limit, offset }, act, timeoutMs: TIMEOUT_MS });
     let pastes = rowsOf(out, 'pastes');
     if (!hidden) pastes = pastes.filter((p) => p && p.visibility === 'public');
     return { pastes, total: totalOf(out, pastes) };

@@ -390,6 +390,9 @@ router.get('/channel/:username', optionalAuth, async (req, res) => {
         const isFollowing = req.user ? await networkFollows.isFollowing(req.user.id, channel.user_id) : false;
         // Managed streams for this channel
         const managedStreams = await db.getManagedStreamsByUserId(channel.user_id) || [];
+        const history = pollOnly ? [] : await db.getStreamsByUserId(channel.user_id, 16).catch(() => []);
+        const lastSession = history.find((s) => !s.is_live && s.ended_at);
+        const lastVod = lastSession && vods.find((v) => Number(v.stream_id) === Number(lastSession.id));
 
         // Include RS restream status + per-slot external viewer counts for each live stream.
         // Everything is keyed by the stream's own managed_stream_id (slot) so a channel
@@ -594,6 +597,13 @@ router.get('/channel/:username', optionalAuth, async (req, res) => {
             clipsTakenTotal,
             aiEventTotal,
             channel: publicChannel,
+            last_session: lastSession ? {
+                title: lastSession.title || null,
+                ended_at: lastSession.ended_at,
+                duration_seconds: lastSession.duration_seconds || 0,
+                vod_id: lastVod ? lastVod.id : null,
+            } : null,
+            recent_starts: history.filter((s) => s.started_at && !s.is_live).map((s) => s.started_at),
             // The language this channel lives in (explicit setting or detected from the bio) —
             // drives the chat auto-translation notice, the live-captions panel and bio translation.
             language: await i18n.channelMeta(channel.user_id),
@@ -1396,14 +1406,23 @@ router.get('/recently-online', async (req, res) => {
                 }
             }
         } catch (err) { console.warn('[Streaming] recently-online live status failed:', err.message); }
-        // Each streamer's nearest active donation goal → progress bar on the card.
-        try {
-            const goals = await db.getActiveGoalsForUsers(streamers.map(s => s.user_id).filter(Boolean));
+        // The facts and two stream rows come from actual Live stream history, not saved channel slots.
+        const ids = streamers.map(s => s.user_id).filter(Boolean);
+        if (ids.length) {
+            const rows = await db.all(`SELECT * FROM (
+                SELECT id,user_id,title,started_at,ended_at,duration_seconds,thumbnail_url,managed_stream_id,is_live,
+                    ROW_NUMBER() OVER (PARTITION BY user_id ORDER BY started_at DESC) AS history_rank
+                FROM streams WHERE user_id IN (${ids.map(() => '?').join(',')}) AND started_at IS NOT NULL AND COALESCE(is_nsfw,0)=0
+            ) history WHERE history_rank <= 40`, ids);
+            const summarize = require('../home/recent-facts').summarizeHistory;
             for (const s of streamers) {
-                const g = goals[s.user_id];
-                if (g) s.top_goal = { title: g.title, current: g.current_amount, target: g.target_amount };
+                s.recent_facts = summarize(rows.filter(r => r.user_id === s.user_id));
+                for (const h of s.recent_facts.streams) {
+                    const slot = (s.managed_streams || []).find(ms => Number(ms.managed_stream_id) === Number(h.managed_stream_id));
+                    if (slot) { h.vod_id = slot.vod_id || null; h.thumbnail_url = h.thumbnail_url || slot.vod_thumbnail || null; }
+                }
             }
-        } catch { /* best-effort */ }
+        }
         res.json({ streamers, total, limit, offset, hasMore: offset + streamers.length < total });
     } catch (err) {
         console.error('[Streaming]', err.message);

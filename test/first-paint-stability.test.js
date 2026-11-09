@@ -35,7 +35,7 @@ ok('a direct visit shows the route\'s own section, and the router starts from it
 const chJs = read('public/js/app-channel.js');
 const chCss = read('public/css/features/channel.css');
 assert.ok(/function _channelReady\(ready = true\)/.test(chJs) && chJs.includes("page.classList.add('ch-data')") && chJs.includes('setTimeout(_channelReady, 2500)'), 'the channel marks its data and readiness, with a cap');
-assert.ok(chJs.includes('offlineBlocks = _renderOfflineScreen(ch);') && chJs.includes('Promise.resolve(offlineBlocks).catch(() => {}).then(() => _channelReady());'), 'ready waits for the offline blocks above the tabs');
+assert.ok(/offlineBlocks = _renderOfflineScreen\(ch(?:, data)?\);/.test(chJs) && chJs.includes('Promise.resolve(offlineBlocks).catch(() => {}).then(() => _channelReady());'), 'ready waits for the offline blocks above the tabs');
 assert.ok(chJs.includes('return _fillOfflineExplore(ch && ch.username);') && chJs.includes('return renderOfflineDiscover(username, d);') && chJs.includes('return discovered;'), 'the offline screen resolves after "Most watched" and the discover board');
 assert.ok(chCss.includes('#page-channel:not(.ch-ready) .channel-below-fold { display: none; }'), 'tabs out of the layout until ready');
 assert.ok(chCss.includes('#page-channel.page:not(.ch-ready) { min-height: 100vh; }'), 'the page keeps a full viewport until ready (beats "#page-channel.page { min-height: 0 }")');
