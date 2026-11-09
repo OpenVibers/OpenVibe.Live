@@ -483,7 +483,8 @@ a.cf-recap-band:hover .cf-recap-sub { text-decoration: underline; text-underline
     .cf-wrap { padding: 12px 12px 40px; --cf-gap: 14px; }
     .cf-head { margin-bottom: 6px; gap: 8px 12px; align-items: center; }
     .cf-h1 { font-size: 1.45rem; }
-    .cf-sub { font-size: 0.84rem; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+    /* Whole, never clamped: on AI Moments the cut-off half was "Everything here is AI-generated", the disclosure. */
+    .cf-sub { font-size: 0.84rem; line-height: 1.4; }
     .cf-crosslink { padding: 5px 10px; font-size: 0.8rem; }
     .cf-bar { gap: 8px; padding: 8px 0; }
     .cf-chips {
