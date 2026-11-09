@@ -90,7 +90,7 @@ function render(frame) {
         return `<div class="ovnet-group" id="ovnet-g-${esc(g.id)}" role="group" aria-labelledby="ovnet-gh-${esc(g.id)}" data-group="${esc(g.id)}" style="--g:${L.accent}">`
             + `<h3 id="ovnet-gh-${esc(g.id)}"><i class="fa-solid ${L.icon}" aria-hidden="true"></i><span>${esc(g.name)}</span><b class="ovnet-n">${g.sites.length}</b></h3>`
             + (L.line ? `<p class="ovnet-gline">${esc(L.line)}</p>` : '')
-            + `<ul class="ovnet-sites">${items}</ul></div>`;
+            + `<ul class="ovnet-sites" data-ovk-scroll>${items}</ul></div>`;
     }).join('');
     return `
     <div class="ovnet-sky" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
@@ -98,7 +98,7 @@ function render(frame) {
         <p class="ovnet-eyebrow"><span class="ovnet-dot" aria-hidden="true"></span>The OpenVibe network</p>
         <h2 id="ovnet-title">One account. <span class="ovnet-count" data-count="${sites.length}">${sites.length}</span> sites.</h2>
         <p class="ovnet-lede">Stream, play, cook, find work, build and ship: every OpenVibe site opens with the same sign-in, wears your theme and carries your OpenCoins and Vibes.</p>
-        <nav class="ovnet-jump" aria-label="Kinds of OpenVibe sites">${jump}</nav>
+        <nav class="ovnet-jump" data-ovk-scroll aria-label="Kinds of OpenVibe sites">${jump}</nav>
     </header>
     <div class="ovnet-groups" data-sites="${sites.length}">${blocks}</div>
     <footer class="ovnet-foot">
