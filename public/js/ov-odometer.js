@@ -26,6 +26,7 @@
    not the line box, and digits overflow it. */
 .ovnum{--ovnum-h:1.25em;display:inline-flex;align-items:center;line-height:var(--ovnum-h);font-variant-numeric:tabular-nums}
 .ovnum-cell{display:inline-block;line-height:var(--ovnum-h)}
+.ovnum-digit,.ovnum-cell{-webkit-user-select:none;user-select:none}
 .ovnum-sr{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap;border:0}
 .ovnum-digit{display:inline-block;overflow:hidden;height:var(--ovnum-h);width:1ch;position:relative}
 .ovnum-track{display:block;transition:transform var(--ovnum-dur,.62s) cubic-bezier(.22,1,.28,1)}
