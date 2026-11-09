@@ -1070,7 +1070,9 @@ function _glCamCore() {
     if (window.OpenVibeCam?.core) return Promise.resolve(window.OpenVibeCam.core);
     if (!_glCoreLoad) _glCoreLoad = new Promise((resolve, reject) => {
         const script = document.createElement('script');
-        script.src = 'https://openvibe.cam/embed/cam-kit.js';
+        // The query names this version (the start of its hash): a new Cam release is a new cache key, so Cloudflare never
+        // hands an older copy to this integrity check (it served one for a day after Cam #116, 11-09).
+        script.src = 'https://openvibe.cam/embed/cam-kit.js?v=yqqjh1FiP7a4';
         script.integrity = 'sha384-yqqjh1FiP7a4l9uelJHaryd8Y5IwnHVbqjt1d0AXbgCcytI9Z5MMmItFqbwB4YZG';
         script.crossOrigin = 'anonymous';
         script.onload = () => window.OpenVibeCam?.core ? resolve(window.OpenVibeCam.core) : reject(new Error('Camera controls unavailable'));
