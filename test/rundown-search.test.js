@@ -143,13 +143,27 @@ assert.ok(r.suggestion.topics.some((t) => t.slug === 'french-fridges-hacked'), '
 
 // ── The state is read from the query string, and nothing else reaches the database ──
 assert.deepStrictEqual(browse.parse({ q: 'x', streamer: 'a,b', topic: 'T', when: 'week', show: 'takes', sort: 'reacted', video: '1' }),
-    { q: 'x', streamer: ['a', 'b'], topic: 't', when: 'week', show: 'takes', sort: 'reacted', video: true, following: false, mentions: false, kind: '' });
+    { q: 'x', streamer: ['a', 'b'], topic: 't', when: 'week', show: 'takes', sort: 'reacted', page: 1, video: true, following: false, mentions: false, kind: '' });
 assert.deepStrictEqual(browse.parse({ when: 'century', show: 'everything', sort: 'random' }).when, null, 'an unknown when is dropped');
 assert.deepStrictEqual(browse.parse({ show: 'everything' }).show, null, 'an unknown show is dropped');
 assert.deepStrictEqual(browse.parse({ sort: 'random' }).sort, 'newest', 'an unknown sort falls back to the newest');
 assert.strictEqual(browse.parse({ q: "'; drop table users; --" }).q, "'; drop table users; --", 'the words are words, not SQL');
 assert.ok(browse.isFiltered(browse.parse({ q: 'x' })), 'a search is a filter');
 assert.ok(!browse.isFiltered(browse.parse({})), 'an empty bar is not a filter');
+assert.strictEqual(browse.parse({ page: '9999' }).page, 100, 'page numbers are bounded');
+
+// A crawler can follow page links; scrolling loads disjoint batches of twenty after the first thirty.
+for (let i = 0; i < 50; i++) await take({ stream: sA, user: goose, topic: tFridge, title: `Paging take ${i}`, said: ago(1000 + i) });
+const p1 = await browse.browse({ show: 'takes', page: '1' });
+const p2 = await browse.browse({ show: 'takes', page: '2' });
+const p3 = await browse.browse({ show: 'takes', page: '3' });
+assert.strictEqual(p1.takes.length, 30);
+assert.strictEqual(p2.takes.length, 20);
+assert.strictEqual(p3.takes.length, 3);
+assert.strictEqual(p1.next_page, 2);
+assert.strictEqual(p2.next_page, 3);
+assert.strictEqual(p3.next_page, null);
+assert.strictEqual(new Set([...p1.takes, ...p2.takes, ...p3.takes].map((s) => s.id)).size, 53, 'pages have no repeated takes');
 
 console.log('rundown search: all checks passed');
 })().catch((err) => { console.error(err); process.exit(1); });

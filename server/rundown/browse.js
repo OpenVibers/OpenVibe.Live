@@ -21,7 +21,8 @@ const read = require('./read');
 
 const { VISIBLE, AUDIENCE_JOINS, SEGMENT_COLS, EPISODE_COLS } = read;
 
-const MAX_TAKES = 40;          // how many takes one page of results holds
+const MAX_TAKES = 30;          // the crawlable first page of takes
+const MORE_TAKES = 20;         // subsequent pages as the reader nears the end
 const MAX_EPISODES = 20;       // how many episodes one page holds
 const MAX_TOPICS = 40;         // how many topics one page holds
 const EPISODE_TAKES = 24;      // how many takes of an episode are sent, so "More takes (N)" can open in place
@@ -47,8 +48,9 @@ function parse(query = {}) {
     const when = Object.prototype.hasOwnProperty.call(WHENS, one(query.when).toLowerCase()) ? one(query.when).toLowerCase() : null;
     const show = SHOWS.includes(one(query.show).toLowerCase()) ? one(query.show).toLowerCase() : null;
     const sort = SORTS.includes(one(query.sort).toLowerCase()) ? one(query.sort).toLowerCase() : 'newest';
+    const page = Math.max(1, Math.min(100, Number.parseInt(one(query.page), 10) || 1));
     return {
-        q, streamer, topic, when, show, sort,
+        q, streamer, topic, when, show, sort, page,
         video: truthy(one(query.video)),
         following: truthy(one(query.following)),
         mentions: truthy(one(query.mentions)),
@@ -163,14 +165,16 @@ async function results(st, { users, topicId, prefix, viewer }) {
     const topf = topicFilters(st, { users, prefix, viewer });
 
     const takeOrder = st.sort === 'reacted' ? 'reacts DESC, s.said_at DESC' : 's.said_at DESC, s.id DESC';
+    const takeLimit = st.page === 1 ? MAX_TAKES : MORE_TAKES;
+    const takeOffset = st.page === 1 ? 0 : MAX_TAKES + (st.page - 2) * MORE_TAKES;
     const takeRows = await db.all(`SELECT ${SEGMENT_COLS}, COALESCE(rx.n, 0) AS reacts FROM rundown_segments s
         ${AUDIENCE_JOINS('s')} LEFT JOIN (SELECT item_id, COUNT(*) AS n FROM rundown_reactions WHERE item_type = 'segment' GROUP BY item_id) rx ON rx.item_id = s.id
-        WHERE ${tf.where} ORDER BY ${takeOrder} LIMIT ${MAX_TAKES}`, tf.params);
+        WHERE ${tf.where} ORDER BY ${takeOrder} LIMIT @takeLimit OFFSET @takeOffset`, { ...tf.params, takeLimit, takeOffset });
 
     const epOrder = st.sort === 'reacted' ? 'reacts DESC, r.aired_at DESC' : 'r.aired_at DESC';
     const epRows = await db.all(`SELECT ${EPISODE_COLS}, COALESCE(rx.n, 0) AS reacts FROM rundown_episodes r
         ${AUDIENCE_JOINS('r')} LEFT JOIN (SELECT item_id, COUNT(*) AS n FROM rundown_reactions WHERE item_type = 'episode' GROUP BY item_id) rx ON rx.item_id = r.stream_id
-        WHERE ${ef.where} ORDER BY ${epOrder} LIMIT ${MAX_EPISODES}`, ef.params);
+        WHERE ${ef.where} ORDER BY ${epOrder} LIMIT @epLimit OFFSET @epOffset`, { ...ef.params, epLimit: MAX_EPISODES, epOffset: (st.page - 1) * MAX_EPISODES });
 
     const topOrder = st.sort === 'takes' || st.sort === 'reacted' ? 'takes DESC, last_seen_at DESC' : 'last_seen_at DESC';
     const topRows = await db.all(`SELECT t.id, t.slug, t.title, t.kind, t.headline, t.summary, t.first_seen_at, t.last_seen_at,
@@ -190,6 +194,27 @@ async function counts(st, { users, topicId, prefix, viewer }) {
     const e = await db.get(`SELECT COUNT(*) AS n, COUNT(DISTINCT r.user_id) AS people FROM rundown_episodes r ${AUDIENCE_JOINS('r')} WHERE ${ef.where}`, ef.params);
     const p = await db.get(`SELECT COUNT(DISTINCT t.id) AS n FROM rundown_topics t JOIN rundown_segments s ON s.topic_id = t.id AND s.status = 'live' ${AUDIENCE_JOINS('s')} WHERE ${topf.where}`, topf.params);
     return { takes: Number(t.n), take_people: Number(t.people), episodes: Number(e.n), episode_people: Number(e.people), topics: Number(p.n) };
+}
+
+/** Seven daily points for the masthead. The totals are the same filtered totals as the count line. */
+async function dailyStats(st, { users, topicId, prefix, viewer }) {
+    const tf = takeFilters(st, { users, topicId, prefix, viewer });
+    const ef = episodeFilters(st, { users, topicId, prefix, viewer });
+    const since = daysAgo(6).slice(0, 10);
+    const args = { ...tf.params, statsSince: since };
+    const [takes, topics, episodes] = await Promise.all([
+        db.all(`SELECT DATE(s.said_at) AS day, COUNT(*) AS n FROM rundown_segments s ${AUDIENCE_JOINS('s')}
+            WHERE ${tf.where} AND s.said_at >= @statsSince GROUP BY DATE(s.said_at)`, args),
+        db.all(`SELECT DATE(s.said_at) AS day, COUNT(DISTINCT s.topic_id) AS n FROM rundown_segments s ${AUDIENCE_JOINS('s')}
+            WHERE ${tf.where} AND s.said_at >= @statsSince GROUP BY DATE(s.said_at)`, args),
+        db.all(`SELECT DATE(r.aired_at) AS day, COUNT(*) AS n FROM rundown_episodes r ${AUDIENCE_JOINS('r')}
+            WHERE ${ef.where} AND r.aired_at >= @statsSince GROUP BY DATE(r.aired_at)`, { ...ef.params, statsSince: since }),
+    ]);
+    const shape = (rows) => {
+        const byDay = new Map(rows.map((r) => [String(r.day).slice(0, 10), Number(r.n)]));
+        return Array.from({ length: 7 }, (_, i) => byDay.get(daysAgo(6 - i).slice(0, 10)) || 0);
+    };
+    return { takes: shape(takes), topics: shape(topics), episodes: shape(episodes) };
 }
 
 /** The topics whose names are closest to what was searched: the way out of an empty search. */
@@ -222,6 +247,7 @@ async function browse(query = {}, { viewer = null } = {}) {
 
     const r = await results(st, { users, topicId, prefix, viewer: v.userId });
     const c = await counts(st, { users, topicId, prefix, viewer: v.userId });
+    const stats = st.page === 1 ? await dailyStats(st, { users, topicId, prefix, viewer: v.userId }) : null;
 
     const takes = await read.segmentsOut(r.takeRows, v.key);
     const episodes = await read.episodesOut(r.epRows, v.key);
@@ -264,8 +290,10 @@ async function browse(query = {}, { viewer = null } = {}) {
     const withTakes = (e) => ({ ...e, takes: epTakes.get(e.stream_id) || [], takes_total: totals.get(e.stream_id) || 0, folded: FOLDED });
     return {
         filters: st,
+        next_page: st.page < 100 && ((show !== 'episodes' && show !== 'topics' && c.takes > (st.page === 1 ? MAX_TAKES : MAX_TAKES + (st.page - 1) * MORE_TAKES)) || (show !== 'takes' && show !== 'topics' && c.episodes > st.page * MAX_EPISODES)) ? st.page + 1 : null,
         active: activeKeys(st),
         counts: c,
+        stats,
         takes: show === 'episodes' || show === 'topics' ? [] : takes,
         episodes: show === 'takes' || show === 'topics' ? [] : episodes.map(withTakes),
         topics: show === 'topics' ? topics : [],
