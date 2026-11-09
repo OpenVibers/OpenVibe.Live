@@ -313,14 +313,6 @@
         "/js/recap.js"
       ]
     },
-    "cosmetics": {
-      "js": [
-        "/js/cosmetics-ui.js"
-      ],
-      "stubs": [
-        "openCosmeticsModal"
-      ]
-    },
     "updates": {
       "fragment": "updates"
     },

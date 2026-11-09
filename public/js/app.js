@@ -530,7 +530,7 @@ async function loadOpenVibeAppMeta(force = false) {
 }
 
 /* ── Modal ────────────────────────────────────────────────────── */
-const MONEY_MODALS = new Set(['donate', 'buy-funds', 'cashout', 'add-reward']);
+const MONEY_MODALS = new Set(['donate', 'cashout', 'add-reward']);
 function showModal(id) {
     // Vibes, tips and channel rewards live in features.json → money, which most pages never load: fetch it first.
     if (MONEY_MODALS.has(id) && typeof openvibeBucksDonateModal !== 'function' && window.ov && ov.load) {
@@ -555,7 +555,6 @@ function showModal(id) {
             </a>
             <p style="text-align:center;margin-top:12px;font-size:12px;color:var(--text-muted)">Registration is handled on openvibe.network</p>`,
         donate: () => openvibeBucksDonateModal(),
-        'buy-funds': () => openvibeBucksBuyModal(),
         cashout: () => openvibeBucksCashoutModal(),
         'stream-key': streamKeyModal(),
         'add-goal': addGoalModal(),
@@ -565,7 +564,6 @@ function showModal(id) {
     };
     content.innerHTML = typeof templates[id] === 'function' ? templates[id]() : (templates[id] || `<p>Unknown modal: ${id}</p>`);
     overlay.classList.add('show');
-    if (id === 'buy-funds' && typeof _initBuyBucks === 'function') _initBuyBucks();
     if (id === 'donate' && typeof _loadDonateGoals === 'function') _loadDonateGoals();
     // Balance-first donate flow + the streamer's direct-PowerChat option.
     if (id === 'donate' && typeof _initDonateModal === 'function') _initDonateModal();
@@ -783,7 +781,7 @@ function onAuthChange() {
     if (currentUser) _enableHandoff(); else if (window.OpenVibeSSO) { try { window.OpenVibeSSO.handoffLinks({ signedIn: false }); } catch { /* */ } }
     // The navbar is the network's shared component; tell it who is here (js/ov-navbar-live.js).
     if (window.LiveNav) window.LiveNav.sync(currentUser || null);
-    if (currentUser) loadBalance();
+    if (currentUser) window.OpenVibeNavbar.refreshWallet();
     // Older notification links point at a Live DM route. Keep the reader here in the Dock.
     if (currentUser && new URLSearchParams(location.search).has('dm')) {
         const params = new URLSearchParams(location.search);
@@ -802,29 +800,6 @@ function onAuthChange() {
     } catch {}
 }
 
-async function loadBalance() {
-    if (!currentUser) return;
-    try {
-        const data = await api('/funds/balance');
-        const bal = Math.round(data.balance || 0);
-        const balEl = document.getElementById('nav-balance-amount');
-        if (balEl) balEl.textContent = bal.toLocaleString();
-        if (window.LiveNav) window.LiveNav.setChip('vibes', bal.toLocaleString());
-        const udV = document.getElementById('ud-vibes');
-        if (udV) udV.textContent = bal.toLocaleString();
-    } catch { /* silent */ }
-    // Navbar OpenCoins = the GLOBAL currency (game / cosmetics / media wallet).
-    try {
-        const coinData = await api('/coins/balance');
-        // null: the Network wallet did not answer. Say so ("—") rather than show 0 as the balance.
-        const coins = coinData.balance == null ? '—' : Number(coinData.balance).toLocaleString();
-        const coinEl = document.getElementById('nav-coins-amount');
-        if (coinEl) coinEl.textContent = coins;
-        if (window.LiveNav) window.LiveNav.setChip('coins', coins);
-        const udC = document.getElementById('ud-coins');
-        if (udC) udC.textContent = coins;
-    } catch { /* silent */ }
-}
 
 // The viewer's per-streamer CHANNEL POINTS (shown in the in-chat button + rewards
 // panel), for the streamer they're currently watching. Not the navbar (that's the

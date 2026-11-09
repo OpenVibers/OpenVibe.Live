@@ -3,113 +3,6 @@
    Bit-style: integer bucks. 100 Vibes = $1.00 streamer cashout.
    ═══════════════════════════════════════════════════════════════ */
 
-// Client mirror of the server volume-discount tiers (server is the source of truth;
-// this is just for the live custom-amount price preview). Keep in sync with vibes.js.
-const _BUCKS_TIERS = [[25000, 0.0110], [10000, 0.0115], [5000, 0.0120], [2500, 0.0124], [1000, 0.0130], [500, 0.0140], [0, 0.0150]];
-function _priceForBucks(b) {
-    b = Math.max(0, Math.round(Number(b) || 0));
-    const t = _BUCKS_TIERS.find(x => b >= x[0]) || _BUCKS_TIERS[_BUCKS_TIERS.length - 1];
-    return Math.round(b * t[1] * 100) / 100;
-}
-
-/**
- * Generate Buy Vibes modal HTML.
- */
-function openvibeBucksBuyModal() {
-    return `
-        <h3><i class="fa-solid fa-coins"></i> Buy Vibes</h3>
-        <p class="muted" style="margin-bottom:16px">Tip streamers with Vibes — bigger packs cost less per buck. 100 Bucks = $1 to the streamer.</p>
-
-        <div class="form-group">
-            <label>Choose a pack</label>
-            <div id="buy-packages" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px">
-                <p class="muted" style="grid-column:1/-1;text-align:center;font-size:0.85rem">Loading…</p>
-            </div>
-        </div>
-
-        <div class="form-group">
-            <label>Custom amount (Vibes)</label>
-            <input type="number" id="modal-buy-amount" class="form-input" placeholder="e.g. 500" min="100" step="100" oninput="updateBuyPrice()">
-        </div>
-        <div class="form-group" style="text-align:center;padding:8px;background:var(--bg-primary);border-radius:var(--radius)">
-            <span id="modal-buy-price" style="font-size:1.2rem;color:var(--accent);font-weight:700">$0.00</span>
-            <span class="muted" id="modal-buy-bucks" style="display:block;font-size:0.8rem"></span>
-        </div>
-
-        <div id="buy-providers" style="margin-top:8px">
-            <p class="muted" style="font-size:0.85rem;text-align:center"><i class="fa-solid fa-spinner fa-spin"></i> Loading payment options…</p>
-        </div>`;
-}
-
-/** Populate the buy modal with packages + the enabled payment providers. */
-async function _initBuyBucks() {
-    const box = document.getElementById('buy-providers');
-    if (!box) return;
-    let cfg;
-    try { cfg = await api('/payments/config'); } catch { cfg = null; }
-    // PowerChat purchases have their own enablement — the buy modal stays usable on
-    // every channel even while the card/PayPal rails (payments master switch) are off.
-    if (!cfg || (!cfg.enabled && !(cfg.providers && cfg.providers.powerchat))) {
-        box.innerHTML = '<p class="muted" style="font-size:0.85rem;text-align:center">Purchases aren’t available right now.</p>';
-        const pkgBox = document.getElementById('buy-packages'); if (pkgBox) pkgBox.innerHTML = '';
-        return;
-    }
-    // Package buttons.
-    const packages = (cfg.packages && cfg.packages.length) ? cfg.packages : [100, 500, 1000, 2500, 5000, 10000].map(bucks => ({ bucks, usd: _priceForBucks(bucks) }));
-    const pkgBox = document.getElementById('buy-packages');
-    if (pkgBox) pkgBox.innerHTML = packages.map(p =>
-        `<button class="btn btn-outline" onclick="setBuyAmount(${p.bucks})">${p.bucks.toLocaleString()} Vibes<br><small>$${Number(p.usd).toFixed(2)}</small></button>`
-    ).join('');
-
-    const min = cfg.minPurchaseBucks || 100;
-    const amtInput = document.getElementById('modal-buy-amount');
-    if (amtInput) { amtInput.min = min; if (!amtInput.value) amtInput.value = packages[0]?.bucks || min; updateBuyPrice(); }
-
-    const P = cfg.providers || {};
-    const btn = (prov, label, icon, color) => P[prov]
-        ? `<button class="btn btn-lg" style="width:100%;margin-top:8px;justify-content:center;background:${color};color:#fff;border:none" onclick="doPurchase('${prov}')"><i class="${icon}"></i> Pay with ${label}</button>`
-        : '';
-    const buttons = [
-        btn('stripe', 'Card (Stripe)', 'fa-solid fa-credit-card', '#635bff'),
-        btn('paypal', 'PayPal', 'fa-brands fa-paypal', '#003087'),
-        btn('ccbill', 'Card (CCBill)', 'fa-solid fa-credit-card', '#2a6'),
-        btn('crypto', 'Crypto', 'fa-brands fa-bitcoin', '#f7931a'),
-        btn('powerchat', 'PowerChat tip', 'fa-solid fa-bolt', '#8b5cf6'),
-    ].filter(Boolean).join('');
-    box.innerHTML = buttons || '<p class="muted" style="font-size:0.85rem;text-align:center">No payment methods are enabled.</p>';
-}
-
-function setBuyAmount(bucks) {
-    const el = document.getElementById('modal-buy-amount');
-    if (el) { el.value = bucks; updateBuyPrice(); }
-}
-function updateBuyPrice() {
-    const bucks = Math.round(parseFloat(document.getElementById('modal-buy-amount')?.value) || 0);
-    const price = document.getElementById('modal-buy-price');
-    const sub = document.getElementById('modal-buy-bucks');
-    if (price) price.textContent = `$${_priceForBucks(bucks).toFixed(2)}`;
-    if (sub) sub.textContent = bucks > 0 ? `${bucks.toLocaleString()} Vibes` : '';
-}
-
-async function doPurchase(provider) {
-    if (!currentUser) return showModal('login');
-    const bucks = Math.round(parseFloat(document.getElementById('modal-buy-amount').value));
-    if (!bucks || bucks < 100) return toast('Enter at least 100 Vibes', 'error');
-    try {
-        const data = await api('/payments/bucks/checkout', { method: 'POST', body: { provider, bucks } });
-        if (data.powerchat && data.url) {
-            // PowerChat: the tip page opens in a new tab; Vibes are credited by webhook
-            // once the tip confirms, so the site stays open underneath.
-            window.open(data.url, '_blank', 'noopener');
-            toast(data.note || 'Complete your tip on PowerChat — Vibes are credited automatically once it confirms.', 'success');
-            closeModal();
-            return;
-        }
-        if (data.url) { window.location.href = data.url; return; }
-        toast('Could not start checkout', 'error');
-    } catch (e) { toast(e.message || 'Purchase failed', 'error'); }
-}
-
 /* ── Channel subscriptions ─────────────────────────────────── */
 function openvibeSubscribeModal(username) {
     return `
@@ -173,7 +66,7 @@ async function doSubscribe(username, provider) {
             return;
         }
         if (data.url) { window.location.href = data.url; return; }
-        if (data.ok) { toast('Subscribed! 🎉', 'success'); if (typeof loadBalance === 'function') loadBalance(); closeModal(); }
+        if (data.ok) { toast('Subscribed! 🎉', 'success'); window.OpenVibeNavbar.refreshWallet(); closeModal(); }
     } catch (e) { toast(e.message || 'Subscription failed', 'error'); }
 }
 
@@ -230,7 +123,7 @@ function openvibeBucksDonateModal() {
         <button class="btn btn-primary btn-lg" id="modal-donate-send" onclick="doDonate()" style="width:100%;margin-top:4px">
             <i class="fa-solid fa-coins"></i> Donate Vibes
         </button>
-        <button class="btn btn-outline" onclick="showModal('buy-funds')" style="width:100%;margin-top:8px">
+        <button class="btn btn-outline" onclick="window.OpenVibeNavbar.openWallet()" style="width:100%;margin-top:8px">
             <i class="fa-solid fa-cart-plus"></i> Buy Vibes
         </button>
         <!-- Only shown when THIS streamer has their own PowerChat (money goes to them
@@ -263,10 +156,10 @@ async function _initDonateModal() {
     if (typeof _appendSupport === 'function') _appendSupport(document.getElementById('donate-elsewhere'), _channelUsername());   // channel-support.js
     const line = document.getElementById('donate-balance-line');
     if (bal === null) return; // not logged in / balance unavailable — leave the form as-is
-    if (line) line.innerHTML = `Your balance: <strong>${bal.toLocaleString()}</strong> Vibes${bal < 1 ? ' — <a href="#" onclick="showModal(\'buy-funds\');return false">buy some</a> to donate Vibes' : ''}`;
+    if (line) line.innerHTML = `Your balance: <strong>${bal.toLocaleString()}</strong> Vibes${bal < 1 ? ' — <a href="#" onclick="window.OpenVibeNavbar.openWallet();return false">buy some</a> to donate Vibes' : ''}`;
     if (bal < 1 && !directAvailable) {
         toast('You don’t have any Vibes yet — grab some first, then come back to donate! 🛒', 'info');
-        showModal('buy-funds');
+        window.OpenVibeNavbar.openWallet();
     } else if (bal < 1 && directAvailable) {
         toast('No Vibes yet — tip this channel directly via PowerChat below, or buy Vibes first. ⚡', 'info');
     }
@@ -298,7 +191,7 @@ try {
         if (!e.data || e.data.status !== 'completed') return;
         toast('PowerChat payment received — updating your balance… ⚡', 'success');
         // The webhook usually lands within a couple of seconds of the redirect.
-        setTimeout(() => { if (typeof loadBalance === 'function') loadBalance(); }, 2500);
+        setTimeout(() => { window.OpenVibeNavbar.refreshWallet(); }, 2500);
     };
 } catch { /* BroadcastChannel unsupported — balance updates on next reload */ }
 
@@ -363,7 +256,7 @@ async function doDonate() {
         await api('/funds/donate', { method: 'POST', headers: { 'Idempotency-Key': _donateAttempt.key }, body });
         _donateAttempt = null;
         toast(`Donated ${Math.round(amount).toLocaleString()} Vibes!`, 'success');
-        loadBalance();
+        window.OpenVibeNavbar.refreshWallet();
         closeModal();
     } catch (e) {
         // A refusal (no Vibes, bad amount) ends this attempt; no answer, or a 5xx, may have sent it: keep the key.
@@ -421,7 +314,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!purchase && !sub) return;
     if (purchase === 'success' || sub === 'success') {
         toast(sub === 'success' ? 'Subscription active! 🎉' : 'Purchase complete — your Vibes are on the way!', 'success');
-        if (typeof loadBalance === 'function') setTimeout(loadBalance, 1500);
+        setTimeout(() => window.OpenVibeNavbar.refreshWallet(), 1500);
     } else if (purchase === 'cancel' || sub === 'cancel') {
         toast('Checkout canceled.', 'info');
     } else if (purchase === 'error') {
@@ -445,18 +338,19 @@ async function doCashout() {
             body: { amount: Math.round(amount), paypalEmail }
         });
         toast('Cashout requested! Awaiting admin approval.', 'success');
-        loadBalance();
+        window.OpenVibeNavbar.refreshWallet();
         closeModal();
     } catch (e) { toast(e.message || 'Cashout failed', 'error'); }
 }
 
-// Every other OpenVibe site's account menu links its Vibes chip here (openvibe-shared 4.3: openvibe.live/#vibes): open
-// the Vibes window once, then drop the hash so a reload or a shared link does not open it again.
+// Old account-menu and bookmark links to openvibe.live/#vibes open the shared Wallet now: the hash goes, so a reload
+// does not open it again. Pages that never load this file still reach the Wallet from the bar's chip.
 (function openVibesFromLink() {
     if (location.hash !== '#vibes') return;
     const open = () => {
         try { history.replaceState(history.state, '', location.pathname + location.search); } catch { /* keep the hash */ }
-        showModal('buy-funds');
+        if (window.OpenVibeNavbar && typeof window.OpenVibeNavbar.openWallet === 'function') window.OpenVibeNavbar.openWallet();
+        else location.assign('https://openvibe.network/wallet');
     };
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', open, { once: true });
     else setTimeout(open, 0);

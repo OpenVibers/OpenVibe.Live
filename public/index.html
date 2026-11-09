@@ -393,38 +393,6 @@
      row come from the shared module so every OpenVibe property stays in step. -->
 <footer id="ov-footer" class="ovf"></footer>
 
-<!-- ═══════════════════════════════════════════════════════════ -->
-<!--  COSMETICS INVENTORY MODAL                                  -->
-<!-- ═══════════════════════════════════════════════════════════ -->
-<div class="cosmetics-modal-overlay" id="cosmetics-modal">
-    <div class="cosmetics-modal">
-        <div class="cosmetics-header">
-            <h2><i class="fa-solid fa-coins" style="margin-right:6px"></i> Inventory</h2>
-            <button class="cosmetics-close" onclick="closeCosmeticsModal()">&times;</button>
-        </div>
-        <div class="cosmetics-tabs">
-            <button class="cosmetics-tab active" data-cat="name_effect" onclick="switchCosmeticTab('name_effect', this)">
-                <i class="fa-solid fa-wand-magic-sparkles"></i> Name FX
-            </button>
-            <button class="cosmetics-tab" data-cat="particle" onclick="switchCosmeticTab('particle', this)">
-                <i class="fa-solid fa-sparkles"></i> Particles
-            </button>
-            <button class="cosmetics-tab" data-cat="hat" onclick="switchCosmeticTab('hat', this)">
-                <i class="fa-solid fa-hat-wizard"></i> Hats
-            </button>
-            <button class="cosmetics-tab" data-cat="voice" onclick="switchCosmeticTab('voice', this)">
-                <i class="fa-solid fa-microphone"></i> Voices
-            </button>
-        </div>
-        <div class="cosmetics-body" id="cosmetics-body">
-            <div class="cosmetics-category active" data-cat="name_effect" id="cosmetics-cat-name_effect"></div>
-            <div class="cosmetics-category" data-cat="particle" id="cosmetics-cat-particle"></div>
-            <div class="cosmetics-category" data-cat="hat" id="cosmetics-cat-hat"></div>
-            <div class="cosmetics-category" data-cat="voice" id="cosmetics-cat-voice"></div>
-        </div>
-    </div>
-</div>
-
 <!-- Scripts -->
 <script src="/live-notify.js" defer></script>
 <script src="/js/ov-skeleton.js" defer></script>

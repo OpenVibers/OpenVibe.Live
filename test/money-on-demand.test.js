@@ -31,7 +31,7 @@ for (const fn of ['openSubscribeForCurrentStream', 'toggleRewardsPanel', 'saveDa
 }
 
 // showModal() builds money templates lazily and fetches money first; the sign-in modal never needs it.
-assert.ok(/donate: \(\) => openvibeBucksDonateModal\(\),/.test(app) && /'buy-funds': \(\) => openvibeBucksBuyModal\(\),/.test(app)
+assert.ok(/donate: \(\) => openvibeBucksDonateModal\(\),/.test(app)
     && /cashout: \(\) => openvibeBucksCashoutModal\(\),/.test(app) && /'add-reward': \(\) => addRewardModal\(\),/.test(app), 'money templates are built only when asked for');
 assert.ok(/if \(MONEY_MODALS\.has\(id\) && typeof openvibeBucksDonateModal !== 'function' && window\.ov && ov\.load\) \{\n\s*ov\.load\('money'\)\.then\(\(\) => showModal\(id\)\)/.test(app), 'a money modal fetches money first');
 assert.ok(/function openChannelRewards\(\) \{[\s\S]{0,200}ov\.load\('money'\)/.test(app), 'the rewards button fetches money');

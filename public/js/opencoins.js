@@ -219,9 +219,7 @@ function handleCoinEarned(msg) {
     if (msg.total === undefined) return;
     // "gold" events change the GLOBAL OpenCoins wallet → update the navbar.
     if (msg.currency === 'gold') {
-        const navCoins = document.getElementById('nav-coins-amount');
-        if (navCoins) navCoins.textContent = msg.total.toLocaleString();
-        if (window.LiveNav) window.LiveNav.setChip('coins', msg.total.toLocaleString());
+        window.OpenVibeNavbar.refreshWallet();
         return;
     }
     // Otherwise it's CHANNEL POINTS for a streamer → update the in-chat balance,
