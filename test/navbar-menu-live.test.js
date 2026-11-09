@@ -22,7 +22,7 @@ assert.ok(!/defaults:\s*false/.test(menu), 'the network\'s own rows (You, Displa
 });
 const sections = menu.match(/\{ id: '[a-z]+', label: '[^']+', items: \[/g) || [];
 assert.deepStrictEqual(sections, ["{ id: 'live', label: 'Live', items: ["], 'one section, Live\'s own');
-['Dashboard', 'Streamer setup', 'Cosmetics', 'Screenshot this page', 'Help & docs', 'Browse as guest'].forEach((row) => {
+['Dashboard', 'Streamer setup', 'Wallet & items', 'Screenshot this page', 'Help & docs', 'Browse as guest'].forEach((row) => {
     assert.ok(menu.includes(`label: '${row}'`), `Live's "${row}" row`);
 });
 assert.ok(!/\bafter:/.test(menu), 'no rows after the network\'s');

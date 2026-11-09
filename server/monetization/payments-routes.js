@@ -20,6 +20,13 @@ const BILLING_WEBHOOK = { stripe: 'stripe', paypal: 'paypal', ccbill: 'ccbill', 
 const router = express.Router();
 
 // ── Public config (which providers are live + pricing) ───────
+router.get('/wallet-state', async (_req, res) => {
+    try {
+        const value = await db.getSetting('money_writes_frozen');
+        return res.set('Cache-Control', 'no-store').json({ money_writes_frozen: value === true || value === 'true' || value === 1 || value === '1' });
+    } catch { return res.status(503).json({ error: 'Money switch unavailable' }); }
+});
+
 router.get('/config', async (req, res) => {
     res.json(await pay.publicConfig());
 });

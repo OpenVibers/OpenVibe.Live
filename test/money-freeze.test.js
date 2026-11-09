@@ -89,6 +89,7 @@ async function check(name, fn) {
         assert.strictEqual((await call('POST', '/api/admin/money/freeze', 2, { on: true })).status, 403);
         assert.strictEqual((await call('PUT', '/api/admin/settings/money_writes_frozen', 4, { value: 'true' })).status, 403, 'not through the generic settings either');
         assert.strictEqual(await money.isFrozen(), false);
+        assert.strictEqual((await call('GET', '/api/payments/wallet-state')).json.money_writes_frozen, false);
         const r = await call('POST', '/api/admin/money/freeze', 1, { on: true, reason: 'maintenance' });
         assert.strictEqual(r.status, 200, r.text);
         assert.strictEqual(r.json.frozen, true);
@@ -96,6 +97,12 @@ async function check(name, fn) {
         assert.deepStrictEqual([seen.json.authority, seen.json.frozen, seen.json.reason, seen.json.by], ['billing', true, 'maintenance', 'owner']);
         assert.strictEqual((await call('GET', '/api/admin/money', 2)).status, 403, 'not for non-admins');
         assert.strictEqual((await call('GET', '/api/payments/config')).json.moneyFrozen, true);
+        assert.strictEqual((await call('GET', '/api/payments/wallet-state')).json.money_writes_frozen, true);
+        const getSetting = db.getSetting;
+        try {
+            db.getSetting = async () => { throw new Error('offline'); };
+            assert.strictEqual((await call('GET', '/api/payments/wallet-state')).status, 503);
+        } finally { db.getSetting = getSetting; }
     });
 
     await check('frozen: every money write is refused before Billing is ever called', async () => {

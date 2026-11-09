@@ -401,7 +401,7 @@ app.use(helmet({
             imgSrc: ["'self'", "data:", "blob:", "image.tmdb.org", "https://openvibe.network", "https://openvibe.media", "cdn.frankerfacez.com", "cdn.betterttv.net", "cdn.7tv.app", "https://files.kick.com", "https://i.ytimg.com", "https://img.youtube.com", "https://i.vimeocdn.com", "https://openvibe.community"],   // paste screenshots (OpenVibe.Community owns pastes)
             // https://cloudflareinsights.com is where Cloudflare Web Analytics' beacon (script-src static.cloudflareinsights.com) reports.
             // https://openvibe.chat: the channel chat's feed card asks Chat which feed a slot shows (public/js/chat.js).
-            connectSrc: ["'self'", "wss:", "https://openvibe.network", "https://openvibe.chat", "https://openvibe.events", "https://openvibe.media", "https://openvibe.games", "https://cdn.jsdelivr.net", "https://esm.sh", "https://static.cloudflareinsights.com", "https://cloudflareinsights.com", whipConnectSrc],
+            connectSrc: ["'self'", "https://billing.openvibe.network", "https://inventory.openvibe.network", "wss:", "https://openvibe.network", "https://openvibe.chat", "https://openvibe.events", "https://openvibe.media", "https://openvibe.games", "https://cdn.jsdelivr.net", "https://esm.sh", "https://static.cloudflareinsights.com", "https://cloudflareinsights.com", whipConnectSrc],
             // VODs/clips play from openvibe.media (the /api proxies 302 there), which may
             // itself redirect to presigned B2/R2 object-store URLs or, for a B2 copy, to its
             // origin shield edge.openvibe.media — all must be allowed or the browser blocks
