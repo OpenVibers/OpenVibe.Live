@@ -676,6 +676,11 @@ button.viewer-badge:focus-visible { outline: 2px solid #93c5fd; outline-offset: 
     .live-tabs-summary { font-size: 0.7rem; padding: 0 8px; }
     .ch-cumulative-viewers { gap: 6px; }
     .ch-offline-header { flex-wrap: wrap; gap: 12px; padding: 16px; }
+    /* On a phone the actions take their own row under the name, from the left, and a button that does not fit goes
+       to the next line (Follow ran off a 360 px screen beside Share and Ask your agent). */
+    .ch-offline-header .ch-actions { margin-left: 0; flex-basis: 100%; flex-wrap: wrap; }
+    /* Follow, a visitor's main action, fills what is left of its row (all of it when it wraps). */
+    .ch-offline-header .ch-actions > .btn-follow { flex: 1 0 auto; justify-content: center; min-height: 44px; }
     .ch-avatar-lg { width: 56px; height: 56px; font-size: 1.4rem; }
     .viewer-badge, .uptime-badge { font-size: 0.68rem; padding: 2px 5px; }
     #video-element, #video-canvas { width: 100%; }
@@ -1319,7 +1324,11 @@ button.viewer-badge:focus-visible { outline: 2px solid #93c5fd; outline-offset: 
        was unreadable on Daylight's pink). */
     color: color-mix(in srgb, #f59e0b 35%, var(--text-primary)); background: linear-gradient(135deg, rgba(190,24,93,0.35), rgba(139,92,246,0.3));
     border: 1px solid color-mix(in srgb, #f59e0b 45%, transparent); white-space: nowrap; cursor: help;
+    /* Never wider than its row: "Japanese stream · chat auto-translated" ran off a 360 px screen; it wraps instead. */
+    max-width: 100%;
 }
+/* On a narrow phone it flows like a sentence inside a rounded box (as flex, its two halves wrapped side by side). */
+@media (max-width: 480px) { .ch-lang-chip { display: inline-block; white-space: normal; border-radius: 12px; line-height: 1.5; } }
 .ch-captions {
     margin: 10px 0 0; border-radius: 14px; overflow: hidden;
     background: linear-gradient(160deg, color-mix(in srgb, var(--accent) 10%, var(--bg-card)), var(--bg-card));
