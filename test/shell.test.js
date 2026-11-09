@@ -9,10 +9,21 @@ try { assets.setSharedDir(require('openvibe-shared/files').dir); } catch { /* */
 const shell = require('../server/web/sw');
 
 function fakeRes() {
-    const res = { headersSent: false, headers: {}, hints: null };
+    const res = { headersSent: false, headers: {}, hints: null, wrote: false };
     res.writeEarlyHints = (h) => { res.hints = h; return true; };
     res.setHeader = (k, v) => { res.headers[k] = v; };
+    res.getHeader = (k) => res.headers[k];
+    res.writeHead = () => { res.wrote = true; return res; };
     return res;
+}
+
+{   // A page that sets its own Link later (the Markdown twin, llms.txt) keeps the preloads too.
+    const res = fakeRes();
+    shell.hints()({ method: 'GET', path: '/', headers: { accept: 'text/html' } }, res, () => { });
+    res.setHeader('Link', '</index.md>; rel="alternate"; type="text/markdown"');
+    res.writeHead(200);
+    assert.ok(res.wrote);
+    assert.ok(/rel="alternate"/.test(res.headers.Link) && /rel=preload; as=script/.test(res.headers.Link), res.headers.Link);
 }
 
 {   // A page is hinted in its Link header; no 103 goes out (nginx 1.28 would send the page as the 103's body).

@@ -37,6 +37,20 @@ function earlyHints(res, links) {
     const list = (links || []).filter((l) => l && l.href);
     if (!list.length || !res || res.headersSent) return false;
     const header = list.map((l) => '<' + l.href + '>; rel=preload' + (l.as ? '; as=' + l.as : '')).join(', ');
+    // A page sets its own Link later (the Markdown twin, llms.txt) and replaces the header: the preloads are merged back
+    // in when the head goes out (11-09: production's pages carried only the page's own links).
+    if (typeof res.writeHead === 'function' && typeof res.getHeader === 'function' && !res.ovHintsMerged) {
+        res.ovHintsMerged = true;
+        const writeHead = res.writeHead;
+        res.writeHead = function (...args) {
+            try {
+                const cur = res.getHeader('Link');
+                const now = Array.isArray(cur) ? cur.join(', ') : String(cur || '');
+                if (now.indexOf('rel=preload') < 0) res.setHeader('Link', now ? now + ', ' + header : header);
+            } catch { /* a hint is never worth a page */ }
+            return writeHead.apply(this, args);
+        };
+    }
     try { res.setHeader('Link', header); return true; } catch { return false; }
 }
 
