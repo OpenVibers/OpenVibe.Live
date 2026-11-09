@@ -1,6 +1,10 @@
+![OpenVibe.Live](https://openvibe.live/shared/social/live.jpg)
+
 # OpenVibe.Live
 
-**Open Live Streaming**: the streaming front of the OpenVibe network. OpenVibe.Live runs ingest (RTMP, WHIP, WebRTC, JSMPEG), viewer playback, channels, the watch page and its chat surface, streamer tools, moderation, restreaming, channel points and tips, and The Rundown.
+**Open source live streaming** — [openvibe.live](https://openvibe.live). Go live from a browser or OBS with no follower minimum: chat, clips, recordings, restream and The Rundown.
+
+Part of the [OpenVibe network](https://openvibe.network); [help](https://openvibe.help), [docs](https://openvibe.live/docs/architecture) and the [developer API](https://openvibe.services).
 
 ## Purpose
 
