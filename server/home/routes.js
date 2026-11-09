@@ -429,14 +429,29 @@ router.get('/star', async (req, res) => {
     }
 });
 
-// ── Community pulse: goals near completion, latest activity, weekly leaders,
-// AI moment showcase, and the newest shipped update. Cached ~30s server-side.
+// ── Home pulse: real activity counts, AI moments and the newest shipped update. Cached ~30s.
 let _pulseCache = { at: 0, data: null };
 router.get('/pulse', async (req, res) => {
     try {
         res.set('Cache-Control', 'public, max-age=30');
         if (Date.now() - _pulseCache.at < 30_000 && _pulseCache.data) return res.json(_pulseCache.data);
         const pulse = await db.getHomePulse();
+        const channels = pulse.liveChannels || [];
+        pulse.liveNow = channels[0] || null;
+        pulse.busiestChat = null;
+        if (channels.length) {
+            const reads = require('../chat/chat-reads');
+            const recent = await Promise.all(channels.map(async (c) => {
+                const minute = await reads.windowStats({ since: Date.now() - 60_000, streamId: c.stream_id }).catch(() => null);
+                if (Number(minute && minute.messages) > 0) return { ...c, messages_per_minute: Number(minute.messages), window: 'now' };
+                const hour = await reads.windowStats({ since: Date.now() - 3600_000, streamId: c.stream_id }).catch(() => null);
+                return { ...c, messages_per_minute: Math.round(Number(hour && hour.messages || 0) / 60), window: 'last hour' };
+            }));
+            pulse.busiestChat = recent.sort((a, b) => b.messages_per_minute - a.messages_per_minute)[0] || null;
+        }
+        delete pulse.liveChannels;
+        const quest = await require('./daily-quest').readDailyQuest();
+        pulse.dailyFinished = Number(quest && quest.quest && quest.quest.finished_today) || 0;
         pulse.moments = (await heroMoments()).slice(0, 10);
         pulse.latestUpdate = _latestUpdate();
         _pulseCache = { at: Date.now(), data: pulse };
@@ -527,6 +542,14 @@ async function acrossOpenVibe(sinceMs) {
     }
     return picks.slice(0, 3);
 }
+
+router.get('/daily-quest', optionalAuth, async (req, res) => {
+    const token = req.user ? require('../net/subject-assertion').personToken(req.headers) : null;
+    const data = await require('./daily-quest').readDailyQuest({ token, timeZone: String(req.query.time_zone || 'UTC') });
+    res.set('Cache-Control', 'no-store');
+    if (!data) return res.status(204).end();
+    return res.json(data);
+});
 router.get('/digest', optionalAuth, async (req, res) => {
     try {
         const now = Date.now();

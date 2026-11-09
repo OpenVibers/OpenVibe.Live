@@ -76,7 +76,6 @@ try {
         // Tables the newer release fills.
         await d.prepare("INSERT INTO search_doc_pushes (user_id, hash, revision) VALUES (?, 'h', 1)").run(u.id);
         await d.prepare("INSERT INTO search_media_pushes (kind, media_id, hash, revision) VALUES ('vod', 1, 'h', 1)").run();
-        await db.recordEasterEggSolve('2026-01-01', 'rollback-probe', u.id);
         const tables = await d.value("SELECT count(*) FROM information_schema.tables WHERE table_schema = current_schema()");
         await db.close();
         process.stdout.write(JSON.stringify({ ok: true, user: u.id, tables: Number(tables) }) + '\\n');
