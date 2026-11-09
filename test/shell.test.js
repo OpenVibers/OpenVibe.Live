@@ -1,5 +1,6 @@
 'use strict';
-// The shell on the server's side (server/web/sw.js): the early hints (a 103 before the HTML) and the manifest the
+// The shell on the server's side (server/web/sw.js): the early hints (the page's Link header; never a 103 through nginx
+// 1.28, which takes it as the final answer) and the manifest the
 // shared worker reads to warm the shell by content hash.
 const assert = require('assert');
 const assets = require('../server/web/assets');
@@ -14,13 +15,13 @@ function fakeRes() {
     return res;
 }
 
-{   // A page is hinted; the 103 goes out first and the Link header rides on the page.
+{   // A page is hinted in its Link header; no 103 goes out (nginx 1.28 would send the page as the 103's body).
     const res = fakeRes();
     let nexted = false;
     shell.hints()({ method: 'GET', path: '/', headers: { accept: 'text/html' } }, res, () => { nexted = true; });
     assert.ok(nexted, 'the request goes on');
-    assert.ok(res.hints, 'the 103 went out');
-    const link = res.hints.link.join(', ');
+    assert.strictEqual(res.hints, null, 'no 103');
+    const link = res.headers.Link || '';
     assert.ok(link.indexOf('rel=preload') >= 0, 'the links are preloads');
     assert.ok(/as=script/.test(link) && /as=style/.test(link), 'the scripts and the stylesheet are named');
     assert.ok(res.headers.Link && res.headers.Link.indexOf('rel=preload') >= 0, 'the page carries the hint too');
@@ -30,12 +31,12 @@ function fakeRes() {
     for (const p of ['/api/thing', '/shared/navbar.js', '/js/app.js', '/css/style.css']) {
         const res = fakeRes();
         shell.hints()({ method: 'GET', path: p, headers: { accept: '*/*' } }, res, () => { });
-        assert.ok(!res.hints, p + ' is not hinted');
+        assert.ok(!res.hints && !res.headers.Link, p + ' is not hinted');
     }
     // A write is never hinted.
     const res = fakeRes();
     shell.hints()({ method: 'POST', path: '/', headers: { accept: 'text/html' } }, res, () => { });
-    assert.ok(!res.hints, 'a write is not hinted');
+    assert.ok(!res.hints && !res.headers.Link, 'a write is not hinted');
 }
 
 {   // The manifest: the shell by content hash, so the worker warms the files the page already asks for.

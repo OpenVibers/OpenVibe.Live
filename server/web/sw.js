@@ -3,9 +3,10 @@
  * The shell, on the server's side: the early hints (openvibe-shared/sw, Shared 4.164.0) and the manifest the shared worker
  * reads.
  *
- * The hints: the browser gets the navbar, the theme loader, the first paint CSS and the site's own app script before the
- * HTML arrives, so they download while the server is still writing the page (RFC 8297, a 103 Early Hints response). The
- * same links ride in the page's Link header, so a proxy that drops the 103 still hands the browser the hint.
+ * The hints: the page's Link header names the navbar, the theme loader, the first paint CSS and the site's own app
+ * script as preloads, and Cloudflare's Early Hints turn that header into a 103 at the edge. Live never sends the 103
+ * itself: nginx 1.28 (the host's) takes an upstream 103 as the final response and sends the real page as its body
+ * (tried against nginx:1.28-alpine, 11-09). A 103 from here waits for nginx 1.29+ with `early_hints`.
  *
  * The manifest: the files the shared worker (openvibe-sw.js) keeps in its cache, by content hash, so the worker warms the
  * shell without downloading a second copy of a file the page already asks for.
@@ -31,20 +32,12 @@ function shellLinks() {
     ].filter((l) => l && l.href);
 }
 
-/** Send the hints for a response. Returns true when a 103 went out. */
+/** The hints for a response, as its Link header (never a 103: see above). Returns true when the header was set. */
 function earlyHints(res, links) {
-    if (shared && typeof shared.earlyHints === 'function') return shared.earlyHints(res, links);
     const list = (links || []).filter((l) => l && l.href);
-    if (!list.length || !res) return false;
+    if (!list.length || !res || res.headersSent) return false;
     const header = list.map((l) => '<' + l.href + '>; rel=preload' + (l.as ? '; as=' + l.as : '')).join(', ');
-    let sent = false;
-    if (typeof res.writeEarlyHints === 'function') {
-        try { res.writeEarlyHints({ link: list.map((l) => '<' + l.href + '>; rel=preload' + (l.as ? '; as=' + l.as : '')) }); sent = true; } catch { /* the response was already on its way */ }
-    }
-    if (!res.headersSent) {
-        try { res.setHeader('Link', header); } catch { /* the header was set already */ }
-    }
-    return sent;
+    try { res.setHeader('Link', header); return true; } catch { return false; }
 }
 
 /**
