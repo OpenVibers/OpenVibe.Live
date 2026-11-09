@@ -2167,13 +2167,6 @@ function handleChatMessage(msg) {
             if (rContainer && typeof renderRedemption === 'function') renderRedemption(msg, rContainer);
             break;
         }
-        case 'dm':
-        case 'dm-participant-added':
-            // Route DM events to the messenger widget
-            if (typeof window._messengerHandleDm === 'function') {
-                window._messengerHandleDm(msg);
-            }
-            break;
         case 'vc-call-invite': {
             _showIncomingVcCallOverlay(msg);
             break;
@@ -4050,14 +4043,16 @@ function ctxReply() {
     dismissContextMenu();
 }
 
-function ctxWhisper(username) {
+async function ctxWhisper(username) {
     dismissContextMenu();
-    // Route to the DM messenger widget instead of the old whisper command
-    if (typeof window.openMessengerDm === 'function') {
-        window.openMessengerDm(username);
-    } else {
-        toast('Messenger not available', 'error');
-    }
+    if (!currentUser) { toast('Sign in to send messages', 'error'); return; }
+    try {
+        const users = (await api(`/dm/users/search?q=${encodeURIComponent(username)}`)).users || [];
+        const target = users.find((u) => u.username.toLowerCase() === username.toLowerCase());
+        if (!target) { toast(`User "${username}" not found`, 'error'); return; }
+        await api('/dm/conversations', { method: 'POST', body: { user_ids: [target.id] } });
+        window.OpenVibeNavbar?.openDock('chats');
+    } catch { toast('Failed to open messages', 'error'); }
 }
 
 async function ctxCallUser(username, userId) {

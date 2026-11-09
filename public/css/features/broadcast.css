@@ -2556,7 +2556,6 @@ body.bc-studio-on .bc-video-container .bc-video-placeholder { display: none !imp
 body.bc-studio-on #bc-stats-overlay.bc-stats-overlay {
     position: fixed; top: calc(52px + env(safe-area-inset-top, 0px)); left: auto; right: max(12px, env(safe-area-inset-right, 0px)); z-index: 1235;
 }
-body.bc-studio-on .messenger-toggle,
 body.bc-studio-on .bc-mobile-chat-fab,
 body.bc-studio-on #navbar-mount,
 body.bc-studio-on .navbar,
@@ -2854,7 +2853,6 @@ body.bc-studio-on #bc-chat-messages .chat-conn-status { display: block !importan
 .bcs-golive-btn:disabled { opacity: 0.6; cursor: default; }
 .bcs-golive-btn:focus-visible { outline: 3px solid #93c5fd; outline-offset: 2px; }
 .bcs-golive-where { color: var(--text-secondary, #a1a1aa); font-size: 0.76rem; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-body.bc-golive-dock-on .messenger-toggle { display: none !important; }
 /* The Dock's pill (openvibe-shared dock.js, in a bottom corner) rides above the Go live dock: it sat on the button's
    right half, so a tap there opened the Agent panel instead of going live (11-09). Top corners stay where they are. */
 body.bc-golive-dock-on .ovdk-pill:not([data-corner^="top"]) {
