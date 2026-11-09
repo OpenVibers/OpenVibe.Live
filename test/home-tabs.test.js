@@ -97,7 +97,7 @@ const intro = home.slice(introStart, introEnd);
 
 check('Around OpenVibe shows its three sections, in their order, with the egg where it was, and no tabs', () => {
     assert.ok(aroundStart > 0 && aroundEnd > aroundStart, 'the block opens and closes on the home page');
-    const order = ['id="home-digest"', 'id="home-star-section"', 'id="hero-egg"', 'id="home-pulse-section"'].map((n) => around.indexOf(n));
+    const order = ['id="home-digest"', 'id="home-star-section"', 'id="home-daily-quest"', 'id="home-pulse-section"'].map((n) => around.indexOf(n));
     assert.ok(order.every((i) => i > 0), 'every section is inside it');
     assert.deepStrictEqual([...order].sort((a, b) => a - b), order, 'in the same order as before');
     assert.ok(home.indexOf('id="home-around"') < home.indexOf('id="home-catchup"'), 'the block sits where the digest was');

@@ -879,7 +879,6 @@ const searchMedia = require('./events/search-media-documents');
 app.use('/api/vods', searchMedia.afterChange('vod'), vodRoutes);
 app.use('/api/clips', searchMedia.afterChange('clip'), clipRoutes);
 app.use('/api/chat-ai', require('./ai/chat-ai-routes'));
-app.use('/api/easter-egg', require('./ai/easter-egg-routes'));
 app.use('/api/rundown', require('./rundown/routes'));        // what streamers talked about, written up (docs/rundown.md)
 app.use('/api/today', require('./today/routes').createTodayRoutes());   // a channel's schedule, read from OpenVibe.Today
 app.use('/api/recap', require('./recap/routes'));            // after-show reports (docs/recap.md)
@@ -921,6 +920,14 @@ app.use('/api/img-proxy', require('./media/external-image-proxy'));
 const VIBE_CODING_OFF = Object.freeze({ enabled: 0, widget_title: 'Vibe Coding', viewer_depth: 'standard', show_prompts: 1, show_responses: 1, show_thinking: 0, show_tool_calls: 1, show_tool_arguments: 0, show_file_events: 1, show_file_snippets: 0, redact_file_paths: 1, paused: 0, delay_ms: 0, max_events: 18, max_prompt_chars: 220, max_response_chars: 360, max_thinking_chars: 140, max_tool_chars: 140, max_snippet_chars: 140 });
 app.get('/api/vibe-coding/channel/:username/:slot/events', (req, res) => res.json({ managed_stream: null, live_stream_id: null, settings: VIBE_CODING_OFF, publisher: null, events: [], moved_to: 'https://openvibe.chat/feeds' }));
 app.use('/api/vibe-coding', (req, res) => res.status(410).json({ error: 'Vibe coding feeds moved to OpenVibe.Chat', moved_to: 'https://openvibe.chat/feeds', api: 'https://openvibe.chat/api/chat/feeds' }));
+// Previous Live clients still request the retired daily secret during the mixed-version window.
+// Keep its empty state and validation responses for one release, without restarting the feature.
+app.get('/api/easter-egg/daily', (_req, res) => res.json({ egg: null }));
+app.post('/api/easter-egg/solve', (req, res) => {
+    if (!req.body || !req.body.sequence) return res.status(400).json({ error: 'sequence required' });
+    return res.status(410).json({ error: 'Daily secret retired', moved_to: 'https://openvibe.quest/' });
+});
+app.post('/api/easter-egg/reveal', (_req, res) => res.status(403).json({ error: 'No daily secret is active' }));
 const analyticsRoutes = require('./streaming/analytics-routes');
 app.use('/api/analytics', analyticsRoutes);
 const newsRoutes = require('./news/news-routes');
@@ -1586,7 +1593,6 @@ async function start() {
         try { require('./streaming/recordings').start(); } catch (e) { console.warn('[Recordings] sweep not started:', e.message); }
         // When each picture-in-picture was on screen, so a VOD draws it again (streaming/pip-history.js).
         try { require('./streaming/pip-history').start(); } catch (e) { console.warn('[PiP history] not started:', e.message); }
-        try { require('./ai/easter-egg-job').start(); } catch (e) { console.warn('[AI] easter-egg job not started:', e.message); }
         // The Rundown's desk replaced the Arena's jobs (the drama desk, the beef listener and judges, 2026-10-19).
         try { require('./rundown/desk').start(); } catch (e) { console.warn('[Rundown] desk not started:', e.message); }
         try { require('./bench-stream/service').startJobs(); } catch (e) { console.warn('[BenchStream] poll job not started:', e.message); }
