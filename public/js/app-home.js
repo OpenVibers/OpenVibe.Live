@@ -1008,165 +1008,62 @@ function openHomeAbout() {
     banner.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
-// ── Daily AI easter egg ─────────────────────────────────────────────────────
-let _egg = null, _eggBuf = [], _eggSolved = false, _eggSubmitTimer = null, _eggKeysWired = false;
-const _EGG_ARROW = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right' };
-const _EGG_GLYPH = { up: '↑', down: '↓', left: '←', right: '→' };
-let _eggRevealed = [];          // [{index, token}] revealed for this solver today
-let _eggFails = 0, _eggBusy = false;
-async function loadHeroEgg() {
-    const el = document.getElementById('hero-egg');
-    if (!el) return;
-    let data; try { data = await api('/easter-egg/daily'); } catch { return; }
-    const egg = data && data.egg;
-    if (!egg) { el.style.display = 'none'; return; }
-    _egg = egg; _eggSolved = !!egg.solved; _eggBuf = []; _eggRevealed = egg.revealed || []; _eggFails = egg.fails || 0;
-    el.style.display = '';
-    const set = (id, v) => { const n = document.getElementById(id); if (n) n.textContent = v; };
-    set('hero-egg-title', egg.title || 'The Daily Secret');
-    // Letter pad (built once)
-    const letters = document.getElementById('hero-egg-letters');
-    if (letters && !letters.childElementCount) letters.innerHTML = 'abcdefghijklmnopqrstuvwxyz'.split('').map(l => `<button type="button" class="egg-key egg-key--letter" data-tok="${l}">${l}</button>`).join('');
-    const pad = document.getElementById('hero-egg-pad');
-    if (pad && !pad.dataset.wired) {
-        pad.dataset.wired = '1';
-        pad.addEventListener('click', (e) => {
-            const b = e.target.closest('button'); if (!b) return;
-            if (b.dataset.act === 'back') { _eggBuf.pop(); _renderEggSlots(); return; }
-            if (b.dataset.act === 'clear') { _eggBuf = []; _renderEggSlots(); return; }
-            if (b.dataset.tok) _eggPush(b.dataset.tok);
+// Quest is read by Live's server with the person's Network token. No Quest cookie crosses sites.
+async function loadDailyQuest() {
+    const card = document.getElementById('home-daily-quest');
+    if (!card) return;
+    let zone = 'UTC';
+    try { zone = Intl.DateTimeFormat().resolvedOptions().timeZone || zone; } catch { /* UTC */ }
+    let data;
+    try { data = await api('/home/daily-quest?time_zone=' + encodeURIComponent(zone)); }
+    catch { card.hidden = true; return; }
+    const quest = data && data.quest;
+    if (!quest || !Array.isArray(quest.steps) || quest.steps.length !== 3) { card.hidden = true; return; }
+    const mine = !!data.signed_in;
+    const progress = Math.max(0, Math.min(3, Number(quest.progress) || 0));
+    card.dataset.progress = mine ? String(progress) : '0';   // the three-part bar under the title
+    document.getElementById('home-daily-kicker').textContent = mine ? "TODAY'S QUEST" : 'DAILY QUESTS';
+    document.getElementById('home-daily-title').textContent = mine ? quest.title : 'Today: ' + quest.title;
+    document.getElementById('home-daily-chip').textContent = mine
+        ? quest.completed ? `Done for today · ${quest.streak}-day streak` : `${progress} of 3`
+        : 'New every day';
+    const list = document.getElementById('home-daily-steps');
+    list.replaceChildren();
+    for (const step of quest.steps) {
+        const row = document.createElement('li');
+        const icon = document.createElement('span');
+        icon.className = 'ov-icon home-daily-site-icon';
+        icon.dataset.icon = String(step.site || '').split('.')[1] || 'quest';
+        icon.dataset.size = '32';
+        icon.setAttribute('aria-hidden', 'true');
+        const label = document.createElement('span');
+        label.textContent = String(step.sentence || '');
+        row.append(icon, label);
+        if (mine && step.done) {
+            row.classList.add('is-done');
+            const done = document.createElement('span');
+            done.className = 'home-daily-check';
+            done.textContent = '✓';
+            done.setAttribute('aria-label', 'Done');
+            row.append(done);
+        }
+        list.append(row);
+    }
+    const action = document.getElementById('home-daily-action');
+    const next = mine && quest.steps.find(step => !step.done);
+    action.textContent = mine ? next ? 'Do the next step' : 'See your streak' : "See today's quest";
+    action.href = next && /^https:\/\//.test(next.href || '') ? next.href : 'https://openvibe.quest/';
+    const toggle = document.getElementById('home-daily-toggle');
+    if (!toggle.dataset.wired) {
+        toggle.dataset.wired = '1';
+        toggle.addEventListener('click', () => {
+            const body = document.getElementById('home-daily-body');
+            body.hidden = !body.hidden;
+            toggle.setAttribute('aria-expanded', String(!body.hidden));
+            card.classList.toggle('open', !body.hidden);
         });
     }
-    _renderEggClues();
-    _renderEggSlots();
-    _renderEggMeta();
-    _renderEggStatus();
-    _wireEggKeys();
-}
-function _eggResetLabel(ts) { const h = Math.round((ts - Date.now()) / 3600000); return h <= 1 ? 'soon' : `in ${h}h`; }
-function _renderEggStatus() {
-    const s = document.getElementById('hero-egg-status'); if (!s) return;
-    s.textContent = _eggSolved ? '✓ Cracked' : `${_egg ? _egg.codeLength : ''} keys`;
-    s.className = 'hero-egg-status' + (_eggSolved ? ' solved' : '');
-}
-function _renderEggMeta() {
-    if (!_egg) return;
-    const set = (id, v) => { const n = document.getElementById(id); if (n) n.textContent = v; };
-    set('hero-egg-count', `${_egg.foundCount || 0} cracked it today`);
-    set('hero-egg-first', (_egg.firstSolvers || []).length ? ` · first: ${_egg.firstSolvers.slice(0, 3).join(', ')}` : '');
-    set('hero-egg-reset', _egg.nextResetAt ? ` · new secret ${_eggResetLabel(_egg.nextResetAt)}` : '');
-    const rb = document.getElementById('hero-egg-reveal');
-    if (rb) {
-        const left = Math.max(0, (_egg.revealAfterFails || 2) - _eggFails);
-        const done = _eggRevealed.length >= Math.max(0, _egg.codeLength - 1);
-        rb.style.display = _eggSolved ? 'none' : '';
-        rb.disabled = done || left > 0;
-        rb.innerHTML = done ? '<i class="fa-solid fa-lightbulb"></i> The last key is yours'
-            : left > 0 ? `<i class="fa-regular fa-lightbulb"></i> Stuck? ${left} more wrong tr${left === 1 ? 'y' : 'ies'} unlocks a reveal`
-            : '<i class="fa-solid fa-lightbulb"></i> Stuck? Reveal the next key';
-    }
-}
-function _renderEggClues() {
-    const ol = document.getElementById('hero-egg-clues'); if (!ol || !_egg) return;
-    const clues = _egg.clues || _egg.hints || [];
-    const rev = new Map(_eggRevealed.map(r => [r.index, r.token]));
-    ol.innerHTML = clues.map((c, i) => `<li class="${rev.has(i) ? 'is-revealed' : ''}"><span class="egg-clue-n">${i + 1}</span><span class="egg-clue-text">${esc(c)}</span>${rev.has(i) ? `<span class="egg-clue-key" title="Revealed">${esc(_EGG_GLYPH[rev.get(i)] || rev.get(i).toUpperCase())}</span>` : ''}</li>`).join('')
-        || '<li><span class="egg-clue-text">No clues today — go on instinct.</span></li>';
-}
-function _renderEggSlots(state) {
-    const host = document.getElementById('hero-egg-slots'); if (!host || !_egg) return;
-    const n = _egg.codeLength || 0;
-    let html = '';
-    for (let i = 0; i < n; i++) {
-        const t = _eggBuf[i];
-        html += `<span class="egg-slot ${t ? 'is-filled' : ''} ${i === _eggBuf.length ? 'is-next' : ''}">${t ? esc(_EGG_GLYPH[t] || t.toUpperCase()) : ''}</span>`;
-    }
-    host.innerHTML = html;
-    host.className = 'hero-egg-slots' + (state ? ` is-${state}` : '') + (_eggSolved ? ' is-solved' : '');
-}
-function _eggPush(tok) {
-    if (_eggSolved || !_egg || _eggBusy) return;
-    _eggBuf.push(tok);
-    if (_eggBuf.length > _egg.codeLength) _eggBuf = _eggBuf.slice(-_egg.codeLength);
-    _renderEggSlots();
-    if (_eggBuf.length === _egg.codeLength) { clearTimeout(_eggSubmitTimer); _eggSubmitTimer = setTimeout(_submitEgg, 200); }
-}
-function toggleHeroEgg() { document.getElementById('hero-egg')?.classList.toggle('open'); }
-function _wireEggKeys() {
-    if (_eggKeysWired) return;
-    _eggKeysWired = true;
-    document.addEventListener('keydown', (e) => {
-        if (_eggSolved || !_egg) return;
-        const t = e.target;
-        if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
-        if (e.ctrlKey || e.metaKey || e.altKey) return;
-        // Only while the secret is on screen on the home page: everywhere else the keys (arrow
-        // scrolling, a player's shortcuts, Backspace) belong to the page.
-        const el = document.getElementById('hero-egg');
-        const home = document.getElementById('page-home');
-        if (!el || !home || !home.classList.contains('active') || el.offsetParent === null) return;
-        const inside = !!(t && el.contains(t));
-        const r = el.getBoundingClientRect();
-        if (!inside && (r.bottom <= 0 || r.top >= window.innerHeight)) return;
-        if (e.key === 'Backspace') { if (inside || el.classList.contains('open')) { _eggBuf.pop(); _renderEggSlots(); } return; }
-        let tok = _EGG_ARROW[e.key];
-        // A focused card rail scrolls with the arrow keys; the secret must not swallow them.
-        if (tok && t && t.closest && t.closest('.ov-rail-track')) return;
-        if (!tok && /^[a-zA-Z]$/.test(e.key)) tok = e.key.toLowerCase();
-        if (!tok) return;
-        // Arrows scroll the page unless someone is playing: the panel is open or has focus.
-        if (_EGG_ARROW[e.key]) {
-            if (!inside && !el.classList.contains('open')) return;
-            e.preventDefault();
-        }
-        _eggPush(tok);
-        // Typing counts as engagement: pop the panel open so people see the keys land.
-        if (!el.classList.contains('open') && _eggBuf.length === 1) el.classList.add('open');
-    });
-}
-async function _submitEgg() {
-    if (_eggSolved || !_egg || _eggBuf.length < _egg.codeLength || _eggBusy) return;
-    _eggBusy = true;
-    let res; try { res = await api('/easter-egg/solve', { method: 'POST', body: { sequence: _eggBuf.slice() } }); } catch { _eggBusy = false; return; }
-    _eggBusy = false;
-    if (res && res.solved) {
-        _eggSolved = true; _renderEggStatus(); _renderEggSlots('right');
-        if (res.foundCount != null) _egg.foundCount = res.foundCount;
-        _renderEggMeta();
-        _celebrateEgg(res.egg || {});
-        return;
-    }
-    _eggFails = (res && res.fails) || (_eggFails + 1);
-    _renderEggSlots('wrong');
-    _renderEggMeta();
-    setTimeout(() => { _eggBuf = []; _renderEggSlots(); }, 750);
-}
-async function _eggReveal() {
-    if (_eggSolved || !_egg) return;
-    let out; try { out = await api('/easter-egg/reveal', { method: 'POST', body: {} }); } catch (e) { try { toast((e && e.message) || 'Not yet', 'info'); } catch { /* */ } return; }
-    if (out && out.revealed) { _eggRevealed = out.revealed; _renderEggClues(); _renderEggMeta(); }
-}
-function _celebrateEgg(egg) {
-    try { toast(egg.reward || "You cracked today's secret! 🎉", 'success'); } catch { /* */ }
-    const effect = egg.effect || 'confetti';
-    try {
-        if (effect === 'shake') { document.body.classList.add('egg-shake'); setTimeout(() => document.body.classList.remove('egg-shake'), 900); }
-        if (effect === 'rainbow') { document.body.classList.add('egg-rainbow'); setTimeout(() => document.body.classList.remove('egg-rainbow'), 2600); }
-        const N = effect === 'fireworks' ? 170 : effect === 'matrix' ? 90 : 130;
-        const cont = document.createElement('div'); cont.className = 'egg-confetti';
-        const colors = effect === 'matrix' ? ['#00ff41', '#0f0', '#00c030'] : ['#ff5a5f', '#ffd166', '#06d6a0', '#4d96ff', '#c77dff', '#fff'];
-        for (let i = 0; i < N; i++) {
-            const p = document.createElement('span');
-            p.style.left = (Math.random() * 100) + 'vw';
-            p.style.background = colors[i % colors.length];
-            p.style.animationDelay = (Math.random() * 0.5) + 's';
-            p.style.animationDuration = (1.5 + Math.random() * 1.6) + 's';
-            if (effect === 'matrix') { p.style.width = '3px'; p.style.height = (12 + Math.random() * 20) + 'px'; }
-            cont.appendChild(p);
-        }
-        document.body.appendChild(cont);
-        setTimeout(() => cont.remove(), 3800);
-    } catch { /* */ }
+    card.hidden = false;
 }
 
 /**
@@ -1411,7 +1308,7 @@ async function loadHome() {
     updateNavHeroTransparency();  // transparent nav over the hero at the top
     startHeroRotation();      // instant static rotation; loadHeroData upgrades it with AI slogans
     void loadHeroData();      // stats bar, floating-thumbnail collage, AI slogans
-    void loadHeroEgg();       // daily AI easter egg widget
+    void loadDailyQuest();     // shared daily quest from OpenVibe.Quest
 
     // Claim the space every feed is about to fill. Without this the page arrives as a short
     // column that grows in jumps as each request lands, which reads as slow and shoves content
@@ -1483,39 +1380,49 @@ function _renderHomePulse(p) {
     const section = document.getElementById('home-pulse-section');
     if (!grid || !section) return;
     const cards = [];
-
-    // Goal cards — nearest to completion, with progress bars.
-    for (const g of (p.goals || [])) {
-        const pct = Math.min(100, Math.round((g.current_amount / g.target_amount) * 100));
-        const href = `/@${g.username}`;
-        cards.push(`
-            <a class="pulse-card pulse-goal" href="${href}" onclick="return handleLinkClick(event, '${href}')">
-                <div class="pulse-kicker"><i class="fa-solid fa-bullseye"></i> Goal · ${esc(g.display_name || g.username)}</div>
-                <div class="pulse-title">${esc(g.title)}</div>
-                <div class="goal-bar"><div class="goal-fill" style="width:${pct}%"></div></div>
-                <div class="pulse-sub">${Number(g.current_amount).toLocaleString()} / ${Number(g.target_amount).toLocaleString()} Vibes · <b>${pct}%</b></div>
-            </a>`);
-    }
-
-    // Latest activity card (tip + follow together).
-    const act = [];
-    if (p.latestTip) act.push(`<div class="pulse-act"><i class="fa-solid fa-hand-holding-dollar"></i> ${ovUserTag({ username: p.latestTip.from_username, display_name: p.latestTip.from_display }, p.latestTip.from_display || p.latestTip.from_username || 'Someone')} tipped <b>${Number(p.latestTip.amount).toLocaleString()}</b> Vibes to ${ovUserTag({ username: p.latestTip.to_username, display_name: p.latestTip.to_display })} <span class="muted">${esc(timeAgo(p.latestTip.created_at))}</span></div>`);
-    if (p.newestFollow) act.push(`<div class="pulse-act"><i class="fa-solid fa-heart"></i> ${ovUserTag({ username: p.newestFollow.follower_username, display_name: p.newestFollow.follower_display })} followed ${ovUserTag({ username: p.newestFollow.streamer_username, display_name: p.newestFollow.streamer_display })} <span class="muted">${esc(timeAgo(p.newestFollow.created_at))}</span></div>`);
-    if (act.length) cards.push(`<div class="pulse-card"><div class="pulse-kicker"><i class="fa-solid fa-wave-square"></i> Latest activity</div>${act.join('')}</div>`);
-
-    // Weekly leader teasers.
-    const board = (title, icon, rows, unit) => rows && rows.length ? `
-        <div class="pulse-card">
-            <div class="pulse-kicker"><i class="fa-solid ${icon}"></i> ${title}</div>
-            ${rows.map((r, i) => `<div class="pulse-rank"><span class="pulse-medal">${['🥇', '🥈', '🥉'][i] || (i + 1)}</span> ${ovUserTag(r)} <b>${Number(r.total).toLocaleString()}</b> <span class="muted">${unit}</span></div>`).join('')}
-        </div>` : '';
-    const supporters = board('Top supporters this week', 'fa-trophy', p.topSupporters, 'Vibes');
-    const earners = board('Top point earners this week', 'fa-coins', p.topEarners, 'pts');
-    if (supporters) cards.push(supporters);
-    if (earners) cards.push(earners);
-
+    const add = (kicker, person, value, context, href) => {
+        const number = Number(value);
+        if (!Number.isFinite(number) || number <= 0) return;
+        const card = document.createElement('a');
+        card.className = 'pulse-card pulse-fact-card';
+        card.href = href;
+        const k = document.createElement('span');
+        k.className = 'pulse-kicker';
+        k.textContent = kicker;
+        const identity = document.createElement('span');
+        identity.className = 'pulse-fact-identity';
+        const face = document.createElement('span');
+        face.className = 'pulse-fact-face';
+        const name = String(person.display_name || person.username || person.name || 'OpenVibe');
+        face.textContent = name.charAt(0).toUpperCase();
+        if (person.avatar_url) {
+            const img = document.createElement('img');
+            img.src = person.avatar_url;
+            img.alt = '';
+            img.loading = 'lazy';
+            img.onerror = () => img.remove();
+            face.append(img);
+        }
+        const label = document.createElement('span');
+        label.textContent = name;
+        identity.append(face, label);
+        const big = document.createElement('strong');
+        big.className = 'pulse-fact-number';
+        big.textContent = new Intl.NumberFormat().format(number);
+        const sub = document.createElement('span');
+        sub.className = 'pulse-fact-context';
+        sub.textContent = context;
+        card.append(k, identity, big, sub);
+        cards.push(card);
+    };
+    if (p.liveNow) add('LIVE NOW', p.liveNow, p.liveNow.viewer_count, 'viewers watching', '/@' + encodeURIComponent(p.liveNow.username));
+    if (p.topStreamer) add('TOP STREAMER THIS WEEK', p.topStreamer, p.topStreamer.hours, 'hours streamed · peak ' + Number(p.topStreamer.peak_viewers || 0) + ' viewers', '/@' + encodeURIComponent(p.topStreamer.username));
+    if (p.busiestChat) add('BUSIEST CHAT', p.busiestChat, p.busiestChat.messages_per_minute, 'messages a minute · ' + p.busiestChat.window, '/@' + encodeURIComponent(p.busiestChat.username));
+    if (p.topFan) add('TOP FANS THIS WEEK', p.topFan, p.topFan.points, 'channel points earned', '/@' + encodeURIComponent(p.topFan.username));
+    if (p.openCoinsToday > 0) add('OPENCOINS TODAY', { name: 'OpenVibe' }, p.openCoinsToday, 'earned across the network', 'https://openvibe.network/');
+    if (p.dailyFinished > 0) add("TODAY'S QUEST", { name: 'OpenVibe.Quest' }, p.dailyFinished, 'people finished today', 'https://openvibe.quest/');
     section.style.display = cards.length ? '' : 'none';
-    grid.innerHTML = cards.join('');
+    grid.replaceChildren(...cards);
 
     // AI Moments showcase row.
     const momentsRow = document.getElementById('home-moments-row');
@@ -1614,66 +1521,71 @@ function _sgThumbFail(img) {
 function renderRecentlyOnline(containerId, streamers, append) {
     const container = document.getElementById(containerId);
     if (!container) return;
-    if (!streamers.length) {
-        if (!append) container.innerHTML = '<p class="muted">No recent streamers</p>';
-        return;
+    if (!append) container.replaceChildren();
+    if (!streamers.length) return;
+    const el = (tag, cls, value) => {
+        const node = document.createElement(tag);
+        if (cls) node.className = cls;
+        if (value != null) node.textContent = String(value);
+        return node;
+    };
+    for (const s of streamers) {
+        const facts = s.recent_facts || {};
+        const channelHref = '/@' + encodeURIComponent(s.username || '');
+        const card = el('article', 'streamer-group-card recent-streamer-card');
+        const head = el('a', 'streamer-group-identity recent-streamer-head');
+        head.href = channelHref;
+        const face = el('span', 'recent-streamer-face', (s.display_name || s.username || '?').charAt(0).toUpperCase());
+        if (s.avatar_url) {
+            const img = el('img'); img.src = s.avatar_url; img.alt = ''; img.loading = 'lazy';
+            img.onerror = () => img.remove(); face.append(img);
+        }
+        const name = el('strong', 'streamer-group-name', s.display_name || s.username);
+        const when = el('span', 'streamer-group-last-online', s.live ? 'Live now' : 'Live ' + timeAgo(s.last_online_at));
+        head.append(face, name, when);
+        card.append(head);
+        const chips = el('div', 'recent-streamer-facts');
+        const chip = (value) => { if (value) chips.append(el('span', 'recent-streamer-chip', value)); };
+        if (facts.streams_this_week) chip(facts.streams_this_week + ' streams this week');
+        if (facts.hours_this_week) chip(facts.hours_this_week + ' h this week');
+        chip(facts.usual_time);
+        if (facts.days_in_a_row >= 3) chip(facts.days_in_a_row + ' days in a row');
+        if (facts.last_stream_seconds) chip('Last stream ' + formatDuration(facts.last_stream_seconds));
+        card.append(chips);
+        const overview = String(s.ai_overview_short || s.ai_overview || '').trim();
+        if (overview) {
+            const summary = el('p', 'recent-streamer-summary', overview);
+            const more = el('button', 'recent-streamer-more', 'More');
+            more.type = 'button'; more.setAttribute('aria-expanded', 'false');
+            more.addEventListener('click', () => {
+                const open = summary.classList.toggle('expanded');
+                more.textContent = open ? 'Less' : 'More';
+                more.setAttribute('aria-expanded', String(open));
+            });
+            card.append(summary, more);
+        }
+        const history = el('div', 'streamer-group-streams recent-streamer-history');
+        for (const h of (facts.streams || []).slice(0, 2)) {
+            const replay = !h.is_live && h.vod_id;
+            const row = el('a', 'streamer-group-stream recent-stream-row');
+            row.href = replay ? videoHref('vod', h.vod_id) : channelHref;
+            const thumb = el('span', 'streamer-group-stream-thumb');
+            const src = _sgThumbSrc(h.thumbnail_url);
+            if (src) {
+                const img = el('img', 'streamer-group-stream-thumb-img');
+                img.src = src; img.alt = ''; img.loading = 'lazy';
+                img.onerror = () => img.remove();
+                thumb.append(img);
+            }
+            const info = el('span', 'streamer-group-stream-info');
+            info.append(el('span', 'streamer-group-stream-title', h.title || 'Stream'));
+            info.append(el('span', 'streamer-group-stream-time muted', (h.is_live ? 'Live' : 'Replay') + (h.length_seconds ? ' · ' + formatDuration(h.length_seconds) : '')));
+            row.append(thumb, info);
+            history.append(row);
+        }
+        card.append(history);
+        container.append(card);
     }
-    const _put = (html) => ovPutCards(container, html, append);
-    _put(streamers.map(s => {
-        const msList = (s.managed_streams || []);
-        const avatar = _avatarSpan(s.avatar_url, s.username, s.profile_color);
-        const channelHref = `/@${s.username}`;
-        const streamsHtml = msList.length ? msList.map(ms => {
-            // An offline stream opens its replay on openvibe.video, the chat playing in time beside it: the row showed a
-            // picture of the stream and led to an offline channel (owner, 2026-10-27). Live, or with no recording, the
-            // row is the channel; the card's name always is.
-            const replay = !ms.is_live && ms.vod_id ? videoHref('vod', ms.vod_id) : null;
-            const href = replay || channelPath(s.username, ms.slug || ms.managed_stream_id);
-            // A live slot shows its current frame; otherwise the latest recording's. A picture that fails to load
-            // becomes the placeholder (_sgThumbFail) instead of a broken image.
-            const src = _sgThumbSrc(ms.is_live && ms.live_thumbnail ? ms.live_thumbnail : ms.vod_thumbnail);
-            const thumb = src
-                ? `<img src="${esc(src)}" alt="" loading="lazy" class="streamer-group-stream-thumb-img" onerror="_sgThumbFail(this)">`
-                : _SG_THUMB_PLACEHOLDER;
-            const when = ms.is_live
-                ? `<span class="sg-live"><span class="sg-live-dot"></span> Live now</span>${ms.live_started_at ? ` · ${formatUptime(ms.live_started_at)}` : ''}`
-                : `<i class="fa-solid fa-clock"></i> ${ms.last_live_at ? timeAgo(ms.last_live_at) : 'long ago'}${replay ? ' · <span class="sg-replay">Replay</span>' : ''}`;
-            const label = replay ? `Watch the replay of ${ms.title || 'this stream'}` : ms.is_live ? `Watch ${ms.title || 'the stream'} live` : `${ms.title || 'Stream'} on ${s.display_name || s.username}'s channel`;
-            return `
-                <a class="streamer-group-stream${ms.is_live ? ' is-live' : ''}${replay ? ' has-replay' : ''}" href="${href}" aria-label="${esc(label)}" onclick="return handleLinkClick(event, '${href}')">
-                    <div class="streamer-group-stream-thumb">${thumb}${replay ? '<span class="sg-play" aria-hidden="true"><i class="fa-solid fa-play"></i></span>' : ''}</div>
-                    <div class="streamer-group-stream-info">
-                        <div class="streamer-group-stream-title">${esc(ms.title || 'Stream')}</div>
-                        <div class="streamer-group-stream-time muted">${when}</div>
-                    </div>
-                </a>`;
-        }).join('') : `<a class="streamer-group-stream" href="${channelHref}" onclick="return handleLinkClick(event, '${channelHref}')">
-                    <div class="streamer-group-stream-info"><div class="streamer-group-stream-title muted">No streams</div></div>
-                </a>`;
-        return `
-            <div class="streamer-group-card">
-                <div class="streamer-group-header">
-                    <a class="streamer-group-identity" href="${channelHref}" onclick="return handleLinkClick(event, '${channelHref}')">
-                        ${avatar}
-                        <span class="streamer-group-name">${esc(s.display_name || s.username)}</span>
-                        ${s.live
-                            ? `<span class="streamer-group-last-online sg-live"><span class="sg-live-dot"></span> LIVE · <i class="fa-solid fa-eye"></i> ${Number(s.live.viewer_count) || 0}</span>`
-                            : `<span class="streamer-group-last-online muted"><i class="fa-solid fa-clock"></i> ${timeAgo(s.last_online_at)}</span>`}
-                    </a>
-                </div>
-                ${_cardAiHTML(s.ai_overview_short, s.ai_overview)}
-                ${s.top_goal ? (() => {
-                    const pct = Math.min(100, Math.round((s.top_goal.current / s.top_goal.target) * 100));
-                    return `<div class="streamer-group-goal" title="${esc(s.top_goal.title)}: ${Number(s.top_goal.current).toLocaleString()} / ${Number(s.top_goal.target).toLocaleString()} Vibes">
-                        <span class="sgg-title"><i class="fa-solid fa-bullseye"></i> ${esc(s.top_goal.title)}</span>
-                        <div class="goal-bar"><div class="goal-fill" style="width:${pct}%"></div></div>
-                        <span class="sgg-pct">${pct}%</span>
-                    </div>`;
-                })() : ''}
-                <div class="streamer-group-streams">${streamsHtml}</div>
-            </div>
-        `;
-    }).join(''));
 }
 
 async function loadHomeRecentVods(opts) {

@@ -120,38 +120,20 @@
     <!-- Star of OpenVibe — featured streamer spotlight (star_streamer setting / STAR_STREAMER env) -->
     <div class="home-star-section" id="home-star-section"><div class="ovsk ovsk-panel" aria-hidden="true"><div class="ovsk-bar" style="height:14px;width:45%"></div><div class="ovsk-bar" style="height:10px;width:92%"></div><div class="ovsk-bar" style="height:10px;width:68%"></div><div class="ovsk-bar" style="height:10px;width:80%"></div></div></div>
 
-        <div class="hero-egg" id="hero-egg" style="display:none">
-            <button class="hero-egg-head" type="button" onclick="toggleHeroEgg()">
-                <span class="hero-egg-icon">🥚</span>
-                <span class="hero-egg-titles"><span class="hero-egg-kicker">Today's Secret</span><span class="hero-egg-title" id="hero-egg-title"></span></span>
-                <span class="hero-egg-status" id="hero-egg-status"></span>
-                <i class="fa-solid fa-chevron-down hero-egg-chev"></i>
+        <div class="home-daily-quest" id="home-daily-quest" hidden>
+            <button class="home-daily-head" type="button" id="home-daily-toggle" aria-expanded="false" aria-controls="home-daily-body">
+                <span class="home-daily-icon ov-icon" data-icon="quest" data-size="32" aria-hidden="true"></span>
+                <span class="home-daily-titles"><span class="home-daily-kicker" id="home-daily-kicker"></span><span class="home-daily-title" id="home-daily-title"></span><span class="home-daily-bar" aria-hidden="true"><i></i><i></i><i></i></span></span>
+                <span class="home-daily-chip" id="home-daily-chip"></span>
+                <i class="fa-solid fa-chevron-down home-daily-chev" aria-hidden="true"></i>
             </button>
-            <div class="hero-egg-body">
-                <div class="hero-egg-inner">
-                    <p class="hero-egg-intro">A new secret every day. Each clue is one key, in order. Type the keys anywhere on the site, or tap them below.</p>
-                    <div class="hero-egg-slots" id="hero-egg-slots" role="group" aria-label="Your key sequence"></div>
-                    <ol class="hero-egg-clues" id="hero-egg-clues"></ol>
-                    <div class="hero-egg-pad" id="hero-egg-pad">
-                        <div class="hero-egg-pad-arrows">
-                            <button type="button" class="egg-key" data-tok="left" aria-label="Left">←</button>
-                            <button type="button" class="egg-key" data-tok="up" aria-label="Up">↑</button>
-                            <button type="button" class="egg-key" data-tok="down" aria-label="Down">↓</button>
-                            <button type="button" class="egg-key" data-tok="right" aria-label="Right">→</button>
-                            <button type="button" class="egg-key egg-key--ctl" data-act="back" aria-label="Backspace">⌫</button>
-                            <button type="button" class="egg-key egg-key--ctl" data-act="clear" aria-label="Clear">✕</button>
-                        </div>
-                        <div class="hero-egg-pad-letters" id="hero-egg-letters"></div>
-                    </div>
-                    <div class="hero-egg-foot">
-                        <button type="button" class="hero-egg-reveal" id="hero-egg-reveal" onclick="_eggReveal()"><i class="fa-solid fa-lightbulb"></i> Stuck? Reveal a key</button>
-                        <div class="hero-egg-meta"><span id="hero-egg-count"></span><span id="hero-egg-first"></span><span id="hero-egg-reset"></span></div>
-                    </div>
-                </div>
+            <div class="home-daily-body" id="home-daily-body" hidden>
+                <ol class="home-daily-steps" id="home-daily-steps"></ol>
+                <a class="home-daily-action" id="home-daily-action" href="https://openvibe.quest/"></a>
             </div>
         </div>
 
-    <!-- Community pulse: goals near completion, latest activity, weekly leaders -->
+    <!-- Network pulse: live viewers, stream hours, chat, channel points and daily quests. -->
     <div class="home-section-lazy" id="home-pulse-section" style="display:none">
         <div class="section-header" style="--sc:#f59e0b">
             <h2><i class="fa-solid fa-bolt"></i> Happening Now<small class="section-kicker">the pulse</small></h2>

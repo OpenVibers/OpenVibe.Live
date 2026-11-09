@@ -1,7 +1,7 @@
 'use strict';
 // The home slogans, the daily secret and the Star of OpenVibe are OpenVibe.AI templates (roadmap WS-O task 2): against
 // a stub Network (token endpoint) and a stub AI, each job sends its data (never a prompt) to live.hero.slogans,
-// live.easter_egg or live.home.star and keeps its own rules on the answer (clean lists, clues that point at their
+// live.home.star and keeps its own rules on the answer
 // token, only a real candidate); no answer keeps the old fallback.
 //   node test/ai-templates-jobs.test.js
 const assert = require('assert');
@@ -50,15 +50,6 @@ const last = (wf) => runs.filter((r) => r.workflow === wf).pop();
     await db.initDb();
     await db.setSetting('ai_enabled', 'true');
     try {
-        // The daily secret: AI's code, Live's clue check.
-        answers['live.easter_egg'] = { title: 'Goose Run', code: ['up', 'g', 'left', 'down', 'v'], clues: ['toward the sky', "'goose' begins with it", 'the way rain falls', 'the way rain falls', "'vibe' begins with it"], effect: 'rainbow', reward: 'Honk!' };
-        const egg = await require('../server/ai/easter-egg-job')._generate();
-        assert.deepStrictEqual(last('live.easter_egg').input, {}, 'no vibe: an empty input, no prompt');
-        assert.deepStrictEqual([egg.ai, egg.title, egg.code, egg.effect], [true, 'Goose Run', ['up', 'g', 'left', 'down', 'v'], 'rainbow']);
-        assert.notStrictEqual(egg.clues[2], 'the way rain falls', 'a clue that does not point at its token is replaced');
-        delete answers['live.easter_egg'];
-        assert.ok(!(await require('../server/ai/easter-egg-job')._generate()).ai, 'no answer: the seeded code');
-
         // The star: only a real, eligible candidate.
         const star = require('../server/home/star-job');
         const cands = [{ id: 1, username: 'ann', display_name: 'Ann', sessions: 3, hours: 5, peak_viewers: 2, avg_peak: 1, chat_lines: 10, new_followers: 1, takes: 0, followers: 4, last_live_at: '2026-09-27', overview: 'codes   rust', language: 'en', category: 'desktop' },
