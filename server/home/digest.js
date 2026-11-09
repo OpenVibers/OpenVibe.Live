@@ -1,5 +1,22 @@
 'use strict';
 
+const { frontPageOk } = require('./front-page-text');
+
+/** Rows arrive best first. Skip unsafe or unlabelled takes before keeping three distinct topics. */
+function selectTopics(rows) {
+    const seen = new Set();
+    return (rows || []).map((r) => {
+        let quote = null;
+        try { quote = JSON.parse(r.quotes_json || '[]')[0] || null; } catch { /* use the headline */ }
+        return { id: r.id, stream_id: r.stream_id, text: quote?.text || r.title, topic: r.topic, kind: r.kind,
+            said_at: r.said_at, username: r.username, display_name: r.display_name, avatar_url: r.avatar_url };
+    }).filter((r) => {
+        if (!frontPageOk(r.text) || !frontPageOk(r.topic) || seen.has(r.topic)) return false;
+        seen.add(r.topic);
+        return true;
+    }).slice(0, 3);
+}
+
 const esc = (value) => String(value == null ? '' : value).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 const age = (value) => {
     const ms = Date.now() - Date.parse(value);
@@ -49,4 +66,4 @@ function render(d) {
     return `<div class="digest-head"><h2 class="digest-title">Since you were here <span>· ${esc(since)}</span></h2></div><div class="digest-tiles">${tiles}</div>${topics ? `<section class="digest-section"><h3>What they talked about</h3>${topics}</section>` : ''}${people ? `<section class="digest-section"><h3>Who streamed</h3>${people}</section>` : ''}${across}`;
 }
 
-module.exports = { render };
+module.exports = { render, selectTopics };

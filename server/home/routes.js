@@ -15,7 +15,7 @@ const db = require('../db/database');
 const { can } = require('../auth/permissions');
 const media = require('../media-client');
 const { videoUrl } = require('../web/video-url');
-const { render: renderDigest } = require('./digest');
+const { render: renderDigest, selectTopics } = require('./digest');
 const rundownRead = require('../rundown/read');
 
 const router = express.Router();
@@ -599,7 +599,6 @@ router.get('/digest', optionalAuth, async (req, res) => {
         // A take is shown only when the stream is in this visit's window, the topic is live, and Rundown allows everyone to see it.
         let topics = [];
         try {
-            const { frontPageOk } = require('./front-page-text');
             const { AUDIENCE_JOINS, VISIBLE } = require('../rundown/read');
             const rows = await db.all(`SELECT s.id, s.stream_id, s.title, s.quotes_json, s.said_at, t.title AS topic, t.kind, u.username, u.display_name, u.avatar_url
                 FROM rundown_segments s JOIN streams stream ON stream.id = s.stream_id
@@ -608,11 +607,7 @@ router.get('/digest', optionalAuth, async (req, res) => {
                 WHERE s.status = 'live' AND t.status = 'live' AND s.said_at >= @since AND stream.started_at >= @since
                 AND s.score >= 4 AND COALESCE(u.is_banned, 0) = 0 AND ${VISIBLE('s')}
                 ORDER BY s.score DESC, s.said_at DESC LIMIT 40`, { since: sinceSql, viewer: null });
-            const seen = new Set();
-            topics = rows.map((r) => { let q = null; try { q = JSON.parse(r.quotes_json || '[]')[0] || null; } catch { /* */ }
-                return { id: r.id, stream_id: r.stream_id, text: q?.text || r.title, topic: r.topic, kind: r.kind,
-                    said_at: r.said_at, username: r.username, display_name: r.display_name, avatar_url: r.avatar_url }; })
-                .filter((r) => frontPageOk(r.text) && frontPageOk(r.topic) && !seen.has(r.topic) && (seen.add(r.topic), true)).slice(0, 3);
+            topics = selectTopics(rows);
         } catch { topics = []; }
         let nextStream = null;
         if (!stats.streams && !stats.takes && !stats.new_members && !stats.new_follows && !stats.chat_lines) {
