@@ -26,6 +26,7 @@
    not the line box, and digits overflow it. */
 .ovnum{--ovnum-h:1.25em;display:inline-flex;align-items:center;line-height:var(--ovnum-h);font-variant-numeric:tabular-nums}
 .ovnum-cell{display:inline-block;line-height:var(--ovnum-h)}
+.ovnum-sr{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap;border:0}
 .ovnum-digit{display:inline-block;overflow:hidden;height:var(--ovnum-h);width:1ch;position:relative}
 .ovnum-track{display:block;transition:transform var(--ovnum-dur,.62s) cubic-bezier(.22,1,.28,1)}
 .ovnum-still .ovnum-track{transition:none}
@@ -61,17 +62,22 @@
         // Rebuild only when the shape changes; otherwise reuse the cells so digits can roll.
         if (el.dataset.shape !== chars.map(c => (/\d/.test(c) ? '#' : c)).join('')) {
             el.textContent = '';
+            // The number itself, for screen readers, copy and search: the rolling strips hold every digit 0-9 and
+            // read as "0123456789" for each one (11-09), so they are hidden from them.
+            const sr = document.createElement('span'); sr.className = 'ovnum-sr'; el.appendChild(sr);
             for (const ch of chars) {
                 if (/\d/.test(ch)) {
-                    const d = document.createElement('span'); d.className = 'ovnum-digit';
+                    const d = document.createElement('span'); d.className = 'ovnum-digit'; d.setAttribute('aria-hidden', 'true');
                     d.appendChild(digitTrack()); el.appendChild(d);
                 } else {
-                    const c = document.createElement('span'); c.className = 'ovnum-cell'; c.textContent = ch; el.appendChild(c);
+                    const c = document.createElement('span'); c.className = 'ovnum-cell'; c.setAttribute('aria-hidden', 'true'); c.textContent = ch; el.appendChild(c);
                 }
             }
             el.dataset.shape = chars.map(c => (/\d/.test(c) ? '#' : c)).join('');
             animate = false;   // a freshly built shape has nothing to roll from
         }
+        const sr = el.querySelector(':scope > .ovnum-sr');
+        if (sr) sr.textContent = text;
         const digits = el.querySelectorAll('.ovnum-digit');
         let di = 0;
         for (const ch of chars) {
