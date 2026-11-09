@@ -2852,6 +2852,11 @@ body.bc-studio-on #bc-chat-messages .chat-conn-status { display: block !importan
 .bcs-golive-btn:focus-visible { outline: 3px solid #93c5fd; outline-offset: 2px; }
 .bcs-golive-where { color: var(--text-secondary, #a1a1aa); font-size: 0.76rem; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 body.bc-golive-dock-on .messenger-toggle { display: none !important; }
+/* The Dock's pill (openvibe-shared dock.js, in a bottom corner) rides above the Go live dock: it sat on the button's
+   right half, so a tap there opened the Agent panel instead of going live (11-09). Top corners stay where they are. */
+body.bc-golive-dock-on .ovdk-pill:not([data-corner^="top"]) {
+    bottom: calc(104px + var(--ovnav-appbar-h, 0px) + env(safe-area-inset-bottom, 0px));   /* the page's own clearance (below) */
+}
 /* The page keeps room at its foot for the dock, so its last fields are never under it. */
 body.bc-golive-dock-on #page-broadcast { padding-bottom: calc(104px + var(--ovnav-appbar-h, 0px) + env(safe-area-inset-bottom, 0px)); }
 
