@@ -2860,7 +2860,7 @@ body.bc-studio-on #bc-chat-messages .chat-conn-status { display: block !importan
 /* The Dock's pill (openvibe-shared dock.js, in a bottom corner) rides above the Go live dock: it sat on the button's
    right half, so a tap there opened the Agent panel instead of going live (11-09). Top corners stay where they are. */
 body.bc-golive-dock-on .ovdk-pill:not([data-corner^="top"]) {
-    bottom: calc(104px + var(--ovnav-appbar-h, 0px) + env(safe-area-inset-bottom, 0px));   /* the page's own clearance (below) */
+    bottom: calc(104px + max(var(--ovnav-appbar-h, 0px), var(--gl-keyboard, 0px)) + env(safe-area-inset-bottom, 0px));   /* the page's own clearance (below); above the keyboard when it is up */
 }
 /* The page keeps room at its foot for the dock, so its last fields are never under it. */
 body.bc-golive-dock-on #page-broadcast { padding-bottom: calc(104px + max(var(--ovnav-appbar-h, 0px), var(--gl-keyboard, 0px)) + env(safe-area-inset-bottom, 0px)); }
@@ -3416,3 +3416,7 @@ body.bc-golive-dock-on #page-broadcast { padding-bottom: calc(104px + max(var(--
 .gl-label--ai { border-style: dashed; color: var(--accent); }
 @media (pointer: coarse) { .gl-label { min-height: 44px; } }
 @media (prefers-reduced-motion: reduce) { .gl-label { transition: none; } }
+
+/* One "Turn on camera" (11-09 review): on a phone the Go live dock at the thumb carries it, so the card keeps the words
+   and the other ways, not a second identical button. */
+body.bc-golive-dock-on #bc-perm-btn { display: none; }

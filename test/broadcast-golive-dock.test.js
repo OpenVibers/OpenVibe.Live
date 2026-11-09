@@ -11,5 +11,5 @@ assert.ok(!/html:has\(#page-broadcast\.active\) \.ovnav-appbar \{ display: none;
 assert.ok(!/html:has\(#page-broadcast\.active\) \{ --ovnav-appbar-h: 0px; \}/.test(css), 'and keeps its room');
 assert.match(css, /body\.bc-studio-on \.ovnav-appbar \{ display: none !important; \}/, 'the live studio still owns the screen');
 assert.match(css, /\.bcs-golive \{\s*position: fixed; left: 0; right: 0; bottom: var\(--ovnav-appbar-h, 0px\);/, 'the dock sits above the bottom edge');
-assert.match(css, /body\.bc-golive-dock-on #page-broadcast \{ padding-bottom: calc\(104px \+ var\(--ovnav-appbar-h, 0px\) \+ env\(safe-area-inset-bottom, 0px\)\); \}/, 'room for the dock and the bar');
+assert.match(css, /body\.bc-golive-dock-on #page-broadcast \{ padding-bottom: calc\(104px \+ max\(var\(--ovnav-appbar-h, 0px\), var\(--gl-keyboard, 0px\)\) \+ env\(safe-area-inset-bottom, 0px\)\); \}/, 'room for the dock and the bar');
 console.log('go live dock: setting up keeps the app bar; the dock sits above it and never covers the last fields');
