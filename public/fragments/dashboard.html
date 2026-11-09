@@ -15,26 +15,6 @@
             </div>
 
             <div class="ch-tab-panel dash-tab-panel active" id="dash-panel-home" role="tabpanel"><div class="dash-grid" id="dash-grid-home">
-            <section class="dash-card" id="dash-bench-stream" aria-labelledby="dash-bench-title">
-                <h3 id="dash-bench-title">Bench on stream</h3>
-                <form id="dash-bench-form">
-                    <label for="dash-bench-kind">Kind</label>
-                    <select class="form-input" id="dash-bench-kind" name="kind" required>
-                        <option value="design.page">Design page</option><option value="design.component">Design component</option>
-                        <option value="meme.caption">Meme caption</option><option value="chat.reply">Chat reply</option>
-                        <option value="games.fun">Games fun</option><option value="vision.pair">Vision pair</option>
-                        <option value="codes.review">Codes review</option><option value="surf.desk">Surf desk</option>
-                        <option value="speech.tts">Speech TTS</option><option value="translate.ja">Translate Japanese</option>
-                        <option value="search.answer">Search answer</option>
-                    </select>
-                    <label for="dash-bench-prompt">Prompt</label>
-                    <textarea class="form-input" id="dash-bench-prompt" name="prompt" maxlength="4000" required></textarea>
-                    <label for="dash-bench-duration">Vote time (seconds)</label>
-                    <input class="form-input" id="dash-bench-duration" name="duration" type="number" min="15" max="600" value="60" required>
-                    <button class="btn" type="submit">Start round</button>
-                </form>
-                <p id="dash-bench-status" role="status"></p>
-            </section>
             </div></div>
             <div class="ch-tab-panel dash-tab-panel" id="dash-panel-chatai" role="tabpanel"><div class="dash-grid" id="dash-grid-chatai"></div></div>
             <div class="ch-tab-panel dash-tab-panel" id="dash-panel-moderation" role="tabpanel"><div class="dash-grid" id="dash-grid-moderation"></div></div>
@@ -65,10 +45,10 @@
                         <div class="key-display">
                             <input type="text" id="dash-obs-chat-overlay-url" readonly class="form-input">
                             <button class="btn btn-small" onclick="copyDashObsOverlayUrl()" title="Copy overlay URL">
-                                <i class="fa-solid fa-copy"></i>
+                                <i class="fa-solid fa-copy" aria-hidden="true"></i> Copy
                             </button>
                             <button class="btn btn-small" onclick="openDashObsOverlay()" title="Open overlay">
-                                <i class="fa-solid fa-arrow-up-right-from-square"></i>
+                                <i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i> Preview
                             </button>
                         </div>
                     </div>
@@ -85,6 +65,30 @@
                     </div>
                     <ul class="dash-scenes" id="dash-scenes"></ul>
                 </div>
+
+                <!-- Bench on stream (bench-stream-dashboard.js): a round chat votes on, so it sits in the Chat tab beside the
+                     scenes. It was static markup in the Home grid, so it came first on every dashboard, above the profile. -->
+                <section class="dash-card" id="dash-bench-stream" aria-labelledby="dash-bench-title">
+                    <h3 id="dash-bench-title"><i class="fa-solid fa-scale-balanced" aria-hidden="true"></i> Bench on stream</h3>
+                    <p class="muted" style="margin-bottom:12px">Two AI models answer your prompt on stream, and chat votes for the better one with !1, !2 or !tie.</p>
+                    <form id="dash-bench-form" class="dash-bench-form">
+                        <label for="dash-bench-kind">Kind</label>
+                        <select class="form-input" id="dash-bench-kind" name="kind" required>
+                            <option value="design.page">Design page</option><option value="design.component">Design component</option>
+                            <option value="meme.caption">Meme caption</option><option value="chat.reply">Chat reply</option>
+                            <option value="games.fun">Games fun</option><option value="vision.pair">Vision pair</option>
+                            <option value="codes.review">Codes review</option><option value="surf.desk">Surf desk</option>
+                            <option value="speech.tts">Speech TTS</option><option value="translate.ja">Translate Japanese</option>
+                            <option value="search.answer">Search answer</option>
+                        </select>
+                        <label for="dash-bench-prompt">Prompt</label>
+                        <textarea class="form-input" id="dash-bench-prompt" name="prompt" maxlength="4000" rows="3" placeholder="A landing page for a neighbourhood bakery" required></textarea>
+                        <label for="dash-bench-duration">Vote time (seconds)</label>
+                        <input class="form-input" id="dash-bench-duration" name="duration" type="number" min="15" max="600" value="60" required>
+                        <button class="btn btn-primary" type="submit">Start round</button>
+                    </form>
+                    <p id="dash-bench-status" role="status"></p>
+                </section>
 
                 <!-- API Tokens (Bot / Integration) -->
                 <div class="dash-card" id="dash-card-tokens">
