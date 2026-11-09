@@ -21,6 +21,20 @@ const router = express.Router();
 const SLOT_RE = /^@?[A-Za-z0-9][A-Za-z0-9_.-]{0,79}$/;
 const SHARE_TEXT_MAX = 500;
 
+// The browser never receives its Network token. Live forwards only the signed-in person's choices to Cam.
+router.get('/settings', requireAuth, async (req, res) => {
+    try {
+        if (req.authSource === 'api_token') return res.status(403).json({ error: 'Sign in with your Network account' });
+        return res.json(await cam.cameraSettings({ token: extractToken(req) }));
+    } catch (err) { return res.status(err.status || 502).json({ error: err.message }); }
+});
+router.put('/settings', requireAuth, async (req, res) => {
+    try {
+        if (req.authSource === 'api_token') return res.status(403).json({ error: 'Sign in with your Network account' });
+        return res.json(await cam.cameraSettings({ token: extractToken(req), method: 'PUT', settings: req.body }));
+    } catch (err) { return res.status(err.status || 502).json({ error: err.message }); }
+});
+
 async function liveStream(req, res) {
     const streamId = req.body && Number(req.body.stream_id);
     if (!Number.isInteger(streamId) || streamId <= 0) {

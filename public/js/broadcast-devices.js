@@ -403,7 +403,7 @@ async function populateCreateFormDevices() {
         const hasLabels = devices.some(d => d.label);
         const permReq = document.getElementById('bc-perm-request');
         const devSelects = document.getElementById('bc-device-selects');
-        if (hasLabels) {
+        if (hasLabels && window._glCameraAllowed) {
             // Already have permissions — show dropdowns directly
             if (permReq) permReq.style.display = 'none';
             if (devSelects) devSelects.style.display = '';
@@ -499,32 +499,40 @@ async function requestMediaPermissions() {
 
     try {
         let tempStream;
+        const core = await _glCamCore();
+        const mode = _wsState.selectedMs?.browser_mode || _wsState.profile?.browserMode || 'camera';
         // Strategy 1: combined audio+video
         try {
             if (dbg) dbg.textContent = 'Requesting camera + mic...';
-            tempStream = await _getUserMediaWithTimeout({ audio: true, video: true });
+            tempStream = await core.open({ audio: mode !== 'camera_only', video: mode !== 'mic_only', facing: window._glCamSettings?.facing || 'user', resolution: window._glCamSettings?.resolution || '720' });
         } catch (firstErr) {
             console.warn('[Broadcast] Combined getUserMedia failed:', firstErr.message, '— trying separately');
             // Strategy 2: separate requests (common on Android)
             if (dbg) dbg.textContent = 'Combined failed, trying separately...';
             let vidStream, audStream;
-            try { vidStream = await _getUserMediaWithTimeout({ video: { facingMode: 'user' } }, 10000); } catch (ve) {
+            try { if (mode !== 'mic_only') vidStream = await _getUserMediaWithTimeout({ video: { facingMode: 'user' } }, 10000); } catch (ve) {
                 console.warn('[Broadcast] Video facingMode failed:', ve.message);
                 // Strategy 2b: bare minimum video
                 try { vidStream = await _getUserMediaWithTimeout({ video: true }, 10000); } catch (ve2) {
                     console.warn('[Broadcast] Video-only getUserMedia failed:', ve2.message);
                 }
             }
-            try { audStream = await _getUserMediaWithTimeout({ audio: true }, 10000); } catch (ae) { console.warn('[Broadcast] Audio-only getUserMedia failed:', ae.message); }
+            try { if (mode !== 'camera_only') audStream = await _getUserMediaWithTimeout({ audio: true }, 10000); } catch (ae) { console.warn('[Broadcast] Audio-only getUserMedia failed:', ae.message); }
             if (!vidStream && !audStream) throw new Error('No camera or microphone available');
             tempStream = new MediaStream();
             if (vidStream) vidStream.getTracks().forEach(t => { tempStream.addTrack(t); });
             if (audStream) audStream.getTracks().forEach(t => { tempStream.addTrack(t); });
         }
+        const hasVideo = tempStream.getVideoTracks().length > 0;
+        const hasAudio = tempStream.getAudioTracks().length > 0;
         tempStream.getTracks().forEach(t => t.stop());
+        if (mode !== 'mic_only' && !hasVideo || mode !== 'camera_only' && !hasAudio) throw new DOMException('The requested device was not available', 'NotFoundError');
         if (dbg) dbg.textContent = 'Enumerating devices...';
-        const devices = await navigator.mediaDevices.enumerateDevices();
+        const devices = await core.devices();
         _populateCreateDeviceDropdowns(devices);
+        const saved = window._glCamSettings;
+        const camSelect = document.getElementById('bc-create-camera');
+        const micSelect = document.getElementById('bc-create-audio');
 
         // After permission grant, re-check what the browser actually gave us
         // and try to match to the user's saved preference. If no preference exists,
@@ -537,15 +545,30 @@ async function requestMediaPermissions() {
         if (savedCamera && savedCamera !== 'default') {
             _syncCameraSelectionUI(savedCamera, { persist: false });
         }
+        if (camSelect && saved) {
+            const preferred = [...camSelect.options].find((o) => o.value === saved.lens)
+                || [...camSelect.options].find((o) => o.dataset.facing === saved.facing);
+            if (preferred) _syncCameraSelectionUI(preferred.value, { persist: false });
+        }
+        if (saved?.mic && micSelect && [...micSelect.options].some((o) => o.value === saved.mic)) _syncAudioSelectionUI(saved.mic, { persist: false });
 
         if (permReq) permReq.style.display = 'none';
         if (devSelects) devSelects.style.display = '';
+        window._glCameraAllowed = true;
+        document.getElementById('gl-preview')?.classList.add('is-allowed');
+        _glPreviewSync();
         toast('Camera & microphone access granted', 'success');
     } catch (err) {
         console.warn('[Broadcast] Permission request failed:', err.message, err.name);
         const errDetail = `${err.name || 'Error'}: ${err.message}`;
         if (dbg) { dbg.style.display = ''; dbg.textContent = errDetail; }
         if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+            const hint = document.getElementById('bc-perm-hint-text');
+            if (hint) hint.textContent = /firefox/i.test(navigator.userAgent)
+                ? 'Camera blocked. Select the permission icon beside this address, clear the block, then try again.'
+                : /safari/i.test(navigator.userAgent) && !/chrome/i.test(navigator.userAgent)
+                    ? 'Camera blocked. Open this site’s camera and microphone settings in Safari, allow access, then try again.'
+                    : 'Camera blocked. Select the lock or camera icon beside this address, allow access, then try again.';
             toast('Camera/mic permission denied — check your browser settings or tap the lock icon in the address bar', 'error');
         } else if (err.name === 'NotFoundError') {
             toast('No camera or microphone found on this device', 'error');
@@ -608,4 +631,3 @@ function _populateCreateDeviceDropdowns(devices) {
         _syncCameraSelectionUI(_getPreferredCameraId(), { persist: false });
     }
 }
-
