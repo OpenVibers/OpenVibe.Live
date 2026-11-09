@@ -4691,7 +4691,10 @@ body :is(.modal-overlay, .bc-ws-confirm-overlay, .bc-modal, .bc-perm-overlay, .b
 /* Offline area reuses .stream-layout (main + chat sidebar). The offline screen fills
    the main column with small gutters; the header sits above it, mirroring the live page. */
 .ch-offline-area .ch-offline-screen { margin: 14px; width: auto; flex-shrink: 0; }
-.ch-offline-header-info { flex: 1; min-width: 0; }
+/* The name block keeps a real width: with a 0 basis it shrank to nothing whenever the actions fit beside the picture
+   (your own channel on a phone: Share and Ask your agent, no Follow), and its text ran under the buttons. Now the
+   actions wrap to their own row instead. */
+.ch-offline-header-info { flex: 1 1 220px; min-width: 0; }
 .ch-offline-header-info h1 { margin: 0 0 2px; font-size: 1.4rem; }
 .ch-offline-banner {
     text-align: center; padding: 60px 20px;
