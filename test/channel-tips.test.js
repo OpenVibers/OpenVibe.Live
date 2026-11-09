@@ -75,7 +75,11 @@ console.warn = () => {};
 
     // The home pulse and stats count every rail.
     const pulse = await db.getHomePulse();
-    assert.ok(!('goals' in pulse) && !('topSupporters' in pulse), 'the home pulse does not feature donation goals or tips');
+    // The new home rail no longer draws these; the pulse still answers them for one release, for tabs on the previous
+    // client (test/n-1.test.js). They go in the next release.
+    assert.strictEqual(pulse.latestTip.from_username, 'ann', 'the newest tip with an amount');
+    assert.strictEqual(Number(pulse.latestTip.amount), 400);
+    assert.deepStrictEqual(pulse.topSupporters.map((r) => [r.username, r.display_name, Number(r.total)]), [['ann', 'Ann', 550], [null, 'pcfan', 300]]);
     const stats = await db.getHomeStats();
     assert.strictEqual(stats.vibesTipped, 850);
     assert.strictEqual(stats.supporters, 3, 'ann, pcfan and the supporter who hid the amount');
