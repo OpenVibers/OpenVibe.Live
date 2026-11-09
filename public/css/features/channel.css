@@ -1864,3 +1864,22 @@ html[data-ov-motion="reduced"] #page-channel #ch-tabs { transition: none; }
 }
 @keyframes chChatRise { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) { #page-channel.chat-revealing .stream-layout > .chat-sidebar { animation: none !important; } }
+
+/* ── The player's bar, 11-09 (the owner: "the buttons and the icons… better sized and centred… better tags"). One button
+   size (40 px, 44 on a touch screen) with the icon centred at 18 px; LIVE is a red pill with a breathing dot (a grey
+   glass pill when you are behind, "Go live"); the viewer count and the uptime are glass chips at a readable size;
+   on a phone the uptime steps aside before anything else. ── */
+.video-controls { min-height: 52px; padding: 4px 10px 6px; gap: 4px; }
+.video-controls .vc-btn { width: 40px; height: 40px; min-width: 40px; min-height: 40px; padding: 0; border-radius: 12px; font-size: 18px; line-height: 1; }
+.video-controls .vc-btn > i { width: 20px; text-align: center; }
+@media (pointer: coarse) { .video-controls .vc-btn { width: 44px; height: 44px; min-width: 44px; min-height: 44px; } }
+.video-controls .dvr-live-btn { width: auto !important; height: 28px !important; min-height: 28px !important; padding: 0 11px 0 9px !important; gap: 7px;
+    background: var(--live-red, #e5484d) !important; font-size: 12px !important; letter-spacing: .08em; box-shadow: 0 2px 10px rgba(229, 72, 77, .35); }
+.video-controls .dvr-live-btn .live-dot { width: 7px; height: 7px; background: #fff; box-shadow: 0 0 0 0 rgba(255, 255, 255, .6); animation: vc-live-breathe 1.8s ease-in-out infinite; }
+.video-controls .dvr-live-btn.dvr-behind { background: rgba(255, 255, 255, .16) !important; box-shadow: none; }
+@keyframes vc-live-breathe { 0%, 100% { box-shadow: 0 0 0 0 rgba(255, 255, 255, .55); } 50% { box-shadow: 0 0 0 4px rgba(255, 255, 255, 0); } }
+html[data-ov-motion=reduced] .video-controls .dvr-live-btn .live-dot { animation-duration: 3.6s; }
+.video-controls .viewer-badge, .video-controls .uptime-badge { height: 28px; min-height: 28px; padding: 0 10px; border-radius: 999px; gap: 6px; font-size: 12.5px !important; font-weight: 600;
+    background: rgba(255, 255, 255, .12); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); color: #fff; }
+.video-controls .viewer-badge i, .video-controls .uptime-badge i { font-size: 12px; color: rgba(255, 255, 255, .75); }
+@media (max-width: 480px) { .video-controls .uptime-badge { display: none; } .video-controls .viewer-badge { padding: 0 9px; } }
