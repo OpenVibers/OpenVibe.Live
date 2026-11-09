@@ -1488,39 +1488,7 @@ async function getHomePulse() {
         SUM(p.delta) AS points FROM channel_points_log p JOIN users u ON u.id=p.user_id
         WHERE p.delta>0 AND p.created_at >= datetime('now','-7 days') AND COALESCE(u.is_banned,0)=0
         GROUP BY u.id ORDER BY points DESC LIMIT 1`));
-    // The previous home client still reads these fields during mixed-version deploys.
-    // The new rail ignores them; keep their original data and types for one release.
-    const [goals, latestTip, newestFollow, topSupporters, topEarners] = await Promise.all([
-        safe(() => all(`SELECT g.id, g.title, g.current_amount, g.target_amount, g.image_url,
-                u.username, u.display_name
-            FROM donation_goals g JOIN users u ON u.id = g.user_id
-            WHERE g.is_active = 1 AND g.target_amount > 0
-            ORDER BY (CAST(g.current_amount AS REAL) / g.target_amount) DESC, g.current_amount DESC LIMIT 3`), []),
-        safe(() => get(`SELECT t.amount, t.created_at,
-                fu.username AS from_username, COALESCE(fu.display_name, t.username) AS from_display,
-                tu.username AS to_username, tu.display_name AS to_display
-            FROM channel_tips t
-            LEFT JOIN users fu ON fu.id = t.from_user_id
-            JOIN users tu ON tu.id = t.to_user_id
-            WHERE t.amount IS NOT NULL ORDER BY t.id DESC LIMIT 1`)),
-        safe(() => get(`SELECT f.created_at,
-                fu.username AS follower_username, fu.display_name AS follower_display,
-                su.username AS streamer_username, su.display_name AS streamer_display
-            FROM follows f
-            JOIN users fu ON fu.id = f.follower_id
-            JOIN users su ON su.id = f.streamer_id
-            ORDER BY f.id DESC LIMIT 1`)),
-        safe(() => all(`SELECT MAX(u.username) AS username, MAX(COALESCE(u.display_name, u.username, t.username)) AS display_name,
-                MAX(u.avatar_url) AS avatar_url, SUM(t.amount)::float8 AS total
-            FROM channel_tips t LEFT JOIN users u ON u.id = t.from_user_id
-            WHERE t.amount IS NOT NULL AND t.created_at >= datetime('now', '-7 days')
-            GROUP BY ${TIP_SUPPORTER_T} ORDER BY total DESC LIMIT 3`), []),
-        safe(() => all(`SELECT u.username, u.display_name, u.avatar_url, SUM(c.amount)::float8 AS total
-            FROM coin_transactions c JOIN users u ON u.id = c.user_id
-            WHERE c.amount > 0 AND c.created_at >= datetime('now', '-7 days')
-            GROUP BY u.id ORDER BY total DESC LIMIT 3`), []),
-    ]);
-    return { liveChannels, topStreamer, topFan, goals, latestTip, newestFollow, topSupporters, topEarners };
+    return { liveChannels, topStreamer, topFan };
 }
 
 // Nearest active goal per streamer (for Recently Online cards) — one query.
@@ -1550,7 +1518,6 @@ async function vibesStatsSince() {
 // filled with 0 so charts never skip a day.
 // One supporter in channel_tips, with or without a Live account (PowerChat and OpenVibe.Tips supporters have a name only).
 const TIP_SUPPORTER = "COALESCE(from_user_id::text, 'n:' || lower(COALESCE(username, '')))";
-const TIP_SUPPORTER_T = "COALESCE(t.from_user_id::text, 'n:' || lower(COALESCE(t.username, '')))";
 // Each person's first stream: when they became a streamer.
 const FIRST_STREAMS = 'SELECT user_id, MIN(created_at) AS created_at FROM streams WHERE user_id IS NOT NULL GROUP BY user_id';
 const HOME_SERIES = {
