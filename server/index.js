@@ -1151,7 +1151,7 @@ app.get('/media/:username', (req, res) => {
 });
 
 // DM notifications sent before 2026-09-23 linked to /dm/<conversation id>, a page Live never had;
-// the messenger opens the thread from /?dm=<id> now.
+// open the shared Dock on Live for these older links.
 app.get(/^\/dm\/(\d{1,12})\/?$/, (req, res) => res.redirect(302, `/?dm=${req.params[0]}`));
 // The Arena became The Rundown (2026-10-19): a fighter's page is the streamer's Rundown page; every other Arena page
 // (drama stories, beefs, the ears) is gone, so it lands on the Rundown.

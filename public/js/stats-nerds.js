@@ -68,7 +68,29 @@
         return { top: Math.ceil(max / step - 1e-9) * step, step };
     };
 
-    const state = { overlay: null, metrics: [], index: 0, days: 30, view: 'daily', table: false, data: null, req: 0, lastFocus: null, ro: null };
+    const state = { overlay: null, metrics: [], index: 0, days: 30, view: 'daily', table: false, data: null, req: 0, lastFocus: null, ro: null, scroll: null };
+
+    function lockPage() {
+        const html = document.documentElement, body = document.body;
+        const y = window.scrollY;
+        const gap = Math.max(0, window.innerWidth - html.clientWidth);
+        state.scroll = { y, htmlOverflow: html.style.overflow, htmlPadding: html.style.paddingRight,
+            bodyPosition: body.style.position, bodyTop: body.style.top, bodyLeft: body.style.left,
+            bodyRight: body.style.right, bodyWidth: body.style.width };
+        if (gap) html.style.paddingRight = `${(parseFloat(getComputedStyle(html).paddingRight) || 0) + gap}px`;
+        html.style.overflow = 'hidden';
+        body.style.position = 'fixed'; body.style.top = `-${y}px`;
+        body.style.left = '0'; body.style.right = '0'; body.style.width = '100%';
+    }
+    function unlockPage() {
+        const s = state.scroll; if (!s) return;
+        state.scroll = null;
+        const html = document.documentElement, body = document.body;
+        html.style.overflow = s.htmlOverflow; html.style.paddingRight = s.htmlPadding;
+        body.style.position = s.bodyPosition; body.style.top = s.bodyTop;
+        body.style.left = s.bodyLeft; body.style.right = s.bodyRight; body.style.width = s.bodyWidth;
+        window.scrollTo(0, s.y);
+    }
 
     /** Every chartable chip on the hero, in board order, deduplicated by metric. */
     function collectMetrics() {
@@ -109,6 +131,7 @@
         document.removeEventListener('keydown', onKey, true);
         const ov = state.overlay;
         state.overlay = null;
+        unlockPage();
         ov.classList.add('is-closing');
         setTimeout(() => ov.remove(), 160);
         try { state.lastFocus?.focus?.({ preventScroll: true }); } catch { /* */ }
@@ -172,6 +195,7 @@
             </div>`;
         document.body.appendChild(ov);
         state.overlay = ov;
+        lockPage();
         ov.addEventListener('click', (e) => { if (e.target === ov) close(); });
         ov.querySelector('.sn-close').addEventListener('click', close);
         ov.querySelector('.sn-prev').addEventListener('click', () => step(-1));
@@ -189,6 +213,24 @@
             sx = null;
             if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5) step(dx < 0 ? 1 : -1);
         }, { passive: true });
+        // Pulling the sheet's header down closes it; the chart and table keep their own scroll.
+        const dragHead = ov.querySelector('.sn-head');
+        let drag = null;
+        dragHead.addEventListener('pointerdown', (e) => {
+            if (e.pointerType !== 'touch' || e.target.closest('button, a, input')) return;
+            drag = { id: e.pointerId, y: e.clientY };
+            try { dragHead.setPointerCapture(e.pointerId); } catch (_) { /* synthetic pointer or interrupted gesture */ }
+        });
+        dragHead.addEventListener('pointermove', (e) => {
+            if (drag && drag.id === e.pointerId) head.style.translate = `0 ${Math.max(0, e.clientY - drag.y)}px`;
+        });
+        const endDrag = (e) => {
+            if (!drag || drag.id !== e.pointerId) return;
+            const dy = e.clientY - drag.y; drag = null; head.style.translate = '';
+            if (dy > 90) close();
+        };
+        dragHead.addEventListener('pointerup', endDrag);
+        dragHead.addEventListener('pointercancel', endDrag);
         const plot = ov.querySelector('.sn-plot');
         // Only a chart that has points: an error answer has none, and redrawing it threw on every resize.
         state.ro = new ResizeObserver(() => { if (state.data?.points && !state.table) drawChart(); });

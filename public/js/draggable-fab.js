@@ -1,5 +1,5 @@
 /**
- * draggable-fab.js — make the floating buttons (DM messenger toggle + global-chat FAB)
+ * draggable-fab.js — make the floating buttons (global chat button)
  * drag-and-droppable, robustly, on desktop and touch.
  *
  * Key behaviours:
@@ -157,41 +157,12 @@
     }
     window.makeFabDraggable = makeFabDraggable;
 
-    // Auto-wire the two known buttons. The FAB is static; the messenger toggle is injected
-    // later by messenger.js — watch for it. (messenger.js also calls this directly.)
-    function tryInit() {
+    // The channel chat button is the only floating button.
+    function boot() {
         var fab = document.getElementById('floating-chat-fab');
         if (fab) makeFabDraggable(fab, 'fabpos:floating-chat-fab');
-        var toggle = document.getElementById('messenger-toggle');
-        if (toggle) makeFabDraggable(toggle, 'fabpos:messenger-toggle');
-        return !!(fab && toggle);
-    }
-
-    function boot() {
-        if (tryInit()) return;
-        var obs = new MutationObserver(function () { if (tryInit()) { /* both wired */ } });
-        obs.observe(document.body, { childList: true, subtree: false });
-        setTimeout(function () { try { obs.disconnect(); } catch (_) {} }, 60000);
     }
 
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
     else boot();
-})();
-
-/* Phones: the floating buttons (messages, global chat, a channel's chat) tuck away while you scroll down to read (they
-   covered cards, titles and the clip feed's sound buttons) and come back when you scroll up, near the top, or at the
-   end of the page. */
-(function () {
-    'use strict';
-    var phone = window.matchMedia('(max-width: 768px) and (pointer: coarse)');
-    var last = window.scrollY || 0, ticking = false;
-    function update() {
-        ticking = false;
-        var y = window.scrollY || 0;
-        var atEnd = y + window.innerHeight >= document.documentElement.scrollHeight - 80;
-        if (!phone.matches || y <= 120 || atEnd || y < last - 4) document.body.classList.remove('fabs-tucked');
-        else if (y > last + 4) document.body.classList.add('fabs-tucked');
-        last = y;
-    }
-    window.addEventListener('scroll', function () { if (!ticking) { ticking = true; requestAnimationFrame(update); } }, { passive: true });
 })();

@@ -217,17 +217,25 @@
         styleEl = document.createElement('style');
         styleEl.id = 'ov-viewer-health-style';
         styleEl.textContent = [
-            '.ov-freeze-notice{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);z-index:40;',
-            'display:flex;align-items:center;gap:10px;max-width:min(92%,420px);padding:9px 12px;border-radius:10px;',
-            'background:rgba(12,12,16,.86);color:#fff;font:13px/1.35 system-ui,-apple-system,Segoe UI,sans-serif;',
-            'box-shadow:0 6px 20px rgba(0,0,0,.35)}',
+            '.ov-freeze-notice{position:absolute;left:50%;top:12px;transform:translateX(-50%);z-index:40;box-sizing:border-box;',
+            'display:flex;align-items:center;gap:10px;width:max-content;max-width:calc(100% - 24px);min-height:44px;padding:6px 6px 6px 12px;border-radius:999px;',
+            'background:rgba(10,12,18,.72);-webkit-backdrop-filter:blur(14px) saturate(1.3);backdrop-filter:blur(14px) saturate(1.3);color:#fff;',
+            'font:500 13px/1.25 Inter,system-ui,-apple-system,Segoe UI,sans-serif;letter-spacing:0;text-align:left;',
+            'box-shadow:0 8px 28px rgba(0,0,0,.4),inset 0 0 0 1px rgba(255,255,255,.1);animation:ov-freeze-in .32s cubic-bezier(.2,.9,.3,1) both}',
             '.ov-freeze-notice[hidden]{display:none}',
-            '.ov-freeze-notice-text{flex:1 1 auto;min-width:0}',
-            '.ov-freeze-notice b{display:block;font-weight:600}',
-            '.ov-freeze-notice small{opacity:.75;font-size:11px}',
-            '.ov-freeze-notice button{flex:0 0 auto;border:1px solid rgba(255,255,255,.35);background:rgba(255,255,255,.1);',
-            'color:#fff;border-radius:7px;padding:5px 9px;font:inherit;font-size:12px;cursor:pointer}',
-            '.ov-freeze-notice button:hover{background:rgba(255,255,255,.2)}',
+            '.ov-freeze-notice::before{content:"";flex:none;width:16px;height:16px;border-radius:50%;border:2.5px solid rgba(255,255,255,.22);',
+            'border-top-color:#4f7cff;border-right-color:#8b5cf6;animation:ov-freeze-turn .9s linear infinite}',
+            '.ov-freeze-notice-text{flex:0 1 auto;min-width:0;display:grid;gap:1px}',
+            '.ov-freeze-notice b{display:block;font-size:13px;font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
+            '.ov-freeze-notice small{display:block;font-size:11.5px;opacity:.72;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
+            '.ov-freeze-notice small:empty{display:none}',
+            '.ov-freeze-notice button{flex:none;display:inline-grid;place-items:center;width:32px;height:32px;padding:0;border:0;border-radius:50%;',
+            'background:rgba(255,255,255,.12);color:#fff;cursor:pointer}',
+            '.ov-freeze-notice button:hover,.ov-freeze-notice button:focus-visible{background:rgba(255,255,255,.24);outline:none}',
+            '.ov-freeze-notice button svg{width:16px;height:16px}',
+            '@keyframes ov-freeze-in{from{opacity:0;transform:translate(-50%,-6px) scale(.96)}}',
+            '@keyframes ov-freeze-turn{to{transform:rotate(360deg)}}',
+            'html[data-ov-motion=reduced] .ov-freeze-notice::before{animation-duration:1.8s}',
         ].join('');
         (document.head || document.documentElement).appendChild(styleEl);
     }
@@ -256,7 +264,10 @@
             text.appendChild(small);
             const btn = document.createElement('button');
             btn.type = 'button';
-            btn.textContent = 'Copy debug info';
+            // An icon button; its word is the tooltip and the accessible name.
+            btn.setAttribute('aria-label', 'Copy details for support');
+            btn.title = 'Copy details for support';
+            btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 9h10v10H9zM5 15V5h10"/></svg>';
             btn.addEventListener('click', () => { try { onCopy && onCopy(); } catch (e) { /* nothing to do */ } });
             noticeEl.appendChild(text);
             noticeEl.appendChild(btn);
@@ -418,8 +429,8 @@
             if (!opts.notice) return;
             showFreezeNotice({
                 container: opts.notice,
-                title: 'The picture froze. Reconnecting…',
-                detail: `Step: ${ladder.stageLabel}`,
+                title: 'Reconnecting…',
+                detail: `The picture froze: ${ladder.stageLabel}`,
                 onCopy: () => {
                     const text = buildDebugReport({
                         streamId: opts.streamId,

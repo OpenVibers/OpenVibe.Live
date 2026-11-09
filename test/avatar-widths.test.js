@@ -30,14 +30,11 @@ const uses = [
     ['chat.js', /ovImgW\(clip\.creator_avatar, 64\)/],
     ['chat.js', /ovImgW\(u\.avatar_url, 64\)/],
     ['chat-shared.js', /typeof ovImgW === 'function' \? ovImgW\(p\.avatar_url, 64\) : p\.avatar_url/],
-    ['messenger.js', /ovImgW\(user\.avatar_url, 96\)/],
 ];
 uses.forEach(([f, re]) => assert.match(js(f), re, `${f}: ${re}`));
-// Read by name too, so the test runner maps the kiosk-safe chat file and the messenger to this test.
+// Read by name too, so the test runner maps the kiosk-safe chat file to this test.
 const chatShared = fs.readFileSync(path.join(__dirname, '..', 'public', 'js', 'chat-shared.js'), 'utf8');
 assert.match(chatShared, /data-full="\$\{esc\(p\.avatar_url\)\}"/);
-const messenger = fs.readFileSync(path.join(__dirname, '..', 'public', 'js', 'messenger.js'), 'utf8');
-assert.match(messenger, /data-full="\$\{esc\(user\.avatar_url\)\}"/);
 // The content feed (Content, AI Moments) builds its avatars as nodes.
 const feed = fs.readFileSync(path.join(__dirname, '..', 'public', 'js', 'content-feed.js'), 'utf8');
 assert.match(feed, /typeof ovImgW === 'function' \? ovImgW\(full, 64\) : full/);

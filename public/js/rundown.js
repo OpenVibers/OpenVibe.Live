@@ -34,7 +34,17 @@ function _rdAgo(d) {
     const h = Math.round(m / 60); if (h < 48) return `${h}h ago`;
     return `${Math.round(h / 24)}d ago`;
 }
-function _rdDay(d) { try { return _rdTime(d).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }); } catch { return ''; } }
+function _rdDay(d) {
+    try {
+        const day = _rdTime(d);
+        const now = new Date();
+        const key = (x) => `${x.getFullYear()}-${x.getMonth()}-${x.getDate()}`;
+        if (key(day) === key(now)) return 'Today';
+        now.setDate(now.getDate() - 1);
+        if (key(day) === key(now)) return 'Yesterday';
+        return day.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+    } catch { return ''; }
+}
 function _rdStamp(sec) { sec = Math.max(0, Math.floor(sec || 0)); const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s = sec % 60; return (h ? `${h}:${String(m).padStart(2, '0')}` : `${m}`) + `:${String(s).padStart(2, '0')}`; }
 function _rdLength(min) { min = Number(min) || 0; return min >= 60 ? `${Math.floor(min / 60)}h ${String(min % 60).padStart(2, '0')}m` : `${min}m`; }
 function _rdName(u) { return u ? (u.display_name || u.username) : ''; }
@@ -75,10 +85,11 @@ function _rdSpeak(btn) {
 }
 
 function _rdReactions(type, id, reactions = {}, mine = null) {
-    return `<div class="rd-react" role="group" aria-label="React">${RD_REACT.map(([k, icon, label]) => {
+    const used = RD_REACT.filter(([k]) => Number(reactions[k] || 0) > 0);
+    return `<div class="rd-react" role="group" aria-label="React"><div class="rd-react-used">${used.map(([k, icon, label]) => {
         const n = Number(reactions[k] || 0);
         return `<button type="button" class="rd-react-btn${mine === k ? ' is-mine' : ''}" data-rd-react="${type}:${id}:${k}" aria-pressed="${mine === k}" aria-label="${_rdEsc(label)}${n ? `, ${n}` : ''}"><span aria-hidden="true">${icon}</span>${n ? `<b>${n}</b>` : ''}</button>`;
-    }).join('')}</div>`;
+    }).join('')}</div><button type="button" class="rd-react-add" data-rd-react-open aria-label="Add a reaction" aria-expanded="false"><span class="rd-react-add-desktop" aria-hidden="true">☺</span><span class="rd-react-add-phone" aria-hidden="true">+😀</span></button><div class="rd-react-pop" role="group" aria-label="Choose a reaction">${RD_REACT.map(([k, icon, label]) => `<button type="button" class="rd-react-choice" data-rd-react="${type}:${id}:${k}" aria-label="${_rdEsc(label)}">${icon}</button>`).join('')}</div></div>`;
 }
 
 // ── Cards ────────────────────────────────────────────────────
@@ -172,19 +183,29 @@ function _rdIssue(g) {
 }
 
 // ── The front page ───────────────────────────────────────────
-function _rdMast(counts) {
-    const today = new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
-    const tally = counts ? [[counts.topics, 'topic'], [counts.takes, 'take'], [counts.episodes, 'episode']].filter(([n]) => n).map(([n, w]) => `${n} ${w}${n === 1 ? '' : 's'}`).join(' · ') : '';
+function _rdMast(counts, stats) {
+    const today = _rdDay(new Date().toISOString());
+    const tiles = counts ? [['fa-hashtag', 'topics', 'Topics'], ['fa-comment', 'takes', 'Takes'], ['fa-film', 'episodes', 'Episodes']] : [];
+    const spark = (series) => {
+        const high = Math.max(1, ...series);
+        const points = series.map((n, i) => `${i * 10},${20 - Math.round(n / high * 18)}`).join(' ');
+        return `<svg class="rd-spark" viewBox="0 0 60 22" aria-hidden="true"><polyline points="${points}"/></svg>`;
+    };
     return `<header class="rd-mast">
-        <div class="rd-mast-line"><span>${_rdEsc(today)}</span>${tally ? `<span>${_rdEsc(tally)}</span>` : ''}</div>
+        <div class="rd-mast-line"><span class="rd-date-chip">${_rdEsc(today)}</span></div>
         <h1 class="rd-title">The Rundown</h1>
         <p class="rd-tagline">What streamers talked about, written up: the topics, their takes in their own words, and every stream as an episode.</p>
+        <div class="rd-stats">${tiles.map(([icon, key, label]) => {
+            const series = stats && stats[key];
+            return `<div class="rd-stat"><i class="fa-solid ${icon}" aria-hidden="true"></i><strong>${series ? series[6] : Number(counts[key]) || 0}</strong><span>${label}${series ? ` today · ${Number(counts[key]) || 0} all time` : ''}</span>${series ? spark(series) : ''}</div>`;
+        }).join('')}</div>
     </header>`;
 }
 // What a visitor can do here, under the masthead of the front page. The page said what it is and never what it is for
 // ("still don't rly know wtf to do with this feature", a viewer, 2026-10-20). "Jump to the moment" opens the top take's.
 function _rdHow() {
-    return `<p class="rd-how">Catch up, follow a topic, jump to the moment, get written up: <a class="rd-how-link" href="#rd-about-h">how it works <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></a>${_rdMe() && _rdMe().username ? ` · <a class="rd-how-link" href="/rundown/${encodeURIComponent(_rdMe().username)}#mine">your Rundown</a>` : ''}</p>`;
+    const yours = _rdMe() && _rdMe().username ? _rdA(`/rundown/${encodeURIComponent(_rdMe().username)}#mine`, 'Your Rundown') : '<a href="/api/auth/sso/login?next=%2Frundown">Your Rundown</a>';
+    return `<div class="rd-how"><p>Catch up on what was said, then jump into the moment.</p><div class="rd-how-actions"><a href="#rd-about-h">How it works</a>${yours}<a href="/rundown/topics">Follow topics</a></div></div>`;
 }
 function _rdOnAir(list) {
     if (!list.length) return '';
@@ -507,6 +528,7 @@ function _rdState(query) {
         following: one('following') === '1',
         mentions: one('mentions') === '1',
         kind: one('kind').slice(0, 20),
+        page: Math.max(1, Math.min(100, Number.parseInt(one('page'), 10) || 1)),
     };
 }
 /** The state as a query string: the same filters, the same order, every time. */
@@ -522,6 +544,7 @@ function _rdQuery(state) {
     if (state.following) p.set('following', '1');
     if (state.mentions) p.set('mentions', '1');
     if (state.kind) p.set('kind', state.kind);
+    if (state.page > 1) p.set('page', String(state.page));
     const s = p.toString();
     return s ? '?' + s : '';
 }
@@ -535,6 +558,7 @@ let _rdPicker = '';
 let _rdPickQueries = { streamer: '', topic: '' };
 let _rdSheetScroll = 0;
 let _rdSearchTimer = null;
+let _rdMoreObserver = null;
 let _rdPreset = null;
 const _rdTopicNames = new Map();
 
@@ -581,7 +605,7 @@ function _rdBar(state, preset) {
         '<div class="rd-bar-row">' +
             '<div class="rd-search">' +
                 '<i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>' +
-                '<input id="rd-search" class="rd-search-input" type="search" autocomplete="off" spellcheck="false" placeholder="Search the Rundown: a topic, a streamer, something they said" value="' + _rdEsc(state.q) + '" aria-label="Search the Rundown">' +
+                '<input id="rd-search" class="rd-search-input" type="search" autocomplete="off" spellcheck="false" placeholder="Search topics, streamers, episodes" value="' + _rdEsc(state.q) + '" aria-label="Search the Rundown">' +
                 (state.q ? '<button type="button" class="rd-search-clear" data-rd-clear="q" aria-label="Clear the search"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>' : '') +
             '</div>' +
             '<button type="button" class="rd-sheet-btn" data-rd-sheet="open" aria-haspopup="dialog">Filters' + (n ? ' (' + n + ')' : '') + '</button>' +
@@ -687,11 +711,11 @@ function _rdSheetPanel(state) {
 function _rdTakeResult(s) {
     const q = (s.quotes || [])[0];
     return '<article class="rd-card rd-take" id="rd-take-' + s.id + '">' +
-        '<div class="rd-compact-top">' + _rdAv(s.user, 26) + '<span class="rd-compact-who">' + _rdUser(s.user) + '</span>' +
-        (s.topic ? _rdTopicFilter(s.topic) : '') + '<time datetime="' + _rdEsc(s.said_at) + '">' + _rdEsc(_rdAgo(s.said_at)) + '</time></div>' +
+        '<div class="rd-compact-top">' + _rdAv(s.user, 28) + '<span class="rd-compact-who">' + _rdUser(s.user) + '</span>' +
+        (s.topic ? _rdTopicFilter(s.topic) : '') + '<time datetime="' + _rdEsc(s.said_at) + '">' + _rdEsc(_rdAgo(s.said_at)) + '</time>' + _rdWatch(s.vod_id, s.sec) + '</div>' +
         '<h3 class="rd-h3">' + _rdEsc(s.title) + '</h3>' +
         (q ? '<blockquote class="rd-quote"><p>“' + _rdEsc(q.text) + '”</p></blockquote>' : '<p class="rd-what">' + _rdEsc(s.what) + '</p>') +
-        '<div class="rd-card-foot">' + _rdReactions('segment', s.id, s.reactions, s.my_reaction) + _rdWatch(s.vod_id, s.sec) + _rdOwnX(s) + '</div>' +
+        '<div class="rd-card-foot">' + _rdReactions('segment', s.id, s.reactions, s.my_reaction) + _rdOwnX(s) + '</div>' +
     '</article>';
 }
 // One take inside an episode: a line, with the moment it was said.
@@ -702,11 +726,11 @@ function _rdTakeMini(s) {
     '</div>';
 }
 // An episode card: the title, the logline, its takes folded to the top ones, and how many are folded away.
-function _rdEpisodeResult(e) {
-    const takes = e.takes || [];
+function _rdEpisodeResult(e, compact = false) {
+    const takes = compact ? [] : e.takes || [];
     const folded = takes.slice(0, e.folded || 3);
     const rest = takes.slice(e.folded || 3);
-    const hidden = Math.max(0, (e.takes_total || takes.length) - folded.length);
+    const hidden = compact ? 0 : Math.max(0, (e.takes_total || takes.length) - folded.length);
     const more = rest.length
         ? '<button type="button" class="rd-fold-btn" data-rd-fold="' + e.stream_id + '" data-rd-count="' + hidden + '">More takes (' + hidden + ')</button>' +
           '<div class="rd-fold-more" data-rd-fold-body="' + e.stream_id + '" hidden>' + rest.map(_rdTakeMini).join('') + '</div>'
@@ -739,13 +763,31 @@ function _rdNoResults(d) {
 }
 function _rdResultsHtml(d, state) {
     if (state.show === 'topics') return (d.topics || []).length ? d.topics.map(_rdTopicCard).join('') : _rdNoResults(d);
-    if (state.show === 'episodes') return (d.episodes || []).length ? d.episodes.map(_rdEpisodeResult).join('') : _rdNoResults(d);
-    if (state.show === 'takes') return (d.takes || []).length ? d.takes.map(_rdTakeResult).join('') : _rdNoResults(d);
-    const items = [];
-    for (const t of d.takes || []) items.push({ at: String(t.said_at || ''), html: _rdTakeResult(t) });
-    for (const e of d.episodes || []) items.push({ at: String(e.aired_at || ''), html: _rdEpisodeResult(e) });
-    items.sort((a, b) => b.at.localeCompare(a.at));
-    return items.length ? items.map((x) => x.html).join('') : _rdNoResults(d);
+    const groups = new Map();
+    for (const s of d.takes || []) {
+        const id = String(s.stream_id);
+        if (!groups.has(id)) groups.set(id, { at: String(s.said_at || ''), user: s.user, takes: [], episode: null });
+        groups.get(id).takes.push(s);
+    }
+    if (state.show !== 'takes') for (const e of d.episodes || []) {
+        const id = String(e.stream_id);
+        if (!groups.has(id)) groups.set(id, { at: String(e.aired_at || ''), user: e.user, takes: [], episode: null });
+        const group = groups.get(id);
+        group.episode = e;
+        if (String(e.aired_at || '') > group.at) group.at = String(e.aired_at || '');
+    }
+    const items = [...groups.values()].sort((a, b) => b.at.localeCompare(a.at));
+    let day = '';
+    return items.length ? items.map((g) => {
+        const thisDay = _rdDay(g.at);
+        const dayHead = thisDay !== day ? '<h2 class="rd-day" id="rd-day-' + _rdEsc(g.at.slice(0, 10)) + '"><span class="rd-date-chip">' + _rdEsc(thisDay) + '</span></h2>' : '';
+        day = thisDay;
+        const first = g.takes.slice(0, 3).map(_rdTakeResult).join('');
+        const rest = g.takes.slice(3);
+        const folded = rest.length ? '<details class="rd-group-more"><summary>' + rest.length + ' more from this episode</summary>' + rest.map(_rdTakeResult).join('') + '</details>' : '';
+        const streamHead = '<p class="rd-stream-head">From ' + _rdEsc(_rdName(g.user) || 'a streamer') + '\'s ' + (g.episode ? 'episode' : 'stream') + '</p>';
+        return dayHead + '<section class="rd-feed-group">' + streamHead + (g.episode ? _rdEpisodeResult(g.episode, state.show !== 'episodes') : '') + first + folded + '</section>';
+    }).join('') : _rdNoResults(d);
 }
 // The kinds, for the topics view (the old topics page had them).
 function _rdKindChips(state) {
@@ -762,8 +804,8 @@ function _rdRails(d) {
     const trending = (d.trending || []).map(_rdTopicFilter).join('');
     const voices = (d.voices || []).map((v) => '<a class="rd-rail-item" href="/rundown?streamer=' + encodeURIComponent(v.user.username) + '">' + _rdFace(v.user, 24) + '<span>' + _rdEsc(_rdName(v.user)) + '</span></a>').join('');
     return '<div class="rd-rails">' +
-        '<section class="rd-rail"><h2 class="rd-h2">Trending topics</h2><div class="rd-rail-track">' + (trending || '<span class="rd-quiet">No topics yet.</span>') + '</div></section>' +
-        '<section class="rd-rail"><h2 class="rd-h2">Who\'s been talking</h2><div class="rd-rail-track">' + (voices || '<span class="rd-quiet">Nobody yet.</span>') + '</div></section>' +
+        '<section class="rd-rail"><div class="rd-rail-head"><h2 class="rd-h2">Trending topics</h2>' + _rdA('/rundown/topics', 'See all', 'rd-rail-all') + '</div><div class="rd-rail-track">' + (trending || '<span class="rd-quiet">No topics yet.</span>') + '</div></section>' +
+        '<section class="rd-rail"><div class="rd-rail-head"><h2 class="rd-h2">Who\'s been talking</h2>' + _rdA('/rundown?show=takes', 'See all', 'rd-rail-all') + '</div><div class="rd-rail-track">' + (voices || '<span class="rd-quiet">Nobody yet.</span>') + '</div></section>' +
     '</div>';
 }
 
@@ -774,29 +816,109 @@ function _rdPathState(path, query) {
     if (path === '/rundown/topics' && !st.show) st.show = 'topics';
     return st;
 }
+function _rdSkeleton() {
+    return '<div class="rd-skeletons" aria-label="Loading the Rundown">' +
+        Array.from({ length: 3 }, () => '<div class="rd-skeleton"><span></span><span></span><span></span></div>').join('') + '</div>';
+}
+function _rdNextLink(d, state) {
+    if (!d.next_page) return '';
+    const href = _rdQuery({ ...state, page: d.next_page });
+    return '<a id="rd-next" class="rd-next" rel="next" href="/rundown' + _rdEsc(href) + '">Load more</a>';
+}
+function _rdObserveMore() {
+    if (_rdMoreObserver) _rdMoreObserver.disconnect();
+    const next = document.getElementById('rd-next');
+    if (!next || typeof IntersectionObserver === 'undefined') return;
+    _rdMoreObserver = new IntersectionObserver((entries) => {
+        if (entries.some((e) => e.isIntersecting)) _rdLoadMore();
+    }, { rootMargin: '600px 0px' });
+    _rdMoreObserver.observe(next);
+}
+async function _rdLoadMore() {
+    const next = document.getElementById('rd-next');
+    const results = document.getElementById('rd-results');
+    if (!next || !results || next.dataset.loading) return;
+    next.dataset.loading = '1';
+    if (_rdMoreObserver) _rdMoreObserver.disconnect();
+    next.insertAdjacentHTML('beforebegin', _rdSkeleton());
+    try {
+        const state = _rdPathState(location.pathname, new URLSearchParams(next.search));
+        const d = await api('/rundown/browse' + _rdQuery(state));
+        const holder = document.createElement('div');
+        holder.innerHTML = _rdResultsHtml(d, state);
+        const firstDay = holder.querySelector('.rd-day');
+        const lastDay = [...results.querySelectorAll('.rd-day')].pop();
+        if (firstDay && lastDay && firstDay.textContent === lastDay.textContent) firstDay.remove();
+        while (holder.firstChild) results.appendChild(holder.firstChild);
+        next.outerHTML = _rdNextLink(d, state);
+        _rdObserveMore();
+    } catch (err) {
+        next.textContent = 'Retry loading more';
+        next.removeAttribute('data-loading');
+        _rdObserveMore();
+    } finally {
+        document.querySelectorAll('.rd-main > .rd-skeletons').forEach((node) => node.remove());
+    }
+}
+let _rdBarListening = false;
+function _rdBarState() {
+    const update = () => {
+        const bar = document.querySelector('#rundown-root .rd-bar');
+        if (!bar) return;
+        const input = bar.querySelector('#rd-search');
+        if (input) input.placeholder = window.innerWidth < 520 ? 'Search topics' : 'Search topics, streamers, episodes';
+        const nav = document.querySelector('.openvibe-navbar');
+        const edge = Math.max(0, nav ? nav.getBoundingClientRect().bottom : 56);
+        bar.style.setProperty('--rd-nav-bottom', `${edge}px`);
+        bar.classList.toggle('is-stuck', window.scrollY > 4 && bar.getBoundingClientRect().top <= edge + 2);
+    };
+    update();
+    if (_rdBarListening) return;
+    _rdBarListening = true;
+    let until = 0, running = false;
+    const follow = () => {
+        update();
+        if (performance.now() < until) requestAnimationFrame(follow);
+        else running = false;
+    };
+    const start = () => { until = performance.now() + 400; if (!running) { running = true; requestAnimationFrame(follow); } };
+    const mount = document.getElementById('navbar-mount');
+    if (mount) new MutationObserver(start).observe(mount, { subtree: true, attributes: true, attributeFilter: ['class'] });
+    window.addEventListener('scroll', () => { update(); start(); }, { passive: true });
+    window.addEventListener('resize', update, { passive: true });
+}
 async function _rdBrowse(root, state) {
+    root.innerHTML = _rdBar(state, null) + _rdSkeleton();
+    _rdBarState();
     const d = await api('/rundown/browse' + _rdQuery(state));
     _rdRememberTopics(d.topics);
     _rdRememberTopics(d.trending);
     root.innerHTML = _rdBar(state, null) +
         '<div id="rd-active-host">' + _rdActiveChips(state, null) + '</div>' +
-        _rdMast(d.counts) + _rdHow() +
+        _rdMast(d.counts, d.stats) + _rdHow() +
         '<div id="rd-rails-host">' + _rdRails(d) + '</div>' +
         '<div class="rd-grid"><div class="rd-main">' +
             _rdOnAir(d.on_air || []) +
             (state.show === 'topics' ? _rdKindChips(state) : '') +
             '<p class="rd-count" id="rd-count">' + _rdCountLine(d, state) + '</p>' +
-            '<div id="rd-results">' + _rdResultsHtml(d, state) + '</div>' +
+            '<div id="rd-results">' + _rdResultsHtml(d, state) + '</div>' + _rdNextLink(d, state) +
         '</div><aside class="rd-side">' + _rdTrending(d.trending || []) + _rdVoices(d.voices || []) + _rdAbout() + '</aside></div>';
+    _rdBarState();
+    _rdObserveMore();
     document.title = (state.q ? 'Search: ' + state.q + ' · ' : '') + 'The Rundown · OpenVibe.Live';
 }
 /** Only the results change while the words are typed: the page is not redrawn under the reader. */
 async function _rdRefresh() {
     const state = _rdPathState(location.pathname, new URLSearchParams(location.search));
+    const results = document.getElementById('rd-results');
+    if (results) results.innerHTML = _rdSkeleton();
     const d = await api('/rundown/browse' + _rdQuery(state));
     _rdRememberTopics(d.topics);
-    const results = document.getElementById('rd-results');
     if (results) results.innerHTML = _rdResultsHtml(d, state);
+    const oldNext = document.getElementById('rd-next');
+    if (oldNext) oldNext.remove();
+    if (results) results.insertAdjacentHTML('afterend', _rdNextLink(d, state));
+    _rdObserveMore();
     const count = document.getElementById('rd-count');
     if (count) count.textContent = _rdCountLine(d, state);
     const active = document.getElementById('rd-active-host');
@@ -807,6 +929,7 @@ async function _rdRefresh() {
 // ── What the bar does ──────────────────────────────────────────────────────
 /** A new view: the filters in the URL, and the back button gets a step. */
 function _rdGo(state) {
+    state.page = 1;
     const url = _rdUrl(state);
     if (url === location.pathname + location.search) return;
     navigate(url);
@@ -908,6 +1031,7 @@ function _rdFold(btn) {
 async function _rdSearch(value) {
     const state = _rdState(new URLSearchParams(location.search));
     state.q = String(value || '').trim();
+    state.page = 1;
     const url = _rdUrl(state);
     if (location.pathname !== '/rundown' && location.pathname !== '/rundown/topics') { navigate(url); return; }
     if (url === location.pathname + location.search) return;
@@ -946,6 +1070,15 @@ async function loadRundownPage(segments = []) {
 document.addEventListener('click', async (e) => {
     const root = document.getElementById('rundown-root');
     if (!root || !root.contains(e.target)) return;
+    const reactOpen = e.target.closest('[data-rd-react-open]');
+    if (reactOpen) {
+        e.preventDefault();
+        const group = reactOpen.closest('.rd-react');
+        document.querySelectorAll('.rd-react.is-open').forEach((node) => { if (node !== group) node.classList.remove('is-open'); });
+        group.classList.toggle('is-open');
+        reactOpen.setAttribute('aria-expanded', group.classList.contains('is-open') ? 'true' : 'false');
+        return;
+    }
     const speak = e.target.closest('[data-rd-speak]');
     if (speak) { e.preventDefault(); if (speak.classList.contains('is-speaking')) speak.classList.add('was-speaking'); _rdSpeak(speak); return; }
     const more = e.target.closest('[data-rd-more]');
@@ -977,6 +1110,14 @@ document.addEventListener('click', async (e) => {
     if (del) { e.preventDefault(); _rdDelete(del.dataset.rdDel); return; }
     const restore = e.target.closest('[data-rd-restore]');
     if (restore) { e.preventDefault(); _rdRestore(restore); }
+});
+document.addEventListener('click', (e) => {
+    if (e.target.closest('.rd-react')) return;
+    document.querySelectorAll('.rd-react.is-open').forEach((node) => {
+        node.classList.remove('is-open');
+        const button = node.querySelector('[data-rd-react-open]');
+        if (button) button.setAttribute('aria-expanded', 'false');
+    });
 });
 
 // ── The bar's events ────────────────────────────────────────────────────────
