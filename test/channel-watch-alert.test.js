@@ -1,6 +1,5 @@
 'use strict';
-// "Get an alert" on an offline channel (plan §4, Agents and devices: the gap was an entry point on Live's channel
-// page): OpenVibe.Watch's form, filled in for this channel going live (live.stream.started, nothing polled), so an
+// "Get an alert" in the channel's More menu opens OpenVibe.Watch's form for live.stream.started, so an
 // alert can reach an email, a webhook or an agent. Hidden on one's own channel and until the channel is known.
 const assert = require('assert');
 const fs = require('fs');
@@ -9,12 +8,12 @@ const vm = require('vm');
 
 const ROOT = path.join(__dirname, '..');
 const fragment = fs.readFileSync(path.join(ROOT, 'public/fragments/channel.html'), 'utf8');
-assert.match(fragment, /<a class="ch-watch-alert" id="ch-watch-offline" href="https:\/\/openvibe\.watch\/" target="_blank" rel="noopener" hidden>/, 'the link is in the offline header, hidden until filled');
+assert.match(fragment, /<a class="ch-more-item ch-watch-alert" id="ch-watch-offline" href="https:\/\/openvibe\.watch\/" target="_blank" rel="noopener" hidden>/, 'the link is in More, hidden until filled');
 
 const src = fs.readFileSync(path.join(ROOT, 'public/js/app-channel.js'), 'utf8');
 const fn = /function _setWatchAlert\(a, username\) \{[\s\S]*?\n\}/.exec(src);
 assert.ok(fn, '_setWatchAlert exists');
-assert.match(src, /_setWatchAlert\(document\.getElementById\('ch-watch-offline'\), ch\.username\);/, 'the offline header fills it');
+assert.match(src, /_setWatchAlert\(document\.getElementById\('ch-watch-offline'\), username\);/, 'More fills it for either header');
 
 const run = (viewer, username) => {
     const a = { hidden: true, href: 'https://openvibe.watch/', title: '' };

@@ -92,7 +92,7 @@ function _setCategoryBadge(el, value, inferred) {
     if (inferred) {
         const mark = document.createElement('span');
         mark.className = 'cat-inferred';
-        mark.textContent = ' · inferred';
+        mark.textContent = ' · auto';
         el.append(mark);
         el.title = "Category inferred by OpenVibe's AI from the stream";
     } else {
@@ -229,8 +229,8 @@ function _fillChannelAvatar(el, ch, path) {
 }
 
 function _staffBadge(role, isOwner) {
-    if (role === 'admin' || isOwner) return '<span class="staff-badge staff-badge-admin" data-tip="Staff - Admin"><i class="fa-solid fa-shield-halved"></i></span>';
-    if (role === 'global_mod') return '<span class="staff-badge staff-badge-mod" data-tip="Staff - Mod"><i class="fa-solid fa-shield"></i></span>';
+    if (role === 'admin' || isOwner) return '<span class="staff-badge staff-badge-admin" data-tip="Staff - Admin" role="img" aria-label="Staff - Admin"><i class="fa-solid fa-shield-halved" aria-hidden="true"></i></span>';
+    if (role === 'global_mod') return '<span class="staff-badge staff-badge-mod" data-tip="Staff - Mod" role="img" aria-label="Staff - Mod"><i class="fa-solid fa-shield" aria-hidden="true"></i></span>';
     return '';
 }
 
@@ -846,22 +846,24 @@ async function loadChannelPage(username, managedStreamRef = null, legacySessionI
                 btn.style.display = '';
                 btn.classList.toggle('following', ch.is_following);
                 btn.innerHTML = ch.is_following
-                    ? '<i class="fa-solid fa-check"></i> Following'
-                    : '<i class="fa-solid fa-heart"></i> Follow';
+                    ? '<i class="fa-solid fa-check" aria-hidden="true"></i><span>Following</span>'
+                    : '<i class="fa-solid fa-heart" aria-hidden="true"></i><span>Follow</span>';
                 btn.title = ch.is_following ? 'Unfollow' : 'Follow';
                 btn.onclick = () => toggleChannelFollow(username);
+                btn.onpointerdown = event => {
+                    if (event.pointerType === 'touch' && btn.classList.contains('following')) {
+                        clearTimeout(btn._unfollowTimer);
+                        btn._unfollowTimer = setTimeout(() => btn.classList.add('show-unfollow'), 550);
+                    }
+                };
+                btn.onpointerup = btn.onpointercancel = btn.onpointerleave = () => {
+                    clearTimeout(btn._unfollowTimer);
+                    setTimeout(() => btn.classList.remove('show-unfollow'), 700);
+                };
             }
         };
 
-        // Ban button helper (admin / global_mod only)
-        const setupBanBtn = (btn) => {
-            if (!btn) return;
-            const canBan = currentUser?.capabilities?.manage_site_bans;
-            const isSelf = currentUser && currentUser.username === username;
-            if (!canBan || isSelf) { btn.style.display = 'none'; return; }
-            btn.style.display = '';
-            btn.onclick = () => banChannelUser(ch.user_id, ch.username || username);
-        };
+        _setupChannelMore(ch);
 
         if (liveStreams.length > 0) {
             // ── LIVE STATE ──
@@ -874,7 +876,7 @@ async function loadChannelPage(username, managedStreamRef = null, legacySessionI
             _placeBelowFold();
 
             // Populate streamer info bar (below video). Avatar image (letter fallback)
-            // + display name both link to the channel; the @handle is dropped.
+            // + display name both link to the channel.
             const _chPath = channelPath(ch.username);
             _fillChannelAvatar(document.getElementById('ch-avatar'), ch, _chPath);
             const _chName = document.getElementById('ch-display-name');
@@ -887,14 +889,14 @@ async function loadChannelPage(username, managedStreamRef = null, legacySessionI
             if (_chStaff) _chStaff.innerHTML = _staffBadge(ch.role, ch.is_owner);
             _activeChannelIsOwnerRank = !!ch.is_owner;
             const _chUser = document.getElementById('ch-username');
-            if (_chUser) _chUser.style.display = 'none';
+            if (_chUser) _chUser.textContent = '@' + ch.username;
+            if (window.ChannelSocials) ChannelSocials.pills(document.getElementById('ch-socials-live'), ch.social_links || []);
             { const _ls0 = liveStreams[0], _liveCat = _ls0 && _ls0.category;
               _setCategoryBadge(document.getElementById('ch-category-badge'), _liveCat || ch.ai_category || ch.category || 'Live',
                   _liveCat ? _isInferredCategory(_ls0) : !!ch.ai_category); }
             document.getElementById('ch-follower-count').textContent = `${ch.follower_count || 0} followers`;
             _loadGameBadge(ch.username);
             setupFollowBtn(document.getElementById('ch-btn-follow'));
-            setupBanBtn(document.getElementById('ch-btn-ban'));
 
             // Pick the preferred stream:
             // 0. URL /@username/:managedStreamRef (managed stream deep link)
@@ -972,7 +974,6 @@ async function loadChannelPage(username, managedStreamRef = null, legacySessionI
             _loadGameBadge(ch.username);
             _setCategoryBadge(document.getElementById('ch-category-badge-offline'), ch.ai_category || ch.category || 'Offline', !!ch.ai_category);
             setupFollowBtn(document.getElementById('ch-btn-follow-offline'));
-            setupBanBtn(document.getElementById('ch-btn-ban-offline'));
 
             // Customizable offline screen (image / video / custom HTML)
             offlineBlocks = _renderOfflineScreen(ch);
@@ -1269,12 +1270,16 @@ function _placeShareButton(where) {
     if (!host) return;
     if (b.parentElement !== host) {
         if (live) host.appendChild(b);
-        else host.insertBefore(b, host.firstChild);
+        else host.insertBefore(b, document.getElementById('ch-btn-follow-offline').nextSibling);
     }
     // The Ask your agent chip (openvibe-shared 4.135.0) sits beside Share, in the same row, live or offline.
     const ask = document.getElementById('ch-ask-slot');
     if (ask && ask.parentElement !== host) host.insertBefore(ask, b.nextSibling);
-    b.className = 'ovk-btn ovk-btn--quiet';
+    ask?.querySelector('.ovk-ask')?.setAttribute('aria-label', 'Ask your agent');
+    const more = document.getElementById('ch-more');
+    const moreHost = live ? document.querySelector('#ch-info-bar .ch-info-bar-right') : host;
+    if (more && more.parentElement !== moreHost) moreHost.appendChild(more);
+    b.className = 'ovk-btn ovk-btn--quiet ch-action';
     b.title = live ? 'Share this stream' : 'Share this channel';
 }
 
@@ -2892,7 +2897,7 @@ function _applyChannelLanguage(language, ch, isLive) {
     _chLang = language || null;
     // One chip in the live info bar, one in the offline header — whichever is showing.
     const targets = [
-        ['ch-lang-chip', document.querySelector('#ch-info-bar .ch-info-bar-top')],
+        ['ch-lang-chip', document.querySelector('#ch-info-bar .ch-meta')],
         ['ch-lang-chip-offline', document.querySelector('#ch-offline-header .ch-meta')],
     ];
     const off = !_chLang || !_chLang.code || _chLang.code === 'en';
@@ -3405,7 +3410,7 @@ function _wireAboutDrag() {
 }
 
 /**
- * "Get an alert" beside the follower count while a channel is offline: OpenVibe.Watch's form, filled in for this
+ * "Get an alert" in the channel's More menu: OpenVibe.Watch's form, filled in for this
  * channel going live (the live.stream.started event, nothing polled). It reaches people where Live's own follow cannot:
  * an email, a webhook, or one of their agents woken up. Not on one's own channel.
  */
@@ -3766,9 +3771,10 @@ async function toggleChannelFollow(username) {
             if (!btn) return;
             btn.classList.toggle('following', data.following);
             btn.innerHTML = data.following
-                ? '<i class="fa-solid fa-check"></i> Following'
-                : '<i class="fa-solid fa-heart"></i> Follow';
+                ? '<i class="fa-solid fa-check" aria-hidden="true"></i><span>Following</span>'
+                : '<i class="fa-solid fa-heart" aria-hidden="true"></i><span>Follow</span>';
             btn.title = data.following ? 'Unfollow' : 'Follow';
+            if (!data.following) btn.classList.remove('show-unfollow');
         });
         ['ch-follower-count', 'ch-follower-count-offline'].forEach(id => {
             const el = document.getElementById(id);
@@ -3842,21 +3848,85 @@ async function offerLiveAlerts(name) {
     box.appendChild(card);
 }
 
-async function banChannelUser(userId, username) {
-    if (!userId || !username) return;
-    const reason = prompt(`⚠️ GLOBAL BAN: Ban ${username} from the entire site?\n\nEnter reason:`);
-    if (reason === null) return;
-    try {
-        if (typeof staffBanUser === 'function') {
-            await staffBanUser(userId, username, reason || 'Banned from channel page', 0);
-        } else {
-            await api('/mod/global-ban', {
-                method: 'POST',
-                body: { user_id: userId, reason: reason || 'Banned from channel page' },
-            });
-            toast(`${username} banned from site`, 'success');
+function _setupChannelMore(ch) {
+    const menu = document.getElementById('ch-more');
+    if (!menu) return;
+    menu.open = false;
+    const username = ch.username;
+    _setWatchAlert(document.getElementById('ch-watch-offline'), username);
+    const report = document.getElementById('ch-report');
+    report.href = `mailto:Contact@OpenVibe.Network?subject=${encodeURIComponent(`Report @${username} on OpenVibe.Live`)}&body=${encodeURIComponent(`${location.origin}${channelPath(username)}\n\nReason: `)}`;
+    const staff = !!currentUser?.capabilities?.manage_site_bans && currentUser.username !== username;
+    const group = document.getElementById('ch-more-mod');
+    const ban = document.getElementById('ch-menu-ban');
+    group.hidden = !staff;
+    ban.hidden = !staff;
+    if (currentUser && !staff) {
+        api('/chat/channels/moderation/mine').then(data => {
+            if (menu.dataset.channel !== username) return;
+            group.hidden = !(data.channels || []).some(c => String(c.user_id) === String(ch.user_id) || c.username === username);
+        }).catch(() => {});
+    }
+    menu.dataset.channel = username;
+    menu.querySelector('.ch-more-menu').onclick = async (event) => {
+        const action = event.target.closest('[data-ch-action]')?.dataset.chAction;
+        if (!action) return;
+        menu.open = false;
+        if (action === 'copy') {
+            try { await navigator.clipboard.writeText(`${location.origin}${channelPath(username)}`); toast('Channel link copied', 'success'); }
+            catch { toast('Could not copy channel link', 'error'); }
+        } else if (action === 'ban' && staff) {
+            banChannelUser(ch.user_id, username);
+        } else if (action === 'timeout' && !group.hidden) {
+            const input = document.querySelector('#page-channel.active .chat-input-area textarea, #page-channel.active .chat-input-area input');
+            if (input) { input.value = `/timeout ${username} 600`; input.focus(); toast('Review the timeout command, then send it in chat', 'info'); }
+            else toast('Open chat to send a timeout command', 'info');
+        } else if (action === 'log' && !group.hidden) {
+            _showChannelModLog(ch.id);
         }
-    } catch (e) { toast(e.message || 'Ban failed', 'error'); }
+    };
+    if (!menu.dataset.outsideBound) {
+        document.addEventListener('click', event => { if (!menu.contains(event.target)) menu.open = false; });
+        menu.dataset.outsideBound = '1';
+    }
+}
+
+async function _showChannelModLog(channelId) {
+    const dialog = document.createElement('dialog');
+    dialog.className = 'ch-action-dialog';
+    dialog.innerHTML = '<h3>Mod log</h3><div class="ch-action-dialog-body">Loading…</div><button class="ovk-btn ovk-btn--quiet" type="button">Close</button>';
+    dialog.querySelector('button').onclick = () => dialog.close();
+    dialog.addEventListener('close', () => dialog.remove());
+    document.body.appendChild(dialog);
+    dialog.showModal();
+    try {
+        const data = await api(`/chat/channels/${channelId}/moderation/logs?limit=12`);
+        if (!dialog.isConnected) return;
+        dialog.querySelector('.ch-action-dialog-body').innerHTML = (data.actions || []).length
+            ? data.actions.map(a => `<p><strong>${esc(a.action_type || 'Action')}</strong> <time>${esc(a.created_at || '')}</time></p>`).join('')
+            : '<p>No channel moderation actions yet.</p>';
+    } catch (e) { if (dialog.isConnected) dialog.querySelector('.ch-action-dialog-body').textContent = e.message || 'Could not load the mod log.'; }
+}
+
+function banChannelUser(userId, username) {
+    if (!userId || !username || !currentUser?.capabilities?.manage_site_bans) return;
+    const dialog = document.createElement('dialog');
+    dialog.className = 'ch-action-dialog';
+    dialog.innerHTML = `<h3>Ban @${esc(username)} from the site?</h3><p>This blocks the account across OpenVibe.Live.</p><form><label>Reason<input name="reason" maxlength="200" required></label><div class="ch-action-dialog-buttons"><button class="ovk-btn ovk-btn--quiet" type="button">Cancel</button><button class="ovk-btn ch-action--danger" type="submit">Ban from site</button></div></form>`;
+    dialog.querySelector('[type=button]').onclick = () => dialog.close();
+    dialog.addEventListener('close', () => dialog.remove());
+    dialog.querySelector('form').onsubmit = async event => {
+        event.preventDefault();
+        const submit = dialog.querySelector('[type=submit]');
+        submit.disabled = true;
+        try {
+            await api('/mod/global-ban', { method: 'POST', body: { user_id: userId, reason: dialog.querySelector('[name=reason]').value } });
+            toast(`${username} banned from site`, 'success');
+            dialog.close();
+        } catch (e) { submit.disabled = false; toast(e.message || 'Ban failed', 'error'); }
+    };
+    document.body.appendChild(dialog);
+    dialog.showModal();
 }
 
 /* ── Stream Viewer (legacy /stream/:id) ──────────────────────── */

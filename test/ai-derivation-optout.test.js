@@ -6,7 +6,7 @@
  *   - the AI moments job never picks the channel's VODs (so no moment pastes, no clips from them);
  *   - the stream-memory job posts no "caught live" pastes;
  *   - the after-show report is the stats-only one (no model call, not an AI Moment).
- * Channels that did not opt out are unaffected. The channel page's category pill says "inferred"
+ * Channels that did not opt out are unaffected. The channel page's category chip says "auto"
  * when the AI chose it (public/js/app-channel.js, run against a small stand-in DOM).
  *
  *   node test/ai-derivation-optout.test.js
@@ -188,7 +188,7 @@ async function check(name, fn) {
         assert.strictEqual(modelCalls.length, 1);
     });
 
-    await check('the channel page marks an AI-inferred category "inferred", and a chosen one plain', () => {
+    await check('the channel page marks an AI-inferred category "auto", and a chosen one plain', () => {
         const src = fs.readFileSync(path.join(__dirname, '../public/js/app-channel.js'), 'utf8');
         const start = src.indexOf('function _isInferredCategory(');
         const end = src.indexOf('\n}\n', src.indexOf('function _setCategoryBadge(')) + 3;
@@ -205,7 +205,7 @@ async function check(name, fn) {
         vm.runInContext(`${src.slice(start, end)}\nthis.set = _setCategoryBadge; this.inferred = _isInferredCategory;`, ctx);
         const el = new El();
         ctx.set(el, 'gaming', ctx.inferred({ category: 'gaming', ai_category: 'gaming' }));
-        assert.strictEqual(el.textContent, 'Gaming · inferred');
+        assert.strictEqual(el.textContent, 'Gaming · auto');
         assert.ok(el.cls.has('is-inferred') && /inferred by OpenVibe/.test(el.attrs.title));
         const chosen = new El();
         ctx.set(chosen, 'irl', ctx.inferred({ category: 'irl', ai_category: null }));

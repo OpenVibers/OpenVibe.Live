@@ -117,10 +117,11 @@
                                 <div class="ch-info-bar-top">
                                     <h2 id="ch-display-name">Channel</h2>
                                     <span class="ch-staff-badge" id="ch-staff-badge"></span>
-                                    <span class="ch-username" id="ch-username">username</span>
-                                    <span class="ch-category-badge badge" id="ch-category-badge">Live</span>
                                     <span id="ch-protocol-badge"></span>
                                 </div>
+                                <span class="ch-username" id="ch-username">@username</span>
+                                <div class="ch-meta"><span class="ch-follower-count" id="ch-follower-count">0 followers</span><span class="ch-category-badge" id="ch-category-badge">Live</span><a class="ch-game-badge" id="ch-game-badge" href="https://openvibe.games/" target="_blank" rel="noopener" hidden></a></div>
+                                <div class="ch-social-pills" id="ch-socials-live" hidden></div>
                                 <p class="ch-stream-title" id="ch-stream-title">Stream Title</p>
                                 <div id="stream-labels" class="stream-labels"></div>
                                 <p class="ch-stream-description muted" id="ch-stream-description" style="display:none"></p>
@@ -129,22 +130,29 @@
                             </div>
                         </div>
                         <div class="ch-info-bar-right">
+                            <button class="ovk-btn ch-action ch-action--follow" id="ch-btn-follow" type="button"><i class="fa-solid fa-heart" aria-hidden="true"></i><span>Follow</span></button>
                             <!-- The channel's Share button (the one share sheet every OpenVibe site opens). It sits in the
                                  stream's own action row while the channel is live and in the header's actions when it is
                                  not, so the page always has one Share button and never two. -->
-                            <span id="ch-share-slot"><button class="ovk-btn ovk-btn--quiet" id="ch-btn-share" type="button" data-ov-share-sheet><svg class="ovk-i" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 20V9M7 14l5-5 5 5M5 4h14"/></svg><span>Share</span></button></span>
+                            <span id="ch-share-slot"><button class="ovk-btn ovk-btn--quiet ch-action" id="ch-btn-share" type="button" data-ov-share-sheet><svg class="ovk-i" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 20V9M7 14l5-5 5 5M5 4h14"/></svg><span>Share</span></button></span>
                             <!-- Ask your agent (openvibe-shared 4.135.0): the SEO renderer fills this with the channel's
                                  own chip, live or offline; app-channel.js keeps it beside Share in the same row. -->
                             <span id="ch-ask-slot"></span>
-                            <span class="ch-follower-count" id="ch-follower-count">0 followers</span>
-                            <a class="ch-game-badge" id="ch-game-badge" href="https://openvibe.games/" target="_blank" rel="noopener" hidden></a>
-                            <button class="btn btn-outline" id="btn-cam" title="Take a still" style="display:none"><i class="fa-solid fa-camera"></i> Still</button>
-                            <button class="btn btn-follow" id="ch-btn-follow">
-                                <i class="fa-solid fa-heart"></i> Follow
-                            </button>
-                            <button class="btn btn-danger" id="ch-btn-ban" style="display:none" title="Ban from site">
-                                <i class="fa-solid fa-ban"></i> Ban
-                            </button>
+                            <details class="ch-more" id="ch-more">
+                                <summary class="ovk-btn ovk-btn--quiet ch-action ch-action--more" aria-label="More actions" title="More actions"><i class="fa-solid fa-ellipsis" aria-hidden="true"></i></summary>
+                                <div class="ch-more-menu">
+                                    <a class="ch-more-item ch-watch-alert" id="ch-watch-offline" href="https://openvibe.watch/" target="_blank" rel="noopener" hidden><i class="fa-solid fa-bell" aria-hidden="true"></i>Get an alert</a>
+                                    <button class="ch-more-item" type="button" data-ch-action="copy"><i class="fa-solid fa-link" aria-hidden="true"></i>Copy channel link</button>
+                                    <a class="ch-more-item" id="ch-report" href="mailto:Contact@OpenVibe.Network"><i class="fa-solid fa-flag" aria-hidden="true"></i>Report</a>
+                                    <button class="ch-more-item" id="btn-cam" type="button" style="display:none"><i class="fa-solid fa-camera" aria-hidden="true"></i>Take a still</button>
+                                    <div class="ch-more-mod" id="ch-more-mod" hidden>
+                                        <span class="ch-more-heading">Moderation</span>
+                                        <button class="ch-more-item" id="ch-menu-ban" type="button" data-ch-action="ban" hidden><i class="fa-solid fa-ban" aria-hidden="true"></i>Ban from site</button>
+                                        <button class="ch-more-item" type="button" data-ch-action="timeout"><i class="fa-solid fa-clock" aria-hidden="true"></i>Timeout</button>
+                                        <button class="ch-more-item" type="button" data-ch-action="log"><i class="fa-solid fa-list" aria-hidden="true"></i>Mod log</button>
+                                    </div>
+                                </div>
+                            </details>
                         </div>
                     </div>
                     <!-- Weather spans the full width under the info bar (left-aligned) -->
@@ -255,24 +263,18 @@
                 <div class="ch-offline-header-info">
                     <h1 id="ch-display-name-offline">Channel</h1>
                     <p class="ch-username" id="ch-username-offline">username</p>
-                    <p class="ch-description" id="ch-description-offline"></p>
-                    <div class="ch-social-pills" id="ch-socials-offline" hidden></div>
-                    <div class="ch-next" id="ch-next-offline" hidden></div>
                     <div class="ch-meta">
                         <span class="ch-follower-count" id="ch-follower-count-offline">0 followers</span>
-                        <a class="ch-watch-alert" id="ch-watch-offline" href="https://openvibe.watch/" target="_blank" rel="noopener" hidden><i class="fa-solid fa-bell" aria-hidden="true"></i> Get an alert</a>
                         <a class="ch-game-badge" id="ch-game-badge-offline" href="https://openvibe.games/" target="_blank" rel="noopener" hidden></a>
-                        <span class="ch-category-badge badge" id="ch-category-badge-offline">Offline</span>
+                        <span class="ch-category-badge" id="ch-category-badge-offline">Offline</span>
                     </div>
+                    <div class="ch-social-pills" id="ch-socials-offline" hidden></div>
+                    <p class="ch-description" id="ch-description-offline"></p>
+                    <div class="ch-next" id="ch-next-offline" hidden></div>
                     <div class="ch-weather-widget" id="ch-weather-widget-offline" style="display:none"></div>
                 </div>
                 <div class="ch-actions">
-                    <button class="btn btn-follow" id="ch-btn-follow-offline">
-                        <i class="fa-solid fa-heart"></i> Follow
-                    </button>
-                    <button class="btn btn-danger" id="ch-btn-ban-offline" style="display:none" title="Ban from site">
-                        <i class="fa-solid fa-ban"></i> Ban
-                    </button>
+                    <button class="ovk-btn ch-action ch-action--follow" id="ch-btn-follow-offline" type="button"><i class="fa-solid fa-heart" aria-hidden="true"></i><span>Follow</span></button>
                 </div>
             </div>
             <!-- Customizable offline screen (image / video / custom HTML) — filled by JS -->

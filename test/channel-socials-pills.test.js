@@ -1,9 +1,6 @@
 'use strict';
 /**
- * The offline screen's social pills (public/js/channel-socials.js pills): the OpenVibe profile pill says "OpenVibe
- * profile", since its @handle is the channel's own and is already written just above it (the header read
- * "JapaneseOldGuy · @JapaneseOldGuy · @JapaneseOldGuy" on 2026-11-02); other platforms keep their @handle, and a label
- * the streamer typed wins.
+ * Channel social pills name the Network destination; other platforms keep their own handle.
  *
  *   node test/channel-socials-pills.test.js
  */
@@ -24,7 +21,7 @@ pills(host, [
     { kind: 'openvibe', url: 'https://openvibe.network/@other', handle: 'other', label: 'My other channel', name: 'OpenVibe', icon: 'fa-solid fa-id-card', color: '#3b82f6' },
 ]);
 const spans = [...host.innerHTML.matchAll(/<span>([^<]*)<\/span>/g)].map((m) => m[1]);
-assert.deepStrictEqual(spans, ['OpenVibe profile', '@jog', 'My other channel']);
+assert.deepStrictEqual(spans, ['Network profile', '@jog', 'Network profile']);
 assert.match(host.innerHTML, /href="https:\/\/openvibe\.network\/@JapaneseOldGuy"/, 'the link is unchanged');
 assert.match(host.innerHTML, /title="OpenVibe \(connected\) @JapaneseOldGuy"/, 'the handle stays in its title');
-console.log('channel social pills: the OpenVibe profile pill says what it is; other handles and typed labels stay');
+console.log('channel social pills: Network links name their destination; other handles stay');
