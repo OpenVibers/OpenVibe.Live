@@ -1021,6 +1021,7 @@ async function loadDailyQuest() {
     if (!quest || !Array.isArray(quest.steps) || quest.steps.length !== 3) { card.hidden = true; return; }
     const mine = !!data.signed_in;
     const progress = Math.max(0, Math.min(3, Number(quest.progress) || 0));
+    card.dataset.progress = mine ? String(progress) : '0';   // the three-part bar under the title
     document.getElementById('home-daily-kicker').textContent = mine ? "TODAY'S QUEST" : 'DAILY QUESTS';
     document.getElementById('home-daily-title').textContent = mine ? quest.title : 'Today: ' + quest.title;
     document.getElementById('home-daily-chip').textContent = mine
@@ -1039,6 +1040,7 @@ async function loadDailyQuest() {
         label.textContent = String(step.sentence || '');
         row.append(icon, label);
         if (mine && step.done) {
+            row.classList.add('is-done');
             const done = document.createElement('span');
             done.className = 'home-daily-check';
             done.textContent = '✓';

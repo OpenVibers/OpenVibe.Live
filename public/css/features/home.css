@@ -31,7 +31,12 @@
 .home-daily-head { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 56px; padding: 9px 14px; background: none; border: 0; color: var(--text-primary); font: inherit; text-align: left; cursor: pointer; }
 .home-daily-titles { display: flex; flex: 1; flex-direction: column; min-width: 0; }
 .home-daily-kicker { color: var(--accent-light, var(--accent)); font-size: .65rem; font-weight: 800; letter-spacing: .09em; }
-.home-daily-title { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: .95rem; font-weight: 800; }
+/* The quest's name in full (two lines on a phone, never "Make your way around …"), and a three-part bar for the steps. */
+.home-daily-title { display: -webkit-box; overflow: hidden; -webkit-line-clamp: 2; -webkit-box-orient: vertical; font-size: .95rem; font-weight: 800; line-height: 1.3; }
+.home-daily-bar { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; max-width: 160px; margin-top: 6px; }
+.home-daily-bar i { height: 4px; border-radius: 999px; background: color-mix(in srgb, var(--text-primary) 12%, transparent); transition: background .4s ease; }
+.home-daily-quest[data-progress="1"] .home-daily-bar i:nth-child(-n+1), .home-daily-quest[data-progress="2"] .home-daily-bar i:nth-child(-n+2), .home-daily-quest[data-progress="3"] .home-daily-bar i { background: var(--accent-light, var(--accent)); }
+.home-daily-quest[data-progress="3"] .home-daily-bar i { background: var(--success, #22c55e); }
 .home-daily-chip { flex: none; padding: 5px 9px; border-radius: 999px; background: var(--bg-tertiary); color: var(--text-secondary); font-size: .72rem; font-weight: 700; }
 .home-daily-chev { color: var(--text-muted); transition: transform .2s; }
 .home-daily-quest.open .home-daily-chev { transform: rotate(180deg); }
@@ -39,7 +44,8 @@
 .home-daily-steps { list-style: none; padding: 0; margin: 0 0 10px; }
 .home-daily-steps li { display: flex; align-items: center; gap: 10px; min-height: 52px; border-top: 1px solid var(--border); font-size: .85rem; }
 .home-daily-steps li > span:nth-child(2) { flex: 1; }
-.home-daily-check { color: var(--accent-light, var(--accent)); font-weight: 900; }
+.home-daily-check { display: grid; place-items: center; flex: none; width: 24px; height: 24px; border-radius: 50%; background: var(--success, #22c55e); color: #fff; font-size: .75rem; font-weight: 900; }
+.home-daily-steps li.is-done > span:nth-child(2) { color: var(--text-muted); }
 .home-daily-action { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 0 16px; border-radius: 10px; background: var(--accent); color: var(--bg-primary); font-weight: 800; text-decoration: none; }
 
 @media (max-width: 599px) {
