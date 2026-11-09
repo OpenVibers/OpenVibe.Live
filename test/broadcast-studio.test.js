@@ -168,10 +168,12 @@ function loadStudio({ stream, cameras = [], screenShare = false }) {
 
     await check('before going live on a phone, a "Go live" bar presses the slot\'s own button while it is off screen', async () => {
         const dock = extract(studioSrc, 'syncGoLiveDock');
-        assert.ok(/NARROW\.matches && onBroadcastPage\(\) && !localStream\(\)/.test(dock), 'phones, on /broadcast, not live yet');
-        assert.ok(/real = goLiveButton\(\);\s*if \(real && !inView\(real\)\) mode = 'golive';/.test(dock), 'only while the real button is out of view');
+        assert.ok(/NARROW\.matches && onBroadcastPage\(\)/.test(dock), 'phones on the studio page');
+        assert.ok(/localStream\(\)\) mode = 'live'/.test(dock), 'the dock follows a live stream');
+        assert.ok(/mode = 'connecting'/.test(dock), 'the dock shows connection progress');
+        assert.ok(/real = goLiveButton\(\);\s*if \(real && !inView\(real\)\) mode = !window\._glCameraAllowed/.test(dock), 'the dock asks for camera access before it can go live');
         assert.ok(/function inView\(n\) \{[^}]*getBoundingClientRect\(\)/.test(studioSrc));
-        assert.ok(/b && !b\.disabled\) b\.click\(\)/.test(dock), 'it clicks the real Go Live button (same checks, same settings)');
+        assert.ok(/b && !b\.disabled\) \{ st\.startingSince = Date\.now\(\); b\.click\(\)/.test(dock), 'it clicks the real Go Live button (same checks, same settings)');
         assert.ok(/id="bc-ws-golive-btn"/.test(read('public/js/broadcast-workspace.js')), 'the button it presses exists');
     });
 

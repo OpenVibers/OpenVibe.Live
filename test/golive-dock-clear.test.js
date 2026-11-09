@@ -12,9 +12,9 @@ const fs = require('fs');
 const path = require('path');
 
 const css = fs.readFileSync(path.join(__dirname, '..', 'public/css/features/broadcast.css'), 'utf8');
-const rule = /body\.bc-golive-dock-on \.ovdk-pill:not\(\[data-corner\^="top"\]\) \{\s*bottom: calc\(104px \+ var\(--ovnav-appbar-h, 0px\) \+ env\(safe-area-inset-bottom, 0px\)\);/;
+const rule = /body\.bc-golive-dock-on \.ovdk-pill:not\(\[data-corner\^="top"\]\) \{\s*bottom: calc\(104px \+ max\(var\(--ovnav-appbar-h, 0px\), var\(--gl-keyboard, 0px\)\) \+ env\(safe-area-inset-bottom, 0px\)\);/;
 assert.ok(rule.test(css), 'the pill clears the Go live dock');
-assert.ok(/body\.bc-golive-dock-on #page-broadcast \{ padding-bottom: calc\(104px \+ var\(--ovnav-appbar-h, 0px\) \+ env\(safe-area-inset-bottom, 0px\)\); \}/.test(css),
+assert.ok(/body\.bc-golive-dock-on #page-broadcast \{ padding-bottom: calc\(104px \+ max\(var\(--ovnav-appbar-h, 0px\), var\(--gl-keyboard, 0px\)\) \+ env\(safe-area-inset-bottom, 0px\)\); \}/.test(css),
     'the same 104 px the page keeps for the dock (change both together)');
 assert.ok(!/body\.bc-golive-dock-on \.ovdk-pill[^{]*\{[^}]*display:\s*none/.test(css), 'the pill moves, it is never hidden');
 console.log('go live dock: the Dock pill rides above it, never on the button');

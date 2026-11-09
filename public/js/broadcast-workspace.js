@@ -380,22 +380,20 @@ function _wsRenderPanel() {
                 <!-- Class B: device-local choices (browser only): one card, a row each for the camera, its lens and
                      the microphone; remembered on this device, never saved with the slot. -->
                 <div id="bc-ws-device-wrap">
-                    <div id="bc-perm-request" class="bc-perm-request">
+                    <div id="bc-perm-request" class="bc-perm-request gl-allow">
+                        <span class="gl-allow-mark ov-mark" data-size="48" data-tone="brand" aria-hidden="true"></span>
+                        <strong id="gl-allow-title">Your camera is off</strong>
                         <p class="bc-perm-hint"><i class="fa-solid fa-shield-halved" aria-hidden="true"></i>
-                            <span id="bc-perm-hint-text">${_wsPermHint(browserMode)}</span></p>
-                        <button id="bc-perm-btn" class="btn btn-outline" type="button"
+                            <span id="bc-perm-hint-text">You choose when this browser may use your camera and microphone.</span></p>
+                        <button id="bc-perm-btn" class="btn btn-primary" type="button"
                             onclick="requestMediaPermissions()">
-                            <i class="fa-solid ${browserMode === 'mic_only' ? 'fa-microphone'
-                                : browserMode === 'screen' ? 'fa-display'
-                                : 'fa-video'}"></i>
-                            <span id="bc-perm-btn-text">${browserMode === 'mic_only' ? 'Allow Microphone'
-                                : browserMode === 'camera_only' ? 'Allow Camera'
-                                : browserMode === 'screen' ? 'Allow Screen Share'
-                                : 'Allow Camera &amp; Mic'}</span>
+                            <i class="fa-solid fa-video" aria-hidden="true"></i><span id="bc-perm-btn-text">Turn on camera</span>
                         </button>
+                        <button type="button" class="gl-allow-other" onclick="_glOtherWays()">Use a screen or an app instead</button>
                         <p id="bc-perm-debug" style="display:none;font-size:0.75rem;color:var(--text-secondary);margin-top:6px"></p>
                     </div>
                     <div id="bc-device-selects" style="display:none">
+                        <div class="gl-device-sheet-head"><strong>Camera settings</strong><button type="button" onclick="_glCloseDeviceSheet()" aria-label="Close camera settings"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button></div>
                         <div class="bc-setup-card">
                             <div class="bc-setup-item" id="bc-ws-camera-group">
                                 <div class="bc-setup-row">
@@ -422,6 +420,7 @@ function _wsRenderPanel() {
                                 </div>
                             </div>
                         </div>
+                        <div class="gl-device-extras"><label>Resolution <select id="gl-sheet-resolution" onchange="document.getElementById('bc-ws-resolution').value=this.value;document.getElementById('bc-ws-resolution').dispatchEvent(new Event('change',{bubbles:true}))"><option value="480">480p</option><option value="720" selected>720p</option><option value="1080">1080p</option></select></label><label>Mirror my preview <input id="gl-sheet-mirror" type="checkbox" onchange="_glSheetMirror(this.checked)"></label></div>
                         <p class="bc-setup-note">
                             <span>Remembered on this device</span>
                             <button type="button" class="bc-setup-link" onclick="refreshDeviceLists()"><i class="fa-solid fa-rotate" aria-hidden="true"></i> Refresh devices</button>
@@ -1064,8 +1063,52 @@ function _glCopyLink() {
    network, before going live. One watch, once a second, owns the camera: it opens it only while this page shows a
    browser slot that is not live, with permission already given, and lets go when the tab hides, the page changes, a
    stream starts or Go live is pressed. Turning it off is remembered on this device. ── */
-const _glPv = { stream: null, key: '', starting: false, timer: 0, raf: 0, ctx: null, hold: 0, failed: '' };
+const _glPv = { stream: null, key: '', starting: false, timer: 0, raf: 0, ctx: null, hold: 0, failed: '', stopMeter: null };
 const _GL_PV_OFF = 'ov_gl_preview_off';
+let _glCoreLoad;
+function _glCamCore() {
+    if (window.OpenVibeCam?.core) return Promise.resolve(window.OpenVibeCam.core);
+    if (!_glCoreLoad) _glCoreLoad = new Promise((resolve, reject) => {
+        const script = document.createElement('script');
+        // The query names this version (the start of its hash): a new Cam release is a new cache key, so Cloudflare never
+        // hands an older copy to this integrity check (it served one for a day after Cam #116, 11-09).
+        script.src = 'https://openvibe.cam/embed/cam-kit.js?v=yqqjh1FiP7a4';
+        script.integrity = 'sha384-yqqjh1FiP7a4l9uelJHaryd8Y5IwnHVbqjt1d0AXbgCcytI9Z5MMmItFqbwB4YZG';
+        script.crossOrigin = 'anonymous';
+        script.onload = () => window.OpenVibeCam?.core ? resolve(window.OpenVibeCam.core) : reject(new Error('Camera controls unavailable'));
+        script.onerror = () => reject(new Error('Could not load camera controls'));
+        document.head.append(script);
+    });
+    return _glCoreLoad;
+}
+function _glOtherWays() {
+    const fold = document.getElementById('gl-how');
+    if (fold) { fold.open = true; fold.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+}
+function _glPreviewControl(kind) {
+    if (kind === 'flip') {
+        const sel = document.getElementById('bc-create-camera');
+        if (!sel) return;
+        const current = sel.selectedOptions[0]?.dataset.facing || 'user';
+        const next = [...sel.options].find((o) => o.dataset.facing && o.dataset.facing !== current);
+        if (next) { sel.value = next.value; sel.dispatchEvent(new Event('change', { bubbles: true })); }
+        else if (typeof toast === 'function') toast('No other camera found on this device', 'info');
+    } else {
+        document.body.classList.add('gl-device-sheet-open');
+        if (kind === 'lens') document.getElementById('bc-create-camera')?.focus();
+        else if (kind === 'mic') document.getElementById('bc-create-audio')?.focus();
+        else if (kind === 'more') document.getElementById('gl-quality').open = true;
+    }
+}
+function _glCloseDeviceSheet() { document.body.classList.remove('gl-device-sheet-open'); }
+function _glSheetMirror(wanted) {
+    try { localStorage.setItem('ov_bc_mirror_preview', wanted ? '1' : '0'); } catch {}
+    const cam = document.getElementById('bc-create-camera');
+    const settings = { facing: cam?.selectedOptions[0]?.dataset.facing || 'user', lens: cam?.value || 'main', mic: document.getElementById('bc-create-audio')?.value || 'default', resolution: document.getElementById('bc-ws-resolution')?.value || '720', mirror: wanted };
+    window._glCamSettings = settings;
+    fetch('/api/cam/settings', { method: 'PUT', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(settings) }).catch(() => {});
+    _glPreviewSync();
+}
 
 function _glPreviewHTML(mode) {
     if (mode === 'screen') {
@@ -1084,6 +1127,7 @@ function _glPreviewHTML(mode) {
                 ${mode === 'camera_only' ? '' : '<span class="gl-pv-chip gl-pv-mic" title="Your microphone level"><i class="fa-solid fa-microphone" aria-hidden="true"></i><span class="gl-pv-lvl" aria-hidden="true"><i id="gl-pv-lvl"></i></span></span>'}
                 <span class="gl-pv-chip" id="gl-pv-net" hidden></span>
             </div>
+            ${audioOnly ? '' : '<div class="gl-pv-controls"><button type="button" onclick="_glPreviewControl(\'flip\')" aria-label="Flip camera"><i class="fa-solid fa-camera-rotate" aria-hidden="true"></i></button><button type="button" onclick="_glPreviewControl(\'lens\')" aria-label="Choose lens"><i class="fa-solid fa-camera" aria-hidden="true"></i></button><button type="button" onclick="_glPreviewControl(\'mic\')" aria-label="Choose microphone"><i class="fa-solid fa-microphone" aria-hidden="true"></i></button><button type="button" onclick="_glPreviewControl(\'more\')" aria-label="More camera settings"><i class="fa-solid fa-ellipsis" aria-hidden="true"></i></button></div>'}
             <button type="button" class="gl-pv-off" id="gl-pv-off" onclick="_glPreviewToggle()" aria-pressed="false" title="Turn the preview off">
                 <i class="fa-solid fa-eye-slash" aria-hidden="true"></i><span class="bc-visually-hidden">Turn the preview off</span>
             </button>
@@ -1104,7 +1148,7 @@ function _glPreviewWant() {
     const box = document.getElementById('gl-preview');
     const ms = _wsState.selectedMs;
     if (!box || !box.isConnected || !ms || box.classList.contains('is-still') && !box.classList.contains('is-audio')) return '';
-    if (document.hidden || _glPv.hold > Date.now() || _glPreviewOff()) return '';
+    if (document.hidden || _glPv.hold > Date.now() || _glPreviewOff() || !window._glCameraAllowed) return '';
     // The studio's page is shown (its address is /@you/studio or /broadcast); another page hides its section.
     if (!box.getClientRects().length) return '';
     if ((ms.streaming_method || 'browser') !== 'browser') return '';
@@ -1116,7 +1160,7 @@ function _glPreviewWant() {
     if (mode === 'screen') return '';
     const cam = mode === 'mic_only' ? '-' : (document.getElementById('bc-create-camera')?.value || 'default');
     const mic = mode === 'camera_only' ? '-' : (document.getElementById('bc-create-audio')?.value || 'default');
-    return `${mode}|${cam}|${mic}`;
+    return `${mode}|${cam}|${mic}|${document.getElementById('bc-ws-resolution')?.value || '720'}`;
 }
 
 function _glPreviewStop() {
@@ -1124,6 +1168,7 @@ function _glPreviewStop() {
     cancelAnimationFrame(_glPv.raf);
     _glPv.raf = 0;
     if (_glPv.ctx) { try { _glPv.ctx.close(); } catch { /* */ } _glPv.ctx = null; }
+    if (_glPv.stopMeter) { _glPv.stopMeter(); _glPv.stopMeter = null; }
     if (_glPv.stream) { _glPv.stream.getTracks().forEach((t) => { try { t.stop(); } catch { /* */ } }); _glPv.stream = null; }
     _glPv.key = '';
     const v = document.getElementById('gl-preview-video');
@@ -1140,13 +1185,10 @@ async function _glPreviewStart(key) {
     if (_glPv.starting) return;
     _glPv.starting = true;
     _glPreviewStop();
-    const [mode, cam, mic] = key.split('|');
-    const pick = (id) => (id && id !== 'default' ? { deviceId: { exact: id } } : true);
+    const [mode, cam, mic, resolution] = key.split('|');
     try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-            video: cam === '-' ? false : { ...(cam !== 'default' ? { deviceId: { exact: cam } } : {}), width: { ideal: 1280 }, height: { ideal: 720 } },
-            audio: mic === '-' ? false : pick(mic),
-        });
+        const core = await _glCamCore();
+        const stream = await core.open({ video: cam !== '-', audio: mic !== '-', lens: cam, mic, facing: window._glCamSettings?.facing || 'user', resolution });
         // Things moved on while the camera opened: let it go again.
         if (_glPreviewWant() !== key) { stream.getTracks().forEach((t) => t.stop()); return; }
         _glPv.stream = stream;
@@ -1169,57 +1211,30 @@ async function _glPreviewStart(key) {
         if (box) box.dataset.state = 'on';
         const note = document.getElementById('gl-pv-note');
         if (note) note.textContent = '';
-        if (mode !== 'camera_only' && stream.getAudioTracks().length) _glPreviewMeter(stream);
+        if (mode !== 'camera_only' && stream.getAudioTracks().length) _glPv.stopMeter = core.meter(stream, (level) => {
+            const bar = document.getElementById('gl-pv-lvl');
+            if (bar) bar.style.transform = `scaleX(${level.toFixed(3)})`;
+        });
     } catch (err) {
         _glPv.failed = key;
         const note = document.getElementById('gl-pv-note');
-        if (note) note.textContent = err && err.name === 'NotReadableError' ? 'Another app is using the camera. Close it, then come back here.'
-            : 'The camera did not open for the preview. Going live still asks for it.';
+        if (note) note.textContent = err && err.name === 'NotReadableError' ? 'Another app is using the camera. Close it, then try again.'
+            : 'The camera did not open. Choose another camera or turn it on again.';
     } finally {
         _glPv.starting = false;
     }
-}
-
-/** The microphone's level as a bar in its chip (about 20 times a second; nothing when the sound is off). */
-function _glPreviewMeter(stream) {
-    const AC = window.AudioContext || window.webkitAudioContext;
-    if (!AC) return;
-    let ctx;
-    try { ctx = new AC(); } catch { return; }
-    _glPv.ctx = ctx;
-    const an = ctx.createAnalyser();
-    an.fftSize = 512;
-    ctx.createMediaStreamSource(stream).connect(an);
-    const buf = new Uint8Array(an.fftSize);
-    let last = 0;
-    const bar = document.getElementById('gl-pv-lvl');
-    const tick = (t) => {
-        if (!_glPv.ctx) return;
-        _glPv.raf = requestAnimationFrame(tick);
-        if (t - last < 50 || !bar) return;
-        last = t;
-        an.getByteTimeDomainData(buf);
-        let sum = 0;
-        for (let i = 0; i < buf.length; i++) { const d = (buf[i] - 128) / 128; sum += d * d; }
-        const level = Math.min(1, Math.sqrt(sum / buf.length) * 4);
-        bar.style.transform = `scaleX(${level.toFixed(3)})`;
-    };
-    if (ctx.state === 'suspended') {
-        const wake = () => { ctx.resume().catch(() => {}); };
-        document.addEventListener('pointerdown', wake, { once: true, capture: true });
-    }
-    _glPv.raf = requestAnimationFrame(tick);
 }
 
 /** The network in a word: navigator.connection where the browser has it, and offline everywhere. */
 function _glPreviewNetwork() {
     const chip = document.getElementById('gl-pv-net');
     if (!chip) return;
+    const shared = window.OpenVibeCam?.core?.network?.();
     const c = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
     let text = '', cls = '';
-    if (navigator.onLine === false) { text = 'Offline'; cls = 'is-bad'; }
-    else if (c && (c.effectiveType || c.downlink)) {
-        const weak = /(^|-)(2g|3g)$/.test(c.effectiveType || '') || (c.downlink && c.downlink < 2.5);
+    if (shared === 'offline' || navigator.onLine === false) { text = 'Offline'; cls = 'is-bad'; }
+    else if (shared || c && (c.effectiveType || c.downlink)) {
+        const weak = shared === 'weak' || !shared && (/(^|-)(2g|3g)$/.test(c.effectiveType || '') || c.downlink && c.downlink < 2.5);
         text = weak ? 'Weak network · 720p suggested' : 'Good network';
         cls = weak ? 'is-warn' : 'is-ok';
     }
@@ -1229,6 +1244,7 @@ function _glPreviewNetwork() {
 }
 
 function _glPreviewSync() {
+    document.getElementById('gl-preview')?.classList.toggle('is-allowed', !!window._glCameraAllowed);
     const want = _glPreviewWant();
     _glPreviewNetwork();
     if (!want) { if (_glPv.stream || _glPv.key) _glPreviewStop(); return; }
@@ -1239,6 +1255,34 @@ function _glPreviewSync() {
 function _glPreviewWatch() {
     _glPreviewSync();
     if (_glPv.timer) return;
+    fetch('/api/cam/settings', { credentials: 'same-origin' }).then((r) => r.ok ? r.json() : null).then((saved) => {
+        if (!saved) return;
+        window._glCamSettings = saved;
+        const cam = document.getElementById('bc-create-camera');
+        const mic = document.getElementById('bc-create-audio');
+        const res = document.getElementById('bc-ws-resolution');
+        if (cam && [...cam.options].some((o) => o.value === saved.lens)) cam.value = saved.lens;
+        if (mic && [...mic.options].some((o) => o.value === saved.mic)) mic.value = saved.mic;
+        if (res && [...res.options].some((o) => o.value === saved.resolution)) res.value = saved.resolution;
+        const sheetRes = document.getElementById('gl-sheet-resolution');
+        if (sheetRes) sheetRes.value = saved.resolution;
+        const sheetMirror = document.getElementById('gl-sheet-mirror');
+        if (sheetMirror) sheetMirror.checked = saved.mirror;
+        try { localStorage.setItem('ov_bc_mirror_preview', saved.mirror ? '1' : '0'); } catch {}
+    }).catch(() => {});
+    document.addEventListener('change', (event) => {
+        if (!['bc-create-camera', 'bc-create-audio', 'bc-ws-resolution'].includes(event.target?.id)) return;
+        const cam = document.getElementById('bc-create-camera');
+        const settings = {
+            facing: cam?.selectedOptions[0]?.dataset.facing || window._glCamSettings?.facing || 'user',
+            lens: cam?.value || 'main', mic: document.getElementById('bc-create-audio')?.value || 'default',
+            resolution: document.getElementById('bc-ws-resolution')?.value || '720',
+            mirror: (() => { try { return localStorage.getItem('ov_bc_mirror_preview') === '1'; } catch { return true; } })(),
+        };
+        window._glCamSettings = settings;
+        fetch('/api/cam/settings', { method: 'PUT', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(settings) }).catch(() => {});
+        _glPreviewSync();
+    });
     _glPv.timer = setInterval(() => {
         _glPreviewSync();
         // Off the page for good: nothing left to watch.
@@ -1973,13 +2017,21 @@ async function _wsInitDevicePicker(method, browserMode) {
         const hasLabels = devices.some(d => d.label);
         const permReq = document.getElementById('bc-perm-request');
         const devSelects = document.getElementById('bc-device-selects');
-        if (hasLabels) {
+        if (hasLabels && window._glCameraAllowed) {
             if (permReq) permReq.style.display = 'none';
             if (devSelects) devSelects.style.display = '';
             if (typeof populateCreateFormDevices === 'function') await populateCreateFormDevices();
             // Restore persisted device selections for this slot (localStorage first, then server profile)
             _wsRestoreSlotDevices();
             _wsRestoreDevicesFromProfile();
+            const shared = window._glCamSettings;
+            const cam = document.getElementById('bc-create-camera');
+            const mic = document.getElementById('bc-create-audio');
+            if (shared && cam) {
+                const preferred = [...cam.options].find((o) => o.value === shared.lens) || [...cam.options].find((o) => o.dataset.facing === shared.facing);
+                if (preferred) cam.value = preferred.value;
+            }
+            if (shared?.mic && mic && [...mic.options].some((o) => o.value === shared.mic)) mic.value = shared.mic;
             if (typeof _bcRenderCameraChooser === 'function') _bcRenderCameraChooser();
         } else {
             if (permReq) permReq.style.display = '';
@@ -2380,8 +2432,8 @@ function _wsSelectBrowserMode(mode) {
             permHintText.textContent = _wsPermHint(mode);
         }
         if (permBtnText) {
-            const labels = { mic_only: 'Allow Microphone', camera_only: 'Allow Camera',
-                camera: 'Allow Camera & Mic' };
+            const labels = { mic_only: 'Turn on microphone', camera_only: 'Turn on camera',
+                camera: 'Turn on camera' };
             permBtnText.textContent = labels[mode] || labels.camera;
         }
         if (permBtn) {
@@ -2472,7 +2524,7 @@ async function _wsCheckScreenInlinePermissions() {
             _wsShowEl('bc-ws-screen-mic-device', true);
             _wsShowEl('bc-ws-screen-mic-perm', false);
             // Grant already held (labels are populated), so preview straight away.
-            if (document.getElementById('bc-ws-screen-mic')?.checked) _wsStartMicMeter();
+            if (window._glCameraAllowed && document.getElementById('bc-ws-screen-mic')?.checked) _wsStartMicMeter();
         } else if (document.getElementById('bc-ws-screen-mic')?.checked) {
             _wsShowEl('bc-ws-screen-mic-perm', true);
         }
@@ -2728,6 +2780,11 @@ function _wsShowEl(id, show) {
 async function goLiveFromWorkspace() {
     if (!_wsState.selectedMs) {
         toast('Select a stream slot first', 'error');
+        return;
+    }
+    if ((_wsState.selectedMs.streaming_method || 'browser') === 'browser' && (_wsState.selectedMs.browser_mode || _wsState.profile?.browserMode || 'camera') !== 'screen' && !window._glCameraAllowed) {
+        document.getElementById('bc-perm-btn')?.focus();
+        toast('Turn on camera before going live', 'info');
         return;
     }
 

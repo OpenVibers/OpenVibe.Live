@@ -32,7 +32,15 @@
     // self-view, like a selfie camera, is the person's choice for their own preview only, remembered on this device.
     const MIRROR_KEY = 'ov_bc_mirror_preview';
     function mirrorWanted() { try { return localStorage.getItem(MIRROR_KEY) === '1'; } catch { return false; } }
-    function toggleMirror() { try { localStorage.setItem(MIRROR_KEY, mirrorWanted() ? '0' : '1'); } catch { /* a private window keeps the default */ } refresh(); }
+    function toggleMirror() {
+        const mirror = !mirrorWanted();
+        try { localStorage.setItem(MIRROR_KEY, mirror ? '1' : '0'); } catch { /* a private window keeps the default */ }
+        if (window._glCamSettings) {
+            window._glCamSettings.mirror = mirror;
+            fetch('/api/cam/settings', { method: 'PUT', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mirror }) }).catch(() => {});
+        }
+        refresh();
+    }
     /** Is the preview mirrored right now: asked for, a front camera, and not a shared screen. */
     function mirrored() { return mirrorWanted() && facing() === 'user' && !screenSharing(); }
     function el(tag, attrs, ...kids) {
@@ -830,22 +838,27 @@
     // page not holding it, the bar resumes it instead of starting another.
     function inView(n) { if (!n || !n.offsetParent) return false; const r = n.getBoundingClientRect(); return r.top < window.innerHeight - 8 && r.bottom > 0; }
     function syncGoLiveDock() {
-        const ready = NARROW.matches && onBroadcastPage() && !localStream() && !streamState() && !!window._bcMyLoaded;
+        const ready = NARROW.matches && onBroadcastPage() && !!window._bcMyLoaded;
         const liveMine = ready ? (window._bcMyLive || []) : [];
         let mode = null, real = null;
-        if (ready && liveMine.length) {
+        if (ready && localStream()) mode = 'live';
+        else if (ready && st.startingSince && Date.now() - st.startingSince < 30000) mode = 'connecting';
+        else if (ready && liveMine.length) {
             const card = document.querySelector('#bc-active-list .bc-live-card-main');
             if (!inView(card)) mode = 'resume';
         } else if (ready) {
             real = goLiveButton();
-            if (real && !inView(real)) mode = 'golive';
+            if (real && !inView(real)) mode = !window._glCameraAllowed && (_wsState?.selectedMs?.browser_mode || _wsState?.profile?.browserMode || 'camera') !== 'screen' ? 'allow' : 'golive';
         }
         let dock = $('bcs-golive');
         if (mode && !dock) {
             dock = el('div', { class: 'bcs-golive', id: 'bcs-golive' },
                 el('button', { type: 'button', class: 'bcs-golive-btn', onclick: () => {
+                    if (dock.dataset.mode === 'live') { openConfirm(); return; }
+                    if (dock.dataset.mode === 'connecting') return;
+                    if (dock.dataset.mode === 'allow') { $('bc-perm-btn')?.click(); return; }
                     if (dock.dataset.mode === 'resume') { const s = (window._bcMyLive || [])[0]; if (s && typeof resumeStream === 'function') resumeStream(s.id); return; }
-                    const b = goLiveButton(); if (b && !b.disabled) b.click();
+                    const b = goLiveButton(); if (b && !b.disabled) { st.startingSince = Date.now(); b.click(); syncGoLiveDock(); }
                 } }, icon('fa-tower-broadcast'), el('span', { class: 'bcs-golive-t', text: 'Go live' })),
                 el('small', { class: 'bcs-golive-where' }));
             document.body.append(dock);
@@ -853,7 +866,26 @@
         if (dock) {
             dock.hidden = !mode;
             dock.dataset.mode = mode || '';
-            if (mode === 'resume') {
+            if (mode === 'live') {
+                st.startingSince = 0;
+                dock.querySelector('.bcs-golive-btn i').className = 'fa-solid fa-stop';
+                dock.querySelector('.bcs-golive-t').textContent = 'End stream';
+                const started = streamState()?.startedAt || streamState()?.streamData?.started_at;
+                const elapsed = started ? Math.max(0, Math.floor((Date.now() - new Date(started).getTime()) / 1000)) : 0;
+                dock.querySelector('.bcs-golive-where').textContent = `Live · ${Math.floor(elapsed / 60)}:${String(elapsed % 60).padStart(2, '0')}`;
+                dock.querySelector('.bcs-golive-btn').disabled = false;
+            } else if (mode === 'connecting') {
+                dock.querySelector('.bcs-golive-btn i').className = 'fa-solid fa-circle-notch fa-spin';
+                dock.querySelector('.bcs-golive-t').textContent = 'Connecting…';
+                dock.querySelector('.bcs-golive-where').textContent = 'Opening your studio';
+                dock.querySelector('.bcs-golive-btn').disabled = true;
+            } else if (mode === 'allow') {
+                const onlyMic = (_wsState?.selectedMs?.browser_mode || _wsState?.profile?.browserMode) === 'mic_only';
+                dock.querySelector('.bcs-golive-btn i').className = onlyMic ? 'fa-solid fa-microphone' : 'fa-solid fa-video';
+                dock.querySelector('.bcs-golive-t').textContent = onlyMic ? 'Turn on microphone' : 'Turn on camera';
+                dock.querySelector('.bcs-golive-where').textContent = onlyMic ? 'Microphone off · you choose when to start' : 'Camera off · you choose when to start';
+                dock.querySelector('.bcs-golive-btn').disabled = false;
+            } else if (mode === 'resume') {
                 const s = liveMine[0];
                 dock.querySelector('.bcs-golive-btn i').className = 'fa-solid fa-play';
                 dock.querySelector('.bcs-golive-t').textContent = liveMine.length > 1 ? 'Resume a live stream' : 'Resume your stream';
@@ -863,13 +895,17 @@
                 dock.querySelector('.bcs-golive-btn i').className = 'fa-solid fa-tower-broadcast';
                 dock.querySelector('.bcs-golive-t').textContent = 'Go live';
                 const where = real.parentElement && real.parentElement.querySelector('.bc-create-reassurance');
-                dock.querySelector('.bcs-golive-where').textContent = where ? where.textContent.trim() : '';
+                dock.querySelector('.bcs-golive-where').textContent = where ? `Ready · ${where.textContent.trim()}` : 'Ready';
                 dock.querySelector('.bcs-golive-btn').disabled = !!real.disabled;
             }
         }
         document.body.classList.toggle('bc-golive-dock-on', !!mode);
     }
     document.addEventListener('scroll', () => { if ($('bcs-golive') || goLiveButton()) syncGoLiveDock(); }, { capture: true, passive: true });
+    if (window.visualViewport) window.visualViewport.addEventListener('resize', () => {
+        const vv = window.visualViewport;
+        document.documentElement.style.setProperty('--gl-keyboard', `${Math.max(0, window.innerHeight - vv.height - vv.offsetTop)}px`);
+    });
 
     // ── Once a second: mount, update or leave ──
     function tick() {

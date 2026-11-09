@@ -2845,6 +2845,10 @@ body.bc-studio-on #bc-chat-messages .chat-conn-status { display: block !importan
     background: linear-gradient(to bottom, transparent, var(--bg-primary, #0b0b10) 34%);
 }
 .bcs-golive[hidden] { display: none; }
+.bcs-golive { bottom: max(var(--ovnav-appbar-h, 0px), var(--gl-keyboard, 0px), env(keyboard-inset-height, 0px)); }
+.bcs-golive[data-mode="live"] .bcs-golive-btn { background: #be123c; color: #fff; }
+.bcs-golive[data-mode="connecting"] .bcs-golive-btn { background: var(--bg-card); color: var(--text-primary); }
+.bcs-golive[data-mode="live"], .bcs-golive[data-mode="connecting"] { animation: unmute-pop var(--ov-dur-3, .3s) var(--ov-ease-out, ease-out) both; }
 .bcs-golive-btn {
     width: 100%; max-width: 520px; min-height: 52px; border: 0; border-radius: 14px; cursor: pointer;
     background: var(--accent-strong, #2563eb); color: var(--on-accent-strong, #fff); font: inherit; font-size: 1.05rem; font-weight: 800;
@@ -2856,10 +2860,10 @@ body.bc-studio-on #bc-chat-messages .chat-conn-status { display: block !importan
 /* The Dock's pill (openvibe-shared dock.js, in a bottom corner) rides above the Go live dock: it sat on the button's
    right half, so a tap there opened the Agent panel instead of going live (11-09). Top corners stay where they are. */
 body.bc-golive-dock-on .ovdk-pill:not([data-corner^="top"]) {
-    bottom: calc(104px + var(--ovnav-appbar-h, 0px) + env(safe-area-inset-bottom, 0px));   /* the page's own clearance (below) */
+    bottom: calc(104px + max(var(--ovnav-appbar-h, 0px), var(--gl-keyboard, 0px)) + env(safe-area-inset-bottom, 0px));   /* the page's own clearance (below); above the keyboard when it is up */
 }
 /* The page keeps room at its foot for the dock, so its last fields are never under it. */
-body.bc-golive-dock-on #page-broadcast { padding-bottom: calc(104px + var(--ovnav-appbar-h, 0px) + env(safe-area-inset-bottom, 0px)); }
+body.bc-golive-dock-on #page-broadcast { padding-bottom: calc(104px + max(var(--ovnav-appbar-h, 0px), var(--gl-keyboard, 0px)) + env(safe-area-inset-bottom, 0px)); }
 
 /* What viewers see, over the studio (bcStudio.showViewer): a phone stays on this tab. */
 .bcs-viewer {
@@ -2985,6 +2989,29 @@ body.bc-golive-dock-on #page-broadcast { padding-bottom: calc(104px + var(--ovna
     display: flex; flex-wrap: wrap; align-items: center; gap: 10px 12px; margin: 0; padding: 12px; text-align: left;
     border: 1px solid var(--border); border-radius: 12px; background: var(--bg-card);
 }
+.bc-ws-golive-section .gl-allow { display: grid; justify-items: center; gap: 8px; padding: 22px 16px; text-align: center; }
+.gl-allow-mark { display: grid; place-items: center; width: 64px; height: 64px; border: 3px solid var(--accent); border-radius: 50%; animation: gl-mark-work 1.8s ease-in-out infinite; }
+.gl-allow strong { font-size: 1.05rem; color: var(--text-primary); }
+.gl-allow .bc-perm-hint { justify-content: center; flex: none; }
+.gl-allow .bc-perm-hint i { display: none; }
+.gl-allow-other { border: 0; background: none; color: var(--text-secondary); text-decoration: underline; font: inherit; min-height: 44px; cursor: pointer; }
+@keyframes gl-mark-work { 50% { box-shadow: 0 0 0 10px color-mix(in srgb, var(--accent) 12%, transparent); transform: scale(1.04); } }
+.gl-preview.is-allowed::before { content: '● Camera on'; position: absolute; z-index: 2; top: 12px; left: 12px; color: #4ade80; background: rgba(8,12,20,.78); border: 2px solid #4ade80; border-radius: 99px; padding: 6px 10px; font-size: .76rem; font-weight: 750; }
+.gl-pv-controls { position: absolute; z-index: 3; left: 50%; bottom: 8px; transform: translateX(-50%); display: flex; gap: 6px; padding: 4px; border-radius: 999px; background: rgba(8,12,20,.7); }
+.gl-pv-controls button { display: grid; place-items: center; width: 44px; height: 44px; border: 0; border-radius: 50%; background: rgba(255,255,255,.13); color: #fff; cursor: pointer; }
+.gl-pv-controls button:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+.gl-device-sheet-head { display: none; }
+.gl-device-extras { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 12px; }
+.gl-device-extras label { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 44px; flex: 1 1 180px; font-size: .87rem; }
+.gl-device-extras select { min-height: 44px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-primary); color: var(--text-primary); }
+@media (max-width: 760px) {
+    .bc-ws-golive-section #bc-device-selects { position: fixed; z-index: 1300; left: 0; right: 0; bottom: max(var(--ovnav-appbar-h, 0px), var(--gl-keyboard, 0px)); max-height: 70dvh; overflow-y: auto; padding: 16px 16px 22px; border-radius: 22px 22px 0 0; background: var(--bg-card); box-shadow: 0 -12px 40px rgba(0,0,0,.35); transform: translateY(calc(100% + 100px)); transition: transform var(--ov-dur-3, .3s); }
+    body.gl-device-sheet-open .bc-ws-golive-section #bc-device-selects { transform: translateY(0); }
+    .gl-device-sheet-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+    .gl-device-sheet-head button { width: 44px; height: 44px; border: 0; border-radius: 50%; background: var(--bg-primary); color: var(--text-primary); }
+}
+@media (max-width: 760px) { .gl-preview { min-height: min(46vh, 390px); max-height: min(58vh, 520px); } .gl-pv-chips { bottom: 62px; } }
+@media (prefers-reduced-motion: reduce) { .gl-allow-mark, .bcs-golive[data-mode="live"], .bcs-golive[data-mode="connecting"] { animation: none; } .bcs-golive-btn .fa-spin { animation-iteration-count: 1; } }
 .bc-ws-golive-section .bc-perm-hint { flex: 1 1 200px; display: flex; align-items: flex-start; gap: 8px; margin: 0; font-size: 0.84rem; }
 .bc-ws-golive-section .bc-perm-hint i { color: var(--accent); margin-top: 3px; }
 .bc-ws-golive-section #bc-perm-btn { flex: 1 0 auto; justify-content: center; min-height: 44px; border-radius: 12px; font-weight: 650; }
@@ -3320,6 +3347,8 @@ body.bc-golive-dock-on #page-broadcast { padding-bottom: calc(104px + var(--ovna
 .gl-preview { position: relative; overflow: hidden; margin: 0 0 12px; border-radius: 14px; aspect-ratio: var(--gl-pv-ratio, 16 / 9); max-height: min(52vh, 520px);
     width: 100%; max-width: 100%; background: radial-gradient(120% 120% at 50% 0%, color-mix(in srgb, var(--accent) 14%, var(--bg-primary)), var(--bg-primary));
     border: 1px solid var(--border); display: grid; place-items: center; }
+.gl-preview:not(.is-allowed):not(.is-still) { display: none; }
+.gl-preview.is-allowed { animation: unmute-pop var(--ov-dur-3, .3s) var(--ov-ease-out, ease-out) both; }
 .gl-preview video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0; transition: opacity var(--ov-dur-3, .3s); }
 .gl-preview video.is-mirror { transform: scaleX(-1); }
 .gl-preview[data-state="on"] video { opacity: 1; }
@@ -3387,3 +3416,7 @@ body.bc-golive-dock-on #page-broadcast { padding-bottom: calc(104px + var(--ovna
 .gl-label--ai { border-style: dashed; color: var(--accent); }
 @media (pointer: coarse) { .gl-label { min-height: 44px; } }
 @media (prefers-reduced-motion: reduce) { .gl-label { transition: none; } }
+
+/* One "Turn on camera" (11-09 review): on a phone the Go live dock at the thumb carries it, so the card keeps the words
+   and the other ways, not a second identical button. */
+body.bc-golive-dock-on #bc-perm-btn { display: none; }
