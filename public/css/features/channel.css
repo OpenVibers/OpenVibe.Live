@@ -1895,3 +1895,22 @@ html[data-ov-motion="reduced"] #page-channel #ch-tabs { transition: none; }
 }
 @keyframes chChatRise { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) { #page-channel.chat-revealing .stream-layout > .chat-sidebar { animation: none !important; } }
+
+/* Offline, with when (ask 57, 11-09): a quiet state line, the last stream one tap away, and "Last live" in the header. */
+.ch-offline-state { display: inline-flex; align-items: center; gap: 8px; margin: 8px 0 0; padding: 6px 14px; border-radius: 999px; font-size: .9rem; font-weight: 600;
+    color: var(--text-secondary); background: color-mix(in srgb, var(--text-primary) 6%, transparent); }
+.ch-offline-state time { color: var(--text-primary); font-weight: 700; }
+.ch-offline-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-muted); box-shadow: 0 0 0 3px color-mix(in srgb, var(--text-muted) 22%, transparent); }
+.ch-last-stream { display: flex; align-items: center; gap: 12px; max-width: min(100%, 420px); margin: 14px auto 0; padding: 10px 16px 10px 10px; border-radius: 16px; text-align: left;
+    color: inherit; text-decoration: none; background: color-mix(in srgb, var(--accent) 10%, var(--bg-card, transparent)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 26%, transparent);
+    transition: transform .18s cubic-bezier(.2, .9, .3, 1.2), background .18s; }
+.ch-last-stream:hover { background: color-mix(in srgb, var(--accent) 16%, var(--bg-card, transparent)); transform: translateY(-1px); }
+.ch-last-play { flex: none; display: grid; place-items: center; width: 44px; height: 44px; border-radius: 50%; background: var(--accent); color: var(--on-accent, #fff); font-size: .95rem; }
+.ch-last-play i { margin-left: 2px; }
+.ch-last-text { min-width: 0; display: grid; gap: 2px; }
+.ch-last-text b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .95rem; color: var(--text-primary); }
+.ch-last-text small { font-size: .78rem; color: var(--text-muted); }
+.ch-last-chip { display: inline-flex; align-items: center; gap: 5px; color: var(--text-muted); white-space: nowrap; font-size: .82rem; }
+.ch-last-chip time { color: var(--text-secondary); font-weight: 600; }
+.ch-last-chip[hidden] { display: none; }
+@media (prefers-reduced-motion: reduce) { .ch-last-stream { transition: none; } }
