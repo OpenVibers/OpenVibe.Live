@@ -1,0 +1,18 @@
+cff-version: 1.2.0
+message: "If you use OpenVibe.Live in research or a product, cite it as below."
+title: openvibe-live
+type: software
+authors:
+  - name: OpenVibe
+    alias: OpenVibers
+    website: https://openvibe.network
+repository-code: https://github.com/OpenVibers/OpenVibe.Live
+url: https://openvibe.live
+license: AGPL-3.0-only
+abstract: "Live streaming you run yourself: browser or OBS ingest, chat, clips, recordings and restream, at openvibe.live."
+keywords:
+  - openvibe
+  - nodejs
+  - self-hosted
+  - video
+  - chat
