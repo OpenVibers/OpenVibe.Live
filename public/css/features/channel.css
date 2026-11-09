@@ -1896,7 +1896,7 @@ html[data-ov-motion="reduced"] #page-channel #ch-tabs { transition: none; }
 @keyframes chChatRise { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) { #page-channel.chat-revealing .stream-layout > .chat-sidebar { animation: none !important; } }
 
-/* Offline, with when (ask 57, 11-09): a quiet state line, the last stream one tap away, and "Last live" in the header. */
+/* Offline, with when (ask 57, 11-09): a quiet state line and the last stream one tap away (the header says "Last live" too). */
 .ch-offline-state { display: inline-flex; align-items: center; gap: 8px; margin: 8px 0 0; padding: 6px 14px; border-radius: 999px; font-size: .9rem; font-weight: 600;
     color: var(--text-secondary); background: color-mix(in srgb, var(--text-primary) 6%, transparent); }
 .ch-offline-state time { color: var(--text-primary); font-weight: 700; }
@@ -1910,7 +1910,4 @@ html[data-ov-motion="reduced"] #page-channel #ch-tabs { transition: none; }
 .ch-last-text { min-width: 0; display: grid; gap: 2px; }
 .ch-last-text b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .95rem; color: var(--text-primary); }
 .ch-last-text small { font-size: .78rem; color: var(--text-muted); }
-.ch-last-chip { display: inline-flex; align-items: center; gap: 5px; color: var(--text-muted); white-space: nowrap; font-size: .82rem; }
-.ch-last-chip time { color: var(--text-secondary); font-weight: 600; }
-.ch-last-chip[hidden] { display: none; }
 @media (prefers-reduced-motion: reduce) { .ch-last-stream { transition: none; } }

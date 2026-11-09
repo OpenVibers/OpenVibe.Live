@@ -977,7 +977,6 @@ async function loadChannelPage(username, managedStreamRef = null, legacySessionI
 
             // Customizable offline screen (image / video / custom HTML)
             offlineBlocks = _renderOfflineScreen(ch, data);
-            _setLastLiveChip(document.getElementById('ch-last-live-offline'), _lastLive(data));
 
             // Offline: join the streamer's PERSISTENT chat room (not global) so
             // viewers can keep chatting + see history while the streamer is offline.
@@ -3439,17 +3438,6 @@ function _lastLive(data) {
     return { at: best ? best[0] : null, ms: best ? best[1] : 0, vod };
 }
 
-/** "Last live 2h ago" beside the follower count: a clock, the time, the full date on hover. */
-function _setLastLiveChip(el, last) {
-    if (!el) return;
-    if (!last || !last.at) { el.hidden = true; el.textContent = ''; return; }
-    el.hidden = false;
-    el.innerHTML = '';
-    const ic = document.createElement('i'); ic.className = 'fa-regular fa-clock'; ic.setAttribute('aria-hidden', 'true');
-    const tm = document.createElement('time'); tm.dateTime = new Date(last.ms).toISOString(); tm.title = new Date(last.ms).toLocaleString();
-    tm.textContent = timeAgo(last.at);
-    el.append(ic, document.createTextNode(' Last live '), tm);
-}
 
 function _renderOfflineScreen(ch, data) {
     const host = document.getElementById('ch-offline-screen');
