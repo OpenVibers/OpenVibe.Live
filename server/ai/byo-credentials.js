@@ -92,7 +92,7 @@ async function store(userId, cfg, { apiKey = null } = {}) {
     const provider = providerOf(cfg);
     if (provider === 'node') {
         const machine = machineOf(cfg);
-        if (!machine) return { ok: false, status: 400, body: { code: 'credentials.machine', detail: 'Name your computer (its dev_ id on openvibe.bot/machines), or choose any of yours' } };
+        if (!machine) return { ok: false, status: 400, body: { code: 'credentials.machine', detail: 'Name your computer (its dev_ id on openvibe.link/machines), or choose any of yours' } };
         return await call('PUT', subject, { provider: 'node', machine, models: modelsOf(cfg) });
     }
     const put = { provider, base_url: addressOf(cfg, provider), models: modelsOf(cfg) };

@@ -15,7 +15,7 @@ const FALLBACK_SITES = [
     'https://openvibe.zone', 'https://openvibe.surf', 'https://openvibe.codes', 'https://openvibe.quest',
     'https://openvibe.food', 'https://openvibe.rent', 'https://openvibe.homes', 'https://openvibe.watch',
     'https://openvibe.events', 'https://openre.stream', 'https://search.openvibe.network', 'https://openvibe.email',
-    'https://node.openvibe.network', 'https://openvibe.website',
+    'https://openvibe.link', 'https://openvibe.website',
 ];
 let cachedSites = null;
 let cachedAt = 0;

@@ -83,6 +83,9 @@
             // injected rules broke the hash-based report-only CSP on every page view (11-03: a /api/csp-report POST
             // each load; Chrome ignores 'inline-speculation-rules' beside hashes).
             speculate: false,
+            // The shared worker (openvibe-sw.js, Shared 4.164.0): the shell's cache. The same file the bell registers for
+            // push, so there is one registration at scope "/" and nothing is unregistered by accident.
+            sw: true,
             onLogout: () => call('logout'),
         };
     }
