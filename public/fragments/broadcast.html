@@ -18,7 +18,7 @@
                 <!-- ═══ STEP 0: Stream Manager (existing streams + create new) ═══ -->
                 <div id="bc-stream-manager" class="broadcast-tab-content active" data-tab="go-live">
                     <h2><i class="fa-solid fa-tower-broadcast"></i> Go Live <button type="button" class="btn btn-outline btn-sm glw-open-btn" onclick="openSetupHub()" title="Everything you can set up, step by step"><i class="fa-solid fa-list-check"></i> Streamer setup</button></h2>
-                    <p class="bc-page-subtitle">Check the card, press Go live. Everything else is in the rows under it.</p>
+                    <p class="bc-page-subtitle" id="bc-page-subtitle">Check the card, press Go live. Everything else is in the rows under it.</p>
 
                     <!-- Guests: going live needs an account. broadcast.js shows this in place of the slot
                          workspace and loads nothing else (_broadcastSignInGate). -->
@@ -59,13 +59,19 @@
 
                         <!-- Right main panel -->
                         <div class="bc-ws-main">
-                            <!-- Empty state: no stream selected -->
+                            <!-- First run (no streams yet): one press makes a browser stream and opens its card, where
+                                 Go live is; OBS and other apps get the full form. broadcast-workspace.js _wsShowEmpty. -->
                             <div class="bc-ws-empty" id="bc-ws-empty">
-                                <i class="fa-solid fa-tower-broadcast" style="font-size:2.5rem;opacity:0.2;margin-bottom:16px"></i>
-                                <p class="muted" style="margin:0 0 16px">A slot is one stream of yours: its title, its link, how it goes out and where else it is sent. Make one to go live.</p>
-                                <button class="btn btn-outline" onclick="showCreateManagedStreamModal()">
-                                    <i class="fa-solid fa-plus"></i> Create stream slot
-                                </button>
+                                <div class="bc-first" id="bc-first">
+                                    <span class="bc-first-mark" aria-hidden="true"><i class="fa-solid fa-tower-broadcast"></i></span>
+                                    <h3 class="bc-first-title">Your first stream</h3>
+                                    <p class="bc-first-lede">Go live from this browser with your camera, your screen or both: no OBS, no download, no follower minimum.</p>
+                                    <div class="bc-first-actions">
+                                        <button type="button" class="btn btn-primary bc-first-go" id="bc-first-go" onclick="wsFirstBrowserStream(this)"><i class="fa-solid fa-video" aria-hidden="true"></i> Go live from this browser</button>
+                                        <button type="button" class="btn btn-outline bc-first-app" onclick="wsFirstAppStream()"><i class="fa-solid fa-server" aria-hidden="true"></i> Use OBS or another app</button>
+                                    </div>
+                                    <p class="bc-first-fine">Each stream you make keeps its own title, link and key. Make more any time.</p>
+                                </div>
                             </div>
                             <!-- Profile editor + Go Live + History (populated by broadcast-workspace.js) -->
                             <div class="bc-ws-panel" id="bc-ws-panel" style="display:none"></div>
