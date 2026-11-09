@@ -279,17 +279,6 @@
         "saveDashPointsConfig"
       ]
     },
-    "messenger": {
-      "css": [
-        "/css/messenger.css"
-      ],
-      "js": [
-        "/js/messenger.js"
-      ],
-      "stubs": [
-        "openMessengerDm"
-      ]
-    },
     "dashboard": {
       "fragment": "dashboard",
       "css": [
