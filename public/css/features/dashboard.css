@@ -111,7 +111,15 @@
 }
 @media (max-width: 768px) {
 
-    .dash-grid { grid-template-columns: 1fr; }
+    /* minmax(0, 1fr), not 1fr: a 1fr track grows to its widest content, and one long line in the Chat tab made every
+       card there 466 px wide on a 390 px phone (the page zoomed out; signed-in sweep, 11-09). */
+    .dash-grid { grid-template-columns: minmax(0, 1fr); }
+    .dash-grid > * { min-width: 0; }
+    /* A card's address rows (the chat overlay, the scenes): the address on its own line, then Copy and Preview side by
+       side (they were two unlabeled full-width grey bars). */
+    .dash-card .key-display { flex-direction: row; }
+    .dash-card .key-display .form-input { flex: 1 1 100%; min-width: 0; }
+    .dash-card .key-display .btn { flex: 1 1 0; width: auto; min-height: 40px; justify-content: center; }
 }
 @media (max-width: 360px) {
     .dash-card { padding: 14px; border-radius: 14px; }
@@ -516,3 +524,9 @@
 .dash-schedule-list a { color: var(--text-secondary); text-decoration: none; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dash-schedule-list a:hover { color: var(--text-primary); text-decoration: underline; }
 .dash-schedule-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+
+/* Bench on stream (Chat tab): labels over their fields, the button at the start of the row. */
+.dash-bench-form { display: grid; gap: 6px; }
+.dash-bench-form label { margin-top: 6px; font-size: 0.85rem; font-weight: 600; color: var(--text-secondary); }
+.dash-bench-form .btn { justify-self: start; min-height: 40px; margin-top: 10px; }
+#dash-bench-status:empty { display: none; }

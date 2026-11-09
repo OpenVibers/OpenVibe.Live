@@ -12,7 +12,7 @@ let activeStreams = [];
    modules (e.g. moderation) register their loader on window._dashTabLoaders. */
 const _DASH_TAB_CARDS = {
     home:       ['dash-card-profile', 'dash-card-schedule', 'dash-card-ai-derivation', 'dash-card-offline'],
-    chatai:     ['dash-card-vibe', 'dash-aibot-card', 'dash-card-overlay', 'dash-card-scenes', 'dash-card-chatlogs'],
+    chatai:     ['dash-card-vibe', 'dash-aibot-card', 'dash-card-overlay', 'dash-card-scenes', 'dash-bench-stream', 'dash-card-chatlogs'],
     moderation: [],  // injected by dashboard-moderation.js into #dash-grid-moderation
     controls:   ['dash-card-bot-embed', 'dash-card-tokens'],
     money:      ['dash-card-bucks', 'dash-card-goals', 'dash-card-tips-page', 'dash-powerchat-card'],
@@ -245,9 +245,9 @@ function updateDashScenes() {
         name.append(i, ` ${label}`);
         const row = document.createElement('div'); row.className = 'key-display';
         const input = document.createElement('input'); input.type = 'text'; input.readOnly = true; input.className = 'form-input'; input.value = dashSceneUrl(kind); input.setAttribute('aria-label', `${label} scene URL`);
-        const copy = document.createElement('button'); copy.className = 'btn btn-small'; copy.title = `Copy the ${label} URL`; copy.innerHTML = '<i class="fa-solid fa-copy"></i>';
+        const copy = document.createElement('button'); copy.className = 'btn btn-small'; copy.title = `Copy the ${label} URL`; copy.innerHTML = '<i class="fa-solid fa-copy" aria-hidden="true"></i> Copy';
         copy.addEventListener('click', () => navigator.clipboard.writeText(input.value).then(() => toast(`${label} URL copied`, 'success')));
-        const open = document.createElement('a'); open.className = 'btn btn-small'; open.href = input.value; open.target = '_blank'; open.rel = 'noopener'; open.title = `Preview ${label}`; open.innerHTML = '<i class="fa-solid fa-arrow-up-right-from-square"></i>';
+        const open = document.createElement('a'); open.className = 'btn btn-small'; open.href = input.value; open.target = '_blank'; open.rel = 'noopener'; open.title = `Preview ${label}`; open.innerHTML = '<i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i> Preview';
         row.append(input, copy, open);
         li.append(name, row);
         return li;
