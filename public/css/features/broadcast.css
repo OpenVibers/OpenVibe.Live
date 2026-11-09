@@ -723,11 +723,14 @@
 }
 
 .bc-camera-sheet-list {
-    overflow-y: auto;
+    overflow-y: auto; overscroll-behavior: contain;
     padding: 12px 14px 16px;
     display: grid;
     gap: 10px;
 }
+.bc-camera-sheet-header { touch-action: none; }
+#bc-chat-sidebar .chat-messages { overscroll-behavior: contain; }
+@media (max-width: 768px) { #bc-chat-sidebar .chat-header { touch-action: none; } }
 
 .bc-camera-sheet-empty {
     min-height: 140px;
