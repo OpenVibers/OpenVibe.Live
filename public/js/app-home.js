@@ -1288,9 +1288,12 @@ function demoteHomeIntroSections() {
  *     its group (DOM nodes, https OpenVibe addresses only), so the section is never behind for long. */
 const _OVNET_HOST = /(^|\.)(openvibe\.[a-z]+|open\.shoes|openre\.stream)$/i;
 const _OVNET_NEVER = /(^|\.)(openvibe\.(fund|ai|recipes|page)|openvalve\.games|therecipelist\.com)$/i;
-function _ovnetSignedIn(root) {
+// app.js's currentUser is a script-level binding, not a window property: window.currentUser was always undefined, so the
+// button showed to people who were signed in (the owner, 11-09). The event's user wins when there is one.
+function _ovnetSignedIn(root, user) {
     const cta = root.querySelector('[data-ovnet-signin]');
-    if (cta) cta.hidden = !!window.currentUser;
+    const me = user !== undefined ? user : (typeof currentUser !== 'undefined' ? currentUser : null); // eslint-disable-line no-undef
+    if (cta) cta.hidden = !!me;
 }
 function _ovnetCount(root) {
     const el = root.querySelector('.ovnet-count');
@@ -1358,7 +1361,7 @@ function initHomeNetwork() {
     if (!root || root._ovnet) return;
     root._ovnet = true;
     _ovnetSignedIn(root);
-    window.addEventListener('openvibe-auth-changed', () => _ovnetSignedIn(root));
+    window.addEventListener('openvibe-auth-changed', (e) => _ovnetSignedIn(root, e && e.detail ? e.detail.user : undefined));
     // Glide to a group; the address keeps the group, so the link can be shared.
     root.addEventListener('click', (e) => {
         const jump = e.target.closest('.ovnet-jump a[href^="#"]');
@@ -1368,8 +1371,9 @@ function initHomeNetwork() {
             return;
         }
         if (e.target.closest('[data-ovnet-switcher]')) {
-            const mark = document.getElementById('openvibe-switch-btn');
-            if (mark) { window.scrollTo({ top: 0, behavior: 'smooth' }); mark.click(); }
+            // The OpenVibe menu (the orb at the top right) holds every site.
+            const menu = document.getElementById('openvibe-burger') || document.getElementById('openvibe-search-btn') || document.getElementById('openvibe-switch-btn');
+            if (menu) menu.click();
         }
     });
     // The first time it nears the screen: tiles rise in, the count counts up, the ring icons load.
