@@ -8,7 +8,7 @@ const root = path.join(__dirname, '..');
 const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
 
 for (const file of ['public/js/messenger.js', 'public/css/messenger.css']) {
-    assert.ok(!fs.existsSync(path.join(root, file)), `${file} is removed`);
+    assert.ok(fs.existsSync(path.join(root, file)), `${file} remains available to N-1 pages`);
 }
 
 const features = JSON.stringify(JSON.parse(read('public/features.json')));
@@ -18,4 +18,4 @@ for (const file of ['public/index.html', 'public/js/app.js', 'public/js/ov-navba
     assert.ok(!/messenger/i.test(read(file)), `${file} does not load or open the local messenger`);
 }
 
-console.log('messages Dock: the local messenger assets and entry points are removed');
+console.log('messages Dock: current pages use the Dock; N-1 messenger assets remain available');
