@@ -1398,8 +1398,8 @@ function _renderHomePulse(p) {
         identity.className = 'pulse-fact-identity';
         const face = document.createElement('span');
         face.className = 'pulse-fact-face';
-        const name = String(person.display_name || person.username || person.name || 'OpenVibe');
-        face.textContent = name.charAt(0).toUpperCase();
+        const name = String(person.username ? '@' + person.username : (person.display_name || person.name || 'OpenVibe'));
+        face.textContent = String(person.display_name || person.username || person.name || 'O').charAt(0).toUpperCase();
         if (person.avatar_url) {
             const img = document.createElement('img');
             img.src = person.avatar_url;
@@ -1522,7 +1522,7 @@ function renderRecentlyOnline(containerId, streamers, append) {
             img.onerror = () => img.remove(); face.append(img);
         }
         const who = el('span', 'recent-streamer-who');
-        const name = el('a', 'streamer-group-name', shown);
+        const name = el('a', 'streamer-group-name', s.username ? '@' + s.username : shown);
         name.href = channelHref;
         const when = el('span', 'streamer-group-last-online' + (s.live ? ' is-live' : ''), s.live ? 'Live now' : timeAgo(s.last_online_at));
         if (!s.live) when.title = 'Last live ' + timeAgo(s.last_online_at);
@@ -1867,7 +1867,7 @@ function streamCardHTML(s, isLive) {
                 ${ovLabelChips(s)}
                 <div class="stream-card-streamer">
                     ${_avatarSpan(s.avatar_url, s.username, s.profile_color)}
-                    ${esc(s.username || 'Anonymous')}
+                    ${esc(s.username ? '@' + s.username : 'Anonymous')}
                     ${endedAgo}
                 </div>
                 ${(isLive && s.description) ? `<div class="stream-card-desc" title="Click to expand" onclick="event.preventDefault();event.stopPropagation();this.classList.toggle('expanded')">${esc(s.description)}</div>` : ''}
@@ -2412,7 +2412,7 @@ function _renderHomeStar(data) {
                 </div>
                 <div class="star-body">
                     <div class="star-kicker"><i class="fa-solid fa-star"></i> ${s.rotates ? 'Star of the day' : 'Featured streamer'}</div>
-                    <h3 class="star-name"><a href="${esc(path)}" onclick="return handleLinkClick(event, '${esc(path)}')">${name}</a>${foreign && lang.code === 'ja' ? '<span class="star-jp">OpenVibeの看板配信者 — ようこそ！</span>' : ''}</h3>
+                    <h3 class="star-name"><a href="${esc(path)}" onclick="return handleLinkClick(event, '${esc(path)}')">${s.username ? esc('@' + s.username) : name}</a>${foreign && lang.code === 'ja' ? '<span class="star-jp">OpenVibeの看板配信者 — ようこそ！</span>' : ''}</h3>
                     <div class="star-chips">${chips}</div>
                 </div>
                 <div class="star-more" id="star-more" hidden>

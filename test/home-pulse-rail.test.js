@@ -17,7 +17,7 @@ context.render({ goals: [{ title: 'Do not show', current_amount: 1, target_amoun
     dailyFinished: 2 });
 const cards = [...document.querySelectorAll('.pulse-fact-card')];
 assert.equal(cards.length, 2);
-assert.match(cards[0].textContent, /LIVE NOW.*Ann.*12.*viewers watching/s);
+assert.match(cards[0].textContent, /LIVE NOW.*@ann.*12.*viewers watching/s);
 assert.match(cards[1].textContent, /TODAY'S QUEST.*2.*people finished today/s);
 assert.ok(!document.body.textContent.includes('Do not show'));
 assert.ok(!document.body.textContent.includes('Ben'));

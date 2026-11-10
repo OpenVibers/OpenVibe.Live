@@ -732,7 +732,7 @@ button{font:inherit}
       </div>
       <div class="info">
         <div class="title">${esc(s.title||"Untitled stream")}</div>
-        <div class="meta">${esc(s.display_name||s.username||"OpenVibe.Live")}</div>
+        <div class="meta">${esc("@" + (s.username||s.display_name||"OpenVibe.Live"))}</div>
       </div>
     </a>`;
   }

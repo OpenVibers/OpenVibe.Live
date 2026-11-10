@@ -144,7 +144,7 @@
                     <h3 class="hf-title">${escText(s.title || 'Untitled Stream')}</h3>
                     <a class="hf-who" href="${escText(chan)}" onclick="return handleLinkClick(event, '${escText(chan)}')">
                         ${typeof _avatarSpan === 'function' ? _avatarSpan(s.avatar_url, s.username, s.profile_color) : ''}
-                        <b>${escText(s.display_name || s.username)}</b>
+                        <b>${escText('@' + (s.username || s.display_name || ''))}</b>
                         ${s.category ? `<span class="hf-tag"${s.ai_category && s.ai_category === s.category ? ' title="Category inferred by OpenVibe&#39;s AI from the stream"' : ''}>${escText(s.category)}${s.ai_category && s.ai_category === s.category ? '<span class="cat-inferred"> · inferred</span>' : ''}</span>` : ''}
                         ${up ? `<span class="muted"><i class="fa-solid fa-clock"></i> ${escText(up)}</span>` : ''}
                     </a>
