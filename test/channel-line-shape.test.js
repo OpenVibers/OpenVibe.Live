@@ -95,6 +95,22 @@ for (const f of FIXTURES) {
     assert.ok(!line.toLowerCase().startsWith(f.username.toLowerCase()), `${f.name}: no name at the start`);
     assert.ok(!line.toLowerCase().startsWith(String(f.displayName || '').toLowerCase()), `${f.name}: no display name at the start`);
 }
+// A comma inside one adjective list is not a sentence break: the line cuts at a whole joining phrase
+// instead of ending on "blocky." or "dark." (the home card showed those on 2026-11-10).
+const TRIM = [
+    { overview: 'moosely streams with a casual, homey vibe centered around acoustic guitar sessions and laid-back chats.', line: 'Streams with a casual, homey vibe centered around acoustic guitar sessions.' },
+    { overview: 'drbagelsmp streams Minecraft with bold purple lighting and blocky, imaginative builds that draw you into a colorful, creative world.', line: 'Streams Minecraft with bold purple lighting.' },
+    { overview: 'mrcodygraves streams as an IRL creator, often centered in a dark, minimalist setup with a headset and a Champion shirt.', line: 'Streams as an IRL creator, often centered in a dark, minimalist setup.' },
+    { overview: '1n1xx streams a mix of fast-paced first-person shooters and arcade-style Roblox-style obstacle courses, with on-screen chat.', line: 'Streams a mix of fast-paced first-person shooters.' },
+    { overview: 'Bobdope streams as an irl content creator sharing underwater marine life footage, turtle and reef scenes, and other real-world aquatic views.', line: 'Streams as an irl content creator sharing underwater marine life footage.' },
+];
+for (const t of TRIM) {
+    const line = shapeChannelLine({ username: 'x', displayName: 'x', overview: t.overview });
+    assert.strictEqual(line, t.line, t.overview.slice(0, 40));
+    assert.match(line, CHANNEL_LINE_RE);
+    assert.ok(line.length <= 90);
+}
+
 assert.match(FALLBACK_CHANNEL_LINE, CHANNEL_LINE_RE, 'the fallback is the same shape');
 assert.strictEqual(shapeChannelLine(), FALLBACK_CHANNEL_LINE, 'no arguments');
 assert.strictEqual(shapeChannelLine({ overview: null }), FALLBACK_CHANNEL_LINE, 'null overview');

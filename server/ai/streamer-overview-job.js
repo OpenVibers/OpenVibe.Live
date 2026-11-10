@@ -28,7 +28,7 @@ async function tick() {
         // overview is already stored). This is the job that rewrites the stored rows, so the old name-first
         // lines are refreshed here, not by hand.
         try {
-            const reshaped = await db.shapeStoredStreamerOverviewShorts(100);
+            const reshaped = await db.shapeStoredStreamerOverviewShorts(500);
             if (reshaped) console.log(`[AI] Streamer-overview job reshaped ${reshaped} stored card line(s)`);
         } catch (e) { console.warn('[AI] streamer overview reshape:', e.message); }
         if (!await ai.isEnabled()) return;

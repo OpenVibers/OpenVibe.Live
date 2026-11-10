@@ -948,11 +948,12 @@ async function getStreamerOverview(userId) {
  * the read path also shapes, so no page shows an old shape while this catches up. Returns how many changed.
  */
 async function shapeStoredStreamerOverviewShorts(limit = 20) {
+    // Every stored row is compared with the deterministic shape, not only the obviously old ones: a
+    // line written by an earlier version of the shaper can start with "Streams" and still be the wrong
+    // cut ("Streams with a casual."). A batch of 500 is a few pure-JS shapes, no AI call.
     const rows = await all(`SELECT o.user_id, o.overview, o.overview_short, u.username, u.display_name
         FROM streamer_overviews o LEFT JOIN users u ON u.id = o.user_id
         WHERE o.overview IS NOT NULL AND TRIM(o.overview) <> ''
-          AND (o.overview_short IS NULL OR LENGTH(o.overview_short) > 90 OR o.overview_short LIKE '%:%'
-               OR o.overview_short NOT LIKE 'Streams %')
         ORDER BY o.generated_at ASC NULLS FIRST LIMIT ?`, [limit]);
     let changed = 0;
     for (const r of rows) {
