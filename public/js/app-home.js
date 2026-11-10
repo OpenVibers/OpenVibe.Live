@@ -1688,15 +1688,16 @@ async function loadHomePastes(opts) {
                             · ${timeAgo(p.created_at)}
                         </div>
                         ${_cardAiHTML(p.ai_summary)}
+                        ${p.more_like_it && p.ai_summary ? `<div class="home-paste-preview">and ${Number(p.more_like_it)} more like it</div>` : ''}
                     </div>
                     </div>
                 </a>`;
             }).join(''));
             if (window.OVDensity) OVDensity.attach(list, { key: 'pastes', header: document.getElementById('home-pastes-header') });
-            homeRailLoaded(rail, offset, pastes.length, data.total);
+            homeRailLoaded(rail, offset, data.raw_count || pastes.length, data.total);
             renderHomePagination('home-pastes-pagination', rail);
         };
-        await apiSWR(`/pastes?limit=${limit}&offset=${offset}&origin=user`, render, { ttl: 180000 });
+        await apiSWR(`/pastes?limit=${limit}&offset=${offset}&origin=user&dedupe=consecutive`, render, { ttl: 180000 });
     } catch { rail.filling = false; }
 }
 

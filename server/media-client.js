@@ -317,6 +317,10 @@ async function uploadFile(file, fields = {}, opts = {}) {
     return await request('POST', '/files', { body: fd, timeoutMs: 120000, ...opts });
 }
 
+async function getObject(id, opts = {}) { return await request('GET', `/objects/${encodeURIComponent(id)}`, opts); }
+async function listObjects(query = {}, opts = {}) { return await request('GET', '/objects', { query, ...opts }); }
+
+
 async function getFileMeta(key, opts = {}) {
     return await request('GET', `/files/${encodeURIComponent(key)}`, opts);
 }
@@ -469,7 +473,7 @@ module.exports = {
     // clips
     createClip, getClip, listClips, updateClip, deleteClip, recutClip, trimClip, getJob,
     // files + thumbnails
-    uploadFile, getFileMeta, deleteFile,
+    uploadFile, getFileMeta, deleteFile, getObject, listObjects,
     uploadThumbnail, generateThumbnail,
     // URL builders
     vodPlaybackUrl, vodDvrPlaylistUrl, clipUrl, pasteScreenshotUrl, thumbUrl, fileUrl, publicUrl, setPlaybackUrls,

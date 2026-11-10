@@ -203,29 +203,15 @@ router.post('/avatar', requireAuth, avatarUpload.single('avatar'), async (req, r
             return res.status(400).json({ error: 'That file is not a valid or is a corrupt image.' });
         }
 
-        // Back the avatar with a paste: every upload becomes an avatar-tagged
-        // screenshot paste (now stored in OpenVibe.Media), giving users an upload
-        // history and letting staff moderate avatar images via the paste tooling.
+        // Keep the uploaded bytes in Media while Network adopts them into the person's avatar store.
         const media = require('../media-client');
-        // Default to a PUBLIC paste (checkbox checked); accept opt-out via `public=false`.
-        const makePublic = req.body.public === undefined ? true : !(req.body.public === 'false' || req.body.public === false || req.body.public === '0');
         const imageBuffer = fs.readFileSync(req.file.path);
         try { fs.unlinkSync(req.file.path); } catch { /* */ }
-        const paste = await require('../pastes-client').createPaste({
-            title: 'Avatar upload',
-            content: '',
-            language: 'text',
-            visibility: makePublic ? 'public' : 'unlisted',
-            user_id: req.user.id,
-            metadata: JSON.stringify({ kind: 'avatar', original_name: req.file.originalname || null, mime_type: req.file.mimetype || null }),
-            screenshot: {
-                buffer: imageBuffer,
-                filename: req.file.originalname || 'avatar.png',
-                contentType: req.file.mimetype || 'image/png',
-            },
-        });
-        const screenshotUrl = media.publicUrl(paste.screenshot_url) || media.pasteScreenshotUrl(paste.slug);
-        await db.updateUserAvatar(req.user.id, screenshotUrl, paste.id || null);
+        const staged = await media.uploadFile({ buffer: imageBuffer, filename: 'avatar-upload', contentType: req.file.mimetype || 'application/octet-stream' },
+            { user_id: req.user.id }, { actingUser: req.user.id });
+        if (!staged || !staged.key || !staged.url) throw new Error('Media did not return the uploaded picture address');
+        const avatarUrl = staged.url;
+        await db.updateUserAvatar(req.user.id, avatarUrl, null);
 
         // The Network copies the picture into the person's own avatar object (the paste stays as the source, and
         // can be cleaned up without breaking the avatar); Live then keeps that object's address.
@@ -233,11 +219,12 @@ router.post('/avatar', requireAuth, avatarUpload.single('avatar'), async (req, r
         try {
             const synced = await require('../utils/notify').syncAvatarChange(view);
             if (synced && synced.avatar_url && synced.avatar_url !== view.avatar_url) {
-                await db.updateUserAvatar(req.user.id, synced.avatar_url, paste.id || null);
+                await db.updateUserAvatar(req.user.id, synced.avatar_url, null);
                 view = await db.getUserById(req.user.id);
+                await media.deleteFile(staged.key, { actingUser: req.user.id }).catch(() => {});
             }
         } catch { /* the Network copies it on the next report; the paste still works until then */ }
-        res.json({ user: await sanitizeUser(view), avatar_url: view.avatar_url || screenshotUrl });
+        res.json({ user: await sanitizeUser(view), avatar_url: view.avatar_url || avatarUrl });
     } catch (err) {
         if (req.file) try { fs.unlinkSync(req.file.path); } catch { }
         console.error('[Auth] Avatar upload error:', err.message);
@@ -245,15 +232,13 @@ router.post('/avatar', requireAuth, avatarUpload.single('avatar'), async (req, r
     }
 });
 
-// The user's avatar upload history (avatar-tagged screenshot pastes, in OpenVibe.Community).
-// Pastes have no metadata filter upstream, so
-// lookups.avatarPastes lists the person's screenshots and keeps the avatar-tagged ones.
+// The user's avatar history: native Media avatar objects, plus old avatar-tagged Community pastes.
 router.get('/avatar/history', requireAuth, async (req, res) => {
     try {
         const me = await db.getUserById(req.user.id);
         const activePasteId = me?.avatar_paste_id || null;
         const media = require('../media-client');
-        const rows = (await require('../media-proxy/lookups').avatarPastes(me)).map(r => {
+        const legacyRows = (await require('../media-proxy/lookups').avatarPastes(me)).map(r => {
             const url = media.publicUrl(r.screenshot_url);
             return {
                 slug: r.slug,
@@ -263,10 +248,44 @@ router.get('/avatar/history', requireAuth, async (req, res) => {
                 active: (activePasteId != null && r.id === activePasteId) || (!!url && url === me.avatar_url),
             };
         }).filter(r => r.url);
+        let nativeRows = [];
+        try {
+            const subject = me.subject_id || await require('../pastes-client').subjectForLiveUser(me.id);
+            if (subject) {
+                const listed = await media.listObjects({ kind: 'avatar', owner: subject, limit: 60 }, { actingUser: me.id });
+                nativeRows = (listed.objects || []).map(o => ({ id: o.id, slug: o.id, title: o.metadata?.title || 'Profile picture',
+                    created_at: o.created_at, url: o.public_url || `${media.MEDIA_PUBLIC_URL}/o/${encodeURIComponent(o.id)}`,
+                    active: !!(me.avatar_url && (o.public_url === me.avatar_url || `${media.MEDIA_PUBLIC_URL}/o/${o.id}` === me.avatar_url)), store: 'media' }));
+            }
+        } catch { /* old Community history remains usable while Media is unavailable */ }
+        const rows = [...nativeRows, ...legacyRows].sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || ''))).slice(0, 60);
         res.json({ avatars: rows });
     } catch (err) {
         console.error('[Auth] Avatar history error:', err.message);
         res.status(500).json({ error: 'Failed to load avatar history' });
+    }
+});
+
+router.post('/avatar/object/:id', requireAuth, async (req, res) => {
+    try {
+        const me = await db.getUserById(req.user.id);
+        const subject = me?.subject_id || await require('../pastes-client').subjectForLiveUser(me.id);
+        if (!subject) return res.status(404).json({ error: 'Picture not found' });
+        const media = require('../media-client');
+        const object = await media.getObject(req.params.id, { actingUser: me.id });
+        if (!object || object.kind !== 'avatar' || !object.owner || object.owner.subject !== subject) return res.status(404).json({ error: 'Picture not found' });
+        const sourceUrl = object.public_url || `${media.MEDIA_PUBLIC_URL}/o/${encodeURIComponent(object.id)}`;
+        await db.updateUserAvatar(me.id, sourceUrl, null);
+        let view = await db.getUserById(me.id);
+        const synced = await require('../utils/notify').syncAvatarChange(view).catch(() => null);
+        if (synced?.avatar_url) {
+            await db.updateUserAvatar(me.id, synced.avatar_url, null);
+            view = await db.getUserById(me.id);
+        }
+        res.json({ success: true, user: await sanitizeUser(view), avatar_url: view.avatar_url || sourceUrl });
+    } catch (err) {
+        console.error('[Auth] Avatar restore error:', err.message);
+        res.status(500).json({ error: 'Failed to restore avatar' });
     }
 });
 
