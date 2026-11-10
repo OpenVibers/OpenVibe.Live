@@ -36,7 +36,7 @@ const fs = require('fs');
 
 const TOPICS = ['media.vod.*', 'media.clip.*', 'media.storage.*', 'media.object.*'];
 const DEFAULT_ENDPOINT = 'http://127.0.0.1:3000/internal/media-events';
-const NETWORK_TOPICS = ['network.user.token_valid_after', 'network.user.updated', 'network.follow.created', 'network.follow.deleted', 'network.subject.merged', 'network.account.export_requested', 'network.account.deleted'];
+const NETWORK_TOPICS = ['network.user.token_valid_after', 'network.user.updated', 'network.follow.created', 'network.follow.deleted', 'network.account.export_requested', 'network.account.deleted'];
 const NETWORK_ENDPOINT = 'http://127.0.0.1:3000/internal/network-events';
 const BILLING_TOPICS = ['billing.transaction.settled', 'billing.entitlement.changed'];
 const BILLING_ENDPOINT = 'http://127.0.0.1:3000/internal/billing-events';

@@ -10,8 +10,6 @@
  *   token_valid_after  the person's older tokens are refused (./revocations.js)
  *   updated            the person's profile, role and ban (./subject-projection.js, WS-B task 2)
  *   follow.created/.deleted  Live's follows table as a projection of Network's graph (../social/network-follows.js)
- *   subject.merged     two accounts became one (ADR-029): the folded-in Live user's follows, channel points and streams
- *                      move to the survivor's (./subject-merge.js), once per merge
  *   account.export_requested / account.deleted  the person's export part goes to Network, or their Live rows are
  *                      erased and the erasure confirmed (./account-data.js, ADR-033), once per export or deletion
  *
@@ -32,15 +30,13 @@ const notifyChat = async (userId) => {
 
 function secret() { return process.env.LIVE_EVENTS_SECRET || process.env.MEDIA_EVENTS_SECRET || ''; }
 
-/** Apply one envelope; returns 'revoked' | 'unchanged' | 'updated' | 'stale' | 'ignored:<why>' (a merge, export or deletion: a promise). */
+/** Apply one envelope; returns 'revoked' | 'unchanged' | 'updated' | 'stale' | 'ignored:<why>' (an account event: a promise). */
 async function apply(ev) {
     if (!ev || !EVENT_ID_RE.test(String(ev.event_id || ''))) return 'ignored:envelope';
-    if (ev.event_type === 'network.subject.merged') return ev.source === 'network' ? await require('./subject-merge').apply(ev) : 'ignored:source';
     if (ev.event_type === 'network.account.export_requested' || ev.event_type === 'network.account.deleted') return ev.source === 'network' ? await require('./account-data').apply(ev) : 'ignored:source';
     const follow = ev.event_type === 'network.follow.created' || ev.event_type === 'network.follow.deleted';
     if (ev.event_type !== 'network.user.token_valid_after' && ev.event_type !== 'network.user.updated' && !follow) return 'ignored:type';
     if (ev.source !== 'network') return 'ignored:source';
-    // The follow graph is Network's (ADR-030); Live's follows table is its projection.
     if (follow) return await require('../social/network-follows').apply(ev);
     const p = ev.payload && typeof ev.payload === 'object' ? ev.payload : {};
     if (ev.event_type === 'network.user.updated') return await require('./subject-projection').apply(p, { notify: notifyChat });
@@ -58,10 +54,10 @@ async function handler(req, res) {
     const delivery = parseDelivery(req.rawBody, req.headers, key, { requireV2: true });
     if (!delivery) { stats.refused++; return res.status(401).json({ error: 'bad signature' }); }
     stats.received++;
-    const count = (out) => { if (out === 'revoked') stats.revoked++; else if (out === 'unchanged' || out === 'stale') stats.unchanged++; else if (out === 'updated' || out === 'followed' || out === 'unfollowed' || out === 'merged' || out === 'relinked' || out === 'exported' || out === 'erased' || out === 'confirmed') stats.profiles++; else stats.ignored++; };
+    const count = (out) => { if (out === 'revoked') stats.revoked++; else if (out === 'unchanged' || out === 'stale') stats.unchanged++; else if (out === 'updated' || out === 'followed' || out === 'unfollowed' || out === 'relinked' || out === 'exported' || out === 'erased' || out === 'confirmed') stats.profiles++; else stats.ignored++; };
     const out = await apply(delivery.event);
     if (out && typeof out.then === 'function') {
-        // A merge, export or deletion: answer after it applied, so a failure is redelivered.
+        // Account export or deletion: answer after it applied, so a failure is redelivered.
         return out.then((o) => { count(o); res.status(204).end(); }, (e) => { console.error(`[NetworkEvents] ${delivery.event.event_type} failed:`, e.message); res.status(500).json({ error: 'not applied' }); });
     }
     count(out);

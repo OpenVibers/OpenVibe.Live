@@ -227,7 +227,7 @@ server.listen(0, '127.0.0.1', async () => {
         // Live subscribes to the follow events.
         assert.match(fs.readFileSync(path.join(__dirname, '..', 'scripts', 'subscribe-media-events.js'), 'utf8'), /'network\.follow\.created', 'network\.follow\.deleted'/);
 
-        // Only the projection writes follows (and the account merge repoints it); no Live-only path is left.
+        // Only the projection writes follows (and Network projects it); no Live-only path is left.
         const root = path.join(__dirname, '..', 'server');
         const writers = [];
         const walk = (dir) => { for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -236,7 +236,7 @@ server.listen(0, '127.0.0.1', async () => {
             else if (e.name.endsWith('.js') && /\b(INSERT(\s+OR\s+\w+)?\s+INTO|DELETE\s+FROM|UPDATE)\s+follows\b/i.test(fs.readFileSync(p, 'utf8'))) writers.push(path.relative(root, p));
         } };
         walk(root);
-        assert.deepStrictEqual(writers.sort(), ['auth/subject-merge.js', 'social/network-follows.js'], 'follows writers');
+        assert.deepStrictEqual(writers.sort(), ['social/network-follows.js'], 'follows writers');
         assert.strictEqual(typeof db.followUser, 'undefined');
         assert.strictEqual(typeof db.unfollowUser, 'undefined');
         assert.ok(!/FOLLOWS_AUTHORITY/.test(fs.readFileSync(path.join(root, 'social', 'network-follows.js'), 'utf8')), 'no switch back to Live-only follows');
