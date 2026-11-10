@@ -474,6 +474,7 @@
                 ${avatarHtml}
                 <div class="ctx-info">
                     <span class="ctx-name">${badge}${esc(p.display_name || username)}</span>
+                    ${Number.isInteger(p.level) && p.level > 0 ? `<a href="https://openvibe.quest/levels">Level ${p.level}</a>` : ''}
                     <span class="ctx-meta">@${esc(username)} &middot; ${joined}</span>
                 </div>
             </div>
