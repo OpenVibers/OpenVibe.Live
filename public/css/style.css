@@ -9132,6 +9132,18 @@ html[data-theme-mode="light"] .hero h1 { background-image: linear-gradient(90deg
     background-size: cover; background-position: right center; background-repeat: no-repeat;
 }
 .cgw-overlay { position: absolute; inset: 0; }
+/* A goal without a picture (ask 289): art from its title (goalArtHTML in app.js): two hues, a light band, its glyph. */
+/* :is() outweighs each place's own `background: #000` (dashboard.css and the popover's rules load later). */
+:is(.cgw-media, .cgw-pop-media, .cgr-media, .dash-goal-thumb).cgw-art { display: flex; align-items: center; justify-content: flex-end; overflow: hidden; color: #fff;
+    background: linear-gradient(115deg, transparent 52%, rgba(255,255,255,.07) 52% 60%, transparent 60%), radial-gradient(140% 160% at 88% 20%, var(--ga1), var(--ga2) 72%); }
+.cgw-art i { opacity: .55; transform: rotate(-10deg); text-shadow: 0 4px 18px rgba(0,0,0,.35); }
+.cgw-media.cgw-art { padding-right: 64px; }
+.cgw-media.cgw-art i { font-size: 32px; opacity: .45; }
+.cgw-pop-media.cgw-art { height: 170px; padding-right: 40px; }
+.cgw-pop-media.cgw-art i { font-size: 84px; }
+:is(.cgr-media, .dash-goal-thumb).cgw-art { justify-content: center; padding: 0; }
+.cgr-media.cgw-art i { font-size: 30px; opacity: .8; }
+.dash-goal-thumb.cgw-art i { font-size: 24px; opacity: .8; }
 /* Strong scrim on the LEFT (where the title + amount sit) fading to clear on the right,
    so the goal image's object — pushed to the right edge — stays fully visible. */
 .cgw-goal.has-img .cgw-overlay {
