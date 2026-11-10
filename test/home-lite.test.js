@@ -33,4 +33,12 @@ const block = css.slice(at, css.indexOf('\n}\n', at));
 assert.ok(!/animation:\s*none/.test(block), 'the phone block stops no animation');
 assert.ok(/\.hero-collage \{ display: none !important; \}/.test(block), 'it still leaves out the collage, which has no room');
 
+// The base stylesheet's phone block keeps layout and glass rules only too: the hero background's slow pan is
+// transform-only, and a narrow screen is not a reason to stop it.
+const style = read('public/css/style.css');
+const styleAt = style.indexOf('@media (max-width: 720px) {');
+assert.ok(styleAt > 0, 'the base stylesheet has its phone block');
+const styleBlock = style.slice(styleAt, style.indexOf('\n}\n', styleAt));
+assert.ok(!/\.hero-bg-layer\.active\s*\{[^}]*animation:\s*none/.test(styleBlock), 'the hero background keeps its 12s pan on a phone');
+
 console.log('home-lite: ok');

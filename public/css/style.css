@@ -9473,7 +9473,8 @@ label.staff-inline-toggle.aiv-field { flex-direction:row; align-items:center; }
        a stronger saving — and leaving this on made the expand animation impossible to measure:
        each group reported its 120px placeholder height for two frames, so the container animated
        to 602px and then snapped to its real 976px. */
-    .hero-bg-layer.active { animation: none !important; }
+    /* The hero background keeps its 12s pan on a phone: it is transform-only, and a narrow screen is not a
+       reason to stop motion (the owner, 2026-11-10). */
 }
 
 /* ── OV brand mark (navbar + hero): the O is a ring with a comet running around it, the V is

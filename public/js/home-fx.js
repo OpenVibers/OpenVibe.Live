@@ -7,8 +7,8 @@
   *   - scroll reveal: section headers, cards and grids slide/fade in as they enter the viewport
  *   - count-up: hero stat numbers tick up from 0 when first painted
  *   - card tilt: stream cards tilt slightly toward the pointer
- * Everything is disabled with motion off (Calm plays it), paused when the tab is hidden, and
- * skips the canvas on coarse-pointer / narrow screens to keep phones cool.
+ * Everything is disabled with motion off (Calm plays it), paused when the tab is hidden, and the
+ * canvas is skipped on a device short of memory or saving data — never because its screen is narrow.
  */
 (function () {
     'use strict';
