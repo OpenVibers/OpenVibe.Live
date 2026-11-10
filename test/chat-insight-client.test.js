@@ -18,6 +18,7 @@ console.warn = () => {};
 
 const GLOBAL = { overview: 'Chat is excited about the raid.', memory: 'Raid at 20:00.', timeline: [] };
 const USER = { overview_24h: 'Asks about builds.', memory: 'Plays support.' };
+const CHANNEL = { overview: { text: 'The channel is planning a raid.', topics: [{ label: 'raid', count: 3 }], people: 4, messages: 9, from: '2026-11-10 08:00:00', to: '2026-11-10 09:00:00', updated_at: '2026-11-10 09:00:02' }, timeline: [], state: 'ready' };
 let failing = false;
 const calls = [];
 const chat = http.createServer((req, res) => {
@@ -29,6 +30,7 @@ const chat = http.createServer((req, res) => {
     if (req.url === '/api/chat/ai/anon/anon42') return res.end(JSON.stringify({ insight: { overview_24h: 'lurker' } }));
     if (req.url === '/api/chat/ai/relay/twitch/Some%20One') return res.end(JSON.stringify({ insight: { overview_24h: 'from twitch' } }));
     if (req.url === '/api/chat/ai/user/8') return res.end(JSON.stringify({ insight: null }));
+    if (req.url === '/api/v1/rooms/channel:7/insight') return res.end(JSON.stringify(CHANNEL));
     res.statusCode = 404; res.end('{}');
 });
 
@@ -42,6 +44,7 @@ const chat = http.createServer((req, res) => {
     assert.deepStrictEqual(await client.getAnon('anon42'), { overview_24h: 'lurker' });
     assert.deepStrictEqual(await client.getRelay('twitch', 'Some One'), { overview_24h: 'from twitch' });
     assert.strictEqual(await client.getUser(8), null, 'no insight yet answers null');
+    assert.deepStrictEqual(await client.getChannel(7), CHANNEL, 'a channel answers the room shape');
 
     // Cached: repeated and concurrent reads cost one fetch.
     const before = calls.length;
@@ -59,11 +62,16 @@ const chat = http.createServer((req, res) => {
     assert.strictEqual(client.peekGlobal(), null);
     await new Promise((r) => setTimeout(r, 100));
     assert.strictEqual(client.peekGlobal().overview, GLOBAL.overview);
+    client._reset();
+    assert.strictEqual(client.peekChannel(7), null, 'a cold channel peek answers null');
+    await new Promise((r) => setTimeout(r, 100));
+    assert.deepStrictEqual(client.peekChannel(7), CHANNEL, 'the channel peek warmed the cache');
 
     // Bad ids never reach Chat.
     const n = calls.length;
     assert.strictEqual(await client.getUser('x'), null);
     assert.strictEqual(await client.getAnon('../global'), null);
+    assert.strictEqual(await client.getChannel('x'), null);
     assert.strictEqual(client.peekAnon('nope'), null);
     assert.strictEqual(calls.length, n, 'no request for an invalid id');
 

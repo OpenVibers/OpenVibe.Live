@@ -56,6 +56,35 @@ function read(key, path) {
     return p;
 }
 
+/**
+ * A room's insight (plan 2026-11-10): the shape Chat's one endpoint answers for every room, here for a
+ * Live channel's chat keyed by the broadcaster's user id. It is the same answer a Chat room gets:
+ * { overview, timeline, state }. Cached and fail-soft like the other reads.
+ */
+function readRoom(key, path) {
+    const hit = cached(key);
+    if (hit) return Promise.resolve(hit.value);
+    if (inflight.has(key)) return inflight.get(key);
+    const p = (async () => {
+        if (drill()) return null;
+        try {
+            const res = await fetch(`${CHAT_URL}${path}`, { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(TIMEOUT_MS) });
+            if (!res.ok) throw new Error(`answered ${res.status}`);
+            const value = await res.json().catch(() => null);
+            lastLog = null;
+            remember(key, value || null);
+            return value || null;
+        } catch (err) {
+            const m = `OpenVibe.Chat room insight ${path}: ${(err && err.message) || err}`;
+            if (m !== lastLog) { lastLog = m; console.warn(`[ChatInsight] ${m}`); }
+            remember(key, null);
+            return null;
+        }
+    })().finally(() => inflight.delete(key));
+    inflight.set(key, p);
+    return p;
+}
+
 function peek(key, path) {
     const hit = cached(key);
     if (hit) return hit.value;
@@ -63,9 +92,17 @@ function peek(key, path) {
     return null;
 }
 
+function peekRoom(key, path) {
+    const hit = cached(key);
+    if (hit) return hit.value;
+    readRoom(key, path).catch(() => { /* logged in readRoom() */ });   // floating-ok: warms the cache
+    return null;
+}
+
 const userPath = (id) => `/user/${Number(id)}`;
 const anonPath = (id) => `/anon/${encodeURIComponent(String(id))}`;
 const relayPath = (platform, username) => `/relay/${encodeURIComponent(String(platform))}/${encodeURIComponent(String(username))}`;
+const channelPath = (id) => `/api/v1/rooms/channel:${Number(id)}/insight`;
 const validUser = (id) => Number.isInteger(Number(id)) && Number(id) > 0;
 const validAnon = (id) => /^anon\d+$/i.test(String(id || ''));
 
@@ -74,9 +111,12 @@ module.exports = {
     getUser: (id) => (validUser(id) ? read(`u:${Number(id)}`, userPath(id)) : Promise.resolve(null)),
     getAnon: (id) => (validAnon(id) ? read(`a:${id}`, anonPath(id)) : Promise.resolve(null)),
     getRelay: (platform, username) => (platform && username ? read(`r:${platform}:${username}`, relayPath(platform, username)) : Promise.resolve(null)),
+    /** A Live channel's chat insight, the same shape a Chat room answers (channel:<broadcaster user id>). */
+    getChannel: (id) => (validUser(id) ? readRoom(`c:${Number(id)}`, channelPath(id)) : Promise.resolve(null)),
     peekGlobal: () => peek('g', '/global'),
     peekUser: (id) => (validUser(id) ? peek(`u:${Number(id)}`, userPath(id)) : null),
     peekAnon: (id) => (validAnon(id) ? peek(`a:${id}`, anonPath(id)) : null),
     peekRelay: (platform, username) => (platform && username ? peek(`r:${platform}:${username}`, relayPath(platform, username)) : null),
+    peekChannel: (id) => (validUser(id) ? peekRoom(`c:${Number(id)}`, channelPath(id)) : null),
     _reset() { cache.clear(); inflight.clear(); lastLog = null; },
 };
