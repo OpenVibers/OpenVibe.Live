@@ -30,4 +30,8 @@ assert.ok(browse.includes('<div id="rd-day-host"></div>') && browse.includes('_r
 
 for (const sel of ['.rd-day-rail', '.rd-day-it', '.rd-day-when', '.rd-day-topic', '.rd-day-take', '.rd-day-watch', '.rd-day-sum']) assert.ok(css.includes(`${sel} {`), `${sel} is styled`);
 assert.ok(/\.rd-day-watch \{[^}]*min-height: 44px/.test(css), 'the way to the moment is a full touch target');
+// Trending on a phone is ranked: the place, the topic, and what the place rests on.
+const rails = js.slice(js.indexOf('function _rdRails(d) {'), js.indexOf('// ── The page the bar is on'));
+assert.ok(rails.includes('<b class="rd-rank-n" aria-hidden="true">${i + 1}</b>') && rails.includes("${t.streamers} streamer") && rails.includes("${t.takes} take"), 'a ranked row says its place and what it rests on');
+assert.ok(css.includes('.rd-rank {') && /\.rd-rank \{[^}]*min-height: 52px/.test(css), 'and is a full touch target');
 console.log('rundown day on the front page: OK');

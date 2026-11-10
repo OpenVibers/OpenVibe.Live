@@ -568,3 +568,12 @@ body.rd-sheet-open { overflow: hidden; }
 .rd-day-watch { justify-self: start; display: inline-flex; align-items: center; gap: 6px; min-height: 44px; margin-top: 2px; font-weight: 700; font-size: 0.88rem; color: color-mix(in srgb, var(--accent-light, var(--accent)) 60%, var(--text-primary)); text-decoration: none; }
 .rd-day-watch:hover { text-decoration: underline; }
 @media (min-width: 900px) { .rd-day-rail { grid-auto-columns: 280px; } }
+
+/* Trending on a phone, ranked (rundown.js _rdRails): the place in the topic's own kind colour, the topic, and what the
+   place rests on. */
+.rd-rank { flex: none; display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 10px; max-width: 78vw; min-height: 52px; padding: 8px 14px 8px 10px; border-radius: 14px; border: 1px solid var(--border); background: var(--bg-card); color: var(--text-primary); text-decoration: none; }
+.rd-rank:hover, .rd-rank:focus-visible { border-color: var(--rd-k, var(--accent)); outline: none; }
+.rd-rank-n { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; font-size: 0.9rem; font-weight: 800; font-variant-numeric: tabular-nums; color: color-mix(in srgb, var(--rd-k, var(--accent)) 60%, var(--text-primary)); background: color-mix(in srgb, var(--rd-k, var(--accent)) 18%, transparent); }
+.rd-rank-t { display: grid; min-width: 0; }
+.rd-rank-t strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.92rem; }
+.rd-rank-t small { color: var(--text-muted); font-size: 0.78rem; white-space: nowrap; }

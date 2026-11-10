@@ -801,7 +801,14 @@ function _rdKindChips(state) {
 }
 // Trending topics and who's been talking, as two rails under the bar (on the phone) and in the side column.
 function _rdRails(d) {
-    const trending = (d.trending || []).map(_rdTopicFilter).join('');
+    // Trending on a phone is ranked, the way the side box is on a computer: the place, the topic, and what the place
+    // rests on (how many streamers, how many takes). It was a row of bare chips in no stated order.
+    const trending = (d.trending || []).map((t, i) => {
+        const [label, color] = RD_KIND[t.kind] || RD_KIND.other;
+        const meta = `${t.streamers} streamer${t.streamers === 1 ? '' : 's'} \u00b7 ${t.takes} take${t.takes === 1 ? '' : 's'}`;
+        return _rdA('/rundown?topic=' + encodeURIComponent(t.slug), `<b class="rd-rank-n" aria-hidden="true">${i + 1}</b><span class="rd-rank-t"><strong>${_rdEsc(t.title)}</strong><small>${meta}</small></span>`, 'rd-rank', `${i + 1}. ${label}: ${t.title}, ${meta}`)
+            .replace('class="rd-rank"', `class="rd-rank" style="--rd-k:${color}"`);
+    }).join('');
     const voices = (d.voices || []).map((v) => '<a class="rd-rail-item" href="/rundown?streamer=' + encodeURIComponent(v.user.username) + '">' + _rdFace(v.user, 24) + '<span>' + _rdEsc(_rdName(v.user)) + '</span></a>').join('');
     return '<div class="rd-rails">' +
         '<section class="rd-rail"><div class="rd-rail-head"><h2 class="rd-h2">Trending topics</h2>' + _rdA('/rundown/topics', 'See all', 'rd-rail-all') + '</div><div class="rd-rail-track">' + (trending || '<span class="rd-quiet">No topics yet.</span>') + '</div></section>' +
