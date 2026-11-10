@@ -49,11 +49,15 @@ function embedUrl(robotId) {
     return `${botOrigin()}/panel/${encodeURIComponent(robotId)}/embed`;
 }
 
-/** The channel page's `bot_embed` value: undefined with the flag off, else { enabled, robot_id, url }. */
+/** The two places a streamer may put the controls by default; a viewer may still hide them or move them. */
+const CONTROL_MODES = ['overlay', 'panel'];
+const controlMode = (value) => (CONTROL_MODES.includes(value) ? value : 'panel');
+
+/** The channel page's `bot_embed` value: undefined with the flag off, else { enabled, robot_id, url, controls_mode }. */
 function channelEmbed(channel) {
     if (!enabled()) return undefined;
     const id = channel && validRobotId(channel.bot_robot_id) ? channel.bot_robot_id : null;
-    return { enabled: true, robot_id: id, url: id ? embedUrl(id) : null };
+    return { enabled: true, robot_id: id, url: id ? embedUrl(id) : null, controls_mode: controlMode(channel && channel.bot_controls_mode) };
 }
 
-module.exports = { enabled, botOrigin, validRobotId, embedUrl, channelEmbed, DEFAULT_BOT_URL };
+module.exports = { enabled, botOrigin, validRobotId, embedUrl, channelEmbed, controlMode, CONTROL_MODES, DEFAULT_BOT_URL };

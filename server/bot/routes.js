@@ -29,13 +29,29 @@ router.put('/channel/:username/bot', (req, res, next) => (embed.enabled() ? next
         if (Number(req.user.id) !== Number(channel.user_id)) {
             return res.status(403).json({ error: 'Only the channel owner can bind a robot' });
         }
-        const raw = req.body ? req.body.robot_id : undefined;
-        let robotId;
-        if (raw === null || raw === '') robotId = null;
-        else if (embed.validRobotId(raw)) robotId = raw;
-        else return res.status(400).json({ error: 'robot_id must be a Bot robot id (rob_…) or null' });
-        await db.updateChannel(channel.user_id, { bot_robot_id: robotId });
-        res.json({ ok: true, bot_embed: embed.channelEmbed({ bot_robot_id: robotId }) });
+        const body = req.body || {};
+        const hasRobot = Object.prototype.hasOwnProperty.call(body, 'robot_id');
+        const hasMode = Object.prototype.hasOwnProperty.call(body, 'controls_mode');
+        if (!hasRobot && !hasMode) return res.status(400).json({ error: 'send robot_id, controls_mode, or both' });
+        let robotId = channel.bot_robot_id || null;
+        if (hasRobot) {
+            const raw = body.robot_id;
+            if (raw === null || raw === '') robotId = null;
+            else if (embed.validRobotId(raw)) robotId = raw;
+            else return res.status(400).json({ error: 'robot_id must be a Bot robot id (rob_…) or null' });
+        }
+        let mode = embed.controlMode(channel.bot_controls_mode);
+        if (hasMode) {
+            if (!embed.CONTROL_MODES.includes(body.controls_mode)) {
+                return res.status(400).json({ error: "controls_mode must be 'overlay' or 'panel'" });
+            }
+            mode = body.controls_mode;
+        }
+        const patch = {};
+        if (hasRobot) patch.bot_robot_id = robotId;
+        if (hasMode) patch.bot_controls_mode = mode;
+        await db.updateChannel(channel.user_id, patch);
+        res.json({ ok: true, bot_embed: embed.channelEmbed({ bot_robot_id: robotId, bot_controls_mode: mode }) });
     } catch (err) {
         console.error('[BotEmbed] Bind error:', err.message);
         res.status(500).json({ error: 'Failed to bind robot' });

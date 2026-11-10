@@ -1895,7 +1895,7 @@ async function updateChannel(userId, fields) {
     const updates = [];
     const params = [];
     for (const [key, val] of Object.entries(fields)) {
-        if (val !== undefined && ['title', 'description', 'category', 'tags', 'protocol', 'is_nsfw', 'force_nsfw', 'auto_record', 'vod_recording_enabled', 'force_vod_recording_disabled', 'offline_banner_url', 'panels', 'emote_sources', 'weather_zip', 'weather_detail', 'weather_show_location', 'offline_screen_type', 'offline_screen_url', 'offline_html', 'offline_css', 'hide_ai_overview', 'ai_overview_pref', 'chat_language', 'ai_derivation_enabled', 'social_links', 'bot_robot_id'].includes(key)) {
+        if (val !== undefined && ['title', 'description', 'category', 'tags', 'protocol', 'is_nsfw', 'force_nsfw', 'auto_record', 'vod_recording_enabled', 'force_vod_recording_disabled', 'offline_banner_url', 'panels', 'emote_sources', 'weather_zip', 'weather_detail', 'weather_show_location', 'offline_screen_type', 'offline_screen_url', 'offline_html', 'offline_css', 'hide_ai_overview', 'ai_overview_pref', 'chat_language', 'ai_derivation_enabled', 'social_links', 'bot_robot_id', 'bot_controls_mode'].includes(key)) {
             updates.push(`${key} = ?`);
             params.push(['tags', 'panels', 'emote_sources'].includes(key) ? (typeof val === 'string' ? val : JSON.stringify(val)) : val);
         }

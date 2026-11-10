@@ -2872,16 +2872,43 @@ function _channelFooter(live) {
 // The panel's Drive asks this page for a ticket: a viewer signed in here drives with no popup or second sign-in
 // (POST /api/streams/channel/:username/bot/ticket; Bot decides who may). When the robot's owner has not turned the
 // panel on, viewers do not see an empty box; the owner keeps the frame, which links to the switch on openvibe.bot.
+// Where the controls go is the viewer's choice (on the video / under the video / hidden), kept in localStorage
+// per channel and robot and beating the streamer's default from bot_embed.controls_mode.
 let _botEmbedStop = null;
 function _applyBotEmbed(botEmbed, username) {
     const box = document.getElementById('ch-bot-container');
     if (!box) return;
-    const show = () => {
-        if (typeof BotEmbed === 'undefined') return;
-        const frame = BotEmbed.mount(box, botEmbed);
+    const section = document.getElementById('ch-bot-section');
+    const slot = document.getElementById('ch-bot-overlay-slot');
+    const switchWrap = document.getElementById('ch-bot-mode-inline');
+    const menu = document.getElementById('ch-bot-mode-menu');
+    const menuBtn = document.getElementById('ch-bot-mode-btn');
+    const cardBar = document.getElementById('ch-bot-card-bar');
+    const cardSwitch = document.getElementById('ch-bot-card-switch');
+    const line = document.getElementById('ch-bot-card-line');
+    const player = document.getElementById('video-container');
+    const robotId = botEmbed && botEmbed.robot_id ? botEmbed.robot_id : null;
+
+    function stopFrame() {
         if (_botEmbedStop) { _botEmbedStop(); _botEmbedStop = null; }
-        if (frame && username && typeof BotEmbed.listen === 'function') {
-            const robotId = botEmbed.robot_id;
+    }
+    function clear(container) {
+        if (!container) return;
+        try { container.replaceChildren(); } catch { /* a fake in the tests */ }
+    }
+    // The player's bar keeps its own room: the overlay layer ends above it, never over the controls or the pills.
+    function setBar() {
+        if (!player || !player.querySelector) return;
+        const bar = player.querySelector('.video-overlay');
+        if (!bar || !bar.getBoundingClientRect) return;
+        const h = Math.round(bar.getBoundingClientRect().height);
+        if (h > 0) player.style.setProperty('--ch-bot-bar-h', `${h}px`);
+    }
+    _applyBotEmbed.setBar = setBar;
+    function mountIn(container, mode, toggleSection) {
+        stopFrame();
+        const frame = BotEmbed.mount(container, botEmbed, { mode: mode === 'overlay' ? 'overlay' : null, toggleSection });
+        if (frame && typeof BotEmbed.listen === 'function') {
             _botEmbedStop = BotEmbed.listen({
                 frame, botEmbed,
                 requestTicket: async () => {
@@ -2892,12 +2919,151 @@ function _applyBotEmbed(botEmbed, username) {
                 },
                 onRefused: () => {
                     if (currentUser && currentUser.username === username) return;
-                    if (_botEmbedStop) { _botEmbedStop(); _botEmbedStop = null; }
-                    BotEmbed.mount(box, null);
+                    stopFrame();
+                    clear(slot); clear(box);
+                    if (slot) slot.hidden = true;
+                    if (line) line.hidden = true;
+                    if (section) section.hidden = true;
+                },
+                onOpenPanel: () => _applyBotEmbed.choose('panel'),
+                onFocusPlayer: () => {
+                    const v = document.getElementById('video-container');
+                    if (v && v.focus) { try { v.focus({ preventScroll: true }); } catch { v.focus(); } }
                 },
             });
         }
-        if (window.ov) ov.scope().onDispose(() => { if (_botEmbedStop) { _botEmbedStop(); _botEmbedStop = null; } BotEmbed.mount(box, null); });
+        return frame;
+    }
+    const MODE_NAME = { overlay: 'on the video', panel: 'under the video', hidden: 'hidden' };
+    function closeMenu() {
+        if (!menu) return;
+        menu.hidden = true;
+        if (menuBtn) menuBtn.setAttribute('aria-expanded', 'false');
+    }
+    function sync(mode) {
+        if (menuBtn) {
+            const label = `Robot controls: ${MODE_NAME[mode] || mode}`;
+            menuBtn.dataset.mode = mode;
+            menuBtn.setAttribute('aria-label', label);
+            menuBtn.title = label;
+            menuBtn.setAttribute('aria-expanded', menu && !menu.hidden ? 'true' : 'false');
+        }
+        const mark = (root) => {
+            if (!root || !root.querySelectorAll) return;
+            for (const b of root.querySelectorAll('[data-bot-mode]')) {
+                const on = b.dataset.botMode === mode;
+                b.setAttribute(b.getAttribute('role') === 'menuitemradio' ? 'aria-checked' : 'aria-pressed', String(on));
+            }
+        };
+        mark(menu); mark(cardSwitch);
+    }
+    function render() {
+        if (typeof BotEmbed === 'undefined') return;
+        const mode = BotEmbed.effectiveMode(botEmbed, BotEmbed.readChoice(window, username, robotId));
+        _applyBotEmbed.mode = mode;
+        _applyBotEmbed.frame = null;
+        _applyBotEmbed.botEmbed = botEmbed;
+        if (switchWrap) switchWrap.hidden = !robotId;
+        if (cardBar) cardBar.hidden = !robotId;
+        if (mode === 'overlay') {
+            if (slot) {
+                slot.hidden = false;
+                _applyBotEmbed.frame = mountIn(slot, 'overlay', false);
+            }
+            clear(box);
+            box.hidden = true;
+            if (line) line.hidden = false;
+            if (section) section.hidden = false;
+        } else if (mode === 'panel') {
+            if (slot) { clear(slot); slot.hidden = true; }
+            if (line) line.hidden = true;
+            box.hidden = false;
+            if (section) section.hidden = false;
+            _applyBotEmbed.frame = mountIn(box, 'panel', true);
+        } else {
+            stopFrame();
+            clear(box); clear(slot);
+            box.hidden = true;
+            if (slot) slot.hidden = true;
+            if (line) line.hidden = true;
+            if (section) section.hidden = true;
+        }
+        sync(mode);
+    }
+    function choose(mode, persist = true) {
+        if (typeof BotEmbed === 'undefined' || !BotEmbed.validView(mode)) return;
+        if (persist && robotId && BotEmbed.writeChoice) BotEmbed.writeChoice(window, username, robotId, mode);
+        closeMenu();
+        render();
+    }
+    _applyBotEmbed.render = render;
+    _applyBotEmbed.choose = choose;
+
+    // The two switches (the player's small one and the card's) and the overlay's way back to the full panel. One
+    // listener each for the page, whichever robot was bound last is the one they drive.
+    if (menu && menuBtn && menuBtn.dataset.botBound !== '1') {
+        menuBtn.dataset.botBound = '1';
+        menuBtn.addEventListener('click', () => {
+            const open = menu.hidden;
+            menu.hidden = !open;
+            menuBtn.setAttribute('aria-expanded', String(open));
+        });
+        menu.addEventListener('click', (e) => {
+            const b = e.target && e.target.closest ? e.target.closest('[data-bot-mode]') : null;
+            if (b) _applyBotEmbed.choose(b.dataset.botMode);
+        });
+        if (document.addEventListener) {
+            document.addEventListener('click', (e) => {
+                if (menu.hidden) return;
+                if (menu.contains && menu.contains(e.target)) return;
+                if (menuBtn.contains && menuBtn.contains(e.target)) return;
+                closeMenu();
+            });
+        }
+    }
+    if (cardSwitch && cardSwitch.dataset.botBound !== '1') {
+        cardSwitch.dataset.botBound = '1';
+        cardSwitch.addEventListener('click', (e) => {
+            const b = e.target && e.target.closest ? e.target.closest('[data-bot-mode]') : null;
+            if (b) _applyBotEmbed.choose(b.dataset.botMode);
+        });
+    }
+    if (line && line.dataset.botBound !== '1') {
+        line.dataset.botBound = '1';
+        line.addEventListener('click', (e) => {
+            if (e.target && e.target.closest && e.target.closest('[data-bot-show-panel]')) _applyBotEmbed.choose('panel');
+        });
+    }
+    // The pointer on the page (outside the clipped controls) wakes the overlay's idle fade.
+    if (player && player.dataset.botActivity !== '1') {
+        player.dataset.botActivity = '1';
+        player.addEventListener('pointermove', () => {
+            if (_applyBotEmbed.mode !== 'overlay' || !_applyBotEmbed.frame || typeof BotEmbed === 'undefined') return;
+            const now = Date.now();
+            if (now - (_applyBotEmbed.activityAt || 0) < 250) return;
+            _applyBotEmbed.activityAt = now;
+            BotEmbed.notifyActivity(_applyBotEmbed.frame, _applyBotEmbed.botEmbed);
+        }, { passive: true });
+    }
+    setBar();
+    if (player && typeof ResizeObserver === 'function' && !_applyBotEmbed.barObserver) {
+        const bar = player.querySelector && player.querySelector('.video-overlay');
+        if (bar) {
+            _applyBotEmbed.barObserver = new ResizeObserver(() => _applyBotEmbed.setBar());
+            _applyBotEmbed.barObserver.observe(bar);
+        }
+    }
+
+    const show = () => {
+        if (typeof BotEmbed === 'undefined') return;
+        render();
+        if (window.ov) ov.scope().onDispose(() => {
+            stopFrame();
+            clear(slot);
+            if (typeof BotEmbed !== 'undefined') BotEmbed.mount(box, null);
+            else clear(box);
+            if (_applyBotEmbed.barObserver) { _applyBotEmbed.barObserver.disconnect(); _applyBotEmbed.barObserver = null; }
+        });
     };
     if (typeof BotEmbed !== 'undefined') return show();
     if (!(botEmbed && botEmbed.url) || !window.ov) return;

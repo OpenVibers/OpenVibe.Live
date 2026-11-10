@@ -132,6 +132,16 @@
                             <input type="text" id="dash-bot-robot-id" placeholder="rob_…" autocomplete="off" spellcheck="false">
                         </div>
                     </div>
+                    <div class="settings-row">
+                        <label class="settings-row-label" for="dash-bot-controls-mode">Controls start</label>
+                        <div class="settings-row-content">
+                            <select id="dash-bot-controls-mode">
+                                <option value="panel">Under the video</option>
+                                <option value="overlay">On the video</option>
+                            </select>
+                            <p class="muted" style="font-size:0.8rem;margin:4px 0 0">Each viewer can move them or hide them; this is where they start before anyone chooses.</p>
+                        </div>
+                    </div>
                     <button class="btn btn-primary btn-small" onclick="saveBotEmbedSetting()"><i class="fa-solid fa-floppy-disk"></i> Save</button>
                     <span id="dash-bot-robot-status" class="muted" style="font-size:0.82rem" role="status"></span>
                     <p class="muted" style="font-size:0.8rem;margin:10px 0 0">No robot yet? <a href="https://openvibe.bot/try" target="_blank" rel="noopener">Drive a simulated one</a>, or see <a href="https://openvibe.bot/models" target="_blank" rel="noopener">what it can drive</a>.</p>

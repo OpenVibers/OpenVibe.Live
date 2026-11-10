@@ -11,7 +11,7 @@
             <section class="dash-card" id="ch-bench-stream" aria-label="Bench vote" hidden></section>
             <div class="stream-layout">
                 <div class="stream-main">
-                    <div class="video-container" id="video-container">
+                    <div class="video-container" id="video-container" tabindex="-1">
                         <div class="video-placeholder">
                             <i class="fa-solid fa-satellite-dish fa-3x"></i>
                             <p>Connecting to stream...</p>
@@ -23,6 +23,9 @@
                         </div>
                         <canvas id="video-canvas"></canvas>
                         <video id="video-element" autoplay playsinline></video>
+                        <!-- OpenVibe.Bot controls over the picture (mode overlay; filled by public/js/bot-embed.js).
+                             It ends above the player's bar and sits under the bar/unmute pill/chat button. -->
+                        <div class="ch-bot-overlay-slot" id="ch-bot-overlay-slot" hidden></div>
                         <div class="video-overlay" id="video-overlay">
                             <!-- DVR Progress Bar (hidden until live VOD available) -->
                             <div class="dvr-progress-wrap" id="dvr-progress-wrap" style="display:none">
@@ -53,6 +56,16 @@
                                 <button class="vc-btn" id="btn-stats" title="Stream stats">
                                     <i class="fa-solid fa-gauge-high"></i>
                                 </button>
+                                <div class="ch-bot-mode-inline" id="ch-bot-mode-inline" hidden>
+                                    <button type="button" class="vc-btn" id="ch-bot-mode-btn" aria-haspopup="true" aria-expanded="false" aria-label="Robot controls: on the video" title="Robot controls: on the video">
+                                        <i class="fa-solid fa-robot" aria-hidden="true"></i>
+                                    </button>
+                                    <div class="ch-bot-mode-menu" id="ch-bot-mode-menu" role="menu" hidden>
+                                        <button type="button" role="menuitemradio" data-bot-mode="overlay">On the video</button>
+                                        <button type="button" role="menuitemradio" data-bot-mode="panel">Under the video</button>
+                                        <button type="button" role="menuitemradio" data-bot-mode="hidden">Hidden</button>
+                                    </div>
+                                </div>
                                 <button class="vc-btn" id="btn-clip" title="Create Clip (30s)">
                                     <i class="fa-solid fa-scissors"></i>
                                 </button>
@@ -105,6 +118,18 @@
                     <!-- OpenVibe.Bot robot panel for a channel bound to a robot (LIVE_BOT_EMBED; filled by public/js/bot-embed.js) -->
                     <section id="ch-bot-section" aria-labelledby="ch-bot-heading" hidden>
                         <h3 id="ch-bot-heading">Robot</h3>
+                        <div class="ch-bot-card-bar" id="ch-bot-card-bar" hidden>
+                            <span class="ch-bot-card-label">Controls</span>
+                            <div class="ch-bot-switch" id="ch-bot-card-switch" role="group" aria-label="Robot controls">
+                                <button type="button" data-bot-mode="overlay">On the video</button>
+                                <button type="button" data-bot-mode="panel">Under the video</button>
+                                <button type="button" data-bot-mode="hidden">Hidden</button>
+                            </div>
+                        </div>
+                        <div class="ch-bot-card-line" id="ch-bot-card-line" hidden>
+                            <span>Robot · controls are on the video</span>
+                            <button type="button" data-bot-show-panel>Show panel</button>
+                        </div>
                         <div id="ch-bot-container"></div>
                     </section>
                     <!-- Live translation captions for non-English streamers (filled by _startCaptions in app.js) -->
