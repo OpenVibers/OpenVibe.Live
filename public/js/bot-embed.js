@@ -20,6 +20,10 @@
                                        person is on the page and not in the frame: WASD and a controller drive from
                                        the stream page. Never a key typed into chat or a field, never with Ctrl/Alt/⌘.
 
+   It also hands the panel the page's look and follows its height: ov-bot-theme { tokens } from this page's computed
+   style on the frame's load and on ov:theme/ov:display (openvibe-shared/theme-loader.js); ov-bot-size { height } from
+   the panel sets the frame between 160 and 720 px and stops the hand resize.
+
    Plain script for the browser (window.BotEmbed) and require() for the tests.
 */
 (function (root, factory) {
@@ -80,6 +84,33 @@
         return frame;
     }
 
+    // The panel takes the page's colours (OpenVibe.Bot public/embed-frame.js): these tokens, read from the page's
+    // computed style. Plain colours only on the Bot side; --color-scheme is 'dark' or 'light'.
+    const THEME_TOKENS = ['--bg-primary', '--bg-card', '--text-primary', '--text-secondary', '--accent', '--accent-strong', '--on-accent-strong', '--border'];
+    const MIN_HEIGHT = 160;
+    const MAX_HEIGHT = 720;
+
+    function pageTheme(win) {
+        try {
+            const doc = win.document;
+            const cs = win.getComputedStyle ? win.getComputedStyle(doc.documentElement) : null;
+            if (!cs) return null;
+            const tokens = {};
+            for (const name of THEME_TOKENS) {
+                const value = String(cs.getPropertyValue(name) || '').trim();
+                if (value) tokens[name] = value;
+            }
+            let scheme = String(cs.getPropertyValue('--color-scheme') || '').trim();
+            const root = doc.documentElement;
+            if (scheme !== 'dark' && scheme !== 'light' && root && typeof root.getAttribute === 'function') scheme = root.getAttribute('data-theme-mode');
+            if (scheme !== 'dark' && scheme !== 'light') {
+                scheme = win.matchMedia && win.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+            }
+            tokens['--color-scheme'] = scheme;
+            return tokens;
+        } catch { return null; }
+    }
+
     function listen({ frame, botEmbed, requestTicket, onRefused = () => {}, win = typeof window !== 'undefined' ? window : null }) {
         const src = embedSrc(botEmbed);
         if (!frame || !src || !win || typeof requestTicket !== 'function') return () => {};
@@ -89,6 +120,37 @@
         const reply = (msg) => {
             try { if (frame.contentWindow) frame.contentWindow.postMessage(Object.assign({ robot_id: robotId }, msg), origin); } catch { /* the frame went away */ }
         };
+        // The panel's height: it measures its content (a ResizeObserver on its end, at most 5×/s) and the page sets
+        // the card around the frame to it, between MIN_HEIGHT and MAX_HEIGHT. Once it has spoken the card is no
+        // longer hand-resizable (#ch-bot-container's resize handle in public/css/features/channel.css).
+        const setHeight = (value) => {
+            const height = Number(value);
+            if (!Number.isFinite(height) || height <= 0) return;
+            const clamped = Math.max(MIN_HEIGHT, Math.min(MAX_HEIGHT, Math.round(height)));
+            try {
+                const card = typeof frame.closest === 'function' ? frame.closest('#ch-bot-container') : null;
+                const host = card || frame;
+                host.style.height = `${clamped}px`;
+                host.style.resize = 'none';
+                if (card) frame.style.height = '100%';   // the card grows; the frame fills it (channel.css)
+            } catch { /* a fake frame in the tests */ }
+        };
+        // The page's theme, now (a kept frame) and again when the shared loader repaints one: ov:theme on first apply
+        // and every change, ov:display when comfort/OLED settings change the tokens under it. Bot's loader has no
+        // openvibe-theme-changed; ov:theme is its real event (openvibe-shared/theme-loader.js).
+        const sendTheme = () => {
+            const tokens = pageTheme(win);
+            if (!tokens) return;
+            try { if (frame.contentWindow) frame.contentWindow.postMessage({ type: 'ov-bot-theme', robot_id: robotId, tokens }, origin); } catch { /* the frame went away */ }
+        };
+        const onTheme = () => sendTheme();
+        const onLoad = () => sendTheme();
+        sendTheme();
+        if (typeof frame.addEventListener === 'function') frame.addEventListener('load', onLoad);
+        if (typeof win.addEventListener === 'function') {
+            win.addEventListener('ov:theme', onTheme);
+            win.addEventListener('ov:display', onTheme);
+        }
 
         // The page's keyboard and gamepad while the panel drives (Maticus, 2026-10-27: "WASD keyboard AND game controller"
         // on the stream page). The panel says which keys its controls take; only those are sent and kept from the
@@ -160,6 +222,9 @@
         const onMessage = async (e) => {
             if (e.origin !== origin || !frame.contentWindow || e.source !== frame.contentWindow) return;
             const d = e.data || {};
+            // The panel's size is about this frame, not about driving: accept it with or without the id, but never
+            // for another robot.
+            if (d.type === 'ov-bot-size') { if (d.robot_id == null || d.robot_id === robotId) setHeight(d.height); return; }
             if (!d || d.robot_id !== robotId) return;
             if (d.type === 'ov-bot-embed-refused') { onRefused(); return; }
             if (d.type === 'ov-bot-controls') { setControls(d); return; }
@@ -174,8 +239,16 @@
             } finally { asking = false; }
         };
         win.addEventListener('message', onMessage);
-        return () => { deactivate(); win.removeEventListener('message', onMessage); };
+        return () => {
+            deactivate();
+            win.removeEventListener('message', onMessage);
+            if (typeof frame.removeEventListener === 'function') frame.removeEventListener('load', onLoad);
+            if (typeof win.removeEventListener === 'function') {
+                win.removeEventListener('ov:theme', onTheme);
+                win.removeEventListener('ov:display', onTheme);
+            }
+        };
     }
 
-    return { iframeAttrs, mount, listen };
+    return { iframeAttrs, mount, listen, THEME_TOKENS, MIN_HEIGHT, MAX_HEIGHT };
 });
