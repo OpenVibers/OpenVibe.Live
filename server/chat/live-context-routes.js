@@ -124,6 +124,8 @@ contextRouter.get('/users/profile', async (req, res) => {
         // Legacy game skills, read-only (never creates a game_players row)
         const game = await db.getLegacyGameProfile(user.id);
         if (game) profile.game = game;
+        const levels = await require('../levels/client').batchForUsers([user.id]);
+        if (levels[user.id]) profile.level = levels[user.id];
         res.json(profile);
     } catch (err) {
         fail(res, 500, 'Failed to get profile');
@@ -215,9 +217,9 @@ contextRouter.get('/bans', async (req, res) => {
 // (OpenVibe.Chat reads a missing tag as none).
 contextRouter.post('/decor', async (req, res) => {
     const ids = [...new Set((Array.isArray(req.body?.user_ids) ? req.body.user_ids : []).map(Number).filter(Number.isInteger))].slice(0, 500);
-    const profiles = await require('../monetization/cosmetics').getCosmeticProfiles(ids);
+    const [profiles, levels] = await Promise.all([require('../monetization/cosmetics').getCosmeticProfiles(ids), require('../levels/client').batchForUsers(ids)]);
     const decor = {};
-    for (const id of ids) decor[id] = { cosmetic: profiles[id] || {} };
+    for (const id of ids) decor[id] = { cosmetic: profiles[id] || {}, ...(levels[id] ? { level: levels[id] } : {}) };
     res.json({ decor });
 });
 
