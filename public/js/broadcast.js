@@ -4823,7 +4823,9 @@ function _refreshVerticalPreview() {
         navigator.mediaDevices._openvibeDevicechangeListening = true;
         navigator.mediaDevices.addEventListener('devicechange', async () => {
             console.log('[Broadcast] Device change detected — re-enumerating devices');
-            await populateDeviceLists().catch(() => {});
+            // Enumerate-only: a hardware event is not a press, so it must never ask for the camera or mic here.
+            // Permission still comes only from the "Turn on camera / microphone" press (requestMediaPermissions).
+            await refreshDeviceLists().catch(() => {});
             // The Go Live card follows too (a camera or headset plugged in or out), so it needs no refresh button.
             if (document.getElementById('bc-create-camera')) {
                 await navigator.mediaDevices.enumerateDevices().then(_populateCreateDeviceDropdowns).catch(() => {});
