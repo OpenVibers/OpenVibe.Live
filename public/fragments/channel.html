@@ -56,18 +56,20 @@
                                 <button class="vc-btn" id="btn-stats" title="Stream stats">
                                     <i class="fa-solid fa-gauge-high"></i>
                                 </button>
+                                <div class="ch-bot-mode-inline" id="ch-bot-mode-inline" hidden>
+                                    <button type="button" class="vc-btn" id="ch-bot-mode-btn" aria-haspopup="true" aria-expanded="false" aria-label="Robot controls: on the video" title="Robot controls: on the video">
+                                        <i class="fa-solid fa-robot" aria-hidden="true"></i>
+                                    </button>
+                                    <div class="ch-bot-mode-menu" id="ch-bot-mode-menu" role="menu" hidden>
+                                        <button type="button" role="menuitemradio" data-bot-mode="overlay">On the video</button>
+                                        <button type="button" role="menuitemradio" data-bot-mode="panel">Under the video</button>
+                                        <button type="button" role="menuitemradio" data-bot-mode="hidden">Hidden</button>
+                                    </div>
+                                </div>
                                 <button class="vc-btn" id="btn-clip" title="Create Clip (30s)">
                                     <i class="fa-solid fa-scissors"></i>
                                 </button>
 
-                                <label class="ch-bot-mode-inline" id="ch-bot-mode-inline" hidden>
-                                    <i class="fa-solid fa-robot" aria-hidden="true"></i>
-                                    <select id="ch-bot-mode-select" aria-label="Robot controls">
-                                        <option value="overlay">Controls: on the video</option>
-                                        <option value="panel">Controls: under the video</option>
-                                        <option value="hidden">Controls: hidden</option>
-                                    </select>
-                                </label>
                                 <button class="vc-btn" id="btn-fullscreen" title="Fullscreen">
                                     <i class="fa-solid fa-expand"></i>
                                 </button>

@@ -2880,8 +2880,9 @@ function _applyBotEmbed(botEmbed, username) {
     if (!box) return;
     const section = document.getElementById('ch-bot-section');
     const slot = document.getElementById('ch-bot-overlay-slot');
-    const selectWrap = document.getElementById('ch-bot-mode-inline');
-    const select = document.getElementById('ch-bot-mode-select');
+    const switchWrap = document.getElementById('ch-bot-mode-inline');
+    const menu = document.getElementById('ch-bot-mode-menu');
+    const menuBtn = document.getElementById('ch-bot-mode-btn');
     const cardBar = document.getElementById('ch-bot-card-bar');
     const cardSwitch = document.getElementById('ch-bot-card-switch');
     const line = document.getElementById('ch-bot-card-line');
@@ -2933,11 +2934,28 @@ function _applyBotEmbed(botEmbed, username) {
         }
         return frame;
     }
+    const MODE_NAME = { overlay: 'on the video', panel: 'under the video', hidden: 'hidden' };
+    function closeMenu() {
+        if (!menu) return;
+        menu.hidden = true;
+        if (menuBtn) menuBtn.setAttribute('aria-expanded', 'false');
+    }
     function sync(mode) {
-        if (select) select.value = mode;
-        if (cardSwitch && cardSwitch.querySelectorAll) {
-            for (const b of cardSwitch.querySelectorAll('[data-bot-mode]')) b.setAttribute('aria-pressed', String(b.dataset.botMode === mode));
+        if (menuBtn) {
+            const label = `Robot controls: ${MODE_NAME[mode] || mode}`;
+            menuBtn.dataset.mode = mode;
+            menuBtn.setAttribute('aria-label', label);
+            menuBtn.title = label;
+            menuBtn.setAttribute('aria-expanded', menu && !menu.hidden ? 'true' : 'false');
         }
+        const mark = (root) => {
+            if (!root || !root.querySelectorAll) return;
+            for (const b of root.querySelectorAll('[data-bot-mode]')) {
+                const on = b.dataset.botMode === mode;
+                b.setAttribute(b.getAttribute('role') === 'menuitemradio' ? 'aria-checked' : 'aria-pressed', String(on));
+            }
+        };
+        mark(menu); mark(cardSwitch);
     }
     function render() {
         if (typeof BotEmbed === 'undefined') return;
@@ -2945,7 +2963,7 @@ function _applyBotEmbed(botEmbed, username) {
         _applyBotEmbed.mode = mode;
         _applyBotEmbed.frame = null;
         _applyBotEmbed.botEmbed = botEmbed;
-        if (selectWrap) selectWrap.hidden = !robotId;
+        if (switchWrap) switchWrap.hidden = !robotId;
         if (cardBar) cardBar.hidden = !robotId;
         if (mode === 'overlay') {
             if (slot) {
@@ -2975,6 +2993,7 @@ function _applyBotEmbed(botEmbed, username) {
     function choose(mode, persist = true) {
         if (typeof BotEmbed === 'undefined' || !BotEmbed.validView(mode)) return;
         if (persist && robotId && BotEmbed.writeChoice) BotEmbed.writeChoice(window, username, robotId, mode);
+        closeMenu();
         render();
     }
     _applyBotEmbed.render = render;
@@ -2982,9 +3001,25 @@ function _applyBotEmbed(botEmbed, username) {
 
     // The two switches (the player's small one and the card's) and the overlay's way back to the full panel. One
     // listener each for the page, whichever robot was bound last is the one they drive.
-    if (select && select.dataset.botBound !== '1') {
-        select.dataset.botBound = '1';
-        select.addEventListener('change', () => _applyBotEmbed.choose(select.value));
+    if (menu && menuBtn && menuBtn.dataset.botBound !== '1') {
+        menuBtn.dataset.botBound = '1';
+        menuBtn.addEventListener('click', () => {
+            const open = menu.hidden;
+            menu.hidden = !open;
+            menuBtn.setAttribute('aria-expanded', String(open));
+        });
+        menu.addEventListener('click', (e) => {
+            const b = e.target && e.target.closest ? e.target.closest('[data-bot-mode]') : null;
+            if (b) _applyBotEmbed.choose(b.dataset.botMode);
+        });
+        if (document.addEventListener) {
+            document.addEventListener('click', (e) => {
+                if (menu.hidden) return;
+                if (menu.contains && menu.contains(e.target)) return;
+                if (menuBtn.contains && menuBtn.contains(e.target)) return;
+                closeMenu();
+            });
+        }
     }
     if (cardSwitch && cardSwitch.dataset.botBound !== '1') {
         cardSwitch.dataset.botBound = '1';

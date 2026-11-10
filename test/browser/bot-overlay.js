@@ -44,10 +44,10 @@ async function forceLive(page) {
 async function pickOverlay(page) {
     const inline = page.locator('#ch-bot-mode-inline');
     await inline.waitFor({ state: 'visible', timeout: 20000 });
-    const select = page.locator('#ch-bot-mode-select');
-    if ((await select.inputValue()) !== 'overlay') {
-        await select.selectOption('overlay');
-        await select.dispatchEvent('change');
+    const btn = page.locator('#ch-bot-mode-btn');
+    if ((await btn.getAttribute('data-mode')) !== 'overlay') {
+        await btn.click();
+        await page.locator('#ch-bot-mode-menu [data-bot-mode="overlay"]').click();
     }
     await page.waitForFunction(() => {
         const slot = document.getElementById('ch-bot-overlay-slot');

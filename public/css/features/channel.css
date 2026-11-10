@@ -2046,16 +2046,20 @@ html[data-ov-motion=off] #page-channel .ch-tab-panel{scroll-margin-top: calc(var
 .ch-bot-overlay-slot { position: absolute; left: 0; right: 0; top: 0; bottom: var(--ch-bot-bar-h, 64px); z-index: 4; pointer-events: none; }
 .ch-bot-overlay-slot[hidden] { display: none; }
 .ch-bot-overlay-slot iframe { display: block; width: 100%; height: 100%; border: 0; background: transparent; pointer-events: auto; }
-/* The player's small switch: three choices, kept compact so the bar keeps its room on a phone. */
-.ch-bot-mode-inline { display: inline-flex; align-items: center; gap: 5px; min-height: 32px; color: rgba(255,255,255,.9); }
+/* The player's small switch: one 40 px robot button that opens the three choices, so the bar keeps its room on a
+   phone (the old select was wide enough to push the clip button out at 360 px). */
+.ch-bot-mode-inline { position: relative; display: inline-flex; align-items: center; }
 .ch-bot-mode-inline[hidden] { display: none; }
-.ch-bot-mode-inline > i { font-size: 13px; color: rgba(255,255,255,.7); }
-.ch-bot-mode-inline select {
-    min-height: 32px; height: 32px; max-width: 168px; padding: 0 22px 0 8px; border-radius: 8px;
-    border: 1px solid rgba(255,255,255,.18); background: rgba(12,15,24,.72); color: #fff; font-size: 12px;
+.ch-bot-mode-inline #ch-bot-mode-btn { width: 40px; height: 40px; min-width: 40px; min-height: 40px; padding: 0; }
+.ch-bot-mode-inline #ch-bot-mode-btn[data-mode="hidden"] { opacity: .55; }
+.ch-bot-mode-menu {
+    position: absolute; right: 0; bottom: calc(100% + 8px); z-index: 30; min-width: 158px; padding: 4px;
+    display: grid; gap: 2px; border-radius: 10px; border: 1px solid rgba(255,255,255,.16);
+    background: rgba(12,15,24,.96); box-shadow: 0 8px 24px rgba(0,0,0,.45);
 }
-.ch-bot-mode-inline select option { background: #0c0f18; color: #fff; }
-@media (max-width: 480px) { .ch-bot-mode-inline > i { display: none; } .ch-bot-mode-inline select { max-width: 116px; font-size: 11px; padding-left: 6px; } }
+.ch-bot-mode-menu[hidden] { display: none; }
+.ch-bot-mode-menu button { min-height: 36px; padding: 0 10px; border: 0; border-radius: 7px; background: transparent; color: #fff; text-align: left; font-size: .8rem; }
+.ch-bot-mode-menu button[aria-checked="true"] { background: color-mix(in srgb, var(--accent) 35%, transparent); }
 /* The card's switch and its one-line state when the controls are on the video. */
 .ch-bot-card-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 14px; border-bottom: 1px solid var(--border); }
 .ch-bot-card-bar[hidden] { display: none; }
