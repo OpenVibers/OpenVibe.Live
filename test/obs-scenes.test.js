@@ -36,4 +36,4 @@ assert.match(dash, /chatai: +\['dash-card-vibe', 'dash-aibot-card', 'dash-card-o
 assert.match(dash, /\['', 'obs', 'scene', kind, encodeURIComponent\(currentUser\.username\)\]\.join\('\/'\)/, 'each scene\'s address');
 assert.match(dash, /if \(theme && theme !== 'vibe'\) q\.set\('theme', theme\)/, 'the theme picked rides along');
 assert.match(dash, /_call\('updateDashScenes'\)/, 'drawn when the tab opens');
-console.log('obs scenes: three scenes by route, the loader and the mark, any theme by name, the mark arriving, text only, playing whatever the streamer's device asks');
+console.log('obs scenes: three scenes by route, the loader and the mark, any theme by name, the mark arriving, text only, playing whatever the device asks');
