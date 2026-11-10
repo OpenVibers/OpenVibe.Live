@@ -153,10 +153,12 @@ router.get('/timeline/:username', async (req, res) => {
         })) : undefined;
 
         // First page also carries the CHATTER side (how they behave in chat) + a combined
-        // "whole person" overview fusing streamer + chatter. Both are best-effort.
-        let chatInsight, combinedOverview;
+        // "whole person" overview fusing streamer + chatter. Both are best-effort. The channel's chat
+        // insight is the same one shape every Chat room answers (Chat's /api/v1/rooms/channel:<id>/insight).
+        let chatInsight, combinedOverview, channelInsight;
         if (first) {
             chatInsight = await insights.getUser(user.id);
+            channelInsight = await insights.getChannel(user.id);
             try { combinedOverview = await _combinedOverview(user.id, timeline.overview, chatInsight); } catch { combinedOverview = null; }
             try { await _ensureSessionTitles(user.id); } catch { /* background titling is best-effort */ }
         }
@@ -166,6 +168,7 @@ router.get('/timeline/:username', async (req, res) => {
             display_name: user.display_name || user.username,
             overview: first ? timeline.overview : undefined,
             chatInsight,
+            channelInsight,
             combinedOverview,
             sessionCount: timeline.sessionCount,
             momentCount: timeline.momentCount,
