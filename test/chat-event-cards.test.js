@@ -47,5 +47,5 @@ assert.ok(!/innerHTML\s*=\s*[^;]*ev\.(name|title)/.test(card), 'the name and tit
 assert.ok(/who\.textContent = ev\.name/.test(card) && /title\.textContent = `“\$\{ev\.title\}”`/.test(card), 'they are text nodes');
 assert.ok(/showTime = !!opts\.isGlobal \|\| !!chatSettings\.showTimestamps/.test(card), 'time: global always, elsewhere the viewer\'s setting');
 assert.ok(/_CHAT_EV_FOLD_MS/.test(card) && /went live again/.test(card), 'the same person within 15 minutes updates the card');
-assert.ok(/prefers-reduced-motion:reduce/.test(src.slice(src.indexOf('function _chatEvCss('), src.indexOf('function _chatEvTime('))), 'motion stops for people who ask');
+assert.ok(!/prefers-reduced-motion/.test(src.slice(src.indexOf('function _chatEvCss('), src.indexOf('function _chatEvTime('))), 'Calm plays the cards (openvibe-shared 4.183.0); only motion off stops them, by the loader\'s one rule');
 console.log('chat event cards: ok');

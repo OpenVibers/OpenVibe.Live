@@ -1372,7 +1372,7 @@ function ovWakeBrandMark() {
     try { marks = document.querySelectorAll('.brand-mark'); } catch { return; }
     if (!marks || !marks.length) return;
     let reduce = false;
-    try { reduce = matchMedia('(prefers-reduced-motion: reduce)').matches; } catch { /* */ }
+    try { reduce = (document.documentElement.getAttribute('data-ov-motion') === 'off'); } catch { /* */ }
     if (reduce) {
         // CSS stops the loops under reduced motion but cannot reach SMIL — the gradient sweep on the
         // V would otherwise run for the whole session. Hold everything still, once.
@@ -1762,7 +1762,7 @@ function _ensureGoalCycleScheduler() {
     }, GOAL_CYCLE_INTERVAL_MS);
 }
 function _playGoalCycle(el) {
-    if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    if (window.matchMedia && (document.documentElement.getAttribute('data-ov-motion') === 'off')) return;
     const track = el && el.querySelector('.cgw-track-cycle');
     if (!track || track.children.length < 2) return;
     const n = parseInt(el.dataset.goalCount || '0', 10);

@@ -284,7 +284,6 @@
     align-items: center;
     gap: 6px;
 }
-@media (prefers-reduced-motion: reduce) { .bc-live-badge { animation: none; } }
 
 .bc-live-badge i {
     font-size: 0.6rem;

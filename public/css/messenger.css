@@ -67,7 +67,6 @@
     overflow: hidden;
     animation: msgSlideUp var(--ov-dur-2, 0.2s) var(--ov-ease-out, ease-out);
 }
-@media (prefers-reduced-motion: reduce) { .messenger-panel { animation: none; } }
 .messenger-panel.open {
     display: flex;
 }

@@ -39,7 +39,7 @@
 .ovsk-panel { padding: 14px; display: grid; gap: 10px; }
 .ovsk-fade { animation: ovskFade .25s ease forwards; }
 @keyframes ovskFade { to { opacity: 0; } }
-@media (prefers-reduced-motion: reduce) { .ovsk::after, .ovsk-bar::after { animation: none; } }`;
+`;
 
     function ensure() {
         if (document.getElementById('ovsk-css')) return;

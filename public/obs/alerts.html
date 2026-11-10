@@ -43,7 +43,7 @@ body[data-pos=bottom] .al { animation-name: alInUp; }
 .al-msg:empty { display: none; }
 .al-status { position: fixed; left: 1vw; bottom: 1vw; font-size: .9vw; color: rgba(255,255,255,.55); text-shadow: 0 1px 2px #000; }
 .al-status:empty { display: none; }
-@media (prefers-reduced-motion: reduce) { .al, .al.is-out { animation: none; } .al::after { display: none; } }
+html[data-ov-motion=off] .al::after{display: none}
 </style>
 <script src="/shared/theme-loader.js"></script>
 <!-- The OpenVibe glyphs draw every fa- icon here (no Font Awesome since 2026-11-01). -->

@@ -1,7 +1,7 @@
 /* ═══════════════════════════════════════════════════════════════
    HOME FX — decorative effects layer for the home page (public/js/home-fx.js)
-   Additive only; everything degrades to the plain page without JS or under
-   prefers-reduced-motion.
+   Additive only; everything degrades to the plain page without JS or with
+   motion off (Calm plays it, smaller and slower).
    ═══════════════════════════════════════════════════════════════ */
 #page-home .hero { position: relative; }
 .hfx-sparks { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 0; opacity: 0.9; }
@@ -162,11 +162,7 @@
 #page-home .section-header h2 .live-dot { animation: hfxLive 1.4s var(--ov-ease-in-out, ease-in-out) infinite; }
 @keyframes hfxLive { 0%,100% { transform: scale(1); filter: drop-shadow(0 0 0 rgba(231,76,60,0)); } 50% { transform: scale(1.25); filter: drop-shadow(0 0 8px rgba(231,76,60,0.9)); } }
 
-@media (prefers-reduced-motion: reduce) {
-    .hfx-sparks, .hfx-spot { display: none; }
-    .hfx-shimmer, .hfx-glow, .hb::before, .hb::after, .hb-ico, #page-home .section-header h2 .live-dot { animation: none !important; }
-    .hfx-reveal { opacity: 1; transform: none; transition: none; }
-}
+html[data-ov-motion=off] .hfx-sparks,html[data-ov-motion=off] .hfx-spot{display: none}html[data-ov-motion=off] .hfx-reveal{opacity: 1;transform: none}
 
 .rs-lite .hfx-sparks, .rs-lite .hfx-spot { display: none; }
 .rs-lite .hfx-shimmer, .rs-lite .hfx-glow, .rs-lite .hb::after, .rs-lite #page-home .section-header h2 .live-dot { animation: none !important; text-shadow: none; }
@@ -239,7 +235,6 @@
 @media (max-width: 520px) { .hb-label small { display: none; } #page-home .hero-primary .hb-label small { display: inline; } }
 /* The very narrowest phones: Go live alone, so the label never squeezes. */
 @media (max-width: 340px) { #page-home .hero-primary .hb-label small { display: none; } }
-@media (prefers-reduced-motion: reduce) { .hb-vibe, .hb-vibe .hb-ico::after { animation: none !important; } }
 
 /* Touch devices get no hover, so the one button on the row that has something extra to say needs
    to advertise it. A small pulsing dot marks it as tappable-for-more; it is pointer-events:none
@@ -267,7 +262,6 @@
         100% { transform: scale(3.3); opacity: 0; }
     }
 }
-@media (hover: none) and (prefers-reduced-motion: reduce) { .hb[data-ovtip]::after { animation: none; } }
 
 
 /* ═══════════════════════════════════════════════════════════════════════════

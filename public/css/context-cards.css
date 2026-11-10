@@ -180,7 +180,4 @@
     .dsc-toggle-text b { font-size: 0.83rem; }
     .dsc-toggle-text small { font-size: 0.68rem; }
 }
-@media (prefers-reduced-motion: reduce) {
-    .dsc-toggle-count, .dsc-toggle-chev, .dsc-toggle { animation: none !important; transition: none !important; }
-}
 .rs-lite .dsc-toggle-count { animation: none !important; }

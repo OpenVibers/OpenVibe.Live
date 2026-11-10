@@ -2193,7 +2193,7 @@ function switchChannelTab(tab, btn, jump) {
     setTimeout(_queueChannelSectionSpy, reduce ? 200 : 1450);
 }
 function _channelReduceMotion() {
-    return document.documentElement.dataset.ovMotion === 'reduced' || !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+    return document.documentElement.dataset.ovMotion === 'off';
 }
 let _chJumpUntil = 0;
 function _markChannelJump(tab, fromTap = false) {

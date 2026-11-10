@@ -1453,7 +1453,6 @@ button.viewer-badge:focus-visible { outline: 2px solid #93c5fd; outline-offset: 
 .ch-chat-reopen[hidden] { display: none; }
 /* Below 1181px the chat is an overlay or a bottom sheet with its own open/close button, so no hide/show here. */
 @media (max-width: 1180px) { .ch-chat-collapse, .ch-chat-reopen { display: none !important; } }
-@media (prefers-reduced-motion: reduce) { #page-channel.chat-revealing .stream-layout > .chat-sidebar { animation: none; } }
 
 /* ── Resizing the chat (public/js/channel-chat-resize.js) ─────
    One grip per chat: on its left edge beside the stream (width), on its top edge as a bottom sheet (height). */
@@ -1515,7 +1514,6 @@ button.viewer-badge:focus-visible { outline: 2px solid #93c5fd; outline-offset: 
 .ch-about-card-title { font-size: 0.88rem; font-weight: 650; line-height: 1.3; color: var(--text-primary);
     display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .ch-about-card-meta { font-size: 0.75rem; color: var(--text-muted); }
-@media (prefers-reduced-motion: reduce) { .ch-about-card-thumb, .ch-about-more i { transition: none; } }
 
 /* The channel page ends where its content ends: a full-viewport minimum left a screen of empty space above the footer
    whenever the open tab was short. */
@@ -1610,9 +1608,6 @@ button.viewer-badge:focus-visible { outline: 2px solid #93c5fd; outline-offset: 
 }
 .player-shape-glow.is-on { opacity: 0.8; }
 #page-channel .video-container:fullscreen { aspect-ratio: auto; max-height: none; width: 100%; height: 100%; }
-@media (prefers-reduced-motion: reduce) {
-    #page-channel .video-container { transition: none; }
-}
 
 /* ── A phone on its side: the stream fills the screen (2026-10-25) ───────────────
    Landscape, at most 540px tall, on a touch screen. Every rule above sizes the player for a portrait phone (half the
@@ -1772,8 +1767,6 @@ html:has(.openvibe-navbar.ovnav-hide) #page-channel .ch-tabs-wrap { top: 0; padd
     /* The phone's gutter is the container's 16 px plus the fold's own 8 px. */
     #page-channel .ch-tabs-wrap { margin-inline: -24px; padding-inline: 24px; }
 }
-@media (prefers-reduced-motion: reduce) { #page-channel .ch-tabs-wrap { transition: none; } }
-html[data-ov-motion="reduced"] #page-channel .ch-tabs-wrap { transition: none; }
 #page-channel .ch-tabs-wrap #ch-tabs { margin: 0; scroll-padding-inline: 14px; }
 #page-channel .ch-tabs-arrow { display: none; position: absolute; top: 50%; transform: translateY(-50%); z-index: 2; width: 32px; height: 32px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-card); color: var(--text-primary); cursor: pointer; }
 #page-channel .ch-tabs-arrow[data-dir="prev"] { left: 0; }
@@ -1810,8 +1803,6 @@ html[data-ov-motion="reduced"] #page-channel .ch-tabs-wrap { transition: none; }
 @media (max-width: 760px) { #page-channel .ch-tab-panel :is(.stream-grid, .pastes-grid) { grid-auto-columns: minmax(220px, 78%); } }
 #page-channel .ch-rail-skeleton { min-height: 150px; border-radius: 12px; background: linear-gradient(110deg, var(--bg-card) 25%, var(--bg-hover) 50%, var(--bg-card) 75%); background-size: 200% 100%; animation: ch-shimmer 1.5s linear infinite; }
 @keyframes ch-shimmer { to { background-position-x: -200%; } }
-@media (prefers-reduced-motion: reduce) { #page-channel .ch-rail-skeleton { animation: none; } }
-html[data-ov-motion="reduced"] #page-channel .ch-rail-skeleton { animation: none; }
 .ch-list-page { background: var(--bg-primary); color: var(--text-primary); }
 .ch-list-content { max-width: 960px; margin: 0 auto; padding: clamp(20px, 4vw, 48px); }
 .ch-list-content > p:first-child a { color: var(--accent); text-decoration: none; }
@@ -1840,7 +1831,7 @@ html[data-ov-motion="reduced"] #page-channel .ch-rail-skeleton { animation: none
     #page-channel .ch-tab-panel .stream-grid > * { scroll-snap-align: start; min-width: 0; }
     #page-channel .ch-tab-panel .stream-grid > p.muted { grid-column: auto; }
 }
-@media (prefers-reduced-motion: reduce) { #page-channel .ch-tab-panel { scroll-margin-top: calc(var(--ovnav-h, 56px) + 56px); } }
+html[data-ov-motion=off] #page-channel .ch-tab-panel{scroll-margin-top: calc(var(--ovnav-h, 56px) + 56px)}
 
 /* Shared channel identity, chips, actions, and More menu. */
 #page-channel :is(.ch-info-bar-text, .ch-offline-header-info) { min-width: 0; }
@@ -1969,7 +1960,6 @@ html[data-ov-motion="reduced"] #page-channel .ch-rail-skeleton { animation: none
     body:has(#page-channel.active.ch-is-live) .ch-chat-reopen .fa-comments { color: inherit; }
 }
 @keyframes chChatRise { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: none; } }
-@media (prefers-reduced-motion: reduce) { #page-channel.chat-revealing .stream-layout > .chat-sidebar { animation: none !important; } }
 
 /* Offline, with when (ask 57, 11-09): a quiet state line and the last stream one tap away (the header says "Last live" too). */
 .ch-offline-state { display: inline-flex; align-items: center; gap: 8px; margin: 8px 0 0; padding: 6px 14px; border-radius: 999px; font-size: .9rem; font-weight: 600;
@@ -1985,7 +1975,6 @@ html[data-ov-motion="reduced"] #page-channel .ch-rail-skeleton { animation: none
 .ch-last-text { min-width: 0; display: grid; gap: 2px; }
 .ch-last-text b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .95rem; color: var(--text-primary); }
 .ch-last-text small { font-size: .78rem; color: var(--text-muted); }
-@media (prefers-reduced-motion: reduce) { .ch-last-stream { transition: none; } }
 
 /* ── The player's bar, 11-09 (the owner: "the buttons and the icons… better sized and centred… better tags"). One button
    size (40 px, 44 on a touch screen) with the icon centred at 18 px; LIVE is a red pill with a breathing dot (a grey
@@ -2000,7 +1989,6 @@ html[data-ov-motion="reduced"] #page-channel .ch-rail-skeleton { animation: none
 .video-controls .dvr-live-btn .live-dot { width: 7px; height: 7px; background: #fff; box-shadow: 0 0 0 0 rgba(255, 255, 255, .6); animation: vc-live-breathe 1.8s ease-in-out infinite; }
 .video-controls .dvr-live-btn.dvr-behind { background: rgba(255, 255, 255, .16) !important; box-shadow: none; }
 @keyframes vc-live-breathe { 0%, 100% { box-shadow: 0 0 0 0 rgba(255, 255, 255, .55); } 50% { box-shadow: 0 0 0 4px rgba(255, 255, 255, 0); } }
-html[data-ov-motion=reduced] .video-controls .dvr-live-btn .live-dot { animation-duration: 3.6s; }
 .video-controls .viewer-badge, .video-controls .uptime-badge { height: 28px; min-height: 28px; padding: 0 10px; border-radius: 999px; gap: 6px; font-size: 12.5px !important; font-weight: 600;
     background: rgba(255, 255, 255, .12); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); color: #fff; }
 .video-controls .viewer-badge i, .video-controls .uptime-badge i { font-size: 12px; color: rgba(255, 255, 255, .75); }

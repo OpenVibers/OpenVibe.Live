@@ -156,11 +156,8 @@ html { -webkit-tap-highlight-color: transparent; }
 :where(a, button, summary, [role="button"], [tabindex]:not([tabindex="-1"]), input[type="checkbox"], input[type="radio"], input[type="range"]):focus-visible {
     outline: 2px solid var(--accent-light, var(--accent)); outline-offset: 2px;
 }
-@media (prefers-reduced-motion: reduce) {
-    /* No movement: the press is a brief dim instead. */
-    :root { --press-scale: 1; --press-scale-card: 1; }
-    :where(button, [role="button"], .btn, .ov-press, a.badge, .hb, .section-action, .digest-chip, .digest-recap, a.stream-card, a.moment-card, a.pulse-card, a.home-paste-card, a.streamer-group-stream, .ov-press-card):not(:disabled):active { opacity: 0.82; }
-}
+/* Motion off: no movement, the press is a brief dim instead. */
+html[data-ov-motion=off]{--press-scale: 1;--press-scale-card: 1}html[data-ov-motion=off] :where(button, [role="button"], .btn, .ov-press, a.badge, .hb, .section-action, .digest-chip, .digest-recap, a.stream-card, a.moment-card, a.pulse-card, a.home-paste-card, a.streamer-group-stream, .ov-press-card):not(:disabled):active{opacity: 0.82}
 
 /* ═══════════════════════════════════════════════════════════════
    NAVBAR
@@ -1092,9 +1089,7 @@ html[data-theme-mode="light"] .hero-bg { --hero-veil: rgba(255, 255, 255, 0.62);
     from { transform: scale(1.06) translate(-1.4%, 1%); }
     to   { transform: scale(1.16) translate(1.8%, -1.8%); }
 }
-@media (prefers-reduced-motion: reduce) {
-    .hero-bg-layer.active { animation: none; transform: scale(1.08); }
-}
+html[data-ov-motion=off] .hero-bg-layer.active{transform: scale(1.08)}
 
 @keyframes heroFloatIn { to { opacity: var(--op, 0.6); } }
 /* 3D drift: translate in x/y + slow z-tilt so cards feel like they float in space. */
@@ -1195,7 +1190,7 @@ a.pulse-card:hover { border-color: var(--accent); transform: translateY(-2px); }
 .ov-rail-bar > span { position: absolute; inset: 0 auto 0 0; border-radius: inherit; background: var(--rail-accent, var(--accent)); }
 /* Touch screens swipe; buttons there would only cover the cards. */
 @media (hover: none), (pointer: coarse) { .ov-rail-btn { display: none; } }
-@media (prefers-reduced-motion: reduce) { .ov-rail-track { scroll-behavior: auto; } }
+html[data-ov-motion=off] .ov-rail-track{scroll-behavior: auto}
 
 /* ── AI Moments showcase row ── */
 .moments-row { display: flex; gap: 12px; overflow-x: auto; margin-bottom: 22px; }
@@ -1258,9 +1253,6 @@ a.pulse-card:hover { border-color: var(--accent); transform: translateY(-2px); }
        itself off the chip now and the labels are short words, so both fit.) */
     .hero-stat-num { font-size: 1.05rem; }
 }
-@media (prefers-reduced-motion: reduce) {
-    .hero-stat--live > i { animation: none; }
-}
 
 /* ═══════════════════════════════════════════════════════════════
    STREAM CARD EXTRAS (duration, ago badge)
@@ -1303,7 +1295,6 @@ a.pulse-card:hover { border-color: var(--accent); transform: translateY(-2px); }
     transition: max-height var(--ov-dur-4, 0.6s) var(--ov-ease-out, cubic-bezier(0.22, 1, 0.36, 1)), opacity var(--ov-dur-3, 0.4s) var(--ov-ease-out, ease), margin var(--ov-dur-3, 0.4s) var(--ov-ease-out, ease);
 }
 /* Toggle label swaps with collapsed state. */
-@media (prefers-reduced-motion: reduce) { .home-about-body { transition: opacity var(--ov-dur-3, 0.3s) var(--ov-ease-out, ease); } }
 
 /* Animated glowing border sweep */
 @property --cta-angle { syntax: '<angle>'; initial-value: 0deg; inherits: false; }
@@ -1433,12 +1424,6 @@ a.pulse-card:hover { border-color: var(--accent); transform: translateY(-2px); }
 .cta-btn-glow { position: relative; isolation: isolate; box-shadow: 0 8px 22px color-mix(in srgb, var(--accent-dark) 35%, transparent); }
 @keyframes ctaBtnGlow { 0%,100% { opacity: 0; } 50% { opacity: 1; } }
 /* Respect reduced-motion */
-@media (prefers-reduced-motion: reduce) {
-    .home-cta-banner::before, .cta-ambient, .cta-embers span, .cta-live-dot, .cta-hero-grad,
-    .cta-btn-glow, .home-cta-feature {
-        animation: none !important;
-    }
-}
 
 /* ═══════════════════════════════════════════════════════════════
    FOUNDER STORY — Timeline Layout
@@ -2127,7 +2112,6 @@ a.pulse-card:hover { border-color: var(--accent); transform: translateY(-2px); }
 .muted-hint { z-index: 21; border: 0; cursor: pointer; -webkit-tap-highlight-color: transparent; }
 .muted-hint:hover, .muted-hint:focus-visible { background: var(--accent-strong, var(--accent, #3b82f6)); color: var(--on-accent-strong, #fff); }
 @keyframes unmute-pop { from { opacity: 0; transform: translateY(-4px) scale(.96); } }
-@media (prefers-reduced-motion: reduce) { .unmute-pill { animation: none; } }
 
 /* ── DVR Progress Bar (Live Stream Seeking) ─────────────────── */
 .dvr-progress-wrap {
@@ -5398,10 +5382,6 @@ body.theme-light .btn-outline:hover {
 .call-participant-tile.is-leaving { animation: callTileOut var(--ov-dur-2, 240ms) ease-in forwards; pointer-events: none; }
 @keyframes callTileIn { from { opacity: 0; transform: scale(0.86); } }
 @keyframes callTileOut { to { opacity: 0; transform: scale(0.86); } }
-@media (prefers-reduced-motion: reduce) {
-    .call-participant-tile.is-entering, .call-participant-tile.is-leaving, .call-participant-tile.is-connecting .call-avatar, .vc-connected-badge i { animation: none !important; }
-    .call-avatar::after { transition: none; }
-}
 
 /* Video (camera on) */
 .call-video {
@@ -7284,7 +7264,7 @@ textarea.paste-textarea {
 /* Phones, scrolling down: the floating buttons step aside (draggable-fab.js) and come back on the way up. */
 body .floating-chat-fab, body .mobile-chat-toggle { transition: transform var(--ov-dur-2, 0.2s), opacity var(--ov-dur-2, 0.2s), background var(--ov-dur-2, 0.15s); }
 body.fabs-tucked .floating-chat-fab, body.fabs-tucked .mobile-chat-toggle { opacity: 0; transform: scale(0.6); pointer-events: none; }
-@media (prefers-reduced-motion: reduce) { body.fabs-tucked .floating-chat-fab, body.fabs-tucked .mobile-chat-toggle { transform: none; } }
+html[data-ov-motion=off] body.fabs-tucked .floating-chat-fab,html[data-ov-motion=off] body.fabs-tucked .mobile-chat-toggle{transform: none}
 
 /* ── Floating Chat Widget ─────────────────────────────────────── */
 .floating-chat-fab {
@@ -9016,9 +8996,6 @@ body.fabs-tucked .floating-chat-fab, body.fabs-tucked .mobile-chat-toggle { opac
 /* On a light page the shimmer's pale gold sank into the white; a deep amber keeps the name readable through it. */
 html[data-theme-mode="light"] .hero h1 { background-image: linear-gradient(90deg, var(--accent, var(--accent)), #b7791f, var(--accent, var(--accent))); }
 @keyframes heroShimmer { to { background-position: 200% center; } }
-@media (prefers-reduced-motion: reduce) {
-    .hero-aurora, .hero-aurora::before, .hero-aurora::after, .hero h1 { animation: none; }
-}
 
 /* Stream description on live cards (collapsible) */
 
@@ -9038,7 +9015,6 @@ html[data-theme-mode="light"] .hero h1 { background-image: linear-gradient(90deg
     0%,100% { box-shadow: 0 8px 24px rgba(0,0,0,.5), 0 0 0 0 color-mix(in srgb, var(--accent) 55%, transparent); }
     50%     { box-shadow: 0 8px 24px rgba(0,0,0,.5), 0 0 0 12px transparent; }
 }
-@media (prefers-reduced-motion: reduce) { .cp-bonus-chest { animation: none; } }
 
 /* Live-counting uptime tooltip */
 .uptime-tooltip {
@@ -9143,7 +9119,6 @@ html[data-theme-mode="light"] .hero h1 { background-image: linear-gradient(90deg
     position: static; height: auto; background: none; padding: 4px 0 6px;
 }
 .cgw-more.expanded i { animation: none; }
-@media (prefers-reduced-motion: reduce) { .cgw-more i { animation: none; } }
 .cgw-goal {
     position: relative; height: 42px; border-radius: 9px; overflow: hidden; cursor: pointer;
     background: var(--bg-card); border: 1px solid var(--border);
@@ -9569,7 +9544,7 @@ label.staff-inline-toggle.aiv-field { flex-direction:row; align-items:center; }
 @keyframes ovSpark3 { 0% { opacity: 0; transform: translate(0,10px) scale(0.6); } 10% { opacity: 1; } 60% { opacity: 0; transform: translate(3px,16px) scale(1.2); } 100% { opacity: 0; } }
 @media (max-width: 600px) { .brand-mark { width: 26px; height: 26px; } .brand-mark svg { width: 25px; height: 25px; } .brand-mark--hero svg { width: 100%; height: 100%; } }
 .rs-lite .ov-orbit, .rs-lite .ov-spark { filter: none; }
-@media (prefers-reduced-motion: reduce) { .brand-mark svg, .ov-glow, .ov-comet, .ov-v, .ov-dot, .ov-spark { animation: none !important; } .ov-orbit, .ov-spark { display: none; } .ov-comet { stroke-dasharray: none; opacity: 0.9; } }
+html[data-ov-motion=off] .ov-orbit,html[data-ov-motion=off] .ov-spark{display: none}html[data-ov-motion=off] .ov-comet{stroke-dasharray: none;opacity: 0.9}
 @media (max-width: 600px) { .brand-mark { width: 26px; height: 26px; } .brand-mark svg { width: 25px; height: 25px; } }
 .ov-mark--ph { opacity: 0.45; color: var(--text-muted); }
 
@@ -9596,10 +9571,6 @@ label.staff-inline-toggle.aiv-field { flex-direction:row; align-items:center; }
    Only the element that is arriving animates, so the one leaving doesn't flash on its way out. */
 .hero-stat-full.is-entering, .hero-stat-strip.is-entering { animation: heroStatsOpen var(--ov-dur-3, 0.42s) var(--ov-ease-out, cubic-bezier(.2, 1, .3, 1)); }
 @keyframes heroStatsOpen { from { opacity: 0; transform: translateY(-7px); } to { opacity: 1; transform: none; } }
-@media (prefers-reduced-motion: reduce) {
-    .hero-stat-full.is-entering, .hero-stat-strip.is-entering { animation: none; }
-    .hero-stat-more i { transition: none; }
-}
 
 /* ── Hero polish ─────────────────────────────────────────────────────────────
    The rotating tagline is a single unbreakable line, so on a narrow screen a long phrase ran off
@@ -9852,9 +9823,6 @@ label.staff-inline-toggle.aiv-field { flex-direction:row; align-items:center; }
 #page-home.page { padding-bottom: 10px; }
 
 /* Route changes (the bar, the loading line, the fade-in) are openvibe-shared web-runtime enter() + route-transition.js. */
-@media (prefers-reduced-motion: reduce) {
-    .brand-mark.is-spin svg, .brand-mark.is-settling svg { animation: none !important; }
-}
 
 /* ═══════════════════════════════════════════════════════════════
    Off-screen sections animate nothing.
@@ -9941,10 +9909,7 @@ label.staff-inline-toggle.aiv-field { flex-direction:row; align-items:center; }
 @keyframes ovConnPulse { 50% { transform: scale(0.55); opacity: 0.5; } }
 .chat-conn-status { font-style: italic; opacity: 0.85; }
 .chat-conn-status[data-state="connected"] { color: var(--success-text, var(--success)); }
-@media (prefers-reduced-motion: reduce) {
-    .ov-conn-pill { transition: opacity var(--motion-fast) linear; transform: translate3d(-50%, 0, 0); }
-    .ov-conn-pill .ov-conn-dot { animation: none !important; }
-}
+html[data-ov-motion=off] .ov-conn-pill{transform: translate3d(-50%, 0, 0)}
 
 body.ov-panel-open #floating-chat-fab { opacity: 0; pointer-events: none; transform: scale(.85); transition: opacity var(--ov-dur-2, .15s), transform var(--ov-dur-2, .15s); }
 

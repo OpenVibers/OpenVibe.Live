@@ -131,7 +131,7 @@
         svg.setAttribute('viewBox', `0 0 ${R.width} ${R.height}`);
         svg.setAttribute('width', R.width); svg.setAttribute('height', R.height);
         const vertical = getComputedStyle(stage).getPropertyValue('--tour-vertical').trim() === '1';
-        const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches || document.documentElement.classList.contains('rs-lite');
+        const reduce = (document.documentElement.getAttribute('data-ov-motion') === 'off') || document.documentElement.classList.contains('rs-lite');
         const logo = stage.querySelector('.tour-core-logo') || stage.querySelector('[data-node="core"]');
         if (!logo) return;
 

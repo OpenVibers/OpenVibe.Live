@@ -238,7 +238,6 @@ a.rd-use:hover b { color: var(--accent); }
 .rd-more > summary::before { content: ''; width: 8px; height: 8px; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: translateY(-2px) rotate(-45deg); transition: transform var(--ov-dur-2, .18s) var(--ov-ease-out, ease); }
 .rd-more[open] > summary::before { transform: translateY(-4px) rotate(45deg); }
 .rd-more > .rd-topic-grid { padding: 4px 12px 14px; }
-@media (prefers-reduced-motion: reduce) { .rd-more > summary::before { transition: none; } }
 
 /* ── The bar: search and filters (public/js/rundown.js) ──────────────────────────────────
    Sticky under the navbar on every Rundown page. The phone gets the search box and one
@@ -544,7 +543,6 @@ body.rd-sheet-open { overflow: hidden; }
     #rundown-root .rd-take .rd-compact-top .rd-chip { position: relative; min-height: 28px; }
     #rundown-root .rd-take .rd-compact-top .rd-chip::after { content: ''; position: absolute; inset: -8px; }
 }
-@media (prefers-reduced-motion: reduce) { .rd-bar, #rundown-root .rd-react-btn, #rundown-root .rd-skeleton span { transition: none; animation: none; } }
 
 /* ── The day, at the top of the front page (rundown.js _rdDayDraw): the day in short when the AI summary is on, then
    today's moments as a row to swipe, in time order, each hung from one line by its dot. ── */

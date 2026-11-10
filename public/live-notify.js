@@ -33,7 +33,7 @@
             '.hln-x{position:absolute;top:5px;right:7px;color:#7a7a86;font-size:14px;line-height:1;padding:2px;cursor:pointer;background:none;border:none}' +
             '.hln-x:hover{color:#fff}' +
             '@keyframes hlnPulse{0%,100%{opacity:1}50%{opacity:.3}}' +
-            '@media (prefers-reduced-motion:reduce){.hln-card{transition:opacity .3s}}';
+            '';
         (document.head || document.documentElement).appendChild(s);
     }
 

@@ -36,7 +36,7 @@
 .ovnum.is-down .ovnum-digit.changed{animation:ovnumDown .62s ease-out}
 @keyframes ovnumUp{0%{filter:none}35%{filter:brightness(1.55)}100%{filter:none}}
 @keyframes ovnumDown{0%{filter:none}35%{filter:brightness(.72)}100%{filter:none}}
-@media (prefers-reduced-motion:reduce){.ovnum-track{transition:none}.ovnum .ovnum-digit.changed{animation:none}}`;
+`;
 
     function ensure() {
         if (document.getElementById('ovnum-css')) return;

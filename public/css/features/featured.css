@@ -88,10 +88,6 @@
     .hf-panel { padding: 14px 14px 14px; }
     .hf-overview { display: none; }
 }
-@media (prefers-reduced-motion: reduce) {
-    .hf, .hf-live i { animation: none; }
-    .hf-media video, .hf-media canvas, .hf-media img.hf-frame, .hf-now { transition: none; }
-}
 
 /* Touch pointers: the unmute pill answers a finger at 44 px (2026-11-05 phone sweep: 35.6 px tall). It sits on the
    video overlay, so it takes the height itself rather than a hit area over the frame's own link. */

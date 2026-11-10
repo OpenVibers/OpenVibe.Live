@@ -27,7 +27,6 @@
 .ovp-out { font-size: 0.68rem; opacity: 0.55; }
 .ovp-n { margin-left: auto; padding-left: 12px; font-weight: 700; }
 .ovp-n.is-live { font-size: 0.72rem; font-weight: 700; color: #fca5a5; text-transform: uppercase; letter-spacing: 0.05em; }
-@media (prefers-reduced-motion: reduce) { .ovp { animation: none; } }
 /* A section under the places (the live studio's restreams): each with a state dot, and a way to manage them. */
 .ovp-extra { margin-top: 4px; padding-top: 4px; border-top: 1px solid color-mix(in srgb, var(--text-primary, #fff) 10%, transparent); }
 .ovp-extra[hidden] { display: none; }

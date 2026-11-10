@@ -535,7 +535,6 @@
 #bc-stats-overlay .bc-stat > i { width: 16px; text-align: center; font-size: 0.72rem; color: rgba(255, 255, 255, 0.55); }
 #bc-stats-overlay .bc-stat-label { color: rgba(255, 255, 255, 0.66); min-width: 0; }
 #bc-stats-overlay .bc-stat-v { font-weight: 700; text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
-@media (prefers-reduced-motion: reduce) { #bc-stats-overlay.bc-stats-overlay { animation: none; } }
 
 .bc-status-good { background: var(--success); color: #fff; }
 .bc-status-warn { background: var(--warning); color: #000; }
@@ -2505,7 +2504,6 @@
 .bc-ws-quality[open] .bc-sum-chev { transform: rotate(180deg); color: var(--accent); }
 .bc-ws-quality[open] > summary { border-bottom: 1px solid var(--border); }
 .bc-ws-quality .bc-ws-quality-inner { margin: 0; padding: 12px; }
-@media (prefers-reduced-motion: reduce) { .bc-switch-thumb, .bc-sum-chev { transition: none; } }
 
 /* Wide panels: details on the left, how you stream on the right, so fields are not a thousand pixels wide. */
 .bc-ws-main { container-type: inline-size; container-name: bcws; }
@@ -2522,7 +2520,6 @@
 .bc-live-badge { animation: none; }
 .bc-live-badge i { animation: pulse-live 1.5s infinite; }
 .bc-rs-control .bc-restream-detail { flex-basis: 100%; min-width: 0; white-space: normal; overflow-wrap: anywhere; }
-@media (prefers-reduced-motion: reduce) { .bc-live-badge i { animation: none; } }
 /* On a phone's full page the live controls are a grid of tiles (icon over a short label), not a column of thirteen
    full-width bars; ending the stream keeps its own full-width row. */
 @media (max-width: 768px) {
@@ -2688,7 +2685,6 @@ body.bc-studio-on .toast-container { z-index: 1500; }
 /* Chat's own reconnecting line sits with the chat; the site-wide pill would say it twice (and read as the stream). */
 body.bc-studio-on .ov-conn-pill { display: none !important; }
 body.bc-studio-on #bc-chat-messages .chat-conn-status { display: block !important; width: fit-content; background: rgba(180, 83, 9, 0.85); font-style: normal; }
-@media (prefers-reduced-motion: reduce) { .bcs, .bcs-state-spin { animation: none; } }
 .bcs-end { height: 34px; padding: 0 16px; border: 0; border-radius: 999px; background: #e11d48; color: #fff; font-size: 0.9rem; font-weight: 800; }
 .bcs-zoom {
     position: absolute; top: 38%; left: 50%; transform: translate(-50%, -50%); padding: 8px 16px; border-radius: 999px;
@@ -2800,7 +2796,6 @@ body.bc-studio-on #bc-chat-messages .chat-conn-status { display: block !importan
 .bcs-switch-k { position: absolute; top: 3px; left: 3px; width: 24px; height: 24px; border-radius: 50%; background: #fff; transition: transform var(--ov-dur-2, 0.15s); }
 .bcs-switch[aria-checked="true"] { background: #16a34a; border-color: transparent; }
 .bcs-switch[aria-checked="true"] .bcs-switch-k { transform: translateX(20px); }
-@media (prefers-reduced-motion: reduce) { .bcs-switch-k { transition: none; } }
 .bcs-confirm {
     width: 100%; max-width: 360px; padding: 20px; border-radius: 18px; text-align: center;
     background: var(--bg-secondary, #15151c); color: var(--text-primary, #f4f4f5); box-shadow: 0 20px 60px rgba(0,0,0,0.5);
@@ -2827,10 +2822,6 @@ body.bc-studio-on #bc-chat-messages .chat-conn-status { display: block !importan
 .bc-live-pill-dot { width: 8px; height: 8px; border-radius: 50%; background: #fff; animation: bcLivePillPulse 1.6s var(--ov-ease-in-out, ease-in-out) infinite; }
 @keyframes bcLivePillPulse { 50% { opacity: 0.35; } }
 .bc-live-pill:focus-visible { outline: 3px solid #93c5fd; outline-offset: 2px; }
-@media (prefers-reduced-motion: reduce) { .bc-live-pill-dot { animation: none; } }
-@media (prefers-reduced-motion: reduce) {
-    .bcs-live-dot, .bcs-sheet, .bcs-sheet-wrap { animation: none; }
-}
 
 /* Setting up on a phone keeps the app's bottom bar, with Go Live lit, like every other page (the owner, 2026-11-01:
    "the buttons at the bottom don't show like our mobile buttons"). Only the live studio (body.bc-studio-on, above)
@@ -2911,10 +2902,7 @@ body.bc-golive-dock-on #page-broadcast { padding-bottom: calc(104px + max(var(--
 }
 .bc-clip-name.is-held .bc-clip-name-timer { display: none; }
 @keyframes bc-clip-name-time { to { transform: scaleX(0); } }
-@media (prefers-reduced-motion: reduce) {
-    .bc-clip-name { animation: none; }
-    .bc-clip-name-timer { animation: none; display: none; }
-}
+html[data-ov-motion=off] .bc-clip-name-timer{display: none}
 
 /* ── The camera chooser before going live (broadcast-devices.js _bcRenderCameraChooser) ──
    Phones: Front | Back, and a chip per camera when a side has several. Computers: a card per camera. */
@@ -2970,7 +2958,6 @@ body.bc-golive-dock-on #page-broadcast { padding-bottom: calc(104px + max(var(--
 .bc-cam-side:focus-visible, .bc-cam-lens:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .bc-cam-sides:has(> :nth-child(3)) .bc-cam-side { padding: 0 11px; }
 .bc-cam-sides:has(> :nth-child(3)) .bc-cam-side i { display: none; }   /* Front · Back · USB: words only */
-@media (prefers-reduced-motion: reduce) { .bc-cam-side, .bc-cam-lens, .bc-setup-row { transition: none; } }
 .bc-setup-note { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 12px; margin: 8px 2px 0; font-size: 0.74rem; color: var(--text-muted); }
 .bc-setup-link { font: inherit; font-weight: 600; color: var(--accent); background: none; border: 0; padding: 6px 0; cursor: pointer; }
 .bc-setup-link:hover { text-decoration: underline; }
@@ -3011,7 +2998,6 @@ body.bc-golive-dock-on #page-broadcast { padding-bottom: calc(104px + max(var(--
     .gl-device-sheet-head button { width: 44px; height: 44px; border: 0; border-radius: 50%; background: var(--bg-primary); color: var(--text-primary); }
 }
 @media (max-width: 760px) { .gl-preview { min-height: min(46vh, 390px); max-height: min(58vh, 520px); } .gl-pv-chips { bottom: 62px; } }
-@media (prefers-reduced-motion: reduce) { .gl-allow-mark, .bcs-golive[data-mode="live"], .bcs-golive[data-mode="connecting"] { animation: none; } .bcs-golive-btn .fa-spin { animation-iteration-count: 1; } }
 .bc-ws-golive-section .bc-perm-hint { flex: 1 1 200px; display: flex; align-items: flex-start; gap: 8px; margin: 0; font-size: 0.84rem; }
 .bc-ws-golive-section .bc-perm-hint i { color: var(--accent); margin-top: 3px; }
 .bc-ws-golive-section #bc-perm-btn { flex: 1 0 auto; justify-content: center; min-height: 44px; border-radius: 12px; font-weight: 650; }
@@ -3136,7 +3122,6 @@ body.bc-golive-dock-on #page-broadcast { padding-bottom: calc(104px + max(var(--
 .bcs-golive:not([hidden]) { animation: bcs-dock-in var(--ov-dur-2, 0.2s) var(--ov-ease-out, ease-out); }
 .bcs-golive-t { margin-left: 8px; }
 @keyframes bcs-dock-in { from { opacity: 0; transform: translateY(8px); } }
-@media (prefers-reduced-motion: reduce) { .bcs-golive:not([hidden]), .bc-live-card-dot { animation: none; } }
 
 /* RobotStreamer, at every width: its state and Stop on one line, the details under them in full (on a phone the Stop
    button stood between them as a tall tile and the details ran off the right; on a computer the state sat at the far
@@ -3203,7 +3188,7 @@ body.bc-golive-dock-on #page-broadcast { padding-bottom: calc(104px + max(var(--
 .bcs-gl-burst { position: absolute; left: 22px; top: 21px; width: 0; height: 0; pointer-events: none; }
 .bcs-gl-burst i { position: absolute; width: 5px; height: 5px; margin: -2.5px; border-radius: 50%; background: hsl(var(--a), 90%, 66%); opacity: 0; animation: bcs-gl-spark .9s var(--ov-ease-out, cubic-bezier(.2,.8,.3,1)) var(--d) forwards; }
 @keyframes bcs-gl-spark { 0% { opacity: 1; transform: rotate(var(--a)) translateX(0); } 100% { opacity: 0; transform: rotate(var(--a)) translateX(48px) scale(.4); } }
-@media (prefers-reduced-motion: reduce) { .bcs-livecard, .bcs-gl-dot::after, .bcs-gl-burst i { animation: none !important; } .bcs-gl-burst { display: none; } }
+html[data-ov-motion=off] .bcs-gl-burst{display: none}
 /* A phone: the link on its own line, whole, and Copy the width of the card (an easy tap while holding the phone). */
 @media (max-width: 480px) {
     .bcs-livecard .bcs-gl-link { flex-wrap: wrap; padding: 10px; gap: 10px; }
@@ -3314,7 +3299,6 @@ body.bc-golive-dock-on #page-broadcast { padding-bottom: calc(104px + max(var(--
 .gl-loading span { width: 8px; height: 8px; border-radius: 50%; background: var(--text-muted); animation: gl-breathe 1.2s var(--ov-ease-in-out, ease-in-out) infinite; }
 .gl-loading span:nth-child(2) { animation-delay: 0.2s; }
 .gl-loading span:nth-child(3) { animation-delay: 0.4s; }
-@media (prefers-reduced-motion: reduce) { .gl-wait-dot, .gl-loading span { animation: none; } .gl-slot, .gl-chip, .gl-title { transition: none; } }
 /* Video quality is a fold too: the same row as the others (its older rule had its own padding). */
 .gl-fold.bc-ws-quality > summary { padding: 8px 14px; min-height: 52px; font-size: 0.9rem; }
 .gl-fold.bc-ws-quality > summary > i:first-child { width: 18px; }
@@ -3375,7 +3359,6 @@ body.bc-golive-dock-on #page-broadcast { padding-bottom: calc(104px + max(var(--
 .gl-pv-off:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .gl-pv-off[aria-pressed="true"] i::before { content: "\f06e"; }
 @media (pointer: coarse) { .gl-pv-off { width: 44px; height: 44px; } }
-@media (prefers-reduced-motion: reduce) { .gl-preview video, .gl-pv-lvl i { transition: none; } }
 
 /* Test privately: the quiet button under Go live; while recording, a red dot and the seconds left; then the test plays
    back over the preview with Done. */
@@ -3398,7 +3381,6 @@ body.bc-golive-dock-on #page-broadcast { padding-bottom: calc(104px + max(var(--
     background: var(--accent-strong, var(--accent)); color: var(--on-accent-strong, var(--on-accent, #fff)); }
 .gl-test-done:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 @media (pointer: coarse) { .gl-test-done { min-height: 44px; } }
-@media (prefers-reduced-motion: reduce) { .gl-test-btn.is-rec i { animation: none; } }
 
 /* Labels (L1) in the go-live card's fold: six toggles; the AI's suggestions dashed, to confirm. */
 .gl-labels-why { margin: 0 0 10px; font-size: .82rem; line-height: 1.45; color: var(--text-secondary); }
@@ -3415,7 +3397,6 @@ body.bc-golive-dock-on #page-broadcast { padding-bottom: calc(104px + max(var(--
 .gl-label--adult.is-on { color: var(--warning-text, var(--warning)); border-color: color-mix(in srgb, var(--warning-text, var(--warning)) 55%, var(--border)); background: color-mix(in srgb, var(--warning-text, var(--warning)) 10%, transparent); }
 .gl-label--ai { border-style: dashed; color: var(--accent); }
 @media (pointer: coarse) { .gl-label { min-height: 44px; } }
-@media (prefers-reduced-motion: reduce) { .gl-label { transition: none; } }
 
 /* One "Turn on camera" (11-09 review): on a phone the Go live dock at the thumb carries it, so the card keeps the words
    and the other ways, not a second identical button. */

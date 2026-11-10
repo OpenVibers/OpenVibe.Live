@@ -105,7 +105,7 @@ function page(overflowX) {
     // control's column clamp never squeezes a rail's cards.
     assert.match(css, /\.home-rail-tail \{ display: none; \}/);
     assert.match(css, /#home-catchup \.stream-grid > \.home-rail-tail, #home-catchup \.home-pastes-list > \.home-rail-tail \{ display: flex; \}/);
-    assert.match(css, /@media \(prefers-reduced-motion: reduce\) \{ \.home-rail-skel \{ animation: none; \} \}/);
+    assert.doesNotMatch(css, /\.home-rail-skel \{ animation: none/, 'the placeholder shimmers under Calm too (slower, by the loader)');
     assert.match(css, /#home-catchup \.stream-grid\[data-ovd-cols\], #home-catchup \.home-pastes-list\[data-ovd-cols\] \{ grid-template-columns: none !important; \}/);
     // Recent Pastes rides the same rail on a phone (it was two cards a row with "Load 2 more", 2026-11-02).
     assert.match(css, /#home-catchup \.stream-grid, #home-catchup \.home-pastes-list \{\n\s+display: grid; grid-auto-flow: column;/);

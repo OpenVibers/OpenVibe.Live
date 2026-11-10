@@ -33,7 +33,7 @@
 
     const KEY = 'ov-mini-player';
     const st = { box: null, video: null, home: null, title: '', href: '', user: '', styleEl: null, chat: null, x: 0, y: 0, w: 0, corner: 'br', idle: 0, offRo: null };
-    const reduced = () => { try { return matchMedia('(prefers-reduced-motion: reduce)').matches; } catch { return false; } };
+    const reduced = () => { try { return (document.documentElement.getAttribute('data-ov-motion') === 'off'); } catch { return false; } };
     const phone = () => { try { return matchMedia('(max-width: 759px)').matches; } catch { return false; } };
     const fine = () => { try { return matchMedia('(hover: hover) and (pointer: fine)').matches; } catch { return false; } };
 
@@ -106,7 +106,6 @@
 .ov-mp-chat-h .ov-mp-b{background:transparent;color:inherit;width:30px;height:30px}
 .ov-mp-chat-h .ov-mp-b:hover{background:rgba(127,127,127,.18)}
 .ov-mp-chat iframe{flex:1;width:100%;border:0;background:transparent}
-@media (prefers-reduced-motion:reduce){.ov-mini-player.is-settling,.ov-mp-chat{transition:none}}
 `;
         (document.head || document.documentElement).appendChild(st.styleEl);
     }
