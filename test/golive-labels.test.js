@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * Labels on the go-live card (L1, with Live #477's API): a chip in the row and a fold with the six labels as toggles;
+ * Labels on the go-live screen (L1, with Live #477's API): a fold under the card with the six labels as toggles;
  * the AI's suggestions are offered to confirm, never applied by themselves; the save sends the creator's labels.
  */
 const assert = require('assert');
@@ -13,7 +13,7 @@ const panel = ws.slice(ws.indexOf('function _wsRenderPanel()'), ws.indexOf('\n}\
 const fn = (name) => { const i = ws.indexOf(`function ${name}(`); assert.ok(i > 0, name); return ws.slice(i, ws.indexOf('\n}\n', i)); };
 
 // The chip and the fold.
-assert.ok(panel.includes(`onclick="_glOpenFold('gl-labels')"`) && panel.includes('id="gl-labels-v"'), 'a Labels chip that opens its fold');
+assert.ok(!panel.includes('id="gl-labels-v"'), 'no Labels tile on the card (the owner, 2026-11-10: "the labels, you don\'t really need"): its row under the card has it');
 assert.ok(panel.includes('<details class="gl-fold" id="gl-labels">') && panel.includes('id="gl-labels-sum"'), 'a Labels fold whose line says what is set');
 assert.ok(panel.includes('Labels are choices, not bans.'), 'it says what a label does, once');
 

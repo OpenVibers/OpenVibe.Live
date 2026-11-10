@@ -79,7 +79,7 @@ async function _wsLoadManagedStreams() {
 function _wsRenderSidebar() {
     const list = document.getElementById('bc-ws-list');
     if (!list) return;
-    const add = '<button type="button" class="gl-slot gl-slot--add" onclick="showCreateManagedStreamModal()"><i class="fa-solid fa-plus" aria-hidden="true"></i><span>New slot</span></button>';
+    const add = '<button type="button" class="gl-slot gl-slot--add" onclick="showCreateManagedStreamModal()" title="New slot"><i class="fa-solid fa-plus" aria-hidden="true"></i><span>New slot</span></button>';
     // No streams yet: the first-run card below has the ways to start, so the row stays empty (two "make one" buttons
     // that did the same thing confused new streamers).
     if (_wsState.managedStreams.length === 0) {
@@ -348,29 +348,26 @@ function _wsRenderPanel() {
                     value="${esc(placeHandoff?.title || ms.title || '')}"
                     placeholder="What are you streaming?" maxlength="200"
                     oninput="_wsMarkDirty()">
-                <span id="bc-ws-save-status" class="bc-ws-save-status" role="status" aria-live="polite"></span>
                 <button type="button" class="gl-suggest" id="gl-suggest" onclick="_glSuggestTitles(this)" title="Three title ideas from your last streams on this slot">
-                    <span aria-hidden="true">\u2728</span> Suggest
+                    <i class="fa-solid fa-wand-magic-sparkles" aria-hidden="true"></i><span>Suggest</span>
                 </button>
+                <span id="bc-ws-save-status" class="bc-ws-save-status" role="status" aria-live="polite"></span>
             </div>
             ${placeHandoff ? `<p class="gl-place-handoff">From <a href="${esc(placeHandoff.url)}" rel="noopener">${esc(placeHandoff.name)} on OpenVibe.Tours</a>. Your stream will be linked to this place after you choose Go live.</p><input type="hidden" id="bc-place-name" value="${esc(placeHandoff.name)}"><input type="hidden" id="bc-place-url" value="${esc(placeHandoff.url)}">` : ''}
             <div class="gl-ideas" id="gl-ideas" role="group" aria-label="Title ideas" hidden></div>
-            <div class="gl-chips" data-ovk-scroll>
+            <div class="gl-chips">
+                <button type="button" class="gl-chip gl-chip--link" onclick="_glCopyLink()" title="Copy your stream's address">
+                    <span class="gl-chip-i" aria-hidden="true"><i class="fa-solid fa-link"></i></span><span class="gl-chip-k">Address</span><span class="gl-chip-v" id="gl-link">${esc(link)}</span><i class="fa-regular fa-copy gl-chip-end" aria-hidden="true"></i>
+                </button>
                 <label class="gl-chip gl-chip--mature" title="Mature (18+): viewers confirm their age before the stream plays. The category is set automatically from what is on stream.">
                     <input type="checkbox" id="bc-nsfw" ${ms.is_nsfw ? 'checked' : ''} onchange="_wsMarkDirty()">
-                    <i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i><span>Mature</span><b id="gl-mature-v">${ms.is_nsfw ? 'on' : 'off'}</b>
+                    <span class="gl-chip-i" aria-hidden="true"><i class="fa-solid fa-triangle-exclamation"></i></span><span class="gl-chip-k">Mature</span><b class="gl-chip-v" id="gl-mature-v">${ms.is_nsfw ? 'on' : 'off'}</b>
                 </label>
-                <button type="button" class="gl-chip" onclick="_glOpenFold('gl-labels')" title="What this stream carries: each viewer decides to show, blur or hide it">
-                    <i class="fa-solid fa-tag" aria-hidden="true"></i><span>Labels</span><b id="gl-labels-v">${esc(_glLabelsSummary(ms, true))}</b>
-                </button>
-                <button type="button" class="gl-chip gl-chip--link" onclick="_glCopyLink()" title="Copy your stream's address">
-                    <i class="fa-solid fa-link" aria-hidden="true"></i><span id="gl-link">${esc(link)}</span>
-                </button>
-                <button type="button" class="gl-chip" onclick="_glOpenFold('bc-ws-restream-details')" title="Where this stream is sent too">
-                    <i class="fa-solid fa-share-nodes" aria-hidden="true"></i><span>Restreams</span><b id="gl-rs-v">…</b>
-                </button>
                 <button type="button" class="gl-chip" onclick="_wsOpenPopoutChat()" title="Open your chat in its own window">
-                    <i class="fa-solid fa-comment-dots" aria-hidden="true"></i><span>Chat</span>
+                    <span class="gl-chip-i" aria-hidden="true"><i class="fa-solid fa-comment-dots"></i></span><span class="gl-chip-k">Chat</span><b class="gl-chip-v">Open</b>
+                </button>
+                <button type="button" class="gl-chip gl-chip--wide" onclick="_glOpenFold('bc-ws-restream-details')" title="Where this stream is sent too">
+                    <span class="gl-chip-i" aria-hidden="true"><i class="fa-solid fa-share-nodes"></i></span><span class="gl-chip-k">Restreams</span><b class="gl-chip-v" id="gl-rs-v">…</b><i class="fa-solid fa-chevron-right gl-chip-end" aria-hidden="true"></i>
                 </button>
             </div>
 
@@ -984,7 +981,6 @@ function _glSyncSummaries() {
     const set = (id, html) => { const el = document.getElementById(id); if (el) el.innerHTML = html; };
     set('gl-details-sum', _glDetailsSummary(ms));
     set('gl-labels-sum', esc(_glLabelsSummary(ms)));
-    set('gl-labels-v', esc(_glLabelsSummary(ms, true)));
     const method = ms.streaming_method || 'browser', mode = ms.browser_mode || _wsState.profile?.browserMode || 'camera';
     set('gl-how-sum', esc(_glHowSummary(method, mode)));
     const howIcon = document.querySelector('#gl-how > summary > i:first-child');

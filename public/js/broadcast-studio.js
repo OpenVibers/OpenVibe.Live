@@ -837,6 +837,40 @@
     // a moment on every load, and while a stream of theirs was already live (owner, 2026-10-27). With one live and this
     // page not holding it, the bar resumes it instead of starting another.
     function inView(n) { if (!n || !n.offsetParent) return false; const r = n.getBoundingClientRect(); return r.top < window.innerHeight - 8 && r.bottom > 0; }
+    // The bar does not appear and vanish: it rises into place, and when the real button comes into view the bar's
+    // button travels to it and hands over (the owner, 2026-11-10: "the button flashes in. It should … go back to
+    // where you want it on screen rather than flash"). With Motion off it is simply there or not.
+    function showDock(dock, on, real) {
+        if ((dock.dataset.on === '1') === on) return;
+        dock.dataset.on = on ? '1' : '0';
+        clearTimeout(dock._leave);
+        const btn = dock.querySelector('.bcs-golive-btn');
+        const still = document.documentElement.getAttribute('data-ov-motion') === 'off';
+        btn.style.transform = '';
+        if (on) {
+            dock.hidden = false;
+            dock.classList.remove('is-leaving');
+            if (still) return;
+            dock.classList.add('is-entering');
+            requestAnimationFrame(() => requestAnimationFrame(() => dock.classList.remove('is-entering')));
+            return;
+        }
+        if (still) { dock.hidden = true; return; }
+        if (real && inView(real)) {
+            const from = btn.getBoundingClientRect(), to = real.getBoundingClientRect();
+            if (from.width && from.height) btn.style.transform = `translate(${(to.left + to.width / 2) - (from.left + from.width / 2)}px, ${(to.top + to.height / 2) - (from.top + from.height / 2)}px) scale(${to.width / from.width}, ${to.height / from.height})`;
+        }
+        dock.classList.add('is-leaving');
+        dock._leave = setTimeout(() => { dock.hidden = true; dock.classList.remove('is-leaving'); btn.style.transform = ''; }, 280);
+    }
+    // The bar rides above the footer once the footer is on screen: it never lies over the page's last lines.
+    function liftDockOverFooter() {
+        const dock = $('bcs-golive'), foot = document.getElementById('ov-footer');
+        if (!dock || dock.hidden || !foot) return;
+        const top = foot.getBoundingClientRect().top;
+        const edge = window.innerHeight - (parseFloat(getComputedStyle(document.body).getPropertyValue('--ovnav-appbar-h')) || 0);
+        dock.style.setProperty('--bcs-lift', `${Math.max(0, Math.round(edge - top))}px`);
+    }
     function syncGoLiveDock() {
         const ready = NARROW.matches && onBroadcastPage() && !!window._bcMyLoaded;
         const liveMine = ready ? (window._bcMyLive || []) : [];
@@ -864,8 +898,8 @@
             document.body.append(dock);
         }
         if (dock) {
-            dock.hidden = !mode;
-            dock.dataset.mode = mode || '';
+            showDock(dock, !!mode, real || goLiveButton());
+            if (mode) dock.dataset.mode = mode;   // while it leaves it keeps the words it had
             if (mode === 'live') {
                 st.startingSince = 0;
                 dock.querySelector('.bcs-golive-btn i').className = 'fa-solid fa-stop';
@@ -900,6 +934,7 @@
             }
         }
         document.body.classList.toggle('bc-golive-dock-on', !!mode);
+        liftDockOverFooter();
     }
     document.addEventListener('scroll', () => { if ($('bcs-golive') || goLiveButton()) syncGoLiveDock(); }, { capture: true, passive: true });
     if (window.visualViewport) window.visualViewport.addEventListener('resize', () => {
