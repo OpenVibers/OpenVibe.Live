@@ -4,6 +4,9 @@
 
 **Open source live streaming** — [openvibe.live](https://openvibe.live). Go live from a browser or OBS with no follower minimum: chat, clips, recordings, restream and The Rundown.
 
+**Live site:** https://openvibe.live · **API docs:** https://openvibe.services · **For AI:** https://openvibe.live/llms.txt
+**Run it:** `npm ci && npm run dev` (Node 18 or newer) · **Tests:** `npm test`
+
 Part of the [OpenVibe network](https://openvibe.network); [help](https://openvibe.help), [docs](https://openvibe.live/docs/architecture) and the [developer API](https://openvibe.services).
 
 ## Purpose
