@@ -421,7 +421,7 @@ function dashGoalCardHTML(g) {
         ? (g.media_type === 'video'
             ? `<video class="dash-goal-thumb" src="${esc(g.image_url)}" muted loop autoplay playsinline></video>`
             : `<img class="dash-goal-thumb" src="${esc(g.image_url)}" alt="">`)
-        : '<div class="dash-goal-thumb dash-goal-thumb-ph"><i class="fa-solid fa-bullseye"></i></div>';
+        : (typeof goalArtHTML === 'function' ? goalArtHTML(g, 'dash-goal-thumb') : '<div class="dash-goal-thumb dash-goal-thumb-ph"><i class="fa-solid fa-bullseye"></i></div>');
     return `
         <div class="dash-goal ${reached ? 'reached' : ''}">
             ${media}

@@ -3121,7 +3121,7 @@ function addDonationGoalMessage(msg) {
         ? (g.media_type === 'video'
             ? `<video class="cgr-media" src="${esc(g.image_url)}" muted loop autoplay playsinline></video>`
             : `<img class="cgr-media" src="${esc(g.image_url)}" alt="">`)
-        : '';
+        : (typeof goalArtHTML === 'function' ? goalArtHTML(g, 'cgr-media') : '');
     const el = document.createElement('div');
     el.className = 'chat-msg goal-reached-msg';
     el.innerHTML = `

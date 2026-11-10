@@ -1790,17 +1790,29 @@ function toggleGoalWidgetExpand(btn) {
     el.classList.toggle('cgw-expanded');
     _renderGoalWidgetInto(el, _goalWidget.goals || []);
 }
+// A goal with no picture still looks finished (ask 289): art drawn from its title, two hues seeded by the words and a
+// large glyph that fits what it is for. The same art in the chat strip, the popover, the dashboard and the reached card.
+const _GOAL_GLYPHS = [[/power|level|energy|boost|charge/i, 'fa-bolt'], [/robot|\bbot\b|looi/i, 'fa-robot'], [/cam|camera|webcam|lens/i, 'fa-camera'],
+    [/\bmic\b|micro|audio|sound|speaker/i, 'fa-microphone'], [/game|gaming|console|controller/i, 'fa-gamepad'], [/\bpc\b|computer|gpu|setup|desk/i, 'fa-desktop'],
+    [/trip|travel|flight|road/i, 'fa-plane'], [/food|pizza|dinner|lunch|snack/i, 'fa-utensils'], [/music|song|guitar|beat/i, 'fa-music'], [/charity|donat|help|support/i, 'fa-heart']];
+function goalArtHTML(g, cls) {
+    const words = String((g && g.title) || 'Goal');
+    let h = 2166136261;
+    for (let i = 0; i < words.length; i++) { h ^= words.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; }
+    const h1 = h % 360, h2 = (h1 + 40 + ((h >>> 9) % 70)) % 360;
+    const glyph = (_GOAL_GLYPHS.find(([re]) => re.test(words)) || [null, 'fa-bullseye'])[1];
+    return `<div class="${cls} cgw-art" style="--ga1:hsl(${h1} 68% 42%);--ga2:hsl(${h2} 72% 20%)" aria-hidden="true"><i class="fa-solid ${glyph}"></i></div>`;
+}
 function _goalWidgetItemHTML(g) {
     const pct = g.target_amount ? Math.min(100, Math.round((g.current_amount / g.target_amount) * 100)) : 0;
     const reached = (!g.is_active && g.reached_at) || pct >= 100;
-    const hasImg = !!g.image_url;
-    // Image/video fills the whole card (cover); a gradient keeps the text readable.
-    const media = hasImg
+    // Image/video fills the whole card (cover); a goal without one gets its drawn art; a gradient keeps the text readable.
+    const media = g.image_url
         ? (g.media_type === 'video'
             ? `<video class="cgw-media" src="${esc(g.image_url)}" muted loop autoplay playsinline></video>`
             : `<div class="cgw-media" style="background-image:url('${esc(g.image_url)}')"></div>`)
-        : '';
-    return `<div class="cgw-goal ${reached ? 'reached' : ''} ${hasImg ? 'has-img' : ''}" data-goal-id="${g.id}" onclick="openGoalPopover(${g.id})" title="View goal">
+        : goalArtHTML(g, 'cgw-media');
+    return `<div class="cgw-goal ${reached ? 'reached' : ''} has-img" data-goal-id="${g.id}" onclick="openGoalPopover(${g.id})" title="View goal">
             ${media}
             <div class="cgw-overlay"></div>
             <div class="cgw-body">
@@ -1826,7 +1838,7 @@ function openGoalPopover(id) {
         ? (g.media_type === 'video'
             ? `<video class="cgw-pop-media" src="${esc(g.image_url)}" autoplay muted loop playsinline></video>`
             : `<img class="cgw-pop-media" src="${esc(g.image_url)}" alt="">`)
-        : '';
+        : goalArtHTML(g, 'cgw-pop-media');
     const ov = document.createElement('div');
     ov.className = 'cgw-pop-overlay';
     ov.id = 'cgw-pop-overlay';
