@@ -360,31 +360,32 @@ async function check(name, fn) {
         await check('listen(): the panel\'s height sets the frame between 160 and 720 px, and only from its own frame', async () => {
             const listeners = new Set();
             const win = { addEventListener: (t, f) => listeners.add(f), removeEventListener: (t, f) => listeners.delete(f) };
-            const style = {};
+            const card = { style: {} };
             const panel = { postMessage: () => {} };
-            const frame = { contentWindow: panel, style };
+            const frame = { contentWindow: panel, style: {}, closest: (sel) => (sel === '#ch-bot-container' ? card : null) };
             const stop = BotEmbed.listen({ frame, botEmbed: SIM, win, requestTicket: async () => ({}) });
             const send = async (data, { origin = 'https://openvibe.bot', source = panel } = {}) => {
                 for (const f of [...listeners]) await f({ data, origin, source });
             };
             await send({ type: 'ov-bot-size', robot_id: 'rob_sim123', height: 4000 });
-            assert.deepStrictEqual([style.height, style.resize], ['720px', 'none'], 'a tall panel is capped, and the card stops being hand-resized');
+            assert.deepStrictEqual([card.style.height, card.style.resize], ['720px', 'none'], 'a tall panel is capped, and the card stops being hand-resized');
+            assert.strictEqual(frame.style.height, '100%', 'the frame fills the card');
             await send({ type: 'ov-bot-size', robot_id: 'rob_sim123', height: 20 });
-            assert.strictEqual(style.height, '160px', 'a short panel keeps the controls reachable');
+            assert.strictEqual(card.style.height, '160px', 'a short panel keeps the controls reachable');
             await send({ type: 'ov-bot-size', robot_id: 'rob_sim123', height: 340 });
-            assert.strictEqual(style.height, '340px');
+            assert.strictEqual(card.style.height, '340px');
             await send({ type: 'ov-bot-size', robot_id: 'rob_sim123', height: 340.6 });
-            assert.strictEqual(style.height, '341px', 'rounded to a whole pixel');
+            assert.strictEqual(card.style.height, '341px', 'rounded to a whole pixel');
             for (const bad of [0, -5, NaN, Infinity, 'tall', null]) {
                 await send({ type: 'ov-bot-size', robot_id: 'rob_sim123', height: bad });
-                assert.strictEqual(style.height, '341px', `a non-height (${String(bad)}) changes nothing`);
+                assert.strictEqual(card.style.height, '341px', `a non-height (${String(bad)}) changes nothing`);
             }
             await send({ type: 'ov-bot-size', robot_id: 'rob_other', height: 500 });
             await send({ type: 'ov-bot-size', robot_id: 'rob_sim123', height: 500 }, { origin: 'https://evil.example' });
             await send({ type: 'ov-bot-size', robot_id: 'rob_sim123', height: 500 }, { source: {} });
-            assert.strictEqual(style.height, '341px', 'another robot, origin or window cannot size it');
+            assert.strictEqual(card.style.height, '341px', 'another robot, origin or window cannot size it');
             await send({ type: 'ov-bot-size', height: 300 }, {});
-            assert.strictEqual(style.height, '300px', 'the size needs no robot id (the origin and window are checked)');
+            assert.strictEqual(card.style.height, '300px', 'the size needs no robot id (the origin and window are checked)');
             stop();
             assert.strictEqual(listeners.size, 0);
         });

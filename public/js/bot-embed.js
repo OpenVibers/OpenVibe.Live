@@ -121,14 +121,18 @@
             try { if (frame.contentWindow) frame.contentWindow.postMessage(Object.assign({ robot_id: robotId }, msg), origin); } catch { /* the frame went away */ }
         };
         // The panel's height: it measures its content (a ResizeObserver on its end, at most 5×/s) and the page sets
-        // the frame to it between MIN_HEIGHT and MAX_HEIGHT. Once it has spoken the card is no longer hand-resizable.
+        // the card around the frame to it, between MIN_HEIGHT and MAX_HEIGHT. Once it has spoken the card is no
+        // longer hand-resizable (#ch-bot-container's resize handle in public/css/features/channel.css).
         const setHeight = (value) => {
             const height = Number(value);
             if (!Number.isFinite(height) || height <= 0) return;
             const clamped = Math.max(MIN_HEIGHT, Math.min(MAX_HEIGHT, Math.round(height)));
             try {
-                frame.style.height = `${clamped}px`;
-                frame.style.resize = 'none';
+                const card = typeof frame.closest === 'function' ? frame.closest('#ch-bot-container') : null;
+                const host = card || frame;
+                host.style.height = `${clamped}px`;
+                host.style.resize = 'none';
+                if (card) frame.style.height = '100%';   // the card grows; the frame fills it (channel.css)
             } catch { /* a fake frame in the tests */ }
         };
         // The page's theme, now (a kept frame) and again when the shared loader repaints one: ov:theme on first apply
