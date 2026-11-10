@@ -34,11 +34,12 @@ assert.ok(channel.includes('class="ovk-btn ovk-btn--quiet ch-action"'), 'the kit
 assert.ok(!appChannel.includes('shareStreamUrl'), 'the old copy-the-link button is gone');
 assert.ok(!read('public/css/features/channel.css').includes('ch-share-stream'), 'and so is its CSS');
 
-// What it shares: the channel's own public address (never an internal or an API URL).
-assert.ok(
-    appChannel.includes('b.dataset.url = recording || `${location.origin}${location.pathname}`;'),
-    "the button shares the channel page's own address",
-);
+// What it shares: the channel's own public address (never an internal or an API URL), with no section hash.
+assert.ok(appChannel.includes('b.dataset.url = recording || _channelAddress();'), "the button shares the channel page's own address");
+const addressFn = /function _channelAddress\(\) \{[\s\S]*?\n\}/.exec(appChannel);
+assert.ok(addressFn, '_channelAddress is in app-channel.js');
+const shareAddress = new Function('location', `${addressFn[0]}; return _channelAddress();`)({ origin: 'https://openvibe.live', pathname: '/@alice', search: '', hash: '#about' });
+assert.strictEqual(shareAddress, 'https://openvibe.live/@alice', 'a section hash is not shared');
 assert.ok(appChannel.includes("b.dataset.timeFrom = '#video-element'"), 'a recording that plays can be shared from the moment it plays');
 assert.ok(appChannel.includes("videoHref('vod', dvr.vodId)"), 'a recording that plays is shared as that recording');
 

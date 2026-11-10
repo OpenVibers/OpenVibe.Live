@@ -616,7 +616,9 @@ function _recordHistory(pageId) {
     _historyTimer = setTimeout(() => {
         const tok = (document.cookie.match(/(?:^|;\s*)ov_token=([^;]*)/) || [])[1] || localStorage.getItem('ov_token');
         if (!tok || !currentUser) return;
-        const entry = { type, title: document.title.replace(/\s*[-–|]\s*OpenVibe\.Live\s*$/i, ''), url: location.href };
+        // A channel is remembered as the channel, not as the section its scroll bar last named (ask 285).
+        const url = type === 'stream' ? `${location.origin}${location.pathname}` : location.href;
+        const entry = { type, title: document.title.replace(/\s*[-–|]\s*OpenVibe\.Live\s*$/i, ''), url };
         const send = () => { try { window.OpenVibeHistory.record(entry, { token: decodeURIComponent(tok) }); } catch { /* */ } };
         if (window.OpenVibeHistory) return send();
         if (document.getElementById('ov-history-loader')) return;
