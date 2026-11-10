@@ -46,6 +46,13 @@ const card = src.slice(src.indexOf('function renderChatEventCard('), src.indexOf
 assert.ok(!/innerHTML\s*=\s*[^;]*ev\.(name|title)/.test(card), 'the name and title never go through innerHTML');
 assert.ok(/who\.textContent = ev\.name/.test(card) && /title\.textContent = `“\$\{ev\.title\}”`/.test(card), 'they are text nodes');
 assert.ok(/showTime = !!opts\.isGlobal \|\| !!chatSettings\.showTimestamps/.test(card), 'time: global always, elsewhere the viewer\'s setting');
-assert.ok(/_CHAT_EV_FOLD_MS/.test(card) && /went live again/.test(card), 'the same person within 15 minutes updates the card');
+assert.ok(/_CHAT_EV_FOLD_MS/.test(card) && /\$\{when\.text\} · again/.test(card), 'the same person within 15 minutes updates the card');
+// One row a card (the owner, 2026-11-10: the cards took more room than the messages around them).
+assert.ok(/line\.appendChild\(meta\)/.test(card), 'the time is on the line, not under it');
+assert.ok(/face\.src = `https:\/\/openvibe\.network\/avatar\/\$\{encodeURIComponent\(ev\.name\)\}\?s=64`/.test(card) && /face\.onerror = \(\) => face\.remove\(\)/.test(card), "the streamer's picture, and the live dot where there is none");
+assert.ok(!/chat-ev-copy/.test(src), 'no copy button: the link has its own menu');
+const evCss = src.slice(src.indexOf('function _chatEvCss('), src.indexOf('function _chatEvTime('));
+assert.ok(/\.chat-ev\{[^}]*min-height:36px;margin:3px 0;/.test(evCss), 'a row the height of a message');
+assert.ok(/\.chat-ev-cta::after\{content:'';position:absolute;inset:-4px 0\}/.test(evCss), 'the whole row opens it, so the button can be small');
 assert.ok(!/prefers-reduced-motion/.test(src.slice(src.indexOf('function _chatEvCss('), src.indexOf('function _chatEvTime('))), 'Calm plays the cards (openvibe-shared 4.183.0); only motion off stops them, by the loader\'s one rule');
 console.log('chat event cards: ok');

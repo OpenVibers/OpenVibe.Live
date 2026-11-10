@@ -2812,28 +2812,36 @@ function _chatEventOf(m) {
 function _chatEvCss() {
     if (document.getElementById('chat-ev-css')) return;
     const st = document.createElement('style'); st.id = 'chat-ev-css';
+    // One row a card (the owner, 2026-11-10: "they just take up a lot of space in the chat versus chat messages"): the
+    // streamer's picture with the live ring round it, who and what in one line with the time after it, and a small
+    // Watch or Read. The whole row opens it (the button's own link is stretched over the card), so the button can be
+    // small without being hard to hit; the link's own menu copies its address.
     st.textContent = `.chat-msg.system.chat-ev,.chat-msg.system.chat-ev *{font-style:normal}
-.chat-ev{--ev:var(--accent,#3b82f6);container-type:inline-size;display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:4px 10px;margin:6px 0;padding:8px 8px 8px 10px;border-radius:12px;border:1px solid color-mix(in srgb,var(--ev) 30%,transparent);background:linear-gradient(90deg,color-mix(in srgb,var(--ev) 12%,transparent),color-mix(in srgb,var(--ev) 4%,transparent) 70%);color:var(--text-secondary,#a8b3c4);font-size:.84rem;line-height:1.35}
+.chat-ev{--ev:var(--accent,#3b82f6);container-type:inline-size;position:relative;display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:0 8px;min-height:36px;margin:3px 0;padding:3px 5px 3px 4px;border-radius:999px;border:1px solid color-mix(in srgb,var(--ev) 26%,transparent);background:linear-gradient(90deg,color-mix(in srgb,var(--ev) 13%,transparent),color-mix(in srgb,var(--ev) 3%,transparent) 75%);color:var(--text-secondary,#a8b3c4);font-size:.84rem;line-height:1.3;transition:border-color .15s ease,background-color .15s ease}
+.chat-ev:hover{border-color:color-mix(in srgb,var(--ev) 55%,transparent)}
 .chat-ev--live{--ev:var(--live,#ef4444)}
+.chat-ev--rundown{border-radius:16px;padding:5px 6px 5px 5px}
 .chat-ev.chat-msg-new{animation:chatEvIn .32s var(--ov-ease-out,cubic-bezier(.2,.8,.2,1)) both}
-@keyframes chatEvIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
-.chat-ev-icon{position:relative;display:grid;place-items:center;width:30px;height:30px;border-radius:50%;background:color-mix(in srgb,var(--ev) 18%,transparent);color:var(--ev);font-size:.85rem}
-.chat-ev--live .chat-ev-icon::before{content:'';width:10px;height:10px;border-radius:50%;background:var(--ev);box-shadow:0 0 0 0 color-mix(in srgb,var(--ev) 60%,transparent);animation:chatEvPulse 1.8s ease-out infinite}
-@keyframes chatEvPulse{0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--ev) 55%,transparent)}70%{box-shadow:0 0 0 9px transparent}100%{box-shadow:0 0 0 0 transparent}}
+@keyframes chatEvIn{from{opacity:0;transform:translateY(calc(6px * var(--ov-move,1))) scale(.98)}to{opacity:1;transform:none}}
+.chat-ev-icon{position:relative;display:grid;place-items:center;width:28px;height:28px;border-radius:50%;background:color-mix(in srgb,var(--ev) 18%,transparent);color:var(--ev);font-size:.78rem;flex:none}
+.chat-ev-face{position:absolute;inset:0;width:100%;height:100%;border-radius:50%;object-fit:cover}
+.chat-ev--live .chat-ev-icon{box-shadow:0 0 0 2px var(--ev);animation:chatEvPulse 1.8s ease-out infinite}
+.chat-ev--live .chat-ev-icon::before{content:'';width:9px;height:9px;border-radius:50%;background:var(--ev)}
+.chat-ev--live .chat-ev-icon:has(.chat-ev-face)::before{content:none}
+@keyframes chatEvPulse{0%{box-shadow:0 0 0 2px var(--ev),0 0 0 2px color-mix(in srgb,var(--ev) 55%,transparent)}70%{box-shadow:0 0 0 2px var(--ev),0 0 0 9px transparent}100%{box-shadow:0 0 0 2px var(--ev),0 0 0 2px transparent}}
 .chat-ev-body{min-width:0}
-.chat-ev-line{display:flex;flex-wrap:wrap;column-gap:.3em;color:var(--text-primary,#e6edf7)}.chat-ev-line b{min-width:0;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:700}
-.chat-ev-title{display:block;flex-basis:100%;min-width:0;margin-top:2px;color:var(--text-secondary,#a8b3c4);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.chat-ev-meta{display:block;margin-top:2px;font-size:.72rem;color:var(--text-muted,#7d8aa0)}
-.chat-ev-acts{display:flex;align-items:center;gap:4px}
-.chat-ev-cta{display:inline-flex;align-items:center;gap:6px;min-height:30px;padding:0 11px;border-radius:999px;background:var(--ev);color:#fff;font-weight:700;font-size:.76rem;text-decoration:none;white-space:nowrap}
-.chat-ev-cta:hover{filter:brightness(1.1)}.chat-ev-cta:focus-visible,.chat-ev-copy:focus-visible{outline:2px solid var(--ev);outline-offset:2px}
-.chat-ev-copy{display:grid;place-items:center;width:30px;height:30px;border-radius:50%;border:0;background:transparent;color:var(--text-muted,#7d8aa0);cursor:pointer}
-.chat-ev-copy:hover{background:color-mix(in srgb,var(--text-primary,#fff) 8%,transparent);color:var(--text-primary,#e6edf7)}
-@media (pointer:coarse){.chat-ev-cta{min-height:44px;padding:0 14px}.chat-ev-copy{width:44px;height:44px}}
-@container (max-width:360px){.chat-ev-cta{padding:0;width:36px;justify-content:center;font-size:0}.chat-ev-cta i{font-size:.8rem}}
-@container (max-width:240px){.chat-ev{grid-template-columns:auto minmax(0,1fr)}.chat-ev-acts{grid-column:2;justify-self:start}}
-.chat-ev--here{grid-template-columns:auto minmax(0,1fr);padding:6px 10px}.chat-ev--here .chat-ev-icon{width:22px;height:22px}.chat-ev--here .chat-ev-icon::before{width:8px;height:8px}
-@container (max-width:360px){@media (pointer:coarse){.chat-ev-cta{width:44px}}}
+.chat-ev-line{display:flex;align-items:baseline;column-gap:.3em;min-width:0;color:var(--text-primary,#e6edf7);white-space:nowrap}.chat-ev-line b{min-width:0;overflow:hidden;text-overflow:ellipsis;font-weight:700}
+.chat-ev-what{flex:none}
+.chat-ev-title{display:block;min-width:0;color:var(--text-secondary,#a8b3c4);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chat-ev-meta{flex:none;margin-left:.2em;font-size:.72rem;color:var(--text-muted,#7d8aa0)}
+.chat-ev-acts{display:flex;align-items:center}
+.chat-ev-cta{display:inline-flex;align-items:center;gap:5px;min-height:28px;padding:0 11px;border-radius:999px;background:var(--ev);color:#fff;font-weight:700;font-size:.74rem;text-decoration:none;white-space:nowrap;transition:transform .12s ease,filter .15s ease}
+.chat-ev-cta::after{content:'';position:absolute;inset:-4px 0}
+.chat-ev-cta i{font-size:.68rem}
+.chat-ev:hover .chat-ev-cta{filter:brightness(1.1)}.chat-ev:active .chat-ev-cta{transform:scale(.95)}
+.chat-ev-cta:focus-visible{outline:2px solid var(--ev);outline-offset:2px}
+@container (max-width:260px){.chat-ev-cta{padding:0;width:28px;justify-content:center;font-size:0}.chat-ev-cta i{font-size:.7rem}.chat-ev-meta{display:none}}
+.chat-ev--here{grid-template-columns:auto minmax(0,1fr);min-height:30px}.chat-ev--here .chat-ev-icon{width:22px;height:22px}
 `;
     document.head.appendChild(st);
 }
@@ -2867,8 +2875,8 @@ function renderChatEventCard(ev, opts = {}) {
         if (recent && Math.abs(when.date - Number(recent.dataset.evAt || 0)) < _CHAT_EV_FOLD_MS) {
             recent.dataset.evAt = String(when.date.getTime());
             let meta = recent.querySelector('.chat-ev-meta');
-            if (!meta) { meta = document.createElement('span'); meta.className = 'chat-ev-meta'; recent.querySelector('.chat-ev-body').appendChild(meta); }
-            meta.textContent = showTime ? `${when.text} · went live again` : 'Went live again';
+            if (!meta) { meta = document.createElement('span'); meta.className = 'chat-ev-meta'; recent.querySelector('.chat-ev-line').appendChild(meta); }
+            meta.textContent = showTime ? `${when.text} · again` : 'again';
             return;
         }
     }
@@ -2888,6 +2896,15 @@ function renderChatEventCard(ev, opts = {}) {
     icon.className = 'chat-ev-icon';
     icon.setAttribute('aria-hidden', 'true');
     if (ev.kind === 'rundown') icon.innerHTML = '<i class="fa-solid fa-newspaper"></i>';
+    // The streamer's own picture (the network's address for it, by name); the live dot stays where there is none.
+    if (ev.kind === 'live' && /^[A-Za-z0-9_]{2,32}$/.test(String(ev.name || ''))) {
+        const face = document.createElement('img');
+        face.className = 'chat-ev-face';
+        face.alt = ''; face.loading = 'lazy'; face.decoding = 'async';
+        face.src = `https://openvibe.network/avatar/${encodeURIComponent(ev.name)}?s=64`;
+        face.onerror = () => face.remove();
+        icon.appendChild(face);
+    }
 
     const body = document.createElement('div');
     body.className = 'chat-ev-body';
@@ -2895,22 +2912,30 @@ function renderChatEventCard(ev, opts = {}) {
     line.className = 'chat-ev-line';
     const who = document.createElement('b');
     who.textContent = ev.name;
+    const what = document.createElement('span');
+    what.className = 'chat-ev-what';
     if (here && here.mine) {
-        line.append('You went live');
+        what.textContent = 'You went live';
+        line.append(what);
     } else if (ev.kind === 'live') {
-        line.append(who, here ? ' went live' : ' is live');
+        what.textContent = here ? 'went live' : 'is live';
+        line.append(who, what);
     } else {
-        line.append(who, ' on The Rundown');
-        const title = document.createElement('span'); title.className = 'chat-ev-title'; title.textContent = `“${ev.title}”`;
-        line.append(title);
+        what.textContent = 'on The Rundown';
+        line.append(who, what);
     }
-    body.appendChild(line);
-    // The time, with the viewer's timestamp setting (the Watch/Read button is the link, so no address is repeated).
+    // The time, with the viewer's timestamp setting, after the words on the same line (the Watch/Read button is the
+    // link, so no address is repeated).
     if (showTime) {
         const meta = document.createElement('span');
         meta.className = 'chat-ev-meta';
         meta.textContent = when.text;
-        body.appendChild(meta);
+        line.appendChild(meta);
+    }
+    body.appendChild(line);
+    if (ev.kind === 'rundown') {
+        const title = document.createElement('span'); title.className = 'chat-ev-title'; title.textContent = `“${ev.title}”`;
+        body.appendChild(title);
     }
 
     const acts = document.createElement('div');
@@ -2926,16 +2951,7 @@ function renderChatEventCard(ev, opts = {}) {
             if (u.origin === window.location.origin && typeof handleLinkClick === 'function') handleLinkClick(e, u.pathname + u.search + u.hash);
         } catch { /* a normal link */ }
     });
-    const copy = document.createElement('button');
-    copy.type = 'button';
-    copy.className = 'chat-ev-copy';
-    copy.title = 'Copy the link';
-    copy.setAttribute('aria-label', 'Copy the link');
-    copy.innerHTML = '<i class="fa-solid fa-link" aria-hidden="true"></i>';
-    copy.addEventListener('click', async () => {
-        try { await navigator.clipboard.writeText(ev.url); toast('Link copied', 'success'); } catch { toast('Could not copy the link', 'error'); }
-    });
-    acts.append(cta, copy);
+    acts.append(cta);
     if (here) el.append(icon, body);
     else el.append(icon, body, acts);
     container.appendChild(el);

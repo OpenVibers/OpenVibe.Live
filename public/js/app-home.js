@@ -1511,42 +1511,65 @@ function renderRecentlyOnline(containerId, streamers, append) {
             img.onerror = () => img.remove(); face.append(img);
         }
         const name = el('strong', 'streamer-group-name', s.display_name || s.username);
-        const when = el('span', 'streamer-group-last-online', s.live ? 'Live now' : 'Live ' + timeAgo(s.last_online_at));
+        const when = el('span', 'streamer-group-last-online' + (s.live ? ' is-live' : ''), s.live ? 'Live now' : timeAgo(s.last_online_at));
+        if (!s.live) when.title = 'Last live ' + timeAgo(s.last_online_at);
         head.append(face, name, when);
         card.append(head);
-        const chips = el('div', 'recent-streamer-facts');
-        const chip = (value) => { if (value) chips.append(el('span', 'recent-streamer-chip', value)); };
-        if (facts.streams_this_week) chip(facts.streams_this_week + ' streams this week');
-        if (facts.hours_this_week) chip(facts.hours_this_week + ' h this week');
-        chip(facts.usual_time);
-        if (facts.days_in_a_row >= 3) chip(facts.days_in_a_row + ' days in a row');
-        if (facts.last_stream_seconds) chip('Last stream ' + formatDuration(facts.last_stream_seconds));
-        card.append(chips);
+        // The same three places for everyone, so a card with little to say is not a card with a hole in it: this
+        // week in numbers (each with its icon), when they are usually on, and two lines about the channel.
+        const stats = el('div', 'recent-streamer-stats');
+        const stat = (icon, value, label) => {
+            if (!value) return;
+            const n = el('span', 'recent-streamer-stat');
+            n.title = label;
+            const i = el('i', 'fa-solid ' + icon); i.setAttribute('aria-hidden', 'true');
+            n.append(i, el('span', null, value));
+            stats.append(n);
+        };
+        stat('fa-tower-broadcast', facts.streams_this_week ? facts.streams_this_week + (Number(facts.streams_this_week) === 1 ? ' stream' : ' streams') : '', 'Streams this week');
+        stat('fa-clock', facts.hours_this_week ? facts.hours_this_week + ' h' : '', 'Hours live this week');
+        stat('fa-fire', facts.days_in_a_row >= 3 ? facts.days_in_a_row + ' days' : '', 'Days in a row');
+        if (stats.childElementCount) stats.prepend(el('span', 'recent-streamer-cap', 'This week'));
+        card.append(stats);
+        const lastLine = facts.last_stream_seconds ? 'Last stream ' + formatDuration(facts.last_stream_seconds) : '';
+        card.append(el('p', 'recent-streamer-habit', [facts.usual_time, lastLine].filter(Boolean).join(' · ')));
         const overview = String(s.ai_overview_short || s.ai_overview || '').trim();
+        const about = el('div', 'recent-streamer-about');
+        const summary = el('p', 'recent-streamer-summary', overview);
+        about.append(summary);
         if (overview) {
-            const summary = el('p', 'recent-streamer-summary', overview);
             const more = el('button', 'recent-streamer-more', 'More');
-            more.type = 'button'; more.setAttribute('aria-expanded', 'false');
+            more.type = 'button'; more.setAttribute('aria-expanded', 'false'); more.hidden = true;
             more.addEventListener('click', () => {
-                const open = summary.classList.toggle('expanded');
+                const open = about.classList.toggle('is-open');
+                summary.classList.toggle('expanded', open);
                 more.textContent = open ? 'Less' : 'More';
                 more.setAttribute('aria-expanded', String(open));
             });
-            card.append(summary, more);
+            about.append(more);
+            // "More" only where the two lines cut something off; it sits on the end of the second line.
+            requestAnimationFrame(() => { more.hidden = summary.scrollHeight <= summary.clientHeight + 2; });
         }
+        card.append(about);
         const history = el('div', 'streamer-group-streams recent-streamer-history');
         for (const h of (facts.streams || []).slice(0, 2)) {
             const replay = !h.is_live && h.vod_id;
             const row = el('a', 'streamer-group-stream recent-stream-row');
             row.href = replay ? videoHref('vod', h.vod_id) : channelHref;
+            // A picture on every row: the replay's own, else the one Live can make from the recording, else a mark
+            // that says what the row is. Never an empty box.
             const thumb = el('span', 'streamer-group-stream-thumb');
-            const src = _sgThumbSrc(h.thumbnail_url);
+            const made = replay ? `/api/thumbnails/generate/vod/${encodeURIComponent(h.vod_id)}` : null;
+            const src = _sgThumbSrc(h.thumbnail_url) || made;
+            const blank = () => { thumb.replaceChildren(); thumb.classList.add('is-blank'); const i = el('i', 'fa-solid ' + (h.is_live ? 'fa-tower-broadcast' : 'fa-play')); i.setAttribute('aria-hidden', 'true'); thumb.append(i); };
             if (src) {
                 const img = el('img', 'streamer-group-stream-thumb-img');
-                img.src = src; img.alt = ''; img.loading = 'lazy';
-                img.onerror = () => img.remove();
+                img.alt = ''; img.loading = 'lazy'; img.decoding = 'async';
+                img.onerror = () => { if (made && img.dataset.made !== '1') { img.dataset.made = '1'; img.src = made; } else blank(); };
+                if (src === made) img.dataset.made = '1';
+                img.src = src;
                 thumb.append(img);
-            }
+            } else blank();
             const info = el('span', 'streamer-group-stream-info');
             info.append(el('span', 'streamer-group-stream-title', h.title || 'Stream'));
             info.append(el('span', 'streamer-group-stream-time muted', (h.is_live ? 'Live' : 'Replay') + (h.length_seconds ? ' · ' + formatDuration(h.length_seconds) : '')));
