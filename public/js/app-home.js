@@ -1524,8 +1524,12 @@ function renderRecentlyOnline(containerId, streamers, append) {
         const who = el('span', 'recent-streamer-who');
         const name = el('a', 'streamer-group-name', shown);
         name.href = channelHref;
-        const when = el('span', 'streamer-group-last-online' + (s.live ? ' is-live' : ''), s.live ? 'Live now' : 'Live ' + timeAgo(s.last_online_at));
-        who.append(name, when);
+        const when = el('span', 'streamer-group-last-online' + (s.live ? ' is-live' : ''), s.live ? 'Live now' : timeAgo(s.last_online_at));
+        if (!s.live) when.title = 'Last live ' + timeAgo(s.last_online_at);
+        const top = el('span', 'recent-streamer-top');
+        top.append(name, when);
+        who.append(top);
+        if (facts.usual_time) who.append(el('span', 'recent-streamer-usual', facts.usual_time));
         head.append(face, who);
         card.append(head);
         // This week, as even tiles: a number and what it counts. One with nothing to say is not drawn; the rest share
@@ -1544,9 +1548,7 @@ function renderRecentlyOnline(containerId, streamers, append) {
         stat('fa-fire', facts.days_in_a_row >= 3 ? facts.days_in_a_row + ' d' : '', 'in a row', 'Days in a row');
         const week = stats.childElementCount > 0;
         if (!week && facts.last_stream_seconds) stat('fa-clock', formatDuration(facts.last_stream_seconds), 'last stream', 'Length of the last stream');
-        // One caption over the tiles: what the numbers cover, and when this person is usually on.
-        const cap = [week ? 'This week' : '', facts.usual_time].filter(Boolean).join(' · ');
-        if (cap) card.append(el('p', 'recent-streamer-cap', cap));
+        if (week) card.append(el('p', 'recent-streamer-cap', 'This week'));
         if (stats.childElementCount) card.append(stats);
         const overview = String(s.ai_overview_short || s.ai_overview || '').trim();
         const about = el('div', 'recent-streamer-about');
@@ -1562,8 +1564,8 @@ function renderRecentlyOnline(containerId, streamers, append) {
                 more.setAttribute('aria-expanded', String(open));
             });
             about.append(more);
-            // "More" only where the two lines cut something off; it sits on the end of the second line.
-            requestAnimationFrame(() => { more.hidden = summary.scrollHeight <= summary.clientHeight + 2; });
+            // "More" only where the three lines cut something off; the text fades out there (.is-cut) and More is under it.
+            requestAnimationFrame(() => { const cut = summary.scrollHeight > summary.clientHeight + 2; more.hidden = !cut; about.classList.toggle('is-cut', cut); });
         }
         card.append(about);
         const history = el('div', 'recent-streamer-history');
