@@ -135,7 +135,7 @@
     function meta(it, extra) {
         const row = el('div', { class: 'cf-meta' });
         if (it.channel) {
-            const who = [avatar(it.channel), el('span', { class: 'cf-name', text: it.channel.display_name || it.channel.username })];
+            const who = [avatar(it.channel), el('span', { class: 'cf-name', text: '@' + (it.channel.username || it.channel.display_name) })];
             row.append(it.channel.href ? spa(it.channel.href, { class: 'cf-chan' }, ...who) : el('span', { class: 'cf-chan' }, ...who));
         }
         const bits = el('span', { class: 'cf-facts' });
