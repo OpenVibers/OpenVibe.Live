@@ -28,6 +28,7 @@ const db = require('../db/database');
 const config = require('../config');
 const billing = require('./billing-client');
 const { assertionFor } = require('../net/subject-assertion');
+const money = require('../money/reasons');
 const { BillingCallError, subjectFor, ref, api } = billing;
 
 const base = () => config.baseUrl.replace(/\/+$/, '');
@@ -247,6 +248,8 @@ async function balance(liveUserId, trace) {
 }
 
 const LIVE_TYPE = { cashout_request: 'cashout', cashout_denied: 'refund', cashout_paid: 'cashout_paid' };
+// Live's transaction type in the shared reason list (billing.money-reason@1).
+const LIVE_REASON = { purchase: 'purchase:vibes', refund: 'refund', cashout_request: 'cashout_request', cashout_denied: 'cashout_denied', cashout_paid: 'cashout_paid', recycle: 'recycle', subscription: 'subscription', subscription_share: 'subscription_share' };
 /** GET /api/funds/history rows in Live's transaction shape (the dashboard renders these). */
 async function history(liveUserId, limit = 50, trace = null) {
     const sid = await subjectFor(liveUserId);
@@ -259,9 +262,15 @@ async function history(liveUserId, limit = 50, trace = null) {
         const amount = m.amount_bits ?? m.cost_bits ?? m.share_bits ?? m.bits ?? mine.reduce((a, e) => Math.max(a, Math.abs(e.amount)), 0);
         const from = people.get(t.from_subject);
         const to = people.get(t.to_subject);
+        // The public words for this row (billing.money-reason@1), made here rather than in the browser.
+        const key = t.type === 'donation' ? (t.from_subject === sid ? 'donation' : 'donation:received') : (LIVE_REASON[t.type] || t.type);
+        const other = t.type === 'donation' ? (t.from_subject === sid ? to : from) : null;
+        const name = other && other.username ? `@${other.username}` : null;
+        const d = money.describe(key, { site: 'live', subject: name ? { name, url: `https://openvibe.live/@${encodeURIComponent(other.username)}` } : null });
         return {
             id: t.id, type: LIVE_TYPE[t.type] || t.type, status: t.status, amount, created_at: t.created_at,
             message: m.message || null,
+            label: d.text, subject: d.subject, reason_key: d.key,
             from_user_id: from ? from.id : (t.from_subject === sid ? liveUserId : null), to_user_id: to ? to.id : (t.to_subject === sid ? liveUserId : null),
             from_username: from ? from.username : null, from_display: from ? from.display_name : null,
             to_username: to ? to.username : null, to_display: to ? to.display_name : null,

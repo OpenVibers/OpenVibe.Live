@@ -179,6 +179,8 @@ async function check(name, fn) {
         assert.strictEqual(h.status, 200, h.text);
         const d = h.json.transactions.find((t) => t.type === 'donation');
         assert.strictEqual(d.from_user_id, 2); assert.strictEqual(d.to_username, 'bob');
+        assert.strictEqual(d.label, 'for a tip to @bob', 'the reason is a sentence, not a type');
+        assert.strictEqual(d.subject.url, 'https://openvibe.live/@bob', 'and links to the creator');
     });
 
     await check('cashout request → POST /cashouts (cashout.request); approving/denying is not Live\'s any more', async () => {

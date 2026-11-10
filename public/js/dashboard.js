@@ -869,17 +869,22 @@ function _bucksTxRow(t) {
     const dt = new Date(t.created_at + (String(t.created_at).includes('Z') ? '' : 'Z'));
     const when = isNaN(dt) ? (t.created_at || '') : dt.toLocaleString();
     const amt = Math.round(parseFloat(t.amount || 0));
-    let icon = 'fa-coins', label = t.type || 'transaction', sign = '', cls = '';
-    if (t.type === 'purchase') { icon = 'fa-cart-shopping'; label = 'Purchased Vibes'; sign = '+'; cls = 'pos'; }
-    else if (t.type === 'donation' && t.from_user_id === me) { icon = 'fa-hand-holding-heart'; label = `Tipped ${esc(t.to_display || t.to_username || 'a streamer')}`; sign = '−'; cls = 'neg'; }
-    else if (t.type === 'donation') { icon = 'fa-gift'; label = `Received from ${esc(t.from_display || t.from_username || 'someone')}`; sign = '+'; cls = 'pos'; }
-    else if (t.type === 'cashout') { icon = 'fa-money-bill-transfer'; label = 'Cashout requested'; sign = '−'; cls = 'neg'; }
-    else if (t.type === 'refund') { icon = 'fa-rotate-left'; label = 'Cashout refunded'; sign = '+'; cls = 'pos'; }
-    else if (t.type === 'recycle') { icon = 'fa-recycle'; label = 'Moved cashout → spendable'; sign = ''; cls = ''; }
+    // The label is the sentence billing.money-reason@1 made on the server ("for a tip to @alice");
+    // the type only chooses the icon and the sign. A ledger key never reaches the page.
+    let icon = 'fa-coins', label = t.label || 'transaction', sign = '', cls = '';
+    if (t.type === 'purchase') { icon = 'fa-cart-shopping'; if (!t.label) label = 'Purchased Vibes'; sign = '+'; cls = 'pos'; }
+    else if (t.type === 'donation' && t.from_user_id === me) { icon = 'fa-hand-holding-heart'; if (!t.label) label = `Tipped ${esc(t.to_display || t.to_username || 'a streamer')}`; sign = '−'; cls = 'neg'; }
+    else if (t.type === 'donation') { icon = 'fa-gift'; if (!t.label) label = `Received from ${esc(t.from_display || t.from_username || 'someone')}`; sign = '+'; cls = 'pos'; }
+    else if (t.type === 'cashout' || t.type === 'cashout_request') { icon = 'fa-money-bill-transfer'; if (!t.label) label = 'Cashout requested'; sign = '−'; cls = 'neg'; }
+    else if (t.type === 'refund') { icon = 'fa-rotate-left'; if (!t.label) label = 'Cashout refunded'; sign = '+'; cls = 'pos'; }
+    else if (t.type === 'recycle') { icon = 'fa-recycle'; if (!t.label) label = 'Moved cashout → spendable'; sign = ''; cls = ''; }
+    const url = t.subject && t.subject.url;
+    const text = url && /^https:\/\//.test(url)
+        ? `<a href="${esc(url)}" target="_blank" rel="noopener">${esc(label)}</a>` : esc(label);
     const note = t.message ? `<div class="bucks-log-note">${esc(t.message)}</div>` : '';
     return `<div class="bucks-log-row">
         <div class="bucks-log-icon"><i class="fa-solid ${icon}"></i></div>
-        <div class="bucks-log-main"><div class="bucks-log-label">${label}</div><div class="bucks-log-when">${esc(when)}</div>${note}</div>
+        <div class="bucks-log-main"><div class="bucks-log-label">${text}</div><div class="bucks-log-when">${esc(when)}</div>${note}</div>
         <div class="bucks-log-amt ${cls}">${sign}${amt.toLocaleString()} Vibes</div>
     </div>`;
 }
