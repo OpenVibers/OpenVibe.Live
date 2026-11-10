@@ -32,10 +32,10 @@ assert.strictEqual(isHere({ path: '/@moosely/studio' }, 'goosely'), null, 'someo
 
 const card = chat.slice(chat.indexOf('function renderChatEventCard('), chat.indexOf('/* ── Deploy notices'));
 assert.ok(/const here = ev\.kind === 'live' && _chatEvIsHere\(ev\)/.test(card), 'the card asks where it is');
-assert.ok(card.includes("line.append('You went live')"), 'the streamer reads "You went live"');
+assert.ok(card.includes("what.textContent = 'You went live'"), 'the streamer reads "You went live"');
 assert.ok(/if \(here\) el\.append\(icon, body\);\s*else el\.append\(icon, body, acts\);/.test(card), 'no Watch button or copy link here');
 const css = chat.slice(chat.indexOf('function _chatEvCss('), chat.indexOf('function _chatEvTime('));
-assert.ok(/@container \(max-width:240px\)\{\.chat-ev\{grid-template-columns:auto minmax\(0,1fr\)\}\.chat-ev-acts\{grid-column:2/.test(css), 'narrow: buttons under the text');
+assert.ok(/@container \(max-width:260px\)\{\.chat-ev-cta\{padding:0;width:28px;/.test(css), 'narrow: the button is its icon alone, the words keep the row');
 
 const studio = read('js/broadcast-studio.js');
 assert.ok(/if \(pv && pv\.paused && pv\.srcObject && pv\.style\.display !== 'none'\) pv\.play\(\)\.catch\(\(\) => \{\}\);/.test(studio), 'a paused self-view plays again');

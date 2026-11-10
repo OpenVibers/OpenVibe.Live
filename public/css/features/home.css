@@ -74,15 +74,30 @@
     transition: border-color var(--ov-dur-2, 0.2s), box-shadow var(--ov-dur-2, 0.2s);
 }
 .streamer-group-card:hover { border-color: var(--accent-dark); box-shadow: var(--ring-accent); }
-.recent-streamer-card { display: flex; flex-direction: column; height: 100%; min-height: 322px; }
-.recent-streamer-head { min-height: 58px; padding: 8px 12px; flex-wrap: nowrap; }
+/* Recently Online: every card has the same places in the same order (who and when; this week in numbers, each with
+   its icon; when they are usually on; two lines about the channel; two replays), so cards are the same height
+   without a hole in the short ones. */
+.recent-streamer-card { display: flex; flex-direction: column; height: 100%; }
+.recent-streamer-head { min-height: 54px; padding: 8px 12px 6px; flex-wrap: nowrap; }
 .recent-streamer-face { display: grid; place-items: center; width: 38px; height: 38px; flex: none; border-radius: 50%; overflow: hidden; background: color-mix(in srgb, var(--accent) 58%, var(--bg-tertiary)); color: var(--text-primary); font-weight: 800; }
 .recent-streamer-face img { width: 100%; height: 100%; object-fit: cover; }
-.recent-streamer-facts { display: flex; flex-wrap: wrap; gap: 5px; padding: 2px 12px 8px; min-height: 49px; }
-.recent-streamer-chip { align-self: start; padding: 4px 7px; border-radius: 999px; background: var(--bg-tertiary); color: var(--text-secondary); font-size: .75rem; line-height: 1.2; }
-.recent-streamer-summary { margin: 0 12px; color: var(--text-secondary); font-size: .8rem; line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.recent-streamer-head .streamer-group-last-online.is-live { color: var(--live, #ef4444); font-weight: 800; }
+.recent-streamer-stats { position: relative; display: flex; align-items: center; gap: 9px; flex-wrap: nowrap; height: 38px; box-sizing: border-box; overflow: hidden; padding: 15px 12px 0; font-size: .75rem; line-height: 1.3; }
+.recent-streamer-cap { position: absolute; left: 12px; top: 0; font-size: .64rem; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: var(--text-muted); }
+.recent-streamer-stat { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; font-weight: 700; color: var(--text-primary); }
+.recent-streamer-stat i { font-size: .7rem; color: var(--accent); }
+.recent-streamer-habit { margin: 3px 12px 6px; min-height: 1.3em; font-size: .76rem; line-height: 1.3; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.recent-streamer-about { position: relative; margin: 0 12px 8px; }
+.recent-streamer-summary { margin: 0; min-height: 2.8em; color: var(--text-secondary); font-size: .8rem; line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .recent-streamer-summary.expanded { display: block; }
-.recent-streamer-more { align-self: start; min-width: 44px; min-height: 44px; margin: 0 8px; border: 0; background: none; color: var(--accent); font: inherit; font-size: .78rem; cursor: pointer; }
+/* More sits on the end of the second line, over a fade into the card, not on a row of its own; its box for a finger
+   is larger than its word (::after). */
+.recent-streamer-more { position: absolute; right: 0; bottom: 0; padding: 0 0 0 30px; border: 0; color: var(--accent); font: inherit; font-size: .76rem; font-weight: 700; line-height: 1.47; cursor: pointer;
+    background: linear-gradient(90deg, transparent, var(--bg-card) 26px); }
+.recent-streamer-more::after { content: ''; position: absolute; inset: -14px -10px -12px 0; }
+.recent-streamer-more[hidden] { display: none; }
+.recent-streamer-about.is-open .recent-streamer-more { position: relative; display: block; margin: 4px 0 0; padding: 0; background: none; }
+.streamer-group-stream-thumb.is-blank { display: grid; place-items: center; background: color-mix(in srgb, var(--accent) 10%, var(--bg-tertiary)); color: var(--text-muted); font-size: .9rem; }
 .recent-streamer-history { margin-top: auto; padding-bottom: 0; }
 .recent-stream-row { min-height: 61px; }
 .recent-stream-row .streamer-group-stream-thumb { aspect-ratio: 16/9; height: auto; }
