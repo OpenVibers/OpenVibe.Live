@@ -51,7 +51,6 @@ const KINDS = Object.freeze([
     Object.freeze({ id: 'media-request', match: /^Media request: (.+)$/, site: 'live', subject: 'media', text: 'for the stream {name}' }),
     Object.freeze({ id: 'media-refund', match: /^Refund: (.+)$/, site: 'live', subject: 'media', text: 'for a refund of {name}' }),
     Object.freeze({ id: 'migration', match: 'migration:hobo-coins', site: 'network', text: 'for OpenCoins moved from the old Live wallet' }),
-    Object.freeze({ id: 'account-merge', match: 'account_merge', site: 'network', text: 'for merging your accounts' }),
     Object.freeze({ id: 'account-deleted', match: 'account_deleted', site: 'network', text: 'for closing your account' }),
     Object.freeze({ id: 'watch', match: 'watch', site: 'live', text: 'for watching a stream' }),
     Object.freeze({ id: 'chat', match: 'chat', site: 'live', text: 'for chatting on a stream' }),

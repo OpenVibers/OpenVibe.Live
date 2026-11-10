@@ -245,7 +245,7 @@ through the SDK inbox (`idempotency_receipts`):
 |---|---|---|---|
 | `openre.session.*` | `/internal/openre-events` | `OPENRE_EVENTS_SECRET` | OpenRestream's `scripts/subscribe-live-events.js` |
 | `media.vod.*`, `media.clip.*`, `media.storage.*` | `/internal/media-events` | `MEDIA_EVENTS_SECRET` | `scripts/subscribe-media-events.js` |
-| `network.user.*`, `network.follow.*`, `network.subject.merged`, `network.account.*` | `/internal/network-events` | `LIVE_EVENTS_SECRET` | `scripts/subscribe-media-events.js --network` |
+| `network.user.*`, `network.follow.*`, `network.account.*` | `/internal/network-events` | `LIVE_EVENTS_SECRET` | `scripts/subscribe-media-events.js --network` |
 | `billing.transaction.settled`, `billing.entitlement.changed` | `/internal/billing-events` | `LIVE_EVENTS_SECRET` | `scripts/subscribe-media-events.js --billing` |
 | `tips.interaction.ready` | `/internal/tips-events` | `LIVE_EVENTS_SECRET` | `scripts/subscribe-media-events.js --tips` |
 
