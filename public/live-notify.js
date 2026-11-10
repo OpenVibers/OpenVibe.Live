@@ -56,7 +56,7 @@
     function show(d) {
         injectCSS();
         var c = ensureContainer();
-        var name = d.display_name || d.username || 'Someone';
+        var name = d.username ? '@' + d.username : (d.display_name || 'Someone');
         var href = BASE + '/@' + encodeURIComponent(d.username || '');
         var letter = (name[0] || '?').toUpperCase();
         var av = d.avatar_url
