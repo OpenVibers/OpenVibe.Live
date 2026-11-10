@@ -25,6 +25,28 @@ const { summarizeHistory } = require('../server/home/recent-facts');
     assert.ok(calls.slice(1).every(c => c.options.headers.Authorization === 'Bearer person-token' && !('Cookie' in c.options.headers)));
     assert.equal(await readDailyQuest({ fetchImpl: async () => { throw Error('down'); } }), null);
 
+    // The card's door to Quest: the catalog's size for everyone (kept ten minutes), a person's badges and started quests.
+    let catalogReads = 0;
+    const moreFetch = async (url) => {
+        if (url.endsWith('/api/v1/quests')) { catalogReads++; return { ok: true, json: async () => ({ sites: [{}, {}], quests: [{}, {}, {}] }) }; }
+        if (url.endsWith('/api/v1/me/quests')) return { ok: true, json: async () => ({
+            quests: [{ state: 'in_progress' }, { state: 'completed' }, { state: 'not_started' }, { state: 'in_progress' }], badges: [{}, {}],
+        }) };
+        if (url.endsWith('/api/v1/me/daily')) return { ok: true, json: async () => ({ title: 'Across OpenVibe', steps: [{}, {}, {}], streak: 4 }) };
+        if (url.endsWith('/api/v1/daily')) return { ok: true, json: async () => ({ title: 'Across OpenVibe', steps: [{}, {}, {}] }) };
+        return { ok: true, json: async () => ({}) };
+    };
+    const out = await readDailyQuest({ more: true, fetchImpl: moreFetch, baseUrl: 'https://quest.more' });
+    assert.deepEqual(out.more, { quests: 3, sites: 2 });
+    const me = await readDailyQuest({ token: 't', more: true, fetchImpl: moreFetch, baseUrl: 'https://quest.more' });
+    assert.deepEqual(me.more, { quests: 3, sites: 2, mine: { badges: 2, in_progress: 2, completed: 1 } });
+    assert.equal(catalogReads, 1, 'the catalog is read once and kept');
+    // A Quest that cannot answer the door's figures still gives the card.
+    const bare = await readDailyQuest({ more: true, baseUrl: 'https://quest.bare', fetchImpl: async (url) => (url.endsWith('/api/v1/daily')
+        ? { ok: true, json: async () => ({ title: 'Across OpenVibe', steps: [{}, {}, {}] }) } : { ok: false }) });
+    assert.equal(bare.quest.title, 'Across OpenVibe');
+    assert.deepEqual(bare.more, {});
+
     const now = Date.parse('2026-11-08T22:00:00Z');
     const rows = [
         { id: 1, started_at: '2026-11-08T18:00:00Z', ended_at: '2026-11-08T20:00:00Z', duration_seconds: 7200, title: 'Today' },
