@@ -226,7 +226,7 @@ function togglePasteMarkdown() {
 async function loadPasteViewer(slug) {
     const container = document.getElementById('paste-viewer-content');
     if (!container) return;
-    container.innerHTML = '<div class="loading-spinner"><i class="fa-solid fa-circle-notch fa-spin"></i></div>';
+    container.innerHTML = '<div class="loading-spinner"><span class="ov-mark" data-state="busy" data-size="32" aria-hidden="true"></span></div>';
 
     try {
         const data = await api(`/pastes/${slug}`);
@@ -1149,7 +1149,7 @@ function _setScreenshotCapturing(on) {
             el = document.createElement('div');
             el.id = 'screenshot-capturing';
             el.style.cssText = 'display:flex;align-items:center;justify-content:center;gap:10px;padding:32px;color:var(--text-secondary);font-size:0.95rem';
-            el.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Capturing screenshot…';
+            el.innerHTML = '<span class="ov-mark" data-state="busy" data-size="16" data-tone="ink" aria-hidden="true"></span> Capturing screenshot…';
             area.prepend(el);
         }
     } else {
@@ -1421,7 +1421,7 @@ async function submitScreenshot() {
     formData.append('user_agent', navigator.userAgent);
 
     const submitBtn = document.getElementById('screenshot-submit-btn');
-    if (submitBtn) { submitBtn.disabled = true; submitBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Uploading…'; }
+    if (submitBtn) { submitBtn.disabled = true; submitBtn.innerHTML = '<span class="ov-mark" data-state="busy" data-size="16" data-tone="ink" aria-hidden="true"></span> Uploading…'; }
 
     try {
         const token = localStorage.getItem('token');

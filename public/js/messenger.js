@@ -757,7 +757,7 @@
 
                 <div class="msg-settings-section">
                     <div class="msg-settings-section-title"><i class="fa-solid fa-shield-halved"></i> Blocked Users</div>
-                    <div id="msg-blocked-list" class="msg-blocked-list"><div class="msg-settings-loading"><i class="fa-solid fa-spinner fa-spin"></i></div></div>
+                    <div id="msg-blocked-list" class="msg-blocked-list"><div class="msg-settings-loading"><span class="ov-mark" data-state="busy" data-size="16" data-tone="ink" aria-hidden="true"></span></div></div>
                 </div>
 
                 <div class="msg-settings-footer">

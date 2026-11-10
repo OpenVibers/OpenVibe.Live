@@ -483,7 +483,7 @@ async function requestMediaPermissions() {
     // Immediate visual feedback — if user doesn't see spinner, the function isn't reached
     if (btn) {
         btn.disabled = true;
-        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Requesting access...';
+        btn.innerHTML = '<span class="ov-mark" data-state="busy" data-size="16" data-tone="ink" aria-hidden="true"></span> Requesting access...';
     }
     if (dbg) { dbg.style.display = ''; dbg.textContent = 'Requesting permissions...'; }
 

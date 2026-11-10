@@ -2647,7 +2647,7 @@ async function _aiTlToggleTranscript(btn) {
     box.hidden = false; btn.classList.add('open');
     if (!box.dataset.built) {
         box.dataset.built = '1';
-        box.innerHTML = '<div class="loading" style="padding:8px"><i class="fa-solid fa-spinner fa-spin"></i> Loading transcript…</div>';
+        box.innerHTML = '<div class="loading" style="padding:8px"><span class="ov-mark" data-state="busy" data-size="16" data-tone="ink" aria-hidden="true"></span> Loading transcript…</div>';
         try {
             const data = await api(`/chat-ai/transcript/${session.dataset.sid}`);
             const segs = data.segments || [];
@@ -2834,7 +2834,7 @@ async function loadChannelAiTimeline(username) {
             const summary = `<div class="ai-tl-summary">${data.sessionCount || sessions.length} session${(data.sessionCount || sessions.length) === 1 ? '' : 's'} · ${data.momentCount || 0} AI moment${(data.momentCount || 0) === 1 ? '' : 's'} tracked</div>`;
             streamerInner = streamerOvCard + summary + _aiTlBuildMonthBar()
                 + `<div class="ai-tl-track" id="ai-tl-track">${sessions.map(_aiTimelineSessionHTML).join('')}</div>`
-                + `<div id="ai-tl-sentinel" class="ai-tl-sentinel">${_aiTl.hasMore ? '<i class="fa-solid fa-spinner fa-spin"></i> Loading more…' : ''}</div>`;
+                + `<div id="ai-tl-sentinel" class="ai-tl-sentinel">${_aiTl.hasMore ? '<span class="ov-mark" data-state="busy" data-size="16" data-tone="ink" aria-hidden="true"></span> Loading more…' : ''}</div>`;
         }
 
         // ── As a chatter (inner content) ──
@@ -3592,7 +3592,7 @@ async function submitMediaRequest(e) {
     const val = input && input.value.trim();
     if (!val) return false;
     if (status) { status.className = 'ch-media-status'; status.textContent = ''; }
-    if (quoteEl) quoteEl.innerHTML = '<div class="ch-media-quote loading muted"><i class="fa-solid fa-spinner fa-spin"></i> Checking that link…</div>';
+    if (quoteEl) quoteEl.innerHTML = '<div class="ch-media-quote loading muted"><span class="ov-mark" data-state="busy" data-size="16" data-tone="ink" aria-hidden="true"></span> Checking that link…</div>';
     try {
         const q = await api('/media/quote', { method: 'POST', body: { username: currentChannelUsername, input: val } });
         _mediaQuote = { ...q, input: val };

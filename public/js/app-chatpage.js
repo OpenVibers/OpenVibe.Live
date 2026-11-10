@@ -81,7 +81,7 @@ function _gaiTlOnScroll(el) {
 async function _gaiTlInit() {
     _gaiTl.oldestTs = 0; _gaiTl.done = false; _gaiTl.loading = false; _gaiTl.lastDay = null;
     const el = document.getElementById('global-ai-timeline');
-    if (el) { el.innerHTML = '<div class="loading-spinner"><i class="fa-solid fa-circle-notch fa-spin"></i></div>'; el.scrollTop = 0; }
+    if (el) { el.innerHTML = '<div class="loading-spinner"><span class="ov-mark" data-state="busy" data-size="32" aria-hidden="true"></span></div>'; el.scrollTop = 0; }
     await _gaiTlLoad(true);
 }
 async function _gaiTlLoad(reset) {
