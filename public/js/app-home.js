@@ -1021,38 +1021,80 @@ async function loadDailyQuest() {
     if (!quest || !Array.isArray(quest.steps) || quest.steps.length !== 3) { card.hidden = true; return; }
     const mine = !!data.signed_in;
     const progress = Math.max(0, Math.min(3, Number(quest.progress) || 0));
+    const streak = Math.max(0, Number(quest.streak) || 0);
     card.dataset.progress = mine ? String(progress) : '0';   // the three-part bar under the title
-    document.getElementById('home-daily-kicker').textContent = mine ? "TODAY'S QUEST" : 'DAILY QUESTS';
-    document.getElementById('home-daily-title').textContent = mine ? quest.title : 'Today: ' + quest.title;
-    document.getElementById('home-daily-chip').textContent = mine
-        ? quest.completed ? `Done for today · ${quest.streak}-day streak` : `${progress} of 3`
-        : 'New every day';
+    // The head: what today's quest is and how far you are. The title is the quest's own, in full.
+    document.getElementById('home-daily-kicker').textContent = !mine ? "TODAY'S QUEST"
+        : quest.completed ? "TODAY'S QUEST · DONE" : `TODAY'S QUEST · ${progress} OF 3`;
+    document.getElementById('home-daily-title').textContent = String(quest.title || '');
+    const chip = document.getElementById('home-daily-chip');
+    chip.replaceChildren();
+    chip.hidden = !(mine && streak > 0);
+    if (!chip.hidden) {
+        const fire = document.createElement('i');
+        fire.className = 'fa-solid fa-fire';
+        fire.setAttribute('aria-hidden', 'true');
+        chip.append(fire, ` ${streak}`);
+        chip.title = `${streak}-day streak`;
+        chip.setAttribute('aria-label', chip.title);
+    }
+    document.getElementById('home-daily-story').textContent = String(quest.story || '');
+    // Each step is a row that takes you where it is done; the next one for you is marked.
+    const siteName = (host) => {
+        const part = String(host || '').split('.')[1] || '';
+        return part ? 'OpenVibe.' + part.charAt(0).toUpperCase() + part.slice(1) : '';
+    };
+    const next = mine && !quest.completed ? quest.steps.find(step => !step.done) : null;
     const list = document.getElementById('home-daily-steps');
     list.replaceChildren();
     for (const step of quest.steps) {
         const row = document.createElement('li');
+        const link = document.createElement('a');
+        link.href = /^https:\/\//.test(step.href || '') ? step.href : 'https://openvibe.quest/';
         const icon = document.createElement('span');
         icon.className = 'ov-icon home-daily-site-icon';
         icon.dataset.icon = String(step.site || '').split('.')[1] || 'quest';
         icon.dataset.size = '32';
         icon.setAttribute('aria-hidden', 'true');
-        const label = document.createElement('span');
-        label.textContent = String(step.sentence || '');
-        row.append(icon, label);
+        const text = document.createElement('span');
+        text.className = 'home-daily-step';
+        const sentence = document.createElement('span');
+        sentence.textContent = String(step.sentence || '');
+        const where = document.createElement('small');
+        where.textContent = step === next ? 'Next · ' + siteName(step.site) : siteName(step.site);
+        text.append(sentence, where);
+        link.append(icon, text);
         if (mine && step.done) {
             row.classList.add('is-done');
             const done = document.createElement('span');
             done.className = 'home-daily-check';
             done.textContent = '✓';
             done.setAttribute('aria-label', 'Done');
-            row.append(done);
+            link.append(done);
+        } else {
+            const go = document.createElement('i');
+            go.className = 'fa-solid fa-chevron-right home-daily-go';
+            go.setAttribute('aria-hidden', 'true');
+            link.append(go);
         }
+        if (step === next) row.classList.add('is-next');
+        row.append(link);
         list.append(row);
     }
-    const action = document.getElementById('home-daily-action');
-    const next = mine && quest.steps.find(step => !step.done);
-    action.textContent = mine ? next ? 'Do the next step' : 'See your streak' : "See today's quest";
-    action.href = next && /^https:\/\//.test(next.href || '') ? next.href : 'https://openvibe.quest/';
+    // The door to Quest: what else is there, in one line.
+    const more = data.more || {};
+    const own = more.mine || null;
+    const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+    const bits = [];
+    if (own) {   // the streak is the chip in the head already
+        if (own.badges) bits.push(plural(own.badges, 'badge', 'badges'));
+        if (own.in_progress) bits.push(plural(own.in_progress, 'quest', 'quests') + ' going');
+        const left = (Number(more.quests) || 0) - (Number(own.completed) || 0) - (Number(own.in_progress) || 0);
+        if (left > 0) bits.push(`${left} more to try`);
+    }
+    if (!bits.length && more.quests) bits.push(`${more.quests} quests${more.sites ? ` on ${more.sites} sites` : ''}, each with a badge`);
+    if (!bits.length) bits.push('Every quest, your badges and your streak');
+    document.getElementById('home-daily-more-line').textContent = bits.join(' · ');
     const toggle = document.getElementById('home-daily-toggle');
     if (!toggle.dataset.wired) {
         toggle.dataset.wired = '1';

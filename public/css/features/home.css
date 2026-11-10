@@ -26,27 +26,39 @@
     color: var(--accent-light);
 }
 .hero-cta { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
-.home-daily-quest { max-width: 520px; margin: 0 auto 22px; border: 1px solid color-mix(in srgb, var(--accent) 38%, var(--border)); border-radius: 16px; background: var(--bg-card); box-shadow: 0 14px 40px rgba(0,0,0,.18); text-align: left; overflow: hidden; }
-.home-daily-quest[hidden], .home-daily-body[hidden] { display: none; }
-.home-daily-head { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 56px; padding: 9px 14px; background: none; border: 0; color: var(--text-primary); font: inherit; text-align: left; cursor: pointer; }
+/* Today's quest (ask 283): a card in tone, no border. The head says what today's quest is and how far you are, the
+   title in full; open, each step is a row that takes you where it is done (the next one marked), and the foot is the
+   door to OpenVibe.Quest with what waits there (your streak, badges and quests going; for everyone, the catalog). */
+.home-daily-quest { max-width: 520px; margin: 0 auto 22px; border-radius: 16px; background: color-mix(in srgb, var(--accent) 7%, var(--bg-card)); box-shadow: 0 10px 30px rgba(0,0,0,.14); text-align: left; overflow: hidden; }
+.home-daily-quest[hidden], .home-daily-body[hidden], .home-daily-chip[hidden] { display: none; }
+.home-daily-head { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 64px; padding: 12px 14px; background: none; border: 0; color: var(--text-primary); font: inherit; text-align: left; cursor: pointer; }
 .home-daily-titles { display: flex; flex: 1; flex-direction: column; min-width: 0; }
-.home-daily-kicker { color: var(--accent-light, var(--accent)); font-size: .65rem; font-weight: 800; letter-spacing: .09em; }
-/* The quest's name in full (two lines on a phone, never "Make your way around …"), and a three-part bar for the steps. */
-.home-daily-title { display: -webkit-box; overflow: hidden; -webkit-line-clamp: 2; -webkit-box-orient: vertical; font-size: .95rem; font-weight: 800; line-height: 1.3; }
-.home-daily-bar { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; max-width: 160px; margin-top: 6px; }
+.home-daily-kicker { color: var(--accent-light, var(--accent)); font-size: .66rem; font-weight: 800; letter-spacing: .09em; }
+.home-daily-title { font-size: 1rem; font-weight: 800; line-height: 1.3; text-wrap: balance; }
+.home-daily-bar { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; max-width: 160px; margin-top: 7px; }
 .home-daily-bar i { height: 4px; border-radius: 999px; background: color-mix(in srgb, var(--text-primary) 12%, transparent); transition: background .4s ease; }
 .home-daily-quest[data-progress="1"] .home-daily-bar i:nth-child(-n+1), .home-daily-quest[data-progress="2"] .home-daily-bar i:nth-child(-n+2), .home-daily-quest[data-progress="3"] .home-daily-bar i { background: var(--accent-light, var(--accent)); }
 .home-daily-quest[data-progress="3"] .home-daily-bar i { background: var(--success, #22c55e); }
-.home-daily-chip { flex: none; padding: 5px 9px; border-radius: 999px; background: var(--bg-tertiary); color: var(--text-secondary); font-size: .72rem; font-weight: 700; }
+.home-daily-chip { display: inline-flex; flex: none; align-items: center; gap: 5px; padding: 5px 10px; border-radius: 999px; background: color-mix(in srgb, #f97316 16%, transparent); color: color-mix(in srgb, #f97316 78%, var(--text-primary)); font-size: .78rem; font-weight: 800; }
 .home-daily-chev { color: var(--text-muted); transition: transform .2s; }
 .home-daily-quest.open .home-daily-chev { transform: rotate(180deg); }
-.home-daily-body { padding: 0 14px 14px; }
-.home-daily-steps { list-style: none; padding: 0; margin: 0 0 10px; }
-.home-daily-steps li { display: flex; align-items: center; gap: 10px; min-height: 52px; border-top: 1px solid var(--border); font-size: .85rem; }
-.home-daily-steps li > span:nth-child(2) { flex: 1; }
+.home-daily-body { padding: 0 10px 10px; }
+.home-daily-story { margin: -2px 4px 8px; color: var(--text-secondary); font-size: .82rem; line-height: 1.45; }
+.home-daily-steps { display: grid; gap: 2px; list-style: none; padding: 0; margin: 0 0 8px; }
+.home-daily-steps a { display: flex; align-items: center; gap: 12px; min-height: 56px; padding: 8px; border-radius: 12px; color: var(--text-primary); text-decoration: none; transition: background .15s; }
+.home-daily-steps a:hover, .home-daily-steps a:focus-visible { background: color-mix(in srgb, var(--text-primary) 6%, transparent); }
+.home-daily-steps li.is-next a { background: color-mix(in srgb, var(--accent) 13%, transparent); }
+.home-daily-step { display: flex; flex: 1; flex-direction: column; min-width: 0; font-size: .88rem; font-weight: 650; line-height: 1.3; }
+.home-daily-step small { color: var(--text-muted); font-size: .72rem; font-weight: 600; }
+.home-daily-steps li.is-next small { color: var(--accent-light, var(--accent)); }
+.home-daily-steps li.is-done .home-daily-step > span { color: var(--text-muted); }
+.home-daily-go { color: var(--text-muted); font-size: .72rem; }
 .home-daily-check { display: grid; place-items: center; flex: none; width: 24px; height: 24px; border-radius: 50%; background: var(--success, #22c55e); color: #fff; font-size: .75rem; font-weight: 900; }
-.home-daily-steps li.is-done > span:nth-child(2) { color: var(--text-muted); }
-.home-daily-action { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 0 16px; border-radius: 10px; background: var(--accent); color: var(--bg-primary); font-weight: 800; text-decoration: none; }
+.home-daily-more { display: flex; align-items: center; gap: 12px; min-height: 56px; padding: 10px 12px; border-radius: 12px; background: color-mix(in srgb, var(--accent) 15%, var(--bg-card)); color: var(--text-primary); text-decoration: none; transition: background .15s; }
+.home-daily-more:hover, .home-daily-more:focus-visible { background: color-mix(in srgb, var(--accent) 22%, var(--bg-card)); }
+.home-daily-more-text { display: flex; flex: 1; flex-direction: column; min-width: 0; color: var(--text-secondary); font-size: .78rem; line-height: 1.35; }
+.home-daily-more-text b { color: var(--text-primary); font-size: .88rem; }
+.home-daily-more > i { color: var(--accent-light, var(--accent)); }
 
 @media (max-width: 599px) {
     /* The pulse (goals, the latest activity, the week's leaders) is one row that scrolls sideways, not five stacked cards. */

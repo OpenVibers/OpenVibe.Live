@@ -545,7 +545,7 @@ async function acrossOpenVibe(sinceMs) {
 
 router.get('/daily-quest', optionalAuth, async (req, res) => {
     const token = req.user ? require('../net/subject-assertion').personToken(req.headers) : null;
-    const data = await require('./daily-quest').readDailyQuest({ token, timeZone: String(req.query.time_zone || 'UTC') });
+    const data = await require('./daily-quest').readDailyQuest({ token, timeZone: String(req.query.time_zone || 'UTC'), more: true });
     res.set('Cache-Control', 'no-store');
     if (!data) return res.status(204).end();
     return res.json(data);
