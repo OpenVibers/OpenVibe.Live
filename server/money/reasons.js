@@ -3,7 +3,7 @@
 /**
  * The plain words for a money row. The list and the formatter live in openvibe-contracts
  * (`billing.money-reason@1`, `lib/money-reasons.js`); Live re-exports them when the installed
- * package has them and otherwise answers from the same list copied at 0.390.0.
+ * package has them and otherwise answers from the same list copied at 0.392.0.
  */
 let canonical = null;
 try { canonical = require('openvibe-sdk').moneyReasons || null; } catch { /* an older SDK */ }

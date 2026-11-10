@@ -1,6 +1,6 @@
 'use strict';
 /**
- * The same list as openvibe-contracts/lib/money-reasons.js (0.390.0), copied so Live answers with the plain words
+ * The same list as openvibe-contracts/lib/money-reasons.js (0.392.0), copied so Live answers with the plain words
  * before its installed contract package carries the module. reasons.js prefers the installed copy when it is there.
  *
  * Money reasons: the plain words for a ledger row (2026-11-10).
