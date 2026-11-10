@@ -76,4 +76,22 @@ assert.ok(!panel.includes('fa-spin') && !frag.slice(frag.indexOf('bc-ws-list'), 
 assert.ok(/@container bcws \(min-width: 900px\) \{\s*\.gl \{ grid-template-columns/.test(css), 'two columns on a wide screen');
 assert.ok(/@media \(pointer: coarse\) \{ \.gl-chip \{ min-height: 44px; \} \}/.test(css), 'chips are thumb-sized on touch');
 
+// The owner's pass of 2026-11-10. New slot stays in view while the slots scroll under it.
+assert.ok(/\.gl-slot--add \{ position: sticky; right: 0;/.test(css), 'New slot is pinned to the end of the strip');
+// The card's facts are a grid of tiles (a name over its value), not pills of five widths; the address copies.
+assert.ok(/\.gl-chips \{ display: grid; grid-template-columns: repeat\(2, minmax\(0, 1fr\)\);/.test(css), 'the facts are a grid');
+assert.ok(panel.includes('<span class="gl-chip-k">Address</span><span class="gl-chip-v" id="gl-link">') && panel.includes('class="gl-chip gl-chip--link" onclick="_glCopyLink()"'), 'the address tile copies');
+assert.ok((panel.match(/class="gl-chip-i" aria-hidden="true"/g) || []).length === 4, 'each tile has its icon in a tile of its own');
+// Suggest sits against the title with the network's glyph, not an emoji.
+assert.ok(panel.includes('<i class="fa-solid fa-wand-magic-sparkles" aria-hidden="true"></i><span>Suggest</span>') && !/gl-suggest[\s\S]{0,200}\\u2728/.test(panel), 'Suggest wears the network glyph');
+assert.ok(/\.gl-title-row \.gl-title \{ flex: 0 1 auto; width: auto; max-width: 100%; field-sizing: content;/.test(css), 'the title is as wide as its words, so Suggest follows them');
+// The head: Streamer setup at the row's end, and the line under it never leaves one word alone.
+assert.ok(frag.includes('<span class="gl-head-t">Go Live</span> <button type="button" class="glw-open-btn" onclick="openSetupHub()"'), 'the head');
+assert.ok(/#bc-stream-manager > \.bc-page-subtitle \{[^}]*text-wrap: balance;/.test(css), 'no word left alone on the last line');
+// The docked button travels to and from its place, and rides above the footer.
+const studio = fs.readFileSync(path.join(__dirname, '..', 'public/js/broadcast-studio.js'), 'utf8');
+assert.ok(studio.includes('function showDock(dock, on, real)') && studio.includes("dock.classList.add('is-entering')") && studio.includes("dock.classList.add('is-leaving')"), 'the dock rises and hands over, it does not flash');
+assert.ok(studio.includes("dock.style.setProperty('--bcs-lift'") && /\.bcs-golive \{ bottom: calc\(max\([^;]*\+ var\(--bcs-lift, 0px\)\);/.test(css), 'the dock clears the footer');
+assert.ok(/const still = document\.documentElement\.getAttribute\('data-ov-motion'\) === 'off';/.test(studio), 'with Motion off it is simply there or not');
+
 console.log('golive-setup: all passed');
