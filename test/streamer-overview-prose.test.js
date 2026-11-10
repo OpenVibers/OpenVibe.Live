@@ -6,6 +6,7 @@ const assert = require('assert');
 console.warn = () => {};
 
 const db = require('../server/db/database');
+const { CHANNEL_LINE_RE } = require('../server/ai/channel-line');
 (async () => {
     await db.initDb();
     const mk = async (username) => { await db.createUser({ username, email: `${username}@x`, password_hash: 'x', display_name: username, stream_key: username.padEnd(32, '0') }); return (await db.get('SELECT id FROM users WHERE username = ?', [username])).id; };
@@ -14,7 +15,7 @@ const db = require('../server/db/database');
     await db.upsertStreamerOverview(fixer, { overview: '## Overview\n- Streamer handle: finditfixit (@finditfixit).\n- **Content:** repairs old TVs and radios on stream\n- Tone: calm, patient' });
     const a = await db.getStreamerOverview(fixer);
     assert.strictEqual(a.overview, 'finditfixit (@finditfixit). repairs old TVs and radios on stream. calm, patient.');
-    assert.ok(!/^[-*#\s]/.test(a.overview_short) && !a.overview_short.includes('**'), a.overview_short);
+    assert.match(a.overview_short, CHANNEL_LINE_RE, 'the card line is the one shape');
 
     const prose = 'plainann streams Rust and talks through every build. Tone: chill.\nThe chat is small and friendly.';
     await db.upsertStreamerOverview(plain, { overview: prose });
@@ -26,11 +27,13 @@ const db = require('../server/db/database');
     await db.cleanupMalformedAiText();
     const b = await db.getStreamerOverview(old);
     assert.strictEqual(b.overview, 'oldlist (@oldlist). Streams Minecraft builds most nights.');
-    assert.strictEqual(b.overview_short, 'oldlist (@oldlist). Streams Minecraft builds most nights.');
+    assert.strictEqual(b.overview_short, 'Streams Minecraft builds most nights.', 'the label sentence is skipped for the line');
     assert.strictEqual((await db.getStreamerOverview(plain)).overview, prose, 'the repair leaves prose alone');
 
     await db.upsertStreamerOverview(plain, { overview: ' ' });
-    assert.strictEqual((await db.getStreamerOverview(plain)).overview_short, ' ', 'the tried-and-empty sentinel round-trips');
+    const sentinel = await db.getStreamerOverview(plain);
+    assert.strictEqual(sentinel.overview, ' ', 'the tried-and-empty sentinel round-trips in the full overview');
+    assert.match(sentinel.overview_short, CHANNEL_LINE_RE, 'a sentinel still has the fallback card line');
 
     console.log('streamer-overview-prose: all checks passed');
     process.exit(0);

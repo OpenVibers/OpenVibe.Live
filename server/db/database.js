@@ -463,6 +463,19 @@ function _shortOverview(text) {
     const sp = cut.lastIndexOf(' ');
     return (sp > 40 ? cut.slice(0, sp) : cut).trim() + '…';
 }
+/** A streamer's card line in the one channel shape (server/ai/channel-line.js); the name comes off via their row. */
+async function _shapedChannelLine(userId, overview) {
+    let username = null, displayName = null;
+    try {
+        const u = await get('SELECT username, display_name FROM users WHERE id = ?', [userId]);
+        if (u) { username = u.username; displayName = u.display_name; }
+    } catch { /* without the name the line still shapes, minus the name strip */ }
+    try {
+        return require('../ai/channel-line').shapeChannelLine({ username, displayName, overview: _plainProse(overview || '') });
+    } catch {
+        return _shortOverview(overview);
+    }
+}
 async function updateStreamAiOverview(streamId, text) {
     return await run('UPDATE streams SET ai_overview = ?, ai_overview_short = ? WHERE id = ?', [text || null, _shortOverview(text), streamId]);
 }
@@ -720,7 +733,7 @@ async function cleanupMalformedAiText() {
                                  WHERE overview ~ '(^|\n)\\s*([-*•#]|\\d+[.)])\\s' OR overview LIKE '%**%' OR overview_short ~ '^\\s*[-*•#]'`);
         for (const r of rows) {
             const clean = _plainProse(r.v);
-            await run('UPDATE streamer_overviews SET overview = ?, overview_short = ? WHERE user_id = ?', [clean, _shortOverview(clean), r.k]);
+            await run('UPDATE streamer_overviews SET overview = ?, overview_short = ? WHERE user_id = ?', [clean, await _shapedChannelLine(r.k, clean), r.k]);
             fixed++;
         }
     } catch { /* */ }
@@ -916,15 +929,40 @@ async function getStreamTranscriptSegments(streamId) {
 // countAutoClipsSince() removed — the media subsystem (vods/clips/pastes writes) moved to OpenVibe.Media.
 
 async function upsertStreamerOverview(userId, { overview, model = null, sources = null }) {
+    // The card line is stored in the one channel shape, so the streamer-overview job refreshes stored lines
+    // through this write; rows it has not rewritten yet are shaped on read (GET /api/streams/recently-online).
+    const short = await _shapedChannelLine(userId, overview);
     return await run(`INSERT INTO streamer_overviews (user_id, overview, overview_short, model, sources, generated_at)
                 VALUES (?, ?, ?, ?, ?, ov_now())
                 ON CONFLICT(user_id) DO UPDATE SET
                     overview = excluded.overview, overview_short = excluded.overview_short, model = excluded.model,
                     sources = excluded.sources, generated_at = ov_now()`,
-        [userId, _plainProse(overview || ''), _shortOverview(overview), model, sources]);
+        [userId, _plainProse(overview || ''), short, model, sources]);
 }
 async function getStreamerOverview(userId) {
     return await get('SELECT * FROM streamer_overviews WHERE user_id = ?', [userId]);
+}
+/**
+ * The stored card lines the streamer-overview job wrote before the one shape (name first, a colon, past the
+ * 90 characters) are reshaped from the stored full overview without an AI call. The job calls this every tick;
+ * the read path also shapes, so no page shows an old shape while this catches up. Returns how many changed.
+ */
+async function shapeStoredStreamerOverviewShorts(limit = 20) {
+    const rows = await all(`SELECT o.user_id, o.overview, o.overview_short, u.username, u.display_name
+        FROM streamer_overviews o LEFT JOIN users u ON u.id = o.user_id
+        WHERE o.overview IS NOT NULL AND TRIM(o.overview) <> ''
+          AND (o.overview_short IS NULL OR LENGTH(o.overview_short) > 90 OR o.overview_short LIKE '%:%'
+               OR o.overview_short NOT LIKE 'Streams %')
+        ORDER BY o.generated_at ASC NULLS FIRST LIMIT ?`, [limit]);
+    let changed = 0;
+    for (const r of rows) {
+        const short = await _shapedChannelLine(r.user_id, r.overview);
+        if (short && short !== r.overview_short) {
+            await run('UPDATE streamer_overviews SET overview_short = ? WHERE user_id = ?', [short, r.user_id]);
+            changed++;
+        }
+    }
+    return changed;
 }
 
 // Assemble the full AI timeline for a streamer from already-generated AI data (no LLM cost):
@@ -3750,7 +3788,7 @@ module.exports = {
     cleanupMalformedAiText, publicMemoryText: _publicMemoryText, recordAiUsage, getAiCostToday, getAiCostTodayForUser, getAiUsageSummary,
     getStreamMemoriesByUser, countStreamMemoriesByUser, getStreamTranscriptSegments,
     addTimelineEvents, getTimeline, getTimelineText, getTimelineCoverage, linkTimelineToVod, getTimelineByVod, getTimelineVodId,
-    upsertStreamerOverview, getStreamerOverview, getAllStreamerOverviews, getStreamersNeedingOverview,
+    upsertStreamerOverview, getStreamerOverview, shapeStoredStreamerOverviewShorts, getAllStreamerOverviews, getStreamersNeedingOverview,
     readStreamerAiTimelineCache, buildStreamerAiTimeline, assembleStreamerAiTimeline, setStreamAiTitle, getUntitledAiSessions, clearAiTimelineCache,
     // Homepage helpers
     getRecentlyOnlineStreamers, countRecentlyOnlineStreamers,

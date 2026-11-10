@@ -1324,6 +1324,8 @@ router.get('/recent', async (req, res) => {
 });
 
 // ── Recently Online (grouped by user) ────────────────────────
+// The card's numbers: every card carries all five, present or null, so the page lays them out the same.
+const RECENT_FACT_KEYS = ['streams_this_week', 'hours_this_week', 'usual_time', 'days_in_a_row', 'last_stream_seconds'];
 router.get('/recently-online', async (req, res) => {
     try {
         const limit = Math.min(Math.max(parseInt(req.query.limit || '20', 10), 1), 100);
@@ -1366,6 +1368,7 @@ router.get('/recently-online', async (req, res) => {
                         if (t && !ms.vod_thumbnail) ms.vod_thumbnail = media.publicUrl(t.thumbnail_url);
                         // The recording the row's picture is from: the row opens its replay (with the chat in time).
                         if (t && t.vod_id && !ms.vod_id) ms.vod_id = t.vod_id;
+                        if (t && t.audio_only != null && ms.audio_only == null) ms.audio_only = !!t.audio_only;
                     }
                 }
             }
@@ -1382,6 +1385,7 @@ router.get('/recently-online', async (req, res) => {
                     const v = vods.get(Number(ms.stream_id));
                     if (v && v.thumbnail_url) ms.vod_thumbnail = media.publicUrl(v.thumbnail_url);
                     if (v && v.id) ms.vod_id = v.id;
+                    if (v && v.audio_only != null && ms.audio_only == null) ms.audio_only = !!v.audio_only;
                 });
             }
         } catch (err) {
@@ -1418,11 +1422,34 @@ router.get('/recently-online', async (req, res) => {
             const summarize = require('../home/recent-facts').summarizeHistory;
             for (const s of streamers) {
                 s.recent_facts = summarize(rows.filter(r => r.user_id === s.user_id));
+                for (const k of RECENT_FACT_KEYS) if (s.recent_facts[k] === undefined) s.recent_facts[k] = null;
                 for (const h of s.recent_facts.streams) {
                     const slot = (s.managed_streams || []).find(ms => Number(ms.managed_stream_id) === Number(h.managed_stream_id));
-                    if (slot) { h.vod_id = slot.vod_id || null; h.thumbnail_url = h.thumbnail_url || slot.vod_thumbnail || null; }
+                    if (slot) {
+                        h.vod_id = slot.vod_id || null;
+                        // A replay's picture is its recording's durable thumbnail. streams.thumbnail_url is the
+                        // stream's last live capture (/api/thumbnails/stream-*.jpg), deleted when the stream ends
+                        // (or a stale Media URL from before a regeneration), so every replay row named a 404 or a
+                        // 1×1 pixel (owner, 2026-11-10). While live the capture still exists and stays first; with
+                        // no recording the row carries null and the page marks it, instead of an address that fails.
+                        h.thumbnail_url = h.is_live ? (h.thumbnail_url || null) : (slot.vod_thumbnail || null);
+                        h.audio_only = !h.is_live && slot.audio_only != null ? !!slot.audio_only : null;
+                    } else {
+                        h.vod_id = null;
+                        h.audio_only = null;
+                        if (!h.is_live) h.thumbnail_url = null;
+                    }
                 }
             }
+        }
+        // Every card carries the same numbers, present or null, and its line in the one channel shape
+        // (stored lines the job has not rewritten yet are shaped here).
+        const { shapeChannelLine } = require('../ai/channel-line');
+        for (const s of streamers) {
+            if (!s.recent_facts) { s.recent_facts = { streams: [] }; for (const k of RECENT_FACT_KEYS) s.recent_facts[k] = null; }
+            try {
+                s.ai_overview_short = shapeChannelLine({ username: s.username, displayName: s.display_name, overview: s.ai_overview || s.ai_overview_short });
+            } catch { /* the stored line stands */ }
         }
         res.json({ streamers, total, limit, offset, hasMore: offset + streamers.length < total });
     } catch (err) {
