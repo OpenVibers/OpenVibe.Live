@@ -1553,6 +1553,11 @@ button.viewer-badge:focus-visible { outline: 2px solid #93c5fd; outline-offset: 
 .ch-bot-bind-note { margin: 0 0 10px; font-size: 0.85rem; color: var(--text-secondary); }
 .ch-bot-bind-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 
+/* The framed OpenVibe.Bot panel (public/js/bot-embed.js): the frame fills its card, and the height script sets comes
+   from the panel itself (160-720 px), so a resize handle is no longer offered once one arrives. The card's wider look
+   belongs to the channel layout. */
+#ch-bot-container iframe { display: block; width: 100%; min-height: 160px; border: 0; border-radius: 12px; background: var(--bg-card, #131c2e); }
+
 /* After a follow: the go-live alerts offer (app-channel.js offerLiveAlerts), a toast with its own two buttons. */
 .toast.toast-offer { flex-direction: column; align-items: stretch; gap: 8px; cursor: default; max-width: min(320px, calc(100vw - 24px)); }
 .toast-offer-text { margin: 0; }

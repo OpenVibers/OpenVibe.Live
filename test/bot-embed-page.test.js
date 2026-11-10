@@ -320,6 +320,75 @@ async function check(name, fn) {
             assert.strictEqual(listeners.size, 0, 'nothing listens for a url it would not frame');
         });
 
+        await check('listen(): the page\'s theme tokens go to the frame on load and again when the theme changes', async () => {
+            const frameListeners = new Map();
+            const winListeners = new Map();
+            const add = (map) => (t, f) => { if (!map.has(t)) map.set(t, new Set()); map.get(t).add(f); };
+            const del = (map) => (t, f) => { if (map.has(t)) map.get(t).delete(f); };
+            const theme = {
+                '--bg-primary': '#f0f5ff', '--bg-card': '#f5f8ff', '--text-primary': '#1a2040', '--text-secondary': '#4a5070',
+                '--accent': '#245dd5', '--accent-strong': '#2563eb', '--on-accent-strong': '#ffffff', '--border': '#d0d8ea', '--color-scheme': 'light',
+            };
+            const win = {
+                document: { documentElement: { getAttribute: () => 'light' } },
+                getComputedStyle: () => ({ getPropertyValue: (name) => theme[name] || '' }),
+                matchMedia: () => ({ matches: true }),
+                addEventListener: add(winListeners), removeEventListener: del(winListeners),
+            };
+            const posted = [];
+            const panel = { postMessage: (msg, origin) => posted.push([msg, origin]) };
+            const frame = { contentWindow: panel, addEventListener: add(frameListeners), removeEventListener: del(frameListeners) };
+            const stop = BotEmbed.listen({ frame, botEmbed: SIM, win, requestTicket: async () => ({}) });
+            const sent = () => posted.at(-1);
+            assert.strictEqual(sent()[0].type, 'ov-bot-theme');
+            assert.strictEqual(sent()[0].robot_id, 'rob_sim123');
+            assert.deepStrictEqual(sent()[0].tokens, theme, 'every token the page shows');
+            assert.strictEqual(sent()[1], 'https://openvibe.bot', 'only to Bot\'s origin');
+            theme['--bg-primary'] = '#0a0f1c'; theme['--color-scheme'] = 'dark';
+            for (const f of [...winListeners.get('ov:theme')]) f();
+            assert.strictEqual(sent()[0].tokens['--bg-primary'], '#0a0f1c', 'a theme change goes again');
+            assert.strictEqual(sent()[0].tokens['--color-scheme'], 'dark');
+            theme['--accent'] = '#ff006e';
+            for (const f of [...winListeners.get('ov:display')]) f();
+            assert.strictEqual(sent()[0].tokens['--accent'], '#ff006e', 'a display change repaints and is sent too');
+            for (const f of [...frameListeners.get('load')]) f();
+            assert.strictEqual(posted.filter(([m]) => m.type === 'ov-bot-theme').length, 4, 'the frame load sends it again');
+            stop();
+            assert.ok(!winListeners.get('ov:theme').size && !winListeners.get('ov:display').size && !frameListeners.get('load').size, 'stop() removes them');
+        });
+
+        await check('listen(): the panel\'s height sets the frame between 160 and 720 px, and only from its own frame', async () => {
+            const listeners = new Set();
+            const win = { addEventListener: (t, f) => listeners.add(f), removeEventListener: (t, f) => listeners.delete(f) };
+            const style = {};
+            const panel = { postMessage: () => {} };
+            const frame = { contentWindow: panel, style };
+            const stop = BotEmbed.listen({ frame, botEmbed: SIM, win, requestTicket: async () => ({}) });
+            const send = async (data, { origin = 'https://openvibe.bot', source = panel } = {}) => {
+                for (const f of [...listeners]) await f({ data, origin, source });
+            };
+            await send({ type: 'ov-bot-size', robot_id: 'rob_sim123', height: 4000 });
+            assert.deepStrictEqual([style.height, style.resize], ['720px', 'none'], 'a tall panel is capped, and the card stops being hand-resized');
+            await send({ type: 'ov-bot-size', robot_id: 'rob_sim123', height: 20 });
+            assert.strictEqual(style.height, '160px', 'a short panel keeps the controls reachable');
+            await send({ type: 'ov-bot-size', robot_id: 'rob_sim123', height: 340 });
+            assert.strictEqual(style.height, '340px');
+            await send({ type: 'ov-bot-size', robot_id: 'rob_sim123', height: 340.6 });
+            assert.strictEqual(style.height, '341px', 'rounded to a whole pixel');
+            for (const bad of [0, -5, NaN, Infinity, 'tall', null]) {
+                await send({ type: 'ov-bot-size', robot_id: 'rob_sim123', height: bad });
+                assert.strictEqual(style.height, '341px', `a non-height (${String(bad)}) changes nothing`);
+            }
+            await send({ type: 'ov-bot-size', robot_id: 'rob_other', height: 500 });
+            await send({ type: 'ov-bot-size', robot_id: 'rob_sim123', height: 500 }, { origin: 'https://evil.example' });
+            await send({ type: 'ov-bot-size', robot_id: 'rob_sim123', height: 500 }, { source: {} });
+            assert.strictEqual(style.height, '341px', 'another robot, origin or window cannot size it');
+            await send({ type: 'ov-bot-size', height: 300 }, {});
+            assert.strictEqual(style.height, '300px', 'the size needs no robot id (the origin and window are checked)');
+            stop();
+            assert.strictEqual(listeners.size, 0);
+        });
+
         await check('listen(): while the panel drives, the keys it names and the gamepad go to it; never typing, never after', async () => {
             const on = {};
             const add = (t, f) => { (on[t] = on[t] || new Set()).add(f); };
