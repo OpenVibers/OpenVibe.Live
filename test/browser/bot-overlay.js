@@ -28,6 +28,7 @@ const SIZES = [[390, 780, 'portrait'], [844, 390, 'landscape'], [1280, 800, 'des
 
 async function forceLive(page) {
     await page.evaluate(() => {
+        window.scrollTo(0, 0);
         const live = document.getElementById('ch-live-area');
         const off = document.getElementById('ch-offline-area');
         if (live) live.style.display = '';
@@ -38,6 +39,11 @@ async function forceLive(page) {
         if (v) { v.style.display = 'block'; v.style.opacity = '1'; v.style.filter = 'none'; v.style.transform = 'none'; }
         const box = document.getElementById('video-container');
         if (box) box.style.background = '#0b0d12';
+        // Offline there is no picture: the placeholder and its loader cover the player and eat the clicks.
+        for (const el of document.querySelectorAll('#video-container .video-placeholder, #video-container [class*="player-placeholder"], #stream-switch-overlay, .ovld-host, #unmute-overlay')) {
+            el.style.display = 'none';
+            el.style.pointerEvents = 'none';
+        }
     });
 }
 
@@ -46,8 +52,8 @@ async function pickOverlay(page) {
     await inline.waitFor({ state: 'visible', timeout: 20000 });
     const btn = page.locator('#ch-bot-mode-btn');
     if ((await btn.getAttribute('data-mode')) !== 'overlay') {
-        await btn.click();
-        await page.locator('#ch-bot-mode-menu [data-bot-mode="overlay"]').click();
+        await btn.click({ force: true });
+        await page.locator('#ch-bot-mode-menu [data-bot-mode="overlay"]').click({ force: true });
     }
     await page.waitForFunction(() => {
         const slot = document.getElementById('ch-bot-overlay-slot');
@@ -97,7 +103,7 @@ async function pickOverlay(page) {
             assert.ok(m.zSlot < m.zBar, `the slot stays under the player's bar (${m.zSlot} < ${m.zBar})`);
             if (m.unmute) assert.ok(m.zSlot < m.zUnmute, `and under the unmute pill (${m.zSlot} < ${m.zUnmute})`);
             if (m.fold && m.zFold != null) assert.ok(m.zSlot < m.zFold, `and under the chat fold button (${m.zSlot} < ${m.zFold})`);
-            assert.ok(m.clip && /M\\d+\\s+\\d+/.test(m.clip), `the frame is clipped to its controls (${m.clip})`);
+            assert.ok(m.clip && /M\s*\d+\s+\d+/.test(m.clip), `the frame is clipped to its controls (${m.clip})`);
             assert.ok(m.cardLine && !m.cardFrame, 'the card under the player is the one-line state, not a second frame');
             // A press in the middle of the picture must reach the player, not the transparent frame.
             const cx = m.player.x + m.player.width / 2;
@@ -119,6 +125,18 @@ async function pickOverlay(page) {
             assert.deepStrictEqual(errors, [], `no page errors (${errors.join(' · ')})`);
             const shot = path.join(OUT, `bot-overlay-${width}x${height}-${name}.png`);
             await page.screenshot({ path: shot, fullPage: false });
+            // The viewer's choice is remembered: a reload of the same channel and robot keeps the controls on the video
+            // even though the streamer's default is under it.
+            if (name === 'portrait') {
+                await page.reload({ waitUntil: 'load' });
+                await page.waitForTimeout(1200);
+                await forceLive(page);
+                await page.waitForFunction(() => {
+                    const slot = document.getElementById('ch-bot-overlay-slot');
+                    return slot && !slot.hidden && slot.querySelector('iframe');
+                }, null, { timeout: 20000 });
+                assert.strictEqual(await page.locator('#ch-bot-mode-btn').getAttribute('data-mode'), 'overlay', 'the viewer choice survives a reload');
+            }
             console.log(`  ✓ ${width}×${height}: slot above the bar (${Math.round(m.bar.top - m.slot.bottom)} px clear), clipped, press passes through → ${shot}`);
         } catch (e) {
             failed++;
