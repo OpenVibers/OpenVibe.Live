@@ -2213,7 +2213,11 @@ function _markChannelJump(tab, fromTap = false) {
         if (Math.abs(target - strip.scrollLeft) > 2) strip.scrollTo({ left: target, behavior: _channelReduceMotion() ? 'auto' : 'smooth' });
     }
     _updateChannelTabArrows();
-    if (fromTap || location.hash !== `#${tab}`) history.replaceState(history.state, '', `${location.pathname}${location.search}#${tab}`);
+    // The address names the section in view once the person is among the sections (or tapped one); at the top of the
+    // page it stays clean. What is written here is remembered, so the channel's next load does not take it as a link to
+    // that section and scroll there (11-10: the page jumped to About by itself, with #about in the address).
+    const want = fromTap || window.scrollY > 120 ? `#${tab}` : '';
+    if (location.hash !== want) { _chHashWritten = want; history.replaceState(history.state, '', `${location.pathname}${location.search}${want}`); }
 }
 function _updateChannelTabArrows() {
     const strip = document.getElementById('ch-tabs');
@@ -2359,9 +2363,11 @@ async function _loadGameBadge(username) {
 // A URL hash like #ai-timeline / #about / #videos auto-opens that channel tab on load and
 // scrolls the tab content into view (used by "view full AI timeline" links, deep links, etc.).
 const CHANNEL_TAB_HASHES = ['about', 'videos', 'agents', 'clips', 'clips-taken', 'pastes', 'media', 'analytics', 'ai-timeline'];
+let _chHashWritten = '';   // the last section this page wrote into the address itself (not a link somebody followed)
 function _applyChannelHashTab() {
     const h = (location.hash || '').replace(/^#/, '').toLowerCase();
     if (!h || !CHANNEL_TAB_HASHES.includes(h)) return;
+    if (_chHashWritten === `#${h}`) return;
     const btn = document.querySelector(`#ch-tabs .ch-tab[data-tab="${h}"]`);
     if (!btn || btn.style.display === 'none') return; // tab hidden / not present for this channel
     // Jump to the section once it has had a beat to render its content.

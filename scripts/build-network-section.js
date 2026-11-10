@@ -103,7 +103,7 @@ function render(frame) {
     <div class="ovnet-groups" data-sites="${sites.length}">${blocks}</div>
     <footer class="ovnet-foot">
         <a class="ovnet-cta" href="/api/auth/sso/login?next=%2F" data-ovnet-signin><i class="fa-solid fa-user-plus" aria-hidden="true"></i> Create your free account</a>
-        <button type="button" class="ovnet-switch" data-ovnet-switcher><svg class="ovnet-orb" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><g fill="currentColor"><circle cx="12" cy="12" r="2.5"/><circle cx="12" cy="5" r="2.15"/><circle cx="19" cy="12" r="2.15"/><circle cx="12" cy="19" r="2.15"/><circle cx="5" cy="12" r="2.15"/><circle cx="5" cy="5" r="2.15" opacity=".55"/><circle cx="19" cy="5" r="2.15" opacity=".55"/><circle cx="19" cy="19" r="2.15" opacity=".55"/><circle cx="5" cy="19" r="2.15" opacity=".55"/></g></svg> Every site is one tap away in the <b>menu</b></button>
+        <button type="button" class="ovnet-switch" data-ovnet-switcher><span class="ovnet-orb" aria-hidden="true"><svg class="ovmb" viewBox="0 0 24 24" width="22" height="22"><rect class="ovmb-bar" x="4" y="5.2" width="16" height="5.6" rx="2.8"/><circle class="ovmb-dot" cx="7.4" cy="8" r="1.15"/><rect class="ovmb-app ovmb-a0" x="4.2" y="14.6" width="4" height="4" rx="1.3"/><rect class="ovmb-app ovmb-a1" x="10" y="14.6" width="4" height="4" rx="1.3"/><rect class="ovmb-app ovmb-a2" x="15.8" y="14.6" width="4" height="4" rx="1.3"/></svg></span><span class="ovnet-switch-t"><b>Every site is in the menu</b><small>This button, at the top of every page</small></span><i class="ovnet-switch-go" aria-hidden="true"></i></button>
     </footer>
     `;
 }
