@@ -1,0 +1,9 @@
+{
+  "date": "2026-11-09",
+  "takes": [
+    {"id": 481, "what": "Ari discussed the game update."},
+    {"id": 482, "what": "Ari said the new map loads faster."},
+    {"id": 483, "what": "Ari compared the update with last season."}
+  ],
+  "summary": "Ari discussed the game update. [takes: 481,482] The new map loads faster than last season. [takes: 482,483]"
+}

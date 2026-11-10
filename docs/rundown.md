@@ -120,6 +120,24 @@ The streamer can delete their own items. Each delete asks first, in the page (a 
 
 ## API
 
+`GET /api/rundown/day/:date` (also `today`) returns an AI Today's UTC day summary and a paginated, chronological
+timeline. Query `offset` (default `0`) and `limit` (default `50`, maximum `100`) to page the timeline. The response
+uses the same public audience rules as the Rundown pages; signed-in readers may also see their own non-public items.
+The summary is owner-switch controlled by the owner-only site setting `ai_rundown_day_summary_enabled` (default off), is cached per UTC day, refreshes
+at most hourly while that day is live and remains fixed after it ends. Days with fewer than three visible takes return
+`summary.status: "too_few_takes"`. Each generated sentence carries `take_ids`; sentences without valid take citations
+or which fail the existing explicit-content check are omitted; each sentence also includes `channel_ids` for channel links.
+
+Example response:
+
+```json
+{
+  "date": "2026-11-09",
+  "summary": {"status": "ready", "generated_at": 1794272400000, "sentences": [{"text": "Ari discussed the new game update.", "take_ids": [481], "channel_ids": [12]}]},
+  "timeline": {"items": [{"id": 481, "time": "2026-11-09 18:32:00", "channel": {"id": 12, "username": "ari"}, "topic": {"title": "Game update", "slug": "game-update"}, "vod": {"id": 90, "sec": 625}}], "total": 1, "offset": 0, "limit": 50, "next_offset": null}
+}
+```
+
 `/api/rundown` (server/rundown/routes.js):
 
 | Method | Path | Notes |
