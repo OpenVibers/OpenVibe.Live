@@ -1197,7 +1197,7 @@ function _ovnetCount(root) {
     const n = Number(root.querySelector('.ovnet-groups')?.dataset.sites || el?.dataset.count || 0);
     if (!el || !n) return;
     el.dataset.count = String(n);
-    if (window.matchMedia && (document.documentElement.getAttribute('data-ov-motion') === 'off')) { el.textContent = String(n); return; }
+    if (document.documentElement.getAttribute('data-ov-motion') === 'off') { el.textContent = String(n); return; }
     const clock = window.performance || Date;
     const t0 = clock.now(), dur = 900;
     const step = (t) => {
