@@ -15,12 +15,10 @@
     const REDUCED = window.matchMedia && (document.documentElement.getAttribute('data-ov-motion') === 'off');
     const COARSE = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
     if (REDUCED) return;
-    // Phones, coarse pointers and low-memory devices run in "lite" mode: no particle canvas, no
-    // pointer spotlight, no tilt. They still get the cheap IntersectionObserver work, because the
-    // viewport gate below is the only thing that starts the hero button wave — bailing out of the
-    // whole module here is why those buttons sat frozen on a phone.
-    // matchMedia rather than innerWidth, which forces a synchronous layout while the page is loading.
-    const LITE = COARSE || window.matchMedia('(max-width: 820px)').matches || (navigator.deviceMemory && navigator.deviceMemory <= 4);
+    // "Lite" is a device short of memory or a person saving data (index.html decides it before first paint, by the
+    // same rule): no particle canvas, no repainting gradients. A phone is not lite and plays the home's motion. What
+    // follows a pointer (the spotlight, the tilt) is left out where there is no pointer to follow (COARSE).
+    const LITE = !!((navigator.deviceMemory && navigator.deviceMemory <= 2) || (navigator.connection && navigator.connection.saveData));
     if (LITE) document.documentElement.classList.add('rs-lite');
 
     const onHome = () => { const p = document.getElementById('page-home'); return !!(p && p.classList.contains('active')); };
@@ -28,7 +26,7 @@
     // ── Hero sparks canvas ─────────────────────────────────────
     let sparksStop = null;
     function startSparks() {
-        if (sparksStop || LITE || window.innerWidth < 720) return;
+        if (sparksStop || LITE) return;
         const hero = document.querySelector('#page-home .hero');
         if (!hero) return;
         const canvas = document.createElement('canvas');
@@ -42,7 +40,9 @@
         function resize() { const r = hero.getBoundingClientRect(); w = canvas.width = Math.max(1, Math.round(r.width)); h = canvas.height = Math.max(1, Math.round(r.height)); }
         function spawn() { return { x: Math.random() * w, y: h + 10 + Math.random() * 40, r: 1 + Math.random() * 2.4, vy: 12 + Math.random() * 26, vx: (Math.random() - 0.5) * 10, sw: Math.random() * Math.PI * 2, c: COLORS[(Math.random() * COLORS.length) | 0], a: 0.25 + Math.random() * 0.5, life: 0 }; }
         resize();
-        const N = Math.min(70, Math.max(30, Math.round(w / 18)));
+        // A phone's hero is narrow: fewer sparks, and no glow around each (the blur is the costly part of a frame).
+        const N = Math.min(70, Math.max(16, Math.round(w / 18)));
+        const GLOW = COARSE ? 0 : 8;
         for (let i = 0; i < N; i++) { const p = spawn(); p.y = Math.random() * h; parts.push(p); }
         function tick(now) {
             if (!running) return;
@@ -55,7 +55,7 @@
                 const fade = Math.min(1, p.y / 80) * Math.min(1, (h - p.y) / 120);
                 ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
                 ctx.fillStyle = `rgba(${p.c},${(p.a * Math.max(0, fade)).toFixed(3)})`;
-                ctx.shadowBlur = 8; ctx.shadowColor = `rgba(${p.c},0.8)`;
+                ctx.shadowBlur = GLOW; if (GLOW) ctx.shadowColor = `rgba(${p.c},0.8)`;
                 ctx.fill();
             }
             ctx.shadowBlur = 0;
@@ -70,7 +70,7 @@
 
     // ── Cursor spotlight + magnetic buttons ─────────────────────
     function attachHeroPointer() {
-        if (LITE) return;
+        if (LITE || COARSE) return;
         const hero = document.querySelector('#page-home .hero');
         if (!hero || hero.dataset.hfx) return;
         hero.dataset.hfx = '1';
@@ -211,7 +211,7 @@
 
     // ── Stream card tilt ───────────────────────────────────────
     function attachTilt() {
-        if (LITE) return;
+        if (LITE || COARSE) return;
         // Pointer events arrive faster than frames; the old handler read layout on every one of them.
         let tiltRaf = 0, lastEv = null;
         document.addEventListener('pointermove', (e) => {
@@ -233,7 +233,7 @@
 
     // ── Headline shimmer ───────────────────────────────────────
     function attachHeadline() {
-        if (LITE) return;   // an infinite gradient sweep over text is a real battery cost on a phone
+        if (LITE) return;   // an infinite gradient sweep over text repaints every frame: not where memory is short
         const h1 = document.querySelector('#page-home .hero h1');
         if (h1) h1.classList.add('hfx-shimmer');
         const rot = document.getElementById('hero-rotate');

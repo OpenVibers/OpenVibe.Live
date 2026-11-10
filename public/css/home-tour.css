@@ -145,7 +145,7 @@
 }
 html[data-ov-motion=off] .tour-feat{opacity: 1;transform: none}
 .rs-lite .tour::before, .rs-lite .tour-core-ring { display: none; }
-/* Phones keep the glow but not the repainting gradients. */
+/* Lite keeps the glow but not the repainting gradients. */
 .rs-lite .tour-core b { animation: none; -webkit-text-fill-color: var(--text-primary); background: none; }
 .rs-lite .tour-core::before, .rs-lite .tour-core-logo { animation: none; }
 .rs-lite .tour-wire { animation: none; }

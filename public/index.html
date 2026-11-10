@@ -55,13 +55,14 @@
             if (t.id && /^[a-z0-9-]{1,40}$/.test(t.id)) el.setAttribute('data-theme', t.id);
         } catch (_) { /* nothing kept: theme-loader.js paints shortly */ }
     })();
-    // "Lite" rendering for phones, coarse pointers and low-memory devices. Stylesheets on every
-    // route key off .rs-lite, so it is decided here, before first paint, rather than by the home
-    // page's effects script (which only loads on the home route).
+    // "Lite" rendering: a device that says it is short of memory (2 GB or less), or a person who asked their
+    // browser to save data. A phone is not lite: until 2026-11-10 every phone was, and lite switched the home's
+    // motion off whatever the person's Motion setting said (the owner: "none of the cool animations work even
+    // though I have the motion on"). Stylesheets on every route key off .rs-lite, so it is decided here, before
+    // first paint, rather than by the home page's effects script (which only loads on the home route).
     (function () {
         try {
-            if ((document.documentElement.getAttribute('data-ov-motion') === 'off')) return;
-            if (matchMedia('(pointer: coarse)').matches || matchMedia('(max-width: 820px)').matches || (navigator.deviceMemory && navigator.deviceMemory <= 4)) {
+            if ((navigator.deviceMemory && navigator.deviceMemory <= 2) || (navigator.connection && navigator.connection.saveData)) {
                 document.documentElement.classList.add('rs-lite');
             }
         } catch (_) { /* */ }

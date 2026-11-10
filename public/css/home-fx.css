@@ -169,24 +169,26 @@ html[data-ov-motion=off] .hfx-sparks,html[data-ov-motion=off] .hfx-spot{display:
 .rs-lite .hb { --hb-wave: 8s; }
 .rs-lite #page-home .stream-card { transition: none; }
 
-/* ── Mobile / lite: the home page's own heavy effects (pre-existing) ──────────────
-   The CTA banner's conic border animates a registered custom property through a masked
-   conic-gradient (re-rasterised every frame), the ambient blobs and hero aurora run large
-   blur filters with blend modes, the collage is a 3D-tilted stack of floating thumbnails.
-   All of it flickers on low-end Android GPUs, so on phones they become static. */
+/* ── A phone: the home's motion plays (the owner, 2026-11-10: it was all switched off here, and on every phone by
+   .rs-lite, whatever the person's Motion setting said). What a phone still leaves out is what costs a frame without
+   being motion: blend modes over the aurora, glass blur behind the bar and the scrim, the collage (it has no room),
+   and a card's lift under a pointer that is not there. */
 @media (max-width: 820px), (pointer: coarse) {
-    .home-cta-banner::before { animation: none !important; background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 70%, transparent), color-mix(in srgb, var(--accent) 15%, transparent) 50%, color-mix(in srgb, var(--accent) 55%, transparent)); opacity: 0.6; }
-    .cta-ambient { animation: none !important; filter: none !important; transform: none !important; opacity: 0.7; }
-    .cta-embers, .cta-robot-glow, .cta-owner-shine { display: none !important; }
-    .cta-btn-glow { animation: none !important; box-shadow: none !important; }
-    .cta-hero-grad { animation: none !important; }
-    .hero-aurora, .hero-aurora::before, .hero-aurora::after { filter: none !important; mix-blend-mode: normal !important; animation: none !important; transform: none !important; opacity: 0.22; }
+    .hero-aurora, .hero-aurora::before, .hero-aurora::after { mix-blend-mode: normal !important; opacity: 0.3; }
     .hero-collage { display: none !important; }
-    .hero-bg-layer, .hero-bg-layer.active { animation: none !important; transform: none !important; transition: opacity var(--ov-dur-3, 0.4s) var(--ov-ease-out, ease); }
     .hero-scrim { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
     .navbar { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; background: var(--glass-strong); }
     .stream-card, .stream-card:hover { transform: none !important; }
 }
+/* ── Lite (a device short of memory, or a person saving data): the heavy effects stand still. The CTA banner's
+   conic border animates a registered custom property through a masked conic-gradient (re-rasterised every frame),
+   and the ambient blobs and hero aurora run large blur filters. ── */
+.rs-lite .home-cta-banner::before { background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 70%, transparent), color-mix(in srgb, var(--accent) 15%, transparent) 50%, color-mix(in srgb, var(--accent) 55%, transparent)); opacity: 0.6; }
+.rs-lite .cta-ambient { transform: none !important; opacity: 0.7; }
+.rs-lite .cta-btn-glow { animation: none !important; box-shadow: none !important; }
+.rs-lite .cta-hero-grad { animation: none !important; }
+.rs-lite .hero-aurora, .rs-lite .hero-aurora::before, .rs-lite .hero-aurora::after { transform: none !important; opacity: 0.22; }
+.rs-lite .hero-bg-layer, .rs-lite .hero-bg-layer.active { transition: opacity var(--ov-dur-3, 0.4s) var(--ov-ease-out, ease); }
 .rs-lite .home-cta-banner::before { animation: none !important; }
 .rs-lite .cta-ambient { animation: none !important; filter: none !important; }
 .rs-lite .cta-embers, .rs-lite .cta-robot-glow, .rs-lite .cta-owner-shine, .rs-lite .hero-collage { display: none !important; }
@@ -327,15 +329,13 @@ html[data-ov-motion=off] .hfx-sparks,html[data-ov-motion=off] .hfx-spot{display:
 .hfx-shimmer { animation: none !important; filter: drop-shadow(0 0 14px color-mix(in srgb, var(--accent) 32%, transparent)); }
 .hfx-glow { animation: none !important; }
 
-/* Phones: nothing in the hero moves on its own. The page is scrolled past here far more than it is
-   looked at, and every running animation in a region being scrolled costs a frame budget the
-   scroll needs. */
+/* Lite: nothing in the hero moves on its own. */
 .rs-lite .hero-float { animation: heroFloatIn var(--ov-dur-4, 0.6s) var(--ov-ease-out, cubic-bezier(0.2, 0.8, 0.2, 1)) var(--in-delay, 0s) forwards !important; }
 .rs-lite .hero-bg-layer.active { animation: none !important; transform: scale(1.06) !important; will-change: auto !important; }
 .rs-lite .hero-aurora, .rs-lite .hero-aurora::before, .rs-lite .hero-aurora::after { animation: none !important; }
 .rs-lite .hfx-spot, .rs-lite .hfx-sparks { display: none !important; }
 
-/* Phones: no masked decoration on tall sections. The restream card's dot texture (a radial
+/* Lite: no masked decoration on tall sections. The restream card's dot texture (a radial
    mask-image over a ~1600px-tall box on a phone) and the About banner's lit edge (a mask-composite
    over a ~2600px-tall box) are each a separate mask layer composited on every frame of a scroll
    through them. Both are faint texture — the banner keeps its real 1px border. */
