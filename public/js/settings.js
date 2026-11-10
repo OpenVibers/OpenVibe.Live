@@ -107,7 +107,7 @@ function _renderSettingsAvatar(u) {
         : letter) + chip;
 }
 
-// Render the user's avatar upload history (backed by avatar-tagged pastes).
+// Render the user's avatar history from Media plus older avatar-tagged Community pastes.
 async function _loadAvatarHistory() {
     const card = document.getElementById('settings-avatar-history-card');
     const wrap = document.getElementById('settings-avatar-history');
@@ -120,11 +120,22 @@ async function _loadAvatarHistory() {
         wrap.innerHTML = avatars.map(a => `
             <button type="button" class="settings-avatar-hist-item${a.active ? ' active' : ''}"
                     title="${a.active ? 'Current avatar' : 'Use this avatar'}"
-                    onclick="reuseAvatarPaste('${a.slug}')">
+                    onclick="${a.store === 'media' ? `reuseAvatarObject('${a.id}')` : `reuseAvatarPaste('${a.slug}')`}">
                 <img src="${a.url}" alt="" loading="lazy">
                 ${a.active ? '<span class="settings-avatar-hist-active"><i class="fa-solid fa-check"></i></span>' : ''}
             </button>`).join('');
     } catch { card.style.display = 'none'; }
+}
+
+async function reuseAvatarObject(id) {
+    try {
+        const data = await api(`/auth/avatar/object/${encodeURIComponent(id)}`, { method: 'POST' });
+        toast('Avatar updated', 'success');
+        if (data.avatar_url && currentUser) currentUser.avatar_url = data.avatar_url;
+        _renderSettingsAvatar(currentUser);
+        _loadAvatarHistory();
+        if (typeof onAuthChange === 'function') onAuthChange();
+    } catch (e) { toast(e.message || 'Failed to set avatar', 'error'); }
 }
 
 // Re-activate a previously uploaded avatar from history.

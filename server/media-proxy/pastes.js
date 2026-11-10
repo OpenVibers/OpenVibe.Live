@@ -33,6 +33,24 @@ const anonWriteLimiter = require('../drill').enabled ? (req, res, next) => next(
 const pastesClient = require('../pastes-client');
 const principal = require('../net/network-principal');
 const { Readable } = require('stream');
+const crypto = require('crypto');
+
+function consecutiveUnique(pastes) {
+    const out = [];
+    for (const p of pastes || []) {
+        const owner = p.owner_subject || p.user_id || p.username;
+        const ref = String(p.media_ref || p.screenshot_url || '');
+        const mediaId = /med_[0-9A-HJKMNP-TV-Z]{26}/.exec(ref);
+        const fingerprint = p.content_hash ? `content:${String(p.content_hash).toLowerCase()}`
+            : p.type === 'screenshot' ? (mediaId ? `image:${mediaId[0]}` : null)
+            : `text:${crypto.createHash('sha256').update(String(p.content || ''), 'utf8').digest('hex')}`;
+        const key = owner && fingerprint ? `${owner}:${fingerprint}` : null;
+        const previous = out[out.length - 1];
+        if (key && previous && previous._dedupeKey === key) { previous.more_like_it = (previous.more_like_it || 0) + 1; continue; }
+        out.push({ ...p, ...(key ? { _dedupeKey: key } : {}) });
+    }
+    return out.map(({ _dedupeKey, ...p }) => p);
+}
 
 /** `whenDown(req)`: the answer while Community is unreachable or failing (5xx), instead of a 502. */
 function toCommunity(subPath, whenDown = null) {
@@ -59,6 +77,11 @@ function toCommunity(subPath, whenDown = null) {
             const upstream = await fetch(`${pastesClient.COMMUNITY_URL}/api/pastes${p}${qs}`, opts);
             if (whenDown && upstream.status >= 500) return res.json(whenDown(req));
             if (upstream.status === 401) principal.invalidate('openvibe.community');
+            if (req.method === 'GET' && p === '' && req.query.dedupe === 'consecutive' && upstream.ok) {
+                const payload = await upstream.json();
+                const original = Array.isArray(payload.pastes) ? payload.pastes : [];
+                return res.status(upstream.status).json({ ...payload, raw_count: original.length, pastes: consecutiveUnique(original) });
+            }
             res.status(upstream.status);
             for (const h of ['content-type', 'cache-control', 'location', 'retry-after', 'ratelimit-limit', 'ratelimit-remaining', 'ratelimit-reset']) {
                 const v = upstream.headers.get(h);
@@ -112,3 +135,4 @@ communityRouter.all('*', optionalAuth, toCommunity((req) => req.path === '/' ? '
 
 module.exports = communityRouter;
 module.exports.communityRouter = communityRouter;
+module.exports.consecutiveUnique = consecutiveUnique;

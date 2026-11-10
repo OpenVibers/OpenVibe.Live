@@ -106,11 +106,13 @@ async function main() {
     await check('screenshot fallbacks use Media\'s screenshot URL, not the /raw hop', () => {
         assert.strictEqual(typeof media.pasteRawUrl, 'undefined', 'the /raw URL builder is gone');
         assert.strictEqual(media.pasteScreenshotUrl('a b'), `${media.MEDIA_PUBLIC_URL}/p/a%20b/screenshot`);
-        for (const rel of ['server/home/routes.js', 'server/auth/routes.js']) {
+        for (const rel of ['server/home/routes.js']) {
             const src = fs.readFileSync(path.join(__dirname, '..', rel), 'utf8');
             assert.ok(/pasteScreenshotUrl\(/.test(src), `${rel} falls back to the screenshot URL`);
             assert.ok(!/pasteRawUrl/.test(src), `${rel} no longer takes the /raw hop`);
         }
+        const auth = fs.readFileSync(path.join(__dirname, '..', 'server/auth/routes.js'), 'utf8');
+        assert.ok(!/createPaste\(/.test(auth), 'profile picture uploads are not published as Community pastes');
     });
 
     await check('Live\'s sitemap lists no paste', async () => {

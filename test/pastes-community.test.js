@@ -138,6 +138,15 @@ const community = http.createServer((req, res) => {
     assert.strictEqual(client.onCommunity, undefined, 'the paste-authority switch is gone');
     assert.strictEqual(require('../server/media-proxy/pastes'), require('../server/media-proxy/pastes').communityRouter, '/api/pastes is the Community router');
     assert.strictEqual(require('../server/media-proxy/pastes').mediaRouter, undefined, 'the Media router is gone');
+    const collapsePastes = require('../server/media-proxy/pastes').consecutiveUnique;
+    const repeatedHash = 'b'.repeat(64);
+    const cards = collapsePastes([
+        { slug: 'new', type: 'paste', username: 'ann', content_hash: repeatedHash },
+        { slug: 'older', type: 'paste', username: 'ann', content_hash: repeatedHash },
+        { slug: 'other', type: 'paste', username: 'bob', content_hash: repeatedHash },
+    ]);
+    assert.deepStrictEqual(cards.map((p) => p.slug), ['new', 'other']);
+    assert.strictEqual(cards[0].more_like_it, 1);
     const clientSrc = fs.readFileSync(path.join(__dirname, '../server/pastes-client.js'), 'utf8');
     assert.ok(!/media-client/.test(clientSrc) && !clientSrc.includes('PASTES_' + 'AUTHORITY'), 'the pastes client never falls back to Media');
 
