@@ -83,6 +83,7 @@
 .bucks-log-row:hover { background: var(--bg-tertiary); }
 .bucks-log-icon { width: 34px; height: 34px; flex: none; border-radius: 50%; background: var(--bg-tertiary); display: flex; align-items: center; justify-content: center; color: var(--text-secondary); }
 .bucks-log-label { font-size: 0.9rem; font-weight: 600; }
+.bucks-log-label a { color: inherit; text-decoration: none; border-bottom: 1px solid currentColor; }
 .bucks-log-when { font-size: 0.76rem; color: var(--text-muted); }
 .bucks-log-note { font-size: 0.78rem; color: var(--text-secondary); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .bucks-log-amt { font-weight: 700; font-size: 0.92rem; white-space: nowrap; }
