@@ -547,7 +547,6 @@ html[data-ov-motion=off] .cta-hero-grad{-webkit-text-fill-color: var(--accent);c
     .hero-tip { max-width: calc(100vw - 24px); }
     .hero-stat--clickable:hover { transform: none; box-shadow: none; }
 }
-.brand-mark--hero .ov-ring { stroke-width: 3.6; } .brand-mark--hero .ov-comet { stroke-width: 3.6; } .brand-mark--hero .ov-v { stroke-width: 4.2; }
 .hero-stats { min-height: 246px; }
 .hero-stat-strip[hidden] { display: none !important; }
 .hero-stat-strip {

@@ -1125,7 +1125,7 @@ async function hydrateActiveChatHistory(streamId, { clear = false } = {}) {
             _swapChatHistory(messages, _renderHistoryOffscreen(chatEl, () => _renderHistoryPayload(_historyPieces(cached, 50)[0])));
             messages.dataset.room = room;
         } else if (clear || roomChanged) {
-            messages.innerHTML = '<div class="chat-loading-history"><i class="fa-solid fa-spinner fa-spin"></i> Loading history…</div>';
+            messages.innerHTML = '<div class="chat-loading-history"><span class="ov-mark" data-state="busy" data-size="16" data-tone="ink" aria-hidden="true"></span> Loading history…</div>';
             messages.dataset.room = room;
         }
     }
@@ -1798,7 +1798,7 @@ async function _translateForMe(el, text, btn) {
     if (existing) { existing.hidden = !existing.hidden; return; }
     const hit = _trCache.get(to + '\u0001' + text);
     if (hit) { _trShow(el, hit, to); return; }
-    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i>'; }
+    if (btn) { btn.disabled = true; btn.innerHTML = '<span class="ov-mark" data-state="busy" data-size="16" data-tone="ink" aria-hidden="true"></span>'; }
     try {
         const d = await api('/i18n/translate', { method: 'POST', body: { text, to } });
         if (d && d.same) { toast(`Already in ${_LANG_LABEL[to] || to}`, 'info'); return; }
@@ -4417,7 +4417,7 @@ async function ctxAdminTools(username, userId, anonId) {
                 <button class="modal-close-btn" onclick="closeModal()"><i class="fa-solid fa-xmark"></i></button>
             </div>
             <div class="admin-tools-body">
-                <div class="admin-tools-loading"><i class="fa-solid fa-spinner fa-spin"></i> Loading IP intelligence...</div>
+                <div class="admin-tools-loading"><span class="ov-mark" data-state="busy" data-size="16" data-tone="ink" aria-hidden="true"></span> Loading IP intelligence...</div>
             </div>
         </div>
     `;
@@ -4536,7 +4536,7 @@ function renderAdminToolsUser(container, data, username) {
 
         <div class="at-section" id="at-tts-voice" data-kind="user" data-id="${esc(user.username)}">
             <h4><i class="fa-solid fa-microphone-lines"></i> TTS Voice</h4>
-            <div class="at-tts-body"><div class="admin-tools-loading"><i class="fa-solid fa-spinner fa-spin"></i> Loading voice…</div></div>
+            <div class="at-tts-body"><div class="admin-tools-loading"><span class="ov-mark" data-state="busy" data-size="16" data-tone="ink" aria-hidden="true"></span> Loading voice…</div></div>
         </div>
     `;
 
@@ -4602,7 +4602,7 @@ function renderAdminToolsAnon(container, data, username) {
     html += `
         <div class="at-section" id="at-tts-voice" data-kind="anon" data-id="${esc(anon_id || username)}">
             <h4><i class="fa-solid fa-microphone-lines"></i> TTS Voice</h4>
-            <div class="at-tts-body"><div class="admin-tools-loading"><i class="fa-solid fa-spinner fa-spin"></i> Loading voice…</div></div>
+            <div class="at-tts-body"><div class="admin-tools-loading"><span class="ov-mark" data-state="busy" data-size="16" data-tone="ink" aria-hidden="true"></span> Loading voice…</div></div>
         </div>`;
 
     container.innerHTML = html;
@@ -4660,7 +4660,7 @@ function renderAdminTtsVoice(bodyEl, kind, id, d) {
         if (pr.speed != null) { $('#atv-speed').value = pr.speed; $('#atv-speed-n').textContent = pr.speed; }
     }));
     $('#atv-preview').addEventListener('click', async () => {
-        const btn = $('#atv-preview'); btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Playing…';
+        const btn = $('#atv-preview'); btn.disabled = true; btn.innerHTML = '<span class="ov-mark" data-state="busy" data-size="16" data-tone="ink" aria-hidden="true"></span> Playing…';
         try {
             const r = await api('/mod/tts-voice/preview', { method: 'POST', body: getParams() });
             if (r.url || r.audio) { const a = new Audio(r.url || `data:${r.mimeType};base64,${r.audio}`); await a.play().catch(() => {}); }

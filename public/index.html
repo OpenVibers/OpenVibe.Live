@@ -165,7 +165,7 @@
     <section id="page-stream" class="page">
         <div class="container">
             <div class="empty-state">
-                <i class="fa-solid fa-spinner fa-spin fa-3x"></i>
+                <span class="ov-mark" data-state="busy" data-size="32" aria-hidden="true"></span>
                 <p>Redirecting to channel...</p>
             </div>
         </div>
@@ -226,7 +226,7 @@
                 <button class="btn btn-outline btn-sm" onclick="navigate('/content?type=pastes')"><i class="fa-solid fa-arrow-left"></i> All Pastes</button>
             </div>
             <div id="paste-viewer-content">
-                <div class="loading-spinner"><i class="fa-solid fa-circle-notch fa-spin"></i></div>
+                <div class="loading-spinner"><span class="ov-mark" data-state="busy" data-size="32" aria-hidden="true"></span></div>
             </div>
         </div>
     </section>
@@ -234,7 +234,7 @@
     <!-- Documentation Page -->
     <section id="page-recap" class="page">
         <div class="content-container recap-container">
-            <div id="recap-root"><div class="loading-spinner"><i class="fa-solid fa-circle-notch fa-spin"></i></div></div>
+            <div id="recap-root"><div class="loading-spinner"><span class="ov-mark" data-state="busy" data-size="32" aria-hidden="true"></span></div></div>
         </div>
     </section>
 
@@ -401,6 +401,7 @@
      adds the requested route's scripts at the end of this document, and js/ov-loader.js loads the
      rest when someone navigates. The asset manifest below carries content hashes and the registry. -->
 <!--ov:asset-manifest-->
+<script src="/shared/ov-mark.js" defer></script>
 <script src="/shared/web-runtime.js" defer></script>
 <script src="/js/ov-loader.js" defer></script>
 <script src="/shared/navbar.js" defer></script>

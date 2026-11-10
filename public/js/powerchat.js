@@ -111,7 +111,7 @@
         if (s) s.classList.add('pc-status-block');
         _swap(s, `
             <div class="pc-connecting-box">
-                <div class="pc-connecting-head"><span class="pc-spinner"></span> Waiting for you to authorize in PowerChat<span class="pc-ellipsis"><span>.</span><span>.</span><span>.</span></span></div>
+                <div class="pc-connecting-head"><span class="ov-mark" data-state="busy" data-size="16" data-tone="ink" aria-hidden="true"></span> Waiting for you to authorize in PowerChat<span class="pc-ellipsis"><span>.</span><span>.</span><span>.</span></span></div>
                 <div class="pc-progress"><span class="pc-progress-bar"></span></div>
                 <div class="pc-manual">
                     <span>Popup didn't open?</span>
@@ -233,7 +233,7 @@
 
     window.powerchatDisconnect = async function powerchatDisconnect(btn) {
         if (!confirm('Disconnect PowerChat? Tips will stop flowing into OpenVibe.Live until you reconnect.')) return;
-        if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Disconnecting…'; }
+        if (btn) { btn.disabled = true; btn.innerHTML = '<span class="ov-mark" data-state="busy" data-size="16" data-tone="ink" aria-hidden="true"></span> Disconnecting…'; }
         const card = $('dash-powerchat-card'); if (card) card.classList.add('pc-busy');
         try { await api('/powerchat/oauth/connection', { method: 'DELETE' }); toast('PowerChat disconnected', 'success'); }
         catch (e) { toast(e.message || 'Failed to disconnect', 'error'); }
@@ -242,7 +242,7 @@
 
     // Local pipeline test — verifies the streamer's alert sound + chat celebration.
     window.powerchatTestTip = async function powerchatTestTip(btn) {
-        if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Sending…'; }
+        if (btn) { btn.disabled = true; btn.innerHTML = '<span class="ov-mark" data-state="busy" data-size="16" data-tone="ink" aria-hidden="true"></span> Sending…'; }
         try {
             const r = await api('/powerchat/test-tip', { method: 'POST', body: { amount: 5 } });
             toast(r && r.powerchat
@@ -278,7 +278,7 @@
         const buttons = menu ? Array.from(menu.querySelectorAll('button')) : (btn ? [btn] : []);
         buttons.forEach(b => { b.disabled = true; });
         const orig = btn ? btn.innerHTML : '';
-        if (btn) btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Sending…';
+        if (btn) btn.innerHTML = '<span class="ov-mark" data-state="busy" data-size="16" data-tone="ink" aria-hidden="true"></span> Sending…';
         try {
             const r = await api('/powerchat/test-alert', { method: 'POST', body: { kind } });
             toast((r && r.note) || 'Test sent to PowerChat ✓', 'success');

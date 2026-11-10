@@ -88,7 +88,7 @@
         $('#ovg-kicker').textContent = step.kicker || S.journey.kicker || '';
         $('#ovg-title').textContent = typeof step.title === 'function' ? step.title(S.ctx) : (step.heading || step.title);
         renderSteps();
-        panel.innerHTML = '<div class="loading-spinner"><i class="fa-solid fa-circle-notch fa-spin"></i></div>';
+        panel.innerHTML = '<div class="loading-spinner"><span class="ov-mark" data-state="busy" data-size="32" aria-hidden="true"></span></div>';
         let html = '';
         try { html = await step.render(S.ctx); } catch (e) { html = `<div class="ovg-error"><i class="fa-solid fa-triangle-exclamation"></i> ${cfg.esc((e && e.message) || 'Something went wrong')}</div>`; }
         if (S.step !== step) return;                          // user moved on while we loaded

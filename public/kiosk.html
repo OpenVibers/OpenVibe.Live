@@ -942,7 +942,7 @@ button{font:inherit}
     const kind=el.dataset.kind, username=el.dataset.username, label=el.dataset.label;
     const menu=document.createElement("div");
     menu.className="chat-context-menu";
-    menu.innerHTML=`<div class="ctx-loading"><i class="fa-solid fa-spinner fa-spin"></i> Loading…</div>`;
+    menu.innerHTML=`<div class="ctx-loading"><span class="ov-mark" data-state="busy" data-size="16" data-tone="ink" aria-hidden="true"></span> Loading…</div>`;
     document.body.appendChild(menu); _kioskMenu=menu;
     _posMenu(menu,x,y);
     menu.addEventListener("click",e=>e.stopPropagation());
@@ -1204,7 +1204,7 @@ button{font:inherit}
     if(looksLikeDomain(q)){
       const key=q.toLowerCase(); let res=resolved.get(key);
       if(!res){
-        goBtn.innerHTML='<i class="fa-solid fa-spinner fa-spin"></i>';
+        goBtn.innerHTML='<span class="ov-mark" data-state="busy" data-size="16" data-tone="ink" aria-hidden="true"></span>';
         try{ const r=await fetch(`/api/kiosk/site?url=${encodeURIComponent(q)}`); const d=await r.json(); res=d.reachable?{reachable:true,url:d.url,host:d.host,title:d.title}:{reachable:false}; resolved.set(key,res); }
         catch{ res={reachable:true,url:fullUrl(q),host:hostOf(q)}; }
         goBtn.innerHTML='<i class="fa-solid fa-arrow-right"></i>';

@@ -1186,7 +1186,7 @@ async function createDashToken() {
 
     const btn = document.getElementById('token-create-btn');
     btn.disabled = true;
-    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Creating...';
+    btn.innerHTML = '<span class="ov-mark" data-state="busy" data-size="16" data-tone="ink" aria-hidden="true"></span> Creating...';
 
     try {
         const data = await api('/auth/tokens', {

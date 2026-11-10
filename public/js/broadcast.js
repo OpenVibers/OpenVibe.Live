@@ -272,7 +272,7 @@ function updateRsRestreamSlotUI() {
         html += `<span class="bc-rs-status bc-rs-live"><i class="fa-solid fa-circle"></i> Live on RobotStreamer</span>`;
         html += `<button class="bc-ctrl-btn bc-ctrl-btn-sm" onclick="stopRsRestream()"><i class="fa-solid fa-stop"></i> Stop</button>`;
     } else if (isStarting) {
-        html += `<span class="bc-rs-status bc-rs-connecting"><i class="fa-solid fa-spinner fa-spin"></i> Connecting…</span>`;
+        html += `<span class="bc-rs-status bc-rs-connecting"><span class="ov-mark" data-state="busy" data-size="16" data-tone="ink" aria-hidden="true"></span> Connecting…</span>`;
         html += `<button class="bc-ctrl-btn bc-ctrl-btn-sm" onclick="stopRsRestream()"><i class="fa-solid fa-stop"></i> Cancel</button>`;
     } else if (hasFailed) {
         html += `<span class="bc-rs-status bc-rs-error"><i class="fa-solid fa-circle-exclamation"></i> RobotStreamer failed</span>`;
@@ -281,7 +281,7 @@ function updateRsRestreamSlotUI() {
         // Slot assigned but not started yet (could be reconnecting)
         const isReconnecting = !!(slotSs._rsReconnectTimer);
         if (isReconnecting) {
-            html += `<span class="bc-rs-status bc-rs-connecting"><i class="fa-solid fa-spinner fa-spin"></i> Reconnecting…</span>`;
+            html += `<span class="bc-rs-status bc-rs-connecting"><span class="ov-mark" data-state="busy" data-size="16" data-tone="ink" aria-hidden="true"></span> Reconnecting…</span>`;
             html += `<button class="bc-ctrl-btn bc-ctrl-btn-sm" onclick="stopRsRestream()"><i class="fa-solid fa-stop"></i> Cancel</button>`;
         } else {
             html += `<span class="bc-rs-status bc-rs-ready"><i class="fa-solid fa-robot"></i> RobotStreamer ready</span>`;
@@ -3196,6 +3196,8 @@ function applyManualGain(streamId) {
 
 /* ── Multi-Platform Restream Destinations ──────────────────── */
 
+const MARK_BUSY_16 = '<span class="ov-mark" data-state="busy" data-size="16" data-tone="ink" aria-hidden="true"></span>';
+const statusIcon = (icon) => icon === 'busy' ? MARK_BUSY_16 : `<i class="${icon}"></i>`;
 const RESTREAM_PLATFORM_META = {
     youtube:       { name: 'YouTube',       icon: 'fa-brands fa-youtube', color: '#ff0000' },
     twitch:        { name: 'Twitch',        icon: 'fa-brands fa-twitch',  color: '#9146ff' },
@@ -3356,8 +3358,8 @@ function rsDetailLine(rs) {
 function rsBadgeFor(rs, clientFallback) {
     if (rs) {
         if (rs.state === 'live') return { cls: 'bc-restream-status-live', icon: 'fa-solid fa-circle', text: 'Live', active: true };
-        if (rs.state === 'starting') return { cls: 'bc-restream-status-starting', icon: 'fa-solid fa-spinner fa-spin', text: 'Starting…', active: true };
-        if (rs.state === 'restarting') return { cls: 'bc-restream-status-starting', icon: 'fa-solid fa-spinner fa-spin', text: 'Reconnecting…', active: true };
+        if (rs.state === 'starting') return { cls: 'bc-restream-status-starting', icon: 'busy', text: 'Starting…', active: true };
+        if (rs.state === 'restarting') return { cls: 'bc-restream-status-starting', icon: 'busy', text: 'Reconnecting…', active: true };
         if (rs.state === 'failed') return { cls: 'bc-restream-status-failed', icon: 'fa-solid fa-circle-xmark', text: 'Failed', active: false };
     }
     return clientFallback;
@@ -3419,7 +3421,7 @@ function updateRestreamControlPanel() {
             badgeText = 'Live';
         } else if (statusLabel === 'starting') {
             badgeClass = 'bc-restream-status-starting';
-            badgeIcon = 'fa-solid fa-spinner fa-spin';
+            badgeIcon = 'busy';
             badgeText = 'Starting…';
         } else if (statusLabel === 'error') {
             badgeClass = 'bc-restream-status-error';
@@ -3445,7 +3447,7 @@ function updateRestreamControlPanel() {
         html += `<div class="bc-restream-row" data-dest="${dest.id}">
             <span class="bc-restream-platform-icon" style="color:${meta.color}"><i class="${meta.icon}"></i></span>
             <span class="bc-restream-name">${esc(dest.name || meta.name)}${transport}</span>
-            <span class="bc-restream-status-badge ${badgeClass}"><i class="${badgeIcon}"></i> ${badgeText}</span>
+            <span class="bc-restream-status-badge ${badgeClass}">${statusIcon(badgeIcon)} ${badgeText}</span>
             <div class="bc-restream-actions">
                 ${isActive
                     ? `<button class="bc-ctrl-btn-sm" onclick="stopRestreamDest(${dest.id})" title="Stop pushing to this destination"><i class="fa-solid fa-stop"></i> Stop</button>`
@@ -3467,14 +3469,14 @@ function updateRestreamControlPanel() {
 
         let fallback = { cls: 'bc-restream-status-idle', icon: 'fa-solid fa-circle', text: 'Idle', active: false };
         if (isRsLive) fallback = { cls: 'bc-restream-status-live', icon: 'fa-solid fa-circle', text: 'Live', active: true };
-        else if (isRsStarting || slotSs?._rsReconnectTimer) fallback = { cls: 'bc-restream-status-starting', icon: 'fa-solid fa-spinner fa-spin', text: isRsStarting ? 'Starting…' : 'Reconnecting…', active: true };
+        else if (isRsStarting || slotSs?._rsReconnectTimer) fallback = { cls: 'bc-restream-status-starting', icon: 'busy', text: isRsStarting ? 'Starting…' : 'Reconnecting…', active: true };
         const b = rsBadgeFor(rsSrv, fallback);
         const robot = broadcastState.robotStreamer?.robotId || rsSrv?.robot_id;
 
         html += `<div class="bc-restream-row" data-dest="rs">
             <span class="bc-restream-platform-icon" style="color:#4a9eff"><i class="fa-solid fa-robot"></i></span>
             <span class="bc-restream-name">RobotStreamer${robot ? ` <span class="bc-restream-transport" title="Robot id">#${esc(String(robot))}</span>` : ''}</span>
-            <span class="bc-restream-status-badge ${b.cls}"><i class="${b.icon}"></i> ${b.text}</span>
+            <span class="bc-restream-status-badge ${b.cls}">${statusIcon(b.icon)} ${b.text}</span>
             <div class="bc-restream-actions">
                 ${b.active
                     ? `<button class="bc-ctrl-btn-sm" onclick="stopRsRestream()" title="Take the robot offline"><i class="fa-solid fa-stop"></i> Stop</button>`
@@ -4908,7 +4910,7 @@ async function openCameraSwitcher() {
     sheet.style.display = 'flex';
     _bcLockSheet('camera', document.getElementById('bc-btn-switch-cam'));
     _bcDragSheet(sheet.querySelector('.bc-camera-sheet-header'), sheet.querySelector('.bc-camera-sheet-panel'), closeCameraSwitcher);
-    list.innerHTML = '<div class="bc-camera-sheet-empty"><i class="fa-solid fa-spinner fa-spin"></i><span>Loading cameras…</span></div>';
+    list.innerHTML = '<div class="bc-camera-sheet-empty"><span class="ov-mark" data-state="busy" data-size="16" data-tone="ink" aria-hidden="true"></span><span>Loading cameras…</span></div>';
 
     try {
         const devices = await _enumerateBroadcastVideoInputs({ ensureLabels: true });
@@ -5920,7 +5922,7 @@ async function createBroadcastClip() {
     // does, from what was said and shown: server/ai/clip-title.js).
     const typed = document.getElementById('bc-clip-title')?.value?.trim() || '';
     const btn = document.getElementById('bc-clip-create-btn');
-    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Creating…'; }
+    if (btn) { btn.disabled = true; btn.innerHTML = '<span class="ov-mark" data-state="busy" data-size="16" data-tone="ink" aria-hidden="true"></span> Creating…'; }
 
     try {
         const res = await fetch('/api/vods/clips', {

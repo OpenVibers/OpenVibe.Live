@@ -479,7 +479,7 @@ async function searchFFZEmotes(query) {
     if (!query || query.length < 2) return;
     const { grid } = _getPickerEls(_emotePickerTarget);
     if (!grid) return;
-    grid.innerHTML = '<div class="emote-picker-empty"><i class="fa-solid fa-spinner fa-spin"></i> Searching FFZ...</div>';
+    grid.innerHTML = '<div class="emote-picker-empty"><span class="ov-mark" data-state="busy" data-size="16" data-tone="ink" aria-hidden="true"></span> Searching FFZ...</div>';
 
     try {
         const data = await api(`/emotes/search?q=${encodeURIComponent(query)}`);

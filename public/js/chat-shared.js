@@ -235,7 +235,7 @@
                 </div>
                 <div class="link-preview-body">
                     <div class="link-preview-loading">
-                        <i class="fa-solid fa-spinner fa-spin"></i> Loading preview...
+                        <span class="ov-mark" data-state="busy" data-size="16" data-tone="ink" aria-hidden="true"></span> Loading preview...
                     </div>
                     <iframe class="link-preview-frame" sandbox="allow-scripts allow-same-origin allow-forms" src="${esc(url)}" onload="this.previousElementSibling.style.display='none'" onerror="this.previousElementSibling.innerHTML='<i class=\\'fa-solid fa-triangle-exclamation\\'></i> Could not load preview'"></iframe>
                 </div>

@@ -126,7 +126,7 @@
                     <!-- RTMP Feed Status Indicator -->
                     <div id="bc-rtmp-status" class="bc-rtmp-status waiting">
                         <div class="bc-rtmp-status-icon">
-                            <i class="fa-solid fa-circle-notch fa-spin" id="bc-rtmp-status-spinner"></i>
+                            <span class="ov-mark" data-state="busy" data-size="18" id="bc-rtmp-status-spinner" aria-hidden="true"></span>
                             <i class="fa-solid fa-check-circle" id="bc-rtmp-status-ok" style="display:none"></i>
                         </div>
                         <div class="bc-rtmp-status-text">
@@ -787,7 +787,7 @@ WantedBy=multi-user.target</code>
                                     <span>No media playing</span>
                                 </div>
                                 <div class="bc-media-pip-loading" id="bc-media-pip-loading" style="display:none">
-                                    <div class="spinner-small"></div>
+                                    <span class="ov-mark" data-state="busy" data-size="18" data-tone="ink" aria-hidden="true"></span>
                                     <span>Loading…</span>
                                 </div>
                                 <div id="bc-media-pip-host"></div>
@@ -1206,7 +1206,7 @@ WantedBy=multi-user.target</code>
                 </div>
                 <div class="bc-camera-sheet-list" id="bc-camera-sheet-list">
                     <div class="bc-camera-sheet-empty">
-                        <i class="fa-solid fa-spinner fa-spin"></i>
+                        <span class="ov-mark" data-state="busy" data-size="16" data-tone="ink" aria-hidden="true"></span>
                         <span>Loading cameras…</span>
                     </div>
                 </div>

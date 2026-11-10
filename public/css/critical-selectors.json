@@ -26,23 +26,6 @@
   "*::after",
   "*::before",
   ".badge",
-  ".brand-mark",
-  ".brand-mark .ov-comet",
-  ".brand-mark .ov-dot",
-  ".brand-mark .ov-glow",
-  ".brand-mark .ov-spark",
-  ".brand-mark .ov-v",
-  ".brand-mark svg",
-  ".brand-mark--hero",
-  ".brand-mark--hero svg",
-  ".brand-mark.is-awake .ov-comet",
-  ".brand-mark.is-awake .ov-dot",
-  ".brand-mark.is-awake .ov-glow",
-  ".brand-mark.is-awake .ov-spark",
-  ".brand-mark.is-awake .ov-v",
-  ".brand-mark.is-awake svg",
-  ".brand-mark.is-settling svg",
-  ".brand-mark.is-spin svg",
   ".btn",
   ".btn-danger",
   ".btn-follow",
@@ -412,6 +395,7 @@
   "input",
   "select",
   "select.form-input",
-  "textarea"
+  "textarea",
+  ".hero h1 .ov-mark"
  ]
 }

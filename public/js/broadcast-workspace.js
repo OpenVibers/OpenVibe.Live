@@ -3575,7 +3575,7 @@ function _wsRenderRestreamConnect(platform) {
     // Status not loaded yet — show a light placeholder
     if (!st) {
         box.innerHTML = `<div style="background:rgba(255,255,255,0.04);border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin:0 0 12px">
-            <p class="muted" style="font-size:0.78rem;margin:0"><i class="fa-solid fa-spinner fa-spin"></i> Checking ${esc(plat.name)} connection…</p></div>`;
+            <p class="muted" style="font-size:0.78rem;margin:0"><span class="ov-mark" data-state="busy" data-size="16" data-tone="ink" aria-hidden="true"></span> Checking ${esc(plat.name)} connection…</p></div>`;
         return;
     }
 
@@ -3636,7 +3636,7 @@ function _wsConnectPlatform(platform) {
     const box = document.getElementById('ws-rs-connect');
     if (box && !document.getElementById('ws-rs-connecting')) {
         box.insertAdjacentHTML('afterbegin',
-            `<div id="ws-rs-connecting" style="text-align:center;padding:6px 0;color:var(--text-secondary);font-size:0.8rem"><i class="fa-solid fa-spinner fa-spin"></i> Waiting for authorization…</div>`);
+            `<div id="ws-rs-connecting" style="text-align:center;padding:6px 0;color:var(--text-secondary);font-size:0.8rem"><span class="ov-mark" data-state="busy" data-size="16" data-tone="ink" aria-hidden="true"></span> Waiting for authorization…</div>`);
     }
 
     let finished = false;

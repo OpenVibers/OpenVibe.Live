@@ -264,7 +264,7 @@
 
     window.previewAiViewers = async function previewAiViewers(btn) {
         const box = $('aiv-preview'); if (btn) btn.disabled = true;
-        if (box) { box.style.display = ''; box.innerHTML = '<span class="muted"><i class="fa-solid fa-spinner fa-spin"></i> Asking the director… (this is a dry run — nothing is posted)</span>'; }
+        if (box) { box.style.display = ''; box.innerHTML = '<span class="muted"><span class="ov-mark" data-state="busy" data-size="16" data-tone="ink" aria-hidden="true"></span> Asking the director… (this is a dry run — nothing is posted)</span>'; }
         try {
             const d = await api('/ai-viewers/preview', { method: 'POST', body: {} });
             if (!box) return;

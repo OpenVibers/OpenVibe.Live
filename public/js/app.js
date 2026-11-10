@@ -1360,57 +1360,6 @@ function showNotFound({ title = 'Page not found', message = 'Nothing lives at th
    Route-change motion: the brand mark, and the page itself.
    ═══════════════════════════════════════════════════════════════════════════ */
 
-/** How long the mark stays animated after a route change before settling. */
-const BRAND_AWAKE_MS = 5000;
-let _brandIdleTimer = 0, _brandSettleTimer = 0, _brandSpinTimer = 0, _brandEverWoken = false;
-
-/**
- * Wake the OV mark for a moment, then let it go still: a route change spins it once and keeps it
- * lively for five seconds (looping forever repainted every frame while people read). CSS loops stop
- * via animation-play-state on their 0% rest pose; SMIL needs the SVG's pauseAnimations().
- */
-function ovWakeBrandMark() {
-    let marks;
-    try { marks = document.querySelectorAll('.brand-mark'); } catch { return; }
-    if (!marks || !marks.length) return;
-    let reduce = false;
-    try { reduce = (document.documentElement.getAttribute('data-ov-motion') === 'off'); } catch { /* */ }
-    if (reduce) {
-        // CSS stops the loops under reduced motion but cannot reach SMIL — the gradient sweep on the
-        // V would otherwise run for the whole session. Hold everything still, once.
-        if (!_brandEverWoken) marks.forEach(m => { try { const svg = m.querySelector('svg'); svg && svg.pauseAnimations && svg.pauseAnimations(); } catch { /* */ } });
-        _brandEverWoken = true;
-        return;
-    }
-
-    _brandEverWoken = true;
-    clearTimeout(_brandIdleTimer); clearTimeout(_brandSettleTimer); clearTimeout(_brandSpinTimer);
-    marks.forEach((m) => {
-        m.classList.remove('is-settling', 'is-spin');
-        m.classList.add('is-awake');
-        void m.offsetWidth;                       // restart the spin on a repeat navigation
-        m.classList.add('is-spin');
-        const svg = m.querySelector('svg');
-        try { svg && svg.unpauseAnimations && svg.unpauseAnimations(); } catch { /* no SMIL here */ }
-    });
-
-    // The spin owns the svg's animation slot while it runs, so the ambient float cannot start
-    // until it is off. Hand over as soon as the spin finishes rather than at the end of the window.
-    _brandSpinTimer = setTimeout(() => marks.forEach(m => m.classList.remove('is-spin')), 1080);
-
-    _brandIdleTimer = setTimeout(() => {
-        marks.forEach((m) => {
-            m.classList.remove('is-awake', 'is-spin');
-            m.classList.add('is-settling');
-            const svg = m.querySelector('svg');
-            // Pause in place rather than rewinding: a jump back to t=0 would throw the orbit dot
-            // across the ring at the exact moment the mark is supposed to be coming to rest.
-            try { svg && svg.pauseAnimations && svg.pauseAnimations(); } catch { /* */ }
-        });
-        _brandSettleTimer = setTimeout(() => marks.forEach(m => m.classList.remove('is-settling')), 720);
-    }, BRAND_AWAKE_MS);
-}
-
 const _PAGE_LABELS = { broadcast: 'Go Live', recap: 'recap' };
 function _pageLabel(page) { return _PAGE_LABELS[page] || String(page).replace(/-/g, ' ').replace(/^./, (c) => c.toUpperCase()); }
 
@@ -1423,11 +1372,7 @@ function showPage(page) {
     // change only — re-rendering the page you are already on should not restart either.
     // A page move: the page stays hidden until its route's styles and code are in (never unstyled), with a progress
     // bar, a "Loading …" line if it takes a moment, and a fade-in (openvibe-shared web-runtime enter()).
-    if (changed) { ovWakeBrandMark(); if (window.ov && ov.enter && el) ov.enter(el, ov.route(location.pathname), { label: el.dataset.title || _pageLabel(page) }); }
-    // A fresh page load is not a "change" — currentPage is already the page being shown — so the
-    // mark would never take its first sleep and the SMIL orbits would loop for the whole session.
-    // Wake it once on arrival; the same timer puts it to sleep five seconds later.
-    else if (!_brandEverWoken) ovWakeBrandMark();
+    if (changed) { if (window.ov && ov.enter && el) ov.enter(el, ov.route(location.pathname), { label: el.dataset.title || _pageLabel(page) }); }
     // One event for modules that react to the visible page (voice mini bar, floating chat…), instead
     // of each attaching MutationObservers to every section's class attribute.
     try { document.dispatchEvent(new CustomEvent('ov:page', { detail: { page, changed } })); } catch { /* */ }
@@ -2434,7 +2379,7 @@ async function uploadGoalMedia(input) {
     const file = input.files && input.files[0];
     if (!file) return;
     const preview = document.getElementById('goal-media-preview');
-    if (preview) preview.innerHTML = '<div class="muted" style="font-size:0.8rem"><i class="fa-solid fa-spinner fa-spin"></i> Uploading…</div>';
+    if (preview) preview.innerHTML = '<div class="muted" style="font-size:0.8rem"><span class="ov-mark" data-state="busy" data-size="16" data-tone="ink" aria-hidden="true"></span> Uploading…</div>';
     try {
         const fd = new FormData(); fd.append('file', file);
         const token = localStorage.getItem('token');
@@ -2530,7 +2475,7 @@ async function loadUpdatesPage() {
     const container = document.getElementById('updates-list');
     if (!container) return;
     if (container.dataset.ovShippedMounted) return;   // already showing; "Load more" keeps its place
-    container.innerHTML = '<div class="loading-spinner"><i class="fa-solid fa-circle-notch fa-spin"></i></div>';
+    container.innerHTML = '<div class="loading-spinner"><span class="ov-mark" data-state="busy" data-size="32" aria-hidden="true"></span></div>';
     const shipped = await loadShipped();
     if (!shipped) {
         container.innerHTML = '<p style="opacity:0.6;text-align:center;padding:32px 0;">The update log could not be loaded. <a href="https://openvibe.network/updates?site=live">See it on openvibe.network</a>.</p>';

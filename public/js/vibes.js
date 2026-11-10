@@ -9,7 +9,7 @@ function openvibeSubscribeModal(username) {
         <h3><i class="fa-solid fa-star"></i> Subscribe to ${username ? username : 'this channel'}</h3>
         <p class="muted" id="sub-price-line" style="margin-bottom:16px">Monthly channel subscription.</p>
         <div id="subscribe-options" data-streamer="${username || ''}">
-            <p class="muted" style="font-size:0.85rem;text-align:center"><i class="fa-solid fa-spinner fa-spin"></i> Loading…</p>
+            <p class="muted" style="font-size:0.85rem;text-align:center"><span class="ov-mark" data-state="busy" data-size="16" data-tone="ink" aria-hidden="true"></span> Loading…</p>
         </div>`;
 }
 

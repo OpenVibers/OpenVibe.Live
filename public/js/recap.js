@@ -89,14 +89,14 @@
                 ${more}
             </article>`;
         const regen = root.querySelector('#recap-regen');
-        if (regen) regen.onclick = async () => { regen.disabled = true; regen.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Rewriting…'; try { await api(`/recap/${id}/regenerate`, { method: 'POST' }); await loadRecapPage(id); } catch (e) { regen.disabled = false; regen.innerHTML = '<i class="fa-solid fa-rotate"></i> Rewrite report'; } };
+        if (regen) regen.onclick = async () => { regen.disabled = true; regen.innerHTML = '<span class="ov-mark" data-state="busy" data-size="16" data-tone="ink" aria-hidden="true"></span> Rewriting…'; try { await api(`/recap/${id}/regenerate`, { method: 'POST' }); await loadRecapPage(id); } catch (e) { regen.disabled = false; regen.innerHTML = '<i class="fa-solid fa-rotate"></i> Rewrite report'; } };
         try { document.title = `${w.headline || s.title} — ${u.display_name}'s stream report | OpenVibe.Live`; } catch { /* */ }
     }
 
     window.loadRecapPage = async function (id) {
         const root = document.getElementById('recap-root');
         if (!root) return;
-        root.innerHTML = '<div class="loading-spinner"><i class="fa-solid fa-circle-notch fa-spin"></i></div>';
+        root.innerHTML = '<div class="loading-spinner"><span class="ov-mark" data-state="busy" data-size="32" aria-hidden="true"></span></div>';
         let data = null;
         try { data = await api(`/recap/${encodeURIComponent(id)}`); } catch (e) {
             const live = e && /live/i.test(e.message || '');

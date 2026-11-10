@@ -779,26 +779,6 @@ button.viewer-badge:focus-visible { outline: 2px solid #93c5fd; outline-offset: 
     flex-shrink: 0; align-self: center;
 }
 
-.stream-switch-spinner::before,
-.stream-switch-spinner::after {
-    content: '';
-    position: absolute;
-    inset: 12%;
-    border-radius: 50%;
-}
-
-.stream-switch-spinner::before {
-    inset: 18%;
-    border: 2px solid rgba(255,255,255,0.9);
-    animation: spin 1.2s var(--ov-ease-in-out, ease-in-out) infinite;   /* "spin" breathes now (style.css): nothing spins */
-}
-
-.stream-switch-spinner::after {
-    inset: 34%;
-    background: radial-gradient(circle at 32% 30%, rgba(255,255,255,0.9), color-mix(in srgb, var(--accent) 86%, white 10%));
-    box-shadow: 0 0 18px color-mix(in srgb, var(--accent) 44%, transparent);
-    animation: playerLoaderPulse 1.8s var(--ov-ease-in-out, ease-in-out) infinite;
-}
 .ch-cumulative-viewers {
     display: flex; align-items: center; gap: 10px;
     flex-wrap: wrap; margin-top: 4px;

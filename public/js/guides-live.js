@@ -250,7 +250,7 @@
         const oauthBtn = f.querySelector('#ovg-oauth-go');
         if (oauthBtn) oauthBtn.onclick = () => {
             oauthBtn.disabled = true;
-            oauthBtn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Waiting for ' + esc(name) + '…';
+            oauthBtn.innerHTML = '<span class="ov-mark" data-state="busy" data-size="16" data-tone="ink" aria-hidden="true"></span> Waiting for ' + esc(name) + '…';
             connectPlatform(plat, (ok, needsKey) => {
                 if (ok && !needsKey) return rerender();          // done — back to the list
                 if (ok && needsKey) { rerender(); return; }       // linked, but the key still needs pasting

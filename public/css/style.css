@@ -4420,18 +4420,6 @@ body :is(.modal-overlay, .bc-ws-confirm-overlay, .bc-modal, .bc-perm-overlay, .b
 .stream-switch-overlay.visible {
     display: flex; animation: fadeIn var(--ov-dur-2, 0.15s) var(--ov-ease-out, ease);
 }
-.stream-switch-spinner {
-    position: relative;
-    width: 58px;
-    height: 58px;
-    border-radius: 50%;
-    background: linear-gradient(140deg, color-mix(in srgb, var(--accent) 82%, white 8%), color-mix(in srgb, var(--text-primary, #fff) 8%, transparent));
-    box-shadow:
-        0 0 0 1px rgba(255,255,255,0.1),
-        0 18px 32px rgba(0,0,0,0.3),
-        inset 0 0 26px rgba(255,255,255,0.08);
-    animation: playerLoaderMorph 5.8s var(--ov-ease-in-out, ease-in-out) infinite alternate;
-}
 /* "spin" is kept as a name for older rules, but it breathes: nothing spins (design lint, plan L45). */
 @keyframes spin { 50% { opacity: 0.45; transform: scale(0.85); } }
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
@@ -9489,76 +9477,7 @@ label.staff-inline-toggle.aiv-field { flex-direction:row; align-items:center; }
        reason to stop motion (the owner, 2026-11-10). */
 }
 
-/* ── OV brand mark (navbar + hero): the O is a ring with a comet running around it, the V is
-   drawn inside with a light sweep, a dot orbits the ring. Transform/opacity/stroke motion only. ── */
-.brand-mark { display: inline-grid; place-items: center; width: 32px; height: 32px; color: var(--accent); flex: none; }
-/* Idle is the default state. Every loop below is declared as before but held at its 0% frame —
-   each one's 0% is a sensible resting pose — and only runs while .is-awake is on the mark, which
-   app.js adds for five seconds after a route change. Six looping animations on an element that is
-   on screen the entire session is a composited repaint per frame for no reason while someone is
-   reading. */
-.brand-mark svg { overflow: visible; transform-origin: 50% 50%; animation: ovFloat 5s var(--ov-ease-in-out, ease-in-out) infinite; }
-.brand-mark svg,
-.brand-mark .ov-glow,
-.brand-mark .ov-comet,
-.brand-mark .ov-v,
-.brand-mark .ov-dot,
-.brand-mark .ov-spark { animation-play-state: paused; }
-.brand-mark.is-awake svg,
-.brand-mark.is-awake .ov-glow,
-.brand-mark.is-awake .ov-comet,
-.brand-mark.is-awake .ov-v,
-.brand-mark.is-awake .ov-dot,
-.brand-mark.is-awake .ov-spark { animation-play-state: running; }
-/* Hovering is a reason to come alive too, without waiting for a navigation. */
-.nav-brand:hover .brand-mark svg,
-.nav-brand:hover .brand-mark .ov-glow,
-.nav-brand:hover .brand-mark .ov-comet,
-.nav-brand:hover .brand-mark .ov-dot { animation-play-state: running; }
-.ov-glow { fill: currentColor; opacity: 0.1; transform-box: fill-box; transform-origin: center; animation: ovGlow 3.4s var(--ov-ease-in-out, ease-in-out) infinite; }
-.ov-ring { fill: none; stroke: currentColor; stroke-width: 4; opacity: 0.28; }
-.ov-comet { fill: none; stroke-width: 4; stroke-linecap: round; stroke-dasharray: 34 79; transform-box: fill-box; transform-origin: center; animation: ovComet 3.6s linear infinite; }
-.ov-v { fill: none; stroke-width: 4.6; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 46; stroke-dashoffset: 0; animation: ovDraw 1.1s var(--ov-ease-out, cubic-bezier(.2,.8,.2,1)) both; }
-.ov-dot { fill: #fff; transform-box: fill-box; transform-origin: center; animation: ovDot 2.4s var(--ov-ease-in-out, ease-in-out) infinite; }
-.ov-orbit { fill: #fff; filter: drop-shadow(0 0 3px currentColor); }
-.ov-orbit--tail { opacity: 0.5; }
-.nav-brand:hover .brand-mark svg, .hero h1:hover .brand-mark--hero svg { animation: ovSpin 0.9s var(--ov-ease-spring, cubic-bezier(.2,1.5,.3,1)) 1; }
-.nav-brand:hover .ov-comet, .hero h1:hover .ov-comet { animation-duration: 0; }
-.nav-brand:hover .ov-glow, .hero h1:hover .ov-glow { opacity: 0.28; }
-.nav-brand:hover .ov-v, .hero h1:hover .ov-v { animation: ovDraw var(--ov-dur-4, 0.7s) var(--ov-ease-out, cubic-bezier(.2,.8,.2,1)) both; }
-@keyframes ovFloat { 0%, 100% { transform: translateY(0) rotate(0deg); } 50% { transform: translateY(-1px) rotate(2deg); } }
-@keyframes ovGlow { 0%, 100% { opacity: 0.08; transform: scale(0.92); } 50% { opacity: 0.2; transform: scale(1.06); } }
-@keyframes ovComet { 50% { opacity: 0.35; } }
-@keyframes ovDraw { from { stroke-dashoffset: 46; } to { stroke-dashoffset: 0; } }
-@keyframes ovDot { 0%, 100% { transform: scale(1); opacity: 0.85; } 50% { transform: scale(1.5); opacity: 1; } }
-@keyframes ovSpin { 40% { transform: scale(1.18); } }
-/* One spring as the route lands: it grows past its size and settles (it no longer turns). */
-.brand-mark.is-spin svg { animation: ovSpinIn 1.05s var(--ov-ease-spring, cubic-bezier(.16, 1.16, .3, 1)) 1 both; animation-play-state: running; }
-@keyframes ovSpinIn {
-    0%   { transform: scale(0.86); }
-    45%  { transform: scale(1.2); }
-    72%  { transform: scale(0.97); }
-    100% { transform: scale(1); }
-}
-/* And a short overshoot as it comes to rest, so going still reads as deliberate. */
-.brand-mark.is-settling svg { animation: ovSettle var(--ov-dur-4, 0.68s) var(--ov-ease-spring, cubic-bezier(.26, 1.32, .42, 1)) 1 both; animation-play-state: running; }
-@keyframes ovSettle {
-    0%   { transform: rotate(5deg) scale(1.07); }
-    55%  { transform: rotate(-2.5deg) scale(0.982); }
-    100% { transform: none; }
-}
-/* Hero: bigger, plus sparks off the V */
-.brand-mark--hero { width: 1.05em; height: 1.05em; vertical-align: -0.16em; color: var(--accent); margin-right: 0.08em; }
-.brand-mark--hero svg { width: 100%; height: 100%; }
-.ov-spark { fill: #fff; opacity: 0; transform-box: fill-box; transform-origin: center; animation: ovSpark 3.4s var(--ov-ease-out, ease-out) infinite; }
-.ov-spark--2 { animation-delay: 1.1s; animation-name: ovSpark2; } .ov-spark--3 { animation-delay: 2.3s; animation-name: ovSpark3; }
-@keyframes ovSpark { 0% { opacity: 0; transform: translate(0,10px) scale(0.6); } 10% { opacity: 1; } 60% { opacity: 0; transform: translate(12px,-12px) scale(1.4); } 100% { opacity: 0; } }
-@keyframes ovSpark2 { 0% { opacity: 0; transform: translate(0,10px) scale(0.6); } 10% { opacity: 1; } 60% { opacity: 0; transform: translate(-13px,-8px) scale(1.3); } 100% { opacity: 0; } }
-@keyframes ovSpark3 { 0% { opacity: 0; transform: translate(0,10px) scale(0.6); } 10% { opacity: 1; } 60% { opacity: 0; transform: translate(3px,16px) scale(1.2); } 100% { opacity: 0; } }
-@media (max-width: 600px) { .brand-mark { width: 26px; height: 26px; } .brand-mark svg { width: 25px; height: 25px; } .brand-mark--hero svg { width: 100%; height: 100%; } }
-.rs-lite .ov-orbit, .rs-lite .ov-spark { filter: none; }
-html[data-ov-motion=off] .ov-orbit,html[data-ov-motion=off] .ov-spark{display: none}html[data-ov-motion=off] .ov-comet{stroke-dasharray: none;opacity: 0.9}
-@media (max-width: 600px) { .brand-mark { width: 26px; height: 26px; } .brand-mark svg { width: 25px; height: 25px; } }
+.hero h1 .ov-mark { width: 1.05em; height: 1.05em; vertical-align: -0.14em; margin-right: 0.08em; }
 .ov-mark--ph { opacity: 0.45; color: var(--text-muted); }
 
 /* ── Hero stat board: headline strip + expandable full board ──────────────────
@@ -9753,7 +9672,7 @@ html[data-ov-motion=off] .ov-orbit,html[data-ov-motion=off] .ov-spark{display: n
 .nav-brand { min-width: 0; overflow: hidden; }
 @media (max-width: 420px) {
     .navbar { padding: 0 9px; gap: 8px; }
-    .nav-brand .brand-text, .nav-brand > span:not(.brand-mark) { display: none; }
+    .nav-brand .brand-text, .nav-brand > span:not(.ov-mark) { display: none; }
     .nav-right { gap: 6px; min-width: 0; }
     .nav-coins, .nav-balance { max-width: 88px; overflow: hidden; }
 }

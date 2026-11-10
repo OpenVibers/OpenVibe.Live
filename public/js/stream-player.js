@@ -721,7 +721,7 @@ function _showReconnectingIndicator() {
     const el = document.createElement('div');
     el.id = 'reconnecting-indicator';
     el.style.cssText = 'position:absolute;top:12px;right:12px;z-index:25;background:rgba(0,0,0,0.7);color:#fbbf24;padding:6px 14px;border-radius:8px;font-size:0.85rem;display:flex;align-items:center;gap:8px;pointer-events:none;';
-    el.innerHTML = '<i class="fa-solid fa-spinner fa-spin" style="font-size:0.9rem"></i> The streamer is reconnecting…';
+    el.innerHTML = '<span class="ov-mark" data-state="busy" data-size="16" data-tone="ink" aria-hidden="true"></span> The streamer is reconnecting…';
     container.appendChild(el);
 }
 
@@ -3142,7 +3142,7 @@ function setClipButtonBusy(isBusy) {
     btn.disabled = !!isBusy;
     btn.classList.toggle('is-busy', !!isBusy);
     btn.innerHTML = isBusy
-        ? '<i class="fa-solid fa-spinner fa-spin"></i>'
+        ? '<span class="ov-mark" data-state="busy" data-size="16" data-tone="ink" aria-hidden="true"></span>'
         : '<i class="fa-solid fa-scissors"></i>';
 }
 
@@ -3528,7 +3528,7 @@ function _buildClipTrimModal(clipId, dur, defaultTitle) {
         if (saveBtn.disabled) return;
         const title = titleInput.value.trim();
         saveBtn.disabled = true;
-        saveBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Saving...';
+        saveBtn.innerHTML = '<span class="ov-mark" data-state="busy" data-size="16" data-tone="ink" aria-hidden="true"></span> Saving...';
         try {
             const token = localStorage.getItem('token');
             const resp = await fetch(`/api/clips/${clipId}/trim`, {
