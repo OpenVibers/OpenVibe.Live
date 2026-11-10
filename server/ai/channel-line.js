@@ -27,6 +27,8 @@ const MAX_CONTENT = MAX_LEN - 'Streams '.length - 1; // 81
 
 // Joining words a cut may not end on ("… sessions and", "… with a").
 const TRAIL_WORD = /^(?:a|an|the|and|or|but|with|from|in|on|at|by|for|of|to|as|that|while|when|often|usually|frequently|typically|mostly|generally|sometimes|featuring|including|presenting)$/i;
+// A cut may not end on an introduced noun ("… and a dark", "… with a focus"): the phrase continues.
+const WEAK_END = /\b(?:a|an|the)\s+\S+$/i;
 // The verb the card line opens with, wherever the overview puts it early ("the flaming feline streams …").
 const VERB = /\b(?:streams?|broadcasts?|presents?|plays?|hosts?|covers?|shows?|builds?|creates?|chats?)\b/i;
 // A description in the past tense is not the card's present tense: use the fallback shape instead.
@@ -130,7 +132,7 @@ function fitContent(content) {
     if (phrases.length > 1) {
         let out = phrases[0], best = '';
         for (let i = 1; i < phrases.length; i++) {
-            if (out.length <= MAX_CONTENT && (out.length >= 50 || NEXT_CLAUSE.test(phrases[i]))) best = out;
+            if (out.length <= MAX_CONTENT && (out.length >= 50 || NEXT_CLAUSE.test(phrases[i])) && !WEAK_END.test(out)) best = out;
             const next = `${out}, ${phrases[i]}`;
             if (next.length > MAX_CONTENT) break;
             out = next;
@@ -161,7 +163,8 @@ function shapeChannelLine({ username = null, displayName = null, overview = '' }
 
         // A colon never reaches a card line; a comma keeps the sentence reading.
         content = fitContent(content.replace(/:/g, ',')).replace(/[.!?…]+$/g, '').trim();
-        if (!content) continue;
+        // "as a car-streamer" is a complete role; other trailing "a …" is an unfinished phrase.
+        if (!content || (!/^as\s+(?:a|an)\s/i.test(content) && WEAK_END.test(content))) continue;
         const line = `Streams ${content}.`;
         if (line.length > MAX_LEN || !CHANNEL_LINE_RE.test(line)) continue;
         // The owner's line (AGENTS.md, server/ai/explicit.js): people may be described; sex acts never are.
