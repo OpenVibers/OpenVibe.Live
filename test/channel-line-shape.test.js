@@ -103,6 +103,7 @@ const TRIM = [
     { overview: 'mrcodygraves streams as an IRL creator, often centered in a dark, minimalist setup with a headset and a Champion shirt.', line: 'Streams as an IRL creator, often centered in a dark, minimalist setup.' },
     { overview: '1n1xx streams a mix of fast-paced first-person shooters and arcade-style Roblox-style obstacle courses, with on-screen chat.', line: 'Streams a mix of fast-paced first-person shooters.' },
     { overview: 'Bobdope streams as an irl content creator sharing underwater marine life footage, turtle and reef scenes, and other real-world aquatic views.', line: 'Streams as an irl content creator sharing underwater marine life footage.' },
+    { overview: 'Telegram_a1z69 streams in a desktop-focused setup, often featuring a dim mobile screen and a dark, indistinct background.', line: 'Streams in a desktop-focused setup, often featuring a dim mobile screen.' },
 ];
 for (const t of TRIM) {
     const line = shapeChannelLine({ username: 'x', displayName: 'x', overview: t.overview });
