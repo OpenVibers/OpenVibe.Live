@@ -21,9 +21,17 @@ let _timer = null;
 let _busy = false;
 
 async function tick() {
-    if (_busy || !await ai.isEnabled()) return;
+    if (_busy) return;
     _busy = true;
     try {
+        // The stored card line is brought into the one shape even when AI is off (no model call: the full
+        // overview is already stored). This is the job that rewrites the stored rows, so the old name-first
+        // lines are refreshed here, not by hand.
+        try {
+            const reshaped = await db.shapeStoredStreamerOverviewShorts(100);
+            if (reshaped) console.log(`[AI] Streamer-overview job reshaped ${reshaped} stored card line(s)`);
+        } catch (e) { console.warn('[AI] streamer overview reshape:', e.message); }
+        if (!await ai.isEnabled()) return;
         const due = await db.getStreamersNeedingOverview({ decentLen: DECENT_LEN, limit: BATCH }) || [];
         for (const row of due) {
             try { await ai.generateStreamerOverview(row.user_id); }
