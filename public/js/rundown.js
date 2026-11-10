@@ -801,7 +801,14 @@ function _rdKindChips(state) {
 }
 // Trending topics and who's been talking, as two rails under the bar (on the phone) and in the side column.
 function _rdRails(d) {
-    const trending = (d.trending || []).map(_rdTopicFilter).join('');
+    // Trending on a phone is ranked, the way the side box is on a computer: the place, the topic, and what the place
+    // rests on (how many streamers, how many takes). It was a row of bare chips in no stated order.
+    const trending = (d.trending || []).map((t, i) => {
+        const [label, color] = RD_KIND[t.kind] || RD_KIND.other;
+        const meta = `${t.streamers} streamer${t.streamers === 1 ? '' : 's'} \u00b7 ${t.takes} take${t.takes === 1 ? '' : 's'}`;
+        return _rdA('/rundown?topic=' + encodeURIComponent(t.slug), `<b class="rd-rank-n" aria-hidden="true">${i + 1}</b><span class="rd-rank-t"><strong>${_rdEsc(t.title)}</strong><small>${meta}</small></span>`, 'rd-rank', `${i + 1}. ${label}: ${t.title}, ${meta}`)
+            .replace('class="rd-rank"', `class="rd-rank" style="--rd-k:${color}"`);
+    }).join('');
     const voices = (d.voices || []).map((v) => '<a class="rd-rail-item" href="/rundown?streamer=' + encodeURIComponent(v.user.username) + '">' + _rdFace(v.user, 24) + '<span>' + _rdEsc(_rdName(v.user)) + '</span></a>').join('');
     return '<div class="rd-rails">' +
         '<section class="rd-rail"><div class="rd-rail-head"><h2 class="rd-h2">Trending topics</h2>' + _rdA('/rundown/topics', 'See all', 'rd-rail-all') + '</div><div class="rd-rail-track">' + (trending || '<span class="rd-quiet">No topics yet.</span>') + '</div></section>' +
@@ -887,15 +894,95 @@ function _rdBarState() {
     window.addEventListener('scroll', () => { update(); start(); }, { passive: true });
     window.addEventListener('resize', update, { passive: true });
 }
+// ── The day, at the top of the front page (GET /api/rundown/day/today, docs/rundown.md) ──
+// Today's moments in the order they happened, as a row to swipe: each a time, who, the topic and their take, with the
+// way to that moment in the recording. Above it, the day in a few sentences when the owner has the AI summary switched
+// on and it is ready; the card says who wrote it. Nothing is drawn when there is nothing to show (no moments yet, the
+// summary off or the day too quiet). Built with DOM nodes, never innerHTML: every word here came from a stream.
+async function _rdDayFetch() {
+    try {
+        const first = await api('/rundown/day/today?limit=100');
+        const items = ((first.timeline && first.timeline.items) || []).slice();
+        let next = first.timeline && first.timeline.next_offset;
+        // A busy day: three more pages at most, so the row never holds more than 400 moments.
+        for (let i = 0; next != null && i < 3; i++) {
+            const more = await api('/rundown/day/today?limit=100&offset=' + encodeURIComponent(next));
+            items.push(...((more.timeline && more.timeline.items) || []));
+            next = more.timeline && more.timeline.next_offset;
+        }
+        return { summary: first.summary || null, items, total: (first.timeline && first.timeline.total) || items.length };
+    } catch { return null; }   // the front page is whole without it
+}
+function _rdDayEl(tag, cls, text) { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; }
+function _rdDayLink(href, cls, text, spa = true) {
+    const a = _rdDayEl('a', cls, text);
+    a.href = href;
+    if (spa) a.onclick = (e) => (typeof handleLinkClick === 'function' ? handleLinkClick(e, href) : true);
+    return a;
+}
+function _rdDayMoment(it) {
+    const li = _rdDayEl('li', 'rd-day-it');
+    const when = _rdDayEl('p', 'rd-day-when');
+    const t = _rdDayEl('time', '', _rdTime(it.time).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }));
+    t.dateTime = _rdTime(it.time).toISOString();
+    when.append(t);
+    if (it.channel && it.channel.username) when.append(_rdDayLink(_rdUserHref(it.channel), 'rd-day-who', it.channel.display_name || it.channel.username));
+    li.append(when);
+    if (it.topic && it.topic.slug) li.append(_rdDayLink(`/rundown/t/${encodeURIComponent(it.topic.slug)}`, 'rd-day-topic', it.topic.title || it.topic.slug));
+    if (it.take) li.append(_rdDayEl('p', 'rd-day-take', it.take));
+    if (it.vod && it.vod.id && typeof videoHref === 'function') {
+        const sec = Math.max(0, Math.floor(it.vod.sec || 0));
+        const w = _rdDayLink(videoHref('vod', it.vod.id, sec), 'rd-day-watch', 'Watch this moment', false);   // it leaves Live
+        const stamp = _rdDayEl('span', 'rd-stamp', _rdStamp(sec));
+        w.append(' ', stamp);
+        li.append(w);
+    }
+    return li;
+}
+function _rdDayDraw(day) {
+    const host = document.getElementById('rd-day-host');
+    if (!host || !day) return;
+    const sum = day.summary;
+    const sentences = sum && sum.status === 'ready' ? (sum.sentences || []).filter((x) => x && x.text) : [];
+    if (!day.items.length && !sentences.length) return;
+    const sec = _rdDayEl('section', 'rd-day');
+    sec.setAttribute('aria-labelledby', 'rd-day-h');
+    const h = _rdDayEl('h2', 'rd-h2', 'Today, as it happened ');
+    h.id = 'rd-day-h';
+    if (day.items.length) h.append(_rdDayEl('small', '', `${day.total} moment${day.total === 1 ? '' : 's'} so far`));
+    sec.append(h);
+    if (sentences.length) {
+        const card = _rdDayEl('div', 'rd-day-sum');
+        card.append(_rdDayEl('p', 'rd-day-sum-k', 'The day in short'));
+        sentences.forEach((x) => card.append(_rdDayEl('p', '', x.text)));
+        card.append(_rdDayEl('p', 'rd-day-sum-by', 'Written by AI from today\u2019s takes. Each sentence rests on what a streamer said.'));
+        sec.append(card);
+    }
+    if (day.items.length) {
+        const rail = _rdDayEl('ol', 'rd-day-rail');
+        rail.setAttribute('aria-label', 'Today\u2019s moments, earliest first');
+        day.items.forEach((it) => rail.append(_rdDayMoment(it)));
+        sec.append(rail);
+        host.replaceChildren(sec);
+        // The row is in time order; it opens at the newest moment, with the earlier ones a swipe back.
+        rail.scrollLeft = rail.scrollWidth;
+        return;
+    }
+    host.replaceChildren(sec);
+}
 async function _rdBrowse(root, state) {
     root.innerHTML = _rdBar(state, null) + _rdSkeleton();
     _rdBarState();
-    const d = await api('/rundown/browse' + _rdQuery(state));
+    // The day's moments are part of the plain front page only (a search or a filter is about something else), and are
+    // fetched beside the page's own data so they are in the first draw: nothing jumps down when they arrive.
+    const plain = !state.q && !state.streamer.length && !state.topic && !state.when && !state.show && !state.video && !state.following && !state.mentions && !state.kind && state.page === 1;
+    const [d, day] = await Promise.all([api('/rundown/browse' + _rdQuery(state)), plain ? _rdDayFetch() : null]);
     _rdRememberTopics(d.topics);
     _rdRememberTopics(d.trending);
     root.innerHTML = _rdBar(state, null) +
         '<div id="rd-active-host">' + _rdActiveChips(state, null) + '</div>' +
         _rdMast(d.counts, d.stats) + _rdHow() +
+        '<div id="rd-day-host"></div>' +
         '<div id="rd-rails-host">' + _rdRails(d) + '</div>' +
         '<div class="rd-grid"><div class="rd-main">' +
             _rdOnAir(d.on_air || []) +
@@ -903,6 +990,7 @@ async function _rdBrowse(root, state) {
             '<p class="rd-count" id="rd-count">' + _rdCountLine(d, state) + '</p>' +
             '<div id="rd-results">' + _rdResultsHtml(d, state) + '</div>' + _rdNextLink(d, state) +
         '</div><aside class="rd-side">' + _rdTrending(d.trending || []) + _rdVoices(d.voices || []) + _rdAbout() + '</aside></div>';
+    _rdDayDraw(day);
     _rdBarState();
     _rdObserveMore();
     document.title = (state.q ? 'Search: ' + state.q + ' · ' : '') + 'The Rundown · OpenVibe.Live';
