@@ -87,20 +87,21 @@ console.warn = (...a) => { warnings.push(a.join(' ')); };
     });
 
     await check('flag off: the channel GET has no bot_embed key and no bot_robot_id even when one is stored', async () => {
-        await raw.prepare('UPDATE channels SET bot_robot_id = ? WHERE id = ?').run('rob_stored1', chan.id);
+        await raw.prepare('UPDATE channels SET bot_robot_id = ?, bot_controls_mode = ? WHERE id = ?').run('rob_stored1', 'overlay', chan.id);
         const r = await channelGet();
         assert.strictEqual(r.status, 200, r.text.slice(0, 200));
         assert.ok(!('bot_embed' in r.body), 'no bot_embed key');
         assert.ok(!('bot_robot_id' in r.body.channel), 'no raw column on the public channel');
+        assert.ok(!('bot_controls_mode' in r.body.channel), 'the controls default is only shown through bot_embed');
         assert.ok(!r.text.includes('rob_stored1'));
-        await raw.prepare('UPDATE channels SET bot_robot_id = NULL WHERE id = ?').run(chan.id);
+        await raw.prepare('UPDATE channels SET bot_robot_id = NULL, bot_controls_mode = ? WHERE id = ?').run('panel', chan.id);
     });
 
     process.env.LIVE_BOT_EMBED = '1';
 
     await check('flag on, unbound: bot_embed is enabled with no robot', async () => {
         const r = await channelGet();
-        assert.deepStrictEqual(r.body.bot_embed, { enabled: true, robot_id: null, url: null });
+        assert.deepStrictEqual(r.body.bot_embed, { enabled: true, robot_id: null, url: null, controls_mode: 'panel' });
     });
 
     await check('flag on: anonymous 401, non-owner 403, channel mod 403', async () => {
@@ -127,8 +128,26 @@ console.warn = (...a) => { warnings.push(a.join(' ')); };
         const r = await bind('rob_sim123');
         assert.strictEqual(r.status, 200, r.text);
         const g = await channelGet();
-        assert.deepStrictEqual(g.body.bot_embed, { enabled: true, robot_id: 'rob_sim123', url: 'https://openvibe.bot/panel/rob_sim123/embed' });
+        assert.deepStrictEqual(g.body.bot_embed, { enabled: true, robot_id: 'rob_sim123', url: 'https://openvibe.bot/panel/rob_sim123/embed', controls_mode: 'panel' });
         assert.ok(!('bot_robot_id' in g.body.channel));
+    });
+
+    await check('controls_mode: the streamer\'s default is saved with the binding, served, and validated', async () => {
+        // Only the default: the robot stays bound.
+        const mode = await call('PUT', '/api/streams/channel/rover/bot', { user: 1, body: { controls_mode: 'overlay' } });
+        assert.strictEqual(mode.status, 200, mode.text);
+        assert.deepStrictEqual(mode.body.bot_embed, { enabled: true, robot_id: 'rob_sim123', url: 'https://openvibe.bot/panel/rob_sim123/embed', controls_mode: 'overlay' });
+        assert.strictEqual((await channelGet()).body.bot_embed.controls_mode, 'overlay', 'the channel serializer carries it to the page');
+        // Both together, then an invalid value changes nothing.
+        const both = await call('PUT', '/api/streams/channel/rover/bot', { user: 1, body: { robot_id: 'rob_sim123', controls_mode: 'panel' } });
+        assert.strictEqual(both.status, 200);
+        assert.strictEqual(both.body.bot_embed.controls_mode, 'panel');
+        const bad = await call('PUT', '/api/streams/channel/rover/bot', { user: 1, body: { controls_mode: 'hidden' } });
+        assert.strictEqual(bad.status, 400, 'hidden is a viewer choice, not a streamer default');
+        assert.strictEqual((await channelGet()).body.bot_embed.controls_mode, 'panel');
+        const empty = await call('PUT', '/api/streams/channel/rover/bot', { user: 1, body: {} });
+        assert.strictEqual(empty.status, 400, 'a PUT must say what to change');
+        assert.strictEqual((await db.getChannelByUserId(1)).bot_controls_mode, 'panel');
     });
 
     await check('a custom LIVE_BOT_URL changes the origin', async () => {
@@ -157,7 +176,7 @@ console.warn = (...a) => { warnings.push(a.join(' ')); };
     });
 
     await check('null and empty string unbind; url is null', async () => {
-        const unbound = { enabled: true, robot_id: null, url: null };
+        const unbound = { enabled: true, robot_id: null, url: null, controls_mode: 'panel' };
         await bind('rob_sim123');
         const a = await bind(null);
         assert.strictEqual(a.status, 200, a.text);

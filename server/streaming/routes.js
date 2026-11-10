@@ -561,6 +561,7 @@ router.get('/channel/:username', optionalAuth, async (req, res) => {
         delete publicChannel.force_vod_recording_disabled;
         // The binding is only shown through `bot_embed` below, and only with LIVE_BOT_EMBED on.
         delete publicChannel.bot_robot_id;
+        delete publicChannel.bot_controls_mode;
         const botEmbed = require('../bot/embed').channelEmbed(channel);
 
         // Counts for tab badges. Owner/mods see hidden ones too. Pastes are counted by

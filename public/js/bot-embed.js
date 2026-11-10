@@ -35,7 +35,11 @@
 
     const SANDBOX = 'allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-forms';
 
-    function embedSrc(botEmbed) {
+    const PANEL_MODES = ['panel', 'overlay', 'compact'];
+    const VIEW_MODES = ['overlay', 'panel', 'hidden'];
+    const CHOICE_KEY = 'ov:live:bot-controls';
+
+    function embedSrc(botEmbed, mode = null) {
         if (!botEmbed || typeof botEmbed.url !== 'string' || !botEmbed.url) return null;
         let u;
         try { u = new URL(botEmbed.url); } catch { return null; }
@@ -43,11 +47,15 @@
         const local = u.hostname === 'localhost' || u.hostname.endsWith('.localhost');
         if (u.protocol !== 'https:' && !(u.protocol === 'http:' && local)) return null;
         if (!/\/embed$/.test(u.pathname)) return null;
+        if (mode != null) {
+            if (!PANEL_MODES.includes(mode)) return null;
+            u.searchParams.set('mode', mode);
+        }
         return u.href;
     }
 
-    function iframeAttrs(botEmbed) {
-        const src = embedSrc(botEmbed);
+    function iframeAttrs(botEmbed, { mode = null } = {}) {
+        const src = embedSrc(botEmbed, mode);
         if (!src) return null;
         return {
             src,
@@ -63,10 +71,10 @@
         return (container.closest && container.closest('section')) || container.parentNode || null;
     }
 
-    function mount(container, botEmbed) {
+    function mount(container, botEmbed, { mode = null, toggleSection = true } = {}) {
         if (!container) return null;
-        const section = sectionOf(container);
-        const attrs = iframeAttrs(botEmbed);
+        const section = toggleSection ? sectionOf(container) : null;
+        const attrs = iframeAttrs(botEmbed, { mode });
         if (!attrs) {
             container.replaceChildren();
             if (section) section.hidden = true;
@@ -82,6 +90,71 @@
         container.replaceChildren(frame);
         if (section) section.hidden = false;
         return frame;
+    }
+
+    // ── The viewer's choice, per channel and robot ────────────────────────────────────────────────────
+    // No account is needed: localStorage only. A stored valid choice beats the streamer's default; without one
+    // the channel's `bot_embed.controls_mode` decides, and 'panel' is the old behaviour.
+    function choiceKey(channel, robotId) {
+        return `${CHOICE_KEY}:${String(channel || '')}:${String(robotId || '')}`;
+    }
+    function validView(mode) { return VIEW_MODES.includes(mode) ? mode : null; }
+    function defaultMode(botEmbed) { return botEmbed && botEmbed.controls_mode === 'overlay' ? 'overlay' : 'panel'; }
+    function effectiveMode(botEmbed, stored) {
+        return validView(stored) || defaultMode(botEmbed);
+    }
+    function readChoice(win, channel, robotId) {
+        try {
+            const s = win && win.localStorage;
+            return s ? validView(s.getItem(choiceKey(channel, robotId))) : null;
+        } catch { return null; }
+    }
+    function writeChoice(win, channel, robotId, mode) {
+        if (!validView(mode)) return false;
+        try {
+            const s = win && win.localStorage;
+            if (!s) return false;
+            s.setItem(choiceKey(channel, robotId), mode);
+            return true;
+        } catch { return false; }
+    }
+
+    /** The control rectangles from ov-bot-size.hit → a clip-path path, or null when there is nothing usable. */
+    function clipPathFor(hit) {
+        if (!Array.isArray(hit)) return null;
+        const rects = hit.filter((r) => r && [r.x, r.y, r.w, r.h].every((n) => Number.isFinite(Number(n))) && Number(r.w) > 0 && Number(r.h) > 0)
+            .slice(0, 12)
+            .map((r) => ({ x: Math.max(0, Number(r.x)), y: Math.max(0, Number(r.y)), w: Number(r.w), h: Number(r.h) }));
+        if (!rects.length) return null;
+        const path = rects.map((r) => `M${Math.round(r.x)} ${Math.round(r.y)} H${Math.round(r.x + r.w)} V${Math.round(r.y + r.h)} H${Math.round(r.x)} Z`).join(' ');
+        return `path("${path}")`;
+    }
+    function applyClip(frame, message) {
+        try {
+            if (!frame || !frame.style) return;
+            const path = message && message.mode === 'overlay' ? clipPathFor(message.hit) : null;
+            frame.style.clipPath = path || '';
+        } catch { /* a fake frame in the tests */ }
+    }
+
+    /** Ask the frame to switch view; it reloads itself in that view (its controls come from the robot's profile). */
+    function setMode(frame, botEmbed, mode) {
+        const src = embedSrc(botEmbed, mode);
+        if (!frame || !src || !frame.contentWindow) return false;
+        try {
+            frame.contentWindow.postMessage({ type: 'ov-bot-mode', robot_id: botEmbed.robot_id, mode }, new URL(src).origin);
+            return true;
+        } catch { return false; }
+    }
+
+    /** Tell the frame the pointer is moving on the page (the overlay wakes from its idle fade). */
+    function notifyActivity(frame, botEmbed) {
+        const src = embedSrc(botEmbed);
+        if (!frame || !src || !frame.contentWindow) return false;
+        try {
+            frame.contentWindow.postMessage({ type: 'ov-bot-activity', robot_id: botEmbed.robot_id }, new URL(src).origin);
+            return true;
+        } catch { return false; }
     }
 
     // The panel takes the page's colours (OpenVibe.Bot public/embed-frame.js): these tokens, read from the page's
@@ -111,7 +184,7 @@
         } catch { return null; }
     }
 
-    function listen({ frame, botEmbed, requestTicket, onRefused = () => {}, win = typeof window !== 'undefined' ? window : null }) {
+    function listen({ frame, botEmbed, requestTicket, onRefused = () => {}, onOpenPanel = () => {}, onFocusPlayer = () => {}, onSize = null, win = typeof window !== 'undefined' ? window : null }) {
         const src = embedSrc(botEmbed);
         if (!frame || !src || !win || typeof requestTicket !== 'function') return () => {};
         const origin = new URL(src).origin;
@@ -224,8 +297,18 @@
             const d = e.data || {};
             // The panel's size is about this frame, not about driving: accept it with or without the id, but never
             // for another robot.
-            if (d.type === 'ov-bot-size') { if (d.robot_id == null || d.robot_id === robotId) setHeight(d.height); return; }
+            if (d.type === 'ov-bot-size') {
+                if (d.robot_id == null || d.robot_id === robotId) {
+                    // An overlay fills the player; its clip keeps the presses outside the controls going through.
+                    if (d.mode === 'overlay') applyClip(frame, d);
+                    else { applyClip(frame, null); setHeight(d.height); }
+                    if (typeof onSize === 'function') onSize(d);
+                }
+                return;
+            }
             if (!d || d.robot_id !== robotId) return;
+            if (d.type === 'ov-bot-open-panel') { onOpenPanel(); return; }
+            if (d.type === 'ov-bot-blur-controls') { onFocusPlayer(); return; }
             if (d.type === 'ov-bot-embed-refused') { onRefused(); return; }
             if (d.type === 'ov-bot-controls') { setControls(d); return; }
             if (d.type !== 'ov-bot-ticket-request' || asking) return;
@@ -250,5 +333,5 @@
         };
     }
 
-    return { iframeAttrs, mount, listen, THEME_TOKENS, MIN_HEIGHT, MAX_HEIGHT };
+    return { iframeAttrs, mount, listen, embedSrc, choiceKey, validView, defaultMode, effectiveMode, readChoice, writeChoice, clipPathFor, applyClip, setMode, notifyActivity, VIEW_MODES, PANEL_MODES, THEME_TOKENS, MIN_HEIGHT, MAX_HEIGHT };
 });

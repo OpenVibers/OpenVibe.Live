@@ -29,7 +29,7 @@ console.log = (...a) => { if (!/^\[/.test(String(a[0]))) quiet(...a); };
 
 const BotEmbed = require('../public/js/bot-embed.js');
 
-const SIM = { enabled: true, robot_id: 'rob_sim123', url: 'https://openvibe.bot/panel/rob_sim123/embed' };
+const SIM = { enabled: true, robot_id: 'rob_sim123', url: 'https://openvibe.bot/panel/rob_sim123/embed', controls_mode: 'panel' };
 const SANDBOX = 'allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-forms';
 
 // Just enough DOM for mount(): elements with attributes, children, hidden and a section parent.
@@ -114,6 +114,42 @@ async function check(name, fn) {
             assert.strictEqual(doc.created, 1);
         }
         assert.strictEqual(BotEmbed.mount(null, SIM), null, 'no container (another page) is a no-op');
+    });
+
+    await check('modes: the viewer\'s remembered choice beats the streamer\'s default, and the frame asks for that view', () => {
+        const overlayDefault = { ...SIM, controls_mode: 'overlay' };
+        assert.strictEqual(BotEmbed.effectiveMode(SIM, null), 'panel', 'no default and no choice: under the video');
+        assert.strictEqual(BotEmbed.effectiveMode(overlayDefault, null), 'overlay', 'the streamer put them on the video');
+        assert.strictEqual(BotEmbed.effectiveMode(overlayDefault, 'panel'), 'panel', 'a viewer may move them under the video');
+        assert.strictEqual(BotEmbed.effectiveMode(SIM, 'overlay'), 'overlay', 'and onto it');
+        assert.strictEqual(BotEmbed.effectiveMode(overlayDefault, 'hidden'), 'hidden', 'or hide them');
+        assert.strictEqual(BotEmbed.effectiveMode(overlayDefault, 'bogus'), 'overlay', 'a bad stored value is ignored');
+        assert.strictEqual(BotEmbed.effectiveMode({ ...SIM, controls_mode: 'bogus' }, null), 'panel', 'a bad streamer default is panel');
+        assert.strictEqual(BotEmbed.iframeAttrs(SIM, { mode: 'overlay' }).src, 'https://openvibe.bot/panel/rob_sim123/embed?mode=overlay');
+        assert.strictEqual(BotEmbed.iframeAttrs(SIM, { mode: 'compact' }).src, 'https://openvibe.bot/panel/rob_sim123/embed?mode=compact');
+        assert.strictEqual(BotEmbed.iframeAttrs(SIM, { mode: 'bogus' }), null, 'only the three views');
+        assert.strictEqual(BotEmbed.iframeAttrs(SIM).src, SIM.url, 'the default stays the plain embed url');
+        const saved = new Map();
+        const win = { localStorage: { getItem: (k) => (saved.has(k) ? saved.get(k) : null), setItem: (k, v) => saved.set(k, String(v)) } };
+        assert.strictEqual(BotEmbed.readChoice(win, 'rover', 'rob_sim123'), null);
+        assert.strictEqual(BotEmbed.writeChoice(win, 'rover', 'rob_sim123', 'overlay'), true);
+        assert.strictEqual(BotEmbed.readChoice(win, 'rover', 'rob_sim123'), 'overlay');
+        assert.strictEqual(BotEmbed.readChoice(win, 'other', 'rob_sim123'), null, 'per channel');
+        assert.strictEqual(BotEmbed.readChoice(win, 'rover', 'rob_other'), null, 'per robot');
+        assert.strictEqual(BotEmbed.choiceKey('rover', 'rob_sim123'), 'ov:live:bot-controls:rover:rob_sim123');
+        assert.strictEqual(BotEmbed.writeChoice(win, 'rover', 'rob_sim123', 'bogus'), false);
+        assert.strictEqual(BotEmbed.writeChoice({ localStorage: { setItem() { throw new Error('blocked'); } } }, 'rover', 'rob_sim123', 'panel'), false, 'a browser that refuses storage is harmless');
+    });
+
+    await check('clipPathFor: the controls\' rectangles become one clip path; malformed boxes are ignored', () => {
+        assert.strictEqual(BotEmbed.clipPathFor([{ x: 10, y: 20, w: 44, h: 44 }]),
+            'path("M10 20 H54 V64 H10 Z")');
+        assert.strictEqual(BotEmbed.clipPathFor([{ x: 0, y: 0, w: 132, h: 132 }, { x: 300.4, y: 240.2, w: 44, h: 132 }]),
+            'path("M0 0 H132 V132 H0 Z M300 240 H344 V372 H300 Z")');
+        assert.strictEqual(BotEmbed.clipPathFor([{ x: 0, y: 0, w: 0, h: 44 }, { x: 'no', y: 1, w: 2, h: 3 }, null]), null);
+        assert.strictEqual(BotEmbed.clipPathFor('nope'), null);
+        const tooMany = Array.from({ length: 20 }, (_, i) => ({ x: i, y: i, w: 4, h: 4 }));
+        assert.strictEqual((BotEmbed.clipPathFor(tooMany).match(/M/g) || []).length, 12, 'at most the known twelve boxes');
     });
 
     await check('page wiring: the script is its own lazy feature and the section starts hidden', () => {
@@ -216,7 +252,7 @@ async function check(name, fn) {
         await check('flag on, unbound: the page still loads nothing', async () => {
             assert.strictEqual((await call('PUT', '/api/streams/channel/rover/bot', { robot_id: null })).status, 200);
             const r = await channelGet();
-            assert.deepStrictEqual(r.body.bot_embed, { enabled: true, robot_id: null, url: null });
+            assert.deepStrictEqual(r.body.bot_embed, { enabled: true, robot_id: null, url: null, controls_mode: 'panel' });
             const p = page();
             await runApply(p, r.body.bot_embed);
             assert.deepStrictEqual(p.loads, []);
@@ -231,13 +267,13 @@ async function check(name, fn) {
             const p = page();
             await runApply(p, r.body.bot_embed);
             assert.deepStrictEqual(p.loads, ['botEmbed']);
-            assert.strictEqual(p.dom.container.children.length, 1);
+            assert.strictEqual(p.dom.container.children.length, 1, 'one frame');
             const frame = p.dom.container.children[0];
             assert.strictEqual(frame.tagName, 'IFRAME');
-            assert.strictEqual(frame.getAttribute('src'), 'https://openvibe.bot/panel/rob_sim123/embed');
-            assert.strictEqual(frame.getAttribute('sandbox'), SANDBOX);
-            assert.strictEqual(p.dom.section.hidden, false);
-            assert.strictEqual(p.disposers.length, 1);
+            assert.strictEqual(frame.getAttribute('src'), 'https://openvibe.bot/panel/rob_sim123/embed', 'panel src');
+            assert.strictEqual(frame.getAttribute('sandbox'), SANDBOX, 'sandbox');
+            assert.strictEqual(p.dom.section.hidden, false, 'section shown');
+            assert.strictEqual(p.disposers.length, 1, 'one disposer');
             p.disposers[0]();
             assert.deepStrictEqual(p.dom.container.children, [], 'leaving the route removes the frame');
             assert.strictEqual(p.dom.section.hidden, true);
@@ -355,6 +391,32 @@ async function check(name, fn) {
             assert.strictEqual(posted.filter(([m]) => m.type === 'ov-bot-theme').length, 4, 'the frame load sends it again');
             stop();
             assert.ok(!winListeners.get('ov:theme').size && !winListeners.get('ov:display').size && !frameListeners.get('load').size, 'stop() removes them');
+        });
+
+        await check('listen(): an overlay fills the player, clips to its controls, and reports more/blur to the page', async () => {
+            const listeners = new Set();
+            const win = { addEventListener: (t, f) => listeners.add(f), removeEventListener: (t, f) => listeners.delete(f) };
+            let opened = 0;
+            let focused = 0;
+            let sized = null;
+            const panel = { postMessage: () => {} };
+            const frame = { contentWindow: panel, style: {}, closest: () => null };
+            const stop = BotEmbed.listen({ frame, botEmbed: SIM, win, requestTicket: async () => ({}),
+                onOpenPanel: () => { opened++; }, onFocusPlayer: () => { focused++; }, onSize: (d) => { sized = d; } });
+            const send = async (data) => { for (const f of [...listeners]) await f({ data, origin: 'https://openvibe.bot', source: panel }); };
+            await send({ type: 'ov-bot-size', robot_id: 'rob_sim123', mode: 'overlay', height: 390, minWidth: 280, minHeight: 196,
+                hit: [{ x: 16, y: 238, w: 132, h: 132 }, { x: 330, y: 238, w: 44, h: 132 }] });
+            assert.strictEqual(frame.style.clipPath, 'path("M16 238 H148 V370 H16 Z M330 238 H374 V370 H330 Z")');
+            assert.strictEqual(frame.style.height, undefined, 'the overlay fills its slot; it is not a card to resize');
+            assert.strictEqual(sized && sized.mode, 'overlay');
+            await send({ type: 'ov-bot-size', robot_id: 'rob_sim123', mode: 'overlay', height: 390, hit: [] });
+            assert.strictEqual(frame.style.clipPath, '', 'no boxes: no clip rather than a frame that swallows the video');
+            await send({ type: 'ov-bot-size', robot_id: 'rob_sim123', mode: 'panel', height: 500 });
+            assert.strictEqual(frame.style.clipPath, '', 'the full panel is a normal card again');
+            await send({ type: 'ov-bot-open-panel', robot_id: 'rob_sim123' });
+            await send({ type: 'ov-bot-blur-controls', robot_id: 'rob_sim123' });
+            assert.deepStrictEqual([opened, focused], [1, 1], 'more asks for the full panel; Escape gives the player focus');
+            stop();
         });
 
         await check('listen(): the panel\'s height sets the frame between 160 and 720 px, and only from its own frame', async () => {

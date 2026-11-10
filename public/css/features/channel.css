@@ -2039,6 +2039,33 @@ html[data-ov-motion=off] #page-channel .ch-tab-panel{scroll-margin-top: calc(var
 /* ── The robot's panel (OpenVibe.Bot) ──────────────────────────────────────────────────────────────────────────────
    It was a bare frame at the browser's default 300 by 150 with scrollbars, and a black band beside it (the owner,
    11-10: "all this broken space"). A card under the player, as wide as the column; its height can be pulled taller. */
+/* The controls over the picture: a layer above the video and below the player's own bar (z-index 5), unmute
+   overlay (20) and floating chat button. Its bottom leaves the bar's height out; bot-embed.js measures it into
+   --ch-bot-bar-h. The slot itself takes no press: the iframe is clipped to the panel's control rectangles, so a
+   press anywhere else reaches the video. */
+.ch-bot-overlay-slot { position: absolute; left: 0; right: 0; top: 0; bottom: var(--ch-bot-bar-h, 64px); z-index: 4; pointer-events: none; }
+.ch-bot-overlay-slot[hidden] { display: none; }
+.ch-bot-overlay-slot iframe { display: block; width: 100%; height: 100%; border: 0; background: transparent; pointer-events: auto; }
+/* The player's small switch: three choices, kept compact so the bar keeps its room on a phone. */
+.ch-bot-mode-inline { display: inline-flex; align-items: center; gap: 5px; min-height: 32px; color: rgba(255,255,255,.9); }
+.ch-bot-mode-inline[hidden] { display: none; }
+.ch-bot-mode-inline > i { font-size: 13px; color: rgba(255,255,255,.7); }
+.ch-bot-mode-inline select {
+    min-height: 32px; height: 32px; max-width: 168px; padding: 0 22px 0 8px; border-radius: 8px;
+    border: 1px solid rgba(255,255,255,.18); background: rgba(12,15,24,.72); color: #fff; font-size: 12px;
+}
+.ch-bot-mode-inline select option { background: #0c0f18; color: #fff; }
+@media (max-width: 480px) { .ch-bot-mode-inline > i { display: none; } .ch-bot-mode-inline select { max-width: 116px; font-size: 11px; padding-left: 6px; } }
+/* The card's switch and its one-line state when the controls are on the video. */
+.ch-bot-card-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 14px; border-bottom: 1px solid var(--border); }
+.ch-bot-card-bar[hidden] { display: none; }
+.ch-bot-card-label { color: var(--text-muted, var(--text-secondary)); font-size: .78rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; }
+.ch-bot-switch { display: inline-flex; gap: 2px; padding: 2px; border-radius: 10px; background: color-mix(in srgb, var(--text-primary, #fff) 7%, transparent); }
+.ch-bot-switch button { min-height: 30px; padding: 0 9px; border: 0; border-radius: 8px; background: transparent; color: var(--text-secondary); font-size: .78rem; font-weight: 600; }
+.ch-bot-switch button[aria-pressed="true"] { background: var(--accent); color: var(--on-accent-strong, #fff); }
+.ch-bot-card-line { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding: 12px 14px; color: var(--text-secondary); font-size: .9rem; }
+.ch-bot-card-line[hidden] { display: none; }
+.ch-bot-card-line button { min-height: 36px; padding: 0 12px; border: 1px solid var(--border); border-radius: 9px; background: transparent; color: var(--text-primary); font-size: .85rem; font-weight: 600; }
 #ch-bot-section { margin: 10px 0 0; border: 1px solid var(--border); border-radius: 16px; background: var(--bg-card, var(--bg-secondary)); overflow: hidden; }
 #ch-bot-section > h3 { display: flex; align-items: center; gap: 9px; margin: 0; padding: 10px 14px; font-size: .9rem; font-weight: 700; color: var(--text-primary); border-bottom: 1px solid var(--border); }
 #ch-bot-section > h3::before { content: ""; flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--success-text, #34d399); box-shadow: 0 0 0 3px color-mix(in srgb, var(--success-text, #34d399) 22%, transparent); }
