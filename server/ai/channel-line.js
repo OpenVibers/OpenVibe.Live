@@ -33,8 +33,12 @@ const VERB = /\b(?:streams?|broadcasts?|presents?|plays?|hosts?|covers?|shows?|b
 const PAST = /\b(?:streamed|broadcast|used to|was|were|had|played|hosted|presented|built|created|chatted)\b/i;
 // A full "Name: …" opener, after the name is off, can leave a leading separator.
 const LEADING_JUNK = /^[\s:;,.\-–—]+/;
-// Stop a single long phrase at the last whole prepositional phrase that still fits.
-const TAIL_PREP = /\s(?:with|from|in|on|at|by|for|about|over|under|into)\s/gi;
+// Stop a single long phrase at a whole joining word ("… lighting and …", "… gameplay with …").
+const TAIL_CUT = /\s(?:with|from|in|on|at|by|for|about|over|under|into|and|or|but)\s/gi;
+// A comma-separated phrase is a whole cut when it is long enough to stand alone or when the next
+// phrase is a new clause ("…, with …", "…, often …"), not the rest of the same adjective list
+// ("… and blocky, imaginative builds …").
+const NEXT_CLAUSE = /^(?:and|or|but|with|from|in|on|at|by|for|about|over|under|into|often|usually|frequently|typically|mostly|generally|sometimes|while|when|before|after|plus)\b/i;
 
 /** Plain text: a JSON-wrapped model answer and markdown noise become prose. */
 function plain(text) {
@@ -108,10 +112,10 @@ function cutWords(s) {
 /** One long phrase may end at a whole prepositional phrase ("… gameplay with a focus on …"). */
 function cutPhrase(s) {
     if (s.length <= MAX_CONTENT) return s;
-    TAIL_PREP.lastIndex = 0;
-    for (let m; (m = TAIL_PREP.exec(s));) {
-        // The first whole prepositional phrase that still leaves a real line is the cut: after it
-        // comes a new phrase the card line cannot hold ("… gameplay with a focus on immersive worlds").
+    TAIL_CUT.lastIndex = 0;
+    for (let m; (m = TAIL_CUT.exec(s));) {
+        // The first whole joining phrase that still leaves a real line is the cut: after it comes a
+        // new phrase the card line cannot hold ("… lighting and blocky, imaginative builds").
         if (m.index >= 35 && m.index <= MAX_CONTENT) return s.slice(0, m.index).trim();
     }
     return cutWords(s);
@@ -124,14 +128,14 @@ function fitContent(content) {
     if (s.length <= MAX_CONTENT) return s;
     const phrases = s.split(/\s*,\s*/).filter(Boolean);
     if (phrases.length > 1) {
-        let out = phrases[0];
+        let out = phrases[0], best = '';
         for (let i = 1; i < phrases.length; i++) {
+            if (out.length <= MAX_CONTENT && (out.length >= 50 || NEXT_CLAUSE.test(phrases[i]))) best = out;
             const next = `${out}, ${phrases[i]}`;
             if (next.length > MAX_CONTENT) break;
             out = next;
         }
-        if (out.length <= MAX_CONTENT && out !== s) return out;
-        if (out.length > MAX_CONTENT) return cutPhrase(out);
+        if (best.length >= 35) return best;
     }
     return cutPhrase(s);
 }
@@ -151,7 +155,7 @@ function shapeChannelLine({ username = null, displayName = null, overview = '' }
         let content = contentAfterVerb(sentence);
         if (!content) {
             const role = roleOf(sentence);
-            if (role) content = `as a ${role}`;
+            if (role) content = `as ${/^[aeiou]/i.test(role) ? 'an' : 'a'} ${role}`;
         }
         if (!content) continue;
 
