@@ -926,7 +926,7 @@ async function loadChannelPage(username, managedStreamRef = null, legacySessionI
         _applyChannelTabMeta(data);
         _applyBotEmbed(data.bot_embed, username);
         _offerBotBind(username);
-        _applyChannelHashTab(); // deep-link: #ai-timeline / #about / #videos … opens that tab
+        _applyChannelHashTab(liveStreams.length > 0); // deep-link: #ai-timeline / #about / #videos … opens that tab (live: marks it)
         // The Agents tab is revealed only when the channel has agent streams this viewer may see (S2).
         _agentsPaging = { username: null, grid: null };
         try { loadChannelAgents(username); } catch {}
@@ -1410,13 +1410,18 @@ function _setChannelOwnerActions(username) {
     }
 }
 
+/** The channel's own address, with no section: what Share, history and announced links carry (ask 285). */
+function _channelAddress() {
+    return `${location.origin}${location.pathname}`;
+}
+
 /** What the channel's Share button shares: the address, the name, a line about it, and the picture. */
 function updateShareButton(stream) {
     const b = document.getElementById('ch-btn-share');
     if (!b) return;
     const dvr = (typeof dvrState !== 'undefined' && dvrState) ? dvrState : null;
     const recording = dvr && dvr.active && dvr.vodId ? videoHref('vod', dvr.vodId) : '';
-    b.dataset.url = recording || `${location.origin}${location.pathname}`;
+    b.dataset.url = recording || _channelAddress();
     const s = stream || currentStreamData || null;
     const name = (s && (s.display_name || s.username)) || '';
     const title = (s && s.title) || name || document.title;
@@ -2213,10 +2218,11 @@ function _markChannelJump(tab, fromTap = false) {
         if (Math.abs(target - strip.scrollLeft) > 2) strip.scrollTo({ left: target, behavior: _channelReduceMotion() ? 'auto' : 'smooth' });
     }
     _updateChannelTabArrows();
-    // The address names the section in view once the person is among the sections (or tapped one); at the top of the
-    // page it stays clean. What is written here is remembered, so the channel's next load does not take it as a link to
-    // that section and scroll there (11-10: the page jumped to About by itself, with #about in the address).
-    const want = fromTap || window.scrollY > 120 ? `#${tab}` : '';
+    // The address follows a section the person chose (a jump link) or one it already named while they scroll past
+    // the sections; a clean address stays clean. What is written here is remembered, so the channel's next load does
+    // not take it as a link to that section and scroll there (11-10: the page jumped to About by itself).
+    if (fromTap) _chHashMark = '';
+    const want = _channelSectionHash(tab, fromTap);
     if (location.hash !== want) { _chHashWritten = want; history.replaceState(history.state, '', `${location.pathname}${location.search}${want}`); }
 }
 function _updateChannelTabArrows() {
@@ -2291,9 +2297,14 @@ function _syncChannelSections() {
 }
 let _chSecObs = null, _chSpyObs = null, _chTabsObs = null;
 let _chSpyFrame = 0;
+let _chHashMark = '';   // a section a live link named: its jump link stays marked while the page is still at the top
 function _channelSectionInView() {
     _chSpyFrame = 0;
     if (Date.now() < _chJumpUntil) return;
+    if (_chHashMark) {
+        if (window.scrollY <= 120) return;
+        _chHashMark = '';
+    }
     const panels = Array.from(document.querySelectorAll('#page-channel .ch-tab-panel'))
         .filter(p => !p.hidden).sort((a, b) => a.getBoundingClientRect().top - b.getBoundingClientRect().top);
     if (!panels.length) return;
@@ -2360,18 +2371,60 @@ async function _loadGameBadge(username) {
     }
 }
 
-// A URL hash like #ai-timeline / #about / #videos auto-opens that channel tab on load and
-// scrolls the tab content into view (used by "view full AI timeline" links, deep links, etc.).
+// A URL hash like #ai-timeline / #about / #videos auto-opens that channel tab on load: offline it
+// scrolls the tab content into view; live, the stream stays first and the tab is only marked (ask 285).
 const CHANNEL_TAB_HASHES = ['about', 'videos', 'agents', 'clips', 'clips-taken', 'pastes', 'media', 'analytics', 'ai-timeline'];
 let _chHashWritten = '';   // the last section this page wrote into the address itself (not a link somebody followed)
-function _applyChannelHashTab() {
+
+/**
+ * The section to put in the address: one the person chose (a jump link), or the section the address already names
+ * while they scroll past the sections. Scrolling never adds a section to a clean channel address — a copied or
+ * shared link would then land on that section instead of the stream (ask 285).
+ */
+function _channelSectionHash(tab, fromTap = false) {
+    const named = CHANNEL_TAB_HASHES.includes((location.hash || '').replace(/^#/, '').toLowerCase());
+    if (fromTap) return `#${tab}`;
+    if (!named) return '';
+    if (window.scrollY > 120) return `#${tab}`;
+    // At the top, keep a section somebody linked to (the load still has to open it); clear only one this page wrote.
+    return _chHashWritten ? '' : location.hash;
+}
+
+function _applyChannelHashTab(live = false) {
     const h = (location.hash || '').replace(/^#/, '').toLowerCase();
     if (!h || !CHANNEL_TAB_HASHES.includes(h)) return;
     if (_chHashWritten === `#${h}`) return;
     const btn = document.querySelector(`#ch-tabs .ch-tab[data-tab="${h}"]`);
     if (!btn || btn.style.display === 'none') return; // tab hidden / not present for this channel
-    // Jump to the section once it has had a beat to render its content.
-    setTimeout(() => switchChannelTab(h, btn, true), 200);
+    const path = location.pathname;
+    const open = () => {
+        if (location.pathname !== path) return; // the person moved on while the sections were settling
+        if (live) {
+            // A link to a live channel shows the stream first (ask 285): the section's jump link is marked and its
+            // content loads, but the page does not scroll under the player. The address loses the section too, so a
+            // copy or a share of this visit stays the channel.
+            if (location.hash) {
+                _chHashWritten = '';
+                history.replaceState(history.state, '', _channelAddress());
+            }
+            _chHashMark = h;
+            switchChannelTab(h, btn, false);
+            return;
+        }
+        switchChannelTab(h, btn, true);
+    };
+    // Jump to the section once it has had a beat to render its content. Offline, the sections are held out of the
+    // layout until the channel is ready (_channelReady), and scrollIntoView on a display:none panel does nothing:
+    // wait for ch-ready so /@name#about really opens About (ask 285).
+    if (live) return setTimeout(open, 200);
+    setTimeout(() => {
+        const page = document.getElementById('page-channel');
+        if (!page || page.classList.contains('ch-ready')) return open();
+        let tries = 0;
+        const wait = setInterval(() => {
+            if (page.classList.contains('ch-ready') || ++tries >= 30) { clearInterval(wait); open(); }
+        }, 100);
+    }, 200);
 }
 let _chTabLoaded = {};
 let _chAnalyticsDays = 7;

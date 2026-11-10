@@ -2784,7 +2784,14 @@ function _chatEvSafeUrl(u) {
         let x; try { x = new URL(String(u || '')); } catch { x = new URL(String(u || ''), window.location.origin); }
         if (x.protocol !== 'https:' && x.origin !== window.location.origin) return null;
         const h = x.hostname.toLowerCase();
-        if (x.origin === window.location.origin || h === 'openvibe.live' || h.endsWith('.openvibe.live')) return x.href;
+        if (x.origin === window.location.origin || h === 'openvibe.live' || h.endsWith('.openvibe.live')) {
+            // A go-live card opens the channel, never a section a shared address may have named (ask 285).
+            if (/^\/@[A-Za-z0-9_]{3,24}(?:\/[^/?#]+)?\/?$/.test(x.pathname)) {
+                x.hash = '';
+                x.searchParams.delete('section');
+            }
+            return x.href;
+        }
     } catch { /* not a URL */ }
     return null;
 }
