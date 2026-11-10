@@ -31,6 +31,7 @@ const browse = require('./browse');
 const settings = require('./settings');
 const del = require('./delete');
 const { createCitations } = require('./citations');
+const day = require('./day');
 
 const router = express.Router();
 const fail = (res, err, msg) => {
@@ -65,6 +66,14 @@ router.get('/', optionalAuth, async (req, res) => {
 router.get('/browse', optionalAuth, async (req, res) => {
     try { fresh(res); res.json(await browse.browse(req.query || {}, { viewer: await viewerOf(req) })); }
     catch (err) { fail(res, err, 'The search could not be run'); }
+});
+router.get('/day/:date', optionalAuth, async (req, res) => {
+    try {
+        const viewer = await viewerOf(req);
+        const payload = await day.getDay(String(req.params.date || ''), { viewer, offset: req.query.offset, limit: req.query.limit });
+        res.set('Cache-Control', viewer.userId ? 'private, no-store' : 'public, max-age=60, stale-while-revalidate=300');
+        res.json(payload);
+    } catch (err) { fail(res, err, 'Failed to load the day'); }
 });
 router.get('/options', optionalAuth, async (req, res) => {
     try { fresh(res); res.json(await browse.options()); }

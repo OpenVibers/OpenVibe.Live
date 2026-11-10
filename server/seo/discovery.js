@@ -180,7 +180,7 @@ async function llmsTxt() {
                 { title: 'Clip pages', url: 'https://openvibe.video/c/<id>', note: 'on OpenVibe.Video (Live\'s /clip/<id> redirects there)' },
                 { title: 'Pastes', url: 'https://openvibe.community/p/<slug>', note: 'pastes live on OpenVibe.Community (Live\'s /p/<slug> redirects there)' },
                 { title: 'Chat', url: `${b}/chat` },
-                { title: 'The Rundown', url: `${b}/rundown`, note: 'what streamers talked about, written up: topics, takes and episodes' },
+                { title: 'The Rundown', url: `${b}/rundown`, note: `what streamers talked about, written up: topics, takes, episodes, and the UTC day summary and timeline at ${b}/api/rundown/day/:date (or /today)` },
             ] },
             { title: 'What the AI made (AI Moments)', links: [
                 { title: 'AI Moments', url: `${b}/moments`, note: `auto-clips cut when chat reacted, frames the AI picked from streams, and AI-written after-show recaps. JSON: ${b}/api/content/moments. AI Moments pages are noindex; the /moments collection is their indexable form. They are never listed in the sitemap. An AI clip says "AI clip · from <streamer>'s stream"; it is never presented as something the streamer or a viewer clipped. A streamer can turn AI Moments off for their channel; the AI then makes no new ones from their streams.` },
