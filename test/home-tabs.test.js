@@ -134,6 +134,7 @@ check('the OpenVibe network is its own section: every site a real link, by group
     for (const g of groups) assert.ok(net.includes(`<a href="#ovnet-g-${g}"`), `a jump link to ${g}`);
     assert.ok(/<span class="ov-icon" data-icon="[a-z0-9-]+" data-size="40" aria-hidden="true"><\/span>/.test(net), 'ring icons are drawn later, not inlined');
     assert.ok(net.includes('data-ovnet-switcher') && net.includes('data-ovnet-signin'), 'the switcher button and the sign-up');
+    assert.ok(/data-ovnet-switcher><span class="ovnet-orb" aria-hidden="true"><svg class="ovmb"[^>]*><rect class="ovmb-bar"/.test(net) && net.includes('<b>Every site is in the menu</b>') && !/one tap away in the/.test(net), 'the line about the menu carries the menu button as the bar draws it now, and says where it is');
 });
 
 check('the network section is built by its script, between its markers, and nothing in it is a tab', () => {

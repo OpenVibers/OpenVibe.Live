@@ -1269,8 +1269,13 @@ function initHomeNetwork() {
         }
         if (e.target.closest('[data-ovnet-switcher]')) {
             // The OpenVibe menu (the orb at the top right) holds every site.
-            const menu = document.getElementById('openvibe-burger') || document.getElementById('openvibe-search-btn') || document.getElementById('openvibe-switch-btn');
-            if (menu) menu.click();
+            const visible = (el) => el && el.getBoundingClientRect().width > 0;
+            const menu = [document.getElementById('openvibe-burger'), document.getElementById('openvibe-search-btn'), document.getElementById('openvibe-switch-btn')].find(visible);
+            if (!menu) return;
+            // Show where the button is, then press it: the next time, the person knows where to go.
+            menu.classList.add('ovnet-point');
+            setTimeout(() => { menu.classList.remove('ovnet-point'); }, 950);
+            setTimeout(() => menu.click(), document.documentElement.dataset.ovMotion === 'off' ? 0 : 320);
         }
     });
     // The first time it nears the screen: tiles rise in, the count counts up, the ring icons load.
@@ -1503,36 +1508,46 @@ function renderRecentlyOnline(containerId, streamers, append) {
         const facts = s.recent_facts || {};
         const channelHref = '/@' + encodeURIComponent(s.username || '');
         const card = el('article', 'streamer-group-card recent-streamer-card');
-        const head = el('a', 'streamer-group-identity recent-streamer-head');
-        head.href = channelHref;
-        const face = el('span', 'recent-streamer-face', (s.display_name || s.username || '?').charAt(0).toUpperCase());
+        const head = el('header', 'streamer-group-identity recent-streamer-head');
+        // The picture opens the person's menu, as a name in chat does (ovUserMenu); the name is the way to the channel.
+        const shown = s.display_name || s.username || '?';
+        const face = el('span', 'recent-streamer-face' + (s.live ? ' is-live' : ''), shown.charAt(0).toUpperCase());
+        face.setAttribute('role', 'button'); face.tabIndex = 0; face.title = shown + ': open menu';
+        face.dataset.username = shown; face.dataset.coreUsername = s.username || ''; face.dataset.userId = String(s.user_id ?? s.id ?? '');
+        face.addEventListener('click', (e) => ovUserMenu(e));
+        face.addEventListener('contextmenu', (e) => ovUserMenu(e));
+        face.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); ovUserMenu(e); } });
         if (s.avatar_url) {
-            const img = el('img'); img.src = s.avatar_url; img.alt = ''; img.loading = 'lazy';
+            const img = el('img'); img.src = s.avatar_url; img.alt = ''; img.loading = 'lazy'; img.decoding = 'async';
             img.onerror = () => img.remove(); face.append(img);
         }
-        const name = el('strong', 'streamer-group-name', s.display_name || s.username);
-        const when = el('span', 'streamer-group-last-online' + (s.live ? ' is-live' : ''), s.live ? 'Live now' : timeAgo(s.last_online_at));
-        if (!s.live) when.title = 'Last live ' + timeAgo(s.last_online_at);
-        head.append(face, name, when);
+        const who = el('span', 'recent-streamer-who');
+        const name = el('a', 'streamer-group-name', shown);
+        name.href = channelHref;
+        const when = el('span', 'streamer-group-last-online' + (s.live ? ' is-live' : ''), s.live ? 'Live now' : 'Live ' + timeAgo(s.last_online_at));
+        who.append(name, when);
+        head.append(face, who);
         card.append(head);
-        // The same three places for everyone, so a card with little to say is not a card with a hole in it: this
-        // week in numbers (each with its icon), when they are usually on, and two lines about the channel.
+        // This week, as even tiles: a number and what it counts. One with nothing to say is not drawn; the rest share
+        // the row, so a card with one number is not a card with two holes.
         const stats = el('div', 'recent-streamer-stats');
-        const stat = (icon, value, label) => {
+        const stat = (icon, value, unit, label) => {
             if (!value) return;
             const n = el('span', 'recent-streamer-stat');
             n.title = label;
             const i = el('i', 'fa-solid ' + icon); i.setAttribute('aria-hidden', 'true');
-            n.append(i, el('span', null, value));
+            n.append(i, el('b', null, value), el('small', null, unit));
             stats.append(n);
         };
-        stat('fa-tower-broadcast', facts.streams_this_week ? facts.streams_this_week + (Number(facts.streams_this_week) === 1 ? ' stream' : ' streams') : '', 'Streams this week');
-        stat('fa-clock', facts.hours_this_week ? facts.hours_this_week + ' h' : '', 'Hours live this week');
-        stat('fa-fire', facts.days_in_a_row >= 3 ? facts.days_in_a_row + ' days' : '', 'Days in a row');
-        if (stats.childElementCount) stats.prepend(el('span', 'recent-streamer-cap', 'This week'));
-        card.append(stats);
-        const lastLine = facts.last_stream_seconds ? 'Last stream ' + formatDuration(facts.last_stream_seconds) : '';
-        card.append(el('p', 'recent-streamer-habit', [facts.usual_time, lastLine].filter(Boolean).join(' · ')));
+        stat('fa-tower-broadcast', facts.streams_this_week || '', Number(facts.streams_this_week) === 1 ? 'stream' : 'streams', 'Streams this week');
+        stat('fa-clock', facts.hours_this_week ? facts.hours_this_week + ' h' : '', 'live', 'Hours live this week');
+        stat('fa-fire', facts.days_in_a_row >= 3 ? facts.days_in_a_row + ' d' : '', 'in a row', 'Days in a row');
+        const week = stats.childElementCount > 0;
+        if (!week && facts.last_stream_seconds) stat('fa-clock', formatDuration(facts.last_stream_seconds), 'last stream', 'Length of the last stream');
+        // One caption over the tiles: what the numbers cover, and when this person is usually on.
+        const cap = [week ? 'This week' : '', facts.usual_time].filter(Boolean).join(' · ');
+        if (cap) card.append(el('p', 'recent-streamer-cap', cap));
+        if (stats.childElementCount) card.append(stats);
         const overview = String(s.ai_overview_short || s.ai_overview || '').trim();
         const about = el('div', 'recent-streamer-about');
         const summary = el('p', 'recent-streamer-summary', overview);
@@ -1551,29 +1566,27 @@ function renderRecentlyOnline(containerId, streamers, append) {
             requestAnimationFrame(() => { more.hidden = summary.scrollHeight <= summary.clientHeight + 2; });
         }
         card.append(about);
-        const history = el('div', 'streamer-group-streams recent-streamer-history');
+        const history = el('div', 'recent-streamer-history');
         for (const h of (facts.streams || []).slice(0, 2)) {
             const replay = !h.is_live && h.vod_id;
-            const row = el('a', 'streamer-group-stream recent-stream-row');
+            const row = el('a', 'recent-stream-row' + (h.is_live ? ' is-live' : ''));
             row.href = replay ? videoHref('vod', h.vod_id) : channelHref;
-            // A picture on every row: the replay's own, else the one Live can make from the recording, else a mark
-            // that says what the row is. Never an empty box.
-            const thumb = el('span', 'streamer-group-stream-thumb');
+            // A picture on every one: the replay's own, else the one Live can make from the recording, else a mark
+            // that says what it is. Never an empty box.
+            const thumb = el('span', 'recent-stream-thumb');
             const made = replay ? `/api/thumbnails/generate/vod/${encodeURIComponent(h.vod_id)}` : null;
             const src = _sgThumbSrc(h.thumbnail_url) || made;
-            const blank = () => { thumb.replaceChildren(); thumb.classList.add('is-blank'); const i = el('i', 'fa-solid ' + (h.is_live ? 'fa-tower-broadcast' : 'fa-play')); i.setAttribute('aria-hidden', 'true'); thumb.append(i); };
+            const blank = () => { thumb.querySelectorAll('img, i').forEach((n) => n.remove()); thumb.classList.add('is-blank'); const i = el('i', 'fa-solid ' + (h.is_live ? 'fa-tower-broadcast' : 'fa-play')); i.setAttribute('aria-hidden', 'true'); thumb.prepend(i); };
             if (src) {
-                const img = el('img', 'streamer-group-stream-thumb-img');
+                const img = el('img');
                 img.alt = ''; img.loading = 'lazy'; img.decoding = 'async';
                 img.onerror = () => { if (made && img.dataset.made !== '1') { img.dataset.made = '1'; img.src = made; } else blank(); };
                 if (src === made) img.dataset.made = '1';
                 img.src = src;
                 thumb.append(img);
             } else blank();
-            const info = el('span', 'streamer-group-stream-info');
-            info.append(el('span', 'streamer-group-stream-title', h.title || 'Stream'));
-            info.append(el('span', 'streamer-group-stream-time muted', (h.is_live ? 'Live' : 'Replay') + (h.length_seconds ? ' · ' + formatDuration(h.length_seconds) : '')));
-            row.append(thumb, info);
+            thumb.append(el('span', 'recent-stream-tag', (h.is_live ? 'Live' : 'Replay') + (h.length_seconds ? ' · ' + formatDuration(h.length_seconds) : '')));
+            row.append(thumb, el('span', 'recent-stream-title', h.title || 'Stream'));
             history.append(row);
         }
         card.append(history);
