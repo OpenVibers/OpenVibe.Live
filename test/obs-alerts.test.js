@@ -20,7 +20,7 @@ assert.ok(re.test('/obs/alerts/goosely') && !re.test('/obs/alerts/<x>') && !re.t
 // ── The page, statically ──
 assert.ok(!/innerHTML/.test(script), 'a message is only ever text');
 assert.match(SRC, /background: transparent !important/, 'a transparent ground over the stream');
-assert.match(SRC, /@media \(prefers-reduced-motion: reduce\)/);
+assert.doesNotMatch(SRC, /prefers-reduced-motion/, 'an alert plays whatever the streamer\'s own device asks');
 assert.match(script, /m\.type === 'overlay-alert'/, 'only overlay-alert messages');
 assert.match(script, /type: 'join', streamId: streamId, channel: user/, 'joins the channel\'s room, live or not');
 

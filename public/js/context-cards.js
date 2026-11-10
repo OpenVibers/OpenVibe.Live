@@ -107,7 +107,7 @@
                 localStorage.setItem(KEY, JSON.stringify([...openSet]));
             } catch { /* */ }
 
-            const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+            const reduce = (document.documentElement.getAttribute('data-ov-motion') === 'off');
             if (reduce) { body.hidden = !opening; busy = false; return; }
 
             // Animate the real height rather than a max-height guess: the board's height varies by

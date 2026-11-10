@@ -2834,7 +2834,7 @@ function _chatEvCss() {
 @container (max-width:240px){.chat-ev{grid-template-columns:auto minmax(0,1fr)}.chat-ev-acts{grid-column:2;justify-self:start}}
 .chat-ev--here{grid-template-columns:auto minmax(0,1fr);padding:6px 10px}.chat-ev--here .chat-ev-icon{width:22px;height:22px}.chat-ev--here .chat-ev-icon::before{width:8px;height:8px}
 @container (max-width:360px){@media (pointer:coarse){.chat-ev-cta{width:44px}}}
-@media (prefers-reduced-motion:reduce){.chat-ev.chat-msg-new{animation:none}.chat-ev--live .chat-ev-icon::before{animation:none}}`;
+`;
     document.head.appendChild(st);
 }
 function _chatEvTime(at) {

@@ -38,11 +38,11 @@ function element(tag, props = {}) {
     }, props);
 }
 
-function load({ store = {}, reduce = false } = {}) {
+function load({ store = {}, reduce = false, motion = null } = {}) {
     const observers = [];
     const ctx = {
         window: {}, console, Math, JSON, Number, Object, setInterval: () => 1, clearInterval() {},
-        document: { hidden: false, createElement: (t) => element(t) },
+        document: { hidden: false, createElement: (t) => element(t), documentElement: { getAttribute: (k) => (k === 'data-ov-motion' ? motion : null) } },
         navigator: {},
         matchMedia: () => ({ matches: reduce }),
         localStorage: { getItem: (k) => (k in store ? store[k] : null), setItem: (k, v) => { store[k] = String(v); } },
@@ -123,12 +123,17 @@ const near = (a, b) => Math.abs(a - b) < 0.001;
     assert.ok(near(ratio(box), 4 / 3), 'the canvas drives the shape while it is the picture');
 }
 
-// ── The glow is not made for reduced motion; the page wiring ──
+// ── The glow is not made with motion off (Calm and a device that asks for less keep it: a slow colour fade moves
+//    nothing); the page wiring ──
 {
-    const { api } = load({ reduce: true });
+    const { api } = load({ motion: 'off' });
     const box = element('div');
     api.watch(element('video'), box, { key: 'x' });
-    assert.strictEqual(box.children.length, 0, 'no glow canvas with reduced motion');
+    assert.strictEqual(box.children.length, 0, 'no glow canvas with motion off');
+    const calm = load({ reduce: true, motion: 'reduced' });
+    const calmBox = element('div');
+    calm.api.watch(element('video'), calmBox, { key: 'x' });
+    assert.ok(calmBox.children.length > 0, 'Calm keeps the glow');
     const withGlow = element('div');
     load().api.watch(element('video'), withGlow, { key: 'y' });
     assert.strictEqual(withGlow.children[0] && withGlow.children[0].className, 'player-shape-glow');

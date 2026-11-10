@@ -1050,7 +1050,7 @@ function _glOpenFold(id) {
     const d = document.getElementById(id);
     if (!d) return;
     d.open = true;
-    d.scrollIntoView({ block: 'start', behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+    d.scrollIntoView({ block: 'start', behavior: (document.documentElement.getAttribute('data-ov-motion') === 'off') ? 'auto' : 'smooth' });
 }
 
 function _glCopyLink() {

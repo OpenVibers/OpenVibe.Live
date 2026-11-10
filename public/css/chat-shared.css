@@ -448,16 +448,12 @@
 /* Cosmetic name/hat effects only animate while their row is on screen (IntersectionObserver). */
 .chat-msg.has-fx:not(.fx-on) .chat-user, .chat-msg.has-fx:not(.fx-on) .chat-user *,
 .chat-msg.has-fx:not(.fx-on) .chat-hat { animation-play-state: paused !important; }
-@media (prefers-reduced-motion: reduce) {
-    .chat-msg .chat-user, .chat-msg .chat-hat, .chat-particle { animation: none !important; }
-}
 
 .chat-loading-history { padding: 14px; color: var(--text-muted); text-align: center; font-size: 0.85rem; }
 
 /* New rows arrive with a short rise; history (rendered off-screen and swapped in) does not animate. */
 @keyframes chatRowIn { from { opacity: 0; transform: translateY(6px); } }
 .chat-msg.chat-msg-new { animation: chatRowIn var(--ov-dur-2, 180ms) var(--ov-ease-out, cubic-bezier(.2, .8, .3, 1)); }
-@media (prefers-reduced-motion: reduce) { .chat-msg.chat-msg-new { animation: none; } }
 
 /* Friendly global chat: folded rows. */
 .chat-friendly-group { margin: 2px 0; }

@@ -110,7 +110,6 @@ body.ovg-lock { overflow: hidden; }
     .ovg-kv { grid-template-columns: 1fr; } .ovg-kv span { font-size: 0.7rem; }
     .ovg-foot { padding: 10px 14px calc(14px + env(safe-area-inset-bottom, 0px)); }
 }
-@media (prefers-reduced-motion: reduce) { .ovg-card, .ovg-panel, .ovg-pick, .ovg-box, .ovg-sum-row, .ovg-big, .ovg-radar i, .ovg-live-badge { animation: none !important; } }
 
 /* ── Engine extras: clickable steps, hub, rings, spotlight, mini-journey forms ── */
 .ovg-steps { grid-template-columns: repeat(var(--n, 4), 1fr); }

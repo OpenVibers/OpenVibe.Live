@@ -108,7 +108,6 @@
 .sg-live-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #ef4444; margin-right: 2px; vertical-align: middle; animation: sg-pulse 1.6s var(--ov-ease-in-out, ease-in-out) infinite; }
 @keyframes sg-pulse { 50% { opacity: .35; } }
 .streamer-group-stream.is-live .streamer-group-stream-thumb { box-shadow: 0 0 0 2px #ef4444; border-radius: 8px; }
-@media (prefers-reduced-motion: reduce) { .sg-live-dot { animation: none; } }
 .streamer-group-stream-title { font-size: 0.88rem; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .streamer-group-stream-time { font-size: 0.75rem; }
 .hero-rotate {
@@ -132,9 +131,6 @@
 .hero-float:hover .hero-float-inner {
     transform: scale(1.07); filter: none; opacity: 1;
     box-shadow: 0 26px 60px -10px rgba(0, 0, 0, 0.85), 0 0 0 1px var(--accent) inset;
-}
-@media (prefers-reduced-motion: reduce) {
-    .hero-bg-layer { transition: opacity var(--ov-dur-4, 0.6s) var(--ov-ease-out, ease); }
 }
 .hero-quip {
     height: 2.8em; margin: 2px auto 18px; max-width: 640px; overflow: hidden;
@@ -296,12 +292,7 @@
     .hero-stat-label { white-space: normal; line-height: 1.1; }
     .hero-float { border-radius: 10px; }
 }
-@media (prefers-reduced-motion: reduce) {
-    .hero-float { animation: heroFloatIn var(--ov-dur-1, 0.01s) forwards; opacity: 0.5; }
-    .hero-float::after { animation: none; display: none; }
-    .hero-collage { transition: none; transform: none; }
-    .hero-quip { transition: none; }
-}
+html[data-ov-motion=off] .hero-float{opacity: 0.5}html[data-ov-motion=off] .hero-float::after{display: none}html[data-ov-motion=off] .hero-collage{transform: none}
 .stream-card-ago {
     margin-left: auto;
     font-size: 0.75rem;
@@ -372,9 +363,7 @@
     .home-cta-features { grid-template-columns: 1fr; }
     .cta-hero { font-size: 1.7rem; }
 }
-@media (prefers-reduced-motion: reduce) {
-    .cta-hero-grad { -webkit-text-fill-color: var(--accent); color: var(--accent); }
-}
+html[data-ov-motion=off] .cta-hero-grad{-webkit-text-fill-color: var(--accent);color: var(--accent)}
 .home-pastes-list {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
@@ -476,10 +465,6 @@
 .stream-card-uptime, .stream-card-vcount { display: inline-flex; align-items: center; white-space: nowrap; }
 .stream-card-appear { animation: streamCardAppear var(--ov-dur-4, 0.6s) var(--ov-ease-out, ease); }
 .stream-card-leave { opacity: 0; transform: scale(0.94); transition: opacity var(--ov-dur-3, 0.4s) var(--ov-ease-out, ease), transform var(--ov-dur-3, 0.4s) var(--ov-ease-out, ease); pointer-events: none; }
-@media (prefers-reduced-motion: reduce) {
-    .stream-card-appear { animation: none; }
-    .stream-card-leave { transition: none; }
-}
 .hero-aurora::before, .hero-aurora::after {
     content: ''; position: absolute; pointer-events: none; border-radius: 50%;
     mix-blend-mode: lighten; filter: blur(44px);
@@ -569,9 +554,6 @@
 @media (max-width: 640px) {
     .hero-stats { min-height: 182px; }
 }
-@media (prefers-reduced-motion: reduce) {
-    .hero-stats.is-swapping { transition: none; }
-}
 .hero-rotate-wrap { display: inline; }
 .hero-tagline { text-wrap: balance; overflow-wrap: break-word; }
 @media (max-width: 760px) {
@@ -647,7 +629,6 @@
 .home-load-more:active { transform: translateY(0) scale(0.99); }
 .home-load-more:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 .home-load-more:hover i { transform: translateY(2px); }
-@media (prefers-reduced-motion: reduce) { .home-load-more, .home-load-more i { transition: none; } }
 .hero-stat:hover { border-color: color-mix(in srgb, var(--accent) 38%, transparent); }
 .hero-stat--clickable:hover { transform: translateY(-1px); }
 .hero-stat--live > i { color: var(--live-red-text, var(--live-red)); background: color-mix(in srgb, var(--live-red) 15%, transparent); border-color: color-mix(in srgb, var(--live-red) 34%, transparent); }
@@ -748,7 +729,6 @@
     animation-delay: calc(var(--ov-enter-i, 0) * 45ms);
     will-change: transform, opacity;
 }
-@media (prefers-reduced-motion: reduce) { .ov-enter { animation: none !important; } }
 
 .cta-btn-short { display: none; }
 .cta-method { display: flex; flex-direction: column; }
@@ -826,11 +806,7 @@
     .cta-section-label { white-space: nowrap; }
 }
 
-@media (prefers-reduced-motion: reduce) {
-    .cta-method:hover::before, .home-cta-feature:hover::after { animation: none; opacity: 0; }
-    .home-cta-banner.about-opening * { animation: none !important; }
-    .cta-method:hover .cta-method-icon, .home-cta-feature:hover > i:first-child { transform: none; }
-}
+html[data-ov-motion=off] .cta-method:hover::before,html[data-ov-motion=off] .home-cta-feature:hover::after{opacity: 0}html[data-ov-motion=off] .cta-method:hover .cta-method-icon,html[data-ov-motion=off] .home-cta-feature:hover > i:first-child{transform: none}
 
 /*  ── from i18n-star.css ──  */
 /* ═══ Star of OpenVibe (decoration and compact grid: css/i18n-star.css) ═══
@@ -893,9 +869,7 @@
     .home-star-section { margin-bottom: 34px; }
     .star-live-card { max-width: 420px; width: 100%; margin: 0 auto; }
 }
-@media (prefers-reduced-motion: reduce) {
-    .star-petals { display: none; }
-}
+html[data-ov-motion=off] .star-petals{display: none}
 .rs-lite .star-card-border::before { animation: none; background: linear-gradient(135deg, var(--star-gold), #f472b6, var(--accent)); inset: 0; }
 .rs-lite .star-avatar-glow, .rs-lite .star-petals { display: none; }
 .rs-lite .star-avatar-ring { animation: none; }
@@ -1043,12 +1017,6 @@
     .star-act:not(.star-btn-watch) > span {
         position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap;
     }
-}
-@media (prefers-reduced-motion: reduce) {
-    .star-more.is-entering { animation: none; }
-    .star-card.is-swapping { transition: none; }
-    .star-card.is-compact .star-avatar-ring { animation: none; }
-    .star-act, .star-act > i { transition: none; }
 }
 
 /* The pitch banner: what kind of place this is, before the headline says it. */
@@ -1256,7 +1224,6 @@
 .hero-stat-all-sites > i:last-child { font-size: 0.7rem; color: var(--text-muted); transition: transform var(--ov-dur-2, 0.18s); }
 .hero-stat-all-sites:hover, .hero-stat-all-sites:focus-visible { border-color: color-mix(in srgb, var(--accent) 60%, transparent); background: color-mix(in srgb, var(--accent) 16%, transparent); outline: none; }
 .hero-stat-all-sites:hover > i:last-child { transform: translateX(3px); }
-@media (prefers-reduced-motion: reduce) { .hero-stat-all-sites, .hero-stat-all-sites > i { transition: none; } }
 
 /* Recently Online: a stream that has a recording opens its replay (openvibe.video, the chat in time beside it), and
    its picture says so with a play mark (2026-10-27). */
@@ -1272,7 +1239,6 @@
 }
 .streamer-group-stream.has-replay:hover .sg-play i, .streamer-group-stream.has-replay:focus-visible .sg-play i { transform: scale(1.08); background: var(--accent); border-color: transparent; }
 .sg-replay { color: var(--accent-light, var(--accent)); font-weight: 700; }
-@media (prefers-reduced-motion: reduce) { .sg-play i { transition: none; } }
 
 /* Touch screens (2026-10-29, tap-target audit): every control on the home reaches 44 px where it has room, and an
    invisible hit area (::after) where growing it would move the layout. Nothing changes on a mouse. */
@@ -1337,7 +1303,6 @@
 }
 .home-rail-tail { display: none; }
 @keyframes homeRailPulse { from { opacity: 1; } to { opacity: .55; } }
-@media (prefers-reduced-motion: reduce) { .home-rail-skel { animation: none; } }
 
 /* 2026-10-31, the phone home, shorter again: the featured stream's card leaves the Live Now grid on a phone (the
    featured block above already shows it), and when it was the only stream there the grid's header goes too; the
@@ -1517,12 +1482,7 @@
 /* Light themes: the surface follows the page, the aurora softens. */
 @media (prefers-color-scheme: light) { :root:not([data-theme]) .ovnet::before { opacity: .35; } }
 [data-theme-mode="light"] .ovnet::before, html.light .ovnet::before { opacity: .35; }
-@media (prefers-reduced-motion: reduce) {
-    .ovnet::before, .ovnet-sky i, .ovnet-dot { animation: none; }
-    .ovnet-sky i { opacity: .45; }
-    .ovnet.is-armed .ovnet-site { opacity: 1; --lift: 0px; }
-    .ovnet-site, .ovnet-jump a, .ovnet-cta { transition: none; }
-}
+html[data-ov-motion=off] .ovnet-sky i{opacity: .45}html[data-ov-motion=off] .ovnet.is-armed .ovnet-site{opacity: 1;--lift: 0px}
 
 /* The menu hint carries the menu's own orb (11-09: "Jump between sites… from the OV mark" pointed at the wrong button). */
 .ovnet-switch .ovnet-orb { flex: none; color: var(--accent-light, #60a5fa); }

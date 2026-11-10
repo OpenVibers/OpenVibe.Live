@@ -13,7 +13,7 @@
     if (typeof window === 'undefined' || window.OVRail) return;
 
     let seq = 0;
-    const reducedMotion = () => !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+    const reducedMotion = () => !!(window.matchMedia && (document.documentElement.getAttribute('data-ov-motion') === 'off'));
 
     function button(dir, track, label) {
         const b = document.createElement('button');

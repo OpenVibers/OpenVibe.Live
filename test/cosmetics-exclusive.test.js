@@ -44,11 +44,11 @@ const cosmetics = require('../server/monetization/cosmetics');
         const css = fs.readFileSync(path.join(__dirname, '..', file), 'utf8');
         assert.ok(css.includes('.name-fx-vegas {') && css.includes('@keyframes nameFxVegasReel') && css.includes('@keyframes nameFxVegasJackpot'), `${file} draws the effect`);
         assert.ok(css.includes('.px-vegas .chat-particle'), `${file} colours the Vegas particles`);
-        assert.ok(css.includes('prefers-reduced-motion: reduce') && /\.name-fx-vegas::before, \.name-fx-vegas::after \{ animation: none/.test(css), `${file} stops the reels for reduced motion`);
-        // 2fat's set (2026-10-23): the bass drop, its equalizer and its particles, stopped for reduced motion too.
+        assert.ok(!css.includes('prefers-reduced-motion') && css.includes('html[data-ov-motion=off] .name-fx-vegas{filter:'), `${file}: Calm plays the reels; with motion off the glow stays`);
+        // 2fat's set (2026-10-23): the bass drop, its equalizer and its particles; at rest on its glow with motion off.
         assert.ok(css.includes('.name-fx-twofat {') && css.includes('@keyframes nameFxTwofatThump') && css.includes('@keyframes nameFxTwofatEq'), `${file} draws 2fat's effect`);
         assert.ok(css.includes('.px-twofat .chat-particle'), `${file} colours 2fat's particles`);
-        assert.ok(/\.name-fx-twofat, \.name-fx-twofat::before, \.name-fx-twofat::after \{ animation: none/.test(css), `${file} stops 2fat's effect for reduced motion`);
+        assert.ok(css.includes('html[data-ov-motion=off] .name-fx-twofat{filter:'), `${file}: 2fat's effect rests on its glow with motion off`);
     }
     // 2fat's set is one of a kind like Vegas, and fits Inventory's kinds.
     const T = cosmetics.COSMETICS;

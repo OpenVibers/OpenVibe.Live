@@ -243,10 +243,7 @@
 }
 .chat-msg.has-fx:not(.fx-on) .name-fx-vegas::before,
 .chat-msg.has-fx:not(.fx-on) .name-fx-vegas::after { animation-play-state: paused !important; }
-@media (prefers-reduced-motion: reduce) {
-    .name-fx-vegas, .name-fx-vegas::before, .name-fx-vegas::after { animation: none !important; }
-    .name-fx-vegas { filter: drop-shadow(0 0 3px rgba(255, 207, 63, .9)); }
-}
+html[data-ov-motion=off] .name-fx-vegas{filter: drop-shadow(0 0 3px rgba(255, 207, 63, .9))}
 /* 2fat Bass Drop (2026-10-23, one of a kind: 2fat, who brings the old classic bangers back): the name thumps on the beat,
    a big drop then a smaller one, in club lights, with an equalizer dancing before it and a speaker after it. Only its
    one holder wears it (fx_twofat is never in the catalog). The equalizer and the speaker are pseudo-elements, so they
@@ -308,10 +305,7 @@
 }
 .chat-msg.has-fx:not(.fx-on) .name-fx-twofat::before,
 .chat-msg.has-fx:not(.fx-on) .name-fx-twofat::after { animation-play-state: paused !important; }
-@media (prefers-reduced-motion: reduce) {
-    .name-fx-twofat, .name-fx-twofat::before, .name-fx-twofat::after { animation: none !important; }
-    .name-fx-twofat { filter: drop-shadow(0 0 3px rgba(255, 47, 214, .9)); }
-}
+html[data-ov-motion=off] .name-fx-twofat{filter: drop-shadow(0 0 3px rgba(255, 47, 214, .9))}
 
 
 /* ══════════════════════════════════════════════════════════════

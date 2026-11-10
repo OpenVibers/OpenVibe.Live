@@ -60,7 +60,7 @@
     // page's effects script (which only loads on the home route).
     (function () {
         try {
-            if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+            if ((document.documentElement.getAttribute('data-ov-motion') === 'off')) return;
             if (matchMedia('(pointer: coarse)').matches || matchMedia('(max-width: 820px)').matches || (navigator.deviceMemory && navigator.deviceMemory <= 4)) {
                 document.documentElement.classList.add('rs-lite');
             }
@@ -86,7 +86,6 @@
     .ovsk-fade{animation:ovskFade var(--ov-dur-2, .25s) var(--ov-ease-out, ease) forwards}
     @keyframes ovskFade{to{opacity:0}}
     @media (max-width:760px){#stream-grid-live .ovsk-card:nth-of-type(n+3){display:none}}
-    @media (prefers-reduced-motion:reduce){.ovsk::after,.ovsk-bar::after{animation:none}}
     /* A route's own markup is fetched on first visit; until it lands the page shows its outline. */
     .ov-route-skel{display:grid;gap:14px;padding:24px 16px;max-width:1200px;margin:0 auto}
     .ov-route-skel span{display:block;border-radius:14px;background:color-mix(in srgb,var(--text-muted,#8b93ad) 10%,transparent);animation:ovRouteSkel 1.4s var(--ov-ease-in-out, ease-in-out) infinite alternate}
@@ -98,7 +97,6 @@
     .ov-route-error>i{font-size:1.4rem;color:var(--danger-text, var(--danger,#ef4444))}
     .ov-route-error>div{flex:1;min-width:180px;display:grid;gap:2px}
     .ov-route-error span{color:var(--text-muted,#8b93ad);font-size:.9rem}
-    @media (prefers-reduced-motion:reduce){.ov-route-skel span{animation:none}}
     /* Keep the cosmetics modal out of the page before its stylesheet lands. */
     .cosmetics-modal-overlay:not(.active){display:none}
     </style>

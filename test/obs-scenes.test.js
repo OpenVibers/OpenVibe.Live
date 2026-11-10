@@ -26,7 +26,7 @@ assert.match(SRC, /\/\^\[a-z0-9-\]\{1,40\}\$\/\.test\(q\.get\('theme'\)/, 'the t
 assert.ok(!/innerHTML/.test(SRC), 'a query value is only ever text');
 assert.match(SRC, /\(q\.get\('msg'\) \|\| ''\)\.slice\(0, 140\)/, 'a message of your own, short');
 assert.match(SRC, /setAttribute\('data-state', 'busy'\)/, 'on Be right back the mark breathes');
-assert.match(SRC, /@media \(prefers-reduced-motion: reduce\) \{ \.sc-light \{ animation: none; \}/, 'still under reduced motion');
+assert.doesNotMatch(SRC, /prefers-reduced-motion/, 'a scene plays whatever the streamer\'s own device asks: the audience is who sees it');
 assert.ok(!/spin|rotate\(/.test(SRC.replace(/<!--[\s\S]*?-->/g, '')), 'nothing spins');
 // ── The dashboard: a Scenes card in the Chat tab, a URL for each scene in the theme picked ──
 const frag = fs.readFileSync(path.join(__dirname, '..', 'public/fragments/dashboard.html'), 'utf8');
@@ -36,4 +36,4 @@ assert.match(dash, /chatai: +\['dash-card-vibe', 'dash-aibot-card', 'dash-card-o
 assert.match(dash, /\['', 'obs', 'scene', kind, encodeURIComponent\(currentUser\.username\)\]\.join\('\/'\)/, 'each scene\'s address');
 assert.match(dash, /if \(theme && theme !== 'vibe'\) q\.set\('theme', theme\)/, 'the theme picked rides along');
 assert.match(dash, /_call\('updateDashScenes'\)/, 'drawn when the tab opens');
-console.log('obs scenes: three scenes by route, the loader and the mark, any theme by name, the mark arriving, text only, still under reduced motion');
+console.log('obs scenes: three scenes by route, the loader and the mark, any theme by name, the mark arriving, text only, playing whatever the device asks');

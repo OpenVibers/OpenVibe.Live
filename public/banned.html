@@ -96,10 +96,7 @@
         .fine { font-size: 0.82rem; color: #8a8480; margin-top: 18px; }
         .logo { color: #a78bfa; font-weight: 800; text-decoration: none; }
 
-        @media (prefers-reduced-motion: reduce) {
-            .bg, .bg::after, .stamp, .card.shake, .rv, .msg, .msg.hot::before, .hurt.beat, .go { animation: none !important; }
-            .rv, .msg { opacity: 1; transform: none; }
-        }
+        html[data-ov-motion=off] .rv,html[data-ov-motion=off] .msg{opacity: 1;transform: none}
     </style>
 </head>
 <body>
@@ -152,7 +149,7 @@
                     ok = !!(res.ok && j.ok); name = j.name || null;
                 } catch (e) { ok = false; }
                 if (!ok) { btn.disabled = false; btn.innerHTML = 'Try again <span class="arrow">→</span>'; return; }
-                var reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+                var reduced = (document.documentElement.getAttribute('data-ov-motion') === 'off');
                 if (name) document.getElementById('welcome-line').textContent = name + ', the ban is lifted. Taking you to the site…';
                 if (!reduced) {
                     var cx = window.innerWidth / 2, cy = window.innerHeight / 2;

@@ -65,6 +65,9 @@ function openHome({ views = 0 } = {}) {
     });
     if (views) store.set('ov_home_intro_seen', String(views));
     window.matchMedia = () => ({ matches: true, addEventListener() { }, removeEventListener() { } });
+    // Motion off: the page writes its numbers at once (the frame stub below passes no time to count with). Since
+    // openvibe-shared 4.183.0 a device that asks for less motion still counts up; only Off does not.
+    window.document.documentElement.setAttribute('data-ov-motion', 'off');
     window.requestAnimationFrame = (f) => setTimeout(f, 0);
     window.cancelAnimationFrame = () => { };
     window.scrollTo = () => { };

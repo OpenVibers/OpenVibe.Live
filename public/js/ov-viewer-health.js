@@ -235,7 +235,6 @@
             '.ov-freeze-notice button svg{width:16px;height:16px}',
             '@keyframes ov-freeze-in{from{opacity:0;transform:translate(-50%,-6px) scale(.96)}}',
             '@keyframes ov-freeze-turn{to{transform:rotate(360deg)}}',
-            'html[data-ov-motion=reduced] .ov-freeze-notice::before{animation-duration:1.8s}',
         ].join('');
         (document.head || document.documentElement).appendChild(styleEl);
     }

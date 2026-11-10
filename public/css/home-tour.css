@@ -143,7 +143,7 @@
         overflow-x: auto; scrollbar-width: none; margin-left: -14px; margin-right: -14px; padding: 0 14px 2px; }
     .ovg-join:not(.is-open) .ovg-join-perks::-webkit-scrollbar { display: none; }
 }
-@media (prefers-reduced-motion: reduce) { .tour-wire, .tour-node-dot, .tour-core-ring, .tour-feat, .tour-core::before, .tour-core b, .tour-core-logo { animation: none; } .tour-feat { opacity: 1; transform: none; } }
+html[data-ov-motion=off] .tour-feat{opacity: 1;transform: none}
 .rs-lite .tour::before, .rs-lite .tour-core-ring { display: none; }
 /* Phones keep the glow but not the repainting gradients. */
 .rs-lite .tour-core b { animation: none; -webkit-text-fill-color: var(--text-primary); background: none; }
@@ -342,9 +342,6 @@
 .ovg-join-expand:hover i, .ovg-join.is-open .ovg-join-expand i { animation: none !important; }
 @keyframes joinNudgeSweep { 0%, 62% { transform: translateX(0); } 100% { transform: translateX(420%); } }
 @keyframes joinNudge { 0%, 74%, 100% { transform: translateY(0); } 82% { transform: translateY(2.5px); } 90% { transform: translateY(0); } }
-@media (prefers-reduced-motion: reduce) {
-    .ovg-join-expand::after, .ovg-join-expand i { animation: none !important; }
-}
 .tour-quest-slot.fx-live .ovg-join-perks li { animation: joinPerk var(--ov-dur-4, 0.6s) var(--ov-ease-out, cubic-bezier(.2, 1, .3, 1)) both;
     animation-delay: calc(var(--i) * 85ms + 100ms); }
 @keyframes joinPerk { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
@@ -373,12 +370,6 @@
     .ovg-join-perks { grid-template-columns: 1fr; gap: 9px; }
     .ovg-join-cta .btn { width: 100%; justify-content: center; }
     .ovg-join-tour { width: 100%; text-align: center; }
-}
-@media (prefers-reduced-motion: reduce) {
-    .ovg-quest-wave, .ovg-quest-bub, .ovg-quest-sheen, .ovg-quest-ico,
-    .ovg-join-glow, .ovg-join-mark, .ovg-join-go::after { animation: none !important; }
-    .ovg-quest-liquid { transition: none; }
-    .ovg-join-perks li { animation: none !important; }
 }
 
 /* ═══════════════════════════════════════════════════════════════
@@ -481,10 +472,6 @@
     .ovg-launch { grid-template-columns: auto 1fr auto; gap: 10px; padding: 11px 12px; }
     .ovg-launch-ico { width: 34px; height: 34px; }
     .ovg-launch-text small { font-size: 0.7rem; }
-}
-@media (prefers-reduced-motion: reduce) {
-    .ovg-launch-aura, .ovg-firstlive-ring, .ovg-launch-sheen, .ovg-firstlive-sheen { animation: none !important; }
-    .ovg-launch, .ovg-firstlive { transition: none; }
 }
 .rs-lite .ovg-launch-aura, .rs-lite .ovg-firstlive-ring { animation: none !important; }
 

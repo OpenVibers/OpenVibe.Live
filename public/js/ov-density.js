@@ -55,7 +55,6 @@
 .ovd-bar { display: block; width: 2.5px; border-radius: 1px; background: currentColor; height: 11px; }
 .ovd-btn[data-n="1"] .ovd-bar { width: 9px; }
 .ovd-btn[data-n="2"] .ovd-bar { width: 5px; }
-@media (prefers-reduced-motion: reduce) { .ovd-btn { transition: none; } }
 /* The grid honours the chosen count; without a choice it keeps its own auto-fit behaviour. */
 [data-ovd-cols] { grid-template-columns: repeat(var(--ovd-cols), minmax(0, 1fr)) !important; }
 `;

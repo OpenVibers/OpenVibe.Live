@@ -7,12 +7,12 @@
   *   - scroll reveal: section headers, cards and grids slide/fade in as they enter the viewport
  *   - count-up: hero stat numbers tick up from 0 when first painted
  *   - card tilt: stream cards tilt slightly toward the pointer
- * Everything is disabled under prefers-reduced-motion, paused when the tab is hidden, and
+ * Everything is disabled with motion off (Calm plays it), paused when the tab is hidden, and
  * skips the canvas on coarse-pointer / narrow screens to keep phones cool.
  */
 (function () {
     'use strict';
-    const REDUCED = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const REDUCED = window.matchMedia && (document.documentElement.getAttribute('data-ov-motion') === 'off');
     const COARSE = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
     if (REDUCED) return;
     // Phones, coarse pointers and low-memory devices run in "lite" mode: no particle canvas, no

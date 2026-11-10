@@ -123,9 +123,7 @@
     .sn-tile:last-child:nth-child(odd) { grid-column: 1 / -1; }
     .sn-swipe-hint { display: inline; }
 }
-@media (prefers-reduced-motion: reduce) {
-    .sn-overlay, .sn-dialog, .sn-bar, .sn-marks .sn-line { animation: none !important; stroke-dashoffset: 0; }
-}
+html[data-ov-motion=off] .sn-overlay,html[data-ov-motion=off] .sn-dialog,html[data-ov-motion=off] .sn-bar,html[data-ov-motion=off] .sn-marks .sn-line{stroke-dashoffset: 0}
 @media (forced-colors: active) {
     .sn-bar, .sn-dot { fill: CanvasText; }
     .sn-line { stroke: CanvasText; }

@@ -58,7 +58,8 @@
 
     /** The blurred fill beside a picture narrower than its box. */
     function glow(box, source) {
-        const reduce = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+        // A slow colour fade moves nothing: Calm keeps the glow, only motion off drops it.
+        const reduce = !!(document.documentElement && document.documentElement.getAttribute('data-ov-motion') === 'off');
         const saver = navigator.connection && navigator.connection.saveData;
         const c = document.createElement('canvas');
         const ctx = !reduce && !saver && c.getContext && c.getContext('2d');

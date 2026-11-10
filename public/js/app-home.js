@@ -126,7 +126,7 @@ function ovPutCards(container, html, append) {
     added.forEach(el => el.classList.add('hfx-reveal', 'is-in'));
 
     let reduce = false;
-    try { reduce = matchMedia('(prefers-reduced-motion: reduce)').matches; } catch { /* */ }
+    try { reduce = (document.documentElement.getAttribute('data-ov-motion') === 'off'); } catch { /* */ }
     if (reduce) return;
     added.forEach((el, i) => {
         el.classList.add('ov-enter');
@@ -209,7 +209,7 @@ function startHeroQuips(quips) {
  */
 function animateHeightChange(wrap, mutate, opts = {}) {
     const { duration = 420, entering = null } = opts;
-    const reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const reduced = window.matchMedia && (document.documentElement.getAttribute('data-ov-motion') === 'off');
     if (!wrap || reduced) { try { mutate(); } catch { /* */ } return; }
     const h0 = wrap.offsetHeight;
     try { mutate(); } catch { /* */ }
@@ -508,7 +508,7 @@ function _renderHeroStats(stats) {
      * nothing is clipped once it settles and the board can still grow if a number gets longer.
      */
     let swapping = 0;
-    const reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const reduced = window.matchMedia && (document.documentElement.getAttribute('data-ov-motion') === 'off');
     const swap = () => {
         const toOpen = full.hidden;
         if (reduced) {
@@ -752,7 +752,7 @@ function renderHeroBackground(media, moments) {
         layers[0].classList.remove('active'); void layers[0].offsetWidth; layers[0].classList.add('active');
     } else layers[0].classList.add('active');
     layers[1].classList.remove('active');
-    if (frames.length < 2 || (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches && frames.length < 2)) return;
+    if (frames.length < 2 || (window.matchMedia && (document.documentElement.getAttribute('data-ov-motion') === 'off') && frames.length < 2)) return;
     let idx = 0;
     _heroBgTimer = setInterval(() => {
         if (document.hidden) return;
@@ -777,7 +777,7 @@ function renderHeroCollage(media) {
     if (!wrap || !Array.isArray(media) || !media.length) return;
     if (_heroCollageTimer) { clearInterval(_heroCollageTimer); _heroCollageTimer = null; }
     wrap.innerHTML = '';
-    const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const reduce = window.matchMedia && (document.documentElement.getAttribute('data-ov-motion') === 'off');
     const w = window.innerWidth || 1200;
     const count = Math.min(media.length, w < 640 ? 5 : w < 1024 ? 8 : 12);
     const positions = _heroCollagePositions(count);
@@ -824,7 +824,7 @@ function _heroParallaxInit() {
     const hero = document.querySelector('#page-home .hero');
     const collage = document.getElementById('hero-collage');
     if (!hero || !collage) return;
-    if (window.matchMedia && (window.matchMedia('(prefers-reduced-motion: reduce)').matches || window.matchMedia('(pointer: coarse)').matches)) return;
+    if (window.matchMedia && ((document.documentElement.getAttribute('data-ov-motion') === 'off') || window.matchMedia('(pointer: coarse)').matches)) return;
     _heroParallaxBound = true;
     // Parallax is a plain 2D shift of the whole collage, written straight to its transform. It used
     // to write --tilt-x/--tilt-y custom properties; custom properties inherit, so every pointer move
@@ -980,7 +980,7 @@ function _initHomeAbout() {
  */
 function _aboutPlayOpening(banner) {
     let reduce = false;
-    try { reduce = matchMedia('(prefers-reduced-motion: reduce)').matches; } catch { /* */ }
+    try { reduce = (document.documentElement.getAttribute('data-ov-motion') === 'off'); } catch { /* */ }
     if (reduce) return;
     const items = banner.querySelectorAll('.home-about-body .cta-section-label, .home-about-body .cta-method, .home-about-body .home-cta-feature, .home-about-body .home-cta-buttons, .home-about-body .cta-money-lede');
     items.forEach((el, i) => el.style.setProperty('--about-i', String(Math.min(i, 16))));
@@ -1197,7 +1197,7 @@ function _ovnetCount(root) {
     const n = Number(root.querySelector('.ovnet-groups')?.dataset.sites || el?.dataset.count || 0);
     if (!el || !n) return;
     el.dataset.count = String(n);
-    if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) { el.textContent = String(n); return; }
+    if (document.documentElement.getAttribute('data-ov-motion') === 'off') { el.textContent = String(n); return; }
     const clock = window.performance || Date;
     const t0 = clock.now(), dur = 900;
     const step = (t) => {
@@ -1281,7 +1281,7 @@ function initHomeNetwork() {
         _ovnetCount(root);
         _ovnetIcons();
     };
-    if ('IntersectionObserver' in window && !(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches)) {
+    if ('IntersectionObserver' in window && !(window.matchMedia && (document.documentElement.getAttribute('data-ov-motion') === 'off'))) {
         root.classList.add('is-armed');
         const io = new IntersectionObserver((entries) => {
             if (entries.some((en) => en.isIntersecting)) { io.disconnect(); requestAnimationFrame(wake); }

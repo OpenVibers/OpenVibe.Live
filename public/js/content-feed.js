@@ -390,7 +390,7 @@
         const ratios = new Map();
         let active = null;
         const still = (() => {
-            try { if (matchMedia('(prefers-reduced-motion: reduce)').matches) return true; } catch { /* */ }
+            try { if (/^(reduced|off)$/.test(document.documentElement.getAttribute('data-ov-motion') || '')) return true; } catch { /* */ }
             try { if (navigator.connection && navigator.connection.saveData) return true; } catch { /* */ }
             return false;
         })();

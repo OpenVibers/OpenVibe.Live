@@ -68,7 +68,6 @@
 .agent-overlay-dot.is-failed { background: #ef4444; }
 .agent-overlay-dot.is-skipped { background: #94a3b8; }
 @keyframes agent-overlay-pulse { 50% { opacity: 0.45; } }
-@media (prefers-reduced-motion: reduce) { .agent-overlay-dot.is-started { animation: none; } }
 .agent-overlay-ticks { display: flex; gap: 3px; align-items: center; margin-top: 3px; min-height: 10px; }
 .agent-overlay-ticks[hidden] { display: none; }
 .agent-overlay-tick { width: 12px; height: 8px; padding: 0; border: 0; border-radius: 2px; background: #4b5563; cursor: pointer; opacity: 0.85; }
