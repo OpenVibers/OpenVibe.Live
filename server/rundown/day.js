@@ -17,10 +17,10 @@ async function dayData(date, { offset = 0, limit = 50, viewer = null } = {}) {
     const v = viewer || {};
     const query = await db.all(`SELECT s.id, s.stream_id, s.user_id, s.topic_id, s.start_sec, s.vod_id, s.said_at,
             s.title, s.what, s.take, s.status, s.quotes_json, s.mentions, u.username, u.display_name,
-            st.channel_id, t.title AS topic_title, t.slug AS topic_slug,
+            st.channel_id, c.id AS channel_id_fallback, t.title AS topic_title, t.slug AS topic_slug,
             st.ended_at, e.stream_id AS episode_id
         FROM rundown_segments s JOIN streams st ON st.id = s.stream_id
-        JOIN users u ON u.id = s.user_id LEFT JOIN channels c ON c.id = st.channel_id
+        JOIN users u ON u.id = s.user_id LEFT JOIN channels c ON c.user_id = st.user_id
         LEFT JOIN rundown_topics t ON t.id = s.topic_id
         LEFT JOIN rundown_episodes e ON e.stream_id = st.id AND e.status = 'live'
         LEFT JOIN shares sh ON sh.service='live' AND sh.kind='rundown-episode' AND sh.resource_id=CAST(st.id AS text)
@@ -31,7 +31,7 @@ async function dayData(date, { offset = 0, limit = 50, viewer = null } = {}) {
     const history = require('../streaming/stream-history');
     const offsets = await history.vodOffsets(query.map((r) => r.vod_id));
     const all = query.map((r) => { const sec = Math.max(0, Math.floor(history.vodTime(Number(r.start_sec) || 0, r.vod_id ? offsets.get(Number(r.vod_id)) : 0))); return { id: Number(r.id), stream_id: Number(r.stream_id), take: r.take || null, what: r.what,
-        time: r.said_at, channel: { id: r.channel_id == null ? null : Number(r.channel_id), username: r.username },
+        time: r.said_at, channel: { id: r.channel_id == null ? (r.channel_id_fallback == null ? null : Number(r.channel_id_fallback)) : Number(r.channel_id), username: r.username },
         topic: r.topic_title ? { title: r.topic_title, slug: r.topic_slug } : null,
         vod: r.vod_id == null ? null : { id: Number(r.vod_id), sec, url: `/vod/${Number(r.vod_id)}?t=${sec}` } }; });
     const countRow = await db.get(`SELECT COUNT(*) AS n FROM rundown_segments s JOIN streams st ON st.id=s.stream_id
