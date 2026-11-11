@@ -126,7 +126,9 @@ async function check(name, fn) {
         assert.strictEqual(BotEmbed.effectiveMode(overlayDefault, 'bogus'), 'overlay', 'a bad stored value is ignored');
         assert.strictEqual(BotEmbed.effectiveMode({ ...SIM, controls_mode: 'bogus' }, null), 'panel', 'a bad streamer default is panel');
         // Ask 353 (2026-11-11): a fourth place, a row under the video; on a phone held upright the panel starts on the video.
-        assert.deepStrictEqual(BotEmbed.VIEW_MODES, ['overlay', 'compact', 'panel', 'hidden']);
+        assert.deepStrictEqual(BotEmbed.VIEW_MODES, ['overlay', 'compact', 'panel', 'window', 'hidden']);
+        assert.strictEqual(BotEmbed.effectiveMode(SIM, 'window'), 'window', 'a computer may pop the panel out');
+        assert.strictEqual(BotEmbed.effectiveMode(SIM, 'window', { phone: true }), 'panel', 'a phone keeps it in the Robot tab');
         assert.strictEqual(BotEmbed.effectiveMode(SIM, null, { phone: true }), 'overlay', 'a phone starts with the controls on the video, so the chat keeps its room');
         assert.strictEqual(BotEmbed.effectiveMode({ ...SIM, controls_mode: 'compact' }, null, { phone: true }), 'compact', 'a streamer\'s row stays a row on a phone');
         assert.strictEqual(BotEmbed.effectiveMode(overlayDefault, null, { phone: true }), 'overlay', 'the streamer\'s on-the-video stays on a phone');
