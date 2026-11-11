@@ -13,8 +13,8 @@ const today = require('../server/rundown/today');
     assert.strictEqual(today.utcDay(Date.parse('2026-11-11T23:59:59Z')), '2026-11-11');
 
     // ── Cadence: never before three takes, then 30 minutes apart with a new take ──
-    assert.strictEqual(today.isDue(null, { now, total: 2, latest_take_id: 9 }), false, 'a quiet day has no card');
-    assert.strictEqual(today.isDue(null, { now, total: 3, latest_take_id: 9 }), true, 'the first card waits for three takes');
+    assert.strictEqual(today.isDue(null, { now, total: 0, latest_take_id: null }), false, 'a day with no takes has no card');
+    assert.strictEqual(today.isDue(null, { now, total: 1, latest_take_id: 9 }), true, 'the first take makes a card');
     assert.strictEqual(today.isDue({ generated_at: now - 29 * 60000, latest_take_id: 9 }, { now, total: 10, latest_take_id: 10 }), false, 'not before 30 minutes');
     assert.strictEqual(today.isDue({ generated_at: now - 31 * 60000, latest_take_id: 9 }, { now, total: 10, latest_take_id: 9 }), false, 'no new takes, no write');
     assert.strictEqual(today.isDue({ generated_at: now - 31 * 60000, latest_take_id: 9 }, { now, total: 10, latest_take_id: 10 }), true, 'a new take after 30 minutes');

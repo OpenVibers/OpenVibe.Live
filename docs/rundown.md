@@ -129,7 +129,7 @@ uses the same public audience rules as the Rundown pages; signed-in readers may 
 three `highlights`, each `{ take_id, line, stream_id, username, topic, url }` where `url` is the take's anchor on its
 episode page (`/rundown/e/<streamId>#rd-take-<takeId>`). The card is written by OpenVibe.AI's `live.rundown.today`
 workflow from up to 30 of the day's takes (sampled across the day when there are more), and is stored per UTC day.
-The job checks every 5 minutes, writes the first card once the day has three visible takes, and after that rewrites
+The job checks every 5 minutes, writes the first card once the day has a visible take, and after that rewrites
 it at most every 30 minutes and only when a take newer than the stored card has arrived; it starts nothing under
 `LIVE_DRILL`. The stored words go through the same public-text filter as the rest of the Rundown and a card that
 fails the explicit-content check is never stored or served. `null` means no card yet (too few takes, AI off, or the

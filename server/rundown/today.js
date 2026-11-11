@@ -25,7 +25,7 @@ const kit = require('openvibe-shared/kit');
 
 const REFRESH_MS = 30 * 60 * 1000;   // at most one AI write per half hour
 const CHECK_MS = 5 * 60 * 1000;      // how often the job looks for a due day
-const MIN_TAKES = 3;                 // a card needs enough of the day to say anything true
+const MIN_TAKES = 1;                 // one take is a day: the card says what was said, and grows with the day
 const MAX_TAKES = 30;                // the workflow takes at most 30 takes
 const MAX_FETCH = 400;               // a very busy day is sampled, not read whole
 const KEY = (date) => `rundown_today:${date}`;
