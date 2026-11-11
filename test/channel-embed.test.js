@@ -56,24 +56,29 @@ assert.strictEqual(video.muted, false, 'allowlisted parent can control playback'
     if (oldDbModule) require.cache[dbPath] = oldDbModule; else delete require.cache[dbPath];
     if (oldEgressModule) require.cache[egressPath] = oldEgressModule; else delete require.cache[egressPath];
 
-    const simulate = async (payload) => {
+    const simulate = async (payload, preSound = false) => {
         const elements = Object.fromEntries(['video-element', 'live', 'offline', 'gate', 'continue', 'video-container', 'btn-volume', 'btn-play-pause'].map((id) => [id, { hidden: false, style: {}, addEventListener() {}, click() {} }]));
         const playerCalls = [];
         const sent = [];
+        let message;
         const browser = {
             window: { __OV_EMBED_ORIGINS: ['https://openvibe.live'] },
             parent: { postMessage(data, target) { sent.push({ data, target }); } }, location: { pathname: '/embed/alice' },
-            document: { getElementById(id) { return elements[id]; } }, addEventListener() {}, setInterval() {},
-            fetch: async () => ({ ok: true, json: async () => payload }), initPlayer(stream) { playerCalls.push(stream); },
+            document: { getElementById(id) { return elements[id]; } }, addEventListener(type, fn) { if (type === 'message') message = fn; }, setInterval() {},
+            fetch: async () => ({ ok: true, json: async () => payload }), initPlayer(stream) { playerCalls.push({ stream, muted: elements['video-element'].muted, forceMuted: browser.window.OVChannelEmbedForceMuted }); },
         };
         browser.window.parent = browser.parent;
         vm.runInNewContext(clientSource, browser);
+        if (preSound) message({ origin: 'https://openvibe.live', source: browser.parent, data: { type: 'ov-embed', cmd: 'unmute' } });
         await new Promise((resolve) => setImmediate(resolve));
         return { elements, playerCalls, sent };
     };
     const liveResult = await simulate({ channel: { username: 'alice', display_name: 'Alice' }, streams: [{ id: 2, is_live: true, title: 'Public show' }] });
     assert.strictEqual(liveResult.playerCalls.length, 1, 'live channel starts the shared player');
     assert.strictEqual(liveResult.sent.at(-1).data.live, true, 'live state is announced to the parent');
+    const carried = await simulate({ channel: { username: 'alice' }, streams: [{ id: 4, is_live: true }] }, true);
+    assert.strictEqual(carried.playerCalls[0].forceMuted, false, 'sound intent received before the new stream starts is preserved');
+    assert.strictEqual(carried.playerCalls[0].muted, false, 'the carried stream starts with sound when allowed');
     const offlineResult = await simulate({ channel: { username: 'alice', display_name: 'Alice' }, streams: [] });
     assert.strictEqual(offlineResult.elements.offline.style.display, 'block', 'offline channel shows the offline card');
     const gatedResult = await simulate({ channel: { username: 'alice' }, streams: [{ id: 3, is_live: true, is_nsfw: true }] });

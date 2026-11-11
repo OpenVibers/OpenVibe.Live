@@ -415,11 +415,30 @@
             if (!on || !st.user) { O.declare('live', null); return; }
             const u = encodeURIComponent(st.user);
             O.declare('live', {
-                src: `${location.origin}/embed/${u}`, title: st.title, live: true, href: `${location.origin}/@${u}`,
+                src: `${location.origin}/embed/${u}`, title: st.title, live: true, sound: !!(st.video || document.getElementById('video-element')) && !(st.video || document.getElementById('video-element')).muted,
+                href: `${location.origin}/@${u}`,
                 side: { src: `${location.origin}/popout/${u}`, title: `${st.title} \u00b7 chat` },
             });
         }).catch(() => { /* the overlay host could not load: the mini player still works here */ });
     }
+
+    // A direct jump from a playing channel to another OpenVibe site also carries the
+    // stream. The mini player is only created for routes within Live.
+    document.addEventListener('playing', (event) => {
+        if (event.target?.id !== 'video-element' || st.box || !isChannelPath(location.pathname)) return;
+        const match = /^\/@([^/?#]+)/.exec(location.pathname);
+        if (!match) return;
+        st.user = decodeURIComponent(match[1]);
+        st.title = (document.getElementById('ch-display-name')?.textContent || '').trim()
+            || (document.getElementById('ch-stream-title')?.textContent || '').trim() || st.user;
+        declare(true);
+    }, true);
+    document.addEventListener('pause', (event) => {
+        if (event.target?.id === 'video-element' && !st.box) declare(false);
+    }, true);
+    document.addEventListener('volumechange', (event) => {
+        if (event.target?.id === 'video-element' && st.user && isPlaying()) declare(true);
+    }, true);
 
     /** The viewer closed it: the player goes away for good. */
     function closeForGood() {
