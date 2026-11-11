@@ -964,6 +964,9 @@ async function loadChannelPage(username, managedStreamRef = null, legacySessionI
         if (isNewChannel) _popularAhead = { username: String(username).toLowerCase(), at: Date.now(), p: api(`/streams/channel/${encodeURIComponent(username)}/popular`).catch(() => null) };
         const data = await api(`/streams/channel/${username}?vodLimit=${CHANNEL_VODS_PAGE_SIZE}&vodOffset=${channelVodOffset}&clipLimit=${CHANNEL_CLIPS_PAGE_SIZE}&clipOffset=${channelClipOffset}${initialVodExtra}`);
         const ch = data.channel;
+        // The wallet pill shows this channel's points once they are known (Shared 4.212.0, `purse.streamer`): the
+        // channel-points ledger keys a streamer by the owner's numeric user id, ch.user_id, and only now is it here.
+        if (ch && currentChannelUsername === username && window.LiveNav) window.LiveNav.setStreamer(ch.user_id);
         { const page = document.getElementById('page-channel'); if (page) page.classList.add('ch-data'); if (page && !page.classList.contains('ch-ready')) _channelReadyTimer = setTimeout(_channelReady, 2500); }
         // The tab says whose channel this is, as the server-rendered <title> did (a live stream
         // replaces it with the stream's title in activateChannelStream).
