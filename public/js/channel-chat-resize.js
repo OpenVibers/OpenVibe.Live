@@ -43,8 +43,15 @@
     function lineSize() {
         const p = page();
         const info = p && p.querySelector('.stream-main > .ch-info-bar');
-        const h = info && info.offsetParent !== null ? info.scrollHeight : 0;
+        const h = info && info.offsetParent !== null ? lineHeight(info) : 0;
         return Math.max(180, Math.round(dockRoom() - (h || 150)));
+    }
+    /** What the channel line holds, top to its last shown child plus its padding (its box may be taller: it fills). */
+    function lineHeight(info) {
+        const top = info.getBoundingClientRect().top;
+        let bottom = top;
+        for (const k of info.children) { const r = k.getBoundingClientRect(); if (r.height) bottom = Math.max(bottom, r.bottom); }
+        return Math.ceil(bottom - top + (parseFloat(getComputedStyle(info).paddingBottom) || 0));
     }
     const MODES = {
         side: { key: 'openvibe_chat_width', prop: '--chat-w', axis: 'x', min: 260, max: () => Math.min(window.innerWidth * 0.5, 760) },
@@ -195,6 +202,21 @@
             let was = p.classList.contains('ch-is-live');
             new MutationObserver(() => { const now = p.classList.contains('ch-is-live'); if (now !== was) { was = now; applySaved(); syncAll(); } })
                 .observe(p, { attributes: true, attributeFilter: ['class'] });
+        }
+        // The channel line fills in after the page (the title, the live line, the actions): a sheet kept just under it
+        // follows its height as it settles, so the line is never cut and never leaves a gap.
+        const info = p && p.querySelector('.stream-main > .ch-info-bar');
+        if (info && !info._ovLineWatch && typeof ResizeObserver === 'function') {
+            info._ovLineWatch = true;
+            let last = 0;
+            new ResizeObserver(() => {
+                const saved = read(MODES.sheet.key);
+                if (!docked() || !(saved === LINE || saved > 0)) return;
+                const h = lineHeight(info);
+                if (Math.abs(h - last) < 2) return;
+                last = h;
+                setSize('sheet', LINE);
+            }).observe(info);
         }
     }
     init();
