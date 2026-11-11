@@ -101,9 +101,19 @@ camera goes out**):
 - It goes live on one of your slots: the first of your idle slots already listed as a PIP here, else a new
   "<title> camera" slot, added at the corner and size you chose.
 - It gets its own VOD.
-- Viewers can move it or hide it.
+- Viewers can move it or tuck it aside (below).
 - It plays over the screen share's VOD where it was.
 - It ends with the screen share, or when you turn the camera off.
+
+**What viewers can do with a PIP** (phone and desktop alike):
+- Drag it anywhere: dropped over the player it sits in the player, anywhere else it floats over the page and stays on
+  screen while they scroll. A flick carries it on; near an edge it snaps to it.
+- Throw it past a side (or press its »): it tucks into that side, a tab with its picture still going; a tap brings it back.
+- Size it from its corner, with two fingers, or with a double tap (small and large); mute it; put it back where you put
+  it (↺).
+- While it connects, or when its picture stops, it shows the OpenVibe mark at work over its last frame and tries again
+  by itself.
+- Where they put it is kept per slot in their browser and, signed in, in their account, so it is there next time.
 
 Restreams to Twitch, YouTube and the like get the screen only. Choose **Drawn into the screen share** to paint the
 camera into the picture as before, so restreams show it too.

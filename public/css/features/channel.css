@@ -1256,41 +1256,6 @@ button.viewer-badge:focus-visible { outline: 2px solid #93c5fd; outline-offset: 
 .ai-tl-subtabs { display: flex; gap: 6px; margin: 14px 0 16px; border-bottom: 1px solid var(--border, color-mix(in srgb, var(--text-primary, #fff) 8%, transparent)); }
 .ai-tl-subtab { font-size: 0.9rem; font-weight: 700; color: var(--text-muted); background: none; border: none; border-bottom: 2px solid transparent; padding: 8px 14px; cursor: pointer; display: inline-flex; align-items: center; gap: 7px; margin-bottom: -1px; transition: color var(--ov-dur-2, .15s); }
 .ai-tl-pane--hidden { display: none; }
-.ov-pip:hover { border-color: rgba(255, 255, 255, .38); }
-.ov-pip.is-dragging { cursor: grabbing; box-shadow: 0 10px 30px rgba(0, 0, 0, .7); }
-.ov-pip.is-dragging, .ov-pip.is-resizing { user-select: none; }
-.ov-pip.is-hidden { display: none; }
-
-/* The box takes the source's own shape (stream-pip.js sets aspect-ratio from the video), so contain shows it whole: a
-   portrait camera is never cut to 16:9 (2026-11-07). */
-.ov-pip-video { width: 100%; height: 100%; object-fit: contain; display: block; background: #000; }
-.ov-pip:focus-visible { outline: 2px solid var(--accent, #3b82f6); outline-offset: 2px; }
-.ov-pip.is-portrait .ov-pip-bar { padding-inline: 4px; }
-.ov-pip:hover .ov-pip-bar, .ov-pip.is-dragging .ov-pip-bar { opacity: 1; pointer-events: auto; }
-.ov-pip-title {
-    font-size: .72rem; color: #fff; font-weight: 600;
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-    text-shadow: 0 1px 3px rgba(0,0,0,.8);
-}
-.ov-pip-actions { display: flex; gap: 3px; flex-shrink: 0; }
-.ov-pip:hover .ov-pip-resize { opacity: 1; }
-.ov-pip.is-offline .ov-pip-offline { display: flex; }
-/* The bar stays above the offline layer and shows while offline, so a PIP that cannot play can still be hidden (the
-   layer, drawn after the bar over the whole PIP, used to cover it). */
-.ov-pip-bar { z-index: 2; }
-.ov-pip-offline { z-index: 1; }
-.ov-pip.is-offline .ov-pip-bar { opacity: 1; pointer-events: auto; }
-.ov-pip-restore:hover { background: rgba(0,0,0,.8); }
-/* Several PIPs (stream_pips): each hidden one's "Show …" pill, in one row in the corner; a PIP's name opens its channel. */
-.ov-pip-restores { position: absolute; right: 12px; bottom: 12px; z-index: 25; display: flex; flex-wrap: wrap-reverse; justify-content: flex-end; gap: 6px; max-width: calc(100% - 24px); }
-.ov-pip-restores .ov-pip-restore { position: static; }
-.ov-pip-title a { color: inherit; text-decoration: none; }
-.ov-pip-title a:hover, .ov-pip-title a:focus-visible { text-decoration: underline; }
-
-@media (max-width: 640px) {
-    .ov-pip-resize { width: 26px; height: 26px; opacity: .8; }
-    .ov-pip-bar { opacity: 1; pointer-events: auto; }
-}
 .ai-tl-tr-bar { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin: 0 0 8px; padding-bottom: 8px; border-bottom: 1px solid var(--border, color-mix(in srgb, var(--text-primary, #fff) 7%, transparent)); }
 .ai-tl-tr-filter { display: inline-flex; gap: 4px; }
 .ai-tl-tr-filter button { padding: 4px 10px; border-radius: 999px; border: 1px solid var(--border, color-mix(in srgb, var(--text-primary, #fff) 10%, transparent)); background: transparent; color: var(--text-secondary); font-size: 0.75rem; cursor: pointer; display: inline-flex; align-items: center; gap: 5px; }

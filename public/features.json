@@ -81,6 +81,9 @@
       "deps": [
         "clipJobs"
       ],
+      "css": [
+        "/css/features/pip.css"
+      ],
       "js": [
         "/shared/loading.js",
         "/js/player-shape.js",

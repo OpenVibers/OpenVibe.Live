@@ -87,7 +87,7 @@ check('on a phone-sized player it is never smaller than a 150 px wide 16:9 box',
     near(boxOf(pip(16 / 9, { w: 0.25 })).wf, 0.25, 'a desktop player shows the saved size');
 });
 
-const css = fs.readFileSync(path.join(__dirname, '..', 'public', 'css', 'features', 'channel.css'), 'utf8');
+const css = fs.readFileSync(path.join(__dirname, '..', 'public', 'css', 'features', 'pip.css'), 'utf8');
 check('the video is contained, never cropped', () => {
     assert.match(css, /\.ov-pip-video \{[^}]*object-fit: contain/);
     assert.doesNotMatch(css, /\.ov-pip-video \{[^}]*object-fit: cover/);
