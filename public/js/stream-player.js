@@ -759,6 +759,24 @@ function sanitizeIceServers(iceServers) {
     return sanitized;
 }
 
+function createRecvTransportWithIceFallback(device, params, iceServers) {
+    try {
+        return device.createRecvTransport({ ...params, iceServers });
+    } catch (error) {
+        // WebKit rejects the valid ?transport=tcp TURN form while Chromium accepts it.
+        // Keep the base TURN endpoint and credentials, then retry the same transport.
+        if (error?.name !== 'SyntaxError' || !/TURN URL query string/i.test(error.message)) throw error;
+        const compatible = iceServers.flatMap((server) => {
+            const urls = (Array.isArray(server.urls) ? server.urls : [server.urls])
+                .filter((url) => !/^turns?:[^?]+\?/i.test(url));
+            return urls.length ? [{ ...server, urls: urls.length === 1 ? urls[0] : urls }] : [];
+        });
+        if (compatible.length === iceServers.length && compatible.every((server, index) => server.urls === iceServers[index].urls)) throw error;
+        console.warn('[Player] Browser rejected TURN transport query; retrying with base ICE endpoints');
+        return device.createRecvTransport({ ...params, iceServers: compatible });
+    }
+}
+
 function isMediaRecorderSupported() {
     return typeof MediaRecorder !== 'undefined' && typeof MediaRecorder.isTypeSupported === 'function';
 }
@@ -1590,13 +1608,12 @@ async function handleSfuViewerReady(msg, ws, video, updateStatus, scheduleRewatc
         }
         console.log('[Player] Using SFU ICE servers:', iceServers.map((s) => (Array.isArray(s.urls) ? s.urls.join(',') : s.urls)).join(' | '));
 
-        recvTransport = device.createRecvTransport({
+        recvTransport = createRecvTransportWithIceFallback(device, {
             id: transportParams.id,
             iceParameters: transportParams.iceParameters,
             iceCandidates: transportParams.iceCandidates,
             dtlsParameters: transportParams.dtlsParameters,
-            iceServers,
-        });
+        }, iceServers);
         player._sfuRecvTransport = recvTransport;
 
         // Wire transport 'connect' event — mediasoup-client fires this when DTLS needs to start
