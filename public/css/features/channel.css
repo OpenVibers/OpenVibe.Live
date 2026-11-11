@@ -2183,3 +2183,4 @@ html[data-ov-motion="off"] #page-channel .ch-rec-dot { animation: none; }
 #page-channel .ch-rec-time { font-variant-numeric: tabular-nums; }
 #page-channel .ch-rec-watch { position: absolute; inset: 0; z-index: 1; display: grid; place-items: center; color: #fff; font-size: 1.6rem; opacity: 0; background: rgba(0, 0, 0, .28); transition: opacity var(--ov-dur-2, .2s); pointer-events: none; }
 #page-channel .ch-rec-card:hover .ch-rec-watch, #page-channel .ch-rec-card:focus-visible .ch-rec-watch { opacity: 1; }
+#page-channel .ch-ib .ch-ib-t { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
