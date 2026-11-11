@@ -2222,7 +2222,10 @@ async function applyChannelPoints({ userId, streamerId, delta, key, reason = nul
     if (!userId || !streamerId || !Number.isInteger(delta) || delta === 0) {
         return { applied: false, replayed: false, balance: await getChannelPoints(userId, streamerId) };
     }
-    return await getDb().tx(async () => {
+    const events = require('../events/stream-events');
+    events.init();
+    let announced = false;
+    const result = await getDb().tx(async () => {
         const seen = await get('SELECT user_id, streamer_id, delta FROM channel_points_log WHERE idempotency_key = ?', [key]);
         if (seen) {
             if (seen.user_id !== userId || seen.streamer_id !== streamerId || seen.delta !== delta) {
@@ -2242,8 +2245,19 @@ async function applyChannelPoints({ userId, streamerId, delta, key, reason = nul
         }
         await run('INSERT INTO channel_points_log (idempotency_key, user_id, streamer_id, delta, reason) VALUES (?, ?, ?, ?, ?)',
             [key, userId, streamerId, delta, reason ? String(reason).slice(0, 200) : null]);
-        return { applied: true, replayed: false, balance: await getChannelPoints(userId, streamerId) };
+        const balance = await getChannelPoints(userId, streamerId);
+        const linked = await get("SELECT subject_id FROM linked_accounts WHERE service = 'network' AND user_id = ? AND subject_id IS NOT NULL ORDER BY id DESC LIMIT 1", [userId]);
+        if (linked && /^usr_[0-9A-HJKMNP-TV-Z]{26}$/.test(linked.subject_id)) {
+            announced = !!(await events.enqueue({
+                event_type: 'live.balance.changed', actor: { type: 'service', id: 'live' },
+                subject: { type: 'user', id: linked.subject_id }, visibility: 'subject', priority: 'important',
+                payload: { currency: 'channel-points', streamer_id: streamerId, delta, balance, reason: reason || null },
+            }));
+        }
+        return { applied: true, replayed: false, balance };
     });
+    if (announced) events.kick();
+    return result;
 }
 /** Credit channel points for one event (key required). Returns the new balance. */
 async function addChannelPoints(userId, streamerId, amount, key, reason) {

@@ -36,9 +36,21 @@ const token = (cap, { aud = 'openvibe.live', sub = 'svc:network', env } = {}) =>
     const other = Number((await db.createUser({ username: 'cpother', password_hash: 'x', display_name: 'Cp Other', stream_key: 'cpothersecretkey1' })).lastInsertRowid);
     await db.getDb().prepare("INSERT INTO linked_accounts (user_id, service, service_user_id, subject_id) VALUES (?, 'network', ?, ?)").run(fan, 'net-fan-1', 'usr_01JAB2C3D4E5F6G7H8J9K0FAN1');
     await db.getDb().prepare("INSERT INTO linked_accounts (user_id, service, service_user_id) VALUES (?, 'network', ?)").run(other, 'net-other-1');
+    const events = require('../server/events/stream-events');
+    const original = { init: events.init, enqueue: events.enqueue, kick: events.kick };
+    const sent = [];
+    let kicks = 0;
+    events.init = () => ({});
+    events.enqueue = async (env) => { sent.push(env); return env; };
+    events.kick = () => { kicks++; };
     await db.applyChannelPoints({ userId: fan, streamerId: streamer, delta: 100, key: 'test:cp:watch:1', reason: 'watch' });
     await db.applyChannelPoints({ userId: fan, streamerId: streamer, delta: -30, key: 'test:cp:redeem:1', reason: 'redeem reward 7' });
     await db.applyChannelPoints({ userId: other, streamerId: streamer, delta: 50, key: 'test:cp:watch:2', reason: 'watch' });
+    await db.applyChannelPoints({ userId: fan, streamerId: streamer, delta: 100, key: 'test:cp:watch:1', reason: 'watch' });
+    assert.deepStrictEqual(sent.map((e) => e.payload.delta), [100, -30], 'only applied moves for a linked person announce');
+    assert(sent.every((e) => e.event_type === 'live.balance.changed' && e.visibility === 'subject' && e.subject.id === 'usr_01JAB2C3D4E5F6G7H8J9K0FAN1'));
+    assert.strictEqual(kicks, 2);
+    Object.assign(events, original);
 
     const app = express();
     app.use(express.json());
