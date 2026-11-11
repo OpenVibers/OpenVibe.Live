@@ -6,15 +6,24 @@
     const allowedOrigin = (origin) => safeOrigins.has(origin) || /^https:\/\/(?:[a-z0-9-]+\.)+openvibe\.website$/.test(origin);
     let state = { live: false, muted: true, playing: false, title: '', username: user, viewers: 0 };
     let currentStreamId = null;
+    let requestedSound = false;
     const approved18 = new Set();
     const send = () => { if (parent !== window) parent.postMessage({ type: 'ov-embed', event: 'state', ...state }, '*'); };
     const paint = () => { document.getElementById('live').hidden = !state.live; send(); };
     const setMuted = (muted) => {
         const wanted = !!muted;
+        requestedSound = !wanted;
         if (state.muted !== wanted) document.getElementById('btn-volume')?.click();
         window.OVChannelEmbedForceMuted = wanted;
         video.muted = wanted;
-        if (!wanted) video.play().catch(() => {});
+        if (!wanted && (video.srcObject || video.currentSrc)) video.play().catch(() => {
+            // A newly loaded cross-site document may need another tap for sound.
+            requestedSound = false;
+            window.OVChannelEmbedForceMuted = true;
+            video.muted = true;
+            state.muted = true;
+            send();
+        });
         state.muted = wanted;
         send();
     };
@@ -39,10 +48,10 @@
     });
     const start = (stream) => {
         currentStreamId = stream.id;
-        state.muted = true;
+        state.muted = !requestedSound;
         state.playing = true;
-        window.OVChannelEmbedForceMuted = true;
-        video.muted = true;
+        window.OVChannelEmbedForceMuted = !requestedSound;
+        video.muted = !requestedSound;
         document.getElementById('offline').style.display = 'none';
         initPlayer(stream);
     };
