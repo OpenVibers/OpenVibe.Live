@@ -165,7 +165,8 @@ async function refresh(date, { now = Date.now(), force = false, ai = null } = {}
 async function tick(now = Date.now()) {
     const date = utcDay(now);
     const card = await refresh(date, { now });
-    if (card) console.log(`[Rundown] Today card for ${date}: ${card.take_count} take(s), ${card.highlights.length} highlight(s)`);
+    // refresh() also returns the stored card when the day is not due; only a card written now is news.
+    if (card && Number(card.generated_at) === Number(now)) console.log(`[Rundown] Today card for ${date}: ${card.take_count} take(s), ${card.highlights.length} highlight(s)`);
     return card;
 }
 
