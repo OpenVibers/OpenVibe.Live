@@ -826,6 +826,7 @@ app.use('/api/auth', authRoutes);
 // The signed-in person's picture-in-picture layout, in their Network account (server/me/routes.js); 404 until the
 // pinned contracts carry live.layout, so the browser's own copy keeps working.
 app.use('/api/me', require('./me/routes').createLayoutRouter());
+app.use('/api/me/elements', require('./elements/routes').ownerRouter);   // the streamer's element library (Elements, stage 1)
 app.use('/api/bench-stream', require('./bench-stream/routes'));
 // Channel ↔ OpenVibe.Bot robot binding (LIVE_BOT_EMBED, off by default: the route answers 404).
 app.use('/api/streams', require('./bot/routes'));
@@ -905,6 +906,7 @@ app.use('/api/ai-viewers', require('./ai/viewers/routes'));
 app.use('/api/vibe', require('./ai/vibe-routes'));
 app.use('/api/powerchat', require('./integrations/powerchat-routes'));
 app.use('/api/overlay', require('./overlay/routes'));        // the overlay alert feed: the streamer's own test alert
+app.use('/api/channels', require('./elements/routes').channelRouter);   // the Viewer Deck and its presses (Elements, stage 1)
 app.use('/api/meta', metaRoutes);
 app.use('/api/pastes', pasteRoutes);
 app.use('/api/content', require('./content/routes'));    // Content (people's work) + Moments (AI) feeds

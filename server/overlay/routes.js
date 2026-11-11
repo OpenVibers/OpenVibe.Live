@@ -25,6 +25,7 @@ const SAMPLES = {
     sub: { who: { name: 'Test Subscriber', avatar: null }, amount: null, text: null },
     raid: { who: { name: 'Test Raider', avatar: null }, amount: { value: 12, unit: 'viewers' }, text: null },
     goal: { who: null, amount: { value: 1000, unit: 'vibes' }, text: null },
+    element: { who: { name: 'Test Viewer', avatar: null }, amount: null, text: 'Make it dance' },
 };
 
 // A few a minute, per streamer.

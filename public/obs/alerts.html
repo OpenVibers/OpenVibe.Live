@@ -74,6 +74,7 @@ html[data-ov-motion=off] .al::after{display: none}
         sub: { icon: 'fa-star', say: 'subscribed' },
         raid: { icon: 'fa-users', say: 'raided' },
         goal: { icon: 'fa-trophy', say: 'Goal reached' },
+        element: { icon: 'fa-wand-magic-sparkles', say: 'pressed' },
     };
     var queue = [], showing = false, seen = new Set();
     function el(tag, cls, kids) { var n = document.createElement(tag); if (cls) n.className = cls; (kids || []).forEach(function (k) { if (k != null) n.append(k); }); return n; }
@@ -97,6 +98,7 @@ html[data-ov-motion=off] .al::after{display: none}
         else { what.append(k.say); if (amt) { what.append(' '); var e2 = el('em'); e2.textContent = amt; what.append(e2); } }
         var msg = el('p', 'al-msg');
         if (a.kind === 'tip' && a.text) msg.textContent = String(a.text).slice(0, 200);
+        if (a.kind === 'element' && a.text) msg.textContent = String(a.text).slice(0, 80);
         var t = el('div', 'al-t', [el('p', 'al-who', [name]), what, msg]);
         return el('div', 'al', [ic, t]);
     }
