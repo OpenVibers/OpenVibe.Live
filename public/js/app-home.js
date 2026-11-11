@@ -1568,10 +1568,12 @@ function renderRecentlyOnline(containerId, streamers, append) {
         name.href = channelHref;
         const when = el('span', 'streamer-group-last-online' + (s.live ? ' is-live' : ''), s.live ? 'Live now' : timeAgo(s.last_online_at));
         if (!s.live) when.title = 'Last live ' + timeAgo(s.last_online_at);
-        const top = el('span', 'recent-streamer-top');
-        top.append(name, when);
-        who.append(top);
-        if (facts.usual_time) who.append(el('span', 'recent-streamer-usual', facts.usual_time));
+        // The name has its line to itself and wraps before it is ever cut; "Live now" or when they were last live goes on
+        // the line under it with their usual time (owner, 2026-11-11: "@Matic…" beside a Live now chip).
+        const meta = el('span', 'recent-streamer-meta');
+        meta.append(when);
+        if (facts.usual_time) meta.append(el('span', 'recent-streamer-usual', facts.usual_time));
+        who.append(name, meta);
         head.append(face, who);
         card.append(head);
         // This week, as even tiles: a number and what it counts. One with nothing to say is not drawn; the rest share
@@ -1586,7 +1588,9 @@ function renderRecentlyOnline(containerId, streamers, append) {
             stats.append(n);
         };
         stat('fa-tower-broadcast', facts.streams_this_week || '', Number(facts.streams_this_week) === 1 ? 'stream' : 'streams', 'Streams this week');
-        stat('fa-clock', facts.hours_this_week ? facts.hours_this_week + ' h' : '', 'live', 'Hours live this week');
+        // Whole hours from ten up ("15 h", not "15.3 h"): a number that fits its tile at a phone's width (2026-11-11).
+        const hrs = Number(facts.hours_this_week) || 0;
+        stat('fa-clock', hrs ? (hrs >= 10 ? Math.round(hrs) : hrs) + ' h' : '', 'live', `Hours live this week: ${hrs}`);
         stat('fa-fire', facts.days_in_a_row >= 3 ? facts.days_in_a_row + ' d' : '', 'in a row', 'Days in a row');
         const week = stats.childElementCount > 0;
         if (!week && facts.last_stream_seconds) stat('fa-clock', formatDuration(facts.last_stream_seconds), 'last stream', 'Length of the last stream');

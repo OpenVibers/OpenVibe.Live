@@ -1198,12 +1198,12 @@ router.get('/', optionalAuth, async (req, res) => {
         // the poll period so a card can never look stale for a whole cycle.
         res.set('Cache-Control', 'public, max-age=5');
         const restreamManager = require('./restream-manager');
-        // A streamer's camera that is the PIP of their own live stream shows inside it, not as a stream of its own.
-        const insidePip = await db.getLiveOwnPipSourceSlots();
+        // Every live slot is a stream of its own and is listed, a slot that is also the PIP of its streamer's other
+        // stream included (owner, 2026-11-11: "he's live twice … those are 2 different streams"; it was left out
+        // since 2026-10-26, so a robot camera shown as a PIP vanished from Live Now while it was the featured stream).
         // The home page is the owner's one clean page (L1): nothing labelled 18+ is listed there, whatever a
         // viewer's prefs say. Every other surface shows it with its chips; this is the only place a label hides.
-        let streams = (await db.getLiveStreams()).filter((s) => !(s.managed_stream_id && insidePip.has(Number(s.managed_stream_id)))
-            && !contentLabels.labelsOf(s).labels.includes('18+'));
+        let streams = (await db.getLiveStreams()).filter((s) => !contentLabels.labelsOf(s).labels.includes('18+'));
         require('../media-proxy/live-preview').attach(streams);
         require('./live-thumb-cadence').markListed(streams.map((x) => x.id));
         // Filters narrow the list in place, so its order (viewer_count DESC, started_at DESC) is untouched.

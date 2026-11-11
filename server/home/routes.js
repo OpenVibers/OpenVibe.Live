@@ -274,7 +274,9 @@ const FEATURED_ROTATE_MS = 4 * 60 * 1000;
 router.get('/featured', async (req, res) => {
     res.set('Cache-Control', 'public, max-age=10');
     try {
-        const live = (await db.getLiveStreams() || []).filter((s) => !s.is_nsfw);
+        // The same streams Live Now lists (streaming/routes.js GET /): nothing labelled 18+ on the home page.
+        const labels = require('../labels');
+        const live = (await db.getLiveStreams() || []).filter((s) => !s.is_nsfw && !labels.labelsOf(s).labels.includes('18+'));
         require('../media-proxy/live-preview').attach(live);
         require('../streaming/live-thumb-cadence').markListed(live.map((x) => x.id));
         if (!live.length) return res.json({ stream: null, count: 0 });
