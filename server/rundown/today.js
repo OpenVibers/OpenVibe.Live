@@ -145,8 +145,8 @@ async function aiOn() {
 async function refresh(date, { now = Date.now(), force = false, ai = null } = {}) {
     if (drill.enabled) return null;
     if (date === 'today' || !date) date = utcDay(now);
-    if (!await siteOn()) return null;
-    if (!ai && !await aiOn()) return null;
+    if (!await siteOn()) { console.log('[Rundown] today: the Rundown is switched off'); return null; }
+    if (!ai && !await aiOn()) { console.log('[Rundown] today: AI is off or over its daily budget'); return null; }
     const { takes, total } = await takesFor(date);
     const latest = takes.reduce((n, t) => Math.max(n, Number(t.id) || 0), 0);
     const stored = await get(date);
@@ -156,8 +156,9 @@ async function refresh(date, { now = Date.now(), force = false, ai = null } = {}
     let out = null;
     try { out = await (ai || require('../ai/ai-service').structured)('live.rundown.today', input, { meter: { kind: 'rundown_today', role: 'chat', source: 'rundown' } }); }
     catch { out = null; }
+    if (!out) { console.log(`[Rundown] today: no AI answer for ${date}`); return null; }
     const text = cardText(out);
-    if (!text) return null;
+    if (!text) { console.log(`[Rundown] today: the AI answer for ${date} was filtered`); return null; }
     const card = { status: 'ready', version: CARD_VERSION, date, ...enrich(text, sample, total), generated_at: now, latest_take_id: latest, take_count: total, take_sample: sample.length };
     try { await db.setSetting(KEY(date), JSON.stringify(card)); } catch { return null; }
     return card;
@@ -174,7 +175,7 @@ async function tick(now = Date.now()) {
 let _job = null;
 function start() {
     if (_job || drill.enabled) return;
-    _job = require('../utils/jobs').every('rundown-today', CHECK_MS, () => tick().catch((e) => console.warn('[Rundown] today card:', e.message)), { initialDelayMs: 2 * 60 * 1000, jitterMs: 30 * 1000 });
+    _job = require('../utils/jobs').every('rundown-today', CHECK_MS, () => tick().catch((e) => console.warn('[Rundown] today card:', e.message)), { initialDelayMs: 30 * 1000, jitterMs: 10 * 1000 });
     console.log(`[Rundown] Today card job started (checks every ${CHECK_MS / 60000} min, writes at most every ${REFRESH_MS / 60000} min while there are new takes)`);
 }
 function stop() { if (typeof _job === 'function') _job(); _job = null; }
