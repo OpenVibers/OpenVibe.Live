@@ -113,6 +113,7 @@ module.exports = {
     getRelay: (platform, username) => (platform && username ? read(`r:${platform}:${username}`, relayPath(platform, username)) : Promise.resolve(null)),
     /** A Live channel's chat insight, the same shape a Chat room answers (channel:<broadcaster user id>). */
     getChannel: (id) => (validUser(id) ? readRoom(`c:${Number(id)}`, channelPath(id)) : Promise.resolve(null)),
+    getPersonMemory: (username) => username ? readRoom(`pm:${username}`, `/api/v1/people/${encodeURIComponent(String(username))}/memory?channel=${encodeURIComponent(String(username))}&level=day`) : Promise.resolve(null),
     peekGlobal: () => peek('g', '/global'),
     peekUser: (id) => (validUser(id) ? peek(`u:${Number(id)}`, userPath(id)) : null),
     peekAnon: (id) => (validAnon(id) ? peek(`a:${id}`, anonPath(id)) : null),

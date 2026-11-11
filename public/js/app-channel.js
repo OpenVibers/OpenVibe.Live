@@ -2888,8 +2888,16 @@ async function loadChannelAiTimeline(username) {
         const chat = data.chatInsight;
         const chatOverall = chat && (chat.overview_alltime || chat.overview_24h);
         const chatMoments = (chat && Array.isArray(chat.timeline)) ? chat.timeline.slice().reverse() : [];
+        const compactDays = (data.chatMemory && Array.isArray(data.chatMemory.entries)) ? data.chatMemory.entries : [];
+        const groupedMoments = Object.values(chatMoments.reduce((days, m) => {
+            const day = String(m.ts || '').slice(0, 10);
+            if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return days;
+            (days[day] ||= { period_start: day, summary: '', highlights: [], message_count: 0 }).highlights.push({ detail: m.detail || m.label, at: m.ts });
+            return days;
+        }, {})).sort((a, b) => b.period_start.localeCompare(a.period_start));
+        const chatDays = compactDays.length ? compactDays : groupedMoments;
         const hasStreamer = !!(sessions.length || streamerOv);
-        const hasChatter = !!(chatOverall || chatMoments.length);
+        const hasChatter = !!(chatOverall || chatDays.length);
         const combined = data.combinedOverview;
         if (!combined && !hasStreamer && !hasChatter) {
             wrap.innerHTML = `<div class="ai-tl-empty"><i class="fa-solid fa-brain"></i><p>No AI timeline yet.</p><p class="muted">As ${dn} streams and chats, the AI builds an overview here — with links straight to the VOD moments.</p></div>`;
@@ -2924,12 +2932,21 @@ async function loadChannelAiTimeline(username) {
         // ── As a chatter (inner content) ──
         let chatterInner = '';
         if (hasChatter) {
-            const momentsHTML = chatMoments.length ? `<div class="ai-tl-track">${chatMoments.map(t => `
+            const momentsHTML = chatDays.length ? `<div class="ai-tl-track">${chatDays.map(t => `
                 <div class="ai-tl-session">
                     <div class="ai-tl-session-head"><div class="ai-tl-node"></div>
-                        <div class="ai-tl-session-title">${esc(t.label || 'Moment')}</div>
-                        <div class="ai-tl-session-meta"><i class="fa-solid fa-clock"></i> ${_aiTimeAgo(t.ts)}</div></div>
-                    ${t.detail ? `<div class="ai-tl-session-overview">${esc(t.detail)}</div>` : ''}
+                        <div class="ai-tl-session-title">${esc(t.period_start)}</div>
+                        <div class="ai-tl-session-meta">${t.message_count ? `${_fmtCount(t.message_count)} messages` : `${t.highlights.length} moments`}</div></div>
+                    ${t.summary ? `<div class="ai-tl-session-overview">${esc(t.summary)}</div>` : ''}
+                    ${(t.highlights || []).slice(0, 5).map(h => {
+                        const session = [...sessions, ...(data.index || [])].find(s => Number(s.id) === Number(h.stream_id));
+                        const parseTime = value => value ? Date.parse(String(value).replace(' ', 'T').replace(/Z?$/, 'Z')) : NaN;
+                        const started = parseTime(session && (session.started_at || session.created_at || session.when));
+                        const at = parseTime(h.at);
+                        const offset = Number.isFinite(started) && Number.isFinite(at) ? Math.max(0, Math.floor((at - started) / 1000)) : 0;
+                        const href = session?.vod_id ? videoHref('vod', session.vod_id, offset) : '';
+                        return `<div class="ai-tl-session-overview">${href ? `<a href="${esc(href)}">${esc(h.detail || '')}</a>` : esc(h.detail || '')}</div>`;
+                    }).join('')}
                 </div>`).join('')}</div>` : '';
             chatterInner = (chatOverall ? `<div class="ai-tl-overview-card"><div class="ai-tl-overview-label"><i class="fa-solid fa-comments"></i> As a chatter</div>${_collapsibleOverview(chatOverall)}${chat.message_count ? `<p class="ai-tl-summary" style="margin:8px 0 0">~${chat.message_count} messages analyzed</p>` : ''}</div>` : '')
                 + momentsHTML;
