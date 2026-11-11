@@ -48,7 +48,10 @@ async function readDailyQuest({ token = null, timeZone = 'UTC', more = false, fe
             await get('/api/v1/me/daily/time-zone', { method: 'PUT', headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ time_zone: timeZone }) });
         }
-        const [quest, extra] = await Promise.all([get('/api/v1/me/daily'), withMore({})]);
+        // The guided reader carries this person's opaque step links. Older Quest deployments answer 404,
+        // so keep the existing daily card until the guided release is enabled.
+        const [guided, extra] = await Promise.all([get('/api/v1/quests/today'), withMore({})]);
+        const quest = guided || await get('/api/v1/me/daily');
         if (!quest) return null;
         return { signed_in: true, quest, ...extra };
     } catch { return null; }
