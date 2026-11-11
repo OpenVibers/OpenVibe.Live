@@ -23,6 +23,12 @@ const { summarizeHistory } = require('../server/home/recent-facts');
     assert.equal(signedIn.quest.time_zone, 'America/Los_Angeles');
     assert.equal(signedIn.quest.progress, 1);
     assert.ok(calls.slice(1).every(c => c.options.headers.Authorization === 'Bearer person-token' && !('Cookie' in c.options.headers)));
+    const guided = await readDailyQuest({ token: 'person-token', fetchImpl: async (url) => ({
+        ok: url.endsWith('/api/v1/quests/today'),
+        json: async () => ({ title: 'Made for you', steps: [{ guide_id: 'opaque-1' }, {}, {}], progress: 0 }),
+    }) });
+    assert.equal(guided.quest.title, 'Made for you');
+    assert.equal(guided.quest.steps[0].guide_id, 'opaque-1');
     assert.equal(await readDailyQuest({ fetchImpl: async () => { throw Error('down'); } }), null);
 
     // The card's door to Quest: the catalog's size for everyone (kept ten minutes), a person's badges and started quests.
