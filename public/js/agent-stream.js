@@ -381,7 +381,7 @@
         const panel = $('agent-chat');
         const frame = $('agent-chat-frame');
         if (!panel || !frame) return;
-        if (!stream || !stream.chat_room || !['public', 'unlisted'].includes(stream.visibility)) {
+        if (!stream || stream.state === 'ended' || !stream.chat_room || !['public', 'unlisted'].includes(stream.visibility)) {
             panel.hidden = true;
             frame.removeAttribute('src');
             return;
