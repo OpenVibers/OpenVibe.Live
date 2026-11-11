@@ -40,6 +40,18 @@ const today = require('../server/rundown/today');
     assert.strictEqual(today.cardText({ headline: 'A night', summary: 'They watched porn.', highlights: [] }), null, 'the explicit guard');
     assert.strictEqual(today.cardText({ headline: 'No summary', highlights: [] }), null);
 
+    // ── The fallback: when the AI answers nothing usable, the takes themselves still make an honest card ──
+    const fb = today.fallbackCard('2026-11-11', [
+        { id: 41, stream_id: 12, take: 'Internet fridges are a bad idea.', what: 'They read about hacked fridges.', channel: { username: 'goosely' }, topic: { title: 'Fridges hacked' } },
+        { id: 42, stream_id: 13, take: null, what: 'ann fixed a build live.', channel: { username: 'ann' }, topic: { title: 'Rust builds' } },
+    ], 2, now, 42);
+    assert.strictEqual(fb.written_by, 'live');
+    assert.strictEqual(fb.headline, 'Fridges hacked and Rust builds');
+    assert.strictEqual(fb.summary, 'goosely talked about Fridges hacked: Internet fridges are a bad idea. ann talked about Rust builds: ann fixed a build live.');
+    assert.deepStrictEqual(fb.highlights.map((h) => h.url), ['/rundown/e/12#rd-take-41', '/rundown/e/13#rd-take-42']);
+    assert.match(today.ssrHtml(fb), /From today’s takes\./, 'the fallback says where its words came from');
+    assert.strictEqual(today.fallbackCard('2026-11-11', [{ id: 1, stream_id: 1, take: 'porn', what: '', channel: { username: 'a' }, topic: null }], 1, now, 1), null, 'the explicit guard covers the fallback');
+
     // ── The server-rendered card: kit markup, every highlight a link to its take ──
     const html = today.ssrHtml({ status: 'ready', headline: 'Fridges & builds', summary: 'A day about fridges and one stubborn compiler.', highlights: [
         { take_id: 41, line: 'The fridge line', url: '/rundown/e/12#rd-take-41', username: 'goosely', topic: 'Fridges' },

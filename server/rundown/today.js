@@ -138,6 +138,28 @@ async function aiOn() {
     try { const llm = require('../ai/llm'); return await llm.isEnabled() && await llm.withinBudget(); } catch { return false; }
 }
 
+/** A card from today's takes themselves, used only when the AI answers nothing usable: honest, if plainer. */
+function fallbackCard(date, items, total, now, latest) {
+    const sample = sampleTakes(items, 3);
+    const who = [...new Set(items.map((t) => t.channel && t.channel.username).filter(Boolean))].slice(0, 4);
+    const topics = [...new Set(items.map((t) => t.topic && t.topic.title).filter(Boolean))].slice(0, 3);
+    const headline = clamp(topics.length ? topics.slice(0, 2).join(' and ') : `${who.join(', ') || 'Today'} on the Rundown`, 100);
+    const sentences = sample.map((t) => {
+        const name = (t.channel && t.channel.username) || 'A streamer';
+        const about = t.topic && t.topic.title ? ` talked about ${t.topic.title}` : ' was on';
+        const said = t.take || t.what;
+        return said ? `${name}${about}: ${said}` : `${name}${about}.`;
+    });
+    const summary = clamp(sentences.join(' '), 700);
+    if (!headline || !summary || explicit.isExplicit(headline, summary, ...sample.map((t) => t.take || t.what || ''))) return null;
+    const highlights = sample.map((t) => ({
+        take_id: Number(t.id), line: clamp(t.take || t.what, 240), stream_id: Number(t.stream_id),
+        username: (t.channel && t.channel.username) || null, topic: (t.topic && t.topic.title) || null,
+        url: takeUrl(t.stream_id, t.id),
+    })).filter((h) => h.line);
+    return { status: 'ready', version: CARD_VERSION, written_by: 'live', date, headline, summary, highlights, generated_at: now, latest_take_id: latest, take_count: total, take_sample: sample.length };
+}
+
 /**
  * Write today's card if it is due. ai is injectable for tests (a function like ai-service.structured).
  * Returns the stored card, the existing card when not due, or null when there was nothing to write.
@@ -158,8 +180,11 @@ async function refresh(date, { now = Date.now(), force = false, ai = null } = {}
     catch { out = null; }
     if (!out) { console.log(`[Rundown] today: no AI answer for ${date}`); return null; }
     const text = cardText(out);
-    if (!text) { console.log(`[Rundown] today: the AI answer for ${date} was filtered`); return null; }
-    const card = { status: 'ready', version: CARD_VERSION, date, ...enrich(text, sample, total), generated_at: now, latest_take_id: latest, take_count: total, take_sample: sample.length };
+    const card = text
+        ? { status: 'ready', version: CARD_VERSION, written_by: 'ai', date, ...enrich(text, sample, total), generated_at: now, latest_take_id: latest, take_count: total, take_sample: sample.length }
+        : fallbackCard(date, sample, total, now, latest);
+    if (!card) { console.log(`[Rundown] today: the AI answer for ${date} was filtered and the takes cannot make a card`); return null; }
+    if (!text) console.log(`[Rundown] today: no usable AI answer for ${date}; wrote the card from its takes`);
     try { await db.setSetting(KEY(date), JSON.stringify(card)); } catch { return null; }
     return card;
 }
@@ -189,13 +214,13 @@ function ssrHtml(card) {
         sub: [h.username, h.topic].filter(Boolean).join(' · '),
     }));
     return kit.section({
-        title: "Today's rundown", icon: 'spark', note: 'Written by AI from today’s takes.',
+        title: "Today's rundown", icon: 'spark', note: card.written_by === 'live' ? 'From today’s takes.' : 'Written by AI from today’s takes.',
         body: `<p class="rd-today-headline"><strong>${kit.esc(card.headline)}</strong></p><p class="rd-today-sum">${kit.esc(card.summary)}</p>`
             + (rows.length ? kit.list(rows, { title: 'Highlights' }) : ''),
     });
 }
 
 module.exports = {
-    refresh, get, tick, start, stop, ssrHtml, isDue, sampleTakes, cardInput, cardText, takesFor, utcDay,
+    refresh, get, tick, start, stop, ssrHtml, isDue, sampleTakes, cardInput, cardText, fallbackCard, takesFor, utcDay,
     REFRESH_MS, CHECK_MS, MIN_TAKES, MAX_TAKES, CARD_VERSION, KEY,
 };
