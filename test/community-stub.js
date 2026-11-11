@@ -35,7 +35,7 @@ function startCommunityStub({ people = {} } = {}) {
             author: deleted ? null : personOf(c.author), anon_name: null,
             display_name: deleted ? null : ((people[c.author] || {}).display_name || null),
             message: deleted ? null : c.message, deleted, score: 0, upvotes: 0, downvotes: 0, my_vote: 0,
-            reply_count: replyCount(c), created_at: c.created_at, updated_at: c.edited_at || c.created_at, edited_at: deleted ? null : c.edited_at,
+            reply_count: replyCount(c), attachments: deleted ? [] : (c.attachments || []), created_at: c.created_at, updated_at: c.edited_at || c.created_at, edited_at: deleted ? null : c.edited_at,
             can_edit: !deleted && !!subject && c.author === subject, can_delete: !deleted && !!subject && c.author === subject,
         };
         if (withReplies) out.replies = comments.filter((r) => r.parent_id === c.id && !r.deleted_at).sort((a, b) => a.id - b.id).slice(0, 20).map((r) => shapeComment(r, subject, false));
@@ -43,21 +43,34 @@ function startCommunityStub({ people = {} } = {}) {
     }
 
     const server = http.createServer((req, res) => {
-        let raw = '';
-        req.on('data', (c) => { raw += c; });
-        req.on('end', () => {
+        const chunks = [];
+        req.on('data', (c) => { chunks.push(c); });
+        req.on('end', async () => {
             if (state.down) { req.socket.destroy(); return; }
             const url = new URL(req.url, 'http://x');
             const p = url.pathname.replace(/^\/api\/v1\/comments/, '');
             const subject = req.headers['x-ov-subject'] || null;
             const staff = req.headers['x-ov-staff'] === '1';
-            const body = raw ? JSON.parse(raw) : undefined;
+            const raw = Buffer.concat(chunks);
+            let body;
+            if (/^multipart\/form-data/.test(req.headers['content-type'] || '')) {
+                const form = await new Request('http://local/attachments', { method: 'POST', headers: { 'content-type': req.headers['content-type'] }, body: raw }).formData();
+                const file = form.get('file');
+                body = { ref: JSON.parse(form.get('ref')), file: file && { name: file.name, type: file.type, size: file.size } };
+            } else body = raw.length ? JSON.parse(raw.toString('utf8')) : undefined;
             calls.push({ method: req.method, path: p, query: url.search, subject, staff, body, auth: req.headers.authorization || null, xff: req.headers['x-forwarded-for'] || null });
             const send = (status, obj) => { res.statusCode = status; res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify(obj)); };
             const problem = (status, code, detail) => send(status, { type: 'about:blank', status, code, detail, error: detail });
             if (!/^Bearer /.test(req.headers.authorization || '')) return problem(401, 'token.missing', 'service token required');
             const moderator = !subject || staff;
             let m;
+
+            if (req.method === 'POST' && p === '/attachments') {
+                if (!subject || !body.file) return problem(400, 'attachment.invalid', 'A person and file are required');
+                const id = `med_${'0'.repeat(24)}${String(calls.length).padStart(2, '0')}`;
+                return send(201, { attachment: { id, name: body.file.name, media_type: body.file.type, size: body.file.size,
+                    storage: { provider: 'media', key: id }, access: { readers: [subject] }, role: 'input' } });
+            }
 
             if (req.method === 'POST' && p === '/threads/resolve') {
                 const ref = body.ref;
@@ -95,7 +108,7 @@ function startCommunityStub({ people = {} } = {}) {
                     if (!parent || parent.thread_id !== t.id || parent.deleted_at) return problem(400, 'comment.invalid_parent', 'Invalid parent comment');
                     parentId = parent.parent_id || parent.id;
                 }
-                const c = { id: comments.length + 1, thread_id: t.id, parent_id: parentId, author: subject, message: String(body.message).trim(), created_at: now(), edited_at: null, deleted_at: null };
+                const c = { id: comments.length + 1, thread_id: t.id, parent_id: parentId, author: subject, message: String(body.message).trim(), attachments: body.attachments || [], created_at: now(), edited_at: null, deleted_at: null };
                 comments.push(c);
                 return send(201, { comment: shapeComment(c, subject, false) });
             }
