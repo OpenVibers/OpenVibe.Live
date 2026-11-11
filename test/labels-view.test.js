@@ -25,7 +25,7 @@ ctx.currentUser = { username: 'Carol' };
 assert.strictEqual(ovLabelsAttr(stream), '', 'the streamer\'s own stream is never marked for them');
 
 const home = read('public/js/app-home.js');
-assert.ok(home.includes('<a class="stream-card"${ovLabelsAttr(s)}'), 'the home card is marked');
+assert.match(home, /<a class="stream-card[^"]*"[^>\n]*\$\{ovLabelsAttr\(s\)\}/, 'the home card is marked (a live one also wears is-live and its frame, ask 286)');
 assert.ok(home.includes('style="--thumb-tint:${esc(_thumbTint(s))}" data-ov-labels-media>'), 'its picture is what a blur covers');
 assert.ok(home.includes('${ovLabelChips(s)}'), 'its chips under the title');
 const player = read('public/js/stream-player.js');
