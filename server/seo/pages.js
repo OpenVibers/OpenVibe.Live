@@ -974,8 +974,12 @@ function render(meta, urlPath) {
             const contentEnd = html.indexOf('</div>', contentStart);
             if (contentEnd !== -1) html = html.slice(0, contentStart) + cards + html.slice(contentEnd);
         }
-        for (const [section, id] of [['videos', 'ch-vods-all'], ['clips', 'ch-clips-of-all'], ['clips-taken', 'ch-clips-taken-all'], ['pastes', 'ch-pastes-all']]) {
-            html = html.replace(`id="${id}" href="#">View all`, `id="${id}" href="/@${esc(meta.channelUsername)}?section=${section}">View all (${Number(meta.railCounts[section]) || 0})`);
+        // Each section's View all is an icon button with its words for readers and crawlers; the count sits beside the
+        // heading (ask 355, 2026-11-11).
+        for (const [section, id, countId] of [['videos', 'ch-vods-all', 'ch-vods-n'], ['clips', 'ch-clips-of-all', 'ch-clips-of-n'], ['clips-taken', 'ch-clips-taken-all', 'ch-clips-taken-n'], ['pastes', 'ch-pastes-all', 'ch-pastes-n']]) {
+            const count = Number(meta.railCounts[section]) || 0;
+            html = html.replace(`id="${id}" href="#"`, `id="${id}" href="/@${esc(meta.channelUsername)}?section=${section}"`);
+            if (count > 0) html = html.replace(`<span class="ch-sec-n" id="${countId}" hidden></span>`, `<span class="ch-sec-n" id="${countId}">${count > 999 ? `${Math.floor(count / 100) / 10}k` : count}</span>`);
         }
     }
 

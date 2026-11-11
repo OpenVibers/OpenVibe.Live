@@ -6,6 +6,10 @@
      sheet    1180px and narrower, portrait: the bottom sheet; the grip on its top edge sets the height, and
               letting go most of the way down closes the sheet
 
+   A phone held upright while a stream is live (ask 353, 2026-11-11): the chat is docked under the player and starts
+   all the way up to it; its grip sets how tall it is (the channel line shows in the room it leaves), all the way up
+   again is the default, and letting go most of the way down folds it to the round chat button.
+
    Double-click or double-tap a grip (or press Enter on it) for the default size; arrow keys move it 24px.
    Each layout remembers its own size (localStorage), applied as CSS variables on #page-channel, which
    public/css/features/channel.css reads: --chat-w, --chat-ow, --chat-sheet-h.
@@ -14,12 +18,29 @@
     'use strict';
     const WIDE = window.matchMedia('(min-width: 1181px)');
     const LAND = window.matchMedia('(orientation: landscape)');
+    const PHONE = window.matchMedia('(max-width: 768px) and (orientation: portrait)');
+    const page = () => document.getElementById('page-channel');
+    // Docked: a phone upright, live, and not a portrait stream (that one keeps its chat over the picture).
+    const docked = () => {
+        const p = page();
+        return PHONE.matches && !!p && p.classList.contains('ch-is-live') && !p.querySelector('.video-container.is-vertical');
+    };
+    // The docked chat's room: from the player's bottom (or the robot's row under it) to the column's end.
+    function dockRoom() {
+        const p = page();
+        const layout = p && p.querySelector('.stream-layout');
+        const v = p && p.querySelector('#video-container');
+        if (!layout || !v) return window.innerHeight * 0.6;
+        let top = v.getBoundingClientRect().bottom;
+        const row = p.classList.contains('ch-bot-compact') ? p.querySelector('#ch-bot-section') : null;
+        if (row) top += row.getBoundingClientRect().height;
+        return Math.max(180, layout.getBoundingClientRect().bottom - top);
+    }
     const MODES = {
         side: { key: 'openvibe_chat_width', prop: '--chat-w', axis: 'x', min: 260, max: () => Math.min(window.innerWidth * 0.5, 760) },
         overlay: { key: 'openvibe_chat_overlay_w', prop: '--chat-ow', axis: 'x', min: 260, max: () => window.innerWidth * 0.7 },
-        sheet: { key: 'openvibe_chat_sheet_h', prop: '--chat-sheet-h', axis: 'y', min: 180, max: () => window.innerHeight * 0.92 },
+        sheet: { key: 'openvibe_chat_sheet_h', prop: '--chat-sheet-h', axis: 'y', min: 180, max: () => (docked() ? dockRoom() : window.innerHeight * 0.92) },
     };
-    const page = () => document.getElementById('page-channel');
     const modeOf = () => (WIDE.matches ? 'side' : LAND.matches ? 'overlay' : 'sheet');
     const clamp = (v, a, b) => Math.round(Math.max(a, Math.min(b, v)));
     const read = (k) => { try { return parseInt(localStorage.getItem(k), 10) || 0; } catch { return 0; } };
@@ -29,6 +50,8 @@
         const p = page(); const m = MODES[mode];
         if (!p) return;
         if (v) p.style.setProperty(m.prop, `${clamp(v, m.min, m.max())}px`); else p.style.removeProperty(m.prop);
+        // A sheet with a height of its own leaves the rest to the channel line; without one it fills (channel.css).
+        if (mode === 'sheet') p.classList.toggle('ch-chat-sized', !!v);
     }
     function applySaved() { for (const mode of Object.keys(MODES)) setSize(mode, read(MODES[mode].key)); }
     function settle() { window.dispatchEvent(new Event('resize')); }   // the player and the diagrams re-measure
@@ -78,7 +101,7 @@
             if (Math.abs(delta) > 3) drag.moved = true;
             // The sheet may go below its minimum while dragging: letting go there closes it.
             drag.cur = Math.round(Math.max(drag.mode === 'sheet' ? 60 : m.min, Math.min(m.max(), drag.from + delta)));
-            const p = page(); if (p) p.style.setProperty(m.prop, `${drag.cur}px`);
+            const p = page(); if (p) { p.style.setProperty(m.prop, `${drag.cur}px`); if (drag.mode === 'sheet') p.classList.add('ch-chat-sized'); }
             sync(g, sidebar);
         });
         const end = (e) => {
@@ -93,6 +116,16 @@
                 return;
             }
             const m = MODES[d.mode];
+            if (d.mode === 'sheet' && docked()) {
+                // Docked: most of the way down folds the chat to its round button; all the way up is "fill" again.
+                if (d.cur < m.min) {
+                    setSize('sheet', read(m.key));
+                    if (typeof window.toggleChannelChat === 'function') window.toggleChannelChat(true);
+                    sync(g, sidebar);
+                    return;
+                }
+                if (d.cur >= m.max() - 16) { reset('sheet'); sync(g, sidebar); return; }
+            }
             if (d.mode === 'sheet' && d.cur < m.min) {
                 setSize('sheet', read(m.key));   // keep the last real height for next time
                 const s = document.querySelector('#page-channel .chat-sidebar.mobile-chat-open');
@@ -115,6 +148,7 @@
             e.preventDefault();
             const r = sidebar.getBoundingClientRect();
             const v = clamp((m.axis === 'x' ? r.width : r.height) + grow[e.key] * 24, m.min, m.max());
+            if (mode === 'sheet' && docked() && v >= m.max()) { reset('sheet'); sync(g, sidebar); return; }
             setSize(mode, v); write(m.key, v); settle();
             sync(g, sidebar);
         });

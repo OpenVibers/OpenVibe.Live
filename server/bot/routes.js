@@ -43,7 +43,7 @@ router.put('/channel/:username/bot', (req, res, next) => (embed.enabled() ? next
         let mode = embed.controlMode(channel.bot_controls_mode);
         if (hasMode) {
             if (!embed.CONTROL_MODES.includes(body.controls_mode)) {
-                return res.status(400).json({ error: "controls_mode must be 'overlay' or 'panel'" });
+                return res.status(400).json({ error: "controls_mode must be 'overlay', 'compact' or 'panel'" });
             }
             mode = body.controls_mode;
         }

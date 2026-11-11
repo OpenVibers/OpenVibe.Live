@@ -138,6 +138,11 @@ console.warn = (...a) => { warnings.push(a.join(' ')); };
         assert.strictEqual(mode.status, 200, mode.text);
         assert.deepStrictEqual(mode.body.bot_embed, { enabled: true, robot_id: 'rob_sim123', url: 'https://openvibe.bot/panel/rob_sim123/embed', controls_mode: 'overlay' });
         assert.strictEqual((await channelGet()).body.bot_embed.controls_mode, 'overlay', 'the channel serializer carries it to the page');
+        // A row under the video (ask 353): the database takes it (migration 0039) and the page gets it.
+        const row = await call('PUT', '/api/streams/channel/rover/bot', { user: 1, body: { controls_mode: 'compact' } });
+        assert.strictEqual(row.status, 200, row.text);
+        assert.strictEqual((await channelGet()).body.bot_embed.controls_mode, 'compact');
+        assert.strictEqual((await db.getChannelByUserId(1)).bot_controls_mode, 'compact');
         // Both together, then an invalid value changes nothing.
         const both = await call('PUT', '/api/streams/channel/rover/bot', { user: 1, body: { robot_id: 'rob_sim123', controls_mode: 'panel' } });
         assert.strictEqual(both.status, 200);
