@@ -990,7 +990,7 @@ body.theme-light .stream-card.is-live::before { opacity: .35; }
 /* ═══════════════════════════════════════════════════════════════
    RECENTLY ONLINE — GROUPED STREAMER CARDS
    ═══════════════════════════════════════════════════════════════ */
-.streamer-group-name { font-weight: 650; font-size: 0.95rem; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.streamer-group-name { font-weight: 650; font-size: 0.95rem; flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .streamer-group-stream-thumb {
     width: 72px; height: 40px; border-radius: 4px;
     overflow: hidden; background: var(--bg-tertiary);
@@ -2519,7 +2519,7 @@ html[data-ov-motion=off] .ov-rail-track{scroll-behavior: auto}
     display: flex; align-items: center; justify-content: center;
     background: var(--bg-secondary); color: var(--text-muted); font-size: 0.65rem;
 }
-.chat-users-name { font-size: 0.82rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.chat-users-name { font-size: 0.82rem; overflow-wrap: anywhere; }
 .chat-users-badge {
     font-size: 0.65rem; padding: 1px 4px; border-radius: 3px; flex-shrink: 0; margin-left: auto;
 }

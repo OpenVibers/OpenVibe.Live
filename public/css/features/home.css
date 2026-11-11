@@ -1570,3 +1570,10 @@ html[data-ov-motion=off] .ovnet-sky i{opacity: .45}html[data-ov-motion=off] .ovn
 /* The real button, lit for a moment when the line is pressed. */
 .ovnav-orb.ovnet-point { animation: ovnetPoint .9s cubic-bezier(.2, .8, .2, 1); border-radius: 12px; }
 @keyframes ovnetPoint { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent, #3b82f6) 70%, transparent); } 100% { box-shadow: 0 0 0 16px transparent; } }
+
+/* Since you were here on a wide screen with one section (no takes yet): the people fill the row in columns instead of
+   leaving the right half empty (2026-11-11). */
+@media (min-width: 701px) {
+    #page-home .digest-section:only-of-type { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); column-gap: 28px; align-items: center; }
+    #page-home .digest-section:only-of-type > h3 { grid-column: 1 / -1; }
+}
