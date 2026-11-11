@@ -400,8 +400,9 @@
           </div><!-- /.stream-layout -->
         </div>
 
-        <!-- Channel content (below stream): every section on the page, never behind a tab (owner 10-31: content is never
-             hidden to shorten a page). The row is a jump bar with counts; AI timeline and Analytics are counted folds. -->
+        <!-- Channel content (below stream): every section is in the page's HTML. A wide screen shows them one after
+             another with this row as a jump bar; at 900 px or narrower the row is tabs and one section shows at a time
+             (ask 367, 2026-11-11: "self-contained tabs, so the page isn't so freaking huge"; app-channel.js _chShowPanel). -->
         <div class="channel-below-fold">
             <div class="container">
                 <nav class="ch-tabs ch-jump" id="ch-tabs" aria-label="Jump to a section">

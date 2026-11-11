@@ -712,7 +712,11 @@ async function loadChannelPastes(username = currentChannelUsername, { append = f
     const sortHost = document.getElementById('ch-pastes-sort');
     if (!grid) return;
     const sort = channelPastesSortByUser[username] || 'newest';
-    if (sortHost) sortHost.innerHTML = (typeof sortToggleHTML === 'function') ? sortToggleHTML(sort, 'setChannelPastesSort') : '';
+    if (sortHost) {
+        const name = sort === 'oldest' ? 'Oldest first' : 'Newest first';
+        sortHost.innerHTML = `<label class="ch-ib ch-ib-pick" data-order="${sort}" title="${name}"><i class="fa-solid ${sort === 'oldest' ? 'fa-arrow-down-short-wide' : 'fa-arrow-down-wide-short'}" aria-hidden="true"></i><span class="ch-ib-t">${name}</span><i class="fa-solid fa-chevron-down ch-ib-caret" aria-hidden="true"></i>`
+            + `<select class="ch-vods-filter-select" data-ov-native aria-label="Order" onchange="setChannelPastesSort(this.value)"><option value="newest"${sort === 'oldest' ? '' : ' selected'}>Newest first</option><option value="oldest"${sort === 'oldest' ? ' selected' : ''}>Oldest first</option></select></label>`;
+    }
     try {
         const oldCards = append ? [...grid.children].filter((el) => !el.classList.contains('ch-rail-skeleton')) : [];
         const offset = append ? oldCards.length : 0;
@@ -2271,6 +2275,7 @@ function switchChannelTab(tab, btn, jump) {
     _channelTab = tab;
     _markChannelJump(tab, !!jump);
     _ensureChannelSection(tab);
+    if (_chIsTabbed()) { _chShowPanel(tab, !!jump); return; }
     if (!jump) return;
     const panel = document.getElementById('ch-panel-' + tab);
     if (!panel || panel.hidden) return;
@@ -2281,6 +2286,51 @@ function switchChannelTab(tab, btn, jump) {
     panel.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' });
     setTimeout(_queueChannelSectionSpy, reduce ? 200 : 1450);
 }
+/*
+ * One section at a time on a phone or a tablet (ask 367, 2026-11-11, the owner: "consolidate these into tabs,
+ * self-contained tabs, so the page isn't so freaking huge … at least on mobile"). The page's HTML still carries every
+ * section (crawlers, readers without scripts, the server's own render); a person at 900 px or narrower sees the one
+ * whose tab they chose, the others wait (and load the first time they are opened). A wide screen keeps the sections
+ * one after another with the jump bar.
+ */
+const _chTabbedMQ = typeof window.matchMedia === 'function' ? window.matchMedia('(max-width: 900px)') : null;
+function _chIsTabbed() { return !!(_chTabbedMQ && _chTabbedMQ.matches); }
+function _chFirstTab() {
+    const b = Array.from(document.querySelectorAll('#ch-tabs .ch-tab[data-tab]')).find((x) => x.style.display !== 'none');
+    return b ? b.dataset.tab : 'videos';
+}
+function _chShowPanel(tab, fromTap) {
+    let panel = document.getElementById('ch-panel-' + tab);
+    if (!panel || panel.hidden) { tab = _chFirstTab(); panel = document.getElementById('ch-panel-' + tab); }
+    if (!panel) return;
+    const was = document.querySelector('#page-channel .ch-tab-panel.is-current');
+    document.querySelectorAll('#page-channel .ch-tab-panel').forEach((p) => p.classList.toggle('is-current', p === panel));
+    if (was !== panel) {
+        panel.classList.remove('is-entering'); void panel.offsetWidth; panel.classList.add('is-entering');
+        setTimeout(() => panel.classList.remove('is-entering'), 260);
+    }
+    _channelTab = tab;
+    _markChannelJump(tab, !!fromTap);
+    const fold = panel.querySelector('details.ch-fold');
+    if (fold && !fold.open) fold.open = true;
+    _ensureChannelSection(tab);
+    // A tab chosen while the page is scrolled into a long section starts the new one at its top, under the bar.
+    if (fromTap) {
+        const bar = document.getElementById('ch-tabs');
+        const under = bar ? bar.getBoundingClientRect().bottom : 0;
+        const top = panel.getBoundingClientRect().top;
+        if (top < under - 2) window.scrollTo({ top: window.scrollY + top - under - 8, behavior: 'auto' });
+    }
+}
+function _chApplyTabbed() {
+    const page = document.getElementById('page-channel');
+    if (!page) return;
+    const on = _chIsTabbed();
+    page.classList.toggle('ch-tabbed', on);
+    if (on) _chShowPanel(_channelTab || _chFirstTab(), false);
+    else document.querySelectorAll('#page-channel .ch-tab-panel.is-current').forEach((p) => p.classList.remove('is-current'));
+}
+if (_chTabbedMQ && typeof _chTabbedMQ.addEventListener === 'function') _chTabbedMQ.addEventListener('change', () => { _chApplyTabbed(); _queueChannelSectionSpy(); });
 function _channelReduceMotion() {
     return document.documentElement.dataset.ovMotion === 'off';
 }
@@ -2378,12 +2428,18 @@ function _syncChannelSections() {
         if (panel) panel.hidden = b.style.display === 'none';
     });
     _updateChannelTabArrows();
+    // Tabbed: the section shown went away (no About after all): the first one there is.
+    if (_chIsTabbed()) {
+        const cur = document.querySelector('#page-channel .ch-tab-panel.is-current');
+        if (!cur || cur.hidden) _chShowPanel(_chFirstTab(), false);
+    }
 }
 let _chSecObs = null, _chSpyObs = null, _chTabsObs = null;
 let _chSpyFrame = 0;
 let _chHashMark = '';   // a section a live link named: its jump link stays marked while the page is still at the top
 function _channelSectionInView() {
     _chSpyFrame = 0;
+    if (_chIsTabbed()) return;   // one section at a time: the tab says which, not the scroll
     if (Date.now() < _chJumpUntil) return;
     if (_chHashMark) {
         if (window.scrollY <= 120) return;
@@ -2408,6 +2464,7 @@ function _queueChannelSectionSpy() {
     if (!_chSpyFrame) _chSpyFrame = requestAnimationFrame(_channelSectionInView);
 }
 function _watchChannelSections() {
+    _chApplyTabbed();
     _syncChannelSections();
     const tabs = document.getElementById('ch-tabs');
     _initChannelTabArrows();
@@ -3690,16 +3747,16 @@ async function loadChannelMedia(username = currentChannelUsername) {
         host.innerHTML = `
           <div class="ch-media">
             <form class="ch-media-req" onsubmit="return submitMediaRequest(event)">
-              <input id="ch-media-input" type="text" placeholder="Paste a ${esc(sources || 'media')} URL to request…" ${loggedIn ? '' : 'disabled'} oninput="_clearMediaQuote()">
-              <button class="btn btn-primary" ${loggedIn ? '' : 'disabled'}><i class="fa-solid fa-magnifying-glass"></i> Check price</button>
+              <label class="ch-media-field"><i class="fa-solid fa-link" aria-hidden="true"></i><input id="ch-media-input" type="url" inputmode="url" autocomplete="off" aria-label="A link to request" placeholder="Paste a ${esc(sources || 'media')} link" ${loggedIn ? '' : 'disabled'} oninput="_clearMediaQuote()"></label>
+              <button class="btn btn-primary ch-media-go" ${loggedIn ? '' : 'disabled'}><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i><span>Check price</span></button>
             </form>
-            <div class="ch-media-hint muted">${loggedIn ? '' : '<i class="fa-solid fa-lock"></i> Log in to request. '}<i class="${_mediaCurrencyIcon(p && p.currency)}"></i> ${esc(_mediaPriceLabel(p))}${maxMin ? ` Max ${maxMin} min.` : ''}</div>
+            <div class="ch-media-hint">${loggedIn ? '' : '<span class="ch-media-chip is-lock"><i class="fa-solid fa-lock" aria-hidden="true"></i> Sign in to request</span>'}<span class="ch-media-chip"><i class="${_mediaCurrencyIcon(p && p.currency)}" aria-hidden="true"></i> ${esc(_mediaPriceLabel(p).replace(/\.$/, ''))}</span>${maxMin ? `<span class="ch-media-chip"><i class="fa-solid fa-clock" aria-hidden="true"></i> Up to ${maxMin} min</span>` : ''}</div>
             <div id="ch-media-quote"></div>
             <div id="ch-media-status" class="ch-media-status"></div>
-            ${_mediaCanManage ? `<div class="ch-media-mod-bar"><span class="muted"><i class="fa-solid fa-shield-halved"></i> You can manage this queue</span><button class="btn btn-sm btn-outline" onclick="_mediaAdvance('played')"><i class="fa-solid fa-forward-step"></i> Next</button><button class="btn btn-sm btn-outline" onclick="_mediaAdvance('skipped')"><i class="fa-solid fa-ban"></i> Skip &amp; refund</button></div>` : ''}
+            ${_mediaCanManage ? `<div class="ch-media-mod-bar"><span class="ch-media-mod-say"><i class="fa-solid fa-shield-halved" aria-hidden="true"></i> You run this queue</span><span class="ch-media-mod-acts"><button class="ch-ib" type="button" title="Play the next request" aria-label="Play the next request" onclick="_mediaAdvance('played')"><i class="fa-solid fa-forward-step" aria-hidden="true"></i><span class="ch-ib-t">Next</span></button><button class="ch-ib" type="button" title="Skip this one and refund it" aria-label="Skip this one and refund it" onclick="_mediaAdvance('skipped')"><i class="fa-solid fa-ban" aria-hidden="true"></i><span class="ch-ib-t">Skip &amp; refund</span></button></span></div>` : ''}
             ${np ? `<div class="ch-media-now"><div class="ch-media-section-label"><i class="fa-solid fa-play"></i> Now Playing</div>${_mediaItemHTML(np)}</div>` : ''}
-            <div class="ch-media-section-label"><i class="fa-solid fa-list-ol"></i> Up Next (${queue.length})</div>
-            <div class="ch-media-queue">${queue.length ? queue.map((q, i) => _mediaItemHTML(q, i + 1)).join('') : '<div class="muted" style="padding:12px">Queue is empty — be the first to request something!</div>'}</div>
+            <div class="ch-media-section-label"><i class="fa-solid fa-list-ol" aria-hidden="true"></i> Up next <span class="ch-sec-n">${queue.length}</span></div>
+            <div class="ch-media-queue">${queue.length ? queue.map((q, i) => _mediaItemHTML(q, i + 1)).join('') : '<div class="ch-media-empty"><i class="fa-solid fa-music" aria-hidden="true"></i><span>Nothing queued yet. Paste a link above to be first.</span></div>'}</div>
           </div>`;
     } catch { host.innerHTML = '<div class="ch-about-empty">Failed to load the media queue.</div>'; }
 }
