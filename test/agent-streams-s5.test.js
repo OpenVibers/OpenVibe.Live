@@ -99,10 +99,10 @@ async function check(name, fn) {
         assert.strictEqual(r.status, 200, JSON.stringify(r.data));
     });
 
-    await check('the room is made for a public or unlisted stream, never a private one', async () => {
+    await check('Chat receives public and unlisted rooms plus a private visibility marker', async () => {
         assert.ok(roomCalls.some((c) => c.agent_stream_id === publicStream.public_id));
         assert.ok(roomCalls.some((c) => c.agent_stream_id === deskStream.public_id));
-        assert.ok(!roomCalls.some((c) => c.agent_stream_id === privateStream.public_id));
+        assert.ok(roomCalls.some((c) => c.agent_stream_id === privateStream.public_id && c.visibility === 'private'), 'Chat hides an old room when its stream becomes private');
         assert.strictEqual(roomCalls.find((c) => c.agent_stream_id === publicStream.public_id).owner_subject, SID.ann);
     });
 

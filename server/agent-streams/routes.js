@@ -337,6 +337,16 @@ router.get('/mine', auth.viewer, async (req, res) => {
     }
 });
 
+// Chat checks this for each room read/post. It is deliberately ticket-free, so
+// rotating an unlisted link or making the stream private revokes chat at once.
+router.get('/:id/chat-access', async (req, res) => {
+    const row = await service.getByPublicId(req.params.id);
+    const secret = typeof req.query.k === 'string' ? req.query.k : null;
+    if (!row || !['public', 'unlisted'].includes(row.visibility) ||
+        !await service.mayView(row, { secret })) return fail(res, 404, 'agent_stream_not_found', 'No such agent stream');
+    res.set('Cache-Control', 'no-store').json({ visibility: row.visibility });
+});
+
 router.get('/:id', auth.viewer, async (req, res) => {
     try {
         const row = await load(req, res);

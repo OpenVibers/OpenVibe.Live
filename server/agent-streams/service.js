@@ -402,11 +402,13 @@ async function setVisibility(row, visibility) {
  * stream becomes visible. A private stream has none. Fire-and-forget: Chat being down never breaks the stream.
  */
 function syncChatRoom(row) {
-    if (!row || !['public', 'unlisted'].includes(row.visibility)) return;
+    if (!row) return;
     try {
         const chat = require('../chat/chat-client');
         if (!chat.available()) return;
-        chat.agentRoom({ agent_stream_id: row.public_id, owner_subject: row.owner_subject || null, name: row.title })
+        chat.agentRoom({ agent_stream_id: row.public_id, owner_subject: row.owner_subject || null,
+            owner_username: row.username, name: row.title, visibility: row.visibility,
+            link_secret_hash: row.visibility === 'unlisted' ? row.unlisted_secret_hash : null })
             .catch(() => { /* logged by the client */ });
     } catch { /* Chat is optional for a stream */ }
 }
@@ -424,7 +426,8 @@ function closeChatRoom(row) {
 /** A fresh unlisted link secret: the old links stop working at once. */
 async function rotateLink(row) {
     const secret = linkSecret();
-    await update(row, { set: { unlisted_secret_hash: sha256(secret) } });
+    const next = await update(row, { set: { unlisted_secret_hash: sha256(secret) } });
+    syncChatRoom(next);
     return secret;
 }
 

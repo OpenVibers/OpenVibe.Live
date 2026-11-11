@@ -588,6 +588,29 @@ router.get('/:id/context', optionalAuth, async (req, res) => {
     }
 });
 
+// The recording's agent overlay, in VOD time. The same visibility check as the
+// recording keeps private steps out of public watch pages.
+router.get('/:id/agent-steps', optionalAuth, async (req, res) => {
+    try {
+        const vod = await loadVisibleVod(req, res, req.params.id);
+        if (!vod) return;
+        const row = await db.get('SELECT a.*, m.public_id, m.title FROM agent_streams a JOIN managed_streams m ON m.id = a.managed_stream_id WHERE a.vod_id = ?', [String(vod.id)]);
+        if (!row) return res.status(404).json({ error: 'No agent steps for this recording' });
+        const { stepView } = require('../agent-streams/steps');
+        const rows = await db.all('SELECT * FROM agent_stream_steps WHERE managed_stream_id = ? ORDER BY at ASC, id ASC LIMIT 2000', [row.managed_stream_id]);
+        const started = row.started_at ? new Date(row.started_at).getTime() : NaN;
+        const part = await require('../streaming/stream-history').partForVod(vod.id).catch(() => null);
+        const offset = Number(part && part.at) || 0;
+        const steps = rows.map((r) => {
+            const step = stepView(r);
+            return { ...step, offset_seconds: Math.max(0, (new Date(step.at).getTime() - started) / 1000 - offset) };
+        }).filter((step) => Number.isFinite(step.offset_seconds));
+        if (access.isPrivate(vod)) res.set('Cache-Control', cache.htmlHeaders({ private: true }));
+        const task = typeof row.task === 'string' ? JSON.parse(row.task) : row.task;
+        res.json({ task: task && task.title || row.title || vod.title, stream_id: row.public_id, steps });
+    } catch (err) { mediaErr(res, err, 'Agent steps unavailable'); }
+});
+
 router.get('/:id', optionalAuth, async (req, res) => {
     try {
         // Fetched with the app's authority (no acting user): Live decides who sees what, so staff

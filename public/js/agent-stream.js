@@ -365,6 +365,7 @@
         mountPlays(data);
         ensureOverlay(data);
         renderOwner(data);
+        renderChat(stream);
         renderControls(data);
         renderVoice();
         loadVoices();
@@ -374,6 +375,23 @@
         if (!steps.length) loadInitialSteps(stream.id).then(() => { if (state && state.stream) { ensureOverlay(state); if (state.stream.state === 'ended') renderRecording(state); } });
         scheduleSteps(data);
         if (stream.state === 'ended') renderRecording(data);
+    }
+
+    function renderChat(stream) {
+        const panel = $('agent-chat');
+        const frame = $('agent-chat-frame');
+        if (!panel || !frame) return;
+        if (!stream || stream.state === 'ended' || !stream.chat_room || !['public', 'unlisted'].includes(stream.visibility)) {
+            panel.hidden = true;
+            frame.removeAttribute('src');
+            return;
+        }
+        let secret = new URLSearchParams(location.search).get('k') || '';
+        try { secret = new URL(stream.page_url, location.origin).searchParams.get('k') || secret; } catch { /* current link remains */ }
+        if (stream.visibility === 'unlisted' && !/^[A-Za-z0-9_-]{22}$/.test(secret)) { panel.hidden = true; return; }
+        const url = `https://openvibe.chat/embed/agent/${encodeURIComponent(stream.id)}${stream.visibility === 'unlisted' ? `?k=${encodeURIComponent(secret)}` : ''}`;
+        if (frame.getAttribute('src') !== url) frame.setAttribute('src', url);
+        panel.hidden = false;
     }
 
     /** S5: the moderators' bar. The owner and the channel's moderators see it; the owner also sees the log. */
@@ -579,6 +597,7 @@
                 if (next && next.stream && state) {
                     state.stream = next.stream;
                     renderOwner(state);
+                    renderChat(state.stream);
                 }
             } catch (err) {
                 select.value = state ? state.stream.visibility : 'private';
@@ -722,6 +741,7 @@
                 if (state && next && next.stream) {
                     state.stream = next.stream;
                     renderOwner(state);
+                    renderChat(state.stream);
                 }
                 if (next && next.stream && next.stream.page_url && navigator.clipboard) {
                     await navigator.clipboard.writeText(next.stream.page_url).catch(() => {});
