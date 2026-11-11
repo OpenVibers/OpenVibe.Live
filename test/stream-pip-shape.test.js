@@ -13,8 +13,11 @@ const path = require('path');
 const vm = require('vm');
 
 const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'js', 'stream-pip.js'), 'utf8');
+// The move's geometry lives in openvibe-shared/ov-float.js now; these adapters are what the page uses.
+const floatSrc = fs.readFileSync(require.resolve('openvibe-shared/ov-float'), 'utf8');
 const ctx = { window: {}, document: {}, localStorage: { getItem: () => null, setItem() {} }, console, setInterval, clearInterval };
 vm.createContext(ctx);
+vm.runInContext(floatSrc, ctx);
 vm.runInContext(src, ctx);
 const { boxOf, settle, applyGeom } = ctx.window.streamPip._test;
 

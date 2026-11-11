@@ -90,6 +90,7 @@
         "/js/ov-viewer-health.js",
         "/js/ov-mini-player.js",
         "/js/stream-player.js",
+        "/shared/ov-float.js",
         "/js/stream-pip.js"
       ]
     },

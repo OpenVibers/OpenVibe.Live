@@ -11,7 +11,9 @@
    default place and sound). Only live ones are drawn; every 30 s the list is asked for again
    (GET /api/streams/:id/pips), so one that goes live appears and one that ends goes.
 
-   Anywhere (owner, 2026-11-11: "move it anywhere … on top of shit … more solid feeling and more responsive"):
+   Anywhere (owner, 2026-11-11: "move it anywhere … on top of shit … more solid feeling and more responsive"): the move,
+   tuck, size, keys and kept place are openvibe-shared/ov-float.js now (it is the same code, lifted). This file keeps
+   the viewer sessions, the waits and the actions. The behaviour:
    - a PIP lives in the player (docked) or over the page (floating, position: fixed, it stays on screen while the page
      scrolls); it follows the finger or the mouse with a transform each frame and lands with a spring (FLIP), dropped
      over the player it docks, anywhere else it floats; a flick carries on the way it was thrown;
@@ -40,18 +42,14 @@
     const POLL_MS = 30000;
     const BASE = 16 / 9;          // the shape `w` is measured for
     const MAX_H = 0.85;           // of the frame's height, whatever the shape
-    const SNAP = 0.04;            // within this fraction of an edge, a dropped PIP snaps to it
-    const EDGE_PX = 12;           // the margin it snaps to
     const BIG_W = 0.5;            // a double tap's large size
     const MIN_PX = 150;           // the smallest 16:9 width on a phone-sized frame
     const TAB_PX = 30;            // what stays on screen of a tucked PIP
-    const DRAG_PX = 4;            // a press that moves less is a tap
     const STALL_MS = 4000;        // no new frame for this long: show the wait
     const RETRY_MS = 15000;       // still nothing: connect again
     const BACKOFF = [2000, 4000, 8000, 15000, 30000];
-    const LAND_MS = 300;
 
-    let host = null;   // { streamId, slot, container, overlays: Map(source_msid → overlay), timer, gen, ro }
+    let host = null;   // { streamId, slot, container, overlays: Map(source_msid → overlay), timer, gen }
     let gen = 0;
 
     const reduced = () => {
@@ -84,7 +82,12 @@
         },
     };
 
-    /* ── geometry ─────────────────────────────────────────────── */
+    /** The account plug the engine saves through; the key is Live's `<slot>:<source>`, not the browser key. */
+    const pipStore = { load: () => account.load(), get: (key) => account.get(key), put: (key, value) => account.put(key, value) };
+
+    /* ── geometry (the shared engine's; these adapters keep the shape test) ─────────────────────────────── */
+
+    const engine = () => window.OVFloat;
 
     function clamp(v, lo, hi, dflt) {
         const n = Number(v);
@@ -100,7 +103,7 @@
     }
 
     function shapeGeom(raw, fallback) {
-        if (!raw || typeof raw !== 'object') return null;
+        if (!raw || typeof raw !== 'object') return Object.assign({}, fallback);
         return {
             x: clamp(raw.x, 0, 1, fallback.x), y: clamp(raw.y, 0, 1, fallback.y), w: clamp(raw.w, MIN_W, MAX_W, fallback.w),
             mode: raw.mode === 'float' ? 'float' : 'dock',
@@ -110,85 +113,17 @@
         };
     }
 
-    /** This browser's copy, else the per-session one it had before, else the streamer's place; the account's if newer. */
-    function loadGeom(slot, streamId, pip) {
-        const fallback = defaultsOf(pip);
-        let local = null;
-        try {
-            local = shapeGeom(JSON.parse(localStorage.getItem(LS_KEY(slot, pip.source_msid)) || 'null'), fallback)
-                || shapeGeom(JSON.parse(localStorage.getItem(LS_V1(streamId, pip.source_msid)) || 'null'), fallback);
-        } catch { local = null; }
-        const remote = shapeGeom(account.get(`${slot}:${pip.source_msid}`), fallback);
-        if (remote && (!local || remote.at > local.at)) return remote;
-        return local || fallback;
+    /** The place this session had before 2026-11-11, if the per-slot one does not exist yet. */
+    function legacyGeom(streamId, pip) {
+        try { return JSON.parse(localStorage.getItem(LS_V1(streamId, pip.source_msid)) || 'null'); } catch { return null; }
     }
 
+    /** This browser's copy, the streamer's place and the account are the engine's; Live keeps its own events and slots. */
     function saveGeom(o) {
         o.geom.at = Date.now();
         try { localStorage.setItem(LS_KEY(o.slot, o.pip.source_msid), JSON.stringify(o.geom)); } catch { /* */ }
         account.put(`${o.slot}:${o.pip.source_msid}`, o.geom);
         try { window.dispatchEvent(new CustomEvent('ov:pip', { detail: { slot: o.slot, source: o.pip.source_msid, geom: { ...o.geom } } })); } catch { /* */ }
-    }
-
-    /** The PIP's frame: the player when docked, the window when floating (fullscreen: always the player). */
-    function frameRect(o) {
-        if (o.geom && o.geom.mode === 'float' && !inFullscreen(o)) {
-            const w = window.innerWidth || 0, h = window.innerHeight || 0;
-            return { left: 0, top: 0, width: w, height: h };
-        }
-        return o.container ? o.container.getBoundingClientRect() : { left: 0, top: 0, width: 0, height: 0 };
-    }
-
-    function inFullscreen(o) {
-        const fs = typeof document !== 'undefined' && document.fullscreenElement;
-        return !!(fs && o && o.container && (fs === o.container || fs.contains(o.container)));
-    }
-
-    /** The box as fractions of its frame: width, height and the place it may go, for the source's own shape. */
-    function boxOf(o) {
-        const a = o.aspect || BASE;
-        const r = frameRect(o);
-        // On a phone-sized frame a quarter of the width is a postage stamp: never smaller than a 150 px wide 16:9 box
-        // (the saved size is unchanged, so a desktop shows it as saved).
-        const w = r.width && r.width < 640 ? Math.max(o.geom.w, Math.min(MAX_W, MIN_PX / r.width)) : o.geom.w;
-        let wf = w * Math.sqrt(a / BASE);                        // the same area as a 16:9 PIP of width w
-        if (r.width && r.height && (wf * r.width) / a > MAX_H * r.height) wf = (MAX_H * r.height * a) / r.width;
-        wf = Math.min(wf, 1);
-        const hf = r.width && r.height ? (wf * r.width) / a / r.height : wf / a;
-        return { a, wf, hf, rw: r.width, rh: r.height, rl: r.left || 0, rt: r.top || 0 };
-    }
-
-    function applyGeom(o) {
-        const { x, y, tuck } = o.geom;
-        const b = boxOf(o);
-        const floating = o.geom.mode === 'float' && !inFullscreen(o);
-        if (o.el.classList.toggle) {
-            o.el.classList.toggle('is-floating', floating);
-            o.el.classList.toggle('is-tucked', !!tuck);
-            o.el.classList.toggle('is-tucked-left', tuck === 'left');
-            o.el.classList.toggle('is-tucked-right', tuck === 'right');
-            o.el.classList.toggle('is-portrait', b.a < 1);
-        }
-        // Shown inside its frame even when a turn of the phone or a smaller window would push it out; the saved place
-        // is not changed, so it comes back when there is room again. A tucked one sits at its side (CSS `translate`
-        // leaves only its tab on screen; `transform` stays free for the landing).
-        const left = tuck === 'left' ? 0 : tuck === 'right' ? Math.max(0, 1 - b.wf) : Math.min(Math.max(0, x), Math.max(0, 1 - b.wf));
-        o.el.style.left = `${left * 100}%`;
-        o.el.style.top = `${Math.min(Math.max(0, y), Math.max(0, 1 - b.hf)) * 100}%`;
-        o.el.style.width = `${b.wf * 100}%`;
-        o.el.style.aspectRatio = String(b.a);
-    }
-
-    /** After a drop: keep it inside, and snap it to an edge it was dropped close to. */
-    function settle(o) {
-        const b = boxOf(o);
-        const mx = b.rw ? EDGE_PX / b.rw : 0, my = b.rh ? EDGE_PX / b.rh : 0;
-        const maxX = Math.max(0, 1 - b.wf), maxY = Math.max(0, 1 - b.hf);
-        let { x, y } = o.geom;
-        x = Math.min(Math.max(0, x), maxX); y = Math.min(Math.max(0, y), maxY);
-        if (x < SNAP) x = Math.min(mx, maxX); else if (x > maxX - SNAP) x = Math.max(0, maxX - mx);
-        if (y < SNAP) y = Math.min(my, maxY); else if (y > maxY - SNAP) y = Math.max(0, maxY - my);
-        o.geom.x = x; o.geom.y = y;
     }
 
     /** The source's shape, from the video itself: on its first frame and whenever it changes (a phone turned). */
@@ -199,50 +134,20 @@
             const a = vw / vh;
             if (o.aspect && Math.abs(o.aspect - a) < 0.01) return;
             o.aspect = a;
-            if (o.el) applyGeom(o);
+            if (o.float) o.float.setAspect(a);
         };
         videoEl.addEventListener('loadedmetadata', read);
         videoEl.addEventListener('resize', read);
     }
 
-    function resetGeom(o) {
-        const d = defaultsOf(o.pip);
-        Object.assign(o.geom, { x: d.x, y: d.y, w: d.w, mode: 'dock', tuck: null });
-    }
-
-    /* ── where it lives: the player, or over the page ─────────── */
-
-    /** The element the PIP is a child of for its mode: the player, or the page (the fullscreen element in fullscreen). */
-    function placeIn(o) {
-        const fs = document.fullscreenElement;
-        const want = o.geom.mode === 'float' && !inFullscreen(o) ? document.body : (fs && !fs.contains(o.container) ? fs : o.container);
-        if (want && o.el.parentNode !== want) {
-            const v = o.el.querySelector('.ov-pip-video');
-            want.appendChild(o.el);
-            // A media element moved in one task keeps playing; play() covers a browser that paused it.
-            if (v && v.paused) v.play().catch(() => {});
-        }
-    }
-
-    /** Move it to its place with a spring from where it was (`from`: its rect on screen before). */
-    function land(o, from) {
-        placeIn(o);
-        o.el.style.transition = 'none';
-        o.el.style.transform = '';
-        applyGeom(o);
-        if (!from || reduced()) { o.el.style.transition = ''; return; }
-        const to = o.el.getBoundingClientRect();
-        if (!to.width) { o.el.style.transition = ''; return; }
-        const dx = from.left - to.left, dy = from.top - to.top, s = from.width / to.width;
-        if (Math.abs(dx) < 1 && Math.abs(dy) < 1 && Math.abs(s - 1) < 0.01) { o.el.style.transition = ''; return; }
-        o.el.style.transformOrigin = '0 0';
-        o.el.style.transform = `translate3d(${dx}px, ${dy}px, 0) scale(${s})`;
-        void o.el.offsetWidth;
-        o.el.style.transition = `transform ${LAND_MS}ms var(--ov-ease-spring, cubic-bezier(.2, 1.25, .3, 1))`;
-        o.el.style.transform = '';
-        clearTimeout(o.landTimer);
-        o.landTimer = setTimeout(() => { if (o.el) { o.el.style.transition = ''; o.el.style.transformOrigin = ''; } }, LAND_MS + 40);
-    }
+    const _test = {
+        boxOf(o) {
+            return engine()._test.boxOf(o.geom, o.container.getBoundingClientRect(), { aspect: o.aspect || BASE, minPx: MIN_PX });
+        },
+        settle(o) { return engine()._test.settle(o.geom, _test.boxOf(o)); },
+        applyGeom(o) { engine()._test.paint(o.el, o.geom, _test.boxOf(o), { floating: false }); },
+        BASE, MAX_H,
+    };
 
     /* ── DOM ──────────────────────────────────────────────────── */
 
@@ -297,14 +202,14 @@
                     <button type="button" data-act="tuck" title="Tuck ${escapeHtml(label)} to the side" aria-label="Tuck ${escapeHtml(label)} to the side"><i class="fa-solid fa-angles-right"></i></button>
                 </span>
             </div>
-            <button type="button" class="ov-pip-tab" data-act="untuck" title="Bring ${escapeHtml(label)} back" aria-label="Bring ${escapeHtml(label)} back"><span class="ov-pip-tab-l"><i class="fa-solid fa-chevron-left"></i></span><span class="ov-pip-tab-r"><i class="fa-solid fa-chevron-right"></i></span></button>
-            <div class="ov-pip-resize" title="Drag to resize" aria-hidden="true"></div>`;
+            <button type="button" class="ov-pip-tab" data-act="untuck" data-ov-float-tab title="Bring ${escapeHtml(label)} back" aria-label="Bring ${escapeHtml(label)} back"><span class="ov-pip-tab-l"><i class="fa-solid fa-chevron-left"></i></span><span class="ov-pip-tab-r"><i class="fa-solid fa-chevron-right"></i></span></button>
+            <div class="ov-pip-resize" data-ov-float-resize title="Drag to resize" aria-hidden="true"></div>`;
         o.el = el;
         o.container = container;
         el.tabIndex = 0;
         el.setAttribute('role', 'group');
         el.setAttribute('aria-label', `${label}, picture-in-picture. Drag it anywhere; arrow keys move it, plus and minus size it, M mutes it, L listens to it instead of the stream, T tucks it aside, F floats it over the page, P pops it out of the browser.`);
-        muteButton(el.querySelector('[data-act="mute"]'), o.geom.muted, label);
+        muteButton(el.querySelector('[data-act="mute"]'), o.geom && typeof o.geom.muted === 'boolean' ? o.geom.muted : defaultsOf(o.pip).muted, label);
         watchShape(o, el.querySelector('.ov-pip-video'));
         setState(o, 'connecting');
 
@@ -314,50 +219,120 @@
             e.stopPropagation();
             act(o, btn.dataset.act);
         });
-        wireMove(o);
+
+        const OVFloat = window.OVFloat;
+        if (OVFloat && typeof OVFloat.attach === 'function') {
+            const legacy = shapeGeom(legacyGeom(o.hostId, o.pip), defaultsOf(o.pip));
+            o.float = OVFloat.attach(el, {
+                frame: container,
+                key: LS_KEY(o.slot, o.pip.source_msid),
+                accountKey: `${o.slot}:${o.pip.source_msid}`,
+                store: pipStore,
+                defaults: legacy,
+                aspect: o.aspect || BASE,
+                minPx: MIN_PX,
+                bigW: BIG_W,
+                tabPx: TAB_PX,
+                tab: false,
+                resize: false,
+                hintClass: 'ov-pip-dock-hint',
+                ignore: '[data-act], .ov-pip-resize, [data-ov-float-resize], a',
+                onChange(geom) { o.geom = geom; saveGeom(o); },
+            });
+            o.geom = o.float.geom();
+            muteButton(el.querySelector('[data-act="mute"]'), o.geom.muted, label);
+            const v = el.querySelector('.ov-pip-video');
+            v.muted = o.geom.muted;
+        } else {
+            // The player feature loads /shared/ov-float.js before this file; a page that did not gets the picture but
+            // not the move rather than a broken player.
+            console.warn('[PiP] openvibe-shared/ov-float.js is not loaded');
+            o.geom = o.geom || defaultsOf(o.pip);
+            container.appendChild(el);
+        }
+        wireMuteKey(o);
         wireResize(o);
-        wireKeys(o);
-        placeIn(o);
-        applyGeom(o);
         setTimeout(() => el.classList.remove('is-entering'), 420);
     }
 
-    function act(o, what) {
+    /** The corner grip: the shared engine owns pinch and the keys; this is the same sizing on the PIP's own handle. */
+    function wireResize(o) {
         const el = o.el;
-        const from = el.getBoundingClientRect();
-        if (what === 'tuck') {
-            const b = boxOf(o);
-            o.geom.tuck = o.geom.x + b.wf / 2 < 0.5 ? 'left' : 'right';
-            saveGeom(o); land(o, from);
-        } else if (what === 'untuck') {
-            o.geom.tuck = null;
-            const b = boxOf(o);
-            o.geom.x = from.left + from.width / 2 < (b.rl + b.rw / 2) ? (b.rw ? EDGE_PX / b.rw : 0) : Math.max(0, 1 - b.wf - (b.rw ? EDGE_PX / b.rw : 0));
-            saveGeom(o); land(o, from);
-        } else if (what === 'reset') { resetGeom(o); settle(o); saveGeom(o); land(o, from); }
-        else if (what === 'float') { toMode(o, o.geom.mode === 'float' ? 'dock' : 'float', from); saveGeom(o); land(o, from); }
-        else if (what === 'listen') {
+        const handle = el.querySelector('.ov-pip-resize');
+        let start = null;
+        handle.addEventListener('pointerdown', (e) => {
+            if (e.button > 0) return;
+            const b = o.float.metrics();
+            start = { px: e.clientX, py: e.clientY, w: o.float.geom().w, rw: b.rw };
+            el.classList.add('is-resizing');
+            try { handle.setPointerCapture(e.pointerId); } catch { /* */ }
+            e.preventDefault();
+            e.stopPropagation();
+        });
+        handle.addEventListener('pointermove', (e) => {
+            if (!start || !start.rw) return;
+            // The handle's diagonal pull is the box's own width; `w` is the 16:9 width of the same area.
+            const k = Math.sqrt((o.aspect || BASE) / BASE) || 1;
+            const pull = ((e.clientX - start.px) + (e.clientY - start.py) * (o.aspect || BASE)) / 2;
+            o.float.set({ w: clamp(start.w + pull / start.rw / k, MIN_W, MAX_W, start.w) });
+        });
+        const end = (e) => {
+            if (!start) return;
+            start = null;
+            el.classList.remove('is-resizing');
+            try { handle.releasePointerCapture(e.pointerId); } catch { /* */ }
+            o.float.settle();
+            o.float.save();
+        };
+        handle.addEventListener('pointerup', end);
+        handle.addEventListener('pointercancel', end);
+    }
+
+    /** With focus, M mutes; the engine owns the arrows, + and −, T, F and Home. */
+    function wireMuteKey(o) {
+        o.el.addEventListener('keydown', (e) => {
+            if (e.target !== o.el || e.altKey || e.ctrlKey || e.metaKey) return;
+            const k = e.key;
+            if (k === 'm' || k === 'M') { e.preventDefault(); act(o, 'mute'); }
+            else if (k === 'l' || k === 'L') { e.preventDefault(); act(o, 'listen'); }
+            else if ((k === 'p' || k === 'P') && document.pictureInPictureEnabled) { e.preventDefault(); act(o, 'popout'); }
+        });
+    }
+
+    function act(o, what) {
+        if (what === 'listen') {
             // Hear this one instead of the stream (and back): the stream's own video is muted while it is on, and gets
             // its sound back when it ends only if it had it.
-            const v = el.querySelector('.ov-pip-video');
+            const v = o.el.querySelector('.ov-pip-video');
             const main = mainVideo(o);
             o.listening = !o.listening;
             if (o.listening) { o.mainWasMuted = main ? main.muted : null; if (main) main.muted = true; v.muted = false; v.play().catch(() => {}); }
             else { if (main && o.mainWasMuted === false) main.muted = false; v.muted = o.geom.muted; }
-            el.querySelector('[data-act="listen"]')?.setAttribute('aria-pressed', String(!!o.listening));
-            el.classList.toggle('is-listening', !!o.listening);
-        } else if (what === 'popout') {
+            o.el.querySelector('[data-act="listen"]')?.setAttribute('aria-pressed', String(!!o.listening));
+            o.el.classList.toggle('is-listening', !!o.listening);
+            return;
+        }
+        if (what === 'popout') {
             // The browser's own picture-in-picture: a window on top of everything, even outside the browser.
-            const v = el.querySelector('.ov-pip-video');
+            const v = o.el.querySelector('.ov-pip-video');
             if (document.pictureInPictureElement === v) document.exitPictureInPicture().catch(() => {});
             else if (v && document.pictureInPictureEnabled) v.requestPictureInPicture().catch((e) => console.warn('[PiP] pop out refused:', e.message));
-        } else if (what === 'mute') {
-            o.geom.muted = !o.geom.muted;
-            const v = el.querySelector('.ov-pip-video');
-            v.muted = o.geom.muted;
-            if (!o.geom.muted) v.play().catch(() => {});
-            muteButton(el.querySelector('[data-act="mute"]'), o.geom.muted, o.pip.title || 'Picture-in-picture');
-            saveGeom(o);
+            return;
+        }
+        if (!o.float) return;
+        if (what === 'tuck') o.float.tuck();
+        else if (what === 'untuck') o.float.untuck();
+        else if (what === 'reset') o.float.reset();
+        else if (what === 'float') { o.float.toggleMode(); }
+        else if (what === 'mute') {
+            const geom = o.float.geom();
+            const muted = !geom.muted;
+            const v = o.el.querySelector('.ov-pip-video');
+            v.muted = muted;
+            if (!muted) v.play().catch(() => {});
+            muteButton(o.el.querySelector('[data-act="mute"]'), muted, o.pip.title || 'Picture-in-picture');
+            o.float.set({ muted }, { save: true });
+            o.geom = o.float.geom();
         }
     }
 
@@ -365,213 +340,6 @@
     function mainVideo(o) {
         const c = o.container || document.getElementById('video-container');
         return c ? Array.from(c.querySelectorAll('video')).find((v) => !v.closest('.ov-pip')) || null : null;
-    }
-
-    /** Switch frames keeping its size and place on screen (`rect`: where it is now). */
-    function toMode(o, mode, rect) {
-        o.geom.mode = mode;
-        const b0 = boxOf(o);
-        if (!b0.rw || !b0.rh) return;
-        const k = Math.sqrt((o.aspect || BASE) / BASE) || 1;
-        o.geom.w = clamp(rect.width / b0.rw / k, MIN_W, MAX_W, o.geom.w);
-        const b = boxOf(o);
-        o.geom.x = (rect.left - b.rl) / b.rw;
-        o.geom.y = (rect.top - b.rt) / b.rh;
-        settle(o);
-    }
-
-    /** With focus: arrows move it (Shift: further), + and − size it, M mutes, T tucks, F floats, Home puts it back. */
-    function wireKeys(o) {
-        o.el.addEventListener('keydown', (e) => {
-            if (e.target !== o.el || e.altKey || e.ctrlKey || e.metaKey) return;
-            const step = e.shiftKey ? 0.1 : 0.02;
-            const k = e.key;
-            let moved = true;
-            if (k === 'ArrowLeft') o.geom.x -= step;
-            else if (k === 'ArrowRight') o.geom.x += step;
-            else if (k === 'ArrowUp') o.geom.y -= step;
-            else if (k === 'ArrowDown') o.geom.y += step;
-            else if (k === '+' || k === '=') o.geom.w = clamp(o.geom.w + 0.03, MIN_W, MAX_W, o.geom.w);
-            else if (k === '-' || k === '_') o.geom.w = clamp(o.geom.w - 0.03, MIN_W, MAX_W, o.geom.w);
-            else if (k === 'Home') { act(o, 'reset'); e.preventDefault(); return; }
-            else if (k === 'm' || k === 'M') { act(o, 'mute'); moved = false; }
-            else if (k === 't' || k === 'T' || k === 'h' || k === 'H') { act(o, o.geom.tuck ? 'untuck' : 'tuck'); moved = false; }
-            else if (k === 'f' || k === 'F') { act(o, 'float'); moved = false; }
-            else if (k === 'l' || k === 'L') { act(o, 'listen'); moved = false; }
-            else if ((k === 'p' || k === 'P') && document.pictureInPictureEnabled) { act(o, 'popout'); moved = false; }
-            else return;
-            e.preventDefault();
-            if (!moved) return;
-            const b = boxOf(o);
-            o.geom.tuck = null;
-            o.geom.x = Math.min(Math.max(0, o.geom.x), Math.max(0, 1 - b.wf));
-            o.geom.y = Math.min(Math.max(0, o.geom.y), Math.max(0, 1 - b.hf));
-            saveGeom(o); applyGeom(o);
-        });
-    }
-
-    /**
-     * The move: the PIP rises over the page as soon as the press moves, follows the pointer with a transform each frame
-     * (nothing is laid out while it moves), and lands with a spring where it is dropped: over the player it docks,
-     * anywhere else it floats, past a side it tucks. A flick carries on. Two fingers pinch it; a tap shows its bar for a
-     * moment on a touch screen; a double tap toggles small and large.
-     */
-    function wireMove(o) {
-        const el = o.el;
-        const pts = new Map();   // pointerId → { x, y }
-        let drag = null, pinch = null, raf = 0, lastTap = 0, barTimer = 0;
-        const gap = () => { const [a, b] = [...pts.values()]; return Math.hypot(a.x - b.x, a.y - b.y) || 1; };
-        const paint = () => {
-            raf = 0;
-            if (!drag || !drag.lifted) return;
-            el.style.transform = `translate3d(${drag.dx}px, ${drag.dy}px, 0)`;
-            const c = drag.r;
-            const cx = c.left + drag.dx + c.width / 2, cy = c.top + drag.dy + c.height / 2;
-            const p = o.container.getBoundingClientRect();
-            o.container.classList.toggle('ov-pip-dock-hint', cx >= p.left && cx <= p.right && cy >= p.top && cy <= p.bottom);
-        };
-        const lift = () => {
-            drag.lifted = true;
-            // Over the page from the first move, at the same place on screen, so it can go anywhere.
-            const r = drag.r;
-            const layer = document.fullscreenElement || document.body;
-            if (el.parentNode !== layer) layer.appendChild(el);
-            el.classList.add('is-dragging', 'is-lifted');
-            el.style.transition = 'none';
-            el.style.left = `${r.left}px`; el.style.top = `${r.top}px`; el.style.width = `${r.width}px`;
-            const v = el.querySelector('.ov-pip-video');
-            if (v && v.paused) v.play().catch(() => {});
-        };
-        const showBar = () => {
-            el.classList.add('is-active');
-            clearTimeout(barTimer);
-            barTimer = setTimeout(() => el.classList.remove('is-active'), 3200);
-        };
-        const onDown = (e) => {
-            if (e.button > 0) return;
-            if (e.target.closest('[data-act]') || e.target.closest('.ov-pip-resize') || e.target.closest('a')) return;
-            pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
-            try { el.setPointerCapture(e.pointerId); } catch { /* */ }
-            e.preventDefault();
-            if (pts.size === 2) {
-                if (drag && drag.lifted) { el.style.transform = ''; }
-                drag = null;
-                pinch = { d: gap(), w: o.geom.w };
-                el.classList.add('is-resizing');
-                return;
-            }
-            if (pts.size > 2) return;
-            drag = { sx: e.clientX, sy: e.clientY, dx: 0, dy: 0, r: el.getBoundingClientRect(), lifted: false, hist: [{ x: e.clientX, y: e.clientY, t: performance.now() }] };
-        };
-        const onMove = (e) => {
-            if (pts.has(e.pointerId)) pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
-            if (pinch && pts.size === 2) {
-                o.geom.w = clamp(pinch.w * (gap() / pinch.d), MIN_W, MAX_W, pinch.w);
-                applyGeom(o);
-                return;
-            }
-            if (!drag) return;
-            const dx = e.clientX - drag.sx, dy = e.clientY - drag.sy;
-            if (!drag.lifted && Math.hypot(dx, dy) < DRAG_PX) return;
-            if (!drag.lifted) lift();
-            // Anywhere on screen; most of it may go past a side (that is how it tucks), never past the top or bottom.
-            const r = drag.r, vw = window.innerWidth, vh = window.innerHeight;
-            drag.dx = Math.min(Math.max(dx, -r.left - r.width + TAB_PX), vw - r.left - TAB_PX);
-            drag.dy = Math.min(Math.max(dy, -r.top), vh - r.top - r.height);
-            const now = performance.now();
-            drag.hist.push({ x: e.clientX, y: e.clientY, t: now });
-            while (drag.hist.length > 2 && now - drag.hist[0].t > 90) drag.hist.shift();
-            if (!raf) raf = requestAnimationFrame(paint);
-        };
-        const onUp = (e) => {
-            pts.delete(e.pointerId);
-            try { el.releasePointerCapture(e.pointerId); } catch { /* */ }
-            if (pinch) {
-                if (pts.size < 2) { pinch = null; el.classList.remove('is-resizing'); settle(o); applyGeom(o); saveGeom(o); }
-                return;
-            }
-            if (!drag) return;
-            const d = drag; drag = null;
-            if (raf) { cancelAnimationFrame(raf); raf = 0; }
-            o.container.classList.remove('ov-pip-dock-hint');
-            if (!d.lifted) {
-                // A tap: the bar for a moment (a touch screen has no hover); a second within 300 ms toggles the size.
-                const now = performance.now();
-                if (e.type === 'pointerup' && now - lastTap < 300) { lastTap = 0; toggleSize(o); }
-                else { lastTap = now; if (e.pointerType !== 'mouse') showBar(); }
-                if (o.geom.tuck && e.type === 'pointerup') act(o, 'untuck');
-                return;
-            }
-            el.classList.remove('is-dragging', 'is-lifted');
-            // Where it was let go, and where a flick carries it (the last 90 ms, 120 ms on).
-            const h = d.hist, a = h[0], z = h[h.length - 1], dt = Math.max(16, z.t - a.t);
-            const vx = (z.x - a.x) / dt, vy = (z.y - a.y) / dt;
-            const fast = Math.hypot(vx, vy) > 0.6;
-            const from = { left: d.r.left + d.dx, top: d.r.top + d.dy, width: d.r.width, height: d.r.height };
-            const vwid = window.innerWidth, vhei = window.innerHeight;
-            let left = from.left + (fast ? vx * 120 : 0), top = from.top + (fast ? vy * 120 : 0);
-            top = Math.min(Math.max(0, top), vhei - from.height);
-            const p = o.container.getBoundingClientRect();
-            const cx = left + from.width / 2, cy = top + from.height / 2;
-            const fs = inFullscreen(o);
-            const overPlayer = fs || (cx >= p.left && cx <= p.right && cy >= p.top && cy <= p.bottom);
-            const frame = overPlayer ? p : { left: 0, top: 0, right: vwid, bottom: vhei, width: vwid, height: vhei };
-            // Past a side of its frame by more than a third of itself (or thrown at it): tucked into that side.
-            const out = from.width / 3;
-            let tuck = null;
-            if (left < frame.left - out || (fast && vx < -1.2 && left < frame.left + EDGE_PX)) tuck = 'left';
-            else if (left + from.width > frame.right + out || (fast && vx > 1.2 && left + from.width > frame.right - EDGE_PX)) tuck = 'right';
-            el.style.transform = '';
-            el.style.left = ''; el.style.top = ''; el.style.width = '';
-            toMode(o, overPlayer ? 'dock' : 'float', { left: Math.min(Math.max(frame.left, left), frame.right - from.width), top, width: from.width, height: from.height });
-            o.geom.tuck = tuck;
-            saveGeom(o);
-            land(o, from);
-        };
-        el.addEventListener('pointerdown', onDown);
-        el.addEventListener('pointermove', onMove);
-        el.addEventListener('pointerup', onUp);
-        el.addEventListener('pointercancel', onUp);
-    }
-
-    function toggleSize(o) {
-        const from = o.el.getBoundingClientRect();
-        o.geom.w = o.geom.w < BIG_W - 0.01 ? BIG_W : clamp((o.pip.defaults || {}).w, MIN_W, MAX_W, 0.25);
-        o.geom.tuck = null;
-        settle(o); saveGeom(o); land(o, from);
-    }
-
-    function wireResize(o) {
-        const el = o.el;
-        const handle = el.querySelector('.ov-pip-resize');
-        let start = null;
-        handle.addEventListener('pointerdown', (e) => {
-            const b = boxOf(o);
-            start = { px: e.clientX, py: e.clientY, w: o.geom.w, rw: b.rw };
-            el.classList.add('is-resizing');
-            try { handle.setPointerCapture(e.pointerId); } catch { /* */ }
-            e.preventDefault(); e.stopPropagation();
-        });
-        handle.addEventListener('pointermove', (e) => {
-            if (!start || !start.rw) return;
-            // The handle's diagonal pull is the box's own width; `w` is the 16:9 width of the same area.
-            const k = Math.sqrt((o.aspect || BASE) / BASE) || 1;
-            const pull = ((e.clientX - start.px) + (e.clientY - start.py) * (o.aspect || BASE)) / 2;
-            o.geom.w = clamp(start.w + pull / start.rw / k, MIN_W, MAX_W, start.w);
-            const b = boxOf(o);
-            o.geom.x = Math.min(o.geom.x, Math.max(0, 1 - b.wf));
-            o.geom.y = Math.min(o.geom.y, Math.max(0, 1 - b.hf));
-            applyGeom(o);
-        });
-        const end = (e) => {
-            if (!start) return;
-            start = null;
-            el.classList.remove('is-resizing');
-            try { handle.releasePointerCapture(e.pointerId); } catch { /* */ }
-            settle(o); applyGeom(o); saveGeom(o);
-        };
-        handle.addEventListener('pointerup', end);
-        handle.addEventListener('pointercancel', end);
     }
 
     /* ── viewer sessions ──────────────────────────────────────── */
@@ -720,6 +488,7 @@
         if (o.listening) act(o, 'listen');   // the stream gets its sound back
         try { if (document.pictureInPictureElement && o.el && o.el.contains(document.pictureInPictureElement)) document.exitPictureInPicture().catch(() => {}); } catch { /* */ }
         o.closed = true;
+        if (o.float) { try { o.float.destroy(); } catch { /* */ } o.float = null; }
         clearInterval(o.watch);
         clearTimeout(o.retryTimer);
         clearTimeout(o.landTimer);
@@ -747,7 +516,7 @@
                 else if (cur.state === 'offline' && !cur.retryTimer) connect(cur);
                 return;
             }
-            const o = { pip, slot: host.slot, hostId: host.streamId, gen: host.gen, geom: loadGeom(host.slot, host.streamId, pip), consumers: [], el: null, started: performance.now() };
+            const o = { pip, slot: host.slot, hostId: host.streamId, gen: host.gen, geom: null, aspect: BASE, consumers: [], el: null, started: performance.now() };
             host.overlays.set(pip.source_msid, o);
             build(o, host.container);
             watchFrames(o);
@@ -766,11 +535,6 @@
         } catch { /* the next poll tries again */ }
     }
 
-    function relayout() {
-        if (!host) return;
-        for (const o of host.overlays.values()) if (o.el && !o.el.classList.contains('is-lifted')) { placeIn(o); applyGeom(o); }
-    }
-
     /* ── public API ───────────────────────────────────────────── */
 
     /**
@@ -784,21 +548,12 @@
         const pips = Array.isArray(stream.pip_overlays) ? stream.pip_overlays
             : (stream.pip_overlay ? [Object.assign({ source_msid: stream.pip_overlay.source_msid || 0 }, stream.pip_overlay)] : []);
         if (!pips.length) return;   // a slot with no PIPs never polls
-        const h = { streamId: stream.id, slot: stream.managed_stream_id || stream.id, container, overlays: new Map(), gen: ++gen, timer: null, ro: null };
+        const h = { streamId: stream.id, slot: stream.managed_stream_id || stream.id, container, overlays: new Map(), gen: ++gen, timer: null };
         host = h;
         await Promise.race([account.load(), new Promise((r) => setTimeout(r, 900))]);
         if (host !== h) return;
         sync(pips);
         h.timer = setInterval(poll, POLL_MS);
-        // The player changes size (a window, theatre mode, fullscreen, a phone turned): the cap on height follows, and
-        // a floating PIP keeps its place in the window.
-        if (typeof ResizeObserver === 'function') {
-            h.ro = new ResizeObserver(() => { if (host === h) relayout(); });
-            h.ro.observe(container);
-        }
-        h.onWin = () => { if (host === h) relayout(); };
-        window.addEventListener('resize', h.onWin);
-        document.addEventListener('fullscreenchange', h.onWin);
         h.onVis = () => { if (host === h && !document.hidden) for (const o of h.overlays.values()) if (o.retryLater) { o.retryLater = false; connect(o); } };
         document.addEventListener('visibilitychange', h.onVis);
     }
@@ -807,9 +562,6 @@
         gen++;
         if (!host) return;
         clearInterval(host.timer);
-        try { host.ro?.disconnect(); } catch { /* */ }
-        window.removeEventListener('resize', host.onWin);
-        document.removeEventListener('fullscreenchange', host.onWin);
         document.removeEventListener('visibilitychange', host.onVis);
         for (const o of host.overlays.values()) close(o, false);
         try { host.container.classList.remove('ov-pip-dock-hint'); } catch { /* */ }
@@ -819,8 +571,8 @@
     /** Where every PIP of this stream is, for the page and for tools (the same shape the account keeps). */
     function layout() {
         if (!host) return [];
-        return [...host.overlays.values()].map((o) => ({ slot: o.slot, source: o.pip.source_msid, title: o.pip.title || null, state: o.state, geom: { ...o.geom } }));
+        return [...host.overlays.values()].map((o) => ({ slot: o.slot, source: o.pip.source_msid, title: o.pip.title || null, state: o.state, geom: o.float ? o.float.geom() : { ...o.geom } }));
     }
 
-    window.streamPip = { attach, detach, layout, act: (source, what) => { const o = host && host.overlays.get(Number(source)); if (o) act(o, what); }, _test: { boxOf, settle, applyGeom, loadGeom, BASE, MAX_H } };
+    window.streamPip = { attach, detach, layout, act: (source, what) => { const o = host && host.overlays.get(Number(source)); if (o) act(o, what); }, _test };
 })();
