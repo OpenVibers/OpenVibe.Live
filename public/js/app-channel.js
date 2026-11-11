@@ -198,6 +198,70 @@ function _channelRail(grid, offset, count, total, loadNext, old = []) {
     grid._railObserver = observer;
     observer.observe(sentinel);
 }
+// A section's count beside its heading (ask 355: "View all (96)" was a button of its own).
+function _secCount(id, total) {
+    const n = document.getElementById(id);
+    if (!n) return;
+    const v = Number(total) || 0;
+    n.textContent = v > 999 ? `${Math.floor(v / 100) / 10}k` : String(v);
+    n.hidden = v <= 0;
+}
+
+// Recordings in progress (ask 355, "auto update how long they've been live … updating thumbnail … preview"): one clock
+// for every such card on the page, ticking each second while one is on screen, and the stream's picture fetched again
+// every 30 s (10 s while a pointer rests on it), only while visible and the tab is in front. Nothing runs without them.
+let _chRecTimer = 0, _chRecIO = null;
+const _chRecSeen = new Set();
+function _chRecSince(raw) {
+    const s = String(raw || '');
+    const t = Date.parse(/[zZ]|[+-]\d\d:?\d\d$/.test(s) ? s : `${s.replace(' ', 'T')}Z`);
+    return Number.isFinite(t) ? t : 0;
+}
+function _chRecTick() {
+    // The clock stops when no recording card is left on the page; a card off screen or a tab behind costs nothing.
+    if (!document.querySelector('.ch-rec-card')) { clearInterval(_chRecTimer); _chRecTimer = 0; _chRecSeen.clear(); return; }
+    const cards = [..._chRecSeen].filter((c) => c.isConnected);
+    if (!cards.length || document.hidden) return;
+    const now = Date.now();
+    for (const card of cards) {
+        const time = card.querySelector('.ch-rec-time[data-since] .ch-rec-t');
+        const since = time ? _chRecSince(time.closest('.ch-rec-time').dataset.since) : 0;
+        if (since) time.textContent = formatDuration(Math.max(0, Math.floor((now - since) / 1000)));
+        const every = card.matches(':hover') ? 10000 : 30000;
+        if (now - (card._ovPicAt || now) >= every && !card._ovPicBusy) _chRecPicture(card);
+        if (!card._ovPicAt) card._ovPicAt = now;
+    }
+}
+async function _chRecPicture(card) {
+    const id = card.dataset.streamId;
+    if (!id) return;
+    card._ovPicBusy = true;
+    try {
+        const s = await api(`/streams/${encodeURIComponent(id)}`);
+        const url = s && s.thumbnail_url;
+        const img = card.querySelector('.stream-card-thumb > img');
+        if (url && img && img.getAttribute('src') !== url) {
+            // The next picture loads off screen, then takes the old one's place without a blank frame.
+            const next = new Image();
+            next.onload = () => { img.src = url; img.style.display = ''; const ph = img.nextElementSibling; if (ph && ph.tagName === 'I') ph.style.display = 'none'; };
+            next.src = url;
+        }
+        if (s && !s.is_live) _chRecSeen.delete(card);
+    } catch { /* the next tick tries again */ }
+    card._ovPicAt = Date.now();
+    card._ovPicBusy = false;
+}
+function _chRecWatch(root) {
+    const cards = root ? [...root.querySelectorAll('.ch-rec-card')] : [];
+    if (!cards.length) return;
+    if (typeof IntersectionObserver === 'function') {
+        if (!_chRecIO) _chRecIO = new IntersectionObserver((entries) => entries.forEach((e) => { if (e.isIntersecting) _chRecSeen.add(e.target); else _chRecSeen.delete(e.target); }));
+        cards.forEach((c) => _chRecIO.observe(c));
+    } else cards.forEach((c) => _chRecSeen.add(c));
+    if (!_chRecTimer) _chRecTimer = setInterval(_chRecTick, 1000);
+    if (window.ov && ov.scope) ov.scope().onDispose(() => { clearInterval(_chRecTimer); _chRecTimer = 0; _chRecSeen.clear(); if (_chRecIO) { _chRecIO.disconnect(); _chRecIO = null; } });
+}
+
 // Channel VOD filter/sort state
 let currentChannelVodFilter = null;   // numeric managed stream id or null = all
 let currentChannelVodOrder = 'newest'; // newest|oldest|views|peak_viewers
@@ -222,14 +286,24 @@ async function renderChannelVodsSection(username, liveStreams, vods, meta = {}) 
         ].map(([val, label]) =>
             `<option value="${val}" ${currentChannelVodOrder === val ? 'selected' : ''}>${label}</option>`
         ).join('');
+        // Ask 355 (2026-11-11, "use icons, buttons"): two icon buttons in the head row, each with the native picker laid
+        // over it, so a phone opens its own list and a computer its own menu; the filter shows a dot while it filters.
+        const msName = (currentChannelManagedStreams.find((ms) => ms.id === currentChannelVodFilter) || {}).title;
+        const orderName = { newest: 'Newest first', oldest: 'Oldest first', views: 'Most views', peak_viewers: 'Peak viewers' }[currentChannelVodOrder] || 'Newest first';
         filterBar.innerHTML = `
-            <select class="ch-vods-filter-select" onchange="setChannelVodFilter(this.value ? parseInt(this.value) : null)">
-                <option value="" ${currentChannelVodFilter === null ? 'selected' : ''}>All streams</option>
-                ${msOptions}
-            </select>
-            <select class="ch-vods-filter-select" onchange="setChannelVodOrder(this.value)">
-                ${orderOptions}
-            </select>
+            <label class="ch-ib ch-ib-pick${currentChannelVodFilter !== null ? ' is-on' : ''}" title="${esc(currentChannelVodFilter !== null ? `Stream: ${msName || 'one stream'}` : 'All streams')}">
+                <i class="fa-solid fa-filter" aria-hidden="true"></i>
+                <select class="ch-vods-filter-select" data-ov-native aria-label="Which stream" onchange="setChannelVodFilter(this.value ? parseInt(this.value) : null)">
+                    <option value="" ${currentChannelVodFilter === null ? 'selected' : ''}>All streams</option>
+                    ${msOptions}
+                </select>
+            </label>
+            <label class="ch-ib ch-ib-pick" data-order="${esc(currentChannelVodOrder)}" title="${esc(orderName)}">
+                <i class="fa-solid ${currentChannelVodOrder === 'oldest' ? 'fa-arrow-down-short-wide' : 'fa-arrow-down-wide-short'}" aria-hidden="true"></i>
+                <select class="ch-vods-filter-select" data-ov-native aria-label="Order" onchange="setChannelVodOrder(this.value)">
+                    ${orderOptions}
+                </select>
+            </label>
         `;
         filterBar.style.display = '';
     } else if (filterBar) {
@@ -257,17 +331,22 @@ async function renderChannelVodsSection(username, liveStreams, vods, meta = {}) 
                 const liveVod = await api(`/vods/stream/${ls.id}/live`);
                 if (liveVod && liveVod.vod) {
                     const v = liveVod.vod;
+                    // Ask 355: a recording in progress shows the stream's own picture (the recording has none until it
+                    // ends), refreshed while it is on screen; its clock runs from the stream's start (_chRecWatch).
+                    const pic = ls.thumbnail_url || v.thumbnail_url;
+                    const bg = typeof _liveBg === 'function' ? _liveBg(pic) : '';
                     liveVodHtml += `
-                        <a class="stream-card" href="${videoHref('vod', v.id)}" onclick="return handleLinkClick(event, '${videoHref('vod', v.id)}')" style="border:2px solid var(--accent);position:relative">
+                        <a class="stream-card ch-rec-card is-live" data-stream-id="${esc(String(ls.id))}"${bg ? ` style="--live-bg:${esc(bg)}"` : ''} href="${videoHref('vod', v.id)}" onclick="return handleLinkClick(event, '${videoHref('vod', v.id)}')">
                             <div class="stream-card-thumb">
-                                ${thumbImg(v.thumbnail_url, 'fa-video', v.title, `/api/thumbnails/generate/vod/${v.id}`)}
+                                ${thumbImg(pic, 'fa-video', v.title, ls.thumbnail_url ? null : `/api/thumbnails/generate/vod/${v.id}`)}
                                 ${audioChip(v)}
-                                <span class="stream-card-nsfw" style="background:#e53e3e;animation:pulse 2s infinite">● RECORDING</span>
-                                <span class="stream-card-viewers"><i class="fa-solid fa-clock"></i> ${formatDuration(v.duration_seconds || 0)}</span>
+                                <span class="ch-rec-pill"><span class="ch-rec-dot" aria-hidden="true"></span>Recording</span>
+                                <span class="stream-card-viewers ch-rec-time"${ls.started_at ? ` data-since="${esc(ls.started_at)}"` : ''}><i class="fa-solid fa-clock" aria-hidden="true"></i> <span class="ch-rec-t">${formatDuration(v.duration_seconds || 0)}</span></span>
+                                <span class="ch-rec-watch" aria-hidden="true"><i class="fa-solid fa-play"></i></span>
                             </div>
                             <div class="stream-card-info">
                                 <div class="stream-card-title">${esc(v.title || 'Live Recording')}</div>
-                                <div class="stream-card-streamer muted">In progress — ${esc(ls.title || 'Live Stream')}</div>
+                                <div class="stream-card-streamer muted">Recording now · ${esc(ls.title || 'Live Stream')}</div>
                             </div>
                         </a>`;
                 }
@@ -299,8 +378,10 @@ async function renderChannelVodsSection(username, liveStreams, vods, meta = {}) 
     }
 
     _channelRail(vodsGrid, offset, vods.length, total, () => setChannelVodsPage(page + 1), oldCards);
+    _chRecWatch(vodsGrid);
     const all = document.getElementById('ch-vods-all');
-    if (all) { all.href = `/@${encodeURIComponent(username)}?section=videos`; all.textContent = `View all (${total})`; }
+    if (all) all.href = `/@${encodeURIComponent(username)}?section=videos`;
+    _secCount('ch-vods-n', total);
     document.getElementById('ch-vods-pagination').style.display = 'none';
     _selSyncAllBtns();
 }
@@ -462,7 +543,8 @@ function _renderClipsTakenGrid(username, data) {
     const page = Math.floor((data.offset || 0) / CLIPS_TAKEN_PAGE_SIZE) + 1;
     _channelRail(grid, data.offset || 0, clips.length, data.total || 0, () => setClipsTakenPage(page + 1), oldCards);
     const all = document.getElementById('ch-clips-taken-all');
-    if (all) { all.href = `/@${encodeURIComponent(username)}?section=clips-taken`; all.textContent = `View all (${data.total || 0})`; }
+    if (all) all.href = `/@${encodeURIComponent(username)}?section=clips-taken`;
+    _secCount('ch-clips-taken-n', data.total || 0);
     document.getElementById('ch-clips-pagination').style.display = 'none';
     _selSyncAllBtns();
 }
@@ -510,7 +592,8 @@ function renderChannelClipsOfSection(username, clips, meta = {}) {
 
     _channelRail(grid, offset, clips.length, total, () => setChannelClipsOfPage(page + 1), oldCards);
     const all = document.getElementById('ch-clips-of-all');
-    if (all) { all.href = `/@${encodeURIComponent(username)}?section=clips`; all.textContent = `View all (${total})`; }
+    if (all) all.href = `/@${encodeURIComponent(username)}?section=clips`;
+    _secCount('ch-clips-of-n', total);
     document.getElementById('ch-clips-of-pagination').style.display = 'none';
 }
 
@@ -650,7 +733,8 @@ async function loadChannelPastes(username = currentChannelUsername, { append = f
         const total = Number(data.total) || pastes.length;
         _channelRail(grid, offset, pastes.length, total, () => loadChannelPastes(username, { append: true }), oldCards);
         const all = document.getElementById('ch-pastes-all');
-        if (all) { all.href = `/@${encodeURIComponent(username)}?section=pastes`; all.textContent = `View all (${total})`; }
+        if (all) all.href = `/@${encodeURIComponent(username)}?section=pastes`;
+        _secCount('ch-pastes-n', total);
         if (pager) { pager.style.display = 'none'; pager.innerHTML = ''; }
         _selSyncAllBtns();
     } catch { /* silent */ }
@@ -2938,7 +3022,11 @@ function _applyBotEmbed(botEmbed, username) {
     const menuBtn = document.getElementById('ch-bot-mode-btn');
     const cardBar = document.getElementById('ch-bot-card-bar');
     const cardSwitch = document.getElementById('ch-bot-card-switch');
-    const line = document.getElementById('ch-bot-card-line');
+    const tabs = document.getElementById('ch-bot-tabs');
+    const openLink = document.getElementById('ch-bot-open');
+    const pageEl = document.getElementById('page-channel');
+    // A phone held upright: the full panel shares the chat's place behind two tabs, and the default is a row.
+    const phoneMq = typeof window !== 'undefined' && typeof window.matchMedia === 'function' ? window.matchMedia('(max-width: 768px) and (orientation: portrait)') : null;
     const player = document.getElementById('video-container');
     const robotId = botEmbed && botEmbed.robot_id ? botEmbed.robot_id : null;
 
@@ -2960,7 +3048,7 @@ function _applyBotEmbed(botEmbed, username) {
     _applyBotEmbed.setBar = setBar;
     function mountIn(container, mode, toggleSection) {
         stopFrame();
-        const frame = BotEmbed.mount(container, botEmbed, { mode: mode === 'overlay' ? 'overlay' : null, toggleSection });
+        const frame = BotEmbed.mount(container, botEmbed, { mode: mode === 'panel' ? null : mode, toggleSection });
         if (frame && typeof BotEmbed.listen === 'function') {
             _botEmbedStop = BotEmbed.listen({
                 frame, botEmbed,
@@ -2975,8 +3063,8 @@ function _applyBotEmbed(botEmbed, username) {
                     stopFrame();
                     clear(slot); clear(box);
                     if (slot) slot.hidden = true;
-                    if (line) line.hidden = true;
                     if (section) section.hidden = true;
+                    pageClasses(null);
                 },
                 onOpenPanel: () => _applyBotEmbed.choose('panel'),
                 onFocusPlayer: () => {
@@ -2987,7 +3075,28 @@ function _applyBotEmbed(botEmbed, username) {
         }
         return frame;
     }
-    const MODE_NAME = { overlay: 'on the video', panel: 'under the video', hidden: 'hidden' };
+    const MODE_NAME = { overlay: 'on the video', compact: 'a row under the video', panel: 'the full panel', hidden: 'hidden' };
+    // The page knows the place (phone layout in channel.css) and, for the full panel on a phone, which tab is open.
+    // The Robot tab is open while the full panel is the place and the person has not gone back to Chat; any other place
+    // keeps the sheet on Chat, and the Robot tab offers the panel.
+    function pageClasses(mode) {
+        if (!pageEl || !pageEl.classList) return;
+        const robotPane = mode === 'panel' && _applyBotEmbed.tab !== 'chat';
+        pageEl.classList.toggle('ch-has-bot', !!mode);
+        pageEl.classList.toggle('ch-bot-panel', mode === 'panel');
+        pageEl.classList.toggle('ch-bot-compact', mode === 'compact');
+        pageEl.classList.toggle('ch-bot-chat', mode === 'panel' && !robotPane);
+        if (tabs && tabs.querySelectorAll) {
+            for (const b of tabs.querySelectorAll('[data-bot-tab]')) b.setAttribute('aria-selected', String((b.dataset.botTab === 'robot') === robotPane));
+        }
+    }
+    function setTab(tab) {
+        _applyBotEmbed.tab = tab === 'chat' ? 'chat' : 'robot';
+        pageClasses(_applyBotEmbed.mode);
+        // A folded chat comes back with its tab.
+        if (pageEl && pageEl.classList && pageEl.classList.contains('chat-collapsed') && typeof toggleChannelChat === 'function') toggleChannelChat(false);
+    }
+    _applyBotEmbed.setTab = setTab;
     function closeMenu() {
         if (!menu) return;
         menu.hidden = true;
@@ -3012,12 +3121,13 @@ function _applyBotEmbed(botEmbed, username) {
     }
     function render() {
         if (typeof BotEmbed === 'undefined') return;
-        const mode = BotEmbed.effectiveMode(botEmbed, BotEmbed.readChoice(window, username, robotId));
+        const mode = BotEmbed.effectiveMode(botEmbed, BotEmbed.readChoice(window, username, robotId), { phone: !!(phoneMq && phoneMq.matches) });
         _applyBotEmbed.mode = mode;
         _applyBotEmbed.frame = null;
         _applyBotEmbed.botEmbed = botEmbed;
         if (switchWrap) switchWrap.hidden = !robotId;
         if (cardBar) cardBar.hidden = !robotId;
+        if (openLink && botEmbed && typeof botEmbed.url === 'string') openLink.href = botEmbed.url.replace(/\/embed$/, '');
         if (mode === 'overlay') {
             if (slot) {
                 slot.hidden = false;
@@ -3025,27 +3135,27 @@ function _applyBotEmbed(botEmbed, username) {
             }
             clear(box);
             box.hidden = true;
-            if (line) line.hidden = false;
             if (section) section.hidden = false;
-        } else if (mode === 'panel') {
+        } else if (mode === 'panel' || mode === 'compact') {
             if (slot) { clear(slot); slot.hidden = true; }
-            if (line) line.hidden = true;
             box.hidden = false;
             if (section) section.hidden = false;
-            _applyBotEmbed.frame = mountIn(box, 'panel', true);
+            _applyBotEmbed.frame = mountIn(box, mode, true);
         } else {
+            // Hidden: no frame, and the head row stays so the controls can come back from where they went.
             stopFrame();
             clear(box); clear(slot);
             box.hidden = true;
             if (slot) slot.hidden = true;
-            if (line) line.hidden = true;
-            if (section) section.hidden = true;
+            if (section) section.hidden = !robotId;
         }
+        pageClasses(mode);
         sync(mode);
     }
     function choose(mode, persist = true) {
         if (typeof BotEmbed === 'undefined' || !BotEmbed.validView(mode)) return;
         if (persist && robotId && BotEmbed.writeChoice) BotEmbed.writeChoice(window, username, robotId, mode);
+        if (mode === 'panel') setTab('robot');   // asked for the panel: show it, on a phone too
         closeMenu();
         render();
     }
@@ -3081,12 +3191,27 @@ function _applyBotEmbed(botEmbed, username) {
             if (b) _applyBotEmbed.choose(b.dataset.botMode);
         });
     }
-    if (line && line.dataset.botBound !== '1') {
-        line.dataset.botBound = '1';
-        line.addEventListener('click', (e) => {
-            if (e.target && e.target.closest && e.target.closest('[data-bot-show-panel]')) _applyBotEmbed.choose('panel');
+    if (tabs && tabs.dataset && tabs.dataset.botBound !== '1') {
+        tabs.dataset.botBound = '1';
+        tabs.addEventListener('click', (e) => {
+            const b = e.target && e.target.closest ? e.target.closest('[data-bot-tab]') : null;
+            if (!b) return;
+            // Robot asks for the full panel when the controls are somewhere else (on the video, a row, hidden).
+            if (b.dataset.botTab === 'robot' && _applyBotEmbed.mode !== 'panel') _applyBotEmbed.choose('panel');
+            else _applyBotEmbed.setTab(b.dataset.botTab);
         });
     }
+    // Turning the phone (or a window crossing the phone width) changes the default; a viewer's own choice stays.
+    if (phoneMq && typeof phoneMq.addEventListener === 'function' && !_applyBotEmbed.mqBound) {
+        _applyBotEmbed.mqBound = true;
+        phoneMq.addEventListener('change', () => {
+            const be = _applyBotEmbed.botEmbed;
+            if (!be || typeof BotEmbed === 'undefined' || !_applyBotEmbed.render) return;
+            if (BotEmbed.readChoice(window, _applyBotEmbed.username, be.robot_id)) return;
+            _applyBotEmbed.render();
+        });
+    }
+    _applyBotEmbed.username = username;
     // The pointer on the page (outside the clipped controls) wakes the overlay's idle fade.
     if (player && player.dataset.botActivity !== '1') {
         player.dataset.botActivity = '1';
@@ -3113,6 +3238,7 @@ function _applyBotEmbed(botEmbed, username) {
         if (window.ov) ov.scope().onDispose(() => {
             stopFrame();
             clear(slot);
+            pageClasses(null);
             if (typeof BotEmbed !== 'undefined') BotEmbed.mount(box, null);
             else clear(box);
             if (_applyBotEmbed.barObserver) { _applyBotEmbed.barObserver.disconnect(); _applyBotEmbed.barObserver = null; }

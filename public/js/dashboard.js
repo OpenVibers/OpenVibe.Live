@@ -776,7 +776,7 @@ async function loadBotEmbedSetting() {
         if (!be || !be.enabled) { card.style.display = 'none'; return; }
         document.getElementById('dash-bot-robot-id').value = be.robot_id || '';
         const mode = document.getElementById('dash-bot-controls-mode');
-        if (mode) mode.value = be.controls_mode === 'overlay' ? 'overlay' : 'panel';
+        if (mode) mode.value = ['overlay', 'compact'].includes(be.controls_mode) ? be.controls_mode : 'panel';
         card.style.display = '';
     } catch { card.style.display = 'none'; }
 }
@@ -788,7 +788,7 @@ async function saveBotEmbedSetting() {
     const id = input.value.trim();
     try {
         const body = { robot_id: id || null };
-        if (mode && (mode.value === 'overlay' || mode.value === 'panel')) body.controls_mode = mode.value;
+        if (mode && ['overlay', 'compact', 'panel'].includes(mode.value)) body.controls_mode = mode.value;
         const data = await api(`/streams/channel/${encodeURIComponent(currentUser.username)}/bot`, { method: 'PUT', body });
         const bound = data && data.bot_embed && data.bot_embed.robot_id;
         if (status) status.textContent = bound ? `Bound to ${bound}` : 'No robot bound';
