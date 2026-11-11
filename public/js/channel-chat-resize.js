@@ -7,8 +7,10 @@
               letting go most of the way down closes the sheet
 
    A phone held upright while a stream is live (ask 353, 2026-11-11): the chat is docked under the player and starts
-   all the way up to it; its grip sets how tall it is (the channel line shows in the room it leaves), all the way up
-   again is the default, and letting go most of the way down folds it to the round chat button.
+   all the way up to it; letting go most of the way down folds it to the round chat button. Between those it has one
+   other height (ask 366: the channel line showed cut in half above a sheet of any height): the channel line's own,
+   so the sheet is all the way up, just under the line, or folded. That height is saved as LINE (-1) and measured
+   on the page each time, so it fits whatever the line holds on this phone.
 
    Double-click or double-tap a grip (or press Enter on it) for the default size; arrow keys move it 24px.
    Each layout remembers its own size (localStorage), applied as CSS variables on #page-channel, which
@@ -36,6 +38,14 @@
         if (row) top += row.getBoundingClientRect().height;
         return Math.max(180, layout.getBoundingClientRect().bottom - top);
     }
+    const LINE = -1;   // the docked sheet just under the channel line
+    /** The docked sheet's height with the channel line shown whole above it. */
+    function lineSize() {
+        const p = page();
+        const info = p && p.querySelector('.stream-main > .ch-info-bar');
+        const h = info && info.offsetParent !== null ? info.scrollHeight : 0;
+        return Math.max(180, Math.round(dockRoom() - (h || 150)));
+    }
     const MODES = {
         side: { key: 'openvibe_chat_width', prop: '--chat-w', axis: 'x', min: 260, max: () => Math.min(window.innerWidth * 0.5, 760) },
         overlay: { key: 'openvibe_chat_overlay_w', prop: '--chat-ow', axis: 'x', min: 260, max: () => window.innerWidth * 0.7 },
@@ -49,6 +59,15 @@
     function setSize(mode, v) {
         const p = page(); const m = MODES[mode];
         if (!p) return;
+        // Docked, a height saved before (any number of pixels) is the line height now.
+        if (mode === 'sheet' && v > 0 && docked()) v = LINE;
+        if (mode === 'sheet' && v === LINE) {
+            // Shown first, so the line can be measured; a sheet that is not docked has no line height: the default.
+            if (!docked()) { p.style.removeProperty(m.prop); p.classList.remove('ch-chat-sized'); return; }
+            p.classList.add('ch-chat-sized');
+            p.style.setProperty(m.prop, `${lineSize()}px`);
+            return;
+        }
         if (v) p.style.setProperty(m.prop, `${clamp(v, m.min, m.max())}px`); else p.style.removeProperty(m.prop);
         // A sheet with a height of its own leaves the rest to the channel line; without one it fills (channel.css).
         if (mode === 'sheet') p.classList.toggle('ch-chat-sized', !!v);
@@ -124,7 +143,11 @@
                     sync(g, sidebar);
                     return;
                 }
-                if (d.cur >= m.max() - 16) { reset('sheet'); sync(g, sidebar); return; }
+                // Otherwise the nearer of its two heights: all the way up, or just under the channel line.
+                const line = lineSize();
+                if (Math.abs(d.cur - m.max()) <= Math.abs(d.cur - line)) { reset('sheet'); sync(g, sidebar); return; }
+                write(m.key, LINE); setSize('sheet', LINE); settle(); sync(g, sidebar);
+                return;
             }
             if (d.mode === 'sheet' && d.cur < m.min) {
                 setSize('sheet', read(m.key));   // keep the last real height for next time
@@ -147,8 +170,15 @@
             if (!(e.key in grow)) return;
             e.preventDefault();
             const r = sidebar.getBoundingClientRect();
+            if (mode === 'sheet' && docked()) {
+                // Up: all the way up. Down: under the channel line, then folded.
+                if (grow[e.key] > 0) reset('sheet');
+                else if (read(m.key) === LINE) { if (typeof window.toggleChannelChat === 'function') window.toggleChannelChat(true); }
+                else { write(m.key, LINE); setSize('sheet', LINE); settle(); }
+                sync(g, sidebar);
+                return;
+            }
             const v = clamp((m.axis === 'x' ? r.width : r.height) + grow[e.key] * 24, m.min, m.max());
-            if (mode === 'sheet' && docked() && v >= m.max()) { reset('sheet'); sync(g, sidebar); return; }
             setSize(mode, v); write(m.key, v); settle();
             sync(g, sidebar);
         });
@@ -158,6 +188,14 @@
         applySaved();
         document.querySelectorAll('#page-channel .stream-layout > .chat-sidebar').forEach(bind);
         syncAll();
+        // The page goes live (or stops) after this runs: the docked sheet's saved height is measured again then.
+        const p = page();
+        if (p && !p._ovSheetWatch && window.MutationObserver) {
+            p._ovSheetWatch = true;
+            let was = p.classList.contains('ch-is-live');
+            new MutationObserver(() => { const now = p.classList.contains('ch-is-live'); if (now !== was) { was = now; applySaved(); syncAll(); } })
+                .observe(p, { attributes: true, attributeFilter: ['class'] });
+        }
     }
     init();
     document.addEventListener('ov:fragment', init);
