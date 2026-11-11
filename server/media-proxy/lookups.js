@@ -106,7 +106,8 @@ async function publicVodsForStreams(streamIds, { budgetMs = 4000 } = {}) {
 }
 
 /**
- * The recently-ended list's VOD fields (vod_id, vod_is_public, vod_thumbnail_url, vod_duration),
+ * The recently-ended list's VOD fields (vod_id, vod_is_public, vod_thumbnail_url, vod_duration, vod_preview_url,
+ * vod_preview_webm_url),
  * which getRecentStreams used to join from the local table. A public VOD or nothing: never the id
  * or thumbnail of a private or unlisted one.
  */
@@ -119,6 +120,9 @@ async function attachPublicVods(streams) {
         s.vod_is_public = v ? 1 : null;
         s.vod_thumbnail_url = v ? media.publicUrl(v.thumbnail_url) : null;
         s.vod_duration = v ? (Number(v.duration_seconds ?? v.duration) || 0) : null;
+        // The recording's six-second preview (Media's preview.make, ask 355), for the card's moving preview.
+        s.vod_preview_url = v && v.preview_url ? media.publicUrl(v.preview_url) : null;
+        s.vod_preview_webm_url = v && v.preview_webm_url ? media.publicUrl(v.preview_webm_url) : null;
     }
     return list;
 }
