@@ -322,14 +322,17 @@ async function check(name, fn) {
             assert.ok(row, 'the stream is listed');
             assert.strictEqual(row.vod_id, null, 'no private or unlisted VOD id');
             assert.strictEqual(row.vod_thumbnail_url, null, 'no private or unlisted VOD thumbnail');
+            assert.strictEqual(row.vod_preview_url, null, 'no private or unlisted VOD preview');
             assert.ok(asked.length && asked.every((q) => !q.include_private), 'never asks Media for hidden VODs');
             lookups._resetCaches();
-            answer = [{ id: 100, stream_id: streamA, user_id: 3, visibility: 'public', is_public: 1, thumbnail_url: 'https://media.test/t/pub.jpg', duration_seconds: 42 }];
+            answer = [{ id: 100, stream_id: streamA, user_id: 3, visibility: 'public', is_public: 1, thumbnail_url: 'https://media.test/t/pub.jpg', duration_seconds: 42, preview_url: 'https://media.test/t/pub.mp4', preview_webm_url: 'https://media.test/t/pub.webm' }];
             row = (await lookups.attachPublicVods(await db.getRecentStreams(10))).find((s) => s.id === streamA);
             assert.strictEqual(row.vod_id, 100, 'a public VOD is attached');
             assert.strictEqual(row.vod_is_public, 1);
             assert.strictEqual(row.vod_thumbnail_url, 'https://media.test/t/pub.jpg');
             assert.strictEqual(row.vod_duration, 42);
+            assert.strictEqual(row.vod_preview_url, 'https://media.test/t/pub.mp4', 'its preview, for the card');
+            assert.strictEqual(row.vod_preview_webm_url, 'https://media.test/t/pub.webm');
         } finally { media.listVods = saved; lookups._resetCaches(); }
     });
 
