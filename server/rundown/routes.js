@@ -126,9 +126,13 @@ router.get('/settings', requireAuth, async (req, res) => {
 });
 router.put('/settings', requireAuth, async (req, res) => {
     try {
-        const audience = String((req.body && req.body.default_audience) || '');
+        const b = req.body || {};
+        const audience = String(b.default_audience || '');
         await settings.setDefaultAudience(req.user.id, audience);
-        res.json(await settings.settingsFor(req.user.id));
+        // "Apply to all my existing episodes" (VISIBILITY-EVERYWHERE rule 2): the same request, so the
+        // default and what it was applied to can never disagree.
+        const applied = b.apply ? await settings.applyToEpisodes(req.user.id, req.user.subject, audience) : 0;
+        res.json({ ...(await settings.settingsFor(req.user.id)), applied });
     } catch (err) { fail(res, err, 'Failed to save your settings'); }
 });
 

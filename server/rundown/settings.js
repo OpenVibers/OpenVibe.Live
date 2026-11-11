@@ -11,6 +11,7 @@
  */
 const db = require('../db/database');
 const visibility = require('./visibility');
+const sharing = require('./sharing');
 
 /** The streamer's default audience: Everyone until they change it. */
 async function defaultAudience(userId) {
@@ -29,6 +30,15 @@ async function setDefaultAudience(userId, audience) {
     return audience;
 }
 
+/**
+ * Rule 2: apply the default to the episodes the streamer already has. Only live episodes: a hidden one
+ * is staff-hidden and an `out` one is the streamer's whole-Rundown opt-out, which this must not undo.
+ */
+async function applyToEpisodes(userId, ownerSubject, audience) {
+    const rows = await db.all("SELECT stream_id FROM rundown_episodes WHERE user_id = ? AND status = 'live' ORDER BY stream_id", [Number(userId)]);
+    return await sharing.applyAudience(ownerSubject, rows.map((r) => Number(r.stream_id)), audience);
+}
+
 /** Whether the streamer keeps themselves out of The Rundown. */
 async function optedOut(userId) {
     return !!await db.get('SELECT 1 FROM arena_opt_outs WHERE user_id = ?', [Number(userId)]);
@@ -42,4 +52,4 @@ async function settingsFor(userId) {
     };
 }
 
-module.exports = { defaultAudience, setDefaultAudience, optedOut, settingsFor };
+module.exports = { defaultAudience, setDefaultAudience, applyToEpisodes, optedOut, settingsFor };
