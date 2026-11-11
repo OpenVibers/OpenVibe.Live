@@ -87,6 +87,16 @@ async function check(name, fn) {
     };
     const slack = async () => await db.run("UPDATE agent_stream_steps SET created_at = now() - interval '2 seconds'");
 
+    await check('Chat access follows the live link without minting a view ticket', async () => {
+        assert.strictEqual((await call('GET', `/api/streams/agent/${publicStream.public_id}/chat-access`, { as: 0 })).status, 200);
+        assert.strictEqual((await call('GET', `/api/streams/agent/${privateStream.public_id}/chat-access`, { as: 0 })).status, 404);
+        const link = await streamOf('unlisted', 'Link only');
+        assert.strictEqual((await call('GET', `/api/streams/agent/${link.public_id}/chat-access`, { as: 0 })).status, 404);
+        assert.strictEqual((await call('GET', `/api/streams/agent/${link.public_id}/chat-access?k=${link.unlisted_secret}`, { as: 0 })).status, 200);
+        await service.rotateLink(link);
+        assert.strictEqual((await call('GET', `/api/streams/agent/${link.public_id}/chat-access?k=${link.unlisted_secret}`, { as: 0 })).status, 404);
+    });
+
     quiet('agent streams S2: the steps');
     const publish = await tickets.issuePublish(publicStream.managed_stream_id);
     await service.markPublishing(publicStream);
