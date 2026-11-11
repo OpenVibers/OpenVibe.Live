@@ -1904,7 +1904,7 @@ function streamCardHTML(s, isLive) {
     // soft backdrop (style.css .stream-card.is-live), a LIVE pill, and the live ring on the face.
     const liveBg = isLive && !s.is_nsfw ? _liveBg(thumb) : '';
     return `
-        <a class="stream-card${isLive ? ' is-live' : ''}"${liveBg ? ` style="--live-bg:${esc(liveBg)}"` : ''}${ovLabelsAttr(s)}${isLive ? ` data-topics="${esc(topics.join('|'))}" data-user="${esc(String(s.user_id || ''))}"` : ''} data-stream-id="${esc(String(s.id || ''))}" href="${esc(navUrl)}" onclick="return handleLinkClick(event, '${esc(navUrl)}')">
+        <a class="stream-card${isLive ? ' is-live' : ''}"${liveBg ? ` style="--live-bg:${esc(liveBg)}"` : ''}${ovLabelsAttr(s)}${isLive ? ` data-topics="${esc(topics.join('|'))}" data-user="${esc(String(s.user_id || ''))}"` : ''} data-stream-id="${esc(String(s.id || ''))}"${typeof previewAttrs === 'function' ? previewAttrs(s.is_nsfw ? null : (isLive ? s : { preview_url: s.vod_preview_url, preview_webm_url: s.vod_preview_webm_url })) : ''} href="${esc(navUrl)}" onclick="return handleLinkClick(event, '${esc(navUrl)}')">
             <div class="stream-card-thumb${s.is_nsfw ? ' stream-card-nsfw-blur' : ''}" style="--thumb-tint:${esc(_thumbTint(s))}" data-ov-labels-media>
                 ${thumbImg(thumb, 'fa-circle-nodes', s.title, !isLive && s.vod_id ? `/api/thumbnails/generate/vod/${s.vod_id}` : null)}
                 ${isLive ? '<span class="stream-card-live">Live</span>' : ''}

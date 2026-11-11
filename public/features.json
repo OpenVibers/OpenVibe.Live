@@ -39,6 +39,7 @@
         "/shared/kit-web.js",
         "/js/ov-rail.js",
         "/js/ov-live-realtime.js",
+        "/js/card-preview.js",
         "/js/app-home.js",
         "/js/ov-odometer.js",
         "/js/ov-density.js",
@@ -152,6 +153,7 @@
         "/js/channel-socials.js",
         "/js/channel-chat-resize.js",
         "/js/channel-support.js",
+        "/js/card-preview.js",
         "/js/app-channel.js",
         "/js/bench-stream-watch.js",
         "/js/agent-cards.js"

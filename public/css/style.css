@@ -816,6 +816,15 @@ body.theme-light .stream-card.is-live::before { opacity: .35; }
    - The scrim is tinted with the theme's accent so it belongs to the page, but its base stays
      dark: white numerals over a photo need a dark backing whatever palette the reader picked. */
 .stream-card-thumb { container-type: inline-size; }
+/* A card's moving preview (card-preview.js, ask 355): the video sits on the picture and fades in once it plays; the
+   badges after it in the markup stay on top. The line along the bottom is how far the six seconds have played. */
+.stream-card-thumb > video.card-preview { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0; transition: opacity .25s ease; pointer-events: none; }
+.stream-card.is-previewing .stream-card-thumb > video.card-preview { opacity: 1; }
+.stream-card-thumb > .card-preview-bar { position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: var(--accent, #3b82f6); transform-origin: 0 50%; transform: scaleX(var(--p, 0)); opacity: 0; transition: opacity .25s ease; pointer-events: none; }
+.stream-card.is-previewing .stream-card-thumb > .card-preview-bar { opacity: .9; }
+.stream-card.is-previewing .stream-card-thumb > img { filter: none; }
+html[data-ov-motion=off] .stream-card-thumb > video.card-preview, html[data-ov-motion=off] .stream-card-thumb > .card-preview-bar { display: none; }
+@media (prefers-reduced-motion: reduce) { .stream-card-thumb > video.card-preview, .stream-card-thumb > .card-preview-bar { transition: none; } }
 
 .stream-card-viewers,
 .stream-card-duration {
