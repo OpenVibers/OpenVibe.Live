@@ -390,8 +390,10 @@ function _rdMineBox(st) {
         <h2 id="rd-mine-h" class="rd-h2">Your Rundown</h2>
         <fieldset class="rd-aud-pick"${st.opted_out ? ' disabled' : ''}><legend>Who sees what the desk writes up next</legend>
             <div class="rd-aud-opts">${radios}</div>
-            <p class="rd-quiet">Episodes already written keep their own setting: change one with Share on its page.</p>
+            <p class="rd-quiet">Episodes already written keep their own setting until you apply this one to them; change one with Share on its page.</p>
         </fieldset>
+        <div class="rd-mine-row"><div><p class="rd-mine-t" id="rd-apply-l">Apply it to episodes already written</p><p class="rd-quiet">Changes who sees every live episode you have. Specific people is chosen per episode.</p></div>
+            <button type="button" class="rd-own-btn" aria-labelledby="rd-apply-l" data-rd-apply-aud${st.opted_out ? ' disabled' : ''}>Apply…</button></div>
         <div class="rd-mine-row"><div><p class="rd-mine-t" id="rd-out-l">Keep me out of The Rundown</p><p class="rd-quiet">${st.opted_out ? 'On: nothing about your streams is shown, and the desk does not read them.' : 'Hides everything written about your streams and stops the desk reading them. You can come back any time.'}</p></div>
             <button type="button" class="rd-switch" role="switch" aria-checked="${st.opted_out ? 'true' : 'false'}" aria-labelledby="rd-out-l" data-rd-optout="${st.opted_out ? '0' : '1'}"></button></div>
         <div class="rd-mine-row"><div><p class="rd-mine-t">Delete my Rundown</p><p class="rd-quiet">Every episode and take written about your streams, for everyone. Your recordings stay.</p></div>
@@ -491,6 +493,27 @@ async function _rdRestore(btn) {
         if (p) p.innerHTML = `<span class="rd-own-icon"><i class="fa-solid fa-pen-nib" aria-hidden="true"></i></span><h1 class="rd-h2">The desk will write it up again</h1><p>It reads the stream once more and the episode comes back here when it is done, with your default audience.</p>`;
     } catch (err) { btn.disabled = false; _rdToast(err.message || 'That did not work', 'error'); }
 }
+// "Apply to all my existing episodes" (VISIBILITY-EVERYWHERE rule 2): confirm, then the same setting.
+document.addEventListener('click', async (e) => {
+    const btn = e.target.closest && e.target.closest('[data-rd-apply-aud]');
+    if (!btn) return;
+    const radio = document.querySelector('[data-rd-default-aud]:checked');
+    if (!radio) return;
+    const words = (RD_AUD[radio.value] || RD_AUD.public)[0];
+    const answer = await _rdConfirm({
+        title: `Apply "${words}" to every episode?`,
+        body: `Every live episode already written about your streams changes to ${words}. Specific people stays a choice on each episode's Share sheet.`,
+        confirm: 'Apply to all',
+    });
+    if (!answer.ok) return;
+    btn.disabled = true;
+    try {
+        const st = await api('/rundown/settings', { method: 'PUT', body: { default_audience: radio.value, apply: true } });
+        _rdToast(`Applied to ${Number(st.applied) || 0} episode${Number(st.applied) === 1 ? '' : 's'}`, 'success');
+        _rdReload();
+    } catch (err) { btn.disabled = false; _rdToast(err.message || 'That did not work', 'error'); }
+});
+
 // The default for new write-ups saves as soon as it is picked.
 document.addEventListener('change', async (e) => {
     const radio = e.target.closest && e.target.closest('[data-rd-default-aud]');
