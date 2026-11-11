@@ -34,7 +34,7 @@ const token = (cap, { aud = 'openvibe.live', sub = 'svc:network', env } = {}) =>
     const fan = Number((await db.createUser({ username: 'cpfan', password_hash: 'x', display_name: 'Cp Fan', stream_key: 'cpfansecretkey1' })).lastInsertRowid);
     const streamer = Number((await db.createUser({ username: 'cpstar', password_hash: 'x', display_name: 'Cp Star', stream_key: 'cpstarsecretkey1' })).lastInsertRowid);
     const other = Number((await db.createUser({ username: 'cpother', password_hash: 'x', display_name: 'Cp Other', stream_key: 'cpothersecretkey1' })).lastInsertRowid);
-    await db.getDb().prepare("INSERT INTO linked_accounts (user_id, service, service_user_id) VALUES (?, 'network', ?)").run(fan, 'net-fan-1');
+    await db.getDb().prepare("INSERT INTO linked_accounts (user_id, service, service_user_id, subject_id) VALUES (?, 'network', ?, ?)").run(fan, 'net-fan-1', 'usr_01JAB2C3D4E5F6G7H8J9K0FAN10');
     await db.getDb().prepare("INSERT INTO linked_accounts (user_id, service, service_user_id) VALUES (?, 'network', ?)").run(other, 'net-other-1');
     await db.applyChannelPoints({ userId: fan, streamerId: streamer, delta: 100, key: 'test:cp:watch:1', reason: 'watch' });
     await db.applyChannelPoints({ userId: fan, streamerId: streamer, delta: -30, key: 'test:cp:redeem:1', reason: 'redeem reward 7' });
@@ -68,6 +68,12 @@ const token = (cap, { aud = 'openvibe.live', sub = 'svc:network', env } = {}) =>
         assert.strictEqual(b.moves[1].delta, -30);
         assert.strictEqual(b.cursor, b.moves[1].id);
         assert.strictEqual(b.next_since, null);
+    });
+
+    await check('the Network subject resolves the same account', async () => {
+        const b = await (await get(q({ network_user_id: 'usr_01JAB2C3D4E5F6G7H8J9K0FAN10', streamer_id: String(streamer) }), good)).json();
+        assert.strictEqual(b.moves.length, 2);
+        assert.strictEqual(b.balance, 70);
     });
 
     await check('a cursor pages forward', async () => {

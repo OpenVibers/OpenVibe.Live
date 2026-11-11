@@ -9,6 +9,8 @@ const { guard } = require('../net/service-guard');
 const { http } = require('openvibe-contracts');
 const { bindSlot, BindError } = require('../openre/bind');
 
+const SUBJECT_RE = /^usr_[0-9A-HJKMNP-TV-Z]{26}$/;
+
 // Service-to-service only, loopback only (nothing that came through nginx): each route checks the one capability it
 // performs on a Network service token (server/net/service-guard.js); nothing else gets in (X-Internal-Key: plan T2).
 
@@ -75,7 +77,12 @@ router.get('/channel-points/changes', guard('live.channel_points.read'), async (
     try {
         const networkId = String(req.query.network_user_id || '');
         if (!networkId) return res.status(400).json({ ok: false, error: 'network_user_id is required' });
-        const linked = await db.getDb().prepare("SELECT user_id FROM linked_accounts WHERE service = 'network' AND service_user_id = ?").get(networkId);
+        // The account is named by its Network subject (usr_…); older links that only carry the numeric
+        // service id still resolve.
+        let linked = SUBJECT_RE.test(networkId)
+            ? await db.getDb().prepare("SELECT user_id FROM linked_accounts WHERE service = 'network' AND subject_id = ? ORDER BY id DESC LIMIT 1").get(networkId)
+            : null;
+        if (!linked) linked = await db.getDb().prepare("SELECT user_id FROM linked_accounts WHERE service = 'network' AND service_user_id = ?").get(networkId);
         if (!linked) return res.status(404).json({ ok: false, error: 'no linked live account' });
         const userId = linked.user_id;
         let streamerId = null;
