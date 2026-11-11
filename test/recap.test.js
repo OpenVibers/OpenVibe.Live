@@ -27,7 +27,13 @@ const ts = (minsAgo) => new Date(Date.now() - minsAgo * 60000).toISOString().rep
     await db.run("INSERT INTO streams (user_id, title, category, protocol, is_live, started_at, ended_at, duration_seconds, peak_viewers) VALUES (?,?,?,?,0,?,?,?,?)", [host, 'oops', 'irl', 'webrtc', ts(9), ts(5), 240, 1]);
     const pend = (await recap.pending()).map(r => r.id);
     assert.deepStrictEqual(pend, [sid], 'only the long-enough, settled stream is pending');
+    // Media's row carries the watch id the report links the recording by (the numbered /v/<id> address still answers 301).
+    const media = require('../server/media-client');
+    const listVods = media.listVods;
+    media.listVods = async () => ({ vods: [{ id: 77, watch_id: 'dQw4w9WgXcQ', status: 'ready', duration_seconds: 3600, thumbnail_url: null }] });
     const r = await recap.buildRecap(sid);
+    media.listVods = listVods;
+    assert.strictEqual(r.vod.watch_id, 'dQw4w9WgXcQ', 'the recap keeps the watch id Media minted');
     assert.ok(r && r.write && r.write.headline, 'has a write-up');
     assert.strictEqual(r.ai, false, 'AI off → template');
     assert.strictEqual(r.stream.peak_viewers, 9);

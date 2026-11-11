@@ -155,21 +155,23 @@ async function recheck(streamId) {
     const id = Number(streamId);
     if (!Number.isSafeInteger(id) || id <= 0) return null;
     const hit = _rechecked.get(id);
-    if (hit && Date.now() - hit.at < RECHECK_MS) return hit.audience;
+    if (hit && Date.now() - hit.at < RECHECK_MS) return { audience: hit.audience, watchId: hit.watchId || null };
     const vodId = await vodIdFor(id);
     if (!vodId) return null;
-    let audience = null, members = null;
+    let audience = null, members = null, watchId = null;
     try {
         const vod = await require('../media-client').getVod(vodId);
         // Media's `audience` is the share.v1 answer (people included); `visibility` keeps old servers working.
         if (vod && (vod.audience || vod.visibility)) audience = mediaAudience(vod.audience || vod.visibility);
         if (vod && Array.isArray(vod.members)) members = vod.members;
         else if (vod && Array.isArray(vod.share_members)) members = vod.share_members;
+        // The same row carries the id openvibe.video addresses the watch page by; the episode hands it to Report.
+        if (vod && /^[A-Za-z0-9_-]{11}$/.test(String(vod.watch_id || ''))) watchId = String(vod.watch_id);
     } catch { /* Media unreachable: the last thing we heard stays */ }
-    if (!audience) return null;
-    _rechecked.set(id, { at: Date.now(), audience });
-    await noteVodVisibility(id, audience, members);
-    return audience;
+    if (!audience && !watchId) return null;
+    _rechecked.set(id, { at: Date.now(), audience, watchId });
+    if (audience) await noteVodVisibility(id, audience, members);
+    return { audience, watchId };
 }
 
 /** Forget the cached re-check (a visibility change Live applied itself). */
