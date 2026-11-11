@@ -43,6 +43,7 @@ assert.strictEqual(video.muted, false, 'allowlisted parent can control playback'
     await embed.page({ params: { username: '@embedcheck' } }, known);
     assert.strictEqual(known.statusCode, 200, 'known channel route is served');
     assert.match(known.headers['Content-Security-Policy'], /frame-ancestors 'self' https:\/\/openvibe\.live https:\/\/openvibe\.network https:\/\/\*\.openvibe\.website/);
+    assert.match(known.headers['Content-Security-Policy'], /script-src [^;]*https:\/\/cdn\.jsdelivr\.net/, 'embedded HLS and FLV scripts can load under CSP');
     const missing = response();
     await embed.page({ params: { username: 'missing' } }, missing);
     assert.strictEqual(missing.statusCode, 404, 'unknown channel route is 404');
