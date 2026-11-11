@@ -2730,7 +2730,7 @@ function _aiTimelineSessionHTML(s) {
             <div class="ai-tl-session-title">${mainTitle}</div>
             <div class="ai-tl-session-meta">${meta.join('<span class="ai-tl-dot">·</span>')}</div>
         </div>
-        ${ov ? `<div class="ai-tl-session-overview">${esc(ov)}</div>` : ''}
+        ${ov ? `<div class="ai-tl-session-overview">${_collapsibleOverview(ov)}</div>` : ''}
         <div class="ai-tl-session-actions">${momentsBtn}${transcriptBtn}</div>
         <div class="ai-tl-moments" hidden></div>
         <div class="ai-tl-transcript" hidden></div>
@@ -2989,22 +2989,30 @@ async function loadChannelAiTimeline(username) {
         // ── As a chatter (inner content) ──
         let chatterInner = '';
         if (hasChatter) {
-            const momentsHTML = chatDays.length ? `<div class="ai-tl-track">${chatDays.map(t => `
+            const dayLabel = (d) => { const t = Date.parse(String(d || '').slice(0, 10) + 'T12:00:00Z'); return Number.isFinite(t) ? new Date(t).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: new Date(t).getUTCFullYear() === new Date().getUTCFullYear() ? undefined : 'numeric', timeZone: 'UTC' }) : String(d || ''); };
+            const parseTime = value => value ? Date.parse(String(value).replace(' ', 'T').replace(/Z?$/, 'Z')) : NaN;
+            const momentRow = (h) => {
+                const session = [...sessions, ...(data.index || [])].find(s => Number(s.id) === Number(h.stream_id));
+                const started = parseTime(session && (session.started_at || session.created_at || session.when));
+                const at = parseTime(h.at);
+                const offset = Number.isFinite(started) && Number.isFinite(at) ? Math.max(0, Math.floor((at - started) / 1000)) : 0;
+                const href = session?.vod_id ? videoHref('vod', session.vod_id, offset) : '';
+                const clock = Number.isFinite(at) ? new Date(at).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }) : '';
+                const inner = `${clock ? `<span class="ai-tl-ts">${esc(clock)}</span>` : ''}<span class="ai-tl-cm-text">${esc(h.detail || '')}</span>${href ? '<i class="fa-solid fa-play ai-tl-cm-go" aria-hidden="true"></i>' : ''}`;
+                return `<li>${href ? `<a class="ai-tl-cm" href="${esc(href)}" title="Watch this moment">${inner}</a>` : `<span class="ai-tl-cm">${inner}</span>`}</li>`;
+            };
+            const momentsHTML = chatDays.length ? `<div class="ai-tl-track">${chatDays.map(t => {
+                const hs = t.highlights || [];
+                return `
                 <div class="ai-tl-session">
                     <div class="ai-tl-session-head"><div class="ai-tl-node"></div>
-                        <div class="ai-tl-session-title">${esc(t.period_start)}</div>
-                        <div class="ai-tl-session-meta">${t.message_count ? `${_fmtCount(t.message_count)} messages` : `${t.highlights.length} moments`}</div></div>
-                    ${t.summary ? `<div class="ai-tl-session-overview">${esc(t.summary)}</div>` : ''}
-                    ${(t.highlights || []).slice(0, 5).map(h => {
-                        const session = [...sessions, ...(data.index || [])].find(s => Number(s.id) === Number(h.stream_id));
-                        const parseTime = value => value ? Date.parse(String(value).replace(' ', 'T').replace(/Z?$/, 'Z')) : NaN;
-                        const started = parseTime(session && (session.started_at || session.created_at || session.when));
-                        const at = parseTime(h.at);
-                        const offset = Number.isFinite(started) && Number.isFinite(at) ? Math.max(0, Math.floor((at - started) / 1000)) : 0;
-                        const href = session?.vod_id ? videoHref('vod', session.vod_id, offset) : '';
-                        return `<div class="ai-tl-session-overview">${href ? `<a href="${esc(href)}">${esc(h.detail || '')}</a>` : esc(h.detail || '')}</div>`;
-                    }).join('')}
-                </div>`).join('')}</div>` : '';
+                        <div class="ai-tl-session-title">${esc(dayLabel(t.period_start))}</div>
+                        <div class="ai-tl-session-meta">${t.message_count ? `${_fmtCount(t.message_count)} messages` : ''}${t.message_count && hs.length ? ' · ' : ''}${hs.length ? `${hs.length} moment${hs.length === 1 ? '' : 's'}` : ''}</div></div>
+                    ${t.summary ? `<div class="ai-tl-session-overview">${_collapsibleOverview(t.summary)}</div>` : ''}
+                    ${hs.length ? `<ol class="ai-tl-cms">${hs.slice(0, 5).map(momentRow).join('')}</ol>` : ''}
+                    ${hs.length > 5 ? `<details class="ai-tl-cms-more"><summary>${hs.length - 5} more moment${hs.length - 5 === 1 ? '' : 's'}</summary><ol class="ai-tl-cms">${hs.slice(5).map(momentRow).join('')}</ol></details>` : ''}
+                </div>`;
+            }).join('')}</div>` : '';
             chatterInner = (chatOverall ? `<div class="ai-tl-overview-card"><div class="ai-tl-overview-label"><i class="fa-solid fa-comments"></i> As a chatter</div>${_collapsibleOverview(chatOverall)}${chat.message_count ? `<p class="ai-tl-summary" style="margin:8px 0 0">~${chat.message_count} messages analyzed</p>` : ''}</div>` : '')
                 + momentsHTML;
         }
@@ -3021,9 +3029,9 @@ async function loadChannelAiTimeline(username) {
                 <div class="ai-tl-pane" data-side="streamer">${streamerInner}</div>
                 <div class="ai-tl-pane ai-tl-pane--hidden" data-side="chatter">${chatterInner}</div>`;
         } else if (hasStreamer) {
-            sidesHTML = `<div class="ai-tl-side-label"><i class="fa-solid fa-tower-broadcast"></i> As a streamer</div>${streamerInner}`;
+            sidesHTML = streamerOv ? streamerInner : `<div class="ai-tl-side-label"><i class="fa-solid fa-tower-broadcast"></i> As a streamer</div>${streamerInner}`;
         } else {
-            sidesHTML = `<div class="ai-tl-side-label"><i class="fa-solid fa-comments"></i> As a chatter</div>${chatterInner}`;
+            sidesHTML = chatOverall ? chatterInner : `<div class="ai-tl-side-label"><i class="fa-solid fa-comments"></i> As a chatter</div>${chatterInner}`;
         }
 
         wrap.innerHTML = header + sidesHTML;
