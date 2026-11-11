@@ -59,6 +59,13 @@ assert.strictEqual(video.muted, false, 'allowlisted parent can control playback'
 
     const simulate = async (payload, preSound = false) => {
         const elements = Object.fromEntries(['video-element', 'live', 'offline', 'gate', 'continue', 'video-container', 'btn-volume', 'btn-play-pause'].map((id) => [id, { hidden: false, style: {}, addEventListener() {}, click() {} }]));
+        const listeners = {};
+        const timers = [];
+        Object.assign(elements['video-element'], {
+            paused: true, readyState: 0,
+            play() { this.paused = false; return Promise.resolve(); },
+            addEventListener(type, fn) { (listeners[type] ||= []).push(fn); },
+        });
         const playerCalls = [];
         const sent = [];
         let message;
@@ -67,12 +74,13 @@ assert.strictEqual(video.muted, false, 'allowlisted parent can control playback'
             parent: { postMessage(data, target) { sent.push({ data, target }); } }, location: { pathname: '/embed/alice' },
             document: { getElementById(id) { return elements[id]; } }, addEventListener(type, fn) { if (type === 'message') message = fn; }, setInterval() {},
             fetch: async () => ({ ok: true, json: async () => payload }), initPlayer(stream) { playerCalls.push({ stream, muted: elements['video-element'].muted, forceMuted: browser.window.OVChannelEmbedForceMuted }); },
+            setTimeout(fn) { timers.push(fn); },
         };
         browser.window.parent = browser.parent;
         vm.runInNewContext(clientSource, browser);
         if (preSound) message({ origin: 'https://openvibe.live', source: browser.parent, data: { type: 'ov-embed', cmd: 'unmute' } });
         await new Promise((resolve) => setImmediate(resolve));
-        return { elements, playerCalls, sent };
+        return { elements, playerCalls, sent, listeners, timers, message, browser };
     };
     const liveResult = await simulate({ channel: { username: 'alice', display_name: 'Alice' }, streams: [{ id: 2, is_live: true, title: 'Public show' }] });
     assert.strictEqual(liveResult.playerCalls.length, 1, 'live channel starts the shared player');
@@ -80,6 +88,18 @@ assert.strictEqual(video.muted, false, 'allowlisted parent can control playback'
     const carried = await simulate({ channel: { username: 'alice' }, streams: [{ id: 4, is_live: true }] }, true);
     assert.strictEqual(carried.playerCalls[0].forceMuted, false, 'sound intent received before the new stream starts is preserved');
     assert.strictEqual(carried.playerCalls[0].muted, false, 'the carried stream starts with sound when allowed');
+    const blocked = await simulate({ channel: { username: 'alice' }, streams: [{ id: 5, is_live: true }] }, true);
+    const blockedVideo = blocked.elements['video-element'];
+    blockedVideo.readyState = 4; blockedVideo.muted = false;
+    blocked.listeners.canplay[0](); blocked.timers.forEach((fn) => fn());
+    assert.strictEqual(blockedVideo.muted, true, 'blocked unmuted autoplay falls back to muted video');
+    assert.strictEqual(blockedVideo.paused, false, 'muted fallback starts playback');
+    assert.strictEqual(blocked.browser.window.OVChannelEmbedForceMuted, true, 'the fallback survives reconnects');
+    const paused = await simulate({ channel: { username: 'alice' }, streams: [{ id: 6, is_live: true }] }, true);
+    paused.message({ origin: 'https://openvibe.live', source: paused.browser.parent, data: { type: 'ov-embed', cmd: 'pause' } });
+    paused.elements['video-element'].readyState = 4; paused.elements['video-element'].muted = false;
+    paused.listeners.canplay[0](); paused.timers.forEach((fn) => fn());
+    assert.strictEqual(paused.elements['video-element'].paused, true, 'explicit parent pause is respected');
     const offlineResult = await simulate({ channel: { username: 'alice', display_name: 'Alice' }, streams: [] });
     assert.strictEqual(offlineResult.elements.offline.style.display, 'block', 'offline channel shows the offline card');
     const gatedResult = await simulate({ channel: { username: 'alice' }, streams: [{ id: 3, is_live: true, is_nsfw: true }] });

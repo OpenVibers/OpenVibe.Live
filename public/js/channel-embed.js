@@ -7,6 +7,7 @@
     let state = { live: false, muted: true, playing: false, title: '', username: user, viewers: 0 };
     let currentStreamId = null;
     let requestedSound = false;
+    let pausedByParent = false;
     const approved18 = new Set();
     const send = () => { if (parent !== window) parent.postMessage({ type: 'ov-embed', event: 'state', ...state }, '*'); };
     const paint = () => { document.getElementById('live').hidden = !state.live; send(); };
@@ -23,12 +24,14 @@
             video.muted = true;
             state.muted = true;
             send();
+            video.play().catch(() => {});
         });
         state.muted = wanted;
         send();
     };
     const setPlaying = (playing) => {
         const wanted = !!playing;
+        pausedByParent = !wanted;
         if (state.playing !== wanted) document.getElementById('btn-play-pause')?.click();
         state.playing = wanted;
         send();
@@ -43,6 +46,19 @@
     video.addEventListener('volumechange', () => { state.muted = video.muted; send(); });
     video.addEventListener('playing', () => { state.playing = true; send(); });
     video.addEventListener('pause', () => { state.playing = false; send(); });
+    video.addEventListener('canplay', () => {
+        const streamId = currentStreamId;
+        setTimeout(() => {
+            if (streamId === null || currentStreamId !== streamId || pausedByParent || !video.paused || video.muted || video.readyState < 2) return;
+            // An unmuted handoff may be blocked by autoplay. Keep the picture moving until the next tap for sound.
+            requestedSound = false;
+            window.OVChannelEmbedForceMuted = true;
+            video.muted = true;
+            state.muted = true;
+            send();
+            video.play().catch(() => {});
+        }, 1500);
+    });
     document.getElementById('video-container').addEventListener('click', (event) => {
         if (state.live && !event.target.closest('#gate')) setMuted(!state.muted);
     });
