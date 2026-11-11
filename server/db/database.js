@@ -1428,7 +1428,7 @@ async function getRecentlyOnlineStreamers(limit = 20, offset = 0) {
         FROM streams s
         JOIN users u ON s.user_id = u.id
         LEFT JOIN streamer_overviews o ON o.user_id = u.id
-        WHERE (s.is_live = 0 AND s.ended_at IS NOT NULL) OR s.is_live = 1
+        WHERE ((s.is_live = 0 AND s.ended_at IS NOT NULL) OR s.is_live = 1) AND COALESCE(u.is_test, 0) = 0
         GROUP BY u.id, o.overview, o.overview_short
         ORDER BY last_online_at DESC
         LIMIT ? OFFSET ?
@@ -1437,9 +1437,9 @@ async function getRecentlyOnlineStreamers(limit = 20, offset = 0) {
 
 async function countRecentlyOnlineStreamers() {
     return (await get(`
-        SELECT COUNT(DISTINCT user_id) AS count
-        FROM streams
-        WHERE (is_live = 0 AND ended_at IS NOT NULL) OR is_live = 1
+        SELECT COUNT(DISTINCT s.user_id) AS count
+        FROM streams s JOIN users u ON u.id = s.user_id
+        WHERE ((s.is_live = 0 AND s.ended_at IS NOT NULL) OR s.is_live = 1) AND COALESCE(u.is_test, 0) = 0
     `))?.count || 0;
 }
 
@@ -1775,14 +1775,14 @@ async function _computeHomeStats() {
         vods: null,
         clips: null,
         liveSessions: await c(`SELECT COUNT(*) AS count FROM streams`),
-        streamers: await c(`SELECT COUNT(DISTINCT user_id) AS count FROM streams WHERE user_id IS NOT NULL`),
+        streamers: await c(`SELECT COUNT(DISTINCT s.user_id) AS count FROM streams s JOIN users u ON u.id = s.user_id WHERE COALESCE(u.is_test, 0) = 0`),
         // Distinct people who went live in the last seven days, and the seven before.
-        streamedWeek: await c(`SELECT COUNT(DISTINCT user_id) AS count FROM streams WHERE user_id IS NOT NULL AND created_at >= datetime('now', '-7 days')`),
-        prevStreamedWeek: await c(`SELECT COUNT(DISTINCT user_id) AS count FROM streams WHERE user_id IS NOT NULL AND created_at >= datetime('now', '-14 days') AND created_at < datetime('now', '-7 days')`),
+        streamedWeek: await c(`SELECT COUNT(DISTINCT s.user_id) AS count FROM streams s JOIN users u ON u.id = s.user_id WHERE COALESCE(u.is_test, 0) = 0 AND s.created_at >= datetime('now', '-7 days')`),
+        prevStreamedWeek: await c(`SELECT COUNT(DISTINCT s.user_id) AS count FROM streams s JOIN users u ON u.id = s.user_id WHERE COALESCE(u.is_test, 0) = 0 AND s.created_at >= datetime('now', '-14 days') AND s.created_at < datetime('now', '-7 days')`),
         // OpenVibe.Chat owns chat_messages (roadmap T3): the total comes from Chat's read API.
         // A Chat outage answers the cache, else null — never a 500 for the home page.
         chatMessages: await (async () => { try { const s = await require('../chat/chat-reads').siteStatsPeek(); return s && s.messages != null ? s.messages : null; } catch { return null; } })(),
-        users: await c(`SELECT COUNT(*) AS count FROM users WHERE COALESCE(is_banned, 0) = 0`),
+        users: await c(`SELECT COUNT(*) AS count FROM users WHERE COALESCE(is_banned, 0) = 0 AND COALESCE(is_test, 0) = 0`),
         anons: await c(`SELECT COUNT(*) AS count FROM anon_ip_mappings`),
         follows: await c(`SELECT COUNT(*) AS count FROM follows`),
         // No platform-wide emote total: OpenVibe.Chat owns `emotes` (roadmap T3) and exposes counts

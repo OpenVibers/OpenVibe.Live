@@ -1744,6 +1744,10 @@ async function start() {
     }, require('./streaming/live-thumb-cadence').TICK_MS);
     if (typeof livePictureInterval.unref === 'function') livePictureInterval.unref();
 
+    // 8a3. Test accounts (Network users.is_test): mark the local users the public people surfaces must leave out.
+    // The first refresh runs now; hourly after that, and a failure keeps the last good flags.
+    try { require('./auth/test-accounts').start(); } catch (err) { console.warn('[Test accounts] not started:', err.message); }
+
     // 8b. Canonical identity: report every Live<->Network link to Network's identity_legacy_map
     // (roadmap Wave 1). Idempotent on Network's side; daily, first run a few minutes after boot.
     // Then fill in the subject of every linked account no token has told Live about yet.

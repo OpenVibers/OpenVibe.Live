@@ -113,6 +113,9 @@ async function _syncSsoUserFields(user, decoded) {
         && _ROLE_RANK[decoded.role] > (_ROLE_RANK[user.role] ?? 0)) {
         updates.push('role = ?'); params.push(decoded.role);
     }
+    // The probe tooling's sign-up prefix (OpenVibe.Network /api/auth/register marks the same names is_test): a probe
+    // that signs in is marked at once, before the hourly identity list reaches this account.
+    if (/^ovprobe_/i.test(String(decoded.username || '')) && !Number(user.is_test)) updates.push('is_test = 1');
     if (!updates.length) return user;
     try {
         params.push(user.id);
@@ -169,6 +172,8 @@ async function resolveNetworkUser(decoded) {
         if (decoded.role && ['user', 'streamer', 'global_mod', 'admin'].includes(decoded.role)) {
             updates.push('role = ?'); params.push(decoded.role);
         }
+        // A probe account is marked when it is created here too (server/auth/test-accounts.js keeps the list).
+        if (/^ovprobe_/i.test(String(decoded.username || ''))) updates.push('is_test = 1');
         if (updates.length > 0) {
             params.push(user.id);
             await db.getDb().prepare(`UPDATE users SET ${updates.join(', ')} WHERE id = ?`).run(...params);

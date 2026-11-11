@@ -30,12 +30,15 @@ const take = async (uid, sid, { title, score, quote = null, status = 'live', wit
     [sid, uid, withTopic ? topic : null, title, `${title}.`, score, JSON.stringify(quote ? [{ text: quote, sec: 12, en: null }] : []), ago(150), status]);
 
 const ann = await mk('annstreams'), bob = await mk('bobstreams'), ban = await mk('bannedone', { banned: true });
-const sa = await stream(ann), sb = await stream(bob), sx = await stream(ban);
+await db.run("INSERT INTO users (username, email, password_hash, display_name, stream_key, is_test) VALUES ('ovprobe_digest', 'ovprobe@x', 'x', 'ovprobe_digest', ?, 1)", ['ovprobe-digest'.padEnd(32, '0')]);
+const probe = (await db.get('SELECT id FROM users WHERE username = ?', ['ovprobe_digest'])).id;
+const sa = await stream(ann), sb = await stream(bob), sx = await stream(ban), sp = await stream(probe);
 await take(ann, sa, { title: 'Autofill is a scam on support mains', score: 5, quote: 'autofill put me on support again chat' });
 await take(bob, sb, { title: 'Bob on his new keyboard', score: 4, withTopic: false });
 await take(bob, sb, { title: 'A quiet stretch', score: 3 });
 await take(ann, sa, { title: 'Taken down', score: 5, quote: 'never shown', status: 'hidden' });
 await take(ban, sx, { title: 'Banned streamer take', score: 5, quote: 'never shown either' });
+await take(probe, sp, { title: 'Test account take', score: 5, quote: 'a probe must not be public' });
 
 const app = express();
 app.use('/api/home', require('../server/home/routes'));
@@ -51,6 +54,9 @@ try {
     assert.ok(d.html.includes(`/rundown/e/${sa}#rd-take-${d.topics[0].id}`));
     assert.ok(d.html.includes('What they talked about'));
     assert.ok(d.html.includes('New here'));
+    assert.ok(!d.newPeople.some((p) => p.username === 'ovprobe_digest'), 'a test account is never a "New here" face');
+    assert.ok(!d.streamed.some((p) => p.username === 'ovprobe_digest'), 'a test account is never a "Who streamed" row');
+    assert.ok(!d.html.includes('ovprobe_digest') && !d.html.includes('Test account take'), 'the test account is nowhere in the digest');
     assert.ok(!d.html.includes('Bob on his new keyboard'));
     console.log('✅ the digest reads The Rundown');
 } finally {

@@ -22,9 +22,11 @@ const KEYS = ['streams_this_week', 'hours_this_week', 'usual_time', 'days_in_a_r
 (async () => {
     await db.initDb();
     const mk = async (username) => { await db.createUser({ username, email: `${username}@x`, password_hash: 'x', display_name: username, stream_key: username.padEnd(32, '0') }); const id = (await db.get('SELECT id FROM users WHERE username = ?', [username])).id; await db.ensureChannel(id); return id; };
-    const pic = await mk('picasso'), nov = await mk('novod'), liv = await mk('liveone');
+    const pic = await mk('picasso'), nov = await mk('novod'), liv = await mk('liveone'), probe = await mk('ovprobe_recently');
     const slot = async (uid, slug) => Number((await db.run('INSERT INTO managed_streams (user_id, slug, title, protocol, stream_key, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ov_now(), ov_now()) RETURNING id', [uid, slug, `${slug} title`, 'webrtc', `${slug}-key-${uid}`])).lastInsertRowid);
-    const picSlot = await slot(pic, 'main'), livSlot = await slot(liv, 'main');
+    const picSlot = await slot(pic, 'main'), livSlot = await slot(liv, 'main'), probeSlot = await slot(probe, 'main');
+    // A test account (OpenVibe.Network users.is_test) with a stream must never be a public card.
+    await db.run('UPDATE users SET is_test = 1 WHERE id = ?', [probe]);
     const stream = async (uid, ms, { live = false, startedAgo, endedAgo = null, thumb = null }) => await db.run(
         `INSERT INTO streams (user_id, managed_stream_id, title, protocol, is_live, viewer_count, started_at, ended_at, thumbnail_url, created_at)
          VALUES (?, ?, ?, 'webrtc', ?, 0, to_char(now() - make_interval(mins => ?), 'YYYY-MM-DD HH24:MI:SS'), ${live ? 'NULL' : "to_char(now() - make_interval(mins => ?), 'YYYY-MM-DD HH24:MI:SS')"}, ?, ov_now())`,
@@ -36,6 +38,7 @@ const KEYS = ['streams_this_week', 'hours_this_week', 'usual_time', 'days_in_a_r
     await stream(nov, null, { startedAgo: 700, endedAgo: 650, thumb: '/api/thumbnails/stream-9103-3.jpg' });
     // A live stream: its capture still exists.
     await stream(liv, livSlot, { live: true, startedAgo: 10, thumb: '/api/thumbnails/stream-9104-live.jpg' });
+    await stream(probe, probeSlot, { startedAgo: 400, endedAgo: 350, thumb: '/api/thumbnails/stream-9105-probe.jpg' });
 
     // A stored card line in the old shape (name first, colon, two sentences).
     await db.run("INSERT INTO streamer_overviews (user_id, overview, overview_short, model, sources, generated_at) VALUES (?, ?, ?, 'x', '{}', ov_now())",
@@ -63,6 +66,9 @@ const KEYS = ['streams_this_week', 'hours_this_week', 'usual_time', 'days_in_a_r
         const by = (u) => body.streamers.find((s) => s.username === u);
         const p = by('picasso'), n = by('novod'), l = by('liveone');
         assert.ok(p && n && l, JSON.stringify(body.streamers.map((s) => s.username)));
+        assert.strictEqual(by('ovprobe_recently'), undefined, 'a test account is never on Recently Online');
+        assert.ok(!JSON.stringify(body).includes('ovprobe_recently'), 'the test account is nowhere in the public read');
+        assert.strictEqual(body.streamers.length, 3, 'the probe is counted out too');
 
         // The replay rows picture the recording, not the deleted capture.
         assert.strictEqual(p.recent_facts.streams.length, 2);
