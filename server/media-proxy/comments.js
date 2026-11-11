@@ -101,6 +101,8 @@ async function shape(c, ctx) {
         user_id: u ? u.id : null,
         subject: a ? a.subject || null : null,
         parent_id: c.parent_id || null,
+        reply_to_id: c.reply_to_id || null,
+        reply_to: c.reply_to || null,
         message: c.deleted ? '' : c.message,
         is_deleted: c.deleted ? 1 : 0,
         deleted: !!c.deleted,
