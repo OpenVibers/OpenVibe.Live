@@ -98,11 +98,12 @@ for (const msg of ['sfu-viewer-create-transport', 'sfu-viewer-consume', 'sfu-vie
 }
 console.log('OK H: overlay is a full independent viewer session, attached and detached with the player');
 
-// ── I: viewer control — geometry persists, and hiding stays recoverable ──────────────
-assert.ok(/localStorage\.setItem\(LS_KEY\(o\.hostId, o\.pip\.source_msid\)/.test(pip), 'geometry must persist per stream and per PIP');
-assert.ok(/if \(!raw && first\) raw = JSON\.parse\(localStorage\.getItem\(LS_OLD\(streamId\)\)/.test(pip), 'the first PIP keeps where a viewer put the old single one');
-assert.ok(/ov-pip-restore/.test(pip) && read('public/css/style.css').includes('.ov-pip-restore'),
-    'hiding the overlay must leave a way to bring it back');
+// ── I: viewer control — the place persists per slot and PIP (and in the account), tucking stays recoverable ───────
+assert.ok(/localStorage\.setItem\(LS_KEY\(o\.slot, o\.pip\.source_msid\)/.test(pip), 'the place persists per slot and per PIP');
+assert.ok(/account\.put\(`\$\{o\.slot\}:\$\{o\.pip\.source_msid\}`, o\.geom\)/.test(pip), 'and in the account when signed in');
+assert.ok(/localStorage\.getItem\(LS_V1\(streamId, pip\.source_msid\)\)/.test(pip), 'a place saved per session before still counts');
+assert.ok(/data-act="untuck"/.test(pip) && read('public/css/features/pip.css').includes('.ov-pip.is-tucked .ov-pip-tab { display: grid; }'),
+    'a PIP tucked aside keeps its tab on screen to bring it back');
 assert.ok(/muted: pip\.muted !== false/.test(pip),
     'the overlay starts as the streamer chose, muted unless they said otherwise');
 assert.ok(/is-offline/.test(pip), 'a camera going offline must degrade to a badge, not a broken overlay');
@@ -240,10 +241,10 @@ console.log('OK I: geometry persists, hide is recoverable, audio defaults to mut
     const pip = read('public/js/stream-pip.js');
     assert.ok(/const pips = Array\.isArray\(stream\.pip_overlays\) \? stream\.pip_overlays/.test(pip), 'every PIP, the N-1 single one as a fallback');
     assert.ok(/fetch\(`\/api\/streams\/\$\{encodeURIComponent\(host\.streamId\)\}\/pips`/.test(pip) && /setInterval\(poll, POLL_MS\)/.test(pip), 'asks again every 30 s');
-    assert.ok(/if \(!keep\.has\(key\)\) \{ close\(o\); host\.overlays\.delete\(key\); \}/.test(pip), 'an ended or removed PIP goes');
-    assert.ok(/if \(o\.pip\.protocol === 'rtmp'\) await connectFlv\(o, videoEl\);/.test(pip), 'an RTMP source plays its FLV');
+    assert.ok(/if \(!keep\.has\(key\)\) \{ close\(o, true\); host\.overlays\.delete\(key\); \}/.test(pip), 'an ended or removed PIP goes');
+    assert.ok(/if \(o\.pip\.protocol === 'rtmp'\) await connectFlv\(o, videoEl, session\);/.test(pip), 'an RTMP source plays its FLV');
     assert.ok(!/token=/.test(pip), 'no token in a socket address');
-    assert.ok(read('public/css/features/channel.css').includes('.ov-pip-restores .ov-pip-restore { position: static; }'), "hidden PIPs' pills sit in one row");
+    assert.ok(/function watchFrames\(o\)/.test(pip) && /setState\(o, 'waiting'\)/.test(pip) && /data-state="busy"/.test(pip), 'a PIP whose frames stop shows the mark at work, never a black box');
     console.log('OK O: the viewer draws every live PIP, polls, and plays WebRTC and RTMP sources');
 }
 
