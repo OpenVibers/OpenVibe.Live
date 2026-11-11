@@ -290,6 +290,8 @@
                 <span class="ov-pip-title" title="${escapeHtml(label)}"><i class="fa-solid fa-video" aria-hidden="true"></i> ${href
                     ? `<a href="${escapeHtml(href)}" onclick="return handleLinkClick(event, '${escapeHtml(href)}')">${escapeHtml(label)}</a>` : escapeHtml(label)}</span>
                 <span class="ov-pip-actions">
+                    <button type="button" class="is-extra" data-act="listen" aria-pressed="false" title="Listen to ${escapeHtml(label)} instead of the stream" aria-label="Listen to ${escapeHtml(label)} instead of the stream"><i class="fa-solid fa-headphones"></i></button>
+                    ${typeof document !== 'undefined' && document.pictureInPictureEnabled ? `<button type="button" class="is-extra" data-act="popout" title="Out of the browser: ${escapeHtml(label)} in its own window on top of everything" aria-label="Pop ${escapeHtml(label)} out of the browser"><i class="fa-solid fa-up-right-from-square"></i></button>` : ''}
                     <button type="button" data-act="mute"></button>
                     <button type="button" data-act="reset" title="Back to where the streamer put it" aria-label="Back to where the streamer put it"><i class="fa-solid fa-rotate-left"></i></button>
                     <button type="button" data-act="tuck" title="Tuck ${escapeHtml(label)} to the side" aria-label="Tuck ${escapeHtml(label)} to the side"><i class="fa-solid fa-angles-right"></i></button>
@@ -301,7 +303,7 @@
         o.container = container;
         el.tabIndex = 0;
         el.setAttribute('role', 'group');
-        el.setAttribute('aria-label', `${label}, picture-in-picture. Drag it anywhere; arrow keys move it, plus and minus size it, M mutes it, T tucks it aside, F pops it out of the player.`);
+        el.setAttribute('aria-label', `${label}, picture-in-picture. Drag it anywhere; arrow keys move it, plus and minus size it, M mutes it, L listens to it instead of the stream, T tucks it aside, F floats it over the page, P pops it out of the browser.`);
         muteButton(el.querySelector('[data-act="mute"]'), o.geom.muted, label);
         watchShape(o, el.querySelector('.ov-pip-video'));
         setState(o, 'connecting');
@@ -334,7 +336,22 @@
             saveGeom(o); land(o, from);
         } else if (what === 'reset') { resetGeom(o); settle(o); saveGeom(o); land(o, from); }
         else if (what === 'float') { toMode(o, o.geom.mode === 'float' ? 'dock' : 'float', from); saveGeom(o); land(o, from); }
-        else if (what === 'mute') {
+        else if (what === 'listen') {
+            // Hear this one instead of the stream (and back): the stream's own video is muted while it is on, and gets
+            // its sound back when it ends only if it had it.
+            const v = el.querySelector('.ov-pip-video');
+            const main = mainVideo(o);
+            o.listening = !o.listening;
+            if (o.listening) { o.mainWasMuted = main ? main.muted : null; if (main) main.muted = true; v.muted = false; v.play().catch(() => {}); }
+            else { if (main && o.mainWasMuted === false) main.muted = false; v.muted = o.geom.muted; }
+            el.querySelector('[data-act="listen"]')?.setAttribute('aria-pressed', String(!!o.listening));
+            el.classList.toggle('is-listening', !!o.listening);
+        } else if (what === 'popout') {
+            // The browser's own picture-in-picture: a window on top of everything, even outside the browser.
+            const v = el.querySelector('.ov-pip-video');
+            if (document.pictureInPictureElement === v) document.exitPictureInPicture().catch(() => {});
+            else if (v && document.pictureInPictureEnabled) v.requestPictureInPicture().catch((e) => console.warn('[PiP] pop out refused:', e.message));
+        } else if (what === 'mute') {
             o.geom.muted = !o.geom.muted;
             const v = el.querySelector('.ov-pip-video');
             v.muted = o.geom.muted;
@@ -342,6 +359,12 @@
             muteButton(el.querySelector('[data-act="mute"]'), o.geom.muted, o.pip.title || 'Picture-in-picture');
             saveGeom(o);
         }
+    }
+
+    /** The stream's own video under the PIPs (the player's, not a PIP's). */
+    function mainVideo(o) {
+        const c = o.container || document.getElementById('video-container');
+        return c ? Array.from(c.querySelectorAll('video')).find((v) => !v.closest('.ov-pip')) || null : null;
     }
 
     /** Switch frames keeping its size and place on screen (`rect`: where it is now). */
@@ -374,6 +397,8 @@
             else if (k === 'm' || k === 'M') { act(o, 'mute'); moved = false; }
             else if (k === 't' || k === 'T' || k === 'h' || k === 'H') { act(o, o.geom.tuck ? 'untuck' : 'tuck'); moved = false; }
             else if (k === 'f' || k === 'F') { act(o, 'float'); moved = false; }
+            else if (k === 'l' || k === 'L') { act(o, 'listen'); moved = false; }
+            else if ((k === 'p' || k === 'P') && document.pictureInPictureEnabled) { act(o, 'popout'); moved = false; }
             else return;
             e.preventDefault();
             if (!moved) return;
@@ -692,6 +717,8 @@
     }
 
     function close(o, animate) {
+        if (o.listening) act(o, 'listen');   // the stream gets its sound back
+        try { if (document.pictureInPictureElement && o.el && o.el.contains(document.pictureInPictureElement)) document.exitPictureInPicture().catch(() => {}); } catch { /* */ }
         o.closed = true;
         clearInterval(o.watch);
         clearTimeout(o.retryTimer);

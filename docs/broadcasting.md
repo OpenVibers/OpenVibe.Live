@@ -111,6 +111,8 @@ camera goes out**):
 - Throw it past a side (or press its »): it tucks into that side, a tab with its picture still going; a tap brings it back.
 - Size it from its corner, with two fingers, or with a double tap (small and large); mute it; put it back where you put
   it (↺).
+- Listen to it instead of the stream (the headphones: the stream is muted until they press it again), or pop it out of
+  the browser into the system's own picture-in-picture window, on top of everything (where the browser can).
 - While it connects, or when its picture stops, it shows the OpenVibe mark at work over its last frame and tries again
   by itself.
 - Where they put it is kept per slot in their browser and, signed in, in their account, so it is there next time.
