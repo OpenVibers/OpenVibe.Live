@@ -220,7 +220,8 @@
             section.hidden = false;
             const list = $('agent-chapter-list');
             list.replaceChildren();
-            const vodBase = out.vod_id ? `https://openvibe.video/v/${encodeURIComponent(out.vod_id)}` : null;
+            const watch = /^[A-Za-z0-9_-]{11}$/.test(String(out.watch_id || '')) ? out.watch_id : null;
+            const vodBase = watch ? `https://openvibe.video/watch?v=${encodeURIComponent(watch)}` : out.vod_id ? `https://openvibe.video/v/${encodeURIComponent(out.vod_id)}` : null;
             for (const chapter of out.chapters) {
                 const li = document.createElement('li');
                 li.className = 'agent-chapter';
@@ -288,10 +289,11 @@
                 try {
                     const made = await api(`/streams/agent/${encodeURIComponent(stream.id)}/clips`, { method: 'POST', body: { step_id: step.id } });
                     const clipId = made && made.clip ? (made.clip.clip_id || made.clip.id) : null;
+                    const clipWatch = made && made.clip && /^[A-Za-z0-9_-]{11}$/.test(String(made.clip.watch_id || '')) ? made.clip.watch_id : null;
                     button.textContent = clipId ? 'Clip made' : 'Clip queued';
                     if (clipId) {
                         const a = document.createElement('a');
-                        a.href = `https://openvibe.video/c/${encodeURIComponent(clipId)}`;
+                        a.href = clipWatch ? `https://openvibe.video/watch?v=${encodeURIComponent(clipWatch)}` : `https://openvibe.video/c/${encodeURIComponent(clipId)}`;
                         a.textContent = 'Open the clip';
                         a.style.marginLeft = '8px';
                         row.appendChild(a);

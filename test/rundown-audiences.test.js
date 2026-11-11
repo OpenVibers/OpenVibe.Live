@@ -18,6 +18,7 @@ const read = require('../server/rundown/read');
 const sharing = require('../server/rundown/sharing');
 const visibility = require('../server/rundown/visibility');
 const del = require('../server/rundown/delete');
+const media = require('../server/media-client');
 
 const SUB_GOOSE = 'usr_01HQZX9K3M5N7P8R9T0V1W2XYZ';
 const SUB_WATCH = 'usr_01HQZX9K3M5N7P8R9T0V1W2XZA';
@@ -54,7 +55,14 @@ const setAudience = async (a) => { await db.run("UPDATE shares SET audience = ? 
     const topics = await read.topics({});
     assert.ok(topics.topics.some((t) => t.slug === 'fridges' && t.takes >= 1), 'the topic is there with its count');
     assert.ok(await read.topic('fridges', { viewer: null }), 'the topic page opens');
-    assert.ok(await read.episode(streamId, { viewer: null }), 'the episode page opens for anybody');
+    // Media's VOD row carries the watch id every link to the recording is addressed by.
+    const getVod = media.getVod;
+    media.getVod = async (id) => ({ id: Number(id), watch_id: 'dQw4w9WgXcQ', visibility: 'public' });
+    const episode = await read.episode(streamId, { viewer: null });
+    media.getVod = getVod;
+    visibility.forget(streamId);
+    assert.ok(episode, 'the episode page opens for anybody');
+    assert.strictEqual(episode.episode.watch_id, 'dQw4w9WgXcQ', 'the episode carries the recording\'s watch id');
 }
 
 // ── Only me: the streamer still sees it, nobody else does ──

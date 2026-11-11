@@ -164,7 +164,7 @@ async function llmsTxt() {
         markdown: true,
         base: b,
         summary: LLMS_SUMMARY,
-        details: 'People\'s work and AI-made material are kept apart everywhere on this site. The Content pages list what people made; AI Moments list what the platform\'s AI derived from streams. Every AI item is labelled AI-generated, credited to no person, marked noindex,follow and made canonical to the source recording at the moment it came from, on OpenVibe.Video (https://openvibe.video/v/<id>?t=<seconds>). In the JSON feeds, AI items carry "ai": true and an "ai_label".',
+        details: 'People\'s work and AI-made material are kept apart everywhere on this site. The Content pages list what people made; AI Moments list what the platform\'s AI derived from streams. Every AI item is labelled AI-generated, credited to no person, marked noindex,follow and made canonical to the source recording at the moment it came from, on OpenVibe.Video (https://openvibe.video/watch?v=<watch_id>&t=<seconds>). In the JSON feeds, AI items carry "ai": true and an "ai_label".',
         sections: [
             { title: 'Going live from a browser (no OBS)', links: [
                 { title: 'How to go live in your browser', url: `${b}/docs/go-live-in-your-browser`, note: `open ${b}, sign in, press Go Live, allow camera and microphone, start. No software, no follower minimum.` },
@@ -176,8 +176,8 @@ async function llmsTxt() {
                 { title: 'Content', url: `${b}/content`, note: `VODs, the clips people took, and pastes people wrote. JSON: ${b}/api/content/feed (cursor paging; ?type=vods|clips|pastes, ?sort=new|top)` },
                 // A real page, not a template (SEO-34: /@<username> as a link answered 404): every channel is at the same shape.
                 { title: 'Channel pages (for example @goosely)', url: `${b}/@goosely`, note: `every channel is at ${b}/@<username>, its videos in pages (?page=2)` },
-                { title: 'Recording pages', url: 'https://openvibe.video/v/<id>', note: 'the canonical watch page on OpenVibe.Video, with chapters, captions and chat replay; a moment: https://openvibe.video/v/<id>?t=<seconds> (Live\'s /vod/<id> redirects there)' },
-                { title: 'Clip pages', url: 'https://openvibe.video/c/<id>', note: 'on OpenVibe.Video (Live\'s /clip/<id> redirects there)' },
+                { title: 'Recording pages', url: 'https://openvibe.video/watch?v=<watch_id>', note: 'the canonical watch page on OpenVibe.Video, with chapters, captions and chat replay; a moment: https://openvibe.video/watch?v=<watch_id>&t=<seconds> (the numbered /v/<id> and Live\'s /vod/<id> answer 301 there)' },
+                { title: 'Clip pages', url: 'https://openvibe.video/watch?v=<watch_id>', note: 'on OpenVibe.Video (the numbered /c/<id> and Live\'s /clip/<id> answer 301 there)' },
                 { title: 'Pastes', url: 'https://openvibe.community/p/<slug>', note: 'pastes live on OpenVibe.Community (Live\'s /p/<slug> redirects there)' },
                 { title: 'Chat', url: `${b}/chat` },
                 { title: 'The Rundown', url: `${b}/rundown`, note: `what streamers talked about, written up: topics, takes, episodes, and the UTC day summary and timeline at ${b}/api/rundown/day/:date (or /today)` },

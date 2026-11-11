@@ -50,7 +50,7 @@ async function main() {
 
     await check('names the public pages and the JSON behind them', () => {
         for (const u of ['https://openvibe.live/content', 'https://openvibe.live/moments', 'https://openvibe.live/@<username>',
-            'https://openvibe.video/v/<id>?t=<seconds>', 'https://openvibe.video/c/<id>', 'https://openvibe.live/api/content/feed',
+            'https://openvibe.video/watch?v=<watch_id>&t=<seconds>', 'https://openvibe.video/watch?v=<watch_id>', 'https://openvibe.live/api/content/feed',
             'https://openvibe.live/api/content/moments', 'https://openvibe.community/p/<slug>', 'https://openvibe.live/sitemap.xml']) {
             assert.ok(text.includes(u), `missing ${u}`);
         }
@@ -85,7 +85,7 @@ async function main() {
         }
         assert.ok(text.includes('[Home](https://openvibe.live/index.md)'));
         assert.ok(text.includes('[The broadcaster](https://openvibe.live/broadcast) (HTML)'), 'the broadcaster has no twin');
-        assert.ok(text.includes('(https://openvibe.live/@goosely.md)') && text.includes('(https://openvibe.video/v/<id>)'), 'a channel twin; another site keeps its link');
+        assert.ok(text.includes('(https://openvibe.live/@goosely.md)') && text.includes('(https://openvibe.video/watch?v=<watch_id>)'), 'a channel twin; another site keeps its link');
         assert.ok(/\n## Optional\n\n[\s\S]*\[Sitemap\]\(https:\/\/openvibe\.live\/sitemap\.xml\)/.test(text) && text.lastIndexOf('\n## ') === text.indexOf('\n## Optional'), 'Optional is the last section');
     });
 

@@ -143,7 +143,7 @@ From the dashboard:
 
 ## Recordings and clips are watched on OpenVibe.Video
 
-Every recording and clip has its page on OpenVibe.Video (`https://openvibe.video/v/<id>`, `/c/<id>`;
+Every recording and clip has its page on OpenVibe.Video (`https://openvibe.video/watch?v=<watch_id>`; the older `/v/<id>` and `/c/<id>` answer 301 there;
 `server/web/video-url.js`, `VIDEO_PUBLIC_URL` overrides the origin): the player, AI chapters and captions, the chat
 replay, comments, clipping, and the owner's visibility and delete, for private items too (to their owner). The
 captions name what was heard as well as what was said: `GET /api/vods/:id/sounds` gives cues like "[laughter]",

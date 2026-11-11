@@ -82,7 +82,7 @@ async function gather(streamId) {
         const media = require('../media-client');
         const out = await media.listVods({ stream_id: streamId, limit: 3 }).catch(() => null);
         const vods = (out?.vods || []).filter(v => v.status === 'ready' && (v.duration_seconds || v.duration));
-        if (vods.length) { const v = vods.sort((a, b) => (b.duration_seconds || b.duration || 0) - (a.duration_seconds || a.duration || 0))[0]; vod = { id: v.id, thumbnail_url: v.thumbnail_url || null, duration_seconds: v.duration_seconds || v.duration || 0 }; }
+        if (vods.length) { const v = vods.sort((a, b) => (b.duration_seconds || b.duration || 0) - (a.duration_seconds || a.duration || 0))[0]; vod = { id: v.id, watch_id: v.watch_id || null, thumbnail_url: v.thumbnail_url || null, duration_seconds: v.duration_seconds || v.duration || 0 }; }
         const co = await media.listClips({ stream_id: streamId, limit: 12 }).catch(() => null);
         clips = (co?.clips || (Array.isArray(co) ? co : [])).filter(c => c && (c.is_public == null || Number(c.is_public) === 1))
             .sort((a, b) => (Number(b.view_count) || 0) - (Number(a.view_count) || 0)).slice(0, 6)

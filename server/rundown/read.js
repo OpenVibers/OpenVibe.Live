@@ -349,8 +349,9 @@ async function episode(streamId, { viewer = null } = {}) {
     const e = await db.get(`SELECT ${EPISODE_COLS} FROM rundown_episodes r ${AUDIENCE_JOINS('r')} WHERE r.stream_id = @id AND r.status = 'live'`, { id });
     const stream = await db.get('SELECT id, user_id, title, is_live, started_at, ended_at FROM streams WHERE id = ?', [id]);
     if (!stream) return null;
-    // Until Media's event lands, the episode page re-checks the recording (cached 60 s).
-    await visibility.recheck(id);
+    // Until Media's event lands, the episode page re-checks the recording (cached 60 s). The same Media row carries
+    // the watch id the episode's chapters and Report's links are addressed by.
+    const recheck = await visibility.recheck(id);
     const eff = await visibility.effective(id);
     const ownerUserId = e ? e.user_id : stream.user_id;
     if (!sharing.maySee(eff, { ownerUserId, viewer: v })) return null;
@@ -370,6 +371,7 @@ async function episode(streamId, { viewer = null } = {}) {
     const eps = e ? await episodesOut([e], v.key) : [];
     const episodeOut = eps[0] || null;
     if (episodeOut) {
+        episodeOut.watch_id = (recheck && recheck.watchId) || null;
         episodeOut.following_vod = eff.following_vod;
         episodeOut.following_vod_label = eff.following_vod ? visibility.mediaWord(eff.vod) : null;
         episodeOut.audience = eff.audience;
