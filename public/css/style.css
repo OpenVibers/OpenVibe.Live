@@ -771,12 +771,32 @@ body.ov-nav-overlay .navbar.ovnav-top {
     border-radius: var(--radius) var(--radius) 0 0;
 }
 .stream-card-live {
-    position: absolute; top: 8px; left: 8px;
+    position: absolute; top: 8px; left: 8px; z-index: 2;
+    display: inline-flex; align-items: center; gap: 6px;
     background: var(--live-red); color: #fff;
-    padding: 2px 8px; border-radius: var(--radius-sm);
-    font-size: 0.7rem; font-weight: 700;
+    padding: 4px 9px 4px 8px; border-radius: 8px;
+    font-size: 0.7rem; font-weight: 800; letter-spacing: .06em; line-height: 1;
     text-transform: uppercase;
+    box-shadow: 0 2px 10px color-mix(in srgb, var(--live-red) 45%, transparent);
 }
+.stream-card-live::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: #fff; animation: ov-live-beat 1.4s ease-in-out infinite; }
+@keyframes ov-live-beat { 50% { opacity: .35; transform: scale(.75); } }
+/* 286, "live looks live": a live card wears its own frame as a soft backdrop under its words (blurred, tinted by the
+   theme's card colour, so text always sits on a scrim), a red hairline and glow, the LIVE pill, and the ring on the
+   face. Hovered on a computer, or centred on a phone (app-home.js _liveCentreWatch), the frame drifts closer and the
+   backdrop wakes. NSFW cards keep no backdrop (app-home.js leaves --live-bg out). */
+.stream-card.is-live { position: relative; isolation: isolate; border-color: color-mix(in srgb, var(--live-red) 38%, var(--border)); box-shadow: var(--shadow-soft), 0 14px 36px -18px color-mix(in srgb, var(--thumb-tint, var(--live-red)) 70%, transparent); }
+.stream-card.is-live::before { content: ""; position: absolute; inset: -20%; z-index: -2; background: var(--live-bg, none) center / cover no-repeat; filter: blur(30px) saturate(1.7); opacity: .6; transition: opacity .5s ease; }
+.stream-card.is-live::after { content: ""; position: absolute; inset: 0; z-index: -1; background: linear-gradient(180deg, color-mix(in srgb, var(--bg-card) 18%, transparent) 0%, color-mix(in srgb, var(--bg-card) 52%, transparent) 58%, color-mix(in srgb, var(--bg-card) 70%, transparent) 100%); }
+.stream-card.is-live .stream-card-info { position: relative; background: none; }
+.stream-card.is-live .stream-card-thumb img { transition: transform 7s cubic-bezier(.2, .6, .3, 1), opacity .4s; }
+.stream-card.is-live:hover .stream-card-thumb img, .stream-card.is-live.is-centred .stream-card-thumb img { transform: scale(1.07); }
+.stream-card.is-live:hover::before, .stream-card.is-live.is-centred::before { opacity: .85; }
+.stream-card.is-live:hover { border-color: color-mix(in srgb, var(--live-red) 60%, var(--border)); box-shadow: 0 0 0 1px color-mix(in srgb, var(--live-red) 40%, transparent), 0 18px 44px -16px color-mix(in srgb, var(--thumb-tint, var(--live-red)) 80%, transparent); }
+.stream-card.is-live .stream-card-avatar { box-shadow: 0 0 0 2px var(--live-red), 0 0 0 4px var(--bg-card); }
+html[data-ov-motion=off] .stream-card-live::before { animation: none; }
+html[data-ov-motion=off] .stream-card.is-live .stream-card-thumb img { transition: none; transform: none; }
+body.theme-light .stream-card.is-live::before { opacity: .35; }
 .stream-card-thumb .protocol-badge {
     position: absolute; bottom: 8px; left: 8px;
 }

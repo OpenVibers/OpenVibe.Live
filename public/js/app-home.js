@@ -1896,10 +1896,14 @@ function streamCardHTML(s, isLive) {
     const topics = isLive ? _streamTopics(s) : [];
     const cat = String(s.category || '').replace(/[-_]+/g, ' ').trim().toLowerCase();
     const shown = topics.filter((t) => t !== cat).slice(0, 2);
+    // 286 ("when they're live … sets the background based on … their thumbnail"): a live card wears its own frame as a
+    // soft backdrop (style.css .stream-card.is-live), a LIVE pill, and the live ring on the face.
+    const liveBg = isLive && !s.is_nsfw ? _liveBg(thumb) : '';
     return `
-        <a class="stream-card"${ovLabelsAttr(s)}${isLive ? ` data-topics="${esc(topics.join('|'))}" data-user="${esc(String(s.user_id || ''))}"` : ''} data-stream-id="${esc(String(s.id || ''))}" href="${esc(navUrl)}" onclick="return handleLinkClick(event, '${esc(navUrl)}')">
+        <a class="stream-card${isLive ? ' is-live' : ''}"${liveBg ? ` style="--live-bg:${esc(liveBg)}"` : ''}${ovLabelsAttr(s)}${isLive ? ` data-topics="${esc(topics.join('|'))}" data-user="${esc(String(s.user_id || ''))}"` : ''} data-stream-id="${esc(String(s.id || ''))}" href="${esc(navUrl)}" onclick="return handleLinkClick(event, '${esc(navUrl)}')">
             <div class="stream-card-thumb${s.is_nsfw ? ' stream-card-nsfw-blur' : ''}" style="--thumb-tint:${esc(_thumbTint(s))}" data-ov-labels-media>
                 ${thumbImg(thumb, 'fa-circle-nodes', s.title, !isLive && s.vod_id ? `/api/thumbnails/generate/vod/${s.vod_id}` : null)}
+                ${isLive ? '<span class="stream-card-live">Live</span>' : ''}
                 ${streamTypeBadge(s.browser_mode, s.streaming_method)}
                 ${s.is_nsfw ? '<span class="stream-card-nsfw">18+</span>' : ''}
                 ${duration}
@@ -1958,6 +1962,25 @@ function renderStreamGrid(containerId, streams, isLive) {
     const empty = c.querySelector('.empty-state');
     c.innerHTML = streams.map(s => streamCardHTML(s, isLive)).join('');
     if (empty) { empty.style.display = 'none'; c.appendChild(empty); }
+    if (isLive) _liveCentreWatch(c);
+}
+
+/** A live card's backdrop: its own frame, only from our own addresses (a CSS url() never carries a stranger's). */
+function _liveBg(u) {
+    const v = String(u || '');
+    if (!/^(\/[^/]|https:\/\/([a-z0-9-]+\.)*openvibe\.(live|media|video)\/)/i.test(v) || /["'()\\\s]/.test(v)) return '';
+    return `url("${v}")`;
+}
+
+/**
+ * On a phone (no hover) the live card in the middle of the screen comes alive the way a hovered one does on a computer:
+ * its frame drifts closer and its backdrop glows (style.css .stream-card.is-live.is-centred).
+ */
+let _liveCentreIO = null;
+function _liveCentreWatch(root) {
+    if (!root || typeof IntersectionObserver === 'undefined' || !window.matchMedia || !window.matchMedia('(hover: none)').matches) return;
+    if (!_liveCentreIO) _liveCentreIO = new IntersectionObserver((entries) => entries.forEach((e) => e.target.classList.toggle('is-centred', e.isIntersecting)), { rootMargin: '-38% 0px -38% 0px' });
+    root.querySelectorAll('.stream-card.is-live').forEach((el) => _liveCentreIO.observe(el));
 }
 
 /* ── Real-time home updates ─────────────────────────────────── */
@@ -2022,6 +2045,8 @@ function _updateLiveCard(card, s) {
     // Thumbnail: live cards render a placeholder icon (no <img>) until the first frame
     // is captured. Crossfade if an <img> exists, else swap the placeholder for one.
     if (s.thumbnail_url) {
+        const bg = _liveBg(s.thumbnail_url);
+        if (bg && !s.is_nsfw) card.style.setProperty('--live-bg', bg);
         const thumbBox = card.querySelector('.stream-card-thumb');
         const img = thumbBox && thumbBox.querySelector('img');
         if (img) {
@@ -2115,6 +2140,7 @@ async function refreshHomeLive() {
             if (el) {
                 el.classList.add('stream-card-appear');
                 grid.insertBefore(el, grid.children[idx] || null);
+                _liveCentreWatch(el.parentNode);
             }
         }
     });
