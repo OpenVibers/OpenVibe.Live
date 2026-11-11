@@ -2226,7 +2226,7 @@ html[data-ov-motion="off"] #page-channel.ch-tabbed .ch-tab-panel.is-entering { a
     #page-channel.ch-is-live:not(.chat-collapsed) .channel-below-fold { display: none; }
     body:has(#page-channel.active.ch-is-live:not(.chat-collapsed)) #ov-footer { display: none; }
     #page-channel.ch-is-live.chat-collapsed #ch-bot-section { display: none !important; }
-    #page-channel.ch-is-live .stream-layout:not(:has(.video-container.is-vertical)) > .chat-sidebar > .chat-grip { position: absolute; top: 0; left: 0; right: 0; height: 14px; z-index: 4; }
+    #page-channel.ch-is-live .stream-layout:not(:has(.video-container.is-vertical)) > .chat-sidebar > .chat-grip { position: absolute; top: 0; height: 16px; z-index: 4; }
     #page-channel.ch-is-live .stream-layout:not(:has(.video-container.is-vertical)) > .chat-sidebar .chat-header { padding-top: 8px; min-height: 46px; }
     #page-channel.ch-is-live .chat-sidebar .ch-goal-widget { padding: 3px 6px 0; }
     #page-channel.ch-is-live .chat-sidebar .cgw-goal { height: 30px; }
@@ -2243,4 +2243,21 @@ html[data-ov-motion="off"] #page-channel.ch-tabbed .ch-tab-panel.is-entering { a
     html.chat-compact #page-channel.ch-is-live .chat-sidebar .cgw-goal { height: 22px; }
     html.chat-compact #page-channel.ch-is-live .chat-sidebar .cgw-goal * { font-size: .66rem; }
     html.chat-compact #page-channel.ch-is-live .chat-sidebar .chat-input-area { padding-top: 4px; }
+}
+
+/* ── The channel line on a phone, live, compact (ask 366: "the top bar needs to be a little more compact so that we
+   get a little more space out of it"): who on the first line, then live, watching and the title on one line, then the
+   actions in one slim row with Share as its icon. About a hundred pixels instead of a hundred and fifty. ─── */
+@media (max-width: 768px) and (orientation: portrait) {
+    #page-channel.ch-is-live .stream-layout:not(:has(.video-container.is-vertical)) .ch-info-bar { padding: 8px 12px 10px; row-gap: 8px; }
+    #page-channel.ch-is-live .stream-layout:not(:has(.video-container.is-vertical)) .ch-info-bar .ch-avatar { width: 40px; height: 40px; }
+    #page-channel.ch-is-live .stream-layout:not(:has(.video-container.is-vertical)) .ch-info-bar:not(.ch-info-open) .ch-info-bar-text { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 6px; row-gap: 1px; min-width: 0; }
+    #page-channel.ch-is-live .stream-layout:not(:has(.video-container.is-vertical)) .ch-info-bar:not(.ch-info-open) .ch-info-bar-top { flex: 0 0 100%; }
+    #page-channel.ch-is-live .stream-layout:not(:has(.video-container.is-vertical)) .ch-info-bar:not(.ch-info-open) :is(.ch-presence, .ch-stream-title) { margin: 0; font-size: .82rem; line-height: 1.35; }
+    #page-channel.ch-is-live .stream-layout:not(:has(.video-container.is-vertical)) .ch-info-bar:not(.ch-info-open) .ch-stream-title { min-width: 0; color: var(--text-secondary); overflow-wrap: anywhere; }
+    #page-channel.ch-is-live .stream-layout:not(:has(.video-container.is-vertical)) .ch-info-bar:not(.ch-info-open) .ch-presence:not(:empty) + .ch-meta + .ch-social-pills + .ch-stream-title::before,
+    #page-channel.ch-is-live .stream-layout:not(:has(.video-container.is-vertical)) .ch-info-bar:not(.ch-info-open) .ch-presence:not(:empty) ~ .ch-stream-title::before { content: "·"; margin-right: 6px; color: var(--text-muted); }
+    #page-channel.ch-is-live .stream-layout:not(:has(.video-container.is-vertical)) .ch-info-bar-right :is(.ch-action, .ovk-ask) { height: 38px; min-height: 38px; }
+    #page-channel.ch-is-live .stream-layout:not(:has(.video-container.is-vertical)) .ch-info-bar-right #ch-btn-share { width: 38px; padding: 0; justify-content: center; }
+    #page-channel.ch-is-live .stream-layout:not(:has(.video-container.is-vertical)) .ch-info-bar-right #ch-btn-share > span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 }
