@@ -466,7 +466,10 @@
         const msgs = p.messageCount == null ? null : Number(p.messageCount);
         let modBtns = '';
         if (canMod || isGlobalMod) {
-            if (d.msgId) modBtns += `<button class="ctx-btn ctx-btn-warn" onclick="ctxDeleteMessage('${esc(String(d.msgId))}')"><i class="fa-solid fa-trash"></i> Delete Message</button>`;
+            if (d.msgId) {
+                modBtns += `<button class="ctx-btn" onclick="OpenVibeChat.viewEarlierVersions('${esc(String(d.msgId))}')">Earlier versions</button>`;
+                modBtns += `<button class="ctx-btn ctx-btn-warn" onclick="ctxDeleteMessage('${esc(String(d.msgId))}')"><i class="fa-solid fa-trash"></i> Delete Message</button>`;
+            }
             modBtns += `<button class="ctx-btn ctx-btn-warn" data-uid="${esc(String(p.id))}" onclick="ctxDeleteAllUserMessages(this.dataset.uid)"><i class="fa-solid fa-trash-can"></i> Delete All Messages</button>`;
         }
         return `
@@ -558,6 +561,16 @@
         );
     }
 
+    async function viewEarlierVersions(id) {
+        try {
+            const response = await fetch(`/api/chat/messages/${encodeURIComponent(id)}/edits`, { credentials: 'include' });
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.error || 'Could not load earlier versions');
+            const versions = Array.isArray(data.versions) ? data.versions : [];
+            window.alert(versions.length ? versions.map((v) => `${new Date(v.edited_at).toLocaleString()}\n${v.message}`).join('\n\n') : 'No earlier versions');
+        } catch (err) { window.alert(err.message || 'Could not load earlier versions'); }
+    }
+
     window.OpenVibeChat = {
         escape: esc,
         linkify,
@@ -568,6 +581,7 @@
         showLinkContextMenu,
         isTrusted: (domain) => _trustedDomains.has(String(domain || '').toLowerCase()),
         buildUserMenu,
+        viewEarlierVersions,
         parseRelayUsername,
         relayPlatformBadge,
         badgeHTML: _badgeHTML,
