@@ -1670,7 +1670,6 @@ async function start() {
             webrtcSFU.closeRoom(`stream-${stream.id}`);
         }
     }
-    const liveVodThumbGeneratedAt = new Map();   // streamId → last Media frame-grab time
     const maintenanceInterval = setInterval(async () => {
         if (heartbeatCleanupRunning) return;
         heartbeatCleanupRunning = true;
@@ -1723,66 +1722,9 @@ async function start() {
             // Also clean up old live-stream thumbnails (>1 hour)
             liveThumbs.cleanupOldThumbnails();
 
-            // Generate server-side thumbnails for RTMP streams (no client capture available).
-            // A managed-slot "Go Live" publishes under the SLOT's stream key, so prefer
-            // managed_streams.stream_key over the personal users.stream_key — the RTMP
-            // server's activeStreams map (and the HTTP-FLV URL) are keyed by the publish key.
-            const rtmpStreams = await db.all(
-                `SELECT s.id, COALESCE(ms.stream_key, u.stream_key) AS stream_key FROM streams s
-                 JOIN users u ON s.user_id = u.id
-                 LEFT JOIN managed_streams ms ON s.managed_stream_id = ms.id
-                 WHERE s.is_live = 1 AND s.protocol = 'rtmp'`
-            );
-            for (const rs of rtmpStreams) {
-                if (!rs.stream_key || !rtmpServer.isReceiving(rs.stream_key)) continue;
-                if (!await liveThumbs.shouldRefreshLiveThumbnail(rs.id, 120000)) continue;
-                liveThumbs.generateLiveStreamThumbnail(rs.id, rs.stream_key, { minAgeMs: 120000 }).catch(() => {});
-            }
-
-            // Generate server-side thumbnails for JSMPEG streams (broadcaster uses FFmpeg, no browser preview)
-            const jsmpegStreams = await db.all(
-                `SELECT s.id, u.stream_key FROM streams s
-                 JOIN users u ON s.user_id = u.id
-                 WHERE s.is_live = 1 AND s.protocol = 'jsmpeg'`
-            );
-            for (const js of jsmpegStreams) {
-                if (!await liveThumbs.shouldRefreshLiveThumbnail(js.id, 120000)) continue;
-                const channelInfo = jsmpegRelay.getChannelInfo(js.stream_key);
-                if (channelInfo && channelInfo.videoPort) {
-                    liveThumbs.generateJSMPEGThumbnail(js.id, channelInfo.videoPort).catch(() => {});
-                }
-            }
-
-            // WebRTC/WHIP/browser live thumbnails: the broadcaster client's periodic
-            // canvas-capture POST covers browser publishers with a visible tab, but WHIP
-            // publishers (OBS) and hidden tabs send nothing. Fallback: have Media extract
-            // a frame from the in-progress recording (fragmented mp4 — readable while
-            // growing) and use that as both the live card and RECORDING-card thumbnail.
-            const webrtcStreams = await db.all(
-                `SELECT id FROM streams WHERE is_live = 1 AND protocol NOT IN ('rtmp', 'jsmpeg')`
-            );
-            for (const wsStream of webrtcStreams) {
-                if (await liveThumbs.shouldRefreshLiveThumbnail(wsStream.id, 120000)) {
-                    const lastGen = liveVodThumbGeneratedAt.get(wsStream.id) || 0;
-                    if (Date.now() - lastGen < 120000) continue;
-                    liveVodThumbGeneratedAt.set(wsStream.id, Date.now());
-                    // First choice: a frame straight from the SFU (works for OBS/WHIP and hidden
-                    // tabs, and needs no recording). The Media in-progress-VOD frame is the backup.
-                    const grabbed = await liveThumbs.generateWebrtcThumbnail(wsStream.id, { minAgeMs: 120000 }).catch(() => null);
-                    if (grabbed) continue;
-                    const rec = recorder.activeRecordings.get(wsStream.id);
-                    if (!rec || !rec.vodId) continue;
-                    mediaClient.generateThumbnail('vod', rec.vodId)
-                        .then(async (out) => {
-                            const url = mediaClient.publicUrl(out?.url);
-                            if (url) await db.run('UPDATE streams SET thumbnail_url = ? WHERE id = ?', [url, wsStream.id]);
-                        })
-                        .catch(() => {});
-                }
-            }
-            for (const [sid] of liveVodThumbGeneratedAt) {
-                if (!webrtcStreams.some(s => s.id === sid)) liveVodThumbGeneratedAt.delete(sid);
-            }
+            // Live pictures are their own 5 s timer below (server/streaming/live-thumb-cadence.js): a first
+            // picture within 15 s of go-live and a fresh one about every 30 s while someone is watching. This
+            // one-minute maintenance pass used to grab every 2 minutes for every live stream, watched or not.
         } catch (err) {
             console.error('[Heartbeat] Cleanup error:', err.message);
         } finally {
@@ -1790,6 +1732,14 @@ async function start() {
         }
     }, 60000);
     if (typeof maintenanceInterval.unref === 'function') maintenanceInterval.unref();
+
+    // 8a2. Live pictures (plan 355): a first frame within 15 s of going live and a fresh one about every 30 s while
+    // someone watches the stream's page or home. One ffmpeg grab per stream per interval; skipped when unwatched.
+    const livePictureInterval = setInterval(() => {
+        require('./streaming/live-thumb-cadence').tick()
+            .catch((err) => console.warn('[Thumbnails] live picture tick:', err.message));
+    }, require('./streaming/live-thumb-cadence').TICK_MS);
+    if (typeof livePictureInterval.unref === 'function') livePictureInterval.unref();
 
     // 8b. Canonical identity: report every Live<->Network link to Network's identity_legacy_map
     // (roadmap Wave 1). Idempotent on Network's side; daily, first run a few minutes after boot.

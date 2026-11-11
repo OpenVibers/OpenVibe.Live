@@ -1,10 +1,12 @@
 /**
  * Legacy parity (roadmap D20): live thumbnails refresh on a steady cadence.
  *
- *   capture   a browser broadcaster posts a frame about every 2 minutes (115 s, checked on its 30 s
- *             heartbeat, never from a hidden tab); the server's 60 s maintenance loop grabs one for
- *             RTMP, JSMPEG and WebRTC/WHIP streams whose thumbnail is 2 minutes old; writes closer
- *             than 15 s apart are dropped
+ *   capture   a browser broadcaster posts a frame on its 30 s heartbeat (never from a hidden tab);
+ *             the server's 5 s live-picture tick grabs one for RTMP, JSMPEG and WebRTC/WHIP streams
+ *             whose thumbnail is 30 s old, always for a stream with no picture yet (a first picture
+ *             within 15 s of going live) and only while somebody watches (a viewer socket, Chat's
+ *             viewer count, or the stream named in a public live list in the last 90 s); writes
+ *             closer than 15 s apart are dropped
  *   show      the home live grid re-reads the list at least once a minute and crossfades to the new
  *             file (each capture gets a new name); the broadcaster's RTMP/JSMPEG preview polls every
  *             10 s
@@ -69,10 +71,10 @@ const get = (p) => new Promise((resolve, reject) => {
     const first = await liveThumbs.saveLiveThumbnail(sid, jpeg('one'));
     assert.match(first, /^\/api\/thumbnails\/stream-\d+-\d+\.jpg$/);
     assert.ok(!await liveThumbs.shouldRefreshLiveThumbnail(sid), 'a fresh thumbnail is not replaced');
-    age((await current()).filePath, 119_000);
-    assert.ok(!await liveThumbs.shouldRefreshLiveThumbnail(sid), 'still kept just under 2 minutes');
-    age((await current()).filePath, 121_000);
-    assert.ok(await liveThumbs.shouldRefreshLiveThumbnail(sid), 'replaced once 2 minutes old');
+    age((await current()).filePath, 25_000);
+    assert.ok(!await liveThumbs.shouldRefreshLiveThumbnail(sid), 'still kept just under 30 s');
+    age((await current()).filePath, 31_000);
+    assert.ok(await liveThumbs.shouldRefreshLiveThumbnail(sid), 'replaced once 30 s old');
     age((await current()).filePath, 5_000);
     assert.strictEqual(await liveThumbs.saveLiveThumbnail(sid, jpeg('two')), first, 'writes closer than 15 s apart are dropped');
     age((await current()).filePath, 16_000);
@@ -81,7 +83,7 @@ const get = (p) => new Promise((resolve, reject) => {
     const second = await liveThumbs.saveLiveThumbnail(sid, jpeg('two'));
     assert.notStrictEqual(second, first, 'a new capture gets a new file name (cards and caches see a new URL)');
     assert.ok(!fs.existsSync(oldFile), 'and the previous file is removed');
-    console.log('OK capture: 2-minute refresh, 15 s write floor, new name per capture');
+    console.log('OK capture: 30 s refresh, 15 s write floor, new name per capture');
 
     // ── the stable name the broadcaster preview polls ──
     let r = await get(`/api/thumbnails/stream-${sid}-live.jpg?t=1`);
@@ -119,9 +121,23 @@ const get = (p) => new Promise((resolve, reject) => {
     const loop = index.slice(index.indexOf('const maintenanceInterval = setInterval('), index.indexOf("if (typeof maintenanceInterval.unref === 'function')"));
     assert.match(loop, /\}, 60000\);\s*$/, 'the maintenance loop runs every minute');
     assert.match(loop, /liveThumbs\.cleanupOldThumbnails\(\);/);
-    assert.match(loop, /shouldRefreshLiveThumbnail\(rs\.id, 120000\)[\s\S]*generateLiveStreamThumbnail\(rs\.id, rs\.stream_key, \{ minAgeMs: 120000 \}\)/, 'RTMP: every 2 minutes');
-    assert.match(loop, /shouldRefreshLiveThumbnail\(js\.id, 120000\)[\s\S]*generateJSMPEGThumbnail/, 'JSMPEG: every 2 minutes');
-    assert.match(loop, /shouldRefreshLiveThumbnail\(wsStream\.id, 120000\)[\s\S]*generateWebrtcThumbnail\(wsStream\.id, \{ minAgeMs: 120000 \}\)/, 'WebRTC/WHIP: every 2 minutes, from the SFU');
+    assert.ok(!/generateWebrtcThumbnail|generateLiveStreamThumbnail|generateJSMPEGThumbnail/.test(loop), 'the 2-minute grabs are gone from the maintenance loop');
+    assert.match(index, /require\('\.\/streaming\/live-thumb-cadence'\)\.tick\(\)/, 'the live-picture timer calls the cadence tick');
+    assert.match(index, /\}, require\('\.\/streaming\/live-thumb-cadence'\)\.TICK_MS\)/, 'on its own 5 s interval');
+
+    // The cadence itself: first picture at once, 30 s while watched, nothing while nobody looks, 15 s between attempts.
+    const cadence = require('../server/streaming/live-thumb-cadence');
+    assert.strictEqual(cadence.TICK_MS, 5000);
+    assert.strictEqual(cadence.PICTURE_INTERVAL_MS, 30000);
+    assert.strictEqual(cadence.shouldGrab({ hasPicture: false, ageMs: Infinity, watched: false, sinceAttemptMs: Infinity }), true, 'a first picture does not wait for a viewer');
+    assert.strictEqual(cadence.shouldGrab({ hasPicture: true, ageMs: 10_000, watched: true, sinceAttemptMs: Infinity }), false, 'a fresh picture is kept');
+    assert.strictEqual(cadence.shouldGrab({ hasPicture: true, ageMs: 31_000, watched: true, sinceAttemptMs: Infinity }), true, 'a 30 s old picture is refreshed for a viewer');
+    assert.strictEqual(cadence.shouldGrab({ hasPicture: true, ageMs: 31_000, watched: false, sinceAttemptMs: Infinity }), false, 'and left alone for nobody');
+    assert.strictEqual(cadence.shouldGrab({ hasPicture: true, ageMs: 31_000, watched: true, sinceAttemptMs: 5_000 }), false, 'a grab that just started is not doubled');
+    assert.strictEqual(cadence.isWatched({ viewerCount: 2 }), true, 'Chat’s viewer count is a watcher');
+    assert.strictEqual(cadence.isWatched({ socketCount: 1 }), true, 'so is a player socket');
+    assert.strictEqual(cadence.isWatched({ listedAt: Date.now() - 30_000 }), true, 'and a stream on the home/list pages a moment ago');
+    assert.strictEqual(cadence.isWatched({ listedAt: Date.now() - 120_000 }), false, 'but not an old list');
 
     const state = read('public/js/broadcast-state.js');
     const bc = read('public/js/broadcast.js');
@@ -145,6 +161,23 @@ const get = (p) => new Promise((resolve, reject) => {
     assert.match(home, /OVLiveRealtime\.connected && Date\.now\(\) - _homeLastLiveRefresh < 60000\) return;/, 'live cards re-read at least once a minute');
     assert.match(home, /_crossfadeThumb\(img, s\.thumbnail_url\);/, 'and crossfade to the new thumbnail');
     console.log('OK the capture and display loops keep that cadence');
+
+    // ── the live preview and the live-picture fallback (plan 355) ──
+    const livePreview = require('../server/media-proxy/live-preview');
+    const empty = { activeRecordings: new Map() };
+    assert.strictEqual(livePreview.previewUrlFor(sid, { recorder: empty }), null, 'no recording: no live preview');
+    const recording = { activeRecordings: new Map([[sid, { vodId: 42, protocol: 'webrtc' }]]) };
+    assert.match(livePreview.previewUrlFor(sid, { recorder: recording }), /\/v\/42\/dvr\.m3u8$/, 'a recording in progress: the DVR playlist');
+    assert.strictEqual(livePreview.previewUrlFor(sid, { recorder: { activeRecordings: new Map([[sid, { vodId: 42, protocol: 'jsmpeg' }]]) } }), null, 'JSMPEG has no DVR');
+    const attached = livePreview.attach([{ id: sid }], { recorder: recording });
+    assert.match(attached[0].preview_url, /\/v\/42\/dvr\.m3u8$/, 'the stream row carries it');
+
+    const fallback = require('../server/media-proxy/live-picture-fallback');
+    await liveThumbs.saveLiveThumbnail(sid, jpeg('four'));   // the clean-up above removed the last one
+    const currentUrl = (await db.get('SELECT thumbnail_url FROM streams WHERE id = ?', [sid])).thumbnail_url;
+    assert.strictEqual(fallback.livePictureFile(currentUrl), path.join(liveThumbs.THUMB_DIR, path.basename(currentUrl)),
+        'the live stream’s current picture is a local file');
+    assert.strictEqual(fallback.livePictureFile('https://openvibe.media/t/vod-9-1.jpg'), null, 'a Media URL is not a live picture');
 
     server.close();
     console.log('\n✅ live thumbnail cadence checks passed');

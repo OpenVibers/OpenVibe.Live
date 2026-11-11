@@ -127,6 +127,9 @@ async function apply(event, data) {
                 outcome: 'vod_ready',
                 after: async () => {
                     try { require('../streaming/recorder').onVodSettled(vodId); } catch { /* */ }
+                    // No picture of its own? A recording made from a live stream takes that stream's last frame
+                    // (media-proxy/live-picture-fallback.js), still on disk for an hour after the stream ended.
+                    try { await require('./live-picture-fallback').adoptForVod(vodId, data); } catch { /* best effort */ }
                     // Kick the on-finalize AI pass right away (both budget-gated).
                     try {
                         const ai = require('../ai/ai-analysis');
