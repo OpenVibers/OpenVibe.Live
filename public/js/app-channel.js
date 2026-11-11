@@ -2938,7 +2938,11 @@ function _applyBotEmbed(botEmbed, username) {
     const menuBtn = document.getElementById('ch-bot-mode-btn');
     const cardBar = document.getElementById('ch-bot-card-bar');
     const cardSwitch = document.getElementById('ch-bot-card-switch');
-    const line = document.getElementById('ch-bot-card-line');
+    const tabs = document.getElementById('ch-bot-tabs');
+    const openLink = document.getElementById('ch-bot-open');
+    const pageEl = document.getElementById('page-channel');
+    // A phone held upright: the full panel shares the chat's place behind two tabs, and the default is a row.
+    const phoneMq = typeof window !== 'undefined' && typeof window.matchMedia === 'function' ? window.matchMedia('(max-width: 768px) and (orientation: portrait)') : null;
     const player = document.getElementById('video-container');
     const robotId = botEmbed && botEmbed.robot_id ? botEmbed.robot_id : null;
 
@@ -2960,7 +2964,7 @@ function _applyBotEmbed(botEmbed, username) {
     _applyBotEmbed.setBar = setBar;
     function mountIn(container, mode, toggleSection) {
         stopFrame();
-        const frame = BotEmbed.mount(container, botEmbed, { mode: mode === 'overlay' ? 'overlay' : null, toggleSection });
+        const frame = BotEmbed.mount(container, botEmbed, { mode: mode === 'panel' ? null : mode, toggleSection });
         if (frame && typeof BotEmbed.listen === 'function') {
             _botEmbedStop = BotEmbed.listen({
                 frame, botEmbed,
@@ -2975,8 +2979,8 @@ function _applyBotEmbed(botEmbed, username) {
                     stopFrame();
                     clear(slot); clear(box);
                     if (slot) slot.hidden = true;
-                    if (line) line.hidden = true;
                     if (section) section.hidden = true;
+                    pageClasses(null);
                 },
                 onOpenPanel: () => _applyBotEmbed.choose('panel'),
                 onFocusPlayer: () => {
@@ -2987,7 +2991,24 @@ function _applyBotEmbed(botEmbed, username) {
         }
         return frame;
     }
-    const MODE_NAME = { overlay: 'on the video', panel: 'under the video', hidden: 'hidden' };
+    const MODE_NAME = { overlay: 'on the video', compact: 'a row under the video', panel: 'the full panel', hidden: 'hidden' };
+    // The page knows the place (phone layout in channel.css) and, for the full panel on a phone, which tab is open.
+    function pageClasses(mode) {
+        if (!pageEl || !pageEl.classList) return;
+        pageEl.classList.toggle('ch-bot-panel', mode === 'panel');
+        pageEl.classList.toggle('ch-bot-compact', mode === 'compact');
+        pageEl.classList.toggle('ch-bot-chat', mode === 'panel' && _applyBotEmbed.tab === 'chat');
+    }
+    function setTab(tab) {
+        _applyBotEmbed.tab = tab === 'chat' ? 'chat' : 'robot';
+        if (tabs && tabs.querySelectorAll) {
+            for (const b of tabs.querySelectorAll('[data-bot-tab]')) b.setAttribute('aria-selected', String(b.dataset.botTab === _applyBotEmbed.tab));
+        }
+        pageClasses(_applyBotEmbed.mode);
+        // The chat folded away on a phone comes back with its tab.
+        if (_applyBotEmbed.tab === 'chat' && pageEl && pageEl.classList && pageEl.classList.contains('chat-collapsed') && typeof toggleChannelChat === 'function') toggleChannelChat(false);
+    }
+    _applyBotEmbed.setTab = setTab;
     function closeMenu() {
         if (!menu) return;
         menu.hidden = true;
@@ -3012,12 +3033,13 @@ function _applyBotEmbed(botEmbed, username) {
     }
     function render() {
         if (typeof BotEmbed === 'undefined') return;
-        const mode = BotEmbed.effectiveMode(botEmbed, BotEmbed.readChoice(window, username, robotId));
+        const mode = BotEmbed.effectiveMode(botEmbed, BotEmbed.readChoice(window, username, robotId), { phone: !!(phoneMq && phoneMq.matches) });
         _applyBotEmbed.mode = mode;
         _applyBotEmbed.frame = null;
         _applyBotEmbed.botEmbed = botEmbed;
         if (switchWrap) switchWrap.hidden = !robotId;
         if (cardBar) cardBar.hidden = !robotId;
+        if (openLink && botEmbed && typeof botEmbed.url === 'string') openLink.href = botEmbed.url.replace(/\/embed$/, '');
         if (mode === 'overlay') {
             if (slot) {
                 slot.hidden = false;
@@ -3025,27 +3047,27 @@ function _applyBotEmbed(botEmbed, username) {
             }
             clear(box);
             box.hidden = true;
-            if (line) line.hidden = false;
             if (section) section.hidden = false;
-        } else if (mode === 'panel') {
+        } else if (mode === 'panel' || mode === 'compact') {
             if (slot) { clear(slot); slot.hidden = true; }
-            if (line) line.hidden = true;
             box.hidden = false;
             if (section) section.hidden = false;
-            _applyBotEmbed.frame = mountIn(box, 'panel', true);
+            _applyBotEmbed.frame = mountIn(box, mode, true);
         } else {
+            // Hidden: no frame, and the head row stays so the controls can come back from where they went.
             stopFrame();
             clear(box); clear(slot);
             box.hidden = true;
             if (slot) slot.hidden = true;
-            if (line) line.hidden = true;
-            if (section) section.hidden = true;
+            if (section) section.hidden = !robotId;
         }
+        pageClasses(mode);
         sync(mode);
     }
     function choose(mode, persist = true) {
         if (typeof BotEmbed === 'undefined' || !BotEmbed.validView(mode)) return;
         if (persist && robotId && BotEmbed.writeChoice) BotEmbed.writeChoice(window, username, robotId, mode);
+        if (mode === 'panel') setTab('robot');   // asked for the panel: show it, on a phone too
         closeMenu();
         render();
     }
@@ -3081,12 +3103,24 @@ function _applyBotEmbed(botEmbed, username) {
             if (b) _applyBotEmbed.choose(b.dataset.botMode);
         });
     }
-    if (line && line.dataset.botBound !== '1') {
-        line.dataset.botBound = '1';
-        line.addEventListener('click', (e) => {
-            if (e.target && e.target.closest && e.target.closest('[data-bot-show-panel]')) _applyBotEmbed.choose('panel');
+    if (tabs && tabs.dataset && tabs.dataset.botBound !== '1') {
+        tabs.dataset.botBound = '1';
+        tabs.addEventListener('click', (e) => {
+            const b = e.target && e.target.closest ? e.target.closest('[data-bot-tab]') : null;
+            if (b) _applyBotEmbed.setTab(b.dataset.botTab);
         });
     }
+    // Turning the phone (or a window crossing the phone width) changes the default; a viewer's own choice stays.
+    if (phoneMq && typeof phoneMq.addEventListener === 'function' && !_applyBotEmbed.mqBound) {
+        _applyBotEmbed.mqBound = true;
+        phoneMq.addEventListener('change', () => {
+            const be = _applyBotEmbed.botEmbed;
+            if (!be || typeof BotEmbed === 'undefined' || !_applyBotEmbed.render) return;
+            if (BotEmbed.readChoice(window, _applyBotEmbed.username, be.robot_id)) return;
+            _applyBotEmbed.render();
+        });
+    }
+    _applyBotEmbed.username = username;
     // The pointer on the page (outside the clipped controls) wakes the overlay's idle fade.
     if (player && player.dataset.botActivity !== '1') {
         player.dataset.botActivity = '1';
@@ -3113,6 +3147,7 @@ function _applyBotEmbed(botEmbed, username) {
         if (window.ov) ov.scope().onDispose(() => {
             stopFrame();
             clear(slot);
+            pageClasses(null);
             if (typeof BotEmbed !== 'undefined') BotEmbed.mount(box, null);
             else clear(box);
             if (_applyBotEmbed.barObserver) { _applyBotEmbed.barObserver.disconnect(); _applyBotEmbed.barObserver = null; }

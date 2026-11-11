@@ -49,8 +49,8 @@ function embedUrl(robotId) {
     return `${botOrigin()}/panel/${encodeURIComponent(robotId)}/embed`;
 }
 
-/** The two places a streamer may put the controls by default; a viewer may still hide them or move them. */
-const CONTROL_MODES = ['overlay', 'panel'];
+/** The places a streamer may put the controls by default (a row since ask 353); a viewer may still hide or move them. */
+const CONTROL_MODES = ['overlay', 'compact', 'panel'];
 const controlMode = (value) => (CONTROL_MODES.includes(value) ? value : 'panel');
 
 /** The channel page's `bot_embed` value: undefined with the flag off, else { enabled, robot_id, url, controls_mode }. */
