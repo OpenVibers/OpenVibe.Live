@@ -59,10 +59,10 @@ async function refresh({ fetchImpl = globalThis.fetch } = {}) {
     return rows.length;
 }
 
-/** Refresh now, then hourly; a failure logs and leaves the last good flags in place. */
-function start() {
+/** Refresh now (unless the caller already awaited one), then hourly; a failure leaves the last good flags. */
+function start({ refreshNow = true } = {}) {
     if (timer) return timer;
-    refresh().catch((err) => { last.error = err.message; console.warn('[Test accounts] refresh failed:', err.message); });
+    if (refreshNow) refresh().catch((err) => { last.error = err.message; console.warn('[Test accounts] refresh failed:', err.message); });
     timer = setInterval(() => {
         refresh().catch((err) => { last.error = err.message; console.warn('[Test accounts] refresh failed:', err.message); });
     }, REFRESH_MS);

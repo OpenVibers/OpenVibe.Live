@@ -1524,6 +1524,15 @@ async function start() {
 
     // 6f. VOD storage/offload is owned by OpenVibe.Media now — nothing to start here.
 
+    // 6h. Test accounts (Network users.is_test): mark the local users the public people surfaces must leave out.
+    // The first refresh is awaited before the listener opens, so the first public page already filters; a failure
+    // keeps the last good flags and the hourly timer still runs.
+    try {
+        const testAccounts = require('./auth/test-accounts');
+        await testAccounts.refresh().catch((err) => console.warn('[Test accounts] refresh failed:', err.message));
+        testAccounts.start({ refreshNow: false });
+    } catch (err) { console.warn('[Test accounts] not started:', err.message); }
+
     // 7. Start HTTP server.
     //
     // Zero-downtime restarts: when systemd owns the listening socket (a .socket unit with
@@ -1743,10 +1752,6 @@ async function start() {
             .catch((err) => console.warn('[Thumbnails] live picture tick:', err.message));
     }, require('./streaming/live-thumb-cadence').TICK_MS);
     if (typeof livePictureInterval.unref === 'function') livePictureInterval.unref();
-
-    // 8a3. Test accounts (Network users.is_test): mark the local users the public people surfaces must leave out.
-    // The first refresh runs now; hourly after that, and a failure keeps the last good flags.
-    try { require('./auth/test-accounts').start(); } catch (err) { console.warn('[Test accounts] not started:', err.message); }
 
     // 8b. Canonical identity: report every Live<->Network link to Network's identity_legacy_map
     // (roadmap Wave 1). Idempotent on Network's side; daily, first run a few minutes after boot.
