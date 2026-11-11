@@ -1452,11 +1452,13 @@ router.get('/recently-online', async (req, res) => {
         }
         // Every card carries the same numbers, present or null, and its line in the one channel shape
         // (stored lines the job has not rewritten yet are shaped here).
-        const { shapeChannelLine } = require('../ai/channel-line');
+        const { shapeChannelLine, humanLine } = require('../ai/channel-line');
         for (const s of streamers) {
             if (!s.recent_facts) { s.recent_facts = { streams: [] }; for (const k of RECENT_FACT_KEYS) s.recent_facts[k] = null; }
             try {
-                s.ai_overview_short = shapeChannelLine({ username: s.username, displayName: s.display_name, overview: s.ai_overview || s.ai_overview_short });
+                // The AI's own line when it is stored (ask 363), else the overview in the one shape.
+                const names = { username: s.username, displayName: s.display_name };
+                s.ai_overview_short = humanLine(s.ai_overview_short, names) || shapeChannelLine({ ...names, overview: s.ai_overview || s.ai_overview_short });
             } catch { /* the stored line stands */ }
         }
         res.json({ streamers, total, limit, offset, hasMore: offset + streamers.length < total });
