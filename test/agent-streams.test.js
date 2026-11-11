@@ -16,6 +16,17 @@
 const assert = require('assert');
 const http = require('http');
 const express = require('express');
+const crypto = require('crypto');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+const jwt = require('jsonwebtoken');
+
+const keyDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ov-agent-dock-'));
+const dockKeys = crypto.generateKeyPairSync('rsa', { modulusLength: 2048, publicKeyEncoding: { type: 'spki', format: 'pem' }, privateKeyEncoding: { type: 'pkcs8', format: 'pem' } });
+fs.writeFileSync(path.join(keyDir, 'network.pem'), dockKeys.publicKey);
+process.env.OV_NETWORK_PUBLIC_KEY = path.join(keyDir, 'network.pem');
+process.env.OV_NETWORK_URL = 'https://openvibe.network';
 
 process.env.NODE_ENV = 'test';
 const quiet = console.log;
@@ -133,7 +144,26 @@ async function check(name, fn) {
         return { status: res.status, data, headers: res.headers };
     };
 
+    const dockToken = (overrides = {}) => jwt.sign({ sub: '1', username: 'ann', subject_id: SID.ann,
+        client_id: 'companion', fam: `fam_${'a'.repeat(24)}`, scope: 'agent.view', ...overrides }, dockKeys.privateKey,
+    { algorithm: 'RS256', issuer: 'https://openvibe.network/dock', audience: 'openvibe.network', expiresIn: 600 });
+
     try {
+        await check('Companion Dock token reads its own stream and mints a view ticket, but cannot control it', async () => {
+            const headers = { authorization: `Bearer ${dockToken()}` };
+            const mine = await call('GET', '/api/streams/agent/mine', { as: 0, headers });
+            assert.equal(mine.status, 200);
+            assert.ok(mine.data.streams.some((s) => s.id === agent.public_id));
+            const ticket = await call('POST', `/api/streams/agent/${agent.public_id}/view-ticket`, { as: 0, headers, body: {} });
+            assert.equal(ticket.status, 200);
+            assert.ok(ticket.data.ticket || ticket.data.view_ticket);
+            const control = await call('POST', `/api/streams/agent/${agent.public_id}/control`, { as: 0, headers, body: { control: 'pause' } });
+            assert.notEqual(control.status, 200);
+            for (const claims of [{ scope: 'profile' }, { client_id: 'other' }, { subject_id: SID.bob }]) {
+                const denied = await call('GET', '/api/streams/agent/mine', { as: 0, headers: { authorization: `Bearer ${dockToken(claims)}` } });
+                assert.ok(!denied.data.streams.some((s) => s.id === agent.public_id));
+            }
+        });
         quiet('agent streams: the resources');
         await check('the owner reads the resource, with no stream key and nothing secret', async () => {
             const r = await call('GET', `/api/streams/agent/${agent.public_id}`, { as: 1 });
@@ -426,6 +456,7 @@ async function check(name, fn) {
         });
     } finally {
         server.close();
+        fs.rmSync(keyDir, { recursive: true, force: true });
     }
 
     if (failures) { quiet(`${failures} agent stream check(s) failed`); process.exit(1); }

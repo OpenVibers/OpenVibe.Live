@@ -14,7 +14,7 @@
  * Watching is the visitor's session when there is one; the view rule itself is service.mayView.
  */
 const contracts = require('openvibe-contracts');
-const { verifyServiceToken } = require('openvibe-sdk/auth');
+const { verifyServiceToken, verifyUserToken } = require('openvibe-sdk/auth');
 const { optionalAuth, verifyToken, resolveNetworkUser, networkVerifyOptions, getNetworkIssuer } = require('../auth/auth');
 const db = require('../db/database');
 
@@ -28,6 +28,32 @@ const CAPABILITY = CAPABILITIES[0];
 // pinned Contracts release names it (a capability id carries no hyphen).
 const SANDBOX_CAPABILITY = 'live.agent_sandbox.register';
 const FIRST_PARTY_SUB = /^(svc|node):/;
+const DOCK_FAMILY_RE = /^fam_[0-9a-f]{24}$/;
+
+// Codes forwards the Companion's private-issuer Dock token to these reads. It is never a Live session or a
+// publisher. The ticket route is a POST because minting a short-lived viewer ticket is part of reading the stream.
+function dockReadPath(method, path) {
+    if (method === 'GET') return path === '/mine' || /^\/[^/]+\/(frame|voice|steps|controls)$/.test(path);
+    return method === 'POST' && /^\/[^/]+\/view-ticket$/.test(path);
+}
+
+async function dockViewer(req) {
+    if (!dockReadPath(req.method, req.path)) return null;
+    const header = String(req.headers.authorization || '');
+    if (!header.startsWith('Bearer ')) return null;
+    let claims;
+    try {
+        claims = await verifyUserToken(header.slice(7).trim(), {
+            ...networkVerifyOptions(), issuer: `${getNetworkIssuer().replace(/\/+$/, '')}/dock`, audience: 'openvibe.network',
+        });
+    } catch { return null; }
+    if (claims.actor_type !== undefined || claims.role !== undefined || claims.staff_caps !== undefined
+        || claims.client_id !== 'companion' || !DOCK_FAMILY_RE.test(String(claims.fam || ''))
+        || !SUBJECT_RE.test(String(claims.subject_id || ''))
+        || !String(claims.scope || '').split(/\s+/).includes('agent.view')) return null;
+    const user = await userForSubject(claims.subject_id);
+    return user && !user.is_banned ? user : null;
+}
 
 /** The local account linked to a Network subject, or null. */
 async function userForSubject(subject) {
@@ -161,7 +187,7 @@ async function sandboxRegistrar(req, res, next) {
 async function viewer(req, res, next) {
     try {
         await optionalAuth(req, res, () => {});
-        req.viewer = req.user || null;
+        req.viewer = req.user || await dockViewer(req);
     } catch { req.viewer = null; }
     next();
 }
@@ -179,4 +205,4 @@ async function userFromToken(token) {
     return decoded ? await resolveNetworkUser(decoded) : null;
 }
 
-module.exports = { publisher, viewer, viewerSubject, userForSubject, userFromToken, holdsCapability, holdsSandboxCapability, sandboxRegistrar, AUDIENCE, CAPABILITY, CAPABILITIES, SANDBOX_CAPABILITY };
+module.exports = { publisher, viewer, viewerSubject, userForSubject, userFromToken, dockReadPath, dockViewer, holdsCapability, holdsSandboxCapability, sandboxRegistrar, AUDIENCE, CAPABILITY, CAPABILITIES, SANDBOX_CAPABILITY };
