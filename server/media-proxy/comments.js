@@ -17,6 +17,7 @@
  */
 'use strict';
 const express = require('express');
+const multer = require('multer');
 const db = require('../db/database');
 const media = require('../media-client');
 const comments = require('../comments-client');
@@ -30,6 +31,7 @@ const MAX_MESSAGE = 2000;
 const MAX_OFFSET = 1000;
 const MAX_REPLIES = 500;
 const HIDDEN = { error: 'Comments are hidden here', code: 'comments_hidden' };
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 16 * 1024 * 1024, files: 1, fields: 4 } }).single('file');
 
 function truncatePreview(text, max = 120) {
     const clean = String(text || '').replace(/\s+/g, ' ').trim();
@@ -99,6 +101,8 @@ async function shape(c, ctx) {
         user_id: u ? u.id : null,
         subject: a ? a.subject || null : null,
         parent_id: c.parent_id || null,
+        reply_to_id: c.reply_to_id || null,
+        reply_to: c.reply_to || null,
         message: c.deleted ? '' : c.message,
         is_deleted: c.deleted ? 1 : 0,
         deleted: !!c.deleted,
@@ -112,6 +116,7 @@ async function shape(c, ctx) {
         role: u && !c.deleted ? u.role : null,
         is_ai: !!(a && a.is_ai),
         reply_count: c.reply_count || 0,
+        attachments: c.deleted ? [] : (c.attachments || []),
         can_edit: !!(ctx.subject && a && a.subject === ctx.subject && !c.deleted),
         can_delete: !!await deleteRight(ctx.user, ctx.subject, c, ctx.target),
     };
@@ -175,12 +180,13 @@ router.get('/:type/:id', optionalAuth, async (req, res) => {
         const thread = await comments.threadFor(contentType, contentId, target.row.title, { ip: req.ip });
         const ctx = { type: contentType, id: contentId, user: req.user, subject, target };
 
-        // Newest first, like before; Community pages by cursor, so an offset is walked.
+        // Community pages by cursor, so an offset is walked in the requested order.
+        const sort = req.query.sort === 'old' ? 'old' : 'new';
         const picked = [];
         let skipped = 0, after = null, total = 0;
         for (;;) {
             let page;
-            try { page = await comments.readThread(thread.id, { subject, sort: 'new', limit: 100, after, ip: req.ip }); }
+            try { page = await comments.readThread(thread.id, { subject, sort, limit: 100, after, ip: req.ip }); }
             catch (err) { if (err.status === 404) return res.status(404).json(HIDDEN); throw err; }
             // A thread Community's moderators hid is hidden here too (Live reads anonymous visitors' pages as itself, which sees it).
             if (page.thread && page.thread.visibility === 'hidden' && !permissions.isStaff(req.user)) return res.status(404).json(HIDDEN);
@@ -206,6 +212,24 @@ router.get('/:type/:id', optionalAuth, async (req, res) => {
 });
 
 // ── Add Comment ──────────────────────────────────────────────
+router.post('/:type/:id/attachments', requireAuth, (req, res, next) => upload(req, res, (err) => {
+    if (err instanceof multer.MulterError) return res.status(err.code === 'LIMIT_FILE_SIZE' ? 413 : 400).json({ error: 'Upload one file up to 16 MB' });
+    next(err);
+}), async (req, res) => {
+    try {
+        const type = req.params.type;
+        const id = Number(req.params.id);
+        if (!comments.TYPES.includes(type) || !Number.isSafeInteger(id) || id < 1) return res.status(400).json({ error: 'Invalid content type or ID' });
+        if (!req.file) return res.status(400).json({ error: 'Choose a file' });
+        const target = await visibleTarget(req.user, type, id);
+        if (!target) return res.status(404).json({ error: 'Content not found' });
+        const subject = await viewerSubject(req.user);
+        if (!subject) return res.status(409).json({ error: 'This account is not linked to an OpenVibe account yet — sign in again and retry.' });
+        const out = await comments.uploadAttachment({ service: 'live', type, id: String(id) }, subject, req.file, { ip: req.ip });
+        return res.status(201).json(out);
+    } catch (err) { return sendError(res, err, 'Failed to attach file'); }
+});
+
 router.post('/:type/:id', requireAuth, async (req, res) => {
     try {
         const contentType = req.params.type;
@@ -233,7 +257,9 @@ router.post('/:type/:id', requireAuth, async (req, res) => {
             }
         }
 
-        const out = await comments.addComment(thread.id, subject, { message, parentId }, { ip: req.ip });
+        const attachments = req.body.attachments == null ? [] : req.body.attachments;
+        if (!Array.isArray(attachments) || attachments.length > 4) return res.status(400).json({ error: 'Attach up to four files' });
+        const out = await comments.addComment(thread.id, subject, { message, parentId, attachments }, { ip: req.ip });
         const comment = await shape(out.comment, { type: contentType, id: contentId, user: req.user, subject, target });
 
         const actor = notificationActor(req.user);

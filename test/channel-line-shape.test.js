@@ -116,4 +116,19 @@ assert.match(FALLBACK_CHANNEL_LINE, CHANNEL_LINE_RE, 'the fallback is the same s
 assert.strictEqual(shapeChannelLine(), FALLBACK_CHANNEL_LINE, 'no arguments');
 assert.strictEqual(shapeChannelLine({ overview: null }), FALLBACK_CHANNEL_LINE, 'null overview');
 assert.strictEqual(shapeChannelLine({ username: 'Maticus', displayName: 'Maticus', overview: '{"overview":"Maticus streams chess and cooking."}' }), 'Streams chess and cooking.', 'JSON-wrapped model text');
+// The AI's own card line (ask 363, 2026-11-11): kept when it reads as a person wrote it, else the shape above.
+{
+    const { humanLine, cardLine } = require('../server/ai/channel-line');
+    const names = { username: 'Maticus', displayName: 'Maticus' };
+    assert.strictEqual(humanLine('Robots, cameras and late-night tinkering, with chat riding along.', names), 'Robots, cameras and late-night tinkering, with chat riding along.');
+    assert.strictEqual(humanLine('cozy acoustic sets and requests from a kitchen table', names), 'Cozy acoustic sets and requests from a kitchen table.', 'a capital and a full stop');
+    assert.strictEqual(humanLine('Maticus builds robots in his kitchen.', names), null, 'the card shows the name already');
+    assert.strictEqual(humanLine('Streams robots and cameras.', names), null, 'the reshaped shape is the fallback\'s own');
+    assert.strictEqual(humanLine('A vibrant mix of tech content.', names), null, 'the stock words');
+    assert.strictEqual(humanLine('Chess. Then cooking for everyone.', names), null, 'one sentence');
+    assert.strictEqual(humanLine('Robots: built, broken, built again.', names), null, 'no colon');
+    assert.strictEqual(humanLine('Short.', names), null, 'too short to say anything');
+    assert.strictEqual(cardLine({ ...names, overview: 'Maticus streams chess and cooking.', line: 'A dynamic journey.' }), 'Streams chess and cooking.', 'a stock line falls back to the shape');
+    assert.strictEqual(cardLine({ ...names, overview: 'Maticus streams chess.', line: 'Chess openings argued over with chat, one blunder at a time.' }), 'Chess openings argued over with chat, one blunder at a time.');
+}
 console.log('channel-line shape: all checks passed');
