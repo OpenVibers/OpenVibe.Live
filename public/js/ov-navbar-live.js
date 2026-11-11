@@ -8,12 +8,19 @@
  *   LiveNav.sync(user)            after sign-in, sign-out or a profile change
  *   LiveNav.setActive(page)       the router calls this on every page change
  *   LiveNav.setLive(isLive)       the red dot on "Go Live"
+ *   LiveNav.setStreamer(id)       a channel page's owner id, so the wallet pill catches up its channel points
  */
 (function () {
     'use strict';
     const call = (name, ...a) => (typeof window[name] === 'function' ? window[name](...a) : undefined);
     const nav = () => window.OpenVibeNavbar;
     let booted = false;
+    let current = null;
+    // The purse's page context (Shared 4.212.0): a channel page passes its streamer's numeric user id, which is what the
+    // channel-points ledger calls `streamer` (Live's channel_points.streamer_id, the owner of ch.user_id); every other
+    // page passes nothing. The object is the same one on every render, so a channel that loads after the bar still
+    // reaches the wallet's next catch-up without re-rendering the bar.
+    const purse = {};
 
     // The bar's places, most used first (the owner, 2026-10-28: "move search after the Rundown and the drop-down… reanalyze
     // the nav bars… redundant options"). Search is the navbar's magnifier now (Shared 4.21: Live's results first, then all
@@ -77,6 +84,8 @@
             // The magnifier (Shared 4.21): Live's streams, recordings and clips first, Live's own search page, then OpenVibe.
             search: { owner: 'live', label: 'OpenVibe.Live', page: '/search' },
             wallet: true,
+            // The wallet pill's page context: a channel page's streamer, so its points and their changes are caught up.
+            purse,
             // Same-origin links are routes of this single-page app.
             onNavigate: (href, e) => (typeof handleLinkClick === 'function' ? handleLinkClick(e, href) : true),
             // No speculation rules: the router answers same-site links, so a prefetched page was never used, and the
@@ -92,8 +101,9 @@
 
     let last = { live: false, page: null };
     function sync(user) {
+        current = user || null;
         const N = nav(); if (!N) return;
-        booted = true; N.init(config(user));   // init() merges the new config and re-renders
+        booted = true; N.init(config(current));   // init() merges the new config and re-renders
         if (last.page) N.setActive(last.page);
         if (last.live) N.updateLink('broadcast', { dot: true });
     }
@@ -102,6 +112,17 @@
         sync,
         setActive(page) { last.page = page; const N = nav(); if (N && booted) N.setActive(page); },
         setLive(isLive) { last.live = !!isLive; const N = nav(); if (N && booted) N.updateLink('broadcast', { dot: !!isLive, label: isLive ? 'LIVE' : 'Go Live' }); },
+        // A channel page's data carries its owner's numeric user id only after the page has loaded; from then on the
+        // wallet's next catch-up asks for that channel's points too (Shared 4.212.0, /wallet/changes?streamer=). With
+        // null — any other page — the purse asks for the person's own balances alone.
+        setStreamer(id) {
+            const n = Number(id);
+            const next = Number.isSafeInteger(n) && n > 0 ? n : null;
+            if (next === (purse.streamer || null)) return;
+            if (next) purse.streamer = next; else delete purse.streamer;
+            const N = nav();
+            if (next && current && booted && N && typeof N.refreshWallet === 'function') N.refreshWallet();
+        },
     };
 
     // First paint: the bar appears signed out immediately; app.js calls sync() again when it knows who is here.
