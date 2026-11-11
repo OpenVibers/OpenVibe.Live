@@ -180,6 +180,23 @@ router.get('/:type/:id', optionalAuth, async (req, res) => {
         const thread = await comments.threadFor(contentType, contentId, target.row.title, { ip: req.ip });
         const ctx = { type: contentType, id: contentId, user: req.user, subject, target };
 
+        // Item pages need the Community page as it is: two replies per comment and an opaque
+        // cursor for Top or Newest. The older Live SPA still uses offset and expanded replies.
+        if (req.query.inline === '1') {
+            const sort = req.query.sort === 'new' ? 'new' : 'top';
+            const after = typeof req.query.after === 'string' && req.query.after.length <= 60 ? req.query.after : null;
+            const page = await comments.readThread(thread.id, { subject, sort, after, limit: 30, ip: req.ip });
+            if (page.thread && page.thread.visibility === 'hidden' && !permissions.isStaff(req.user)) return res.status(404).json(HIDDEN);
+            const out = {
+                comments: await Promise.all(page.comments.map((c) => shape(c, ctx))),
+                total: page.thread ? page.thread.comment_count || 0 : 0,
+                next_cursor: page.next_cursor || null,
+                viewer: page.viewer,
+            };
+            if (!access.isPrivate(target.row)) out.thread = { id: thread.access_id, url: comments.threadUrl(thread.access_id) };
+            return res.json(out);
+        }
+
         // Community pages by cursor, so an offset is walked in the requested order.
         const sort = req.query.sort === 'old' ? 'old' : 'new';
         const picked = [];

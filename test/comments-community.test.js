@@ -180,6 +180,11 @@ async function check(name, fn) {
         assert.deepStrictEqual(page.comments.map((c) => c.message), ['great stream']);
         const oldest = (await call('GET', '/api/comments/vod/100?sort=old')).json;
         assert.deepStrictEqual(oldest.comments.map((c) => c.message), ['great stream', 'said on Community']);
+        const inline = await call('GET', '/api/comments/vod/100?inline=1&sort=top', 3);
+        assert.strictEqual(inline.status, 200, inline.text);
+        assert.match(last('GET', /^\/threads\/cth_[^/]+$/).query, /sort=top/);
+        assert.strictEqual(inline.json.comments.find((c) => c.id === carolTop.id).replies[0].message, 'thanks!');
+        assert.strictEqual(inline.json.comments[0].can_delete, true, 'owner moderation survives the inline proxy');
         assert.ok(!r.text.includes('legacy local row'), 'Live\'s own table is not read');
     });
 
