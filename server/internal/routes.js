@@ -66,6 +66,47 @@ router.post('/user-avatar', guard('live.avatar.write'), async (req, res) => {
     }
 });
 
+// ── Channel points changes for Network's gain/loss API (ask 273) ────────────────
+// GET /internal/channel-points/changes?network_user_id=<id>&since_id=&streamer_id=&limit=
+// guard('live.channel_points.read'): a Network service token only, loopback only. Reads Live's own
+// channel_points_log (the per-channel ledger; Billing stays the only money ledger) for the person
+// behind the Network account: one move per row, oldest first, with the cursor for the next page.
+router.get('/channel-points/changes', guard('live.channel_points.read'), async (req, res) => {
+    try {
+        const networkId = String(req.query.network_user_id || '');
+        if (!networkId) return res.status(400).json({ ok: false, error: 'network_user_id is required' });
+        const linked = await db.getDb().prepare("SELECT user_id FROM linked_accounts WHERE service = 'network' AND service_user_id = ?").get(networkId);
+        if (!linked) return res.status(404).json({ ok: false, error: 'no linked live account' });
+        const userId = linked.user_id;
+        let streamerId = null;
+        if (req.query.streamer_id != null && req.query.streamer_id !== '') {
+            streamerId = Number(req.query.streamer_id);
+            if (!Number.isInteger(streamerId) || streamerId <= 0) return res.status(400).json({ ok: false, error: 'streamer_id is a user id' });
+        }
+        let sinceId = 0;
+        if (req.query.since_id != null && req.query.since_id !== '') {
+            sinceId = Number(req.query.since_id);
+            if (!Number.isInteger(sinceId) || sinceId < 0) return res.status(400).json({ ok: false, error: 'since_id is a log id' });
+        }
+        const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 100, 1), 500);
+        const where = streamerId ? 'user_id = ? AND streamer_id = ? AND id > ?' : 'user_id = ? AND id > ?';
+        const args = streamerId ? [userId, streamerId, sinceId] : [userId, sinceId];
+        const rows = await db.getDb().prepare(`SELECT id, streamer_id, delta, reason, created_at AS at FROM channel_points_log
+            WHERE ${where} ORDER BY id ASC LIMIT ?`).all(...args, limit + 1);
+        const page = rows.slice(0, limit);
+        const balance = streamerId ? await db.getChannelPoints(userId, streamerId) : null;
+        return res.json({
+            ok: true, user_id: userId, streamer_id: streamerId, balance,
+            moves: page.map((r) => ({ id: r.id, streamer_id: r.streamer_id, at: r.at, delta: r.delta, reason: r.reason || null })),
+            cursor: page.length ? page[page.length - 1].id : sinceId,
+            next_since: rows.length > limit ? page[page.length - 1].id : null,
+        });
+    } catch (err) {
+        console.error('[Internal] channel-points/changes error:', err.message);
+        return res.status(500).json({ ok: false, error: err.message });
+    }
+});
+
 // ── OpenVibe Live on by default for OpenRestream (live.openre.slot.bind) ─────────
 // OpenRestream asks for a slot on the person's channel bound to their OpenRestream stream (server/openre/bind.js).
 router.post('/openre/slots', guard('live.openre.slot.bind'), async (req, res) => {
