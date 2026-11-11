@@ -336,7 +336,7 @@ async function renderChannelVodsSection(username, liveStreams, vods, meta = {}) 
                     const pic = ls.thumbnail_url || v.thumbnail_url;
                     const bg = typeof _liveBg === 'function' ? _liveBg(pic) : '';
                     liveVodHtml += `
-                        <a class="stream-card ch-rec-card is-live" data-stream-id="${esc(String(ls.id))}"${bg ? ` style="--live-bg:${esc(bg)}"` : ''} href="${videoHref('vod', v.id)}" onclick="return handleLinkClick(event, '${videoHref('vod', v.id)}')">
+                        <a class="stream-card ch-rec-card is-live" data-stream-id="${esc(String(ls.id))}"${typeof previewAttrs === 'function' ? previewAttrs(ls) : ''}${bg ? ` style="--live-bg:${esc(bg)}"` : ''} href="${videoHref('vod', v.id)}" onclick="return handleLinkClick(event, '${videoHref('vod', v.id)}')">
                             <div class="stream-card-thumb">
                                 ${thumbImg(pic, 'fa-video', v.title, ls.thumbnail_url ? null : `/api/thumbnails/generate/vod/${v.id}`)}
                                 ${audioChip(v)}
@@ -358,7 +358,7 @@ async function renderChannelVodsSection(username, liveStreams, vods, meta = {}) 
         const canManage = _channelCanManage(username);
         _selSetContext(canManage, () => _reloadChannelContent(username));
         vodsGrid.innerHTML = liveVodHtml + vods.map(v => _selWrap('vod', v.id, `
-            <a class="stream-card" href="${videoHref('vod', v.id)}" onclick="return handleLinkClick(event, '${videoHref('vod', v.id)}')">
+            <a class="stream-card"${typeof previewAttrs === 'function' ? previewAttrs(v) : ''} href="${videoHref('vod', v.id)}" onclick="return handleLinkClick(event, '${videoHref('vod', v.id)}')">
                 <div class="stream-card-thumb">
                     ${thumbImg(v.thumbnail_url, 'fa-video', v.title, `/api/thumbnails/generate/vod/${v.id}`)}
                     ${_visBadge(v.visibility, v.is_public, canManage)}
@@ -443,7 +443,7 @@ function renderChannelClipsSection(username, clips, meta = {}) {
         const canManage = _channelCanManage(username);
         _selSetContext(canManage, () => _reloadChannelContent(username));
         clipsGrid.innerHTML = clips.map(cl => _selWrap('clip', cl.id, `
-            <a class="stream-card" href="${videoHref('clip', cl.id)}" onclick="return handleLinkClick(event, '${videoHref('clip', cl.id)}')">
+            <a class="stream-card"${typeof previewAttrs === 'function' ? previewAttrs(cl) : ''} href="${videoHref('clip', cl.id)}" onclick="return handleLinkClick(event, '${videoHref('clip', cl.id)}')">
                 <div class="stream-card-thumb">
                     ${thumbImg(cl.thumbnail_url, 'fa-scissors', cl.title, `/api/thumbnails/generate/clip/${cl.id}`)}
                     ${_visBadge(cl.visibility, cl.is_public, canManage)}
@@ -526,7 +526,7 @@ function _renderClipsTakenGrid(username, data) {
         return;
     }
     grid.innerHTML = clips.map(cl => _selWrap('clip', cl.id, `
-            <a class="stream-card" href="${videoHref('clip', cl.id)}" onclick="return handleLinkClick(event, '${videoHref('clip', cl.id)}')">
+            <a class="stream-card"${typeof previewAttrs === 'function' ? previewAttrs(cl) : ''} href="${videoHref('clip', cl.id)}" onclick="return handleLinkClick(event, '${videoHref('clip', cl.id)}')">
                 <div class="stream-card-thumb">
                     ${thumbImg(cl.thumbnail_url, 'fa-scissors', cl.title, `/api/thumbnails/generate/clip/${cl.id}`)}
                     ${_visBadge(cl.visibility, cl.is_public, canManage)}
@@ -573,7 +573,7 @@ function renderChannelClipsOfSection(username, clips, meta = {}) {
 
     if (clips.length) {
         grid.innerHTML = clips.map(cl => `
-            <a class="stream-card" href="${videoHref('clip', cl.id)}" onclick="return handleLinkClick(event, '${videoHref('clip', cl.id)}')">
+            <a class="stream-card"${typeof previewAttrs === 'function' ? previewAttrs(cl) : ''} href="${videoHref('clip', cl.id)}" onclick="return handleLinkClick(event, '${videoHref('clip', cl.id)}')">
                 <div class="stream-card-thumb">
                     ${thumbImg(cl.thumbnail_url, 'fa-scissors', cl.title, `/api/thumbnails/generate/clip/${cl.id}`)}
                     ${cl.stream_protocol ? protocolBadge(cl.stream_protocol) : ''}
