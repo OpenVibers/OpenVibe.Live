@@ -43,7 +43,7 @@ async function page(req, res) {
     const db = require('../db/database');
     const channel = await db.getChannelByUsername(username).catch(() => null) || await db.getUserByUsername(username).catch(() => null);
     if (!channel) return res.sendStatus(404);
-    res.set('Content-Security-Policy', `default-src 'self'; script-src 'self' 'unsafe-inline' https://esm.sh; style-src 'self' 'unsafe-inline'; img-src 'self' https: data: blob:; media-src 'self' blob:; connect-src 'self' wss: https://esm.sh; frame-ancestors ${(await frameSites()).join(' ')}; base-uri 'none'; form-action 'none'`);
+    res.set('Content-Security-Policy', `default-src 'self'; script-src 'self' 'unsafe-inline' https://esm.sh https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; img-src 'self' https: data: blob:; media-src 'self' blob:; connect-src 'self' wss: https://esm.sh; frame-ancestors ${(await frameSites()).join(' ')}; base-uri 'none'; form-action 'none'`);
     res.set('Cache-Control', 'no-store').set('X-Robots-Tag', 'noindex').type('html').send(html(await frameSites()));
 }
 module.exports = { page, frameSites, html, FALLBACK_SITES };
