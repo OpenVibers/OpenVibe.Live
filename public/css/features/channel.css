@@ -2123,7 +2123,7 @@ html[data-ov-motion=off] #page-channel .ch-tab-panel{scroll-margin-top: calc(var
     /* Folded: the round chat button in the corner brings the sheet back. */
     body:has(#page-channel.active.ch-is-live) .ch-chat-reopen:not([hidden]) { width: 56px; height: 56px; padding: 0; gap: 0; justify-content: center; border-radius: 50%; }
     body:has(#page-channel.active.ch-is-live) .ch-chat-reopen span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
-    body:has(#page-channel.active.ch-is-live) .ch-chat-reopen :is(.fa-comments, .ovg) { font-size: 22px; width: 22px; height: 22px; }
+    body:has(#page-channel.active.ch-is-live) .ch-chat-reopen :is(.fa-comments, svg) { font-size: 22px; width: 22px; height: 22px; }
     body:has(#page-channel.active.ch-is-live) .ch-chat-reopen .fa-angles-left { display: none !important; }
 
     /* The channel line, folded: who, live now and the title, with its actions; a tap on it (the chevron) opens the
@@ -2137,3 +2137,49 @@ html[data-ov-motion=off] #page-channel .ch-tab-panel{scroll-margin-top: calc(var
     #page-channel.ch-is-live .chat-sidebar .cgw-goal { height: 32px; }
     #page-channel.ch-is-live .chat-sidebar .cgw-track .cgw-goal { margin-bottom: 4px; }
 }
+
+/* ── A section's head, compact (ask 355, 2026-11-11: "buttons need to be moved to where the title bar is … the filters
+   need to use icons … smaller, compact … button icons with nice custom animations"). The count sits beside the
+   heading; the tools are 36 px icon buttons (40 on a touch screen) in the same row, at every width: filter and order
+   carry the native picker over the icon (a phone opens its own list), then select, OpenVibe.Video, and View all. ─── */
+#page-channel .ch-sec-h { display: flex; align-items: baseline; gap: 8px; }
+#page-channel .ch-sec-n { font-size: .78rem; font-weight: 700; color: var(--text-muted, var(--text-secondary)); font-variant-numeric: tabular-nums; letter-spacing: 0; }
+#page-channel .ch-sec-n[hidden] { display: none; }
+#page-channel .ch-panel-bar { gap: 4px; }
+#page-channel .ch-panel-bar > .ch-vods-filter-bar { display: inline-flex; gap: 4px; margin: 0; }
+#page-channel .ch-ib {
+    position: relative; display: inline-grid; place-items: center; flex: none; width: 36px; height: 36px; min-height: 0; padding: 0;
+    border: 1px solid transparent; border-radius: 10px; background: color-mix(in srgb, var(--text-primary, #fff) 6%, transparent);
+    color: var(--text-secondary); cursor: pointer; text-decoration: none; font-size: .95rem;
+    transition: background-color var(--ov-dur-1, .12s) var(--ov-ease-out, ease), color var(--ov-dur-1, .12s), border-color var(--ov-dur-1, .12s), transform var(--ov-dur-1, .12s) var(--ov-ease-out, ease);
+}
+#page-channel .ch-ib:hover { color: var(--text-primary); background: color-mix(in srgb, var(--text-primary, #fff) 11%, transparent); }
+#page-channel .ch-ib:active { transform: scale(.9); }
+#page-channel .ch-ib:focus-visible, #page-channel .ch-ib:has(select:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
+#page-channel .ch-ib > :is(i, svg) { transition: transform var(--ov-dur-2, .2s) var(--ov-ease-out, cubic-bezier(.22,1,.36,1)); pointer-events: none; }
+#page-channel .ch-ib:hover > :is(i, svg) { transform: translateY(-1px); }
+#page-channel .ch-view-all.ch-ib:hover > :is(i, svg) { transform: scale(1.12); }
+#page-channel .ch-ib .sel-all-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+/* The picker over the icon: the whole button is the select, invisible, so the platform's own list opens. */
+#page-channel .ch-ib-pick select { position: absolute; inset: 0; width: 100%; height: 100%; min-height: 0; margin: 0; padding: 0; border: 0; opacity: 0; cursor: pointer; font-size: 16px; -webkit-appearance: none; appearance: none; }
+#page-channel .ch-ib-pick.is-on { color: var(--accent-light, var(--accent)); background: color-mix(in srgb, var(--accent) 16%, transparent); }
+#page-channel .ch-ib-pick.is-on::after { content: ""; position: absolute; top: 6px; right: 6px; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 2px var(--bg-primary); }
+#page-channel .ch-ib-pick[data-order="views"] > :is(i, svg), #page-channel .ch-ib-pick[data-order="peak_viewers"] > :is(i, svg) { color: var(--accent-light, var(--accent)); }
+@media (hover: none) { #page-channel .ch-ib { width: 40px; height: 40px; } }
+@media (max-width: 600px) {
+    /* The tools stay in the heading's row: they are icons now. */
+    #page-channel :is(#ch-panel-videos, #ch-panel-clips, #ch-panel-clips-taken, #ch-panel-pastes) { grid-template-columns: minmax(0, 1fr) auto; }
+    #page-channel :is(#ch-panel-videos, #ch-panel-clips, #ch-panel-clips-taken, #ch-panel-pastes) > .ch-panel-bar { grid-column: 2; grid-row: 1; justify-content: flex-end; }
+    #page-channel .ch-view-all.ch-ib { min-height: 0; }
+}
+
+/* A recording in progress: the stream's own picture as a live card (style.css .stream-card.is-live), a Recording pill
+   whose dot breathes, the clock that runs, and a play mark on hover. */
+#page-channel .ch-rec-card { border-width: 1px; }
+#page-channel .ch-rec-pill { position: absolute; top: 8px; left: 8px; z-index: 2; display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 9px 0 8px; border-radius: 999px; background: var(--live-red, #e5484d); color: #fff; font-size: .7rem; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
+#page-channel .ch-rec-dot { width: 7px; height: 7px; border-radius: 50%; background: #fff; animation: chRecBreathe 1.6s var(--ov-ease-in-out, ease-in-out) infinite; }
+@keyframes chRecBreathe { 50% { opacity: .35; transform: scale(.8); } }
+html[data-ov-motion="off"] #page-channel .ch-rec-dot { animation: none; }
+#page-channel .ch-rec-time { font-variant-numeric: tabular-nums; }
+#page-channel .ch-rec-watch { position: absolute; inset: 0; z-index: 1; display: grid; place-items: center; color: #fff; font-size: 1.6rem; opacity: 0; background: rgba(0, 0, 0, .28); transition: opacity var(--ov-dur-2, .2s); pointer-events: none; }
+#page-channel .ch-rec-card:hover .ch-rec-watch, #page-channel .ch-rec-card:focus-visible .ch-rec-watch { opacity: 1; }

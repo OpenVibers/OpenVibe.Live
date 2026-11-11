@@ -198,6 +198,70 @@ function _channelRail(grid, offset, count, total, loadNext, old = []) {
     grid._railObserver = observer;
     observer.observe(sentinel);
 }
+// A section's count beside its heading (ask 355: "View all (96)" was a button of its own).
+function _secCount(id, total) {
+    const n = document.getElementById(id);
+    if (!n) return;
+    const v = Number(total) || 0;
+    n.textContent = v > 999 ? `${Math.floor(v / 100) / 10}k` : String(v);
+    n.hidden = v <= 0;
+}
+
+// Recordings in progress (ask 355, "auto update how long they've been live … updating thumbnail … preview"): one clock
+// for every such card on the page, ticking each second while one is on screen, and the stream's picture fetched again
+// every 30 s (10 s while a pointer rests on it), only while visible and the tab is in front. Nothing runs without them.
+let _chRecTimer = 0, _chRecIO = null;
+const _chRecSeen = new Set();
+function _chRecSince(raw) {
+    const s = String(raw || '');
+    const t = Date.parse(/[zZ]|[+-]\d\d:?\d\d$/.test(s) ? s : `${s.replace(' ', 'T')}Z`);
+    return Number.isFinite(t) ? t : 0;
+}
+function _chRecTick() {
+    // The clock stops when no recording card is left on the page; a card off screen or a tab behind costs nothing.
+    if (!document.querySelector('.ch-rec-card')) { clearInterval(_chRecTimer); _chRecTimer = 0; _chRecSeen.clear(); return; }
+    const cards = [..._chRecSeen].filter((c) => c.isConnected);
+    if (!cards.length || document.hidden) return;
+    const now = Date.now();
+    for (const card of cards) {
+        const time = card.querySelector('.ch-rec-time[data-since] .ch-rec-t');
+        const since = time ? _chRecSince(time.closest('.ch-rec-time').dataset.since) : 0;
+        if (since) time.textContent = formatDuration(Math.max(0, Math.floor((now - since) / 1000)));
+        const every = card.matches(':hover') ? 10000 : 30000;
+        if (now - (card._ovPicAt || now) >= every && !card._ovPicBusy) _chRecPicture(card);
+        if (!card._ovPicAt) card._ovPicAt = now;
+    }
+}
+async function _chRecPicture(card) {
+    const id = card.dataset.streamId;
+    if (!id) return;
+    card._ovPicBusy = true;
+    try {
+        const s = await api(`/streams/${encodeURIComponent(id)}`);
+        const url = s && s.thumbnail_url;
+        const img = card.querySelector('.stream-card-thumb > img');
+        if (url && img && img.getAttribute('src') !== url) {
+            // The next picture loads off screen, then takes the old one's place without a blank frame.
+            const next = new Image();
+            next.onload = () => { img.src = url; img.style.display = ''; const ph = img.nextElementSibling; if (ph && ph.tagName === 'I') ph.style.display = 'none'; };
+            next.src = url;
+        }
+        if (s && !s.is_live) _chRecSeen.delete(card);
+    } catch { /* the next tick tries again */ }
+    card._ovPicAt = Date.now();
+    card._ovPicBusy = false;
+}
+function _chRecWatch(root) {
+    const cards = root ? [...root.querySelectorAll('.ch-rec-card')] : [];
+    if (!cards.length) return;
+    if (typeof IntersectionObserver === 'function') {
+        if (!_chRecIO) _chRecIO = new IntersectionObserver((entries) => entries.forEach((e) => { if (e.isIntersecting) _chRecSeen.add(e.target); else _chRecSeen.delete(e.target); }));
+        cards.forEach((c) => _chRecIO.observe(c));
+    } else cards.forEach((c) => _chRecSeen.add(c));
+    if (!_chRecTimer) _chRecTimer = setInterval(_chRecTick, 1000);
+    if (window.ov && ov.scope) ov.scope().onDispose(() => { clearInterval(_chRecTimer); _chRecTimer = 0; _chRecSeen.clear(); if (_chRecIO) { _chRecIO.disconnect(); _chRecIO = null; } });
+}
+
 // Channel VOD filter/sort state
 let currentChannelVodFilter = null;   // numeric managed stream id or null = all
 let currentChannelVodOrder = 'newest'; // newest|oldest|views|peak_viewers
@@ -222,14 +286,24 @@ async function renderChannelVodsSection(username, liveStreams, vods, meta = {}) 
         ].map(([val, label]) =>
             `<option value="${val}" ${currentChannelVodOrder === val ? 'selected' : ''}>${label}</option>`
         ).join('');
+        // Ask 355 (2026-11-11, "use icons, buttons"): two icon buttons in the head row, each with the native picker laid
+        // over it, so a phone opens its own list and a computer its own menu; the filter shows a dot while it filters.
+        const msName = (currentChannelManagedStreams.find((ms) => ms.id === currentChannelVodFilter) || {}).title;
+        const orderName = { newest: 'Newest first', oldest: 'Oldest first', views: 'Most views', peak_viewers: 'Peak viewers' }[currentChannelVodOrder] || 'Newest first';
         filterBar.innerHTML = `
-            <select class="ch-vods-filter-select" onchange="setChannelVodFilter(this.value ? parseInt(this.value) : null)">
-                <option value="" ${currentChannelVodFilter === null ? 'selected' : ''}>All streams</option>
-                ${msOptions}
-            </select>
-            <select class="ch-vods-filter-select" onchange="setChannelVodOrder(this.value)">
-                ${orderOptions}
-            </select>
+            <label class="ch-ib ch-ib-pick${currentChannelVodFilter !== null ? ' is-on' : ''}" title="${esc(currentChannelVodFilter !== null ? `Stream: ${msName || 'one stream'}` : 'All streams')}">
+                <i class="fa-solid fa-filter" aria-hidden="true"></i>
+                <select class="ch-vods-filter-select" data-ov-native aria-label="Which stream" onchange="setChannelVodFilter(this.value ? parseInt(this.value) : null)">
+                    <option value="" ${currentChannelVodFilter === null ? 'selected' : ''}>All streams</option>
+                    ${msOptions}
+                </select>
+            </label>
+            <label class="ch-ib ch-ib-pick" data-order="${esc(currentChannelVodOrder)}" title="${esc(orderName)}">
+                <i class="fa-solid ${currentChannelVodOrder === 'oldest' ? 'fa-arrow-down-short-wide' : 'fa-arrow-down-wide-short'}" aria-hidden="true"></i>
+                <select class="ch-vods-filter-select" data-ov-native aria-label="Order" onchange="setChannelVodOrder(this.value)">
+                    ${orderOptions}
+                </select>
+            </label>
         `;
         filterBar.style.display = '';
     } else if (filterBar) {
@@ -257,17 +331,22 @@ async function renderChannelVodsSection(username, liveStreams, vods, meta = {}) 
                 const liveVod = await api(`/vods/stream/${ls.id}/live`);
                 if (liveVod && liveVod.vod) {
                     const v = liveVod.vod;
+                    // Ask 355: a recording in progress shows the stream's own picture (the recording has none until it
+                    // ends), refreshed while it is on screen; its clock runs from the stream's start (_chRecWatch).
+                    const pic = ls.thumbnail_url || v.thumbnail_url;
+                    const bg = typeof _liveBg === 'function' ? _liveBg(pic) : '';
                     liveVodHtml += `
-                        <a class="stream-card" href="${videoHref('vod', v.id)}" onclick="return handleLinkClick(event, '${videoHref('vod', v.id)}')" style="border:2px solid var(--accent);position:relative">
+                        <a class="stream-card ch-rec-card is-live" data-stream-id="${esc(String(ls.id))}"${bg ? ` style="--live-bg:${esc(bg)}"` : ''} href="${videoHref('vod', v.id)}" onclick="return handleLinkClick(event, '${videoHref('vod', v.id)}')">
                             <div class="stream-card-thumb">
-                                ${thumbImg(v.thumbnail_url, 'fa-video', v.title, `/api/thumbnails/generate/vod/${v.id}`)}
+                                ${thumbImg(pic, 'fa-video', v.title, ls.thumbnail_url ? null : `/api/thumbnails/generate/vod/${v.id}`)}
                                 ${audioChip(v)}
-                                <span class="stream-card-nsfw" style="background:#e53e3e;animation:pulse 2s infinite">● RECORDING</span>
-                                <span class="stream-card-viewers"><i class="fa-solid fa-clock"></i> ${formatDuration(v.duration_seconds || 0)}</span>
+                                <span class="ch-rec-pill"><span class="ch-rec-dot" aria-hidden="true"></span>Recording</span>
+                                <span class="stream-card-viewers ch-rec-time"${ls.started_at ? ` data-since="${esc(ls.started_at)}"` : ''}><i class="fa-solid fa-clock" aria-hidden="true"></i> <span class="ch-rec-t">${formatDuration(v.duration_seconds || 0)}</span></span>
+                                <span class="ch-rec-watch" aria-hidden="true"><i class="fa-solid fa-play"></i></span>
                             </div>
                             <div class="stream-card-info">
                                 <div class="stream-card-title">${esc(v.title || 'Live Recording')}</div>
-                                <div class="stream-card-streamer muted">In progress — ${esc(ls.title || 'Live Stream')}</div>
+                                <div class="stream-card-streamer muted">Recording now · ${esc(ls.title || 'Live Stream')}</div>
                             </div>
                         </a>`;
                 }
@@ -299,8 +378,10 @@ async function renderChannelVodsSection(username, liveStreams, vods, meta = {}) 
     }
 
     _channelRail(vodsGrid, offset, vods.length, total, () => setChannelVodsPage(page + 1), oldCards);
+    _chRecWatch(vodsGrid);
     const all = document.getElementById('ch-vods-all');
-    if (all) { all.href = `/@${encodeURIComponent(username)}?section=videos`; all.textContent = `View all (${total})`; }
+    if (all) all.href = `/@${encodeURIComponent(username)}?section=videos`;
+    _secCount('ch-vods-n', total);
     document.getElementById('ch-vods-pagination').style.display = 'none';
     _selSyncAllBtns();
 }
@@ -462,7 +543,8 @@ function _renderClipsTakenGrid(username, data) {
     const page = Math.floor((data.offset || 0) / CLIPS_TAKEN_PAGE_SIZE) + 1;
     _channelRail(grid, data.offset || 0, clips.length, data.total || 0, () => setClipsTakenPage(page + 1), oldCards);
     const all = document.getElementById('ch-clips-taken-all');
-    if (all) { all.href = `/@${encodeURIComponent(username)}?section=clips-taken`; all.textContent = `View all (${data.total || 0})`; }
+    if (all) all.href = `/@${encodeURIComponent(username)}?section=clips-taken`;
+    _secCount('ch-clips-taken-n', data.total || 0);
     document.getElementById('ch-clips-pagination').style.display = 'none';
     _selSyncAllBtns();
 }
@@ -510,7 +592,8 @@ function renderChannelClipsOfSection(username, clips, meta = {}) {
 
     _channelRail(grid, offset, clips.length, total, () => setChannelClipsOfPage(page + 1), oldCards);
     const all = document.getElementById('ch-clips-of-all');
-    if (all) { all.href = `/@${encodeURIComponent(username)}?section=clips`; all.textContent = `View all (${total})`; }
+    if (all) all.href = `/@${encodeURIComponent(username)}?section=clips`;
+    _secCount('ch-clips-of-n', total);
     document.getElementById('ch-clips-of-pagination').style.display = 'none';
 }
 
@@ -650,7 +733,8 @@ async function loadChannelPastes(username = currentChannelUsername, { append = f
         const total = Number(data.total) || pastes.length;
         _channelRail(grid, offset, pastes.length, total, () => loadChannelPastes(username, { append: true }), oldCards);
         const all = document.getElementById('ch-pastes-all');
-        if (all) { all.href = `/@${encodeURIComponent(username)}?section=pastes`; all.textContent = `View all (${total})`; }
+        if (all) all.href = `/@${encodeURIComponent(username)}?section=pastes`;
+        _secCount('ch-pastes-n', total);
         if (pager) { pager.style.display = 'none'; pager.innerHTML = ''; }
         _selSyncAllBtns();
     } catch { /* silent */ }
