@@ -71,6 +71,8 @@ router.get('/day/:date', optionalAuth, async (req, res) => {
     try {
         const viewer = await viewerOf(req);
         const payload = await day.getDay(String(req.params.date || ''), { viewer, offset: req.query.offset, limit: req.query.limit });
+        // The AI Today card: the page's top card, written by the job (server/rundown/today.js) from today's takes.
+        try { payload.today = await require('./today').get(payload.date); } catch { payload.today = null; }
         res.set('Cache-Control', viewer.userId ? 'private, no-store' : 'public, max-age=60, stale-while-revalidate=300');
         res.json(payload);
     } catch (err) { fail(res, err, 'Failed to load the day'); }

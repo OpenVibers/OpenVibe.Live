@@ -3788,7 +3788,7 @@ module.exports = {
     setVodAiOverview, setClipAiOverview, setVodTranscript, setClipTranscript, getStreamMemoriesInRange,
     getVodsNeedingOverview, getClipsNeedingOverview, getVodsNeedingTimeline, getVodsNeedingTranscript, getClipsNeedingTranscript, getMediaNeedingAiAnalysis,
     setVodTranscriptStatus, setClipTranscriptStatus, bumpVodTranscriptAttempt, bumpClipTranscriptAttempt,
-    cleanupMalformedAiText, publicMemoryText: _publicMemoryText, recordAiUsage, getAiCostToday, getAiCostTodayForUser, getAiUsageSummary,
+    cleanupMalformedAiText, publicMemoryText: _publicMemoryText, plainProse: _plainProse, recordAiUsage, getAiCostToday, getAiCostTodayForUser, getAiUsageSummary,
     getStreamMemoriesByUser, countStreamMemoriesByUser, getStreamTranscriptSegments,
     addTimelineEvents, getTimeline, getTimelineText, getTimelineCoverage, linkTimelineToVod, getTimelineByVod, getTimelineVodId,
     upsertStreamerOverview, getStreamerOverview, shapeStoredStreamerOverviewShorts, getAllStreamerOverviews, getStreamersNeedingOverview,

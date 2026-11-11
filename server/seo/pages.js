@@ -524,7 +524,12 @@ async function _rundownMeta(p, query, page = 1) {
         const desc = clean(`Topics, takes and episodes from OpenVibe.Live streams, in the streamers' own words.${topics.length ? ` Trending: ${topics.slice(0, 4).join(', ')}.` : ''}`, 200);
         const takes = feed && feed.takes || [];
         const episodes = feed && feed.episodes || [];
-        const body = feed ? `<header class="rd-mast"><h1 class="rd-title">The Rundown</h1><p class="rd-tagline">${esc(desc)}</p></header><main class="rd-ssr-feed"><h2 class="rd-h2">Latest takes</h2>${takes.map((s) => `<article class="rd-card rd-take"><p class="rd-meta">${esc(s.user && (s.user.display_name || s.user.username) || '')} · ${esc(s.topic && s.topic.title || '')}</p><h3 class="rd-h3">${esc(s.title)}</h3><p class="rd-what">${esc((s.quotes && s.quotes[0] && s.quotes[0].text) || s.what || '')}</p></article>`).join('')}<h2 class="rd-h2">Episodes</h2>${episodes.map((e) => `<article class="rd-card rd-episode"><h3 class="rd-h3"><a href="/rundown/e/${Number(e.stream_id)}">${esc(e.title)}</a></h3><p class="rd-logline">${esc(e.logline || '')}</p></article>`).join('')}${feed.next_page ? `<a class="rd-next" rel="next" href="/rundown?page=${feed.next_page}">More takes and episodes</a>` : ''}</main>` : null;
+        // The AI Today card (server/rundown/today.js): the day in a few sentences, each highlight a link to its take.
+        let todayHtml = '';
+        if (page === 1) {
+            try { todayHtml = require('../rundown/today').ssrHtml(await require('../rundown/today').get(new Date().toISOString().slice(0, 10))); } catch { todayHtml = ''; }
+        }
+        const body = feed ? `<header class="rd-mast"><h1 class="rd-title">The Rundown</h1><p class="rd-tagline">${esc(desc)}</p></header>${todayHtml}<main class="rd-ssr-feed"><h2 class="rd-h2">Latest takes</h2>${takes.map((s) => `<article class="rd-card rd-take"><p class="rd-meta">${esc(s.user && (s.user.display_name || s.user.username) || '')} · ${esc(s.topic && s.topic.title || '')}</p><h3 class="rd-h3">${esc(s.title)}</h3><p class="rd-what">${esc((s.quotes && s.quotes[0] && s.quotes[0].text) || s.what || '')}</p></article>`).join('')}<h2 class="rd-h2">Episodes</h2>${episodes.map((e) => `<article class="rd-card rd-episode"><h3 class="rd-h3"><a href="/rundown/e/${Number(e.stream_id)}">${esc(e.title)}</a></h3><p class="rd-logline">${esc(e.logline || '')}</p></article>`).join('')}${feed.next_page ? `<a class="rd-next" rel="next" href="/rundown?page=${feed.next_page}">More takes and episodes</a>` : ''}</main>` : null;
         return { ...base, title: `${title} | ${SITE_NAME}`, description: desc, canonicalPath: page > 1 ? `/rundown?page=${page}` : '/rundown', robots: 'index,follow', rundownBody: body,
             jsonLd: [seo.jsonLd.webPage({ type: 'CollectionPage', name: title, url: abs('/rundown'), description: desc }),
                 ...(takes.length ? [seo.jsonLd.itemList('Latest takes', takes.map((s) => ({ name: clean(s.title, 110), url: abs(`/rundown/e/${s.stream_id}#rd-take-${s.id}`) })))] : []),
@@ -961,7 +966,11 @@ function render(meta, urlPath) {
     let html = _base();
     if (!html) return null;
     html = assets.renderRoute(html, urlPath || meta.canonicalPath || '/');
-    if (meta.rundownBody) html = html.replace('<div class="loading-spinner"><i class="fa-solid fa-circle-notch fa-spin"></i></div>', meta.rundownBody);
+    if (meta.rundownBody) {
+        // The fragment's loading state is the shared spinner (an ov-mark since the 2026-11 loading look); replace the
+        // one inside #page-rundown only, since the shell holds the same spinner for other pages.
+        html = html.replace(/(<section id="page-rundown"[^>]*>[\s\S]*?)<div class="loading-spinner"><span class="ov-mark"[^>]*><\/span><\/div>/, (m, pre) => pre + meta.rundownBody);
+    }
 
     // The channel page's Ask your agent chip (openvibe-shared 4.135.0, plan Z3): the channel fragment leaves a slot,
     // filled here where the channel and its stream are known. kit.askAgent escapes the text; other routes have no slot.

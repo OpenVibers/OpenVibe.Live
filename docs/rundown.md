@@ -102,6 +102,7 @@ The streamer can delete their own items. Each delete asks first, in the page (a 
 
 - `/rundown`, the front page:
   - the masthead (date, counts) and the "On air now" strip, showing who is live and what they are talking about;
+  - **Today's rundown:** one AI-written card from today's takes: a headline, the day in a few sentences and up to three highlights, each linking to the take it came from (rewritten at most every 30 minutes while new takes arrive);
   - **Top take:** the best take of the last day (else the week), its quote set large;
   - **Stream by stream:** each stream the desk wrote about, newest first, with its episode title and logline (or, live, a Live now tag) and its 3 best takes on a timeline: the moment's timestamp (▶ to the VOD), the topic, the headline, the quote (else what they talked about), the desk's quip and reactions. "Read the episode" opens the rest. 8 streams a page (`/api/rundown/streams?before=`);
   - **Trending topics** this week (most streamers, then most takes);
@@ -123,10 +124,23 @@ The streamer can delete their own items. Each delete asks first, in the page (a 
 `GET /api/rundown/day/:date` (also `today`) returns an AI Today's UTC day summary and a paginated, chronological
 timeline. Query `offset` (default `0`) and `limit` (default `50`, maximum `100`) to page the timeline. The response
 uses the same public audience rules as the Rundown pages; signed-in readers may also see their own non-public items.
-The summary is owner-switch controlled by the owner-only site setting `ai_rundown_day_summary_enabled` (default off), is cached per UTC day, refreshes
-at most hourly while that day is live and remains fixed after it ends. Days with fewer than three visible takes return
-`summary.status: "too_few_takes"`. Each generated sentence carries `take_ids`; sentences without valid take citations
-or which fail the existing explicit-content check are omitted; each sentence also includes `channel_ids` for channel links.
+
+`today` is the day's card (server/rundown/today.js): a `headline`, a `summary` of two to four sentences and up to
+three `highlights`, each `{ take_id, line, stream_id, username, topic, url }` where `url` is the take's anchor on its
+episode page (`/rundown/e/<streamId>#rd-take-<takeId>`). The card is written by OpenVibe.AI's `live.rundown.today`
+workflow from up to 30 of the day's takes (sampled across the day when there are more), and is stored per UTC day.
+The job checks every 5 minutes, writes the first card once the day has a visible take, and after that rewrites
+it at most every 30 minutes and only when a take newer than the stored card has arrived; it starts nothing under
+`LIVE_DRILL`. The stored words go through the same public-text filter as the rest of the Rundown and a card that
+fails the explicit-content check is never stored or served. `null` means no card yet (too few takes, AI off, or the
+job has not run). The page's server render shows the same card (kit markup, `server/rundown/today.js:ssrHtml`).
+
+The older `summary` (sentences with citations) is owner-switch controlled by the owner-only site setting
+`ai_rundown_day_summary_enabled` (default off), is cached per UTC day, refreshes at most hourly while that day is
+live and remains fixed after it ends. Days with fewer than three visible takes return `summary.status:
+"too_few_takes"`. Each generated sentence carries `take_ids`; sentences without valid take citations or which fail
+the existing explicit-content check are omitted; each sentence also includes `channel_ids` for channel links. When
+`today` is ready the page draws that card in place of the sentences; the sentences remain as the fallback.
 
 Example response:
 
