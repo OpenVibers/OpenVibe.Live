@@ -38,7 +38,7 @@ function startCommunityStub({ people = {} } = {}) {
             reply_count: replyCount(c), attachments: deleted ? [] : (c.attachments || []), created_at: c.created_at, updated_at: c.edited_at || c.created_at, edited_at: deleted ? null : c.edited_at,
             can_edit: !deleted && !!subject && c.author === subject, can_delete: !deleted && !!subject && c.author === subject,
         };
-        if (withReplies) out.replies = comments.filter((r) => r.parent_id === c.id && !r.deleted_at).sort((a, b) => a.id - b.id).slice(0, 20).map((r) => shapeComment(r, subject, false));
+        if (withReplies) out.replies = comments.filter((r) => r.parent_id === c.id && !r.deleted_at).sort((a, b) => a.id - b.id).slice(0, 2).map((r) => shapeComment(r, subject, false));
         return out;
     }
 
