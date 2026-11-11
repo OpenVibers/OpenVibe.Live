@@ -37,7 +37,8 @@
 
     const PANEL_MODES = ['panel', 'overlay', 'compact'];
     // Where a viewer puts the controls: over the video, a row under it (Bot's compact view), the full panel, or hidden.
-    const VIEW_MODES = ['overlay', 'compact', 'panel', 'hidden'];
+    // 'window' (ask 356, 2026-11-11: "can be popped out … and resized"): the full panel in the shared window (ov-window.js).
+    const VIEW_MODES = ['overlay', 'compact', 'panel', 'window', 'hidden'];
     const CHOICE_KEY = 'ov:live:bot-controls';
 
     function embedSrc(botEmbed, mode = null) {
@@ -109,7 +110,10 @@
         return phone ? 'overlay' : 'panel';
     }
     function effectiveMode(botEmbed, stored, opts) {
-        return validView(stored) || defaultMode(botEmbed, opts);
+        const v = validView(stored);
+        // A phone has no floating windows: its full panel is the Robot tab.
+        if (v === 'window' && opts && opts.phone) return 'panel';
+        return v || defaultMode(botEmbed, opts);
     }
     function readChoice(win, channel, robotId) {
         try {
@@ -211,6 +215,8 @@
             // The row (Bot's compact view) is about 120 px: it keeps its own height, the panel at least MIN_HEIGHT.
             const clamped = Math.max(mode === 'compact' ? COMPACT_MIN : MIN_HEIGHT, Math.min(MAX_HEIGHT, Math.round(height)));
             try {
+                // In a window the window's size is the frame's: the panel scrolls inside it.
+                if (typeof frame.closest === 'function' && frame.closest('.ovw')) return;
                 const card = typeof frame.closest === 'function' ? frame.closest('#ch-bot-container') : null;
                 const host = card || frame;
                 host.style.height = `${clamped}px`;

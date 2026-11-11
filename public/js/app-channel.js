@@ -292,14 +292,14 @@ async function renderChannelVodsSection(username, liveStreams, vods, meta = {}) 
         const orderName = { newest: 'Newest first', oldest: 'Oldest first', views: 'Most views', peak_viewers: 'Peak viewers' }[currentChannelVodOrder] || 'Newest first';
         filterBar.innerHTML = `
             <label class="ch-ib ch-ib-pick${currentChannelVodFilter !== null ? ' is-on' : ''}" title="${esc(currentChannelVodFilter !== null ? `Stream: ${msName || 'one stream'}` : 'All streams')}">
-                <i class="fa-solid fa-filter" aria-hidden="true"></i>
+                <i class="fa-solid fa-filter" aria-hidden="true"></i><span class="ch-ib-t">${esc(currentChannelVodFilter !== null ? (msName || 'One stream') : 'All streams')}</span><i class="fa-solid fa-chevron-down ch-ib-caret" aria-hidden="true"></i>
                 <select class="ch-vods-filter-select" data-ov-native aria-label="Which stream" onchange="setChannelVodFilter(this.value ? parseInt(this.value) : null)">
                     <option value="" ${currentChannelVodFilter === null ? 'selected' : ''}>All streams</option>
                     ${msOptions}
                 </select>
             </label>
             <label class="ch-ib ch-ib-pick" data-order="${esc(currentChannelVodOrder)}" title="${esc(orderName)}">
-                <i class="fa-solid ${currentChannelVodOrder === 'oldest' ? 'fa-arrow-down-short-wide' : 'fa-arrow-down-wide-short'}" aria-hidden="true"></i>
+                <i class="fa-solid ${{ oldest: 'fa-arrow-down-short-wide', views: 'fa-eye', peak_viewers: 'fa-users' }[currentChannelVodOrder] || 'fa-arrow-down-wide-short'}" aria-hidden="true"></i><span class="ch-ib-t">${esc(orderName)}</span><i class="fa-solid fa-chevron-down ch-ib-caret" aria-hidden="true"></i>
                 <select class="ch-vods-filter-select" data-ov-native aria-label="Order" onchange="setChannelVodOrder(this.value)">
                     ${orderOptions}
                 </select>
@@ -3075,7 +3075,41 @@ function _applyBotEmbed(botEmbed, username) {
         }
         return frame;
     }
-    const MODE_NAME = { overlay: 'on the video', compact: 'a row under the video', panel: 'the full panel', hidden: 'hidden' };
+    const MODE_NAME = { overlay: 'on the video', compact: 'a row under the video', panel: 'the full panel', window: 'in a window', hidden: 'hidden' };
+    // The panel in the shared window (ov-window.js beside the navbar's scripts): moved by its head, sized by its corner,
+    // its place and size kept per robot. Closing it puts the panel back under the video.
+    function closeWindow() {
+        const w = _applyBotEmbed.win;
+        if (!w) return;
+        _applyBotEmbed.win = null;
+        _applyBotEmbed.closingWin = true;
+        try { w.close(); } catch { /* already gone */ }
+        _applyBotEmbed.closingWin = false;
+    }
+    function withWindow(fn) {
+        if (window.OVWindow) return fn();
+        let sc = document.getElementById('ov-window-script');
+        if (!sc) { sc = document.createElement('script'); sc.id = 'ov-window-script'; sc.async = true; sc.src = '/shared/ov-window.js'; document.head.appendChild(sc); }
+        sc.addEventListener('load', () => { if (window.OVWindow) fn(); }, { once: true });
+    }
+    function openWindow() {
+        withWindow(() => {
+            if (_applyBotEmbed.mode !== 'window' || _applyBotEmbed.win) return;
+            const wrap = document.createElement('div');
+            wrap.className = 'ch-bot-win';
+            const w = window.OVWindow.open({
+                // It grows out of the switch's Window button (on a page load too, where nothing was pressed).
+                from: (cardSwitch && cardSwitch.querySelector && cardSwitch.querySelector('[data-bot-mode="window"]')) || undefined,
+                id: `ov-bot-${robotId}`, kind: 'panel', title: 'Robot', label: 'Robot controls', width: 440, body: wrap,
+                resizable: true, minWidth: 300, minHeight: 240,
+                onClose: () => { if (!_applyBotEmbed.closingWin && _applyBotEmbed.mode === 'window') { _applyBotEmbed.win = null; _applyBotEmbed.choose('panel'); } },
+            });
+            if (w.body) w.body.style.padding = '0';
+            if (w.el && !w.el.style.height) w.el.style.height = '540px';
+            _applyBotEmbed.win = w;
+            _applyBotEmbed.frame = mountIn(wrap, 'panel', false);
+        });
+    }
     // The page knows the place (phone layout in channel.css) and, for the full panel on a phone, which tab is open.
     // The Robot tab is open while the full panel is the place and the person has not gone back to Chat; any other place
     // keeps the sheet on Chat, and the Robot tab offers the panel.
@@ -3128,7 +3162,14 @@ function _applyBotEmbed(botEmbed, username) {
         if (switchWrap) switchWrap.hidden = !robotId;
         if (cardBar) cardBar.hidden = !robotId;
         if (openLink && botEmbed && typeof botEmbed.url === 'string') openLink.href = botEmbed.url.replace(/\/embed$/, '');
-        if (mode === 'overlay') {
+        if (mode !== 'window') closeWindow();
+        if (mode === 'window') {
+            stopFrame();
+            if (slot) { clear(slot); slot.hidden = true; }
+            clear(box); box.hidden = true;
+            if (section) section.hidden = false;
+            openWindow();
+        } else if (mode === 'overlay') {
             if (slot) {
                 slot.hidden = false;
                 _applyBotEmbed.frame = mountIn(slot, 'overlay', false);
@@ -3237,6 +3278,7 @@ function _applyBotEmbed(botEmbed, username) {
         render();
         if (window.ov) ov.scope().onDispose(() => {
             stopFrame();
+            closeWindow();
             clear(slot);
             pageClasses(null);
             if (typeof BotEmbed !== 'undefined') BotEmbed.mount(box, null);
