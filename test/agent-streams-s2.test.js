@@ -71,6 +71,7 @@ async function check(name, fn) {
     app.use(express.json());
     app.use((req, res, next) => { req.user = { 1: ann, 2: bob }[req.get('x-test-user')] || null; next(); });
     app.use('/api/streams/agent', require('../server/agent-streams/routes'));
+    app.use('/api/vods', require('../server/media-proxy/vods'));
     const server = await new Promise((ok) => { const s = http.createServer(app).listen(0, '127.0.0.1', () => ok(s)); });
     const base = `http://127.0.0.1:${server.address().port}`;
     const call = async (method, url, { as = 1, body, headers = {} } = {}) => {
@@ -193,6 +194,36 @@ async function check(name, fn) {
         assert.deepStrictEqual(r.data.chapters.map((c) => c.at), [60, 180]);
         assert.deepStrictEqual(r.data.chapters.map((c) => c.title), ['Install dependencies', 'Run the tests']);
         assert.strictEqual(r.data.vod_id, '512');
+    });
+    await check('the VOD step feed keeps the recording visibility and returns playback offsets', async () => {
+        const media = require('../server/media-client');
+        const original = media.getVod;
+        media.getVod = async () => ({ id: 512, user_id: ann.id, visibility: 'public', duration_seconds: 300 });
+        try {
+            const r = await call('GET', '/api/vods/512/agent-steps', { as: 2 });
+            assert.strictEqual(r.status, 200, JSON.stringify(r.data));
+            assert.deepStrictEqual(r.data.steps.filter((s) => s.status === 'started').map((s) => Math.round(s.offset_seconds)), [60, 180]);
+            media.getVod = async () => ({ id: 512, user_id: ann.id, visibility: 'private', duration_seconds: 300 });
+            assert.strictEqual((await call('GET', '/api/vods/512/agent-steps', { as: 2 })).status, 404);
+        } finally { media.getVod = original; }
+    });
+    await check('Chat receives the stream visibility and rotated unlisted link hash', async () => {
+        const chat = require('../server/chat/chat-client');
+        const available = chat.available;
+        const send = chat.agentRoom;
+        const delivered = [];
+        chat.available = () => true;
+        chat.agentRoom = async (body) => { delivered.push(body); return { ok: true }; };
+        try {
+            const row = await streamOf('private', 'Chat visibility');
+            const unlisted = await service.setVisibility(row, 'unlisted');
+            assert.ok(delivered.some((x) => x.visibility === 'unlisted' && x.link_secret_hash === unlisted.unlisted_secret_hash));
+            const old = unlisted.unlisted_secret_hash;
+            await service.rotateLink(unlisted);
+            assert.ok(delivered.some((x) => x.visibility === 'unlisted' && x.link_secret_hash !== old));
+            await service.setVisibility(await service.getByManagedStreamId(row.managed_stream_id), 'private');
+            assert.ok(delivered.some((x) => x.visibility === 'private' && x.link_secret_hash === null));
+        } finally { chat.available = available; chat.agentRoom = send; }
     });
     await check('a failed step and the final passed step can be clipped, through Media', async () => {
         const media = require('../server/media-client');
