@@ -2,8 +2,8 @@
  * OpenVibe.Live — live-stream thumbnails (Live-local, ephemeral)
  *
  * VOD/clip/paste thumbnails moved to OpenVibe.Media, but LIVE stream thumbnails
- * are transient live-state (refreshed every ~2 min, deleted an hour after the
- * stream ends), so they stay local: captured here (client canvas POST, RTMP FLV
+ * are transient live-state (refreshed every ~30 s while watched, deleted an hour
+ * after the stream ends), so they stay local: captured here (client canvas POST, RTMP FLV
  * grab, or JSMPEG relay tap), written to data/live-thumbs/, and served from
  * /api/thumbnails/stream-<id>-<ts>.jpg by the thumbnails proxy router.
  *
@@ -21,7 +21,7 @@ const db = require('../db/database');
 const THUMB_DIR = require('../paths').dir('LIVE_THUMBS_PATH', 'live-thumbs');
 const THUMB_WIDTH = 640;
 const THUMB_QUALITY = 6;
-const LIVE_THUMB_MIN_INTERVAL_MS = 120000;
+const LIVE_THUMB_MIN_INTERVAL_MS = 30000;
 const CLIENT_THUMB_WRITE_MIN_INTERVAL_MS = 15000;
 const activeLiveThumbnailJobs = new Set();
 

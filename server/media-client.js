@@ -342,6 +342,17 @@ async function generateThumbnail(kind, id, opts = {}) {
     return await request('POST', `/thumbnails/${kind}/${id}`, opts);
 }
 
+/**
+ * Upload an image as a VOD/clip's thumbnail (Media's POST /thumbnails/:kind/:id with a multipart `thumbnail`).
+ * Live uses it for the one picture Media cannot take: the last frame of the live stream a recording came from
+ * (server/media-proxy/live-picture-fallback.js), still on disk when the recording finalizes.
+ */
+async function uploadThumbnail(kind, id, buffer, { contentType = 'image/jpeg' } = {}) {
+    const form = new FormData();
+    form.append('thumbnail', new Blob([buffer], { type: contentType }), 'thumbnail.jpg');
+    return await request('POST', `/thumbnails/${kind}/${id}`, { body: form, timeoutMs: 30000 });
+}
+
 // ── Public URL builders (MEDIA_PUBLIC_URL) ───────────────────────────────────
 
 function vodPlaybackUrl(id) { return `${MEDIA_PUBLIC_URL}/v/${id}`; }
@@ -371,6 +382,9 @@ function setPlaybackUrls(row, kind) {
     const file = kind === 'clip' ? clipUrl(row.id) : vodPlaybackUrl(row.id);
     row.file_url = row.file_url || publicUrl(row.playback_url) || file;
     if (row.hls_url) row.hls_url = publicUrl(row.hls_url);
+    // The hover preview (preview.make): Media-relative /p/<name> on the same public origin as the thumbnails.
+    if (row.preview_url) row.preview_url = publicUrl(row.preview_url);
+    if (row.preview_webm_url) row.preview_webm_url = publicUrl(row.preview_webm_url);
     row.playback_url = row.hls_url || row.file_url;
     return row;
 }

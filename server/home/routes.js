@@ -275,6 +275,8 @@ router.get('/featured', async (req, res) => {
     res.set('Cache-Control', 'public, max-age=10');
     try {
         const live = (await db.getLiveStreams() || []).filter((s) => !s.is_nsfw);
+        require('../media-proxy/live-preview').attach(live);
+        require('../streaming/live-thumb-cadence').markListed(live.map((x) => x.id));
         if (!live.length) return res.json({ stream: null, count: 0 });
         let idx = Math.floor(Date.now() / FEATURED_ROTATE_MS) % live.length;
         const not = parseInt(req.query.not, 10);

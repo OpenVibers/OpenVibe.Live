@@ -273,6 +273,9 @@ router.get('/channel/:username', optionalAuth, async (req, res) => {
 
         // Get live streams (may be multiple with different protocols)
         const liveStreams = await db.getLiveStreamsByUserId(channel.user_id) || [];
+        // The live card's hover preview: Media's DVR playlist of the recording in progress (media-proxy/live-preview.js).
+        require('../media-proxy/live-preview').attach(liveStreams);
+        require('./live-thumb-cadence').markListed(liveStreams.map((x) => x.id));
         for (const liveStream of liveStreams) {
             // Use managed stream key from the JOIN, else fall back to user key
             const lsKey = liveStream.managed_stream_key
@@ -735,6 +738,9 @@ router.get('/channel/:username/live', async (req, res) => {
         if (!channel) return res.status(404).json({ error: 'Channel not found' });
 
         const liveStreams = await db.getLiveStreamsByUserId(channel.user_id) || [];
+        // The live card's hover preview: Media's DVR playlist of the recording in progress (media-proxy/live-preview.js).
+        require('../media-proxy/live-preview').attach(liveStreams);
+        require('./live-thumb-cadence').markListed(liveStreams.map((x) => x.id));
         for (const liveStream of liveStreams) {
             // Use managed stream key from the JOIN, else fall back to user key
             const lsKey = liveStream.managed_stream_key
@@ -1198,6 +1204,8 @@ router.get('/', optionalAuth, async (req, res) => {
         // viewer's prefs say. Every other surface shows it with its chips; this is the only place a label hides.
         let streams = (await db.getLiveStreams()).filter((s) => !(s.managed_stream_id && insidePip.has(Number(s.managed_stream_id)))
             && !contentLabels.labelsOf(s).labels.includes('18+'));
+        require('../media-proxy/live-preview').attach(streams);
+        require('./live-thumb-cadence').markListed(streams.map((x) => x.id));
         // Filters narrow the list in place, so its order (viewer_count DESC, started_at DESC) is untouched.
         // A stream matches on its own tags or the AI's, without carrying either into the response.
         if (wantedTags.length) {
