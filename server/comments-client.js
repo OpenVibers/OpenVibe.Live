@@ -53,10 +53,11 @@ async function call(method, path, { body, act = {}, ip = null, timeoutMs = 5000,
     if (act.subject) headers['X-OV-Subject'] = act.subject;
     if (act.staff) headers['X-OV-Staff'] = '1';
     if (ip) headers['X-Forwarded-For'] = String(ip);
-    if (body !== undefined) headers['Content-Type'] = 'application/json';
+    const multipart = body instanceof FormData;
+    if (body !== undefined && !multipart) headers['Content-Type'] = 'application/json';
     let res;
     try {
-        res = await fetch(`${COMMUNITY_URL()}/api/v1/comments${path}`, { method, headers, body: body !== undefined ? JSON.stringify(body) : undefined, signal: AbortSignal.timeout(timeoutMs) });
+        res = await fetch(`${COMMUNITY_URL()}/api/v1/comments${path}`, { method, headers, body: multipart ? body : body !== undefined ? JSON.stringify(body) : undefined, signal: AbortSignal.timeout(timeoutMs) });
     } catch (err) {
         console.warn(`[Comments] Community unreachable (${method} ${path}): ${err.message}`);
         throw unavailable('unreachable');
@@ -114,8 +115,15 @@ async function readThread(threadId, { subject = null, timeoutMs, ip, ...q } = {}
     return await call('GET', `/threads/${encodeURIComponent(threadId)}${qs ? `?${qs}` : ''}`, { act: { subject }, timeoutMs, ip });
 }
 
-async function addComment(threadId, subject, { message, parentId = null }, { ip } = {}) {
-    return await call('POST', `/threads/${encodeURIComponent(threadId)}/comments`, { act: { subject }, ip, body: { message, ...(parentId ? { parent_id: parentId } : {}) } });
+async function addComment(threadId, subject, { message, parentId = null, attachments = [] }, { ip } = {}) {
+    return await call('POST', `/threads/${encodeURIComponent(threadId)}/comments`, { act: { subject }, ip, body: { message, ...(parentId ? { parent_id: parentId } : {}), ...(attachments.length ? { attachments } : {}) } });
+}
+
+async function uploadAttachment(ref, subject, file, { ip } = {}) {
+    const form = new FormData();
+    form.set('ref', JSON.stringify(ref));
+    form.set('file', new Blob([file.buffer], { type: file.mimetype || 'application/octet-stream' }), file.originalname || 'file');
+    return await call('POST', '/attachments', { act: { subject }, ip, body: form, timeoutMs: 120000 });
 }
 
 /** One comment and its thread (with the ref). null when Community has no such (visible) comment. */
@@ -167,6 +175,6 @@ const threadUrl = (accessId) => `${COMMUNITY_PUBLIC_URL()}/c/${encodeURIComponen
 
 module.exports = {
     sameThread,
-    CommentsError, TYPES, threadFor, readThread, addComment, getComment, editComment, deleteComment,
+    CommentsError, TYPES, threadFor, readThread, addComment, uploadAttachment, getComment, editComment, deleteComment,
     hideThreadOf, liveUserForSubject, subjectForLiveUser, threadUrl,
 };

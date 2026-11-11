@@ -93,12 +93,12 @@ wallet.credit = walletOp('credit');
     assert.strictEqual(await coins.awardFollow(2, 3), null, '…a second follow bonus is refused by its key');
     assert.strictEqual((await logRows('live:cp:follow:2:3')).length, 1);
     const afterFollow = await cp();
+    const firstChatMinute = Math.floor(Date.now() / 60_000);
     assert.ok(await coins.awardChat(2, streamId));
     delete require.cache[require.resolve('../server/monetization/opencoins')];
     coins = require('../server/monetization/opencoins');   // a restart: the in-memory chat cooldown is gone
-    const minute = Math.floor(Date.now() / 60_000);
     const secondChat = await coins.awardChat(2, streamId);
-    if (Math.floor(Date.now() / 60_000) === minute) assert.strictEqual(secondChat, null, 'the same chat minute earns once, even after a restart');
+    if (Math.floor(Date.now() / 60_000) === firstChatMinute) assert.strictEqual(secondChat, null, 'the same chat minute earns once, even after a restart');
     assert.strictEqual(await cp(), afterFollow + 5 + (secondChat ? 5 : 0));
     await raw.prepare('INSERT INTO watch_time (user_id, stream_id, minutes_watched) VALUES (2, ?, 4)').run(streamId);
     const watched = await coins.awardWatch(2, streamId);   // minute 5 of the default 5-minute interval
