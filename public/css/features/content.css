@@ -322,7 +322,7 @@ a.cf-media:hover .cf-play, .cf-media--clip:not(.is-playing) .cf-play { opacity: 
 .cf-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; font-size: 0.82rem; color: var(--text-muted); min-width: 0; }
 .cf-chan { display: inline-flex; align-items: center; gap: 8px; min-width: 0; max-width: 100%; color: var(--text-secondary); font-weight: 600; text-decoration: none; }
 a.cf-chan:hover .cf-name { color: var(--text-primary); text-decoration: underline; }
-.cf-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cf-name { overflow-wrap: anywhere; }
 .cf-av {
     flex: none;
     width: 26px;
