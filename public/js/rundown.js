@@ -982,7 +982,9 @@ function _rdTodayCard(today) {
         });
         card.append(list);
     }
-    card.append(_rdDayEl('p', 'rd-day-sum-by', 'Written by AI from today\u2019s takes. Each highlight links to the take it came from.'));
+    card.append(_rdDayEl('p', 'rd-day-sum-by', today.written_by === 'live'
+        ? 'From today\u2019s takes. Each highlight links to the take it came from.'
+        : 'Written by AI from today\u2019s takes. Each highlight links to the take it came from.'));
     return card;
 }
 function _rdDayDraw(day) {
