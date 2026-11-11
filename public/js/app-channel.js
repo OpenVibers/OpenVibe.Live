@@ -2993,20 +2993,24 @@ function _applyBotEmbed(botEmbed, username) {
     }
     const MODE_NAME = { overlay: 'on the video', compact: 'a row under the video', panel: 'the full panel', hidden: 'hidden' };
     // The page knows the place (phone layout in channel.css) and, for the full panel on a phone, which tab is open.
+    // The Robot tab is open while the full panel is the place and the person has not gone back to Chat; any other place
+    // keeps the sheet on Chat, and the Robot tab offers the panel.
     function pageClasses(mode) {
         if (!pageEl || !pageEl.classList) return;
+        const robotPane = mode === 'panel' && _applyBotEmbed.tab !== 'chat';
+        pageEl.classList.toggle('ch-has-bot', !!mode);
         pageEl.classList.toggle('ch-bot-panel', mode === 'panel');
         pageEl.classList.toggle('ch-bot-compact', mode === 'compact');
-        pageEl.classList.toggle('ch-bot-chat', mode === 'panel' && _applyBotEmbed.tab === 'chat');
+        pageEl.classList.toggle('ch-bot-chat', mode === 'panel' && !robotPane);
+        if (tabs && tabs.querySelectorAll) {
+            for (const b of tabs.querySelectorAll('[data-bot-tab]')) b.setAttribute('aria-selected', String((b.dataset.botTab === 'robot') === robotPane));
+        }
     }
     function setTab(tab) {
         _applyBotEmbed.tab = tab === 'chat' ? 'chat' : 'robot';
-        if (tabs && tabs.querySelectorAll) {
-            for (const b of tabs.querySelectorAll('[data-bot-tab]')) b.setAttribute('aria-selected', String(b.dataset.botTab === _applyBotEmbed.tab));
-        }
         pageClasses(_applyBotEmbed.mode);
-        // The chat folded away on a phone comes back with its tab.
-        if (_applyBotEmbed.tab === 'chat' && pageEl && pageEl.classList && pageEl.classList.contains('chat-collapsed') && typeof toggleChannelChat === 'function') toggleChannelChat(false);
+        // A folded chat comes back with its tab.
+        if (pageEl && pageEl.classList && pageEl.classList.contains('chat-collapsed') && typeof toggleChannelChat === 'function') toggleChannelChat(false);
     }
     _applyBotEmbed.setTab = setTab;
     function closeMenu() {
@@ -3107,7 +3111,10 @@ function _applyBotEmbed(botEmbed, username) {
         tabs.dataset.botBound = '1';
         tabs.addEventListener('click', (e) => {
             const b = e.target && e.target.closest ? e.target.closest('[data-bot-tab]') : null;
-            if (b) _applyBotEmbed.setTab(b.dataset.botTab);
+            if (!b) return;
+            // Robot asks for the full panel when the controls are somewhere else (on the video, a row, hidden).
+            if (b.dataset.botTab === 'robot' && _applyBotEmbed.mode !== 'panel') _applyBotEmbed.choose('panel');
+            else _applyBotEmbed.setTab(b.dataset.botTab);
         });
     }
     // Turning the phone (or a window crossing the phone width) changes the default; a viewer's own choice stays.

@@ -117,15 +117,11 @@
                         </div>
                     </div>
                     <!-- OpenVibe.Bot robot panel for a channel bound to a robot (LIVE_BOT_EMBED; filled by public/js/bot-embed.js) -->
-                    <!-- One head row (ask 353): the name, on a phone the Robot/Chat tabs (the full panel takes the chat's
-                         place there), the four places for the controls, and the robot's own page. Hidden keeps this row. -->
+                    <!-- One head row (ask 353): the name, the four places for the controls, and the robot's own page. Hidden
+                         keeps this row. On a phone the row steps aside: the Chat/Robot tabs are in the chat's header. -->
                     <section id="ch-bot-section" aria-labelledby="ch-bot-heading" hidden>
                         <div class="ch-bot-head" id="ch-bot-card-bar" hidden>
                             <h3 id="ch-bot-heading">Robot</h3>
-                            <div class="ch-bot-tabs" id="ch-bot-tabs" role="tablist" aria-label="Robot or chat">
-                                <button type="button" role="tab" data-bot-tab="robot" aria-selected="true"><i class="fa-solid fa-robot" aria-hidden="true"></i><span>Robot</span></button>
-                                <button type="button" role="tab" data-bot-tab="chat" aria-selected="false"><i class="fa-solid fa-comments" aria-hidden="true"></i><span>Chat</span></button>
-                            </div>
                             <div class="ch-bot-switch" id="ch-bot-card-switch" role="group" aria-label="Where the robot's controls go">
                                 <button type="button" data-bot-mode="overlay" title="On the video" aria-label="On the video"><i class="fa-solid fa-layer-group" aria-hidden="true"></i><span>On video</span></button>
                                 <button type="button" data-bot-mode="compact" title="A row under the video" aria-label="A row under the video"><i class="fa-solid fa-sliders" aria-hidden="true"></i><span>Row</span></button>
@@ -193,7 +189,12 @@
                 <div class="chat-sidebar" id="chat-sidebar">
                     <div class="chat-header">
                         <button type="button" class="chat-settings-btn ch-chat-collapse" onclick="toggleChannelChat(true)" title="Hide chat" aria-label="Hide chat"><i class="fa-solid fa-angles-right"></i></button>
-                        <span>STREAM CHAT</span>
+                        <span class="ch-chat-title">STREAM CHAT</span>
+                        <!-- A channel with a robot, on a phone: Chat and Robot share this sheet (app-channel.js _applyBotEmbed). -->
+                        <div class="ch-bot-tabs" id="ch-bot-tabs" role="tablist" aria-label="Chat or robot">
+                            <button type="button" role="tab" data-bot-tab="chat" aria-selected="true"><i class="fa-solid fa-comments" aria-hidden="true"></i><span>Chat</span></button>
+                            <button type="button" role="tab" data-bot-tab="robot" aria-selected="false"><i class="fa-solid fa-robot" aria-hidden="true"></i><span>Robot</span></button>
+                        </div>
                         <div class="chat-header-actions">
                             <button class="chat-settings-btn" onclick="toggleChatUsers(this)" title="Users">
                                 <i class="fa-solid fa-users"></i>

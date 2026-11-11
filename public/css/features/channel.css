@@ -1160,6 +1160,14 @@ button.viewer-badge:focus-visible { outline: 2px solid #93c5fd; outline-offset: 
         align-self: flex-start;
     }
 }
+/* Two streams live at once (the stream tabs bar above the player): the bar stays under the navbar and the chat under
+   the bar. Before, the chat started under the bar but was the navbar's height short of the window, so its last 42 px,
+   the tools under the message box, sat below the screen (found 2026-11-11). The sections' jump bar sticks under both. */
+@media (min-width: 1181px) {
+    #page-channel.has-live-tabs .live-stream-tabs { position: sticky; top: var(--navbar-h); z-index: 7; }
+    #page-channel.has-live-tabs .stream-layout > .chat-sidebar { top: calc(var(--navbar-h) + 42px); height: calc(100vh - var(--navbar-h) - 42px); }
+    #page-channel.has-live-tabs .ch-tabs-wrap { top: calc(var(--ovnav-h, 56px) + 42px); }
+}
 .ch-stream-ai { margin-top: 8px; max-width: 760px; }
 .cu-btn-sm { padding: 4px 10px; font-size: 0.78rem; }
 .cu-btn-ghost { background: transparent; border: 1px solid var(--border); }
@@ -2051,6 +2059,7 @@ html[data-ov-motion=off] #page-channel .ch-tab-panel{scroll-margin-top: calc(var
 .ch-bot-head h3 { display: flex; align-items: center; gap: 9px; flex: 1 1 auto; min-width: 0; margin: 0; font-size: .9rem; font-weight: 700; color: var(--text-primary); }
 .ch-bot-head h3::before { content: ""; flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--success-text, #34d399); box-shadow: 0 0 0 3px color-mix(in srgb, var(--success-text, #34d399) 22%, transparent); }
 .ch-bot-tabs { display: none; flex: 1 1 auto; min-width: 0; gap: 4px; }
+.chat-header .ch-bot-tabs { margin-right: auto; }
 .ch-bot-tabs button { display: inline-flex; align-items: center; gap: 7px; min-height: 36px; padding: 0 12px; border: 0; border-radius: 10px; background: transparent; color: var(--text-secondary); font: 700 .85rem/1 inherit; }
 .ch-bot-tabs button[aria-selected="true"] { background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--text-primary); }
 .ch-bot-switch { display: inline-flex; flex: none; gap: 2px; padding: 3px; border-radius: 12px; background: color-mix(in srgb, var(--text-primary, #fff) 7%, transparent); }
@@ -2069,41 +2078,61 @@ html[data-ov-motion=off] #page-channel .ch-tab-panel{scroll-margin-top: calc(var
 #page-channel.ch-bot-compact #ch-bot-container { height: 120px; resize: none; }
 @media (max-width: 768px) { #ch-bot-section { margin: 8px; } #ch-bot-container { height: clamp(220px, 44vh, 420px); resize: none; } }
 
-/* A phone held upright, live (ask 353: "how do you even open the chat anymore?"): the full panel sat between the
-   player and the chat in a screen-high column and pushed the chat out of reach. Now the channel line comes right
-   under the player and the robot under it: a row, with the chat below as before; or the full panel behind two tabs,
-   Robot and Chat, in the chat's place. The switch for where the controls go is the head row's (and the player's). */
+/* A phone held upright, live (ask 353: "how do you even open the chat anymore?"; then, with the first version open:
+   "the chat should go all the way up to the video … then it can be collapsed … a little circle in the corner … resize
+   how tall the chat is"). The column under the player is one sheet:
+   - the chat fills it, right up to the player, with one header row: Chat and Robot tabs (with a robot), its tools and
+     the fold. The grip on its top edge sets its height (or the arrow keys on it): the channel line shows in the room it
+     leaves; all the way up is the default again; most of the way down folds it to a round chat button in the corner.
+   - the robot: over the video (the default here), a row just under the player, or the full panel in the Robot tab.
+   - folded, the page reads as before: the player, the channel line, the robot's card, the sections.
+   Where the robot's controls go is the player's robot button. A portrait stream keeps its own layout. */
 @media (max-width: 768px) and (orientation: portrait) {
-    #page-channel.ch-is-live .stream-layout:not(:has(.video-container.is-vertical)) > .stream-main { display: flex; flex-direction: column; }
-    #page-channel.ch-is-live .stream-main > :is(.ch-captions, .ch-info-bar, .ch-weather-widget) { order: 1; }
-    #page-channel.ch-is-live .stream-main > #ch-bot-section { order: 2; margin: 0; border-width: 1px 0 0; border-radius: 0; }
-    #page-channel.ch-is-live #ch-bot-container { height: 120px; }
-    /* Over the video, a row, or hidden: no head row here (the player's robot button holds the switch), and nothing
-       at all for the first and the last. */
-    #page-channel.ch-is-live:not(.ch-bot-panel) .ch-bot-head { display: none; }
+    #page-channel.ch-is-live .stream-layout:not(:has(.video-container.is-vertical)) > .stream-main { display: contents; }
+    #page-channel.ch-is-live .stream-layout:not(:has(.video-container.is-vertical)) > .stream-main > .video-container { order: 0; flex: none; }
+    #page-channel.ch-is-live .stream-layout:not(:has(.video-container.is-vertical)) > .stream-main > :is(.ch-captions, .ch-info-bar, .ch-weather-widget) { order: 1; flex: none; }
+    #page-channel.ch-is-live .stream-layout:not(:has(.video-container.is-vertical)) > .stream-main > #ch-bot-section { order: 2; flex: none; margin: 0; border-width: 1px 0 0; border-radius: 0; }
+    #page-channel.ch-is-live .stream-layout:not(:has(.video-container.is-vertical)) > .chat-sidebar { order: 3; }
+    /* All the way up: the channel line waits under the chat (fold or lower the chat to see it). */
+    #page-channel.ch-is-live:not(.ch-chat-sized):not(.chat-collapsed) .stream-layout:not(:has(.video-container.is-vertical)) > .stream-main > :is(.ch-info-bar, .ch-weather-widget) { display: none !important; }
+    /* A height of its own: the chat keeps it, the channel line takes the rest above it. */
+    #page-channel.ch-is-live.ch-chat-sized:not(.chat-collapsed) .stream-layout:not(:has(.video-container.is-vertical)) > .stream-main > .ch-info-bar { flex: 1 1 0; min-height: 0; overflow-y: auto; align-items: flex-start; align-content: flex-start; }
+    #page-channel.ch-is-live.ch-chat-sized:not(.chat-collapsed) .stream-layout:not(:has(.video-container.is-vertical)) > .stream-main > .ch-weather-widget { display: none !important; }
+    #page-channel.ch-is-live.ch-chat-sized.page .stream-layout:not(:has(.video-container.is-vertical)) > .chat-sidebar { flex: 0 1 var(--chat-sheet-h, 60%); min-height: 120px; }
+
+    /* The chat's header: one row with the grip above it. */
+    #page-channel.ch-is-live .stream-layout:not(:has(.video-container.is-vertical)) > .chat-sidebar > .chat-grip { display: block !important; height: 16px; }
+    #page-channel.ch-is-live .stream-layout:not(:has(.video-container.is-vertical)) > .chat-sidebar > .chat-grip::after { top: 5px; opacity: .8; }
+    #page-channel.ch-is-live .stream-layout:not(:has(.video-container.is-vertical)) > .chat-sidebar .chat-header { padding-top: 12px; min-height: 52px; }
+    #page-channel.ch-is-live.ch-has-bot .chat-header .ch-chat-title { display: none; }
+    #page-channel.ch-is-live.ch-has-bot .ch-bot-tabs { display: flex; flex: 0 1 auto; }
+
+    /* The robot's place. Its card's own head row is the desktop's; here the tabs and the player's button do that. */
+    #page-channel.ch-is-live .ch-bot-head { display: none !important; }
     #page-channel.ch-is-live:not(.ch-bot-panel):not(.ch-bot-compact) #ch-bot-section { display: none !important; }
-    #page-channel.ch-is-live .ch-bot-switch button span { display: none !important; }
-    #page-channel.ch-is-live .ch-bot-switch button { width: 36px; padding: 0; }
-    #page-channel.ch-is-live.ch-bot-panel .ch-bot-tabs { display: flex; }
-    #page-channel.ch-is-live.ch-bot-panel .ch-bot-head { padding-left: 6px; }
-    #page-channel.ch-is-live.ch-bot-panel .ch-bot-head > h3 { display: none; }
-    /* The Robot tab: the panel takes the chat's place and scrolls inside its frame. */
-    #page-channel.ch-is-live.ch-bot-panel:not(.ch-bot-chat) .stream-layout { height: calc(100dvh - var(--navbar-h) - var(--live-tabs-h, 0px)) !important; }
-    #page-channel.ch-is-live.ch-bot-panel:not(.ch-bot-chat) .stream-layout > .chat-sidebar { display: none !important; }
-    #page-channel.ch-is-live.ch-bot-panel:not(.ch-bot-chat) .stream-layout > .stream-main { flex: 1 1 0; min-height: 0; }
-    #page-channel.ch-is-live.ch-bot-panel:not(.ch-bot-chat) #ch-bot-section { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; }
-    #page-channel.ch-is-live.ch-bot-panel:not(.ch-bot-chat) #ch-bot-container { flex: 1 1 0; min-height: 0; height: auto !important; max-height: none; }
-    body:has(#page-channel.active.ch-is-live.ch-bot-panel:not(.ch-bot-chat)) .ch-chat-reopen { display: none !important; }
-    /* The Chat tab: the panel's frame waits (still loaded, so a driver keeps their place) and the chat is back. */
-    #page-channel.ch-is-live.ch-bot-panel.ch-bot-chat #ch-bot-container { display: none; }
-    /* Room for the messages (with or without a robot the chat showed none at 390 × 844): the folded channel line is
-       who, live now and the title, with its actions; a tap on it (the chevron) opens the followers, the alert, the
-       labels and the links. The goal bar is one slim row. */
+    #page-channel.ch-is-live.ch-bot-compact #ch-bot-container { height: 120px; }
+    /* The Robot tab: the panel takes the sheet under the chat's header, and scrolls inside its frame. */
+    #page-channel.ch-is-live.ch-bot-panel:not(.ch-bot-chat):not(.chat-collapsed) .stream-layout:not(:has(.video-container.is-vertical)) > .stream-main > :is(.ch-info-bar, .ch-weather-widget) { display: none !important; }
+    #page-channel.ch-is-live.ch-bot-panel:not(.ch-bot-chat):not(.chat-collapsed) .stream-layout:not(:has(.video-container.is-vertical)) > .stream-main > #ch-bot-section { order: 4; flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; border: 0; }
+    #page-channel.ch-is-live.ch-bot-panel:not(.ch-bot-chat):not(.chat-collapsed) #ch-bot-container { flex: 1 1 0; min-height: 0; height: auto !important; max-height: none; }
+    #page-channel.ch-is-live.ch-bot-panel:not(.ch-bot-chat):not(.chat-collapsed).page .stream-layout > .chat-sidebar { flex: none; min-height: 0; }
+    #page-channel.ch-is-live.ch-bot-panel:not(.ch-bot-chat):not(.chat-collapsed) .stream-layout > .chat-sidebar > :not(.chat-header) { display: none !important; }
+    /* The Chat tab: the panel's frame waits, still loaded (a driver keeps their place). */
+    #page-channel.ch-is-live.ch-bot-panel.ch-bot-chat:not(.chat-collapsed) #ch-bot-section { display: none !important; }
+
+    /* Folded: the round chat button in the corner brings the sheet back. */
+    body:has(#page-channel.active.ch-is-live) .ch-chat-reopen:not([hidden]) { width: 56px; height: 56px; padding: 0; gap: 0; justify-content: center; border-radius: 50%; }
+    body:has(#page-channel.active.ch-is-live) .ch-chat-reopen span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+    body:has(#page-channel.active.ch-is-live) .ch-chat-reopen :is(.fa-comments, .ovg) { font-size: 22px; width: 22px; height: 22px; }
+    body:has(#page-channel.active.ch-is-live) .ch-chat-reopen .fa-angles-left { display: none !important; }
+
+    /* The channel line, folded: who, live now and the title, with its actions; a tap on it (the chevron) opens the
+       followers, the alert, the labels and the links. The goal bar is one slim row. */
     #page-channel.ch-is-live .stream-layout:not(:has(.video-container.is-vertical)) .ch-info-bar:not(.ch-info-open) :is(.ch-username, .ch-meta, .ch-social-pills, .stream-labels) { display: none !important; }
     #page-channel.ch-is-live .stream-layout:not(:has(.video-container.is-vertical)) .ch-info-bar { row-gap: 8px; padding: 8px 12px; }
     #page-channel.ch-is-live .stream-layout:not(:has(.video-container.is-vertical)) .ch-info-bar-top h2::after { content: ""; display: inline-block; flex: none; width: 6px; height: 6px; margin: 0 0 3px 8px; border: solid currentColor; border-width: 0 2px 2px 0; transform: rotate(45deg); opacity: .6; transition: transform .2s; }
     #page-channel.ch-is-live .stream-layout:not(:has(.video-container.is-vertical)) .ch-info-bar.ch-info-open .ch-info-bar-top h2::after { transform: translateY(3px) rotate(225deg); }
-    #page-channel.ch-is-live .stream-layout:not(:has(.video-container.is-vertical)) :is(.ch-info-bar-right) :is(.ch-action, .ovk-ask) { height: 40px; min-height: 40px; }
+    #page-channel.ch-is-live .stream-layout:not(:has(.video-container.is-vertical)) .ch-info-bar-right :is(.ch-action, .ovk-ask) { height: 40px; min-height: 40px; }
     #page-channel.ch-is-live .chat-sidebar .ch-goal-widget { padding: 4px 6px 0; }
     #page-channel.ch-is-live .chat-sidebar .cgw-goal { height: 32px; }
     #page-channel.ch-is-live .chat-sidebar .cgw-track .cgw-goal { margin-bottom: 4px; }
