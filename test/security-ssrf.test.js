@@ -360,6 +360,7 @@ async function check(name, fn) {
             'server/utils/notify.js': 'OpenVibe.Network (configured)',
             'server/auth/identity-sync.js': 'OpenVibe.Network (configured)',
             'server/auth/account-data.js': 'OpenVibe.Network (configured): export parts and deletion confirmations',
+            'server/auth/test-accounts.js': 'OpenVibe.Network (configured OV_NETWORK_INTERNAL_URL): the fixed /internal/identity/test-subjects path, no URL from a person',
             'server/agent-streams/sharing.js': 'OpenVibe.Network (configured): the sharing system\'s name lookup and person resolution',
             'server/rundown/citations.js': 'OpenVibe.Report public session-report list (OV_REPORT_URL, configured; fixed path, no URL from a person)',
             'server/ai/viewer-quota.js': 'OpenVibe.AI (configured OV_AI_INTERNAL_URL): a streamer\'s daily AI-viewer cap',

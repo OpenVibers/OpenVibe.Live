@@ -564,7 +564,7 @@ router.get('/digest', optionalAuth, async (req, res) => {
         const uid = req.user ? req.user.id : null;
         const followed = new Set(uid ? (await db.all('SELECT streamer_id FROM follows WHERE follower_id = ?', [uid]) || []).map(r => r.streamer_id) : []);
         const liveNow = (await db.all(`SELECT u.id AS user_id, u.username, u.display_name, u.avatar_url, u.profile_color, s.title, s.viewer_count, s.started_at
-            FROM streams s JOIN users u ON u.id = s.user_id WHERE s.is_live = 1 AND COALESCE(u.is_banned, 0) = 0
+            FROM streams s JOIN users u ON u.id = s.user_id WHERE s.is_live = 1 AND COALESCE(u.is_banned, 0) = 0 AND COALESCE(u.is_test, 0) = 0
               AND NOT (s.content_labels->'labels' @> '["18+"]'::jsonb)
             ORDER BY s.viewer_count DESC, s.started_at DESC LIMIT 10`) || []).map(r => ({ ...r, followed: followed.has(r.user_id) }));
         const liveIds = new Set(liveNow.map(r => r.user_id));
@@ -574,7 +574,7 @@ router.get('/digest', optionalAuth, async (req, res) => {
                 (SELECT title FROM streams t WHERE t.user_id = u.id AND t.started_at >= ? ORDER BY t.started_at DESC LIMIT 1) AS last_title,
                 (SELECT id FROM streams t WHERE t.user_id = u.id AND t.started_at >= ? ORDER BY t.started_at DESC LIMIT 1) AS last_stream_id
             FROM streams s JOIN users u ON u.id = s.user_id
-            WHERE s.started_at >= ? AND s.is_live = 0 AND COALESCE(u.is_banned, 0) = 0
+            WHERE s.started_at >= ? AND s.is_live = 0 AND COALESCE(u.is_banned, 0) = 0 AND COALESCE(u.is_test, 0) = 0
             GROUP BY u.id ORDER BY hours DESC, last_at DESC LIMIT 14`, [sinceSql, sinceSql, sinceSql]) || [])
             .filter(r => !liveIds.has(r.user_id));
         const streamed = [];
@@ -601,10 +601,10 @@ router.get('/digest', optionalAuth, async (req, res) => {
             // rollback); a synchronous peek answers the last good count while Chat refreshes.
             chat_lines: await (async () => { try { const s = await require('../chat/chat-reads').windowStatsPeek({ since: sinceMs }); return s ? s.messages : 0; } catch { return 0; } })(),
             new_follows: Number((await one('SELECT COUNT(*) AS n FROM follows WHERE created_at >= ?', [sinceSql]) || {}).n || 0),
-            new_members: Number((await one('SELECT COUNT(*) AS n FROM users WHERE created_at >= ? AND COALESCE(is_banned, 0) = 0 AND deleted_at IS NULL', [sinceSql]) || {}).n || 0),
+            new_members: Number((await one('SELECT COUNT(*) AS n FROM users WHERE created_at >= ? AND COALESCE(is_banned, 0) = 0 AND COALESCE(is_test, 0) = 0 AND deleted_at IS NULL', [sinceSql]) || {}).n || 0),
             takes: Number((await one(`SELECT COUNT(*) AS n FROM rundown_segments s JOIN users u ON u.id = s.user_id
                 ${rundownRead.AUDIENCE_JOINS('s')} WHERE s.status = 'live' AND s.said_at >= @since
-                AND COALESCE(u.is_banned, 0) = 0 AND ${rundownRead.VISIBLE('s')}`, { since: sinceSql, viewer: null }) || {}).n || 0),
+                AND COALESCE(u.is_banned, 0) = 0 AND COALESCE(u.is_test, 0) = 0 AND ${rundownRead.VISIBLE('s')}`, { since: sinceSql, viewer: null }) || {}).n || 0),
         };
         const previous = new Date(now - 86400000).toISOString().replace('T', ' ').slice(0, 19);
         const prior = new Date(now - 2 * 86400000).toISOString().replace('T', ' ').slice(0, 19);
@@ -615,14 +615,14 @@ router.get('/digest', optionalAuth, async (req, res) => {
         };
         const publicTakes = async (start, end) => Number((await one(`SELECT COUNT(*) AS n FROM rundown_segments s JOIN users u ON u.id = s.user_id
             ${rundownRead.AUDIENCE_JOINS('s')} WHERE s.status = 'live' AND s.said_at >= @start AND s.said_at < @end
-            AND COALESCE(u.is_banned, 0) = 0 AND ${rundownRead.VISIBLE('s')}`, { start, end, viewer: null }) || {}).n || 0);
+            AND COALESCE(u.is_banned, 0) = 0 AND COALESCE(u.is_test, 0) = 0 AND ${rundownRead.VISIBLE('s')}`, { start, end, viewer: null }) || {}).n || 0);
         const changes = {
             streams: await changeFor('streams', 'started_at'),
             takes: await publicTakes(previous, new Date(now).toISOString().replace('T', ' ').slice(0, 19)) - await publicTakes(prior, previous),
             new_follows: await changeFor('follows', 'created_at'),
-            new_members: await changeFor('users', 'created_at', 'COALESCE(is_banned, 0) = 0 AND deleted_at IS NULL'),
+            new_members: await changeFor('users', 'created_at', 'COALESCE(is_banned, 0) = 0 AND COALESCE(is_test, 0) = 0 AND deleted_at IS NULL'),
         };
-        const newPeople = (await db.all('SELECT username, display_name, avatar_url FROM users WHERE created_at >= ? AND COALESCE(is_banned, 0) = 0 AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 3', [sinceSql]) || []);
+        const newPeople = (await db.all('SELECT username, display_name, avatar_url FROM users WHERE created_at >= ? AND COALESCE(is_banned, 0) = 0 AND COALESCE(is_test, 0) = 0 AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 3', [sinceSql]) || []);
         // A take is shown only when the stream is in this visit's window, the topic is live, and Rundown allows everyone to see it.
         let topics = [];
         try {
@@ -632,14 +632,14 @@ router.get('/digest', optionalAuth, async (req, res) => {
                 JOIN users u ON u.id = s.user_id JOIN rundown_topics t ON t.id = s.topic_id
                 ${AUDIENCE_JOINS('s')}
                 WHERE s.status = 'live' AND t.status = 'live' AND s.said_at >= @since AND stream.started_at >= @since
-                AND s.score >= 4 AND COALESCE(u.is_banned, 0) = 0 AND ${VISIBLE('s')}
+                AND s.score >= 4 AND COALESCE(u.is_banned, 0) = 0 AND COALESCE(u.is_test, 0) = 0 AND ${VISIBLE('s')}
                 ORDER BY s.score DESC, s.said_at DESC LIMIT 40`, { since: sinceSql, viewer: null });
             topics = selectTopics(rows);
         } catch { topics = []; }
         let nextStream = null;
         if (!stats.streams && !stats.takes && !stats.new_members && !stats.new_follows && !stats.chat_lines) {
             nextStream = await one(`SELECT a.title, a.starts_at, u.username, u.display_name FROM agent_stream_schedules a JOIN users u ON u.id = a.user_id
-                WHERE a.state = 'scheduled' AND a.visibility = 'public' AND a.starts_at > ? AND COALESCE(u.is_banned, 0) = 0 ORDER BY a.starts_at LIMIT 1`, [new Date(now).toISOString()]);
+                WHERE a.state = 'scheduled' AND a.visibility = 'public' AND a.starts_at > ? AND COALESCE(u.is_banned, 0) = 0 AND COALESCE(u.is_test, 0) = 0 ORDER BY a.starts_at LIMIT 1`, [new Date(now).toISOString()]);
         }
         const across = await acrossOpenVibe(sinceMs);
         const digest = { since, signed_in: !!uid, liveNow, streamed, stats, topics, newPeople, changes, nextStream, across };
