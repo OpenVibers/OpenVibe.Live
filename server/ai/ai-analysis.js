@@ -126,6 +126,8 @@ async function generateStreamerOverview(userId) {
     try {
         await db.upsertStreamerOverview(userId, {
             overview,
+            // The card's own line (OpenVibe.AI #466); kept only when it passes channel-line.js humanLine.
+            line: o && typeof o.line === 'string' ? o.line.slice(0, 140) : null,
             model: 'openvibe-ai',
             sources: JSON.stringify({ memories: memories.length, vods: vods.length, pastes: summarized.length }),
         });

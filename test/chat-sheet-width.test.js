@@ -53,7 +53,8 @@ const resize = fs.readFileSync(path.join(__dirname, '..', 'public', 'js', 'chann
 assert.match(resize, /if \(mode === 'sheet'\) p\.classList\.toggle\('ch-chat-sized', !!v\);/, 'a saved height marks the page');
 assert.match(resize, /max: \(\) => \(docked\(\) \? dockRoom\(\) : window\.innerHeight \* 0\.92\)/, 'docked, the room under the player is the most');
 assert.match(resize, /if \(d\.cur < m\.min\) \{\s*setSize\('sheet', read\(m\.key\)\);\s*if \(typeof window\.toggleChannelChat === 'function'\) window\.toggleChannelChat\(true\);/, 'low folds the chat');
-assert.match(resize, /if \(d\.cur >= m\.max\(\) - 16\) \{ reset\('sheet'\);/, 'all the way up is the default again');
+assert.match(resize, /if \(Math\.abs\(d\.cur - m\.max\(\)\) <= Math\.abs\(d\.cur - line\)\) \{ reset\('sheet'\);/, 'nearer the top than the line: all the way up, the default');
+assert.match(resize, /write\(m\.key, LINE\); setSize\('sheet', LINE\);/, 'otherwise just under the channel line, never a line cut in half (ask 366)');
 assert.match(css, /#page-channel\.ch-is-live:not\(\.ch-chat-sized\):not\(\.chat-collapsed\) [^{]*:is\(\.ch-info-bar, \.ch-weather-widget\) \{ display: none !important; \}/, 'full: the chat reaches the player');
 assert.match(css, /#page-channel\.ch-is-live\.ch-chat-sized\.page [^{]*> \.chat-sidebar \{ flex: 0 1 var\(--chat-sheet-h, 60%\); min-height: 120px; \}/, 'sized: the chat keeps its height');
 assert.match(css, /> \.chat-sidebar > \.chat-grip \{ display: block !important;/, 'the grip shows on the docked chat');

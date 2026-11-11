@@ -74,6 +74,8 @@
 .ov-pip-actions button:hover { background: rgba(255, 255, 255, .22); transform: translateY(-1px); }
 .ov-pip-actions button:active { transform: scale(.92); }
 .ov-pip-actions button[aria-pressed="true"] { background: var(--accent, #3b82f6); border-color: transparent; }
+/* Listening: this PIP has the sound; a ring says so while it lasts. */
+.ov-pip.is-listening { box-shadow: 0 0 0 2px var(--accent, #3b82f6), 0 10px 28px -8px rgba(0, 0, 0, .7); }
 
 /* The corner that sizes it: a soft grip that shows on hover and is always there to a finger. */
 .ov-pip-resize {
@@ -126,6 +128,8 @@
     .ov-pip-title { display: none; }
     .ov-pip-bar { justify-content: flex-end; padding: 5px 5px 12px; }
     .ov-pip-state-t { display: none; }
+    /* The two extras (listen, out of the browser) wait for a bigger PIP (a double tap makes it large). */
+    .ov-pip-actions .is-extra { display: none; }
     /* Its wait keeps the whole picture: the bar comes up on a touch or a hover, not by itself. */
     .ov-pip:not([data-state="live"]):not(:hover):not(.is-active):not(:focus-within) .ov-pip-bar { opacity: 0; pointer-events: none; }
 }

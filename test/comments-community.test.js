@@ -178,6 +178,8 @@ async function check(name, fn) {
         assert.strictEqual(last('GET', /^\/threads\/cth_[^/]+$/).subject, SUB('B'), 'read as the viewer, by the thread\'s access id (C-14)');
         const page = (await call('GET', '/api/comments/vod/100?limit=1&offset=1')).json;
         assert.deepStrictEqual(page.comments.map((c) => c.message), ['great stream']);
+        const oldest = (await call('GET', '/api/comments/vod/100?sort=old')).json;
+        assert.deepStrictEqual(oldest.comments.map((c) => c.message), ['great stream', 'said on Community']);
         assert.ok(!r.text.includes('legacy local row'), 'Live\'s own table is not read');
     });
 
@@ -187,6 +189,28 @@ async function check(name, fn) {
         assert.deepStrictEqual(r.json.replies.map((c) => c.message), ['thanks!']);
         assert.deepStrictEqual((await call('GET', `/api/comments/${aliceReply.id}/replies`)).json.replies, []);
         assert.strictEqual((await call('GET', '/api/comments/424242/replies')).status, 404);
+    });
+
+    await check('a VOD picture uploads through Live, then appears in its Community comment and Live read', async () => {
+        const form = new FormData();
+        form.set('file', new Blob([Buffer.from('picture bytes')], { type: 'image/png' }), 'look.png');
+        const url = `http://127.0.0.1:${server.address().port}/api/comments/vod/100/attachments`;
+        const response = await fetch(url, { method: 'POST', headers: { 'x-test-user': '5' }, body: form });
+        const uploaded = await response.json();
+        assert.strictEqual(response.status, 201, JSON.stringify(uploaded));
+        const sent = last('POST', /^\/attachments$/);
+        assert.deepStrictEqual(sent.body.ref, { service: 'live', type: 'vod', id: '100' });
+        assert.strictEqual(sent.subject, SUB('C'));
+        assert.strictEqual(sent.body.file.name, 'look.png');
+        const added = await call('POST', '/api/comments/vod/100', 5, { message: 'A picture', attachments: [uploaded.attachment] });
+        assert.strictEqual(added.status, 201, added.text);
+        assert.deepStrictEqual(added.json.comment.attachments, [uploaded.attachment]);
+        const read = await call('GET', '/api/comments/vod/100');
+        assert.deepStrictEqual(read.json.comments.find((c) => c.id === added.json.comment.id).attachments, [uploaded.attachment]);
+        const other = await fetch(`http://127.0.0.1:${server.address().port}/api/comments/vod/101/attachments`,
+            { method: 'POST', headers: { 'x-test-user': '5' }, body: form });
+        assert.strictEqual(other.status, 404, 'a non-owner cannot upload to a private VOD');
+        assert.strictEqual((await call('POST', '/api/comments/vod/100', 5, { message: 'Too many', attachments: Array(5).fill(uploaded.attachment) })).status, 400);
     });
 
     await check('edit: the author only (as their subject); edits show as edited', async () => {
