@@ -149,3 +149,7 @@ ws.on('message', (data) => {
 - Set an expiration for tokens used in shared environments
 - Revoke tokens immediately if compromised
 - The `last_used_at` field in the token list helps identify unused tokens for cleanup
+
+## Account layout
+
+`GET|PATCH /api/me/layout` reads or merges the signed-in person's picture-in-picture layout (`{ "pip": { "<slot>:<source>": place | null } }`: null removes a place, the 60 newest by `at` are kept); the route answers 404 until the account copy is available, so the browser keeps its own.

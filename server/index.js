@@ -823,6 +823,9 @@ app.use('/data/offline', express.static(paths.data('offline'), {
 // API stays under /api/auth, where /api/auth/health also answers.
 app.get('/auth/health', authRoutes.health);
 app.use('/api/auth', authRoutes);
+// The signed-in person's picture-in-picture layout, in their Network account (server/me/routes.js); 404 until the
+// pinned contracts carry live.layout, so the browser's own copy keeps working.
+app.use('/api/me', require('./me/routes').createLayoutRouter());
 app.use('/api/bench-stream', require('./bench-stream/routes'));
 // Channel ↔ OpenVibe.Bot robot binding (LIVE_BOT_EMBED, off by default: the route answers 404).
 app.use('/api/streams', require('./bot/routes'));
