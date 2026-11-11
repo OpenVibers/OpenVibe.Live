@@ -28,6 +28,7 @@ const CHECK_MS = 5 * 60 * 1000;      // how often the job looks for a due day
 const MIN_TAKES = 1;                 // one take is a day: the card says what was said, and grows with the day
 const MAX_TAKES = 30;                // the workflow takes at most 30 takes
 const MAX_FETCH = 400;               // a very busy day is sampled, not read whole
+const CARD_VERSION = 2;              // 2: the day's takes are listed for the model, and a card that denies them is dropped
 const KEY = (date) => `rundown_today:${date}`;
 
 const utcDay = (now = Date.now()) => new Date(now).toISOString().slice(0, 10);
@@ -78,7 +79,7 @@ function cardInput(date, items) {
  */
 function isDue(stored, { now = Date.now(), total = 0, latest_take_id = null } = {}) {
     if (Number(total) < MIN_TAKES) return false;
-    if (!stored || !Number(stored.generated_at)) return true;
+    if (!stored || stored.version !== CARD_VERSION || !Number(stored.generated_at)) return true;
     if (now - Number(stored.generated_at) < REFRESH_MS) return false;
     const seen = Number(stored.latest_take_id || 0);
     return latest_take_id != null && Number(latest_take_id) > seen;
@@ -126,7 +127,7 @@ async function get(date) {
     try {
         const raw = await db.getSetting(KEY(date));
         const card = raw ? JSON.parse(raw) : null;
-        return card && card.status === 'ready' && card.date === date ? card : null;
+        return card && card.status === 'ready' && card.version === CARD_VERSION && card.date === date ? card : null;
     } catch { return null; }
 }
 
@@ -157,7 +158,7 @@ async function refresh(date, { now = Date.now(), force = false, ai = null } = {}
     catch { out = null; }
     const text = cardText(out);
     if (!text) return null;
-    const card = { status: 'ready', date, ...enrich(text, sample, total), generated_at: now, latest_take_id: latest, take_count: total, take_sample: sample.length };
+    const card = { status: 'ready', version: CARD_VERSION, date, ...enrich(text, sample, total), generated_at: now, latest_take_id: latest, take_count: total, take_sample: sample.length };
     try { await db.setSetting(KEY(date), JSON.stringify(card)); } catch { return null; }
     return card;
 }
@@ -195,5 +196,5 @@ function ssrHtml(card) {
 
 module.exports = {
     refresh, get, tick, start, stop, ssrHtml, isDue, sampleTakes, cardInput, cardText, takesFor, utcDay,
-    REFRESH_MS, CHECK_MS, MIN_TAKES, MAX_TAKES, KEY,
+    REFRESH_MS, CHECK_MS, MIN_TAKES, MAX_TAKES, CARD_VERSION, KEY,
 };

@@ -15,10 +15,11 @@ const today = require('../server/rundown/today');
     // ── Cadence: never before three takes, then 30 minutes apart with a new take ──
     assert.strictEqual(today.isDue(null, { now, total: 0, latest_take_id: null }), false, 'a day with no takes has no card');
     assert.strictEqual(today.isDue(null, { now, total: 1, latest_take_id: 9 }), true, 'the first take makes a card');
-    assert.strictEqual(today.isDue({ generated_at: now - 29 * 60000, latest_take_id: 9 }, { now, total: 10, latest_take_id: 10 }), false, 'not before 30 minutes');
-    assert.strictEqual(today.isDue({ generated_at: now - 31 * 60000, latest_take_id: 9 }, { now, total: 10, latest_take_id: 9 }), false, 'no new takes, no write');
-    assert.strictEqual(today.isDue({ generated_at: now - 31 * 60000, latest_take_id: 9 }, { now, total: 10, latest_take_id: 10 }), true, 'a new take after 30 minutes');
-    assert.strictEqual(today.isDue({ generated_at: now - 31 * 60000, latest_take_id: 9 }, { now, total: 10, latest_take_id: 8 }), false, 'an older cursor never rewrites');
+    assert.strictEqual(today.isDue({ version: today.CARD_VERSION, generated_at: now - 29 * 60000, latest_take_id: 9 }, { now, total: 10, latest_take_id: 10 }), false, 'not before 30 minutes');
+    assert.strictEqual(today.isDue({ version: today.CARD_VERSION, generated_at: now - 31 * 60000, latest_take_id: 9 }, { now, total: 10, latest_take_id: 9 }), false, 'no new takes, no write');
+    assert.strictEqual(today.isDue({ version: today.CARD_VERSION, generated_at: now - 31 * 60000, latest_take_id: 9 }, { now, total: 10, latest_take_id: 10 }), true, 'a new take after 30 minutes');
+    assert.strictEqual(today.isDue({ version: today.CARD_VERSION, generated_at: now - 31 * 60000, latest_take_id: 9 }, { now, total: 10, latest_take_id: 8 }), false, 'an older cursor never rewrites');
+    assert.strictEqual(today.isDue({ generated_at: now - 1000, latest_take_id: 9 }, { now, total: 10, latest_take_id: 9 }), true, 'a card from before this version is not a card');
 
     // ── Sampling: first and last of the day, no duplicates, up to 30 ──
     const items = Array.from({ length: 100 }, (_, i) => ({ id: i + 1, title: `take ${i + 1}` }));
@@ -76,6 +77,7 @@ const today = require('../server/rundown/today');
     }) });
     assert.ok(card, 'the first card is written');
     assert.strictEqual(card.status, 'ready');
+    assert.strictEqual(card.version, today.CARD_VERSION);
     assert.strictEqual(card.take_count, 3);
     assert.strictEqual(card.highlights.length, 1, 'only a real take becomes a highlight');
     assert.deepStrictEqual(card.highlights[0], {
