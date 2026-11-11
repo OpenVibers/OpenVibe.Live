@@ -481,6 +481,8 @@ function applyChatSettings() {
     document.querySelectorAll('.chat-messages, .global-chat-messages, #pc-msgs').forEach(el => {
         el.classList.toggle('compact', !!chatSettings.compactMode);
     });
+    // ... and the room around it: the sheet's header, the goal bar and the channel line take less (ask 366).
+    document.documentElement.classList.toggle('chat-compact', !!chatSettings.compactMode);
     // Sync all settings panel checkboxes/selects if any are open
     syncSettingsPanelUI();
     updateFullscreenChatOverlayState();
@@ -5712,6 +5714,10 @@ function buildSettingsPanelHTML() {
                     <option value="default">Default</option>
                     <option value="large">Large</option>
                 </select>
+            </label>
+            <label class="csp-row">
+                <span>Compact view</span>
+                <input type="checkbox" data-setting="compactMode" onchange="onChatSettingChange(this)">
             </label>
             <label class="csp-row">
                 <span>Show Avatars</span>

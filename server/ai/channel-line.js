@@ -174,4 +174,33 @@ function shapeChannelLine({ username = null, displayName = null, overview = '' }
     return FALLBACK_CHANNEL_LINE;
 }
 
-module.exports = { shapeChannelLine, CHANNEL_LINE_RE, FALLBACK_CHANNEL_LINE, MAX_LEN };
+/*
+ * The AI's own card line (2026-11-11, ask 363: the owner, "not all so generic sounding … more human feeling and nice").
+ * OpenVibe.AI's live.streamer.overview answers a `line` written for the card ("Robots, cameras and late-night
+ * tinkering, with chat riding along."); it is kept when it is one sentence of 20 to 100 characters, without the name, a
+ * colon or a handle, without the stock words that make every channel sound the same, not explicit, and not in the
+ * reshaped "Streams …" shape (that shape is the fallback's, so the reshape pass knows its own lines). Otherwise null,
+ * and the card falls back to the overview reshaped.
+ */
+const STOCK = /\b(?:focus|content|engaging|various|a mix of|dive into|diving into|showcas\w*|vibrant|dynamic|journey|immersive|a blend of)\b/i;
+function humanLine(raw, { username = null, displayName = null } = {}) {
+    let s = plain(raw).replace(/^["'\u201c\u201d]+|["'\u201c\u201d]+$/g, '').trim();
+    if (!s) return null;
+    if (!/[.!?\u2026]$/.test(s)) s += '.';
+    if (s.length < 20 || s.length > 100) return null;
+    if (/^Streams\b/.test(s) || s.includes(':') || /@\w/.test(s)) return null;
+    if (sentences(s).length > 1) return null;
+    for (const n of [displayName, username]) {
+        const name = String(n || '').trim();
+        if (name && new RegExp(`^${escRe(name)}\\b`, 'i').test(s)) return null;
+    }
+    if (STOCK.test(s) || isExplicit(s)) return null;
+    return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+/** The card's line: the AI's own when it passes, else the overview in the one shape. */
+function cardLine({ username = null, displayName = null, overview = '', line = null } = {}) {
+    return humanLine(line, { username, displayName }) || shapeChannelLine({ username, displayName, overview });
+}
+
+module.exports = { shapeChannelLine, humanLine, cardLine, CHANNEL_LINE_RE, FALLBACK_CHANNEL_LINE, MAX_LEN };

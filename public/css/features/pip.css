@@ -1,0 +1,150 @@
+/* ── Picture-in-picture (public/js/stream-pip.js) ─────────────────────────────────────────────────────────────────
+   One stylesheet for every PIP (2026-11-11, owner: "move it anywhere … more solid feeling and more responsive … use the
+   OV animations"). A PIP sits in the player (absolute, its place in fractions of the player) or over the page
+   (.is-floating: fixed, fractions of the window, above the page and below the navbar's menus); while it is moved it is
+   lifted (.is-lifted: fixed, moved by a transform each frame), and it lands with a spring. Tucked into a side, only its
+   tab stays on screen (the `translate` property; `transform` is the landing's). Its waits are the mark at work. */
+
+.ov-pip {
+    container: ovpip / inline-size;
+    position: absolute;
+    z-index: 25;                      /* above the video, below the NSFW gate (30) */
+    aspect-ratio: 16 / 9;
+    border-radius: 14px;
+    overflow: hidden;
+    background: #05070c;
+    border: 1px solid rgba(255, 255, 255, .16);
+    box-shadow: 0 1px 0 rgba(255, 255, 255, .06) inset, 0 10px 28px -8px rgba(0, 0, 0, .7), 0 2px 6px rgba(0, 0, 0, .35);
+    cursor: grab;
+    touch-action: none;               /* pointer events drive the move, the pinch and the size */
+    -webkit-user-select: none; user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    contain: layout paint;
+    transition: box-shadow var(--ov-dur-2, .15s) var(--ov-ease-out, ease), border-color var(--ov-dur-2, .15s) var(--ov-ease-out, ease),
+        translate var(--ov-dur-3, .3s) var(--ov-ease-spring, cubic-bezier(.2, 1.25, .3, 1)), opacity var(--ov-dur-2, .2s);
+}
+.ov-pip.is-floating { position: fixed; z-index: 900; }
+.ov-pip.is-lifted { position: fixed; z-index: 905; will-change: transform; transition: none; }
+.ov-pip:hover { border-color: rgba(255, 255, 255, .3); }
+.ov-pip.is-dragging {
+    cursor: grabbing; border-color: color-mix(in srgb, var(--accent, #3b82f6) 70%, transparent);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent, #3b82f6) 45%, transparent), 0 26px 50px -14px rgba(0, 0, 0, .8), 0 6px 14px rgba(0, 0, 0, .4);
+}
+.ov-pip:focus-visible { outline: 2px solid var(--accent, #3b82f6); outline-offset: 2px; }
+
+/* Coming and going. */
+@keyframes ovPipIn { from { opacity: 0; scale: .9; } }
+@keyframes ovPipOut { to { opacity: 0; scale: .9; } }
+.ov-pip.is-entering { animation: ovPipIn var(--ov-dur-3, .32s) var(--ov-ease-spring, cubic-bezier(.2, 1.25, .3, 1)); }
+.ov-pip.is-leaving { animation: ovPipOut .24s var(--ov-ease-in, ease-in) forwards; pointer-events: none; }
+
+/* The box takes the source's own shape (stream-pip.js sets aspect-ratio from the video), so contain shows it whole: a
+   portrait camera is never cut to 16:9 (2026-11-07). */
+.ov-pip-video { width: 100%; height: 100%; object-fit: contain; display: block; background: #000; pointer-events: none; }
+
+/* The bar: its name and three round buttons, on a glass strip that comes up on hover, focus, a tap or a move. */
+.ov-pip-bar {
+    position: absolute; inset: 0 0 auto 0; z-index: 3;
+    display: flex; align-items: center; justify-content: space-between; gap: 6px;
+    padding: 6px 6px 14px 9px;
+    background: linear-gradient(180deg, rgba(0, 0, 0, .66), rgba(0, 0, 0, .28) 62%, transparent);
+    opacity: 0; translate: 0 -4px;
+    transition: opacity var(--ov-dur-2, .15s) var(--ov-ease-out, ease), translate var(--ov-dur-2, .15s) var(--ov-ease-out, ease);
+    pointer-events: none;
+}
+.ov-pip:hover .ov-pip-bar, .ov-pip:focus-within .ov-pip-bar, .ov-pip.is-active .ov-pip-bar, .ov-pip.is-dragging .ov-pip-bar,
+.ov-pip:not([data-state="live"]) .ov-pip-bar { opacity: 1; translate: 0 0; pointer-events: auto; }
+.ov-pip-title {
+    min-width: 0; display: inline-flex; align-items: center; gap: 5px;
+    font-size: .72rem; color: #fff; font-weight: 700; letter-spacing: .01em;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    text-shadow: 0 1px 3px rgba(0, 0, 0, .8);
+}
+.ov-pip-title i { opacity: .85; font-size: .66rem; }
+.ov-pip-title a { color: inherit; text-decoration: none; overflow: hidden; text-overflow: ellipsis; }
+.ov-pip-title a:hover, .ov-pip-title a:focus-visible { text-decoration: underline; }
+.ov-pip.is-portrait .ov-pip-bar { padding-inline: 5px; }
+.ov-pip-actions { display: flex; gap: 4px; flex-shrink: 0; }
+.ov-pip-actions button {
+    width: 26px; height: 26px; border-radius: 50%; border: 1px solid rgba(255, 255, 255, .16); cursor: pointer;
+    background: rgba(10, 12, 18, .55); color: #fff; font-size: .68rem; display: grid; place-items: center;
+    -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+    transition: background var(--ov-dur-1, .12s) var(--ov-ease-out, ease), transform var(--ov-dur-1, .12s) var(--ov-ease-spring, ease);
+}
+.ov-pip-actions button:hover { background: rgba(255, 255, 255, .22); transform: translateY(-1px); }
+.ov-pip-actions button:active { transform: scale(.92); }
+.ov-pip-actions button[aria-pressed="true"] { background: var(--accent, #3b82f6); border-color: transparent; }
+/* Listening: this PIP has the sound; a ring says so while it lasts. */
+.ov-pip.is-listening { box-shadow: 0 0 0 2px var(--accent, #3b82f6), 0 10px 28px -8px rgba(0, 0, 0, .7); }
+
+/* The corner that sizes it: a soft grip that shows on hover and is always there to a finger. */
+.ov-pip-resize {
+    position: absolute; right: 0; bottom: 0; z-index: 3;
+    width: 22px; height: 22px; cursor: nwse-resize; touch-action: none;
+    background:
+        linear-gradient(135deg, transparent 52%, rgba(255, 255, 255, .7) 52%, rgba(255, 255, 255, .7) 60%,
+                        transparent 60%, transparent 70%, rgba(255, 255, 255, .7) 70%, rgba(255, 255, 255, .7) 78%, transparent 78%);
+    opacity: 0; transition: opacity var(--ov-dur-2, .15s) var(--ov-ease-out, ease);
+}
+.ov-pip:hover .ov-pip-resize, .ov-pip.is-active .ov-pip-resize, .ov-pip.is-resizing .ov-pip-resize { opacity: 1; }
+
+/* Waiting: the mark at work over its last picture, never a black box. Connecting and waiting for frames are "busy";
+   a dropped connection is the mark asleep while it tries again. */
+.ov-pip-state {
+    position: absolute; inset: 0; z-index: 2;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; padding: 10px;
+    background: radial-gradient(ellipse at center, rgba(8, 10, 16, .55), rgba(8, 10, 16, .78));
+    -webkit-backdrop-filter: blur(6px) saturate(.8); backdrop-filter: blur(6px) saturate(.8);
+    color: rgba(255, 255, 255, .86); font-size: .72rem; font-weight: 600; text-align: center; line-height: 1.3;
+    opacity: 0; pointer-events: none; transition: opacity var(--ov-dur-3, .3s) var(--ov-ease-out, ease);
+}
+.ov-pip:not([data-state="live"]) .ov-pip-state { opacity: 1; }
+.ov-pip-state-t { max-width: 100%; overflow-wrap: anywhere; text-shadow: 0 1px 3px rgba(0, 0, 0, .6); }
+.ov-pip[data-state="offline"] .ov-pip-state-t { color: color-mix(in srgb, #fbbf24 70%, #fff); }
+
+/* Tucked into a side: only the tab and an edge of its picture stay on screen; a tap brings it back. */
+.ov-pip.is-tucked-left { translate: calc(-100% + 30px) 0; }
+.ov-pip.is-tucked-right { translate: calc(100% - 30px) 0; }
+.ov-pip.is-tucked .ov-pip-bar, .ov-pip.is-tucked .ov-pip-resize, .ov-pip.is-tucked .ov-pip-state-t { opacity: 0; pointer-events: none; }
+.ov-pip.is-tucked .ov-pip-video { filter: brightness(.75); }
+.ov-pip-tab {
+    position: absolute; top: 0; bottom: 0; z-index: 4; width: 30px; display: none; place-items: center; padding: 0; cursor: pointer;
+    border: 0; color: #fff; font-size: .85rem;
+    background: linear-gradient(90deg, rgba(0, 0, 0, .55), rgba(0, 0, 0, .25));
+    -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+}
+.ov-pip.is-tucked .ov-pip-tab { display: grid; }
+.ov-pip.is-tucked-left .ov-pip-tab { right: 0; }
+.ov-pip.is-tucked-right .ov-pip-tab { left: 0; background: linear-gradient(270deg, rgba(0, 0, 0, .55), rgba(0, 0, 0, .25)); }
+.ov-pip-tab-l, .ov-pip-tab-r { display: none; }
+.ov-pip.is-tucked-right .ov-pip-tab-l, .ov-pip.is-tucked-left .ov-pip-tab-r { display: grid; place-items: center; }
+
+/* The player glows while a PIP is held over it: let go and it docks there. */
+.video-container.ov-pip-dock-hint { box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--accent, #3b82f6) 70%, transparent); }
+
+/* A small PIP (a phone's 150 px): the buttons keep the bar, the name goes (it is on the PIP's label and its wait), and a
+   wait is the mark alone. */
+@container ovpip (max-width: 230px) {
+    .ov-pip-title { display: none; }
+    .ov-pip-bar { justify-content: flex-end; padding: 5px 5px 12px; }
+    .ov-pip-state-t { display: none; }
+    /* The two extras (listen, out of the browser) wait for a bigger PIP (a double tap makes it large). */
+    .ov-pip-actions .is-extra { display: none; }
+    /* Its wait keeps the whole picture: the bar comes up on a touch or a hover, not by itself. */
+    .ov-pip:not([data-state="live"]):not(:hover):not(.is-active):not(:focus-within) .ov-pip-bar { opacity: 0; pointer-events: none; }
+}
+
+/* Touch: the controls are always reachable (no hover) and big enough for a finger. */
+@media (pointer: coarse) {
+    .ov-pip-actions button { width: 32px; height: 32px; font-size: .78rem; }
+    .ov-pip-resize { width: 30px; height: 30px; opacity: .85; }
+}
+@media (max-width: 640px) {
+    .ov-pip { border-radius: 12px; }
+}
+
+/* Motion off: no spring and no fade, it is simply where it goes. */
+html[data-ov-motion="off"] .ov-pip, html[data-ov-motion="off"] .ov-pip-bar { transition: none; animation: none; }
+@media (prefers-reduced-motion: reduce) {
+    html:not([data-ov-motion="on"]) .ov-pip { animation: none; }
+}

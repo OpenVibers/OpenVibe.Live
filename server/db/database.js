@@ -464,14 +464,14 @@ function _shortOverview(text) {
     return (sp > 40 ? cut.slice(0, sp) : cut).trim() + '…';
 }
 /** A streamer's card line in the one channel shape (server/ai/channel-line.js); the name comes off via their row. */
-async function _shapedChannelLine(userId, overview) {
+async function _shapedChannelLine(userId, overview, line = null) {
     let username = null, displayName = null;
     try {
         const u = await get('SELECT username, display_name FROM users WHERE id = ?', [userId]);
         if (u) { username = u.username; displayName = u.display_name; }
     } catch { /* without the name the line still shapes, minus the name strip */ }
     try {
-        return require('../ai/channel-line').shapeChannelLine({ username, displayName, overview: _plainProse(overview || '') });
+        return require('../ai/channel-line').cardLine({ username, displayName, overview: _plainProse(overview || ''), line });
     } catch {
         return _shortOverview(overview);
     }
@@ -928,10 +928,10 @@ async function getStreamTranscriptSegments(streamId) {
 
 // countAutoClipsSince() removed — the media subsystem (vods/clips/pastes writes) moved to OpenVibe.Media.
 
-async function upsertStreamerOverview(userId, { overview, model = null, sources = null }) {
-    // The card line is stored in the one channel shape, so the streamer-overview job refreshes stored lines
-    // through this write; rows it has not rewritten yet are shaped on read (GET /api/streams/recently-online).
-    const short = await _shapedChannelLine(userId, overview);
+async function upsertStreamerOverview(userId, { overview, line = null, model = null, sources = null }) {
+    // The card line: the AI's own line when it passes (server/ai/channel-line.js humanLine, ask 363), else the overview
+    // in the one channel shape; rows the job has not rewritten yet are shaped on read (GET /api/streams/recently-online).
+    const short = await _shapedChannelLine(userId, overview, line);
     return await run(`INSERT INTO streamer_overviews (user_id, overview, overview_short, model, sources, generated_at)
                 VALUES (?, ?, ?, ?, ?, ov_now())
                 ON CONFLICT(user_id) DO UPDATE SET
@@ -955,8 +955,11 @@ async function shapeStoredStreamerOverviewShorts(limit = 20) {
         FROM streamer_overviews o LEFT JOIN users u ON u.id = o.user_id
         WHERE o.overview IS NOT NULL AND TRIM(o.overview) <> ''
         ORDER BY o.generated_at ASC NULLS FIRST LIMIT ?`, [limit]);
+    const { humanLine } = require('../ai/channel-line');
     let changed = 0;
     for (const r of rows) {
+        // The AI's own card line stays (it is never in the reshaped "Streams …" shape).
+        if (humanLine(r.overview_short, { username: r.username, displayName: r.display_name })) continue;
         const short = await _shapedChannelLine(r.user_id, r.overview);
         if (short && short !== r.overview_short) {
             await run('UPDATE streamer_overviews SET overview_short = ? WHERE user_id = ?', [short, r.user_id]);
@@ -1302,21 +1305,6 @@ async function setPipsForManagedStream(managedStreamId, pips) {
             [first ? first.source_msid : null, first ? JSON.stringify({ x: first.x, y: first.y, w: first.w }) : '{}', managedStreamId]);
     });
     return list;
-}
-
-/**
- * Slots live right now as a PIP over another live stream of their own streamer (a screen share's camera,
- * public/js/broadcast-cam-pip.js): the live list leaves them out, since they show inside that stream. A co-host's stream
- * shown as a PIP is not among them: it is someone else's channel and keeps its own place.
- */
-async function getLiveOwnPipSourceSlots() {
-    try {
-        const rows = await all(`SELECT DISTINCT p.source_msid FROM stream_pips p
-            JOIN managed_streams src ON src.id = p.source_msid
-            JOIN streams host ON host.managed_stream_id = p.managed_stream_id AND host.is_live = 1
-            WHERE host.user_id = src.user_id`);
-        return new Set(rows.map((r) => Number(r.source_msid)));
-    } catch { return new Set(); }
 }
 
 /** A person's slots, as PIP sources: id, title, slug, and whether each is live now. */
@@ -3788,7 +3776,7 @@ module.exports = {
     updateManagedStream, deleteManagedStream,
     setLiveStreamsContentLabels, suggestStreamContentLabels,
     getManagedStreamBroadcastSettings, updateManagedStreamBroadcastSettings,
-    getPipOverlayForManagedStream, getPipCandidateSlots, getPipsForManagedStream, setPipsForManagedStream, getPipSourceSlots, getLiveOwnPipSourceSlots, MAX_PIPS,
+    getPipOverlayForManagedStream, getPipCandidateSlots, getPipsForManagedStream, setPipsForManagedStream, getPipSourceSlots, MAX_PIPS,
     countManagedStreamsByUser, getManagedStreamLimit,
     isValidManagedStreamSlug, isManagedStreamSlugTaken,
     ensureStreamerRoleOnFeed,

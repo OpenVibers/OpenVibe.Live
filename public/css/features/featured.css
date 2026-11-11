@@ -16,47 +16,66 @@
 .hf-media.is-switching video, .hf-media.is-switching canvas, .hf-media.is-switching img.hf-frame { opacity: 0; }
 .hf-media video, .hf-media canvas { transition: opacity var(--ov-dur-3, 0.4s); }
 .hf-poster { position: absolute; inset: 0; background-size: cover; background-position: center; filter: blur(14px) saturate(1.2); transform: scale(1.1); opacity: 0.55; }
+/* What rides on the picture: the top row (live, watching, frames, then sound and hide at the end) and the caption. */
+.hf-top { position: absolute; top: 10px; left: 10px; right: 10px; z-index: 2; display: flex; align-items: center; gap: 6px; pointer-events: none; }
+.hf-top-end { margin-left: auto; display: inline-flex; gap: 6px; pointer-events: auto; }
 .hf-live {
-    position: absolute; top: 12px; left: 12px; z-index: 2; display: inline-flex; align-items: center; gap: 6px;
+    display: inline-flex; align-items: center; gap: 6px;
     padding: 4px 10px; border-radius: 999px; font-size: 0.7rem; font-weight: 800; letter-spacing: 0.08em; color: #fff;
     background: #ef4444; box-shadow: 0 4px 14px rgba(239, 68, 68, 0.45);
 }
 .hf-live i { font-size: 0.5rem; animation: hfBlink 1.6s var(--ov-ease-in-out, ease-in-out) infinite; }
 @keyframes hfBlink { 50% { opacity: 0.35; } }
-.hf-viewers { position: absolute; top: 12px; right: 12px; z-index: 2; display: inline-flex; align-items: center; gap: 5px; padding: 4px 9px; border-radius: 999px; font-size: 0.72rem; color: #fff; background: rgba(0, 0, 0, 0.55); backdrop-filter: blur(6px); }
-.hf-sound {
-    position: absolute; bottom: 12px; left: 12px; z-index: 2; display: inline-flex; align-items: center; gap: 7px;
-    padding: 7px 12px; border-radius: 999px; border: 1px solid rgba(255, 255, 255, 0.25); cursor: pointer;
-    background: rgba(0, 0, 0, 0.6); color: #fff; font: inherit; font-size: 0.78rem; font-weight: 600; backdrop-filter: blur(6px);
-    transition: background var(--ov-dur-2, 0.15s), transform var(--ov-dur-2, 0.15s);
+.hf-viewers { display: inline-flex; align-items: center; gap: 5px; padding: 4px 9px; border-radius: 999px; font-size: 0.72rem; color: #fff; background: rgba(0, 0, 0, 0.55); backdrop-filter: blur(6px); }
+.hf-sound, .hf-hide {
+    display: grid; place-items: center; width: 34px; height: 34px; padding: 0; border-radius: 50%; cursor: pointer;
+    border: 1px solid rgba(255, 255, 255, 0.22); background: rgba(0, 0, 0, 0.55); color: #fff; font: inherit; font-size: 0.82rem;
+    -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+    transition: background var(--ov-dur-2, 0.15s), transform var(--ov-dur-2, 0.15s) var(--ov-ease-spring, ease);
 }
-.hf-sound:hover { background: rgba(0, 0, 0, 0.8); transform: translateY(-1px); }
-.hf-preview-note { position: absolute; bottom: 12px; right: 12px; z-index: 2; padding: 4px 9px; border-radius: 999px; font-size: 0.68rem; color: #ddd; background: rgba(0, 0, 0, 0.5); }
+.hf-sound:hover, .hf-hide:hover { background: rgba(0, 0, 0, 0.8); transform: translateY(-1px); }
+.hf-sound[aria-pressed="true"] { background: var(--accent); border-color: transparent; }
+.hf-preview-note { padding: 4px 9px; border-radius: 999px; font-size: 0.68rem; color: #e5e7eb; background: rgba(0, 0, 0, 0.5); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); white-space: nowrap; }
 .hf-media-link { position: absolute; inset: 0; z-index: 1; }
+.hf-cap {
+    position: absolute; left: 0; right: 0; bottom: 0; z-index: 2; pointer-events: none; display: grid; gap: 6px;
+    padding: 44px 14px 12px; background: linear-gradient(to top, rgba(0, 0, 0, 0.82), rgba(0, 0, 0, 0.45) 55%, transparent);
+    color: #fff;
+}
 
-.hf-panel { display: flex; flex-direction: column; gap: 10px; padding: 18px 18px 16px; min-width: 0; }
-.hf-kicker { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 0.66rem; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-muted); }
-.hf-kicker b { color: var(--danger-text, #ef4444); display: inline-flex; align-items: center; gap: 6px; }
-.hf-hide { background: none; border: 0; padding: 4px 6px; color: var(--text-muted); cursor: pointer; border-radius: 8px; font-size: 0.8rem; line-height: 1; }
-.hf-hide:hover { color: var(--text-primary); background: color-mix(in srgb, var(--text-primary) 8%, transparent); }
-.hf-title { margin: 0; font-size: clamp(1.05rem, 1.8vw, 1.35rem); font-weight: 800; line-height: 1.2; letter-spacing: -0.01em; color: var(--text-primary); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
-.hf-who { display: flex; align-items: center; gap: 8px; font-size: 0.86rem; color: var(--text-secondary); text-decoration: none; min-width: 0; }
-.hf-who:hover { color: var(--text-primary); }
-.hf-who b { color: var(--text-primary); }
-.hf-who .muted { margin-left: auto; font-size: 0.74rem; white-space: nowrap; }
+.hf-panel { display: flex; flex-direction: column; gap: 10px; padding: 16px 16px 14px; min-width: 0; }
+.hf-title { margin: 0; font-size: clamp(1.05rem, 1.8vw, 1.4rem); font-weight: 800; line-height: 1.2; letter-spacing: -0.01em; color: #fff; text-shadow: 0 1px 8px rgba(0, 0, 0, 0.6); overflow-wrap: anywhere; }
+.hf-who { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; font-size: 0.84rem; color: rgba(255, 255, 255, 0.85); min-width: 0; }
+.hf-who .stream-card-avatar { width: 24px; height: 24px; font-size: 0.7rem; box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.35); }
+.hf-who b { color: #fff; overflow-wrap: anywhere; }
+.hf-up { margin-left: auto; font-size: 0.74rem; white-space: nowrap; color: rgba(255, 255, 255, 0.8); }
+/* A wide screen has the panel beside the picture: the title and who head it there, and the picture carries only its
+   chips. A phone stacks them: the title and who ride on the picture (.hf-cap) and the panel starts with Right now. */
+.hf-head { display: grid; gap: 8px; }
+.hf-head .hf-title { color: var(--text-primary); text-shadow: none; }
+.hf-head .hf-who { color: var(--text-secondary); text-decoration: none; }
+.hf-head .hf-who:hover b { color: var(--accent); }
+.hf-head .hf-who b { color: var(--text-primary); }
+.hf-head .hf-tag { background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent-light); }
+.hf-head .hf-up { color: var(--text-muted); }
+@media (min-width: 861px) { .hf-cap { display: none; } }
+@media (max-width: 860px) { .hf-head { display: none; } }
 .hf-tag .cat-inferred { opacity: .78; }
-.hf-tag { font-size: 0.68rem; padding: 2px 8px; border-radius: 999px; background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent-light); }
+.hf-tag { font-size: 0.68rem; padding: 2px 8px; border-radius: 999px; background: rgba(255, 255, 255, 0.16); color: #fff; -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
 .hf-now {
     position: relative; padding: 10px 12px 10px 14px; border-radius: 12px; font-size: 0.84rem; line-height: 1.5; color: var(--text-secondary);
     background: color-mix(in srgb, #22d3ee 7%, transparent); border: 1px solid color-mix(in srgb, #22d3ee 22%, transparent);
     transition: opacity var(--ov-dur-3, 0.3s);
 }
 .hf-now::before { content: ''; position: absolute; left: 0; top: 10px; bottom: 10px; width: 3px; border-radius: 3px; background: #22d3ee; }
-.hf-now-head { display: flex; align-items: center; gap: 6px; margin-bottom: 3px; font-size: 0.66rem; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: #22d3ee; }
-.hf-now-head span { margin-left: auto; font-weight: 600; letter-spacing: 0; text-transform: none; color: var(--text-muted); }
+/* "Right now · 23m ago" runs into the note's first line instead of taking a line of its own. */
+.hf-now-head { display: inline; margin-right: 6px; font-size: 0.66rem; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: #22d3ee; white-space: nowrap; }
+.hf-now-head i { margin-right: 3px; }
+.hf-now-head span { margin-left: 4px; font-weight: 600; letter-spacing: 0; text-transform: none; color: var(--text-muted); }
+.hf-now-head span:not(:empty)::before { content: '· '; }
 .hf-now.is-updating { opacity: 0.4; }
 .hf-overview { font-size: 0.8rem; color: var(--text-muted); line-height: 1.45; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
-.hf-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: auto; padding-top: 4px; }
+.hf-actions { display: flex; align-items: center; gap: 8px; margin-top: auto; padding-top: 2px; }
 .hf-watch {
     display: inline-flex; align-items: center; gap: 8px; padding: 10px 16px; border-radius: 12px; text-decoration: none;
     color: #fff; font-weight: 700; font-size: 0.9rem;
@@ -72,7 +91,7 @@
 }
 .hf-next:hover { color: var(--text-primary); border-color: color-mix(in srgb, var(--accent) 50%, var(--border)); }
 .hf-next small { color: var(--text-muted); font-weight: 500; }
-.hf-chat { display: flex; align-items: center; gap: 6px; font-size: 0.74rem; color: var(--text-muted); }
+.hf-chat { display: flex; align-items: center; gap: 6px; margin-top: -2px; font-size: 0.74rem; color: var(--text-muted); }
 .hf-chat i { color: var(--accent); }
 
 /* The Live Now header gets a small way back in once the featured stream is hidden. */
@@ -85,10 +104,15 @@
 
 @media (max-width: 860px) {
     .hf { grid-template-columns: 1fr; }
-    .hf-panel { padding: 14px 14px 14px; }
+    .hf-panel { gap: 9px; padding: 12px 12px 12px; }
     .hf-overview { display: none; }
+    .hf-watch { flex: 1; justify-content: center; }
+}
+@media (max-width: 420px) {
+    .hf-cap { padding: 36px 12px 10px; gap: 5px; }
+    .hf-title { font-size: 1.05rem; }
 }
 
 /* Touch pointers: the unmute pill answers a finger at 44 px (2026-11-05 phone sweep: 35.6 px tall). It sits on the
    video overlay, so it takes the height itself rather than a hit area over the frame's own link. */
-@media (pointer: coarse) { .hf-sound { min-height: 44px; } }
+@media (pointer: coarse) { .hf-sound, .hf-hide { width: 44px; height: 44px; } }

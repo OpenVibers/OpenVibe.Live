@@ -86,6 +86,26 @@ async function register(streamId, ownerSubject, audience = 'public') {
     }
 }
 
+/**
+ * Apply one audience to the streamer's existing episodes (VISIBILITY-EVERYWHERE rule 2, "My Rundown").
+ * Each episode goes through the SDK's own update, so the share row, the log and the pages move together.
+ * Specific people needs a list per episode, so it is not applied in bulk; the sheet remains the place
+ * for that. Only the episodes the caller owns are passed in by settings.applyToEpisodes.
+ */
+async function applyAudience(ownerSubject, streamIds, audience) {
+    const shares = sdk();
+    if (!shares || !ownerSubject || !streamIds || !streamIds.length) return 0;
+    if (!['public', 'link', 'private'].includes(audience)) {
+        throw Object.assign(new Error('Specific people is chosen per episode'), { status: 400 });
+    }
+    let changed = 0;
+    for (const streamId of streamIds) {
+        await shares.update({ subject: { type: 'user', id: ownerSubject } }, { service: SERVICE, kind: KIND, id: String(streamId) }, { audience, members: [] });
+        changed++;
+    }
+    return changed;
+}
+
 /** The episode's own setting, read straight from the share row (the pages read it for every item). */
 async function audienceOf(streamId) {
     const row = await db.get('SELECT audience FROM shares WHERE service = ? AND kind = ? AND resource_id = ?', [SERVICE, KIND, String(streamId)]);
@@ -141,4 +161,4 @@ async function flushDeliveries() {
     return await shares.flush();
 }
 
-module.exports = { SERVICE, KIND, available, register, audienceOf, memberSubjects, maySee, describe, router, flushDeliveries, _setNetwork, _reset() { store = undefined; loaded = false; networkOverride = null; } };
+module.exports = { SERVICE, KIND, available, register, applyAudience, audienceOf, memberSubjects, maySee, describe, router, flushDeliveries, _setNetwork, _reset() { store = undefined; loaded = false; networkOverride = null; } };

@@ -36,8 +36,13 @@ const avatar = (user) => user.avatar_url
     ? `<img class="digest-avatar" src="${esc(user.avatar_url)}" alt="" loading="lazy">`
     : `<span class="digest-avatar digest-avatar--initial">${esc((user.display_name || user.username || '?').slice(0, 1).toUpperCase())}</span>`;
 const name = (user) => esc(user.display_name || user.username);
-const delta = (value) => value > 0 ? `+${value}` : String(value);
-const tile = (icon, label, value, change, extra = '') => `<div class="digest-tile"><span class="digest-tile-label"><i class="fa-solid ${icon}" aria-hidden="true"></i> ${label}</span><span class="digest-tile-value">${Number(value || 0).toLocaleString()}${change == null ? '' : ` <small title="Today compared with yesterday">${delta(change)}</small>`}</span>${extra}</div>`;
+const delta = (value) => value > 0 ? `+${value}` : value < 0 ? `\u2212${-value}` : '\u00b10';
+// One cell of the strip (owner, 2026-11-11: "look at all that wasted space for those metrics"): the number with its
+// change beside it, what it counts under it, four cells on one row at every width.
+const tile = (icon, label, value, change, extra = '') => {
+    const c = change == null ? '' : ` <small class="digest-delta${change > 0 ? ' is-up' : change < 0 ? ' is-down' : ''}" title="Today compared with yesterday">${delta(change)}</small>`;
+    return `<div class="digest-tile"><span class="digest-tile-value">${Number(value || 0).toLocaleString()}${c}</span><span class="digest-tile-label"><i class="fa-solid ${icon}" aria-hidden="true"></i> ${label}</span>${extra}</div>`;
+};
 const validProfile = (username) => /^[a-z0-9_-]{1,64}$/i.test(String(username || ''));
 const profile = (u) => validProfile(u.username) ? `/@${encodeURIComponent(u.username)}` : '/';
 const text = (s, max = 145) => esc(String(s || '').slice(0, max));
@@ -57,10 +62,21 @@ function render(d) {
         const link = `/rundown/e/${Number(t.stream_id)}#rd-take-${Number(t.id)}`;
         return `<a class="digest-topic-row" href="${link}"><span class="digest-topic-chip digest-topic-chip--${esc(t.kind || 'other')}">${text(t.topic, 40)}</span><span class="digest-topic-text">${avatar(t)}<span><strong>${text(t.text)}</strong><small>in ${name(t)}'s stream · ${esc(age(t.said_at))}</small></span></span></a>`;
     }).join('');
-    const people = [...d.liveNow.map((u) => ({ ...u, live: true })), ...d.streamed].slice(0, 3).map((u) => {
-        const watch = u.watch_url || (u.live ? profile(u) : null);
-        const details = u.live ? `Live now · ${Number(u.viewer_count || 0)} watching` : `streamed ${Number(u.sessions) === 1 ? 'once' : `${Number(u.sessions)} times`} · ${Math.max(1, Math.round(Number(u.hours || 0) * 60))} min · peak ${Number(u.peak_viewers || 0)} watching`;
-        return `<div class="digest-person">${avatar(u)}<span class="digest-person-main"><a href="${profile(u)}">${name(u)}</a><small>${esc(details)}</small></span><span class="digest-person-actions">${watch ? `<a href="${esc(watch)}">Watch</a>` : ''}<a href="/rundown/${encodeURIComponent(u.username)}"><i class="fa-solid fa-newspaper" aria-hidden="true"></i> Rundown</a></span></div>`;
+    // One row a person: someone live on two slots is one row that says so, not the same face twice (2026-11-11).
+    const live = [];
+    for (const u of d.liveNow) {
+        const had = live.find((x) => x.username === u.username);
+        if (had) { had.streams += 1; had.viewer_count = Number(had.viewer_count || 0) + Number(u.viewer_count || 0); } else live.push({ ...u, live: true, streams: 1 });
+    }
+    const people = [...live, ...d.streamed].slice(0, 3).map((u) => {
+        const go = u.watch_url || (u.live ? profile(u) : null);
+        const mins = Math.max(1, Math.round(Number(u.hours || 0) * 60));
+        const details = u.live
+            ? `Live now${u.streams > 1 ? ` on ${u.streams} streams` : ''} · ${Number(u.viewer_count || 0)} watching`
+            : `Streamed ${Number(u.sessions) === 1 ? 'once' : `${Number(u.sessions)} times`} · ${mins >= 90 ? `${Math.round(mins / 6) / 10} h` : `${mins} min`} · peak ${Number(u.peak_viewers || 0)}`;
+        // The two ways in are icons with their names on them, so the person's name and line keep the row's width.
+        const who = name(u);
+        return `<div class="digest-person${u.live ? ' is-live' : ''}">${avatar(u)}<span class="digest-person-main"><a href="${profile(u)}">${who}</a><small>${esc(details)}</small></span><span class="digest-person-actions">${go ? `<a class="is-go" href="${esc(go)}" title="Watch" aria-label="Watch ${who}"><i class="fa-solid fa-play" aria-hidden="true"></i></a>` : ''}<a href="/rundown/${encodeURIComponent(u.username)}" title="Rundown" aria-label="${who}'s Rundown"><i class="fa-solid fa-newspaper" aria-hidden="true"></i></a></span></div>`;
     }).join('');
     const across = d.across.length ? `<div class="digest-across"><strong>Across OpenVibe</strong>${d.across.map((x) => `<a href="${esc(x.url)}"><i class="fa-solid ${esc(x.icon)}" aria-hidden="true"></i><span>${text(x.title, 62)} <small>· ${esc(x.site)}</small></span></a>`).join('')}</div>` : '';
     return `<div class="digest-head"><h2 class="digest-title">Since you were here <span>· ${esc(since)}</span></h2></div><div class="digest-tiles">${tiles}</div>${topics ? `<section class="digest-section"><h3>What they talked about</h3>${topics}</section>` : ''}${people ? `<section class="digest-section"><h3>Who streamed</h3>${people}</section>` : ''}${across}`;

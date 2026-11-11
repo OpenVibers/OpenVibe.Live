@@ -130,31 +130,54 @@
         const viewers = Number(s.total_viewer_count || s.viewer_count || 0);
         const up = (typeof formatUptime === 'function' && s.started_at) ? formatUptime(s.started_at) : '';
         const canPlay = !constrained() && (s.protocol === 'rtmp' || s.protocol === 'jsmpeg');
+        // 2026-11-11 (owner: "you don't need the featured live text on that area … have it floating on top of it"): the
+        // stream's title, who and how long ride on the picture, so the card is the picture and what it says right now.
+        const inferred = s.ai_category && s.ai_category === s.category;
+        // The session overview only when it says something Right now does not (a young stream's overview is that note).
+        const ovText = String(s.ai_overview_short || s.ai_overview || '').trim();
+        const same = (a, b) => !!a && !!b && a.slice(0, 48) === b.slice(0, 48);
+        const overview = ovText && !same(ovText, now) ? ovText : '';
         st.el.innerHTML = `
             <div class="hf" data-stream-id="${escText(s.id)}">
                 <div class="hf-media">
                     ${s.thumbnail_url ? `<div class="hf-poster" style="background-image:url('${escText(s.thumbnail_url)}')"></div>` : ''}
-                    <span class="hf-live"><i class="fa-solid fa-circle"></i> LIVE</span>
-                    <span class="hf-viewers"><i class="fa-solid fa-eye"></i> ${viewers.toLocaleString()}</span>
-                    <a class="hf-media-link" href="${escText(chan)}" onclick="return handleLinkClick(event, '${escText(chan)}')" aria-label="Watch ${escText(s.display_name || s.username)}"></a>
-                    ${canPlay ? `<button type="button" class="hf-sound" aria-pressed="${st.unmuted}"><i class="fa-solid ${st.unmuted ? 'fa-volume-high' : 'fa-volume-xmark'}"></i> ${st.unmuted ? 'Sound on' : 'Unmute'}</button>` : `<span class="hf-preview-note">${constrained() ? 'Live frames · saving data' : 'Live frames · tap to watch'}</span>`}
+                    <a class="hf-media-link" href="${escText(chan)}" onclick="return handleLinkClick(event, '${escText(chan)}')" aria-label="Watch ${escText(s.title || 'the stream')} with ${escText(s.display_name || s.username)}"></a>
+                    <div class="hf-top">
+                        <span class="hf-live" title="Featured live stream"><i class="fa-solid fa-circle"></i> LIVE</span>
+                        <span class="hf-viewers" title="Watching now"><i class="fa-solid fa-eye"></i> ${viewers.toLocaleString()}</span>
+                        ${canPlay ? '' : `<span class="hf-preview-note" title="${constrained() ? 'Saving data: a new frame every few seconds' : 'A new frame every few seconds; open the stream to watch it live'}">${constrained() ? 'Frames · saving data' : 'Live frames'}</span>`}
+                        <span class="hf-top-end">
+                            ${canPlay ? `<button type="button" class="hf-sound" aria-pressed="${st.unmuted}" aria-label="${st.unmuted ? 'Mute' : 'Unmute'}" title="${st.unmuted ? 'Mute' : 'Unmute'}"><i class="fa-solid ${st.unmuted ? 'fa-volume-high' : 'fa-volume-xmark'}"></i></button>` : ''}
+                            <button type="button" class="hf-hide" title="Hide the featured stream (bring it back from the Live Now header)" aria-label="Hide the featured stream"><i class="fa-solid fa-xmark"></i></button>
+                        </span>
+                    </div>
+                    <div class="hf-cap" aria-hidden="true">
+                        <h3 class="hf-title">${escText(s.title || 'Untitled Stream')}</h3>
+                        <span class="hf-who">
+                            ${typeof _avatarSpan === 'function' ? _avatarSpan(s.avatar_url, s.username, s.profile_color) : ''}
+                            <b>${escText('@' + (s.username || s.display_name || ''))}</b>
+                            ${s.category ? `<span class="hf-tag"${inferred ? ' title="Category inferred by OpenVibe&#39;s AI from the stream"' : ''}>${escText(s.category)}${inferred ? '<span class="cat-inferred"> · inferred</span>' : ''}</span>` : ''}
+                            ${up ? `<span class="hf-up"><i class="fa-solid fa-clock"></i> ${escText(up)}</span>` : ''}
+                        </span>
+                    </div>
                 </div>
                 <div class="hf-panel">
-                    <div class="hf-kicker"><b><i class="fa-solid fa-satellite-dish"></i> Featured live</b><button type="button" class="hf-hide" title="Hide the featured stream (you can bring it back from the Live Now header)" aria-label="Hide the featured stream"><i class="fa-solid fa-xmark"></i></button></div>
-                    <h3 class="hf-title">${escText(s.title || 'Untitled Stream')}</h3>
-                    <a class="hf-who" href="${escText(chan)}" onclick="return handleLinkClick(event, '${escText(chan)}')">
-                        ${typeof _avatarSpan === 'function' ? _avatarSpan(s.avatar_url, s.username, s.profile_color) : ''}
-                        <b>${escText('@' + (s.username || s.display_name || ''))}</b>
-                        ${s.category ? `<span class="hf-tag"${s.ai_category && s.ai_category === s.category ? ' title="Category inferred by OpenVibe&#39;s AI from the stream"' : ''}>${escText(s.category)}${s.ai_category && s.ai_category === s.category ? '<span class="cat-inferred"> · inferred</span>' : ''}</span>` : ''}
-                        ${up ? `<span class="muted"><i class="fa-solid fa-clock"></i> ${escText(up)}</span>` : ''}
-                    </a>
-                    ${now ? `<div class="hf-now"><div class="hf-now-head"><i class="fa-solid fa-wand-magic-sparkles"></i> Right now <span>${m.captured_at ? escText(typeof timeAgo === 'function' ? timeAgo(m.captured_at) : '') : ''}</span></div>${escText(now)}</div>` : ''}
-                    ${s.ai_overview_short || s.ai_overview ? `<div class="hf-overview">${escText(s.ai_overview_short || s.ai_overview)}</div>` : ''}
+                    <div class="hf-head">
+                        <h3 class="hf-title">${escText(s.title || 'Untitled Stream')}</h3>
+                        <a class="hf-who" href="${escText(chan)}" onclick="return handleLinkClick(event, '${escText(chan)}')">
+                            ${typeof _avatarSpan === 'function' ? _avatarSpan(s.avatar_url, s.username, s.profile_color) : ''}
+                            <b>${escText('@' + (s.username || s.display_name || ''))}</b>
+                            ${s.category ? `<span class="hf-tag">${escText(s.category)}</span>` : ''}
+                            ${up ? `<span class="hf-up"><i class="fa-solid fa-clock"></i> ${escText(up)}</span>` : ''}
+                        </a>
+                    </div>
+                    ${now ? `<div class="hf-now"><span class="hf-now-head"><i class="fa-solid fa-wand-magic-sparkles"></i> Right now <span>${m.captured_at ? escText(typeof timeAgo === 'function' ? timeAgo(m.captured_at) : '') : ''}</span></span>${escText(now)}</div>` : ''}
+                    ${overview ? `<div class="hf-overview">${escText(overview)}</div>` : ''}
                     <div class="hf-actions">
                         <a class="hf-watch" href="${escText(chan)}" onclick="return handleLinkClick(event, '${escText(chan)}')"><i class="fa-solid fa-play"></i> Watch &amp; chat</a>
-                        ${d.count > 1 ? `<button type="button" class="hf-next"><i class="fa-solid fa-forward"></i> Next <small>${d.count} live</small></button>` : ''}
-                        <span class="hf-chat"><i class="fa-solid fa-comments"></i> Chat is open to everyone — no account needed</span>
+                        ${d.count > 1 ? `<button type="button" class="hf-next" title="The next live stream"><i class="fa-solid fa-forward"></i> Next <small>${d.count} live</small></button>` : ''}
                     </div>
+                    <span class="hf-chat"><i class="fa-solid fa-comments"></i> Anyone can chat, no account needed</span>
                 </div>
             </div>`;
         $('.hf-hide').addEventListener('click', () => setOff(true));
@@ -163,7 +186,8 @@
             st.unmuted = !st.unmuted;
             if (st.player) st.player.setMuted(!st.unmuted);
             sound.setAttribute('aria-pressed', String(st.unmuted));
-            sound.innerHTML = `<i class="fa-solid ${st.unmuted ? 'fa-volume-high' : 'fa-volume-xmark'}"></i> ${st.unmuted ? 'Sound on' : 'Unmute'}`;
+            sound.setAttribute('aria-label', st.unmuted ? 'Mute' : 'Unmute'); sound.title = st.unmuted ? 'Mute' : 'Unmute';
+            sound.innerHTML = `<i class="fa-solid ${st.unmuted ? 'fa-volume-high' : 'fa-volume-xmark'}"></i>`;
         });
         const next = $('.hf-next');
         if (next) next.addEventListener('click', () => { st.skip = s.id; load(true); });
@@ -218,8 +242,7 @@
         const s = d.stream;
         const v = $('.hf-viewers');
         if (v) v.innerHTML = `<i class="fa-solid fa-eye"></i> ${Number(s.total_viewer_count || s.viewer_count || 0).toLocaleString()}`;
-        const t = $('.hf-title');
-        if (t && t.textContent !== (s.title || 'Untitled Stream')) t.textContent = s.title || 'Untitled Stream';
+        for (const t of st.el.querySelectorAll('.hf-title')) if (t.textContent !== (s.title || 'Untitled Stream')) t.textContent = s.title || 'Untitled Stream';
         const now = $('.hf-now');
         const m = d.moment;
         if (m && m.description) {
@@ -267,9 +290,9 @@
     }
 
     /**
-     * The featured stream's card in the Live Now grid carries .is-featured, so a phone shows that stream once, in
-     * the featured block (2026-10-31: with one stream live the phone home drew it twice, 1,000 px apart). Wider
-     * screens keep the card (features/home.css).
+     * The featured stream's card in the Live Now grid carries .is-featured. Live Now lists every live stream (owner,
+     * 2026-11-11: a streamer live on two slots showed one); only when the featured stream is the one stream live does a
+     * phone leave the grid out, so it is not drawn twice 1,000 px apart (2026-10-31; features/home.css).
      */
     function markGrid() {
         const id = st.current && !st.el?.hidden ? String(st.current.id) : '';

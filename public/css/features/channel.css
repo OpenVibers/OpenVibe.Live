@@ -1256,41 +1256,6 @@ button.viewer-badge:focus-visible { outline: 2px solid #93c5fd; outline-offset: 
 .ai-tl-subtabs { display: flex; gap: 6px; margin: 14px 0 16px; border-bottom: 1px solid var(--border, color-mix(in srgb, var(--text-primary, #fff) 8%, transparent)); }
 .ai-tl-subtab { font-size: 0.9rem; font-weight: 700; color: var(--text-muted); background: none; border: none; border-bottom: 2px solid transparent; padding: 8px 14px; cursor: pointer; display: inline-flex; align-items: center; gap: 7px; margin-bottom: -1px; transition: color var(--ov-dur-2, .15s); }
 .ai-tl-pane--hidden { display: none; }
-.ov-pip:hover { border-color: rgba(255, 255, 255, .38); }
-.ov-pip.is-dragging { cursor: grabbing; box-shadow: 0 10px 30px rgba(0, 0, 0, .7); }
-.ov-pip.is-dragging, .ov-pip.is-resizing { user-select: none; }
-.ov-pip.is-hidden { display: none; }
-
-/* The box takes the source's own shape (stream-pip.js sets aspect-ratio from the video), so contain shows it whole: a
-   portrait camera is never cut to 16:9 (2026-11-07). */
-.ov-pip-video { width: 100%; height: 100%; object-fit: contain; display: block; background: #000; }
-.ov-pip:focus-visible { outline: 2px solid var(--accent, #3b82f6); outline-offset: 2px; }
-.ov-pip.is-portrait .ov-pip-bar { padding-inline: 4px; }
-.ov-pip:hover .ov-pip-bar, .ov-pip.is-dragging .ov-pip-bar { opacity: 1; pointer-events: auto; }
-.ov-pip-title {
-    font-size: .72rem; color: #fff; font-weight: 600;
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-    text-shadow: 0 1px 3px rgba(0,0,0,.8);
-}
-.ov-pip-actions { display: flex; gap: 3px; flex-shrink: 0; }
-.ov-pip:hover .ov-pip-resize { opacity: 1; }
-.ov-pip.is-offline .ov-pip-offline { display: flex; }
-/* The bar stays above the offline layer and shows while offline, so a PIP that cannot play can still be hidden (the
-   layer, drawn after the bar over the whole PIP, used to cover it). */
-.ov-pip-bar { z-index: 2; }
-.ov-pip-offline { z-index: 1; }
-.ov-pip.is-offline .ov-pip-bar { opacity: 1; pointer-events: auto; }
-.ov-pip-restore:hover { background: rgba(0,0,0,.8); }
-/* Several PIPs (stream_pips): each hidden one's "Show …" pill, in one row in the corner; a PIP's name opens its channel. */
-.ov-pip-restores { position: absolute; right: 12px; bottom: 12px; z-index: 25; display: flex; flex-wrap: wrap-reverse; justify-content: flex-end; gap: 6px; max-width: calc(100% - 24px); }
-.ov-pip-restores .ov-pip-restore { position: static; }
-.ov-pip-title a { color: inherit; text-decoration: none; }
-.ov-pip-title a:hover, .ov-pip-title a:focus-visible { text-decoration: underline; }
-
-@media (max-width: 640px) {
-    .ov-pip-resize { width: 26px; height: 26px; opacity: .8; }
-    .ov-pip-bar { opacity: 1; pointer-events: auto; }
-}
 .ai-tl-tr-bar { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin: 0 0 8px; padding-bottom: 8px; border-bottom: 1px solid var(--border, color-mix(in srgb, var(--text-primary, #fff) 7%, transparent)); }
 .ai-tl-tr-filter { display: inline-flex; gap: 4px; }
 .ai-tl-tr-filter button { padding: 4px 10px; border-radius: 999px; border: 1px solid var(--border, color-mix(in srgb, var(--text-primary, #fff) 10%, transparent)); background: transparent; color: var(--text-secondary); font-size: 0.75rem; cursor: pointer; display: inline-flex; align-items: center; gap: 5px; }
@@ -2212,3 +2177,87 @@ html[data-ov-motion="off"] #page-channel .ch-rec-dot { animation: none; }
 .ch-bot-win { height: 100%; min-height: 200px; }
 .ch-bot-win iframe { display: block; width: 100%; height: 100%; border: 0; background: transparent; }
 @media (max-width: 768px) { #page-channel [data-bot-mode="window"] { display: none !important; } }
+
+/* ── One section at a time on a phone or a tablet (ask 367, 2026-11-11: "consolidate these into tabs, self-contained
+   tabs … at least on mobile"). The page's HTML keeps every section; at 900 px or narrower app-channel.js marks the
+   page .ch-tabbed and the chosen one .is-current. The tab names the section, so its own heading steps aside and its
+   tools lead its first row; folds open by themselves. ─── */
+#page-channel.ch-tabbed .ch-tab-panel:not(.is-current) { display: none; }
+#page-channel.ch-tabbed .ch-tab-panel { margin: 0 0 18px; min-height: 42vh; }
+#page-channel.ch-tabbed .ch-tab-panel > .ch-sec-h, #page-channel.ch-tabbed .ch-tab-panel .ch-fold > summary { display: none; }
+#page-channel.ch-tabbed :is(#ch-panel-videos, #ch-panel-clips, #ch-panel-clips-taken, #ch-panel-pastes) > .ch-panel-bar { grid-column: 1 / -1; grid-row: 1; justify-content: flex-start; }
+#page-channel.ch-tabbed :is(#ch-panel-videos, #ch-panel-clips, #ch-panel-clips-taken, #ch-panel-pastes) > .ch-panel-bar:not(:has(> :not([style*="display:none"]):not([style*="display: none"]):not(:empty))) { display: none; }
+#page-channel.ch-tabbed .ch-tab-panel.is-entering { animation: chPanelIn var(--ov-dur-2, .22s) var(--ov-ease-out, cubic-bezier(.22, 1, .36, 1)) both; }
+@keyframes chPanelIn { from { opacity: 0; transform: translateY(6px); } }
+html[data-ov-motion="off"] #page-channel.ch-tabbed .ch-tab-panel.is-entering { animation: none; }
+/* The tabs: a full-width strip under the navbar, the chosen one lit and underlined. */
+#page-channel.ch-tabbed .ch-tabs-wrap { margin-bottom: 12px; border-bottom: 1px solid var(--border); }
+#page-channel.ch-tabbed #ch-tabs .ch-tab { min-height: 44px; }
+#page-channel.ch-tabbed #ch-tabs .ch-tab.active { color: var(--text-primary); }
+
+/* ── Media requests (ask 367: "polish"): one field with its button, the price and the limit as chips, the keepers'
+   line with icon tools, a counted "Up next", and an empty queue that says what to do. ─── */
+.ch-media-req { align-items: stretch; gap: 0; border: 1px solid var(--border); border-radius: 12px; background: var(--bg-card); overflow: hidden; transition: border-color var(--ov-dur-2, .15s), box-shadow var(--ov-dur-2, .15s); }
+.ch-media-req:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent); }
+.ch-media-field { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; padding: 0 12px; color: var(--text-muted); cursor: text; }
+.ch-media-field input { flex: 1; min-width: 0; height: 46px; border: 0; outline: 0; background: transparent; color: var(--text-primary); font: inherit; font-size: 16px; }
+.ch-media-req .ch-media-go { flex: none; display: inline-flex; align-items: center; gap: 7px; margin: 4px; border-radius: 9px; white-space: nowrap; }
+.ch-media-hint { display: flex; flex-wrap: wrap; gap: 6px; margin-top: -4px; }
+.ch-media-chip { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border-radius: 999px; font-size: .76rem; font-weight: 600; color: var(--text-secondary); background: color-mix(in srgb, var(--text-primary, #fff) 6%, transparent); }
+.ch-media-chip i { color: var(--accent-light, var(--accent)); }
+.ch-media-chip.is-lock i { color: var(--warning, #f59e0b); }
+.ch-media-mod-bar { justify-content: space-between; padding: 6px 6px 6px 12px; }
+.ch-media-mod-say { display: inline-flex; align-items: center; gap: 7px; color: var(--text-secondary); font-weight: 600; }
+.ch-media-mod-say i { color: var(--accent-light, var(--accent)); }
+.ch-media-mod-acts { display: inline-flex; gap: 6px; }
+.ch-media-section-label .ch-sec-n { display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 999px; font-size: .74rem; font-weight: 700; color: var(--text-muted); background: color-mix(in srgb, var(--text-primary, #fff) 7%, transparent); }
+.ch-media-empty { display: flex; align-items: center; gap: 12px; padding: 16px; border: 1px dashed var(--border); border-radius: 12px; color: var(--text-secondary); font-size: .88rem; }
+.ch-media-empty i { display: grid; place-items: center; flex: none; width: 38px; height: 38px; border-radius: 11px; color: var(--accent-light, var(--accent)); background: color-mix(in srgb, var(--accent) 14%, transparent); }
+@media (max-width: 420px) { .ch-media-req .ch-media-go span { display: none; } .ch-media-req .ch-media-go { width: 44px; justify-content: center; padding: 0; } }
+
+/* ── A phone watching live, the sheet (ask 366, 2026-11-11: "a gap in between the top of the chat and the top of the
+   player … the top bar a little more compact … the tabs under the stream … the full space of the chat … if you collapse
+   the chat … collapse the controls … the same button"). Open, the sheet is everything under the player: the sections
+   wait until it is folded, so nothing peeks under it and the page does not scroll away from it. The grip lies over the
+   header's top edge instead of taking a row. Folded, the robot's controls fold with it (the player's robot button still
+   drives over the video); the round button brings both back. A lowered sheet stops at the channel line's own height
+   (channel-chat-resize.js), so the line is never cut in half. ─── */
+@media (max-width: 768px) and (orientation: portrait) {
+    #page-channel.ch-is-live:not(.chat-collapsed) .channel-below-fold { display: none; }
+    body:has(#page-channel.active.ch-is-live:not(.chat-collapsed)) #ov-footer { display: none; }
+    #page-channel.ch-is-live.chat-collapsed #ch-bot-section { display: none !important; }
+    #page-channel.ch-is-live .stream-layout:not(:has(.video-container.is-vertical)) > .chat-sidebar > .chat-grip { position: absolute; top: 0; height: 16px; z-index: 4; }
+    #page-channel.ch-is-live .stream-layout:not(:has(.video-container.is-vertical)) > .chat-sidebar .chat-header { padding-top: 8px; min-height: 46px; }
+    #page-channel.ch-is-live .chat-sidebar .ch-goal-widget { padding: 3px 6px 0; }
+    #page-channel.ch-is-live .chat-sidebar .cgw-goal { height: 30px; }
+    #page-channel.ch-is-live .chat-sidebar .cgw-track .cgw-goal { margin-bottom: 3px; }
+    /* The channel line above a lowered sheet: its own height, never a sliver. */
+    #page-channel.ch-is-live.ch-chat-sized:not(.chat-collapsed) .stream-layout:not(:has(.video-container.is-vertical)) > .stream-main > .ch-info-bar { overflow: hidden; }
+}
+
+/* ── Compact view (chat settings → Compact view, kept with the person's chat settings; ask 366): the sheet's header,
+   the goal bar and the composer's padding take less, so the messages get the room. ─── */
+@media (max-width: 768px) and (orientation: portrait) {
+    html.chat-compact #page-channel.ch-is-live .stream-layout:not(:has(.video-container.is-vertical)) > .chat-sidebar .chat-header { padding-top: 6px; padding-bottom: 2px; min-height: 40px; }
+    html.chat-compact #page-channel.ch-is-live .chat-sidebar .ch-bot-tabs button { min-height: 32px; }
+    html.chat-compact #page-channel.ch-is-live .chat-sidebar .cgw-goal { height: 22px; }
+    html.chat-compact #page-channel.ch-is-live .chat-sidebar .cgw-goal * { font-size: .66rem; }
+    html.chat-compact #page-channel.ch-is-live .chat-sidebar .chat-input-area { padding-top: 4px; }
+}
+
+/* ── The channel line on a phone, live, compact (ask 366: "the top bar needs to be a little more compact so that we
+   get a little more space out of it"): who on the first line, then live, watching and the title on one line, then the
+   actions in one slim row with Share as its icon. About a hundred pixels instead of a hundred and fifty. ─── */
+@media (max-width: 768px) and (orientation: portrait) {
+    #page-channel.ch-is-live .stream-layout:not(:has(.video-container.is-vertical)) .ch-info-bar { padding: 8px 12px 10px; row-gap: 8px; }
+    #page-channel.ch-is-live .stream-layout:not(:has(.video-container.is-vertical)) .ch-info-bar .ch-avatar { width: 40px; height: 40px; }
+    #page-channel.ch-is-live .stream-layout:not(:has(.video-container.is-vertical)) .ch-info-bar:not(.ch-info-open) .ch-info-bar-text { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 6px; row-gap: 1px; min-width: 0; }
+    #page-channel.ch-is-live .stream-layout:not(:has(.video-container.is-vertical)) .ch-info-bar:not(.ch-info-open) .ch-info-bar-top { flex: 0 0 100%; }
+    #page-channel.ch-is-live .stream-layout:not(:has(.video-container.is-vertical)) .ch-info-bar:not(.ch-info-open) :is(.ch-presence, .ch-stream-title) { margin: 0; font-size: .82rem; line-height: 1.35; }
+    #page-channel.ch-is-live .stream-layout:not(:has(.video-container.is-vertical)) .ch-info-bar:not(.ch-info-open) .ch-stream-title { min-width: 0; color: var(--text-secondary); overflow-wrap: anywhere; }
+    #page-channel.ch-is-live .stream-layout:not(:has(.video-container.is-vertical)) .ch-info-bar:not(.ch-info-open) .ch-presence:not(:empty) + .ch-meta + .ch-social-pills + .ch-stream-title::before,
+    #page-channel.ch-is-live .stream-layout:not(:has(.video-container.is-vertical)) .ch-info-bar:not(.ch-info-open) .ch-presence:not(:empty) ~ .ch-stream-title::before { content: "·"; margin-right: 6px; color: var(--text-muted); }
+    #page-channel.ch-is-live .stream-layout:not(:has(.video-container.is-vertical)) .ch-info-bar-right :is(.ch-action, .ovk-ask) { height: 38px; min-height: 38px; }
+    #page-channel.ch-is-live .stream-layout:not(:has(.video-container.is-vertical)) .ch-info-bar-right #ch-btn-share { width: 38px; padding: 0; justify-content: center; }
+    #page-channel.ch-is-live .stream-layout:not(:has(.video-container.is-vertical)) .ch-info-bar-right #ch-btn-share > span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+}
