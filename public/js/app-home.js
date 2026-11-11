@@ -1108,6 +1108,23 @@ async function loadDailyQuest() {
     card.hidden = false;
 }
 
+function loadDailyQuestGuide() {
+    if (!new URLSearchParams(location.search).has('qstep')) return;
+    const script = document.createElement('script');
+    script.src = '/shared/guide.js';
+    script.onload = () => {
+        if (!window.OpenVibeQuestGuide) return;
+        void window.OpenVibeQuestGuide.startFromLocation({ load: async (id) => {
+            try {
+                const response = await fetch(`https://openvibe.quest/api/v1/quests/today/steps/${encodeURIComponent(id)}`,
+                    { headers: authHeaders(), credentials: 'omit' });
+                return response.ok ? response.json() : null;
+            } catch { return null; }
+        } });
+    };
+    document.head.appendChild(script);
+}
+
 /**
  * Demote the two explainer sections once someone has read them enough times.
  *
@@ -1356,6 +1373,7 @@ async function loadHome() {
     startHeroRotation();      // instant static rotation; loadHeroData upgrades it with AI slogans
     void loadHeroData();      // stats bar, floating-thumbnail collage, AI slogans
     void loadDailyQuest();     // shared daily quest from OpenVibe.Quest
+    loadDailyQuestGuide();
 
     // Claim the space every feed is about to fill. Without this the page arrives as a short
     // column that grows in jumps as each request lands, which reads as slow and shoves content
