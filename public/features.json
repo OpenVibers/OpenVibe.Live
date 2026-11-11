@@ -307,7 +307,7 @@
         "regenerateDashStreamKey"
       ]
     },
-    "rundown": {"fragment": "rundown", "css": ["/css/features/rundown.css"], "js": ["/js/rundown.js"]},
+    "rundown": {"fragment": "rundown", "css": ["/css/features/rundown.css", "/shared/kit.css"], "js": ["/js/rundown.js"]},
     "recap": {
       "css": [
         "/css/recap.css",

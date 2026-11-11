@@ -933,7 +933,7 @@ async function _rdDayFetch() {
             items.push(...((more.timeline && more.timeline.items) || []));
             next = more.timeline && more.timeline.next_offset;
         }
-        return { summary: first.summary || null, items, total: (first.timeline && first.timeline.total) || items.length };
+        return { today: first.today || null, summary: first.summary || null, items, total: (first.timeline && first.timeline.total) || items.length };
     } catch { return null; }   // the front page is whole without it
 }
 function _rdDayEl(tag, cls, text) { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; }
@@ -962,19 +962,44 @@ function _rdDayMoment(it) {
     }
     return li;
 }
+// The AI card: what today was about in a few sentences, and up to three highlights, each a link to its take
+// (GET /api/rundown/day/today's `today`; server/rundown/today.js writes it). DOM nodes only, like the rest.
+function _rdTodayCard(today) {
+    const card = _rdDayEl('div', 'rd-day-sum');
+    card.append(_rdDayEl('p', 'rd-day-sum-k', "Today's rundown"));
+    if (today.headline) card.append(_rdDayEl('p', 'rd-h3', today.headline));
+    if (today.summary) card.append(_rdDayEl('p', 'rd-what', today.summary));
+    const highlights = (today.highlights || []).filter((h) => h && h.line && h.url);
+    if (highlights.length) {
+        const list = _rdDayEl('ul', 'rd-today-highlights');
+        highlights.forEach((h) => {
+            const li = _rdDayEl('li');
+            const link = _rdDayLink(h.url, '', h.line, false);   // a deep link: the browser lands on the take's anchor
+            li.append(link);
+            const who = [h.username, h.topic].filter(Boolean).join(' \u00b7 ');
+            if (who) li.append(_rdDayEl('span', 'rd-meta', ` \u2014 ${who}`));
+            list.append(li);
+        });
+        card.append(list);
+    }
+    card.append(_rdDayEl('p', 'rd-day-sum-by', 'Written by AI from today\u2019s takes. Each highlight links to the take it came from.'));
+    return card;
+}
 function _rdDayDraw(day) {
     const host = document.getElementById('rd-day-host');
     if (!host || !day) return;
+    const today = day.today && day.today.status === 'ready' && day.today.headline && day.today.summary ? day.today : null;
     const sum = day.summary;
     const sentences = sum && sum.status === 'ready' ? (sum.sentences || []).filter((x) => x && x.text) : [];
-    if (!day.items.length && !sentences.length) return;
+    if (!day.items.length && !sentences.length && !today) return;
     const sec = _rdDayEl('section', 'rd-day');
     sec.setAttribute('aria-labelledby', 'rd-day-h');
     const h = _rdDayEl('h2', 'rd-h2', 'Today, as it happened ');
     h.id = 'rd-day-h';
     if (day.items.length) h.append(_rdDayEl('small', '', `${day.total} moment${day.total === 1 ? '' : 's'} so far`));
     sec.append(h);
-    if (sentences.length) {
+    if (today) sec.append(_rdTodayCard(today));
+    else if (sentences.length) {
         const card = _rdDayEl('div', 'rd-day-sum');
         card.append(_rdDayEl('p', 'rd-day-sum-k', 'The day in short'));
         sentences.forEach((x) => card.append(_rdDayEl('p', '', x.text)));

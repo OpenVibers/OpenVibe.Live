@@ -1598,6 +1598,8 @@ async function start() {
         try { require('./streaming/pip-history').start(); } catch (e) { console.warn('[PiP history] not started:', e.message); }
         // The Rundown's desk replaced the Arena's jobs (the drama desk, the beef listener and judges, 2026-10-19).
         try { require('./rundown/desk').start(); } catch (e) { console.warn('[Rundown] desk not started:', e.message); }
+        // The Rundown's Today card: one AI-written card a day, rewritten at most every 30 minutes while new takes arrive.
+        try { require('./rundown/today').start(); } catch (e) { console.warn('[Rundown] Today card job not started:', e.message); }
         try { require('./bench-stream/service').startJobs(); } catch (e) { console.warn('[BenchStream] poll job not started:', e.message); }
         // An agent stream whose publish ticket expired with no renewal ends; expired tickets and sharing deliveries
         // are pruned on the same minute (server/agent-streams/sweep.js).

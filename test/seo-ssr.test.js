@@ -400,6 +400,25 @@ const server = http.createServer(app).listen(0, '127.0.0.1', async () => {
         assert.ok(src.includes("app.get('*', require('./web/page-status').spaFallback((res, urlPath) => sendShell(res, urlPath)));"));
     });
 
+    await check('/rundown: the server render carries the AI Today card, each highlight linked to its take', async () => {
+        const today = require('../server/rundown/today');
+        const orig = today.get;
+        today.get = async () => ({ status: 'ready', date: new Date().toISOString().slice(0, 10), headline: 'Fridges and builds', summary: 'A day about fridges and one stubborn compiler.',
+            highlights: [
+                { take_id: 41, line: 'The fridge line', stream_id: 2981, username: 'goosely', topic: 'Fridges', url: '/rundown/e/2981#rd-take-41' },
+                { take_id: 42, line: 'It compiles at last', stream_id: 2982, username: 'ann', topic: 'Rust builds', url: '/rundown/e/2982#rd-take-42' },
+            ] });
+        try {
+            const r = await get('/rundown');
+            assert.strictEqual(r.status, 200);
+            assert.ok(r.body.includes('Today&#39;s rundown'), 'the card title');
+            assert.ok(r.body.includes('Fridges and builds'));
+            assert.ok(r.body.includes('A day about fridges and one stubborn compiler.'));
+            assert.ok(r.body.includes('href="/rundown/e/2981#rd-take-41"'), 'the first highlight links to its take');
+            assert.ok(r.body.includes('href="/rundown/e/2982#rd-take-42"'), 'the second highlight links to its take');
+        } finally { today.get = orig; }
+    });
+
     server.close();
     quiet(failures ? `\n${failures} check(s) failed` : '\nseo ssr: all checks passed');
     process.exit(failures ? 1 : 0);
