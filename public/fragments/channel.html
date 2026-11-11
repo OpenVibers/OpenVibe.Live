@@ -62,7 +62,9 @@
                                     </button>
                                     <div class="ch-bot-mode-menu" id="ch-bot-mode-menu" role="menu" hidden>
                                         <button type="button" role="menuitemradio" data-bot-mode="overlay">On the video</button>
-                                        <button type="button" role="menuitemradio" data-bot-mode="panel">Under the video</button>
+                                        <button type="button" role="menuitemradio" data-bot-mode="compact">A row under the video</button>
+                                        <button type="button" role="menuitemradio" data-bot-mode="panel">The full panel</button>
+                                        <button type="button" role="menuitemradio" data-bot-mode="window">In a window</button>
                                         <button type="button" role="menuitemradio" data-bot-mode="hidden">Hidden</button>
                                     </div>
                                 </div>
@@ -116,19 +118,19 @@
                         </div>
                     </div>
                     <!-- OpenVibe.Bot robot panel for a channel bound to a robot (LIVE_BOT_EMBED; filled by public/js/bot-embed.js) -->
+                    <!-- One head row (ask 353): the name, the four places for the controls, and the robot's own page. Hidden
+                         keeps this row. On a phone the row steps aside: the Chat/Robot tabs are in the chat's header. -->
                     <section id="ch-bot-section" aria-labelledby="ch-bot-heading" hidden>
-                        <h3 id="ch-bot-heading">Robot</h3>
-                        <div class="ch-bot-card-bar" id="ch-bot-card-bar" hidden>
-                            <span class="ch-bot-card-label">Controls</span>
-                            <div class="ch-bot-switch" id="ch-bot-card-switch" role="group" aria-label="Robot controls">
-                                <button type="button" data-bot-mode="overlay">On the video</button>
-                                <button type="button" data-bot-mode="panel">Under the video</button>
-                                <button type="button" data-bot-mode="hidden">Hidden</button>
+                        <div class="ch-bot-head" id="ch-bot-card-bar" hidden>
+                            <h3 id="ch-bot-heading">Robot</h3>
+                            <div class="ch-bot-switch" id="ch-bot-card-switch" role="group" aria-label="Where the robot's controls go">
+                                <button type="button" data-bot-mode="overlay" title="On the video" aria-label="On the video"><i class="fa-solid fa-layer-group" aria-hidden="true"></i><span>On video</span></button>
+                                <button type="button" data-bot-mode="compact" title="A row under the video" aria-label="A row under the video"><i class="fa-solid fa-sliders" aria-hidden="true"></i><span>Row</span></button>
+                                <button type="button" data-bot-mode="panel" title="The full panel" aria-label="The full panel"><i class="fa-solid fa-table-cells" aria-hidden="true"></i><span>Panel</span></button>
+                                <button type="button" data-bot-mode="window" title="In a window you can move and size" aria-label="In a window"><i class="fa-solid fa-window-maximize" aria-hidden="true"></i><span>Window</span></button>
+                                <button type="button" data-bot-mode="hidden" title="Hide the controls" aria-label="Hide the controls"><i class="fa-solid fa-eye-slash" aria-hidden="true"></i><span>Hide</span></button>
                             </div>
-                        </div>
-                        <div class="ch-bot-card-line" id="ch-bot-card-line" hidden>
-                            <span>Robot · controls are on the video</span>
-                            <button type="button" data-bot-show-panel>Show panel</button>
+                            <a class="ch-bot-open" id="ch-bot-open" href="https://openvibe.bot/" target="_blank" rel="noopener" title="Open on openvibe.bot" aria-label="Open on openvibe.bot"><i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i></a>
                         </div>
                         <div id="ch-bot-container"></div>
                     </section>
@@ -189,7 +191,12 @@
                 <div class="chat-sidebar" id="chat-sidebar">
                     <div class="chat-header">
                         <button type="button" class="chat-settings-btn ch-chat-collapse" onclick="toggleChannelChat(true)" title="Hide chat" aria-label="Hide chat"><i class="fa-solid fa-angles-right"></i></button>
-                        <span>STREAM CHAT</span>
+                        <span class="ch-chat-title">STREAM CHAT</span>
+                        <!-- A channel with a robot, on a phone: Chat and Robot share this sheet (app-channel.js _applyBotEmbed). -->
+                        <div class="ch-bot-tabs" id="ch-bot-tabs" role="tablist" aria-label="Chat or robot">
+                            <button type="button" role="tab" data-bot-tab="chat" aria-selected="true"><i class="fa-solid fa-comments" aria-hidden="true"></i><span>Chat</span></button>
+                            <button type="button" role="tab" data-bot-tab="robot" aria-selected="false"><i class="fa-solid fa-robot" aria-hidden="true"></i><span>Robot</span></button>
+                        </div>
                         <div class="chat-header-actions">
                             <button class="chat-settings-btn" onclick="toggleChatUsers(this)" title="Users">
                                 <i class="fa-solid fa-users"></i>
@@ -411,7 +418,7 @@
 
                 <!-- Agents (Agent Streams S2): this channel's AI agent streams, live and past. -->
                 <section class="ch-tab-panel" id="ch-panel-agents" aria-labelledby="ch-h-agents">
-                    <h2 class="ch-sec-h" id="ch-h-agents">Agents</h2>
+                    <h2 class="ch-sec-h" id="ch-h-agents"><i class="fa-solid fa-robot ch-sec-ic" aria-hidden="true"></i>Agents</h2>
                     <p class="ch-panel-hint"><i class="fa-solid fa-robot"></i> AI agents working on this channel — live now, and what they finished.</p>
                     <h3 class="agent-schedules-title" id="ch-agents-schedules-title" hidden>Coming up</h3>
                     <div class="agent-schedules" id="ch-agents-schedules"></div>
@@ -421,12 +428,12 @@
 
                 <!-- Videos -->
                 <section class="ch-tab-panel" id="ch-panel-videos" aria-labelledby="ch-h-videos">
-                    <h2 class="ch-sec-h" id="ch-h-videos">Videos</h2>
+                    <h2 class="ch-sec-h" id="ch-h-videos"><i class="fa-solid fa-video ch-sec-ic" aria-hidden="true"></i>Videos <span class="ch-sec-n" id="ch-vods-n" hidden></span></h2>
                     <div class="ch-panel-bar">
-                        <a class="ch-view-all" id="ch-vods-all" href="#">View all videos</a>
                         <div id="ch-vods-filter-bar" class="ch-vods-filter-bar" style="display:none"></div>
-                        <a id="ch-vods-video-link" class="btn btn-small btn-outline" href="#" style="display:none" title="This channel's recordings and clips on OpenVibe.Video, with AI chapters, captions and playlists"><i class="fa-solid fa-film"></i> On OpenVibe.Video</a>
-                        <button class="btn btn-small btn-outline sel-all-btn" data-sel-container="ch-vods-grid" style="display:none" onclick="_selAllToggle(this.dataset.selContainer)"><i class="fa-solid fa-check-double"></i> <span class="sel-all-label">Select all</span></button>
+                        <button type="button" class="ch-ib sel-all-btn" data-sel-container="ch-vods-grid" style="display:none" onclick="_selAllToggle(this.dataset.selContainer)"><i class="fa-solid fa-check-double" aria-hidden="true"></i><span class="sel-all-label">Select all</span></button>
+                        <a id="ch-vods-video-link" class="ch-ib" href="#" style="display:none" title="This channel's recordings and clips on OpenVibe.Video, with AI chapters, captions and playlists" aria-label="On OpenVibe.Video"><i class="fa-solid fa-film" aria-hidden="true"></i><span class="ch-ib-t">Video</span></a>
+                        <a class="ch-view-all ch-ib" id="ch-vods-all" href="#" title="View all videos"><i class="fa-solid fa-table-cells" aria-hidden="true"></i><span class="ch-ib-t">View all<span class="ch-ib-more"> videos</span></span></a>
                     </div>
                     <div class="stream-grid" id="ch-vods-grid"><p class="muted">Loading videos…</p></div>
                     <div id="ch-vods-pagination" class="pastes-pagination" style="display:none"></div>
@@ -434,8 +441,10 @@
 
                 <!-- Clips (clips OF this streamer's streams) -->
                 <section class="ch-tab-panel" id="ch-panel-clips" aria-labelledby="ch-h-clips">
-                    <h2 class="ch-sec-h" id="ch-h-clips">Clips</h2>
-                    <div class="ch-panel-bar"><a class="ch-view-all" id="ch-clips-of-all" href="#">View all clips</a></div>
+                    <h2 class="ch-sec-h" id="ch-h-clips"><i class="fa-solid fa-scissors ch-sec-ic" aria-hidden="true"></i>Clips <span class="ch-sec-n" id="ch-clips-of-n" hidden></span></h2>
+                    <div class="ch-panel-bar">
+                        <a class="ch-view-all ch-ib" id="ch-clips-of-all" href="#" title="View all clips"><i class="fa-solid fa-table-cells" aria-hidden="true"></i><span class="ch-ib-t">View all<span class="ch-ib-more"> clips</span></span></a>
+                    </div>
                     <p class="ch-panel-hint" id="ch-clips-of-header"><i class="fa-solid fa-scissors"></i> Moments viewers clipped from these streams.</p>
                     <div class="stream-grid" id="ch-clips-of-grid"><p class="muted">Loading clips…</p></div>
                     <div id="ch-clips-of-pagination" class="pastes-pagination" style="display:none"></div>
@@ -449,12 +458,12 @@
 
                 <!-- Clips Taken (clips this streamer made of others) -->
                 <section class="ch-tab-panel" id="ch-panel-clips-taken" aria-labelledby="ch-h-clips-taken">
-                    <h2 class="ch-sec-h" id="ch-h-clips-taken">Clips taken</h2>
+                    <h2 class="ch-sec-h" id="ch-h-clips-taken"><i class="fa-solid fa-film ch-sec-ic" aria-hidden="true"></i>Clips taken <span class="ch-sec-n" id="ch-clips-taken-n" hidden></span></h2>
                     <p class="ch-panel-hint"><i class="fa-solid fa-film"></i> Clips this streamer made from other channels' streams.</p>
                     <div class="ch-panel-bar">
-                        <a class="ch-view-all" id="ch-clips-taken-all" href="#">View all clips taken</a>
                         <div class="clips-taken-filters" id="clips-taken-filters" style="display:none"></div>
-                        <button class="btn btn-small btn-outline sel-all-btn" data-sel-container="ch-clips-grid" style="display:none" onclick="_selAllToggle(this.dataset.selContainer)"><i class="fa-solid fa-check-double"></i> <span class="sel-all-label">Select all</span></button>
+                        <button type="button" class="ch-ib sel-all-btn" data-sel-container="ch-clips-grid" style="display:none" onclick="_selAllToggle(this.dataset.selContainer)"><i class="fa-solid fa-check-double" aria-hidden="true"></i><span class="sel-all-label">Select all</span></button>
+                        <a class="ch-view-all ch-ib" id="ch-clips-taken-all" href="#" title="View all clips taken"><i class="fa-solid fa-table-cells" aria-hidden="true"></i><span class="ch-ib-t">View all<span class="ch-ib-more"> clips taken</span></span></a>
                     </div>
                     <div class="stream-grid" id="ch-clips-grid"><p class="muted">Loading clips…</p></div>
                     <div id="ch-clips-pagination" class="pastes-pagination" style="display:none"></div>
@@ -462,11 +471,11 @@
 
                 <!-- Pastes -->
                 <section class="ch-tab-panel" id="ch-panel-pastes" aria-labelledby="ch-h-pastes">
-                    <h2 class="ch-sec-h" id="ch-h-pastes">Pastes</h2>
+                    <h2 class="ch-sec-h" id="ch-h-pastes"><i class="fa-solid fa-paste ch-sec-ic" aria-hidden="true"></i>Pastes <span class="ch-sec-n" id="ch-pastes-n" hidden></span></h2>
                     <div class="ch-panel-bar" id="ch-pastes-header">
-                        <a class="ch-view-all" id="ch-pastes-all" href="#">View all pastes</a>
                         <span id="ch-pastes-sort"></span>
-                        <button class="btn btn-small btn-outline sel-all-btn" data-sel-container="ch-pastes-grid" style="display:none" onclick="_selAllToggle(this.dataset.selContainer)"><i class="fa-solid fa-check-double"></i> <span class="sel-all-label">Select all</span></button>
+                        <button type="button" class="ch-ib sel-all-btn" data-sel-container="ch-pastes-grid" style="display:none" onclick="_selAllToggle(this.dataset.selContainer)"><i class="fa-solid fa-check-double" aria-hidden="true"></i><span class="sel-all-label">Select all</span></button>
+                        <a class="ch-view-all ch-ib" id="ch-pastes-all" href="#" title="View all pastes"><i class="fa-solid fa-table-cells" aria-hidden="true"></i><span class="ch-ib-t">View all<span class="ch-ib-more"> pastes</span></span></a>
                     </div>
                     <div id="ch-pastes-grid" class="pastes-grid"><p class="muted">Loading pastes…</p></div>
                     <div id="ch-pastes-pagination" class="pastes-pagination" style="display:none"></div>
@@ -474,13 +483,13 @@
 
                 <!-- Media Request -->
                 <section class="ch-tab-panel" id="ch-panel-media" aria-labelledby="ch-h-media">
-                    <h2 class="ch-sec-h" id="ch-h-media">Media requests</h2>
+                    <h2 class="ch-sec-h" id="ch-h-media"><i class="fa-solid fa-photo-film ch-sec-ic" aria-hidden="true"></i>Media requests</h2>
                     <div id="ch-media-content"><div class="loading">Loading…</div></div>
                 </section>
 
                 <!-- Analytics -->
                 <section class="ch-tab-panel" id="ch-panel-analytics" aria-labelledby="ch-h-analytics">
-                    <details class="ch-fold" data-ch-fold="analytics"><summary><h2 class="ch-sec-h" id="ch-h-analytics">Analytics</h2><span class="ch-fold-say">Show</span></summary>
+                    <details class="ch-fold" data-ch-fold="analytics"><summary><h2 class="ch-sec-h" id="ch-h-analytics"><i class="fa-solid fa-chart-line ch-sec-ic" aria-hidden="true"></i>Analytics</h2><span class="ch-fold-say">Show</span></summary>
                     <div class="ch-panel-bar" id="ch-analytics-header">
                         <div class="ch-analytics-period-btns" id="ch-analytics-period-btns">
                             <button class="btn btn-sm btn-ghost active" data-days="7">7d</button>
@@ -511,14 +520,14 @@
 
                 <!-- AI Timeline — the streamer's whole AI-observed history -->
                 <section class="ch-tab-panel" id="ch-panel-ai-timeline" aria-labelledby="ch-h-ai-timeline">
-                    <details class="ch-fold" data-ch-fold="ai-timeline"><summary><h2 class="ch-sec-h" id="ch-h-ai-timeline">AI timeline</h2><span class="ch-fold-n" id="ch-fold-n-ai-timeline"></span><span class="ch-fold-say">Show</span></summary>
+                    <details class="ch-fold" data-ch-fold="ai-timeline"><summary><h2 class="ch-sec-h" id="ch-h-ai-timeline"><i class="fa-solid fa-clock-rotate-left ch-sec-ic" aria-hidden="true"></i>AI timeline</h2><span class="ch-fold-n" id="ch-fold-n-ai-timeline"></span><span class="ch-fold-say">Show</span></summary>
                     <div id="ch-ai-timeline"><div class="loading">Loading AI timeline…</div></div>
                     </details>
                 </section>
 
                 <!-- About (weather is now an optional panel inside here) -->
                 <section class="ch-tab-panel" id="ch-panel-about" aria-labelledby="ch-h-about">
-                    <h2 class="ch-sec-h" id="ch-h-about">About</h2>
+                    <h2 class="ch-sec-h" id="ch-h-about"><i class="fa-solid fa-circle-info ch-sec-ic" aria-hidden="true"></i>About</h2>
                     <div id="ch-about-content" class="ch-about-content"></div>
                 </section>
             </div>

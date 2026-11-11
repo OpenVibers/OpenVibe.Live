@@ -1160,6 +1160,14 @@ button.viewer-badge:focus-visible { outline: 2px solid #93c5fd; outline-offset: 
         align-self: flex-start;
     }
 }
+/* Two streams live at once (the stream tabs bar above the player): the bar stays under the navbar and the chat under
+   the bar. Before, the chat started under the bar but was the navbar's height short of the window, so its last 42 px,
+   the tools under the message box, sat below the screen (found 2026-11-11). The sections' jump bar sticks under both. */
+@media (min-width: 1181px) {
+    #page-channel.has-live-tabs .live-stream-tabs { position: sticky; top: var(--navbar-h); z-index: 7; }
+    #page-channel.has-live-tabs .stream-layout > .chat-sidebar { top: calc(var(--navbar-h) + 42px); height: calc(100vh - var(--navbar-h) - 42px); }
+    #page-channel.has-live-tabs .ch-tabs-wrap { top: calc(var(--ovnav-h, 56px) + 42px); }
+}
 .ch-stream-ai { margin-top: 8px; max-width: 760px; }
 .cu-btn-sm { padding: 4px 10px; font-size: 0.78rem; }
 .cu-btn-ghost { background: transparent; border: 1px solid var(--border); }
@@ -2040,19 +2048,167 @@ html[data-ov-motion=off] #page-channel .ch-tab-panel{scroll-margin-top: calc(var
 .ch-bot-mode-menu[hidden] { display: none; }
 .ch-bot-mode-menu button { min-height: 36px; padding: 0 10px; border: 0; border-radius: 7px; background: transparent; color: #fff; text-align: left; font-size: .8rem; }
 .ch-bot-mode-menu button[aria-checked="true"] { background: color-mix(in srgb, var(--accent) 35%, transparent); }
-/* The card's switch and its one-line state when the controls are on the video. */
-.ch-bot-card-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 14px; border-bottom: 1px solid var(--border); }
-.ch-bot-card-bar[hidden] { display: none; }
-.ch-bot-card-label { color: var(--text-muted, var(--text-secondary)); font-size: .78rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; }
-.ch-bot-switch { display: inline-flex; gap: 2px; padding: 2px; border-radius: 10px; background: color-mix(in srgb, var(--text-primary, #fff) 7%, transparent); }
-.ch-bot-switch button { min-height: 30px; padding: 0 9px; border: 0; border-radius: 8px; background: transparent; color: var(--text-secondary); font-size: .78rem; font-weight: 600; }
-.ch-bot-switch button[aria-pressed="true"] { background: var(--accent); color: var(--on-accent-strong, #fff); }
-.ch-bot-card-line { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding: 12px 14px; color: var(--text-secondary); font-size: .9rem; }
-.ch-bot-card-line[hidden] { display: none; }
-.ch-bot-card-line button { min-height: 36px; padding: 0 12px; border: 1px solid var(--border); border-radius: 9px; background: transparent; color: var(--text-primary); font-size: .85rem; font-weight: 600; }
+/* The card (ask 353, 2026-11-11: "more compact, use icons and buttons in a smarter way"): one head row with the name,
+   the four places for the controls as icons (the chosen one says its name) and the robot's own page; then the frame,
+   which is the full panel or a row (Bot's compact view). On the video, or hidden, the card is just that row. */
 #ch-bot-section { margin: 10px 0 0; border: 1px solid var(--border); border-radius: 16px; background: var(--bg-card, var(--bg-secondary)); overflow: hidden; }
-#ch-bot-section > h3 { display: flex; align-items: center; gap: 9px; margin: 0; padding: 10px 14px; font-size: .9rem; font-weight: 700; color: var(--text-primary); border-bottom: 1px solid var(--border); }
-#ch-bot-section > h3::before { content: ""; flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--success-text, #34d399); box-shadow: 0 0 0 3px color-mix(in srgb, var(--success-text, #34d399) 22%, transparent); }
-#ch-bot-container { resize: vertical; overflow: hidden; height: clamp(230px, 36vh, 460px); min-height: 160px; max-height: 80vh; }
+#ch-bot-section[hidden] { display: none !important; }
+.ch-bot-head { display: flex; align-items: center; gap: 8px; min-height: 46px; padding: 5px 6px 5px 14px; }
+.ch-bot-head[hidden] { display: none; }
+#ch-bot-section:has(#ch-bot-container:not([hidden])) > .ch-bot-head { border-bottom: 1px solid var(--border); }
+.ch-bot-head h3 { display: flex; align-items: center; gap: 9px; flex: 1 1 auto; min-width: 0; margin: 0; font-size: .9rem; font-weight: 700; color: var(--text-primary); }
+.ch-bot-head h3::before { content: ""; flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--success-text, #34d399); box-shadow: 0 0 0 3px color-mix(in srgb, var(--success-text, #34d399) 22%, transparent); }
+.ch-bot-tabs { display: none; flex: 1 1 auto; min-width: 0; gap: 4px; }
+.chat-header .ch-bot-tabs { margin-right: auto; }
+.ch-bot-tabs button { display: inline-flex; align-items: center; gap: 7px; min-height: 36px; padding: 0 12px; border: 0; border-radius: 10px; background: transparent; color: var(--text-secondary); font: 700 .85rem/1 inherit; }
+.ch-bot-tabs button[aria-selected="true"] { background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--text-primary); }
+.ch-bot-switch { display: inline-flex; flex: none; gap: 2px; padding: 3px; border-radius: 12px; background: color-mix(in srgb, var(--text-primary, #fff) 7%, transparent); }
+.ch-bot-switch button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-width: 36px; min-height: 34px; padding: 0 10px; border: 0; border-radius: 9px; background: transparent; color: var(--text-secondary); font-size: .78rem; font-weight: 600; }
+.ch-bot-switch button:hover { color: var(--text-primary); }
+.ch-bot-switch button[aria-pressed="true"] { background: var(--accent-strong, var(--accent)); color: var(--on-accent-strong, #fff); }
+.ch-bot-open { display: inline-flex; flex: none; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 10px; color: var(--text-secondary); text-decoration: none; }
+.ch-bot-open:hover, .ch-bot-open:focus-visible { color: var(--text-primary); background: color-mix(in srgb, var(--text-primary, #fff) 7%, transparent); }
+@media (max-width: 1100px) {
+    .ch-bot-switch button:not([aria-pressed="true"]) { width: 36px; padding: 0; }
+    .ch-bot-switch button:not([aria-pressed="true"]) span { display: none; }
+}
+#ch-bot-container { resize: vertical; overflow: hidden; height: clamp(230px, 36vh, 460px); min-height: 112px; max-height: 80vh; }
+#ch-bot-container[hidden] { display: none; }
 #ch-bot-container iframe { display: block; width: 100%; height: 100%; border: 0; background: transparent; }
+#page-channel.ch-bot-compact #ch-bot-container { height: 120px; resize: none; }
 @media (max-width: 768px) { #ch-bot-section { margin: 8px; } #ch-bot-container { height: clamp(220px, 44vh, 420px); resize: none; } }
+
+/* A phone held upright, live (ask 353: "how do you even open the chat anymore?"; then, with the first version open:
+   "the chat should go all the way up to the video … then it can be collapsed … a little circle in the corner … resize
+   how tall the chat is"). The column under the player is one sheet:
+   - the chat fills it, right up to the player, with one header row: Chat and Robot tabs (with a robot), its tools and
+     the fold. The grip on its top edge sets its height (or the arrow keys on it): the channel line shows in the room it
+     leaves; all the way up is the default again; most of the way down folds it to a round chat button in the corner.
+   - the robot: over the video (the default here), a row just under the player, or the full panel in the Robot tab.
+   - folded, the page reads as before: the player, the channel line, the robot's card, the sections.
+   Where the robot's controls go is the player's robot button. A portrait stream keeps its own layout. */
+@media (max-width: 768px) and (orientation: portrait) {
+    #page-channel.ch-is-live .stream-layout:not(:has(.video-container.is-vertical)) > .stream-main { display: contents; }
+    #page-channel.ch-is-live .stream-layout:not(:has(.video-container.is-vertical)) > .stream-main > .video-container { order: 0; flex: none; }
+    #page-channel.ch-is-live .stream-layout:not(:has(.video-container.is-vertical)) > .stream-main > :is(.ch-captions, .ch-info-bar, .ch-weather-widget) { order: 1; flex: none; }
+    #page-channel.ch-is-live .stream-layout:not(:has(.video-container.is-vertical)) > .stream-main > #ch-bot-section { order: 2; flex: none; margin: 0; border-width: 1px 0 0; border-radius: 0; }
+    #page-channel.ch-is-live .stream-layout:not(:has(.video-container.is-vertical)) > .chat-sidebar { order: 3; }
+    /* All the way up: the channel line waits under the chat (fold or lower the chat to see it). */
+    #page-channel.ch-is-live:not(.ch-chat-sized):not(.chat-collapsed) .stream-layout:not(:has(.video-container.is-vertical)) > .stream-main > :is(.ch-info-bar, .ch-weather-widget) { display: none !important; }
+    /* A height of its own: the chat keeps it, the channel line takes the rest above it. */
+    #page-channel.ch-is-live.ch-chat-sized:not(.chat-collapsed) .stream-layout:not(:has(.video-container.is-vertical)) > .stream-main > .ch-info-bar { flex: 1 1 0; min-height: 0; overflow-y: auto; align-items: flex-start; align-content: flex-start; }
+    #page-channel.ch-is-live.ch-chat-sized:not(.chat-collapsed) .stream-layout:not(:has(.video-container.is-vertical)) > .stream-main > .ch-weather-widget { display: none !important; }
+    #page-channel.ch-is-live.ch-chat-sized.page .stream-layout:not(:has(.video-container.is-vertical)) > .chat-sidebar { flex: 0 1 var(--chat-sheet-h, 60%); min-height: 120px; }
+
+    /* The chat's header: one row with the grip above it. */
+    #page-channel.ch-is-live .stream-layout:not(:has(.video-container.is-vertical)) > .chat-sidebar > .chat-grip { display: block !important; height: 16px; }
+    #page-channel.ch-is-live .stream-layout:not(:has(.video-container.is-vertical)) > .chat-sidebar > .chat-grip::after { top: 5px; opacity: .8; }
+    #page-channel.ch-is-live .stream-layout:not(:has(.video-container.is-vertical)) > .chat-sidebar .chat-header { padding-top: 12px; min-height: 52px; }
+    #page-channel.ch-is-live.ch-has-bot .chat-header .ch-chat-title { display: none; }
+    #page-channel.ch-is-live.ch-has-bot .ch-bot-tabs { display: flex; flex: 0 1 auto; }
+
+    /* The robot's place. Its card's own head row is the desktop's; here the tabs and the player's button do that. */
+    #page-channel.ch-is-live .ch-bot-head { display: none !important; }
+    #page-channel.ch-is-live:not(.ch-bot-panel):not(.ch-bot-compact) #ch-bot-section { display: none !important; }
+    #page-channel.ch-is-live.ch-bot-compact #ch-bot-container { height: 120px; }
+    /* The Robot tab: the panel takes the sheet under the chat's header, and scrolls inside its frame. */
+    #page-channel.ch-is-live.ch-bot-panel:not(.ch-bot-chat):not(.chat-collapsed) .stream-layout:not(:has(.video-container.is-vertical)) > .stream-main > :is(.ch-info-bar, .ch-weather-widget) { display: none !important; }
+    #page-channel.ch-is-live.ch-bot-panel:not(.ch-bot-chat):not(.chat-collapsed) .stream-layout:not(:has(.video-container.is-vertical)) > .stream-main > #ch-bot-section { order: 4; flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; border: 0; }
+    #page-channel.ch-is-live.ch-bot-panel:not(.ch-bot-chat):not(.chat-collapsed) #ch-bot-container { flex: 1 1 0; min-height: 0; height: auto !important; max-height: none; }
+    #page-channel.ch-is-live.ch-bot-panel:not(.ch-bot-chat):not(.chat-collapsed).page .stream-layout > .chat-sidebar { flex: none; min-height: 0; }
+    #page-channel.ch-is-live.ch-bot-panel:not(.ch-bot-chat):not(.chat-collapsed) .stream-layout > .chat-sidebar > :not(.chat-header) { display: none !important; }
+    /* The Chat tab: the panel's frame waits, still loaded (a driver keeps their place). */
+    #page-channel.ch-is-live.ch-bot-panel.ch-bot-chat:not(.chat-collapsed) #ch-bot-section { display: none !important; }
+
+    /* Folded: the round chat button in the corner brings the sheet back. */
+    body:has(#page-channel.active.ch-is-live) .ch-chat-reopen:not([hidden]) { width: 56px; height: 56px; padding: 0; gap: 0; justify-content: center; border-radius: 50%; }
+    body:has(#page-channel.active.ch-is-live) .ch-chat-reopen span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+    body:has(#page-channel.active.ch-is-live) .ch-chat-reopen :is(.fa-comments, svg) { font-size: 22px; width: 22px; height: 22px; }
+    body:has(#page-channel.active.ch-is-live) .ch-chat-reopen .fa-angles-left { display: none !important; }
+
+    /* The channel line, folded: who, live now and the title, with its actions; a tap on it (the chevron) opens the
+       followers, the alert, the labels and the links. The goal bar is one slim row. */
+    #page-channel.ch-is-live .stream-layout:not(:has(.video-container.is-vertical)) .ch-info-bar:not(.ch-info-open) :is(.ch-username, .ch-meta, .ch-social-pills, .stream-labels) { display: none !important; }
+    #page-channel.ch-is-live .stream-layout:not(:has(.video-container.is-vertical)) .ch-info-bar { row-gap: 8px; padding: 8px 12px; }
+    #page-channel.ch-is-live .stream-layout:not(:has(.video-container.is-vertical)) .ch-info-bar-top h2::after { content: ""; display: inline-block; flex: none; width: 6px; height: 6px; margin: 0 0 3px 8px; border: solid currentColor; border-width: 0 2px 2px 0; transform: rotate(45deg); opacity: .6; transition: transform .2s; }
+    #page-channel.ch-is-live .stream-layout:not(:has(.video-container.is-vertical)) .ch-info-bar.ch-info-open .ch-info-bar-top h2::after { transform: translateY(3px) rotate(225deg); }
+    #page-channel.ch-is-live .stream-layout:not(:has(.video-container.is-vertical)) .ch-info-bar-right :is(.ch-action, .ovk-ask) { height: 40px; min-height: 40px; }
+    #page-channel.ch-is-live .chat-sidebar .ch-goal-widget { padding: 4px 6px 0; }
+    #page-channel.ch-is-live .chat-sidebar .cgw-goal { height: 32px; }
+    #page-channel.ch-is-live .chat-sidebar .cgw-track .cgw-goal { margin-bottom: 4px; }
+}
+
+/* ── A section's head, compact (ask 355, 2026-11-11: "buttons need to be moved to where the title bar is … the filters
+   need to use icons … smaller, compact … button icons with nice custom animations"). The count sits beside the
+   heading; the tools are 36 px icon buttons (40 on a touch screen) in the same row, at every width: filter and order
+   carry the native picker over the icon (a phone opens its own list), then select, OpenVibe.Video, and View all. ─── */
+#page-channel .ch-sec-h { display: flex; align-items: baseline; gap: 8px; }
+#page-channel .ch-sec-n { font-size: .78rem; font-weight: 700; color: var(--text-muted, var(--text-secondary)); font-variant-numeric: tabular-nums; letter-spacing: 0; }
+#page-channel .ch-sec-n[hidden] { display: none; }
+#page-channel .ch-panel-bar { gap: 4px; }
+#page-channel .ch-panel-bar > .ch-vods-filter-bar { display: inline-flex; gap: 4px; margin: 0; }
+#page-channel .ch-ib {
+    position: relative; display: inline-grid; place-items: center; flex: none; width: 36px; height: 36px; min-height: 0; padding: 0;
+    border: 1px solid transparent; border-radius: 10px; background: color-mix(in srgb, var(--text-primary, #fff) 6%, transparent);
+    color: var(--text-secondary); cursor: pointer; text-decoration: none; font-size: .95rem;
+    transition: background-color var(--ov-dur-1, .12s) var(--ov-ease-out, ease), color var(--ov-dur-1, .12s), border-color var(--ov-dur-1, .12s), transform var(--ov-dur-1, .12s) var(--ov-ease-out, ease);
+}
+#page-channel .ch-ib:hover { color: var(--text-primary); background: color-mix(in srgb, var(--text-primary, #fff) 11%, transparent); }
+#page-channel .ch-ib:active { transform: scale(.9); }
+#page-channel .ch-ib:focus-visible, #page-channel .ch-ib:has(select:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
+#page-channel .ch-ib > :is(i, svg) { transition: transform var(--ov-dur-2, .2s) var(--ov-ease-out, cubic-bezier(.22,1,.36,1)); pointer-events: none; }
+#page-channel .ch-ib:hover > :is(i, svg) { transform: translateY(-1px); }
+#page-channel .ch-view-all.ch-ib:hover > :is(i, svg) { transform: scale(1.12); }
+#page-channel .ch-ib .sel-all-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+/* The picker over the icon: the whole button is the select, invisible, so the platform's own list opens. */
+#page-channel .ch-ib-pick select { position: absolute; inset: 0; width: 100%; height: 100%; min-height: 0; margin: 0; padding: 0; border: 0; opacity: 0; cursor: pointer; font-size: 16px; -webkit-appearance: none; appearance: none; }
+#page-channel .ch-ib-pick.is-on { color: var(--accent-light, var(--accent)); background: color-mix(in srgb, var(--accent) 16%, transparent); }
+#page-channel .ch-ib-pick.is-on::after { content: ""; position: absolute; top: 6px; right: 6px; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 2px var(--bg-primary); }
+#page-channel .ch-ib-pick[data-order="views"] > :is(i, svg), #page-channel .ch-ib-pick[data-order="peak_viewers"] > :is(i, svg) { color: var(--accent-light, var(--accent)); }
+@media (hover: none) { #page-channel .ch-ib { width: 40px; height: 40px; } }
+@media (max-width: 600px) {
+    /* The tools stay in the heading's row: they are icons now. */
+    #page-channel :is(#ch-panel-videos, #ch-panel-clips, #ch-panel-clips-taken, #ch-panel-pastes) { grid-template-columns: minmax(0, 1fr) auto; }
+    #page-channel :is(#ch-panel-videos, #ch-panel-clips, #ch-panel-clips-taken, #ch-panel-pastes) > .ch-panel-bar { grid-column: 2; grid-row: 1; justify-content: flex-end; }
+    #page-channel .ch-view-all.ch-ib { min-height: 0; }
+}
+
+/* A recording in progress: the stream's own picture as a live card (style.css .stream-card.is-live), a Recording pill
+   whose dot breathes, the clock that runs, and a play mark on hover. */
+#page-channel .ch-rec-card { border-width: 1px; }
+#page-channel .ch-rec-pill { position: absolute; top: 8px; left: 8px; z-index: 2; display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 9px 0 8px; border-radius: 999px; background: var(--live-red, #e5484d); color: #fff; font-size: .7rem; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
+#page-channel .ch-rec-dot { width: 7px; height: 7px; border-radius: 50%; background: #fff; animation: chRecBreathe 1.6s var(--ov-ease-in-out, ease-in-out) infinite; }
+@keyframes chRecBreathe { 50% { opacity: .35; transform: scale(.8); } }
+html[data-ov-motion="off"] #page-channel .ch-rec-dot { animation: none; }
+#page-channel .ch-rec-time { font-variant-numeric: tabular-nums; }
+#page-channel .ch-rec-watch { position: absolute; inset: 0; z-index: 1; display: grid; place-items: center; color: #fff; font-size: 1.6rem; opacity: 0; background: rgba(0, 0, 0, .28); transition: opacity var(--ov-dur-2, .2s); pointer-events: none; }
+#page-channel .ch-rec-card:hover .ch-rec-watch, #page-channel .ch-rec-card:focus-visible .ch-rec-watch { opacity: 1; }
+#page-channel .ch-ib .ch-ib-t { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* Section heads, second pass (ask 355, the owner: "those button designs … confusing … needs a little more info and better
+   alignment and sizing and consistency … improve the header of each, add an icon for the header … better font sizing").
+   - The heading: its icon in a 30 px tile, the name at 1.15rem/800, the count as a quiet pill.
+   - The tools: one height (36, 40 on touch), one radius, one tint; from 760 px each says what it is beside its icon
+     (the pickers say the value they hold, with a caret); narrower, the icon carries it (the order's icon is the order,
+     the filter shows a dot while it filters) and the title says it in words. */
+#page-channel .ch-sec-h { align-items: center; gap: 10px; font-size: 1.15rem; line-height: 1.2; }
+#page-channel .ch-sec-ic { display: inline-grid; place-items: center; flex: none; width: 30px; height: 30px; border-radius: 9px; font-size: .9rem;
+    color: var(--accent-light, var(--accent)); background: color-mix(in srgb, var(--accent) 14%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 22%, transparent); }
+#page-channel svg.ch-sec-ic { padding: 7px; box-sizing: border-box; }
+#page-channel .ch-sec-n { display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 999px; font-size: .74rem; background: color-mix(in srgb, var(--text-primary, #fff) 7%, transparent); }
+#page-channel .ch-ib { gap: 6px; border-color: color-mix(in srgb, var(--text-primary, #fff) 8%, transparent); }
+#page-channel .ch-ib .ch-ib-caret { display: none; font-size: .6rem; opacity: .7; }
+@media (min-width: 760px) {
+    #page-channel .ch-ib:has(.ch-ib-t, .sel-all-label) { display: inline-flex; width: auto; padding: 0 12px 0 10px; font-size: .82rem; font-weight: 650; }
+    #page-channel .ch-ib .ch-ib-t, #page-channel .ch-ib .sel-all-label { position: static; width: auto; height: auto; overflow: visible; clip: auto; max-width: 16ch; text-overflow: ellipsis; white-space: nowrap; }
+    #page-channel .ch-ib .ch-ib-t { overflow: hidden; }
+    #page-channel .ch-ib-pick .ch-ib-caret { display: inline-block; margin-left: -1px; }
+    #page-channel .ch-ib-pick.is-on::after { top: 5px; right: 5px; }
+}
+@media (min-width: 760px) and (max-width: 1100px) { #page-channel .ch-ib .ch-ib-more { display: none; } }
+@media (max-width: 1100px) { #page-channel .ch-ib .ch-ib-more { display: none; } }
+
+/* The robot's panel in a window (ask 356): the frame fills the window's body; the window sizes it. */
+.ch-bot-win { height: 100%; min-height: 200px; }
+.ch-bot-win iframe { display: block; width: 100%; height: 100%; border: 0; background: transparent; }
+@media (max-width: 768px) { #page-channel [data-bot-mode="window"] { display: none !important; } }

@@ -36,7 +36,9 @@
     const SANDBOX = 'allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-forms';
 
     const PANEL_MODES = ['panel', 'overlay', 'compact'];
-    const VIEW_MODES = ['overlay', 'panel', 'hidden'];
+    // Where a viewer puts the controls: over the video, a row under it (Bot's compact view), the full panel, or hidden.
+    // 'window' (ask 356, 2026-11-11: "can be popped out … and resized"): the full panel in the shared window (ov-window.js).
+    const VIEW_MODES = ['overlay', 'compact', 'panel', 'window', 'hidden'];
     const CHOICE_KEY = 'ov:live:bot-controls';
 
     function embedSrc(botEmbed, mode = null) {
@@ -99,9 +101,19 @@
         return `${CHOICE_KEY}:${String(channel || '')}:${String(robotId || '')}`;
     }
     function validView(mode) { return VIEW_MODES.includes(mode) ? mode : null; }
-    function defaultMode(botEmbed) { return botEmbed && botEmbed.controls_mode === 'overlay' ? 'overlay' : 'panel'; }
-    function effectiveMode(botEmbed, stored) {
-        return validView(stored) || defaultMode(botEmbed);
+    // The streamer's default, except that on a phone held upright the full panel starts on the video (ask 353,
+    // 2026-11-11: the panel under the player took the whole screen and the chat could not be reached; Maticus, 11-10:
+    // the stick and the head slider over the stream "would be great for phone"). A streamer's row stays a row.
+    function defaultMode(botEmbed, { phone = false } = {}) {
+        const m = botEmbed && botEmbed.controls_mode;
+        if (m === 'overlay' || m === 'compact') return m;
+        return phone ? 'overlay' : 'panel';
+    }
+    function effectiveMode(botEmbed, stored, opts) {
+        const v = validView(stored);
+        // A phone has no floating windows: its full panel is the Robot tab.
+        if (v === 'window' && opts && opts.phone) return 'panel';
+        return v || defaultMode(botEmbed, opts);
     }
     function readChoice(win, channel, robotId) {
         try {
@@ -161,6 +173,7 @@
     // computed style. Plain colours only on the Bot side; --color-scheme is 'dark' or 'light'.
     const THEME_TOKENS = ['--bg-primary', '--bg-card', '--text-primary', '--text-secondary', '--accent', '--accent-strong', '--on-accent-strong', '--border'];
     const MIN_HEIGHT = 160;
+    const COMPACT_MIN = 96;
     const MAX_HEIGHT = 720;
 
     function pageTheme(win) {
@@ -196,11 +209,14 @@
         // The panel's height: it measures its content (a ResizeObserver on its end, at most 5×/s) and the page sets
         // the card around the frame to it, between MIN_HEIGHT and MAX_HEIGHT. Once it has spoken the card is no
         // longer hand-resizable (#ch-bot-container's resize handle in public/css/features/channel.css).
-        const setHeight = (value) => {
+        const setHeight = (value, mode) => {
             const height = Number(value);
             if (!Number.isFinite(height) || height <= 0) return;
-            const clamped = Math.max(MIN_HEIGHT, Math.min(MAX_HEIGHT, Math.round(height)));
+            // The row (Bot's compact view) is about 120 px: it keeps its own height, the panel at least MIN_HEIGHT.
+            const clamped = Math.max(mode === 'compact' ? COMPACT_MIN : MIN_HEIGHT, Math.min(MAX_HEIGHT, Math.round(height)));
             try {
+                // In a window the window's size is the frame's: the panel scrolls inside it.
+                if (typeof frame.closest === 'function' && frame.closest('.ovw')) return;
                 const card = typeof frame.closest === 'function' ? frame.closest('#ch-bot-container') : null;
                 const host = card || frame;
                 host.style.height = `${clamped}px`;
@@ -301,7 +317,7 @@
                 if (d.robot_id == null || d.robot_id === robotId) {
                     // An overlay fills the player; its clip keeps the presses outside the controls going through.
                     if (d.mode === 'overlay') applyClip(frame, d);
-                    else { applyClip(frame, null); setHeight(d.height); }
+                    else { applyClip(frame, null); setHeight(d.height, d.mode); }
                     if (typeof onSize === 'function') onSize(d);
                 }
                 return;
