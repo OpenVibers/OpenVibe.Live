@@ -1218,6 +1218,21 @@ button.viewer-badge:focus-visible { outline: 2px solid #93c5fd; outline-offset: 
 .ai-tl-session-meta { color: var(--text-muted); font-size: 0.78rem; display: flex; flex-wrap: wrap; align-items: center; gap: 5px; }
 .ai-tl-dot { opacity: 0.4; margin: 0 2px; }
 .ai-tl-session-overview { margin: 8px 0 10px; color: var(--text-secondary); line-height: 1.5; font-size: 0.9rem; white-space: pre-wrap; }
+/* A chatter's day (Opus, 2026-11-11): its moments as rows, each its time, what happened and a play mark when it opens
+   the recording at that second; past five they fold under "N more". */
+.ai-tl-cms { list-style: none; margin: 6px 0 8px; padding: 0; display: grid; gap: 4px; }
+.ai-tl-cm { display: flex; align-items: baseline; gap: 10px; padding: 7px 10px; border-radius: 10px; color: var(--text-primary); text-decoration: none; font-size: .88rem; line-height: 1.45; background: color-mix(in srgb, var(--text-primary, #fff) 3%, transparent); }
+a.ai-tl-cm:hover { background: color-mix(in srgb, var(--accent, #8b5cf6) 12%, transparent); }
+a.ai-tl-cm:focus-visible { outline: 2px solid var(--accent, #8b5cf6); outline-offset: 1px; }
+.ai-tl-cm .ai-tl-ts { min-width: 54px; padding-top: 0; }
+.ai-tl-cm-text { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.ai-tl-cm-go { flex: none; align-self: center; font-size: .7rem; color: var(--accent, #8b5cf6); opacity: .7; }
+a.ai-tl-cm:hover .ai-tl-cm-go { opacity: 1; }
+.ai-tl-cms-more > summary { display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 0 10px; cursor: pointer; color: var(--accent, #8b5cf6); font-size: .85rem; font-weight: 600; list-style: none; }
+.ai-tl-cms-more > summary::-webkit-details-marker { display: none; }
+.ai-tl-cms-more > summary::after { content: ""; width: 6px; height: 6px; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: rotate(45deg); margin-top: -3px; }
+.ai-tl-cms-more[open] > summary::after { transform: rotate(-135deg); margin-top: 3px; }
+.ai-tl-session-overview .ai-ov-text { white-space: pre-wrap; }
 .ai-tl-moments { display: flex; flex-direction: column; gap: 8px; }
 .ai-tl-moment-thumb { width: 96px; height: 54px; object-fit: cover; border-radius: 6px; flex-shrink: 0; background: rgba(0,0,0,0.3); }
 .ai-tl-stamp { align-self: flex-start; font-size: 0.75rem; font-weight: 700; color: var(--accent, #8b5cf6); background: color-mix(in srgb, var(--accent, #8b5cf6) 12%, transparent); padding: 2px 8px; border-radius: 8px; text-decoration: none; display: inline-flex; align-items: center; gap: 5px; }
