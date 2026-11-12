@@ -91,7 +91,7 @@
   ".chat-msg",
   ".chat-msg .chat-user",
   ".chat-msg-crossfeed",
-  ".chat-msg-hoverable .chat-reply-btn",
+  ".chat-msg-actions",
   ".chat-msg.system",
   ".chat-nickels-float .rewards-coin-balance",
   ".chat-relay-badge",
