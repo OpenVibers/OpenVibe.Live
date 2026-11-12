@@ -3576,10 +3576,11 @@ function clearChatEdit({ keepText = false } = {}) {
 
 function _saveChatEdit(input, text) {
     const ed = _chatEditing;
-    if (!ed) return;
+    if (!ed || ed.saving) return;   // one save at a time: the shared composer and Live's own Enter both hear the key
     if (!text) { addSystemMessage('A message can\'t be empty. To take it back, delete it from its menu.'); return; }
     if (messageHitsSlurPolicy(text)) { showSlurNudgeModal(); return; }
     const body = ed.muted && !text.startsWith('.') ? '.' + text : text;
+    ed.saving = true;
     input.disabled = true;
     fetch(`/api/chat/messages/${encodeURIComponent(ed.id)}`, { method: 'PATCH', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: body }) })
         .then(async (r) => {
@@ -3589,7 +3590,7 @@ function _saveChatEdit(input, text) {
             clearChatEdit();
         })
         .catch((err) => addSystemMessage(err.message))
-        .finally(() => { input.disabled = false; input.focus(); });
+        .finally(() => { ed.saving = false; input.disabled = false; input.focus(); });
 }
 
 /**

@@ -32,6 +32,7 @@ assert.ok(!/window\.prompt\('Edit message'/.test(chat), 'no prompt box for an ed
 assert.ok(/function setChatEdit\(row\)/.test(chat) && /function clearChatEdit\(/.test(chat) && /function _saveChatEdit\(/.test(chat));
 assert.ok(/if \(_chatEditing\) \{ _saveChatEdit\(input, text\); return; \}/.test(chat), 'Enter in the box saves the edit');
 assert.ok(/e\.key === 'Escape' && _chatEditing/.test(chat), 'Escape stops editing');
+assert.ok(/if \(!ed \|\| ed\.saving\) return;/.test(chat) && /ed\.saving = true;/.test(chat), 'one save at a time (Enter reaches both the shared composer and Live\'s keys)');
 assert.ok(/Editing your message/.test(chat), 'the bar says what is happening');
 assert.ok(/'\.chat-reply-bar:not\(\.chat-edit-bar\)'/.test(chat), 'replying and editing never reuse each other\'s bar');
 assert.ok(/ed\.muted && !text\.startsWith\('\.'\) \? '\.' \+ text : text/.test(chat), 'a message sent without TTS stays without TTS when edited');

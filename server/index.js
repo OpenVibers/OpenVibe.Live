@@ -393,7 +393,7 @@ app.use(helmet({
             defaultSrc: ["'self'"],
             scriptSrc: ["'self'", "'unsafe-inline'", "cdnjs.cloudflare.com", "cdn.jsdelivr.net", "https://openvibe.network", "https://jsmpeg.com", "https://esm.sh", "https://static.cloudflareinsights.com"],
             // esm.sh: mediasoup-client dynamic import for WebRTC SFU restreaming + RS restream. No other site's script
-            // runs the camera: the go-live page's capture is Live's own (public/js/live-capture.js, 11-12).
+            // runs the camera: the go-live page's capture is Live's own copy of the shared core (/shared/ov-capture.js, 11-12).
             styleSrc: ["'self'", "'unsafe-inline'", "cdnjs.cloudflare.com", "fonts.googleapis.com"],
             fontSrc: ["'self'", "fonts.gstatic.com", "cdnjs.cloudflare.com"],
             // i.ytimg.com / i.vimeocdn.com carry media-request thumbnails. Without them

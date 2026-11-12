@@ -54,6 +54,12 @@ const viewerToken = () => VIEWER_TOKEN;
         };
     };
 
+    const settingsCalls = [];
+    cam.cameraSettings = async ({ token, method = 'GET', settings }) => {
+        settingsCalls.push({ token, method, settings });
+        return { facing: 'environment', lens: 'cam-on-another-device', mic: 'usb', resolution: '1080', mirror: false, ...(settings || {}) };
+    };
+
     const app = express();
     app.use(express.json());
     app.use('/api/cam', require('../server/cam/routes'));
@@ -95,6 +101,19 @@ const viewerToken = () => VIEWER_TOKEN;
         // Bad slot/stream inputs are refused before Cam is asked.
         assert.strictEqual((await post('/stills', { slot: '', stream_id: streamId })).status, 400);
         assert.strictEqual((await post('/stills', { slot: 'whip', stream_id: 'nope' })).status, 400);
+
+        // The camera choices that follow the person (the shared capture core's settings.sync): only the portable ones,
+        // both ways; device ids never leave the device or come back from another.
+        const get = await fetch(`${base}/api/cam/settings`, { headers: { Authorization: `Bearer ${viewerToken()}` } });
+        assert.strictEqual(get.status, 200);
+        assert.deepStrictEqual(await get.json(), { facing: 'environment', resolution: '1080', mirror: false });
+        const put = await fetch(`${base}/api/cam/settings`, { method: 'PUT', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${viewerToken()}` }, body: JSON.stringify({ mirror: true, lens: 'my-camera-id', effects: 'warm' }) });
+        assert.strictEqual(put.status, 200);
+        assert.deepStrictEqual(settingsCalls[settingsCalls.length - 1].settings, { mirror: true }, 'only the portable choices go to Cam');
+        assert.strictEqual(settingsCalls[settingsCalls.length - 1].token, viewerToken(), 'as the person');
+        const empty = await fetch(`${base}/api/cam/settings`, { method: 'PUT', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${viewerToken()}` }, body: JSON.stringify({ lens: 'x' }) });
+        assert.strictEqual(empty.status, 400);
+        assert.strictEqual((await fetch(`${base}/api/cam/settings`)).status, 401, 'signed out: nothing to sync');
     } finally {
         server.close();
         fs.rmSync(tmp, { recursive: true, force: true });

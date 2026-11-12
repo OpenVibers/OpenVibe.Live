@@ -1068,10 +1068,12 @@ function _glCopyLink() {
    network, before going live. One watch, once a second, owns the camera: it opens it only while this page shows a
    browser slot that is not live, with permission already given, and lets go when the tab hides, the page changes, a
    stream starts or Go live is pressed. Turning it off is remembered on this device. ── */
-const _glPv = { stream: null, key: '', starting: false, timer: 0, raf: 0, ctx: null, hold: 0, failed: '', stopMeter: null };
+const _glPv = { stream: null, key: '', starting: false, timer: 0, raf: 0, ctx: null, hold: 0, failed: '', stopMeter: null, pending: false };
 const _GL_PV_OFF = 'ov_gl_preview_off';
-// The camera is Live's own: public/js/live-capture.js (window.OVCapture), every part replaceable. The page loaded
-// OpenVibe.Cam's cam-kit.js for this until 11-12 (the owner: "we don't want to use openvibe.cam for OpenVibe.Live").
+// The camera is OpenVibe's shared capture core, served by Live itself: /shared/ov-capture.js (window.OVCapture, every
+// part replaceable; openvibe-shared 4.216.0). Live and OpenVibe.Cam use the same one, and a signed-in person's camera
+// choices (facing, resolution, mirror) follow them through Cam (the owner, 11-12: "OpenVibe.cam is actually fine …
+// Harmony"). Until 11-12 the page loaded Cam's kit from openvibe.cam, which Live's content policy refused.
 function _glOtherWays() {
     const fold = document.getElementById('gl-how');
     if (fold) { fold.open = true; fold.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
@@ -1172,13 +1174,54 @@ function _glPreviewStop() {
     if (note && _glPreviewOff()) note.textContent = 'Preview off on this device.';
 }
 
+/*
+ * A chosen camera is that camera (the owner, 11-12, a phone screenshot: "even though I have back selected, it didn't
+ * actually flip the camera … make it work more reliably for all the controls"). The preview asked for the chosen
+ * camera "ideally" and for the saved side "ideally" too, and the saved side was still the front one (picking Back set the
+ * select without telling the page), so Android settled the two in favour of the front camera. Now: a chosen device is
+ * asked for exactly, with no side beside it; if that id has gone stale, the next way asks for its side exactly (then any
+ * camera); and the side always comes from the camera chosen, never from an older setting.
+ */
+function _glCaptureSetup() {
+    if (!window.OVCapture || OVCapture.__glExact) return;
+    OVCapture.__glExact = true;
+    const before = OVCapture.use('constraints', (o = {}) => {
+        const c = before(o);
+        if (c.video && o.lens && o.lens !== 'main' && o.lens !== 'default' && o.lens !== '-') {
+            const { facingMode, deviceId, ...rest } = c.video;
+            c.video = { ...rest, deviceId: { exact: o.lens } };
+        }
+        return c;
+    });
+    OVCapture.strategies.add({
+        name: 'side',
+        note: 'The chosen camera\'s side exactly (its id changed): the back camera stays the back camera.',
+        open: (o, c) => {
+            if (!o.facing || o.video === false || o.mode === 'mic_only') throw new DOMException('No side to ask for', 'NotFoundError');
+            const v = { facingMode: { exact: o.facing } };
+            const h = Number(o.resolution) || 720;
+            return c.part('getUserMedia')({ video: { ...v, width: { ideal: Math.round(h * 16 / 9) }, height: { ideal: h } }, audio: o.mode !== 'camera_only' && o.audio !== false });
+        },
+    }, { before: 'basic' });
+}
+/** The side of the camera chosen in the go-live select ('user' | 'environment' | null for a USB camera). */
+function _glChosenFacing() {
+    const opt = document.getElementById('bc-create-camera')?.selectedOptions?.[0];
+    return (opt && opt.dataset.facing) || null;
+}
+
 async function _glPreviewStart(key) {
-    if (_glPv.starting) return;
+    // One camera opens at a time; a change made meanwhile is kept and opened right after (it was dropped until the next
+    // second's check, so a quick Front → Back → Front could land on the wrong one).
+    if (_glPv.starting) { _glPv.pending = true; return; }
     _glPv.starting = true;
+    _glPv.pending = false;
     _glPreviewStop();
+    _glCaptureSetup();
     const [mode, cam, mic, resolution] = key.split('|');
     try {
-        const stream = await OVCapture.open({ video: cam !== '-', audio: mic !== '-', lens: cam, mic, facing: window._glCamSettings?.facing || 'user', resolution });
+        const facing = _glChosenFacing() || (cam === 'default' ? window._glCamSettings?.facing : null) || undefined;
+        const stream = await OVCapture.open({ mode, video: cam !== '-', audio: mic !== '-', lens: cam, mic, facing, resolution });
         // Things moved on while the camera opened: let it go again.
         if (_glPreviewWant() !== key) { stream.getTracks().forEach((t) => t.stop()); return; }
         _glPv.stream = stream;
@@ -1212,6 +1255,7 @@ async function _glPreviewStart(key) {
             : 'The camera did not open. Choose another camera or turn it on again.';
     } finally {
         _glPv.starting = false;
+        if (_glPv.pending) { _glPv.pending = false; _glPreviewSync(); }
     }
 }
 
@@ -1255,6 +1299,26 @@ function _glPreviewSync() {
 function _glPreviewWatch() {
     _glPreviewSync();
     if (_glPv.timer) return;
+    // Signed in: the choices that mean the same anywhere follow the person through OpenVibe.Cam (Live's /api/cam/settings
+    // proxy); camera and microphone ids stay on this device.
+    if (typeof currentUser !== 'undefined' && currentUser && !window._glCamSync && OVCapture.settings.sync) {
+        window._glCamSync = OVCapture.settings.sync({
+            load: () => fetch('/api/cam/settings', { credentials: 'include' }).then((r) => (r.ok ? r.json() : null)),
+            save: (s) => fetch('/api/cam/settings', { method: 'PUT', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(s) }),
+        });
+        OVCapture.on('synced', (e) => {
+            const saved = e && e.settings;
+            if (!saved) return;
+            window._glCamSettings = saved;
+            const res = document.getElementById('bc-ws-resolution');
+            if (res && [...res.options].some((o) => o.value === saved.resolution)) res.value = saved.resolution;
+            const sheetRes = document.getElementById('gl-sheet-resolution');
+            if (sheetRes) sheetRes.value = saved.resolution;
+            const sheetMirror = document.getElementById('gl-sheet-mirror');
+            if (sheetMirror) sheetMirror.checked = !!saved.mirror;
+            try { localStorage.setItem('ov_bc_mirror_preview', saved.mirror ? '1' : '0'); } catch {}
+        });
+    }
     Promise.resolve(OVCapture.settings.load()).then((saved) => {
         if (!saved) return;
         window._glCamSettings = saved;

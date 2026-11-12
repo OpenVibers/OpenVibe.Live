@@ -48,4 +48,18 @@ async function createStill({ token, slot, streamId, caption }) {
     return data;
 }
 
-module.exports = { CAM_URL, available, createStill, CamApiError };
+// The signed-in person's camera choices on OpenVibe.Cam (GET/PUT /api/v1/me/camera-settings): the shared capture core
+// syncs the ones that mean the same on any device (facing, resolution, mirror) through Live's /api/cam/settings.
+async function cameraSettings({ token, method = 'GET', settings }) {
+    if (!available()) throw new CamApiError('OpenVibe.Cam is unavailable right now', 503, 'cam.unavailable');
+    if (!token) throw new CamApiError('A signed-in Network account is required', 401, 'cam.sign_in_required');
+    const res = await fetch(`${CAM_URL}/api/v1/me/camera-settings`, {
+        method, headers: { Authorization: `Bearer ${token}`, ...(method === 'PUT' ? { 'Content-Type': 'application/json' } : {}) },
+        ...(method === 'PUT' ? { body: JSON.stringify(settings) } : {}), signal: AbortSignal.timeout(TIMEOUT_MS),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new CamApiError(data.detail || 'Could not save camera settings', res.status, data.code);
+    return data;
+}
+
+module.exports = { CAM_URL, available, createStill, cameraSettings, CamApiError };

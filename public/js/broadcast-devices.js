@@ -131,11 +131,16 @@ function _syncCameraSelectionUI(cameraId, { persist = true } = {}) {
             if (facing) localStorage.setItem(`bc-last-camera-${facing}`, normalized);
         } catch { /* */ }
     }
+    const goLiveSelect = document.getElementById('bc-create-camera');
+    const changed = !!goLiveSelect && goLiveSelect.value !== normalized;
     _setSelectValueIfPresent(document.getElementById('bc-forceCamera'), normalized);
-    _setSelectValueIfPresent(document.getElementById('bc-create-camera'), normalized);
+    _setSelectValueIfPresent(goLiveSelect, normalized);
     _setSelectValueIfPresent(document.getElementById('bc-screen-camera'), normalized);
     broadcastState.settings.forceCamera = normalized;
     _bcRenderCameraChooser();
+    // Tell the page, as a person's own pick from the list does: the camera settings (its side, its lens) are saved and
+    // the preview switches now, not at the next check (Back used to keep the front camera's side, 11-12).
+    if (changed && goLiveSelect.value === normalized) goLiveSelect.dispatchEvent(new Event('change', { bubbles: true }));
     if (persist) {
         saveBroadcastSettings();
         try { localStorage.setItem('bc-last-camera', normalized); } catch {}
@@ -491,6 +496,8 @@ function _getUserMediaWithTimeout(constraints, timeoutMs = 15000) {
  * On mobile Android, requesting audio+video together can silently fail,
  * so we try combined first, then individually.
  */
+// Live's own last step in the camera help: there is always the screen (OVCapture.explain's { instead }).
+const GL_SCREEN_INSTEAD = 'Or go live with your screen instead: "Use a screen or an app instead" below.';
 async function requestMediaPermissions() {
     console.log('[Broadcast] requestMediaPermissions() called');
     const permReq = document.getElementById('bc-perm-request');
@@ -511,14 +518,14 @@ async function requestMediaPermissions() {
     // Feature detection: an in-app browser (Discord, Instagram, TikTok) or a page outside HTTPS has no camera API.
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
         console.warn('[Broadcast] Camera/mic API not available');
-        _glShowFix(OVCapture.explain({ name: 'NoApi' }, permMode));
+        _glShowFix(OVCapture.explain({ name: 'NoApi' }, permMode, { instead: GL_SCREEN_INSTEAD }));
         if (btn) { btn.disabled = false; btn.innerHTML = btnOrigText; }
         return;
     }
     let failed = false;
 
     try {
-        // Live's own capture system opens it (public/js/live-capture.js: preferred, then separately, then basic, each
+        // The shared capture core opens it (openvibe-shared ov-capture.js: preferred, then separately, then basic, each
         // timed); a refusal stops at once, because asking another way would only ask again.
         const mode = _wsState.selectedMs?.browser_mode || _wsState.profile?.browserMode || 'camera';
         if (dbg) dbg.textContent = 'Requesting camera + mic...';
@@ -563,7 +570,7 @@ async function requestMediaPermissions() {
         console.warn('[Broadcast] Permission request failed:', err.name, err.message);
         if (dbg) dbg.textContent = `${err.name || 'Error'}: ${err.message}`;
         failed = true;
-        _glShowFix(OVCapture.explain(err, permMode));
+        _glShowFix(OVCapture.explain(err, permMode, { instead: GL_SCREEN_INSTEAD }));
         document.getElementById('gl-fix')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     } finally {
         if (btn) {
