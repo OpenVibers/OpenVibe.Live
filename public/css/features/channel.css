@@ -2219,6 +2219,13 @@ html[data-ov-motion="off"] #page-channel .ch-rec-dot { animation: none; }
 #page-channel .ch-sec-ic { display: inline-grid; place-items: center; flex: none; width: 30px; height: 30px; border-radius: 9px; font-size: .9rem;
     color: var(--accent-light, var(--accent)); background: color-mix(in srgb, var(--accent) 14%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 22%, transparent); }
 #page-channel svg.ch-sec-ic { padding: 7px; box-sizing: border-box; }
+/* A part of a section (AI Moments in Clips, About's latest videos and popular clips): the same tile, a size down. */
+#page-channel .ch-sub-h { display: flex; align-items: center; gap: 9px; margin: 22px 0 6px; font-size: 1rem; font-weight: 800; line-height: 1.2; letter-spacing: -.005em; text-transform: none; color: var(--text-primary); }
+#page-channel .ch-sub-h > .ch-sec-ic { width: 26px; height: 26px; border-radius: 8px; font-size: .78rem; }
+#page-channel .ch-about-h.ch-sub-h { margin-top: 18px; }
+#page-channel .ch-sub-h .ch-about-h-note { font-size: .8rem; font-weight: 600; color: var(--text-muted); opacity: 1; }
+#page-channel .ch-socials-head.ch-sub-h { margin: 0 0 10px; }
+#page-channel .ch-about-content > :first-child .ch-sub-h:first-child, #page-channel .ch-about-content > .ch-sub-h:first-child { margin-top: 0; }
 #page-channel .ch-sec-n { display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 999px; font-size: .74rem; background: color-mix(in srgb, var(--text-primary, #fff) 7%, transparent); }
 #page-channel .ch-ib { gap: 6px; border-color: color-mix(in srgb, var(--text-primary, #fff) 8%, transparent); }
 #page-channel .ch-ib .ch-ib-caret { display: none; font-size: .6rem; opacity: .7; }
@@ -2239,12 +2246,18 @@ html[data-ov-motion="off"] #page-channel .ch-rec-dot { animation: none; }
 
 /* ── One section at a time on a phone or a tablet (ask 367, 2026-11-11: "consolidate these into tabs, self-contained
    tabs … at least on mobile"). The page's HTML keeps every section; at 900 px or narrower app-channel.js marks the
-   page .ch-tabbed and the chosen one .is-current. The tab names the section, so its own heading steps aside and its
-   tools lead its first row; folds open by themselves. ─── */
-#page-channel.ch-tabbed .ch-tab-panel:not(.is-current) { display: none; }
+   page .ch-tabbed and the chosen one .is-current. Folds open by themselves.
+   11-12, the owner, with a phone screenshot of About followed by headless rows of videos and clips: "a bunch of sections
+   are missing a header, and they need a nice header with icon". Two rules had met: the rails' grid
+   (#page-channel :is(#ch-panel-videos, …), two ids) outranked the hiding of the sections not chosen (one id), so Videos,
+   Clips, Clips taken and Pastes showed under every tab, while this block took their headings away. Now a section not
+   chosen never shows, whatever a later rule says, and every section keeps its heading: the icon tile, the name, the
+   count, its tools beside or under it. ─── */
+#page-channel.ch-tabbed .ch-tab-panel:not(.is-current) { display: none !important; }
 #page-channel.ch-tabbed .ch-tab-panel { margin: 0 0 18px; min-height: 42vh; }
-#page-channel.ch-tabbed .ch-tab-panel > .ch-sec-h, #page-channel.ch-tabbed .ch-tab-panel .ch-fold > summary { display: none; }
-#page-channel.ch-tabbed :is(#ch-panel-videos, #ch-panel-clips, #ch-panel-clips-taken, #ch-panel-pastes) > .ch-panel-bar { grid-column: 1 / -1; grid-row: 1; justify-content: flex-start; }
+/* A fold is open in its own tab: its summary is the section's heading, not a toggle. */
+#page-channel.ch-tabbed .ch-tab-panel .ch-fold > summary { pointer-events: none; min-height: 0; padding: 0; border: 0; background: none; }
+#page-channel.ch-tabbed .ch-tab-panel .ch-fold > summary .ch-fold-say { display: none; }
 #page-channel.ch-tabbed :is(#ch-panel-videos, #ch-panel-clips, #ch-panel-clips-taken, #ch-panel-pastes) > .ch-panel-bar:not(:has(> :not([style*="display:none"]):not([style*="display: none"]):not(:empty))) { display: none; }
 #page-channel.ch-tabbed .ch-tab-panel.is-entering { animation: chPanelIn var(--ov-dur-2, .22s) var(--ov-ease-out, cubic-bezier(.22, 1, .36, 1)) both; }
 @keyframes chPanelIn { from { opacity: 0; transform: translateY(6px); } }
