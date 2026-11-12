@@ -255,8 +255,10 @@ router.post('/:type/:id', requireAuth, async (req, res) => {
             return res.status(400).json({ error: 'Invalid content type or ID' });
         }
         const message = String(req.body.message || '').trim();
-        if (!message || message.length > MAX_MESSAGE) {
-            return res.status(400).json({ error: `Comment must be 1-${MAX_MESSAGE} characters` });
+        // A picture alone is a comment, as on any social app (the owner, 11-12): words are optional with a file attached.
+        const hasFiles = Array.isArray(req.body.attachments) && req.body.attachments.length > 0;
+        if ((!message && !hasFiles) || message.length > MAX_MESSAGE) {
+            return res.status(400).json({ error: `Write something or attach a picture (up to ${MAX_MESSAGE} characters)` });
         }
         const parentId = req.body.parent_id ? parseInt(req.body.parent_id) : null;
         const target = await visibleTarget(req.user, contentType, contentId);

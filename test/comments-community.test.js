@@ -216,6 +216,13 @@ async function check(name, fn) {
             { method: 'POST', headers: { 'x-test-user': '5' }, body: form });
         assert.strictEqual(other.status, 404, 'a non-owner cannot upload to a private VOD');
         assert.strictEqual((await call('POST', '/api/comments/vod/100', 5, { message: 'Too many', attachments: Array(5).fill(uploaded.attachment) })).status, 400);
+        // A picture alone is a comment (the owner, 11-12); nothing at all is still refused.
+        const quiet = await call('POST', '/api/comments/vod/100', 5, { message: '', attachments: [uploaded.attachment] });
+        assert.strictEqual(quiet.status, 201, quiet.text);
+        assert.strictEqual(last('POST', /\/comments$/).body.message, '', 'Community gets the picture with no words');
+        const bare = await call('POST', '/api/comments/vod/100', 5, { message: '  ' });
+        assert.strictEqual(bare.status, 400);
+        assert.match(bare.json.error, /Write something or attach a picture/);
     });
 
     await check('edit: the author only (as their subject); edits show as edited', async () => {
