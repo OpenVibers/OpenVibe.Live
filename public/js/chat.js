@@ -1303,6 +1303,7 @@ function _chatInputIdForTarget(targetId) {
 }
 
 function initChat(streamId, channelUserId = null) {
+    if (window.OVChatComposer) window.OVChatComposer.mount();
     const prevChannelUserId = chatChannelUserId;
     chatChannelUserId = channelUserId || null;
     _syncOwnTtsLeadership();
@@ -3458,6 +3459,7 @@ function sendChat(overrideInput = null) {
     chatWs.send(JSON.stringify(msg));
 
     input.value = '';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
     _autoResizeTextarea(input);
     input.focus();
     clearChatReply();
@@ -6300,6 +6302,7 @@ function fcwSendChat() {
 
     chatWs.send(JSON.stringify({ type: 'chat', message: text, streamId: null }));
     input.value = '';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
     _autoResizeTextarea(input);
     input.focus();
 }
