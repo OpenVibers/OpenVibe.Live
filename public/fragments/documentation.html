@@ -622,7 +622,7 @@ while True:
 <!-- ═══════════════════════════════════════════════════════════ -->
 <div class="doc-tab-content" data-doc-tab="robots" style="display:none">
 <h2>5. ROBOTS — OPENVIBE.BOT</h2>
-<p>Robots live on <a href="https://openvibe.bot" target="_blank" rel="noopener">OpenVibe.Bot</a>, the open control panel for robots: pairing, the drive panel, roles and turn queues, limits, the latched e-stop, video and the command audit are all there. OpenVibe.Live shows a channel's robot and lets its chat drive it; it has no control socket or hardware API of its own.</p>
+<p>Robots live on <a href="https://openvibe.bot" target="_blank" rel="noopener">OpenVibe.Bot</a>, the open control panel for robots: pairing, the drive panel, roles and turn queues, limits, Stop, video and the command audit are all there. OpenVibe.Live shows a channel's robot and lets its chat drive it; it has no control socket or hardware API of its own.</p>
 
 <h3>A robot on your channel</h3>
 <ol>
@@ -642,7 +642,7 @@ while True:
 <tr><td><code>!say &lt;text&gt;</code></td><td>speech, on robots that speak</td></tr>
 </tbody>
 </table>
-<p>Each command goes to OpenVibe.Bot as the viewer who typed it, so the robot's rules decide: signed-in viewers only, the owner's access policy and turn queue, per-person cooldowns, and nothing while the e-stop is latched. A refusal is answered in chat ("It is not your turn at the robot yet").</p>
+<p>Each command goes to OpenVibe.Bot as the viewer who typed it, so the robot's rules decide: signed-in viewers only, the owner's access policy and turn queue, per-person cooldowns, and nothing while Stop is latched. A refusal is answered in chat ("It is not your turn at the robot yet").</p>
 
 <h3>Building for robots</h3>
 <p>Drivers, robot profiles, the device protocol, the REST API with the same gate, and a simulated rover to try it all are on OpenVibe.Bot: <a href="https://openvibe.bot/docs" target="_blank" rel="noopener">Build for OpenVibe.Bot</a> · <a href="https://openvibe.bot/try" target="_blank" rel="noopener">try the panel</a> · <a href="https://openvibe.bot/models" target="_blank" rel="noopener">supported models</a>.</p>

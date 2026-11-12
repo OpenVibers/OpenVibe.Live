@@ -59,7 +59,7 @@
         const text = el('p', 'ch-bot-bind-text');
         text.append('Let your chat drive the robot you just added on OpenVibe.Bot? ', el('code', null, robotId));
         const note = el('p', 'ch-bot-bind-note',
-            'Chat commands like !forward, !left and !say go to it, checked by its own rules on openvibe.bot (who may drive, limits, the e-stop). Its panel shows here. You can unbind it any time.');
+            'Chat commands like !forward, !left and !say go to it, checked by its own rules on openvibe.bot (who may drive, limits, Stop). Its panel shows here. You can unbind it any time.');
         const actions = el('div', 'ch-bot-bind-actions');
         const yes = el('button', 'btn btn-sm btn-primary', 'Use it in my chat');
         yes.type = 'button';

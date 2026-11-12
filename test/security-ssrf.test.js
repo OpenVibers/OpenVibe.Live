@@ -351,7 +351,7 @@ async function check(name, fn) {
             'server/social/preview.js': 'OpenVibe.Network public profile API (configured OV_NETWORK_INTERNAL_URL, fixed path, username checked); every other preview goes through egress',
             'server/monetization/inventory-client.js': 'OpenVibe.Inventory API for Live cosmetics (configured INVENTORY_URL)',
             'server/bot/bot-client.js': 'OpenVibe.Bot command API for a bound channel\'s chat robot commands (configured LIVE_BOT_INTERNAL_URL)',
-            'server/bot/kill.js': 'OpenVibe.Bot internal e-stop for the robot a killed agent stream is bound to (configured BOT_KILL_URL, fixed path, robot id checked)',
+            'server/bot/kill.js': 'OpenVibe.Bot internal Stop for the robot a killed agent stream is bound to (configured BOT_KILL_URL, fixed path, robot id checked)',
             'server/cam/cam-client.js': 'OpenVibe.Cam stills API for the cam button, as the viewer (configured CAM_URL)',
             'server/chat/insight-client.js': 'OpenVibe.Chat public chat-AI reads (configured OV_CHAT_INTERNAL_URL, fixed paths, ids validated)',
             'server/chat/chat-client.js': 'OpenVibe.Chat typed ingress (configured OV_CHAT_INTERNAL_URL, fixed /internal/chat/* paths)',

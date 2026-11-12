@@ -3,7 +3,7 @@
  * The kill switch's reach into OpenVibe.Bot (Agent Streams S7, design 2026-11-06 §6).
  *
  * When an agent stream ends — the owner's End, a moderator's end control, a ticket revoke or the sweep — and the
- * stream's channel is bound to a robot (`channels.bot_robot_id`), Live tells Bot to e_stop that robot. Bot's own rules
+ * stream's channel is bound to a robot (`channels.bot_robot_id`), Live tells Bot to stop that robot. Bot's own rules
  * still hold: its owner may always stop it, and Live's internal call carries the deployment's shared secret. With
  * `BOT_KILL_URL` unset (and in tests) this is a no-op: a stream ending never fails because Bot is down.
  *
@@ -37,7 +37,7 @@ async function stop(row, { fetchImpl = globalThis.fetch } = {}) {
     if (!robotId) return { stopped: false, robot_id: null };
     if (!configured()) return { stopped: false, robot_id: robotId, reason: 'bot_kill_unconfigured' };
     try {
-        const res = await fetchImpl(`${URL_BASE()}/internal/robots/${encodeURIComponent(robotId)}/estop`, {
+        const res = await fetchImpl(`${URL_BASE()}/internal/robots/${encodeURIComponent(robotId)}/stop`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-OV-Bot-Kill': SECRET() },
             body: JSON.stringify({ reason: 'agent_stream_ended', stream_id: row.public_id || null }),
