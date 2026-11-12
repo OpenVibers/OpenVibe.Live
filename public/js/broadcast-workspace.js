@@ -379,15 +379,23 @@ function _wsRenderPanel() {
                 <div id="bc-ws-device-wrap">
                     <div id="bc-perm-request" class="bc-perm-request gl-allow">
                         <span class="gl-allow-mark ov-mark" data-size="48" data-tone="brand" aria-hidden="true"></span>
-                        <strong id="gl-allow-title">Your camera is off</strong>
+                        <strong id="gl-allow-title">${browserMode === 'mic_only' ? 'Turn on your microphone to go live' : 'Turn on your camera to go live'}</strong>
                         <p class="bc-perm-hint"><i class="fa-solid fa-shield-halved" aria-hidden="true"></i>
-                            <span id="bc-perm-hint-text">You choose when this browser may use your camera and microphone.</span></p>
+                            <span id="bc-perm-hint-text">${_wsPermHint(browserMode)}</span></p>
+                        <!-- Three steps, ticked as they happen (the owner, 11-12: a streamer on a phone, "I don't understand …
+                             my brain too tired to figure it out"). The fix box says what went wrong and what to tap. -->
+                        <ol class="gl-steps" id="gl-steps" aria-label="Going live in three steps">
+                            <li class="is-now" data-step="1"><span class="gl-step-n" aria-hidden="true">1</span><span>${browserMode === 'mic_only' ? 'Turn on your microphone' : 'Turn on your camera'}</span></li>
+                            <li data-step="2"><span class="gl-step-n" aria-hidden="true">2</span><span>${browserMode === 'mic_only' ? 'Check the sound meter moves' : 'Check how you look and sound'}</span></li>
+                            <li data-step="3"><span class="gl-step-n" aria-hidden="true">3</span><span>Press Go Live</span></li>
+                        </ol>
+                        <div class="gl-fix" id="gl-fix" role="alert" hidden></div>
                         <button id="bc-perm-btn" class="btn btn-primary" type="button"
                             onclick="requestMediaPermissions()">
                             <i class="fa-solid fa-video" aria-hidden="true"></i><span id="bc-perm-btn-text">Turn on camera</span>
                         </button>
                         <button type="button" class="gl-allow-other" onclick="_glOtherWays()">Use a screen or an app instead</button>
-                        <p id="bc-perm-debug" style="display:none;font-size:0.75rem;color:var(--text-secondary);margin-top:6px"></p>
+                        <p id="bc-perm-debug" hidden></p>
                     </div>
                     <div id="bc-device-selects" style="display:none">
                         <div class="gl-device-sheet-head"><strong>Camera settings</strong><button type="button" onclick="_glCloseDeviceSheet()" aria-label="Close camera settings"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button></div>
@@ -396,10 +404,10 @@ function _wsRenderPanel() {
                                 <div class="bc-setup-row">
                                     <span class="bc-setup-label"><i class="fa-solid fa-camera" aria-hidden="true"></i>Camera</span>
                                     <div class="bc-cam-select-row bc-setup-pick">
-                                        <span class="bc-setup-val" data-pick-for="bc-create-camera">Default</span>
+                                        <span class="bc-setup-val" data-pick-for="bc-create-camera" data-pick-default="Automatic">Automatic</span>
                                         <i class="fa-solid fa-chevron-down bc-setup-chev" aria-hidden="true"></i>
                                         <select id="bc-create-camera" class="bc-setup-native" aria-label="Camera">
-                                            <option value="default">Default</option>
+                                            <option value="default">Automatic</option>
                                         </select>
                                     </div>
                                 </div>
@@ -408,10 +416,10 @@ function _wsRenderPanel() {
                                 <div class="bc-setup-row">
                                     <span class="bc-setup-label"><i class="fa-solid fa-microphone" aria-hidden="true"></i>Microphone</span>
                                     <div class="bc-setup-pick">
-                                        <span class="bc-setup-val" data-pick-for="bc-create-audio">Default</span>
+                                        <span class="bc-setup-val" data-pick-for="bc-create-audio" data-pick-default="Automatic">Automatic</span>
                                         <i class="fa-solid fa-chevron-down bc-setup-chev" aria-hidden="true"></i>
                                         <select id="bc-create-audio" class="bc-setup-native" aria-label="Microphone">
-                                            <option value="default">Default</option>
+                                            <option value="default">Automatic</option>
                                         </select>
                                     </div>
                                 </div>
@@ -432,14 +440,15 @@ function _wsRenderPanel() {
                 <select id="bc-screenSystemAudio-create" style="display:none"><option value="include" selected>Include</option><option value="auto">Auto</option><option value="exclude">Exclude</option></select>
                 <select id="bc-screenSelfBrowser-create" style="display:none"><option value="exclude" selected>Exclude</option><option value="include">Include</option></select>
                 <select id="bc-screenSurfaceSwitching-create" style="display:none"><option value="include" selected>Allow</option><option value="exclude">Disallow</option></select>
-                <select id="bc-screen-audio" style="display:none"><option value="default">Default</option></select>
-                <select id="bc-screen-camera" style="display:none"><option value="default">Default</option></select>
+                <select id="bc-screen-audio" style="display:none"><option value="default">Automatic</option></select>
+                <select id="bc-screen-camera" style="display:none"><option value="default">Automatic</option></select>
 
                 ${_wsPreflight(browserMode)}
 
-                <button class="btn btn-primary btn-lg bc-ws-golive-btn"
+                <button class="btn btn-primary btn-lg bc-ws-golive-btn${browserMode !== 'screen' && !window._glCameraAllowed ? ' is-waiting' : ''}"
                     onclick="goLiveFromWorkspace()" id="bc-ws-golive-btn">
-                    <i class="fa-solid fa-tower-broadcast"></i> Go Live
+                    <span class="gl-go-main"><i class="fa-solid fa-tower-broadcast"></i> Go Live</span>
+                    <small class="gl-go-sub" id="gl-go-sub"${browserMode !== 'screen' && !window._glCameraAllowed ? '' : ' hidden'}>${browserMode === 'mic_only' ? 'Turns on your microphone first' : 'Turns on your camera first'}</small>
                 </button>
                 ${browserMode === 'screen' ? '' : `<button type="button" class="gl-test-btn" id="gl-test-btn" onclick="_glTestPrivately()">
                     <i class="fa-solid fa-circle-dot" aria-hidden="true"></i><span id="gl-test-label">Test privately</span><small>10 seconds, only on this device</small>
@@ -1062,17 +1071,69 @@ function _glCopyLink() {
 const _glPv = { stream: null, key: '', starting: false, timer: 0, raf: 0, ctx: null, hold: 0, failed: '', stopMeter: null };
 const _GL_PV_OFF = 'ov_gl_preview_off';
 let _glCoreLoad;
+/**
+ * The camera kit's capture core, kept here as well: the same constraints, open, devices and meter as OpenVibe.Cam's
+ * cam-kit.js core, used when the kit cannot load (a blocked or slow openvibe.cam, an extension, a stale cache). From
+ * 11-09 to 11-12 the page's policy refused the kit and nobody could turn a camera on; the camera must never depend on
+ * a second site answering.
+ */
+const _glLocalCore = Object.freeze({
+    devices: () => navigator.mediaDevices.enumerateDevices(),
+    constraints: (o = {}) => {
+        const height = Number(o.resolution) || 720;
+        return {
+            video: o.video === false ? false : {
+                facingMode: { ideal: o.facing || 'user' },
+                ...(o.lens && o.lens !== 'main' && o.lens !== 'default' ? { deviceId: { ideal: o.lens } } : {}),
+                width: { ideal: Math.round(height * 16 / 9) }, height: { ideal: height },
+            },
+            audio: o.audio === false ? false : o.mic && o.mic !== 'default' ? { deviceId: { ideal: o.mic } } : true,
+        };
+    },
+    open: (o) => navigator.mediaDevices.getUserMedia(_glLocalCore.constraints(o)),
+    stop: (stream) => { try { stream?.getTracks().forEach((t) => t.stop()); } catch { /* already stopped */ } },
+    network: () => {
+        if (navigator.onLine === false) return 'offline';
+        const c = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+        return c && (/2g|3g/.test(c.effectiveType || '') || (c.downlink && c.downlink < 2.5)) ? 'weak' : 'good';
+    },
+    meter: (stream, onLevel) => {
+        const AC = window.AudioContext || window.webkitAudioContext;
+        if (!AC || !stream.getAudioTracks().length) return () => {};
+        const ctx = new AC(), analyser = ctx.createAnalyser(), data = new Uint8Array(512);
+        let frame = 0, closed = false;
+        analyser.fftSize = 512;
+        ctx.createMediaStreamSource(stream).connect(analyser);
+        if (ctx.state === 'suspended') {
+            ctx.resume().catch(() => {});
+            document.addEventListener('pointerdown', () => { ctx.resume().catch(() => {}); }, { once: true, capture: true });
+        }
+        const tick = () => {
+            if (closed) return;
+            analyser.getByteTimeDomainData(data);
+            let sum = 0;
+            for (let i = 0; i < data.length; i++) { const d = (data[i] - 128) / 128; sum += d * d; }
+            onLevel(Math.min(1, Math.sqrt(sum / data.length) * 4));
+            frame = requestAnimationFrame(tick);
+        };
+        frame = requestAnimationFrame(tick);
+        return () => { closed = true; cancelAnimationFrame(frame); ctx.close().catch(() => {}); };
+    },
+});
 function _glCamCore() {
     if (window.OpenVibeCam?.core) return Promise.resolve(window.OpenVibeCam.core);
-    if (!_glCoreLoad) _glCoreLoad = new Promise((resolve, reject) => {
+    if (!_glCoreLoad) _glCoreLoad = new Promise((resolve) => {
         const script = document.createElement('script');
         // The query names this version (the start of its hash): a new Cam release is a new cache key, so Cloudflare never
         // hands an older copy to this integrity check (it served one for a day after Cam #116, 11-09).
         script.src = 'https://openvibe.cam/embed/cam-kit.js?v=yqqjh1FiP7a4';
         script.integrity = 'sha384-yqqjh1FiP7a4l9uelJHaryd8Y5IwnHVbqjt1d0AXbgCcytI9Z5MMmItFqbwB4YZG';
         script.crossOrigin = 'anonymous';
-        script.onload = () => window.OpenVibeCam?.core ? resolve(window.OpenVibeCam.core) : reject(new Error('Camera controls unavailable'));
-        script.onerror = () => reject(new Error('Could not load camera controls'));
+        // Five seconds at most: a kit that never answers must not keep the camera waiting.
+        const fallback = (why) => { console.warn('[Broadcast] camera kit unavailable, using the built-in core:', why); resolve(_glLocalCore); };
+        const timer = setTimeout(() => fallback('timeout'), 5000);
+        script.onload = () => { clearTimeout(timer); window.OpenVibeCam?.core ? resolve(window.OpenVibeCam.core) : fallback('no core'); };
+        script.onerror = () => { clearTimeout(timer); fallback('load error'); };
         document.head.append(script);
     });
     return _glCoreLoad;
@@ -1119,7 +1180,7 @@ function _glPreviewHTML(mode) {
                 : '<video id="gl-preview-video" muted playsinline autoplay aria-label="Your camera, as viewers will see it"></video>'}
             <p class="gl-pv-note" id="gl-pv-note">${audioOnly ? '' : 'Allow the camera below to see yourself here.'}</p>
             <div class="gl-pv-chips">
-                ${audioOnly ? '' : '<span class="gl-pv-chip"><i class="fa-solid fa-video" aria-hidden="true"></i><span data-pick-for="bc-create-camera">Default</span></span>'}
+                ${audioOnly ? '' : '<span class="gl-pv-chip"><i class="fa-solid fa-video" aria-hidden="true"></i><span data-pick-for="bc-create-camera" data-pick-default="Your camera">Your camera</span></span>'}
                 ${mode === 'camera_only' ? '' : '<span class="gl-pv-chip gl-pv-mic" title="Your microphone level"><i class="fa-solid fa-microphone" aria-hidden="true"></i><span class="gl-pv-lvl" aria-hidden="true"><i id="gl-pv-lvl"></i></span></span>'}
                 <span class="gl-pv-chip" id="gl-pv-net" hidden></span>
             </div>
@@ -1239,8 +1300,18 @@ function _glPreviewNetwork() {
     chip.innerHTML = text ? `<i class="fa-solid fa-signal" aria-hidden="true"></i><span>${esc(text)}</span>` : '';
 }
 
+/** The Go Live button's line under it: "Turns on your camera first" until the camera is on. */
+function _glSyncGoLive() {
+    const btn = document.getElementById('bc-ws-golive-btn');
+    const sub = document.getElementById('gl-go-sub');
+    const waiting = !window._glCameraAllowed && (_wsState.selectedMs?.browser_mode || _wsState.profile?.browserMode || 'camera') !== 'screen';
+    btn?.classList.toggle('is-waiting', waiting);
+    if (sub) sub.hidden = !waiting;
+}
+
 function _glPreviewSync() {
     document.getElementById('gl-preview')?.classList.toggle('is-allowed', !!window._glCameraAllowed);
+    _glSyncGoLive();
     const want = _glPreviewWant();
     _glPreviewNetwork();
     if (!want) { if (_glPv.stream || _glPv.key) _glPreviewStop(); return; }
@@ -1661,8 +1732,9 @@ function _wsPickHint(kind, id) {
  * [data-pick-for] here is kept current by _bcSyncPicks (broadcast-devices.js), like the card's rows.
  */
 function _wsPreflight(mode) {
-    const cam = '<b data-pick-for="bc-create-camera">Default</b>';
-    const mic = '<b data-pick-for="bc-create-audio">Default</b>';
+    // Until a device is picked by name, the line says whose it is ("your camera"), never the select's "Default".
+    const cam = '<b data-pick-for="bc-create-camera" data-pick-default="your camera">your camera</b>';
+    const mic = '<b data-pick-for="bc-create-audio" data-pick-default="your microphone">your microphone</b>';
     const rows = mode === 'mic_only' ? [['fa-microphone', `Sound from ${mic}`], ['fa-eye-slash', 'No picture']]
         : mode === 'camera_only' ? [['fa-video', `Picture from ${cam}`], ['fa-volume-xmark', 'No sound']]
         : mode === 'screen' ? [['fa-display', 'Your screen, a window or a tab: your browser asks which when you press Go Live'], ['fa-microphone', 'Your microphone and camera bubble, as set above']]
@@ -1679,10 +1751,10 @@ function _wsPreflight(mode) {
 }
 
 function _wsPermHint(mode) {
-    return mode === 'mic_only' ? 'Let your browser use the microphone to choose one.'
-        : mode === 'camera_only' ? 'Let your browser use the camera to choose one.'
+    return mode === 'mic_only' ? 'Your browser will ask first: tap Allow. Nobody hears you until you press Go Live.'
+        : mode === 'camera_only' ? 'Your browser will ask first: tap Allow. Nobody sees you until you press Go Live.'
         : mode === 'screen' ? 'Your browser asks which screen to share when you go live.'
-        : 'Let your browser use the camera and microphone to choose them.';
+        : 'Your browser will ask first: tap Allow. Nobody sees or hears you until you press Go Live.';
 }
 
 // The cards are buttons in a radio group: a tap or a key chooses one, and a screen reader says which is chosen.
@@ -2761,7 +2833,7 @@ function _wsPopulateInlineDevices(selectId, devices) {
     const sel = document.getElementById(selectId);
     if (!sel) return;
     const currentVal = sel.value;
-    sel.innerHTML = '<option value="default">Default</option>' +
+    sel.innerHTML = '<option value="default">Automatic</option>' +
         devices.map(d => `<option value="${esc(d.deviceId)}">${esc(d.label || d.deviceId)}</option>`).join('');
     if (currentVal) sel.value = currentVal;
 }
@@ -2779,8 +2851,9 @@ async function goLiveFromWorkspace() {
         return;
     }
     if ((_wsState.selectedMs.streaming_method || 'browser') === 'browser' && (_wsState.selectedMs.browser_mode || _wsState.profile?.browserMode || 'camera') !== 'screen' && !window._glCameraAllowed) {
-        document.getElementById('bc-perm-btn')?.focus();
-        toast('Turn on camera before going live', 'info');
+        // The big button always does the next step: here, step 1. The person sees themselves first, then presses again.
+        document.getElementById('bc-perm-request')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        if (typeof requestMediaPermissions === 'function') await requestMediaPermissions();
         return;
     }
 
