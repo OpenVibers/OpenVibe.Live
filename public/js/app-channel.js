@@ -2329,7 +2329,9 @@ function _chApplyTabbed() {
     const page = document.getElementById('page-channel');
     if (!page) return;
     const on = _chIsTabbed();
+    const was = page.classList.contains('ch-tabbed');
     page.classList.toggle('ch-tabbed', on);
+    if (was !== on && typeof _renderAboutRecent === 'function') _renderAboutRecent();
     if (on) _chShowPanel(_channelTab || _chFirstTab(), false);
     else document.querySelectorAll('#page-channel .ch-tab-panel.is-current').forEach((p) => p.classList.remove('is-current'));
 }
@@ -3496,7 +3498,7 @@ function _aboutAiEffectiveShow() {
 function _aboutAiOverviewHTML() {
     if (!_aboutAiEffectiveShow()) return '';
     return `<section class="ch-about-sec about-ai-overview" aria-label="AI summary">
-        <h3 class="ch-about-h"><i class="fa-solid fa-wand-magic-sparkles"></i> AI summary <span class="ch-about-h-note">from past streams</span></h3>
+        <h3 class="ch-about-h ch-sub-h"><i class="fa-solid fa-wand-magic-sparkles ch-sec-ic" aria-hidden="true"></i>AI summary <span class="ch-about-h-note">from past streams</span></h3>
         ${_collapsibleOverview(_aboutAiOverview)}
     </section>`;
 }
@@ -3518,13 +3520,14 @@ function _aboutRowCard(kind, it) {
 function _renderAboutRecent() {
     const host = document.getElementById('ch-about-recent');
     if (!host) return;
-    // Sections, not tabs (11-07): the Videos and Clips sections follow About on the page, so these preview rows would
-    // show the same cards twice. They were there so an About tab was never a one-line bio over empty space.
-    if (document.getElementById('ch-panel-videos')) { host.innerHTML = ''; return; }
+    // On a wide screen the Videos and Clips sections follow About on the page, so these preview rows would show the
+    // same cards twice. In a phone's tabs About stands alone (ask 367), and the rows are back, so About is never a
+    // one-line bio over empty space.
+    if (document.getElementById('ch-panel-videos') && !_chIsTabbed()) { host.innerHTML = ''; return; }
     const r = _aboutRecent;
     if (!r || r.username !== currentChannelUsername) { host.innerHTML = ''; return; }
     const row = (title, icon, tab, kind, items) => items.length ? `<section class="ch-about-sec">
-        <h3 class="ch-about-h"><i class="fa-solid ${icon}"></i> ${title}<button type="button" class="ch-about-more" onclick="switchChannelTab('${tab}', document.querySelector('.ch-tab[data-tab=${tab}]'), true)">See all <i class="fa-solid fa-arrow-right"></i></button></h3>
+        <h3 class="ch-about-h ch-sub-h"><i class="fa-solid ${icon} ch-sec-ic" aria-hidden="true"></i>${title}<button type="button" class="ch-about-more" onclick="switchChannelTab('${tab}', document.querySelector('.ch-tab[data-tab=${tab}]'), true)">See all <i class="fa-solid fa-arrow-right"></i></button></h3>
         <div class="ch-about-row">${items.map((it) => _aboutRowCard(kind, it)).join('')}</div>
     </section>` : '';
     host.innerHTML = row('Latest videos', 'fa-video', 'videos', 'vod', r.vods) + row('Popular clips', 'fa-scissors', 'clips', 'clip', r.clips);
