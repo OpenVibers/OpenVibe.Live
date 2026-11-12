@@ -122,6 +122,24 @@
                 </div>
 
                 <!-- OpenVibe.Bot robot shown on the channel page (LIVE_BOT_EMBED; shown by loadBotEmbedSetting when the flag is on) -->
+                <!-- Buttons for your viewers (OpenVibe Elements): the streamer's library, the deck switch, and where to get
+                     more. Live #842 shipped the API and the viewers' deck with no place for the streamer to see or turn
+                     them on (the 11-12 review). dashboard.js loadDashElements draws it with DOM nodes. -->
+                <div class="dash-card dash-elements" id="dash-card-elements">
+                    <h3><i class="fa-solid fa-hand-pointer" aria-hidden="true"></i> Buttons for your viewers</h3>
+                    <p class="muted">Buttons people press under your stream: move your robot, play a sound, start a poll and more. Every press checks who may press, your cooldowns and channel points.</p>
+                    <label class="dash-el-switch" for="dash-el-enabled">
+                        <input type="checkbox" id="dash-el-enabled" disabled>
+                        <span><b>Show them under my stream</b><small id="dash-el-enabled-note">Loading…</small></span>
+                    </label>
+                    <ul class="dash-el-list" id="dash-el-list" aria-label="Your buttons"></ul>
+                    <p class="dash-el-actions">
+                        <a class="btn btn-primary btn-small" href="https://openvibe.design/create?kind=element" target="_blank" rel="noopener"><i class="fa-solid fa-wand-magic-sparkles" aria-hidden="true"></i> Make one with AI</a>
+                        <a class="btn btn-small" href="https://openvibe.design/gallery" target="_blank" rel="noopener"><i class="fa-solid fa-grip" aria-hidden="true"></i> Free ones in the gallery</a>
+                        <a class="btn btn-small" id="dash-el-see" href="/" hidden><i class="fa-solid fa-eye" aria-hidden="true"></i> See them on your channel</a>
+                    </p>
+                    <p class="dash-el-status muted" id="dash-el-status" role="status"></p>
+                </div>
                 <div class="dash-card" id="dash-card-bot-embed" style="display:none">
                     <h3><i class="fa-solid fa-robot"></i> Your robot</h3>
                     <p class="muted" style="font-size:0.85rem">Pair a robot on <a href="https://openvibe.bot/robots/new" target="_blank" rel="noopener">OpenVibe.Bot</a> (a Raspberry Pi car, a Cozmo, a phone or a pan-tilt camera). Then, on <a href="https://openvibe.bot/robots" target="_blank" rel="noopener">its page there</a>, press <strong>Put the buttons under my OpenVibe.Live stream</strong>: it shows the robot's panel under your stream and brings you back here to confirm. Or put its id here.</p>

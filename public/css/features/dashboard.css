@@ -529,3 +529,33 @@
 .dash-bench-form label { margin-top: 6px; font-size: 0.85rem; font-weight: 600; color: var(--text-secondary); }
 .dash-bench-form .btn { justify-self: start; min-height: 40px; margin-top: 10px; }
 #dash-bench-status:empty { display: none; }
+
+/* Buttons for your viewers (Controls tab, dashboard.js loadDashElements): the deck switch, each button with its own
+   look as a chip, an On switch and Remove, then where to get more. 44 px targets on a phone. */
+.dash-elements > p.muted { margin: 0 0 12px; font-size: 0.88rem; }
+.dash-el-switch { display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--bg-secondary); cursor: pointer; }
+.dash-el-switch input { flex: none; width: 22px; height: 22px; accent-color: var(--accent); }
+.dash-el-switch b { display: block; font-size: 0.95rem; }
+.dash-el-switch small { display: block; margin-top: 2px; color: var(--text-muted); font-size: 0.8rem; }
+.dash-el-list { list-style: none; margin: 12px 0 0; padding: 0; display: grid; gap: 8px; }
+.dash-el-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 12px; }
+.dash-el-row.is-off { opacity: 0.6; }
+.dash-el-chip { max-width: 9em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 7px 12px; border-radius: 999px; background: var(--accent); color: var(--on-accent, #fff); font-size: 0.8rem; font-weight: 700; }
+.dash-el-text { min-width: 0; }
+.dash-el-text b { display: block; font-size: 0.92rem; overflow-wrap: anywhere; }
+.dash-el-text small { display: block; color: var(--text-muted); font-size: 0.8rem; line-height: 1.35; }
+.dash-el-on { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; font-size: 0.82rem; color: var(--text-secondary); cursor: pointer; }
+.dash-el-on input { width: 18px; height: 18px; accent-color: var(--accent); }
+.dash-el-del { display: grid; place-items: center; width: 44px; height: 44px; border: 0; border-radius: 10px; background: none; color: var(--text-muted); cursor: pointer; }
+.dash-el-del:hover, .dash-el-del:focus-visible { color: #f87171; background: color-mix(in srgb, #f87171 12%, transparent); }
+.dash-el-empty { padding: 14px; border: 1px dashed var(--border); border-radius: 12px; color: var(--text-secondary); font-size: 0.88rem; }
+.dash-el-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 0; }
+.dash-el-actions .btn { min-height: 40px; }
+.dash-el-status:empty { display: none; }
+.dash-el-status.is-bad { color: #f87171; }
+@media (max-width: 520px) {
+    .dash-el-row { grid-template-columns: auto minmax(0, 1fr) auto; }
+    .dash-el-chip { grid-row: span 2; align-self: start; max-width: 6.5em; }
+    .dash-el-on { grid-column: 2; justify-self: start; min-height: 36px; }
+    .dash-el-del { grid-column: 3; grid-row: 1 / span 2; }
+}

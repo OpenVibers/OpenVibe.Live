@@ -14,7 +14,7 @@ const _DASH_TAB_CARDS = {
     home:       ['dash-card-profile', 'dash-card-schedule', 'dash-card-ai-derivation', 'dash-card-offline'],
     chatai:     ['dash-card-vibe', 'dash-aibot-card', 'dash-card-overlay', 'dash-card-scenes', 'dash-bench-stream', 'dash-card-chatlogs'],
     moderation: [],  // injected by dashboard-moderation.js into #dash-grid-moderation
-    controls:   ['dash-card-bot-embed', 'dash-card-tokens'],
+    controls:   ['dash-card-elements', 'dash-card-bot-embed', 'dash-card-tokens'],
     money:      ['dash-card-bucks', 'dash-card-goals', 'dash-card-tips-page', 'dash-powerchat-card'],
     points:     ['dash-card-points-config', 'dash-card-rewards', 'dash-card-redemptions'],
     content:    [],  // content cards go into sub-grids (see _DASH_CONTENT_SUBCARDS)
@@ -129,7 +129,116 @@ async function loadDashVibe() {
         } catch (err) { status.textContent = (err && err.message) || 'That did not save.'; }
     });
 }
-window._dashTabLoaders.controls = () => { _call('loadBotEmbedSetting'); _call('loadDashTokens'); };
+window._dashTabLoaders.controls = () => { loadDashElements(); _call('loadBotEmbedSetting'); _call('loadDashTokens'); };
+
+/* ── Buttons for your viewers (OpenVibe Elements) ─────────────────
+   The library from GET /api/me/elements, the deck switch (PUT /api/me/elements/settings), each button on or off
+   (PATCH active) and removed (DELETE). Made with AI or installed on OpenVibe.Design; nothing here is drawn from
+   markup an element carries: names and labels are text nodes. */
+function _dashElNode(tag, cls, text) {
+    const n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text != null) n.textContent = String(text);
+    return n;
+}
+function _dashElSay(text, bad) {
+    const s = document.getElementById('dash-el-status');
+    if (s) { s.textContent = text || ''; s.classList.toggle('is-bad', !!bad); }
+}
+/** One line on what a button does: its own description, else what pressing costs and how often. */
+function _dashElLine(e) {
+    if (e.description) return e.description;
+    const c = (e.recipe && e.recipe.conditions) || {};
+    const bits = [];
+    if (c.cost && c.cost.points) bits.push(`${Number(c.cost.points).toLocaleString()} points a press`);
+    if (c.cooldown && c.cooldown.overall_seconds) bits.push(`once every ${c.cooldown.overall_seconds} s`);
+    if (c.role && c.role !== 'everyone') bits.push(`${c.role}s only`);
+    return bits.join(' · ') || 'Anyone signed in can press it.';
+}
+function _dashElRow(e) {
+    const li = _dashElNode('li', 'dash-el-row' + (e.active ? '' : ' is-off'));
+    const look = (e.look && e.look.label) || e.name || 'Button';
+    const chip = _dashElNode('span', 'dash-el-chip', look);
+    chip.setAttribute('aria-hidden', 'true');
+    const text = _dashElNode('span', 'dash-el-text');
+    text.append(_dashElNode('b', '', e.name || look), _dashElNode('small', '', _dashElLine(e)));
+    const on = document.createElement('input');
+    on.type = 'checkbox';
+    on.checked = !!e.active;
+    on.setAttribute('aria-label', `${e.name || look}: on your channel`);
+    on.addEventListener('change', async () => {
+        on.disabled = true;
+        try {
+            await api(`/me/elements/${encodeURIComponent(e.id)}`, { method: 'PATCH', body: { active: on.checked } });
+            li.classList.toggle('is-off', !on.checked);
+            _dashElSay(on.checked ? `${e.name} is on your channel.` : `${e.name} is off; viewers do not see it.`);
+        } catch (err) { on.checked = !on.checked; _dashElSay(err.message || 'That could not be saved.', true); }
+        finally { on.disabled = false; }
+    });
+    const sw = _dashElNode('label', 'dash-el-on');
+    sw.append(on, _dashElNode('span', '', 'On'));
+    const del = _dashElNode('button', 'btn-icon dash-el-del');
+    del.type = 'button';
+    del.title = 'Remove';
+    del.setAttribute('aria-label', `Remove ${e.name || look}`);
+    del.innerHTML = '<i class="fa-solid fa-trash-can" aria-hidden="true"></i>';
+    del.addEventListener('click', async () => {
+        if (!confirm(`Remove "${e.name || look}" from your channel? You can install it again from the gallery.`)) return;
+        del.disabled = true;
+        try {
+            await api(`/me/elements/${encodeURIComponent(e.id)}`, { method: 'DELETE' });
+            li.remove();
+            _dashElSay(`${e.name || look} is removed.`);
+            if (!document.querySelector('#dash-el-list .dash-el-row')) _dashElEmpty();
+        } catch (err) { del.disabled = false; _dashElSay(err.message || 'That could not be removed.', true); }
+    });
+    li.append(chip, text, sw, del);
+    return li;
+}
+function _dashElEmpty() {
+    const list = document.getElementById('dash-el-list');
+    if (!list) return;
+    const li = _dashElNode('li', 'dash-el-empty');
+    li.append(_dashElNode('b', '', 'No buttons yet.'), _dashElNode('span', '', ' Make one by describing it, or install free ones (there is a pack for the LOOI robot).'));
+    list.replaceChildren(li);
+}
+function _dashElNote(enabled, count) {
+    const note = document.getElementById('dash-el-enabled-note');
+    if (!note) return;
+    note.textContent = enabled
+        ? (count ? 'On: viewers see your buttons under the stream.' : 'On, but there are no buttons yet: add one below.')
+        : 'Off: viewers see nothing until you turn this on.';
+}
+async function loadDashElements() {
+    const box = document.getElementById('dash-el-enabled');
+    const list = document.getElementById('dash-el-list');
+    if (!box || !list || !currentUser) return;
+    const see = document.getElementById('dash-el-see');
+    if (see && currentUser.username) { see.href = `/@${encodeURIComponent(currentUser.username)}`; see.hidden = false; }
+    try {
+        const out = await api('/me/elements');
+        const elements = (out && out.elements) || [];
+        box.checked = !!out.enabled;
+        box.disabled = false;
+        _dashElNote(!!out.enabled, elements.length);
+        if (elements.length) list.replaceChildren(...elements.map(_dashElRow)); else _dashElEmpty();
+    } catch (err) {
+        _dashElSay(err.message || 'Your buttons could not be read just now.', true);
+        return;
+    }
+    if (box.dataset.wired) return;
+    box.dataset.wired = '1';
+    box.addEventListener('change', async () => {
+        box.disabled = true;
+        try {
+            const out = await api('/me/elements/settings', { method: 'PUT', body: { enabled: box.checked } });
+            box.checked = !!(out && out.enabled);
+            _dashElNote(box.checked, document.querySelectorAll('#dash-el-list .dash-el-row').length);
+            _dashElSay(box.checked ? 'Your buttons show under your stream.' : 'Your buttons are hidden from viewers.');
+        } catch (err) { box.checked = !box.checked; _dashElSay(err.message || 'That could not be saved.', true); }
+        finally { box.disabled = false; }
+    });
+}
 window._dashTabLoaders.money = () => { _call('loadDashFunds'); _call('loadDashGoals'); _call('loadDashTipsPage'); _call('loadPowerchatStatus'); };
 window._dashTabLoaders.points = () => { _call('loadDashPointsConfig'); _call('loadDashRewards'); _call('loadDashRedemptions'); };
 window._dashTabLoaders.content = () => { switchDashContentTab('videos', document.querySelector('#dash-content-subtabs .ch-tab[data-cdtab="videos"]')); _call('loadDashAiMomentsCount'); };
