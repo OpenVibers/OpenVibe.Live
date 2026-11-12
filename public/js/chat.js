@@ -56,6 +56,7 @@ let chatSlowModeCooldownEnd = 0;
 
 // ── Reply-to state ──────────────────────────────────────────
 let _chatReplyTo = null; // { id, username, user_id, message }
+let _chatEditing = null; // { id, muted, draft }: your own message, being changed in the chat box
 
 // Relay username colors, keyed by source_platform. Used for BOTH live and history
 // so external (RS/Twitch/Kick/YouTube) names keep a consistent color — history rows
@@ -1907,6 +1908,31 @@ function _applyChatVipBadge(evt) {
     if (!evt || evt.id == null || !evt.vip_badge) return;
     document.querySelectorAll(`.chat-msg[data-msg-id="${CSS.escape(String(evt.id))}"]`).forEach((el) => _placeVipBadge(el, evt.vip_badge));
 }
+/** "edited": one quiet word right after the message's words, on its line; the time it changed on hover. */
+function _chatEditedMark(el, at) {
+    const text = el.querySelector('.chat-text');
+    if (!text) return;
+    let mark = el.querySelector('.chat-edited');
+    if (!mark) { mark = document.createElement('small'); mark.className = 'chat-edited'; }
+    if (mark.previousSibling !== text) text.after(mark);
+    const when = at ? new Date(at) : null;
+    mark.textContent = 'edited';
+    mark.title = when && !isNaN(when) ? `Edited at ${when.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : 'Edited';
+}
+
+/** One cluster of a message's actions (reply, edit, translate), at its corner, shown on hover, focus or a tap. */
+function _chatActions(el) {
+    let acts = el.querySelector(':scope > .chat-msg-actions');
+    if (!acts) { acts = document.createElement('span'); acts.className = 'chat-msg-actions'; el.appendChild(acts); }
+    return acts;
+}
+function _chatActionBtn(cls, icon, label) {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = cls; b.title = label; b.setAttribute('aria-label', label);
+    b.innerHTML = `<i class="fa-solid ${icon}" aria-hidden="true"></i>`;
+    return b;
+}
+
 function _applyChatEdited(evt) {
     const m = evt && evt.message;
     if (!m || !Number.isSafeInteger(Number(evt.id))) return;
@@ -1918,9 +1944,7 @@ function _applyChatEdited(evt) {
         el.classList.toggle('chat-msg-tts-off', muted);
         const shown = muted ? raw.replace(/^\s*\.\s?/, '') : raw;
         text.innerHTML = typeof parseEmotes === 'function' ? parseEmotes(shown) : esc(shown);
-        let mark = el.querySelector('.chat-edited');
-        if (!mark) { mark = document.createElement('small'); mark.className = 'chat-edited'; el.appendChild(mark); }
-        mark.textContent = ` edited · ${new Date(m.edited_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+        _chatEditedMark(el, m.edited_at);
         el._ovRaw = raw;
         if (el._ovMsg) el._ovMsg.message = raw.slice(0, 100);
     });
@@ -2553,7 +2577,7 @@ function buildChatMessageEl(msg, opts = {}) {
     // tts-off messages drop the ":" so it reads "name 🔇 message" after the mute marker.
     const separator = (ttsOff || msg.message_type === 'soundboard' || msg.message_type === 'channel-sound') ? ' ' : ': ';
     el.innerHTML = `${replyHtml}${timestamp}${streamBadge}${voiceBadge}${gameBadge}${widget ? '' : `<span class="chat-avatar-wrap">${avatarHtml}</span>`}${badge}${_relayBadge}${_aiBadge}${hatHtml}${particleWrapOpen}<span class="chat-user${nameFXClass}" style="color:${esc(nameColor)}" data-username="${displayName}" data-core-username="${coreUsername}" data-user-id="${userId}" data-anon="${isAnon ? '1' : ''}" oncontextmenu="showChatContextMenu(event)" onclick="showChatContextMenu(event)">${_visibleName}</span>${particleWrapClose}${separator}<span class="chat-text">${text}</span>`;
-    if (msg.edited_at) { const mark = document.createElement('small'); mark.className = 'chat-edited'; mark.textContent = ` edited · ${new Date(msg.edited_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`; el.appendChild(mark); }
+    if (msg.edited_at) _chatEditedMark(el, msg.edited_at);
 
     // Auto-translation under the message (live 'chat_translation' event, or persisted
     // metadata.translation on history). See server/i18n/translate.js for the direction rules.
@@ -2566,13 +2590,10 @@ function buildChatMessageEl(msg, opts = {}) {
     if (msg.id && !widget) {
         el._ovMsg = { id: msg.id, username: msg.username || msg.displayName || 'anon', user_id: msg.user_id, message: (msg.message || msg.text || '').slice(0, 100) };
         el._ovRaw = rawText;
-        const replyBtn = document.createElement('button');
-        replyBtn.className = 'chat-reply-btn';
-        replyBtn.title = 'Reply';
-        replyBtn.innerHTML = '<i class="fa-solid fa-reply"></i>';
-        el.appendChild(replyBtn);
+        const acts = _chatActions(el);
+        acts.appendChild(_chatActionBtn('chat-reply-btn', 'fa-reply', 'Reply'));
         if ((!msg.message_type || msg.message_type === 'chat') && typeof currentUser !== 'undefined' && currentUser && Number(msg.user_id) === Number(currentUser.id)) {
-            const editBtn = document.createElement('button'); editBtn.className = 'ovk-btn ovk-btn--quiet chat-edit-btn'; editBtn.type = 'button'; editBtn.textContent = 'Edit'; el.appendChild(editBtn);
+            acts.appendChild(_chatActionBtn('chat-edit-btn', 'fa-pen', 'Edit your message'));
         }
         // "Translate to my language", only on lines confidently in another language than the viewer's (decided
         // locally, public/js/lang-detect.js) and not already translated into it by the channel's auto-translation.
@@ -2580,11 +2601,8 @@ function buildChatMessageEl(msg, opts = {}) {
         const _foreign = window.OVLang ? OVLang.foreignFor(displayRaw || '', _me) : null;
         if (_foreign && !(_tr && _tr.to === _me)) {
             el.dataset.lang = _foreign;
-            const trBtn = document.createElement('button');
-            trBtn.className = 'chat-translate-btn';
-            trBtn.title = `Translate from ${_LANG_LABEL[_foreign] || _foreign} to ${_LANG_LABEL[_me] || 'my language'}`;
-            trBtn.innerHTML = '<i class="fa-solid fa-language"></i>';
-            el.appendChild(trBtn);
+            const trBtn = _chatActionBtn('chat-translate-btn', 'fa-language', `Translate from ${_LANG_LABEL[_foreign] || _foreign} to ${_LANG_LABEL[_me] || 'my language'}`);
+            acts.prepend(trBtn);
             _autoTr.add(el, displayRaw);
         }
         el.classList.add('chat-msg-hoverable');
@@ -3397,6 +3415,7 @@ function sendChat(overrideInput = null) {
     const input = overrideInput || getChatEl().input;
     if (!input) return;
     let text = input.value.trim();
+    if (_chatEditing) { _saveChatEdit(input, text); return; }
     if (!text) return;
 
     // TTS-off toggle: when the TTS button for this chat surface is OFF, prepend a
@@ -3473,10 +3492,11 @@ function sendChat(overrideInput = null) {
  * Set the reply target — shows the reply bar above the chat input.
  */
 function setChatReply(replyData) {
+    if (_chatEditing) clearChatEdit();
     _chatReplyTo = replyData;
     // Show/update reply bar on all chat input areas
     document.querySelectorAll('.chat-input-area').forEach(area => {
-        let bar = area.querySelector('.chat-reply-bar');
+        let bar = area.querySelector('.chat-reply-bar:not(.chat-edit-bar)');
         if (!bar) {
             bar = document.createElement('div');
             bar.className = 'chat-reply-bar';
@@ -3501,9 +3521,75 @@ function setChatReply(replyData) {
  */
 function clearChatReply() {
     _chatReplyTo = null;
-    document.querySelectorAll('.chat-reply-bar').forEach(bar => {
+    document.querySelectorAll('.chat-reply-bar:not(.chat-edit-bar)').forEach(bar => {
         bar.style.display = 'none';
     });
+}
+
+/* ── Editing your own message, in the chat box ───────────────────── */
+
+/** The box takes the message's words and a bar says so: Enter saves, Escape (or ×) puts back what was in the box. */
+function setChatEdit(row) {
+    if (!row || !row._ovMsg) return;
+    if (_chatReplyTo) clearChatReply();
+    const input = getChatEl().input;
+    if (!input) return;
+    const raw = String(row._ovRaw || '');
+    const muted = raw.trimStart().startsWith('.');
+    if (!_chatEditing) _chatEditing = { draft: input.value };
+    Object.assign(_chatEditing, { id: row._ovMsg.id, muted });
+    document.querySelectorAll('.chat-msg.is-editing').forEach((r) => r.classList.remove('is-editing'));
+    row.classList.add('is-editing');
+    document.querySelectorAll('.chat-input-area').forEach((area) => {
+        let bar = area.querySelector('.chat-edit-bar');
+        if (!bar) {
+            bar = document.createElement('div');
+            bar.className = 'chat-reply-bar chat-edit-bar';
+            const inputRow = area.querySelector('.chat-input-row');
+            if (inputRow) area.insertBefore(bar, inputRow); else area.prepend(bar);
+            const content = document.createElement('div'); content.className = 'chat-reply-bar-content';
+            content.innerHTML = '<i class="fa-solid fa-pen" aria-hidden="true"></i> <strong>Editing your message</strong><span class="chat-reply-bar-snippet">Enter saves · Esc cancels</span>';
+            const close = document.createElement('button');
+            close.type = 'button'; close.className = 'chat-reply-bar-close'; close.title = 'Stop editing'; close.setAttribute('aria-label', 'Stop editing');
+            close.innerHTML = '<i class="fa-solid fa-xmark" aria-hidden="true"></i>';
+            close.addEventListener('click', () => clearChatEdit());
+            bar.append(content, close);
+        }
+        bar.style.display = '';
+        area.classList.add('is-editing');
+    });
+    input.value = muted ? raw.replace(/^\s*\.\s?/, '') : raw;
+    _autoResizeTextarea(input);
+    input.focus();
+    requestAnimationFrame(() => { input.selectionStart = input.selectionEnd = input.value.length; });
+}
+
+function clearChatEdit({ keepText = false } = {}) {
+    const was = _chatEditing;
+    _chatEditing = null;
+    document.querySelectorAll('.chat-edit-bar').forEach((bar) => { bar.style.display = 'none'; });
+    document.querySelectorAll('.chat-input-area.is-editing').forEach((a) => a.classList.remove('is-editing'));
+    document.querySelectorAll('.chat-msg.is-editing').forEach((r) => r.classList.remove('is-editing'));
+    const input = getChatEl().input;
+    if (input && was && !keepText) { input.value = was.draft || ''; _autoResizeTextarea(input); }
+}
+
+function _saveChatEdit(input, text) {
+    const ed = _chatEditing;
+    if (!ed) return;
+    if (!text) { addSystemMessage('A message can\'t be empty. To take it back, delete it from its menu.'); return; }
+    if (messageHitsSlurPolicy(text)) { showSlurNudgeModal(); return; }
+    const body = ed.muted && !text.startsWith('.') ? '.' + text : text;
+    input.disabled = true;
+    fetch(`/api/chat/messages/${encodeURIComponent(ed.id)}`, { method: 'PATCH', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: body }) })
+        .then(async (r) => {
+            const data = await r.json().catch(() => ({}));
+            if (!r.ok) throw Error(data.error || 'Could not change that message');
+            _applyChatEdited({ id: ed.id, message: data.message });
+            clearChatEdit();
+        })
+        .catch((err) => addSystemMessage(err.message))
+        .finally(() => { input.disabled = false; input.focus(); });
 }
 
 /**
@@ -3554,7 +3640,12 @@ function _chatTextareaKeydown(e) {
         return;
     }
 
-    // Escape: clear reply
+    // Escape: stop editing, or clear the reply
+    if (e.key === 'Escape' && _chatEditing) {
+        clearChatEdit();
+        e.preventDefault();
+        return;
+    }
     if (e.key === 'Escape' && _chatReplyTo) {
         clearChatReply();
         e.preventDefault();
@@ -5232,11 +5323,12 @@ function _buildCrossfeedEl(msg) {
     const cfUserId = msg.user_id || '';
     const cfIsAnon = !cfUserId && !isRelayMsg;
     const cfCore = msg.core_username || (isRelayMsg ? '' : (msg.username || ''));
-    el.innerHTML = `${tsHtml}${sourceBadge}${badge}${_relayBadge}${_aiBadge}<span class="chat-name" style="color:${nameColor}" data-username="${displayName}" data-core-username="${esc(cfCore)}" data-user-id="${esc(String(cfUserId))}" data-anon="${cfIsAnon ? '1' : ''}" oncontextmenu="showChatContextMenu(event)" onclick="showChatContextMenu(event)">${_visibleName}</span>: <span class="chat-text">${text}</span>${msg.edited_at ? `<small class="chat-edited"> edited · ${esc(new Date(msg.edited_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }))}</small>` : ''}`;
+    el.innerHTML = `${tsHtml}${sourceBadge}${badge}${_relayBadge}${_aiBadge}<span class="chat-name" style="color:${nameColor}" data-username="${displayName}" data-core-username="${esc(cfCore)}" data-user-id="${esc(String(cfUserId))}" data-anon="${cfIsAnon ? '1' : ''}" oncontextmenu="showChatContextMenu(event)" onclick="showChatContextMenu(event)">${_visibleName}</span>: <span class="chat-text">${text}</span>${msg.edited_at ? `<small class="chat-edited" title="Edited at ${esc(new Date(msg.edited_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }))}">edited</small>` : ''}`;
     if (msg.id && (!msg.message_type || msg.message_type === 'chat') && typeof currentUser !== 'undefined' && currentUser && Number(msg.user_id) === Number(currentUser.id)) {
         el._ovMsg = { id: msg.id, username: msg.username, user_id: msg.user_id, message: rawText.slice(0, 100) };
         el._ovRaw = rawText;
-        const editBtn = document.createElement('button'); editBtn.className = 'ovk-btn ovk-btn--quiet chat-edit-btn'; editBtn.type = 'button'; editBtn.textContent = 'Edit'; el.appendChild(editBtn);
+        _chatActions(el).appendChild(_chatActionBtn('chat-edit-btn', 'fa-pen', 'Edit your message'));
+        el.classList.add('chat-msg-hoverable');
     }
     return el;
 }
@@ -6706,14 +6798,13 @@ function closeChatUsersPanel(btn) {
         const edit = t.closest('.chat-edit-btn');
         if (edit) {
             const row = edit.closest('.chat-msg');
-            if (!row || !row._ovMsg) return;
-            const body = window.prompt('Edit message', row._ovRaw || '');
-            if (body == null) return;
-            edit.disabled = true;
-            fetch(`/api/chat/messages/${encodeURIComponent(row._ovMsg.id)}`, { method: 'PATCH', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: body }) })
-                .then(async (r) => { const data = await r.json(); if (!r.ok) throw Error(data.error || 'Could not edit message'); _applyChatEdited({ id: row._ovMsg.id, message: data.message }); })
-                .catch((err) => addSystemMessage(err.message)).finally(() => { edit.disabled = false; });
+            if (row && row._ovMsg) { e.stopPropagation(); setChatEdit(row); }
             return;
+        }
+        const row = t.closest('.chat-msg-hoverable');
+        if (!t.closest('.chat-msg-actions')) {
+            document.querySelectorAll('.chat-msg.is-acting').forEach((r) => { if (r !== row) r.classList.remove('is-acting'); });
+            if (row && window.matchMedia && matchMedia('(hover: none)').matches && !t.closest('a, button, .chat-name, .chat-user, .chat-avatar-wrap, input, textarea, [contenteditable]')) row.classList.toggle('is-acting');
         }
         const tr = t.closest('.chat-translate-btn');
         if (tr) {

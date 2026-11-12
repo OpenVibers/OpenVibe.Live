@@ -69,7 +69,7 @@
         if (!host) return;
         if (!(links || []).length) { host.innerHTML = ''; host.hidden = true; return; }
         host.hidden = false;
-        host.innerHTML = `<div class="ch-socials-head"><i class="fa-solid fa-link"></i> Links</div><div class="ch-socials-grid">${links.map((l, i) => `
+        host.innerHTML = `<h3 class="ch-socials-head ch-sub-h"><i class="fa-solid fa-link ch-sec-ic" aria-hidden="true"></i>Links</h3><div class="ch-socials-grid">${links.map((l, i) => `
             <article class="ch-social-card" style="--sc:${escH(l.color)}" data-i="${i}">
                 <a class="ch-social-card-top" href="${escH(l.url)}" target="_blank" rel="noopener me">
                     <span class="ch-social-ico"><i class="${escH(l.icon)}" aria-hidden="true"></i></span>

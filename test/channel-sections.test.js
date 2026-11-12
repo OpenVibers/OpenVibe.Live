@@ -30,6 +30,16 @@ for (const fold of ['ai-timeline', 'analytics']) assert.match(below, new RegExp(
 assert.match(css, /#page-channel \.ch-tab-panel \{ display: block;/);
 assert.ok(!/#page-channel \.ch-tab-panel \{[^}]*display: none/.test(css), 'no channel section is display:none by rule');
 assert.match(js, /panel\.hidden = b\.style\.display === 'none';/, 'a section hides only with its jump link');
+// Tabs on a phone (ask 367): a section not chosen never shows, whatever a later rule says (11-12: the rails' two-id grid
+// outranked the one-id hiding, so Videos, Clips, Clips taken and Pastes showed under About with no heading); and every
+// section keeps its heading there (the owner: "they need a nice header with icon").
+assert.match(css, /#page-channel\.ch-tabbed \.ch-tab-panel:not\(\.is-current\) \{ display: none !important; \}/);
+assert.ok(!/\.ch-tabbed[^{}]*\.ch-sec-h[^{}]*\{[^}]*display: none/.test(css), 'no heading is hidden in tabs');
+assert.ok(!/\.ch-tabbed[^{}]*\.ch-fold > summary \{[^}]*display: none/.test(css), 'a fold\'s heading shows in tabs');
+for (const tab of SECTIONS) {
+    const h = below.match(new RegExp(`<h2 class="ch-sec-h" id="ch-h-${tab}">([\\s\\S]*?)</h2>`));
+    assert.ok(h && /class="fa-solid [a-z-]+ ch-sec-ic"/.test(h[1]), `${tab}'s heading has its icon tile`);
+}
 assert.match(js, /function _watchChannelSections\(\)/);
 assert.match(js, /new IntersectionObserver\([\s\S]{0,200}_ensureChannelSection\(e\.target\.id\.replace\('ch-panel-', ''\), true\)/, 'a section loads as it nears the screen');
 assert.match(js, /if \(passing && \(tab === 'analytics' \|\| tab === 'ai-timeline'\)\) return;/, 'the folds load when opened, not on the way past');
