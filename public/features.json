@@ -35,7 +35,7 @@
       "css": [
         "/css/features/home.css",
         "/css/home-fx.css",
-        "/css/home-tour.css"
+        "/css/home-tour.css", "/shared/ov-parts.css"
       ],
       "js": [
         "/shared/kit-web.js",

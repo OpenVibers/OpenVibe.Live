@@ -97,6 +97,16 @@
         <div class="agent-cards" id="home-agents-grid"></div>
     </div>
 
+    <!-- Below Live Now, a phone (600 px and under) shows one part at a time as tabs: For you, Catch up, OpenVibe (the
+         owner, 2026-11-11: "consolidate these into tabs, self-contained tabs, so the page isn't so freaking huge … at
+         least on mobile"). Every part stays in this HTML for crawlers and readers; a wider screen stacks them as before.
+         openvibe-shared ov-parts.css (showcase.parts()) draws it with radios and :has(), no script. -->
+    <div class="ov-parts ov-parts--front home-parts" data-parts="3">
+    <input type="radio" class="ov-parts-r" name="ovp-home" id="ovp-home-foryou" value="foryou" checked>
+    <input type="radio" class="ov-parts-r" name="ovp-home" id="ovp-home-catchup" value="catchup">
+    <input type="radio" class="ov-parts-r" name="ovp-home" id="ovp-home-openvibe" value="openvibe">
+    <div class="ov-parts-bar" role="group" aria-label="The rest of the home page"><label for="ovp-home-foryou">For you</label><label for="ovp-home-catchup">Catch up</label><label for="ovp-home-openvibe">OpenVibe</label></div>
+    <section class="ov-part" data-part="foryou" aria-label="For you">
     <!-- Around OpenVibe: the digest, the star spotlight and the pulse, every one shown on every screen (the owner,
          2026-10-31: "don't reduce size by removing features"). -->
     <div class="home-around" id="home-around">
@@ -131,6 +141,8 @@
         <div class="pulse-grid" data-ovk-scroll id="pulse-grid"></div>
     </div>
     </div><!-- /home-around -->
+    </section>
+    <section class="ov-part" data-part="catchup" aria-label="Catch up">
 
     <!-- What people made, above the introduction to the site (roadmap 32.7: the home leads with live
          content and creators): channels that were just on, their recordings, the clips people took
@@ -182,6 +194,8 @@
         <div class="moments-row ov-rail-track" data-ovk-scroll id="home-moments-row"></div>
     </div>
     </div><!-- /home-catchup -->
+    </section>
+    <section class="ov-part" data-part="openvibe" aria-label="OpenVibe">
 
     <!-- New here?: the restream tour and the About banner, one after the other on every screen (2026-11-07: the
          tab row that showed one at a time on a phone is gone; the owner's rule is never to hide content behind
@@ -360,6 +374,8 @@
         <button type="button" class="ovnet-switch" data-ovnet-switcher><span class="ovnet-orb" aria-hidden="true"><svg class="ovmb" viewBox="0 0 24 24" width="22" height="22"><rect class="ovmb-bar" x="4" y="5.2" width="16" height="5.6" rx="2.8"/><circle class="ovmb-dot" cx="7.4" cy="8" r="1.15"/><rect class="ovmb-app ovmb-a0" x="4.2" y="14.6" width="4" height="4" rx="1.3"/><rect class="ovmb-app ovmb-a1" x="10" y="14.6" width="4" height="4" rx="1.3"/><rect class="ovmb-app ovmb-a2" x="15.8" y="14.6" width="4" height="4" rx="1.3"/></svg></span><span class="ovnet-switch-t"><b>Every site is in the menu</b><small>This button, at the top of every page</small></span><i class="ovnet-switch-go" aria-hidden="true"></i></button>
     </footer>
     <!--/ov:network--></div>
+    </section>
+    </div><!-- /ov-parts -->
 
 </div>
 

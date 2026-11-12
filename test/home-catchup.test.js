@@ -14,7 +14,8 @@ const path = require('path');
 const assets = require('../server/web/assets');
 try { assets.setSharedDir(require('openvibe-shared/files').dir); } catch { /* */ }
 const html = assets.renderRoute(assets.document('index.html').html, '/');
-const home = html.slice(html.indexOf('<section id="page-home"'), html.indexOf('</section>', html.indexOf('<section id="page-home"')));
+// The home page runs to the next page's shell (its phone tabs are <section>s of their own, so not to the first </section>).
+const home = html.slice(html.indexOf('<section id="page-home"'), html.indexOf('<section id="page-', html.indexOf('<section id="page-home"') + 10));
 const css = fs.readFileSync(path.join(__dirname, '../public/css/features/home.css'), 'utf8');
 const style = fs.readFileSync(path.join(__dirname, '../public/css/style.css'), 'utf8');
 const js = fs.readFileSync(path.join(__dirname, '../public/js/app-home.js'), 'utf8');
