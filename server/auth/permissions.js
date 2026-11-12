@@ -70,7 +70,7 @@ function canModerateContentOwner(actor, contentOwner) {
 const SENSITIVE_KEY_RE = /(api[_-]?key|secret|token|password|client_id|client_secret|service_account|private[_-]?key|access[_-]?key|webhook)/i;
 // money_writes_frozen (the Billing-cutover freeze) is owner-only too; every admin can READ it at
 // GET /api/admin/money.
-const SENSITIVE_KEY_PREFIXES = ['ai_', 'stripe_', 'ccbill_', 'crypto_', 'tts_google_', 'money_'];
+const SENSITIVE_KEY_PREFIXES = ['ai_', 'rundown_picture_', 'stripe_', 'ccbill_', 'crypto_', 'tts_google_', 'money_'];
 // ytdlp_extra_args feeds process arguments; it is owner-only like the API keys.
 const SENSITIVE_KEY_EXACT = new Set(['youtube_api_key', 'ytdlp_extra_args']);
 function isSensitiveSettingKey(key) {

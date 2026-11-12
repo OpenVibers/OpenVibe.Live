@@ -895,6 +895,8 @@ app.get('/embed/:username', require('./streaming/channel-embed').page);
 app.use('/api/cam', require('./cam/routes'));                // the cam button: a viewer takes a still of a live stream
 app.use('/api/comments', commentRoutes);
 app.use('/api/admin/openre', require('./openre/routes'));
+// The Rundown's episode pictures: owner-only settings before the general admin router (which also serves /api/admin).
+app.use('/api/admin/rundown', require('./rundown/admin').router);
 app.use('/api/admin', adminRoutes);
 app.use('/api/mod', require('./admin/mod-routes'));
 app.use('/api/robotstreamer', robotStreamerRoutes);
@@ -1612,6 +1614,8 @@ async function start() {
         try { require('./rundown/desk').start(); } catch (e) { console.warn('[Rundown] desk not started:', e.message); }
         // The Rundown's Today card: one AI-written card a day, rewritten at most every 30 minutes while new takes arrive.
         try { require('./rundown/today').start(); } catch (e) { console.warn('[Rundown] Today card job not started:', e.message); }
+        // The Rundown's episode pictures: one editorial illustration per episode, due-based and capped (server/rundown/pictures.js).
+        try { require('./rundown/pictures').start(); } catch (e) { console.warn('[Rundown] picture job not started:', e.message); }
         try { require('./bench-stream/service').startJobs(); } catch (e) { console.warn('[BenchStream] poll job not started:', e.message); }
         // An agent stream whose publish ticket expired with no renewal ends; expired tickets and sharing deliveries
         // are pruned on the same minute (server/agent-streams/sweep.js).
