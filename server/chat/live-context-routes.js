@@ -428,6 +428,17 @@ effectsRouter.post('/chat-message', async (req, res) => {
             }
         } catch { /* non-critical */ }
     }
+    // A chat command can be an Element trigger (Elements, stage 1): the same run authorises it, with the
+    // chatter as the presser. Commands are rare; a non-command returns after one string check.
+    if (b.channel_user_id && b.message) {
+        try {
+            await require('../elements/press').fromChat({
+                channelUserId: int(b.channel_user_id),
+                user: { id: b.user_id ? int(b.user_id) : null, isMod: !!b.is_mod, isStreamer: !!b.is_streamer },
+                text: String(b.message).slice(0, 400),
+            });
+        } catch (e) { console.warn('[Elements] chat command:', e && e.message); }
+    }
     res.json({ coin });
 });
 

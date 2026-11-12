@@ -186,6 +186,10 @@
                     <!-- Weather spans the full width under the info bar (left-aligned) -->
                     <div class="ch-weather-widget ch-weather-full" id="ch-weather-widget" style="display:none"></div>
                 </div>
+                <!-- The Viewer Deck (Elements): the streamer's active elements. Filled by /js/viewer-deck.js;
+                     beside the player on a computer and under it on a phone (channel.css). Hidden until the
+                     streamer has switched Elements on and has at least one active element. -->
+                <aside class="ch-deck" id="ch-deck" data-surface="live.deck" aria-label="Deck" hidden></aside>
                 <!-- Chat Resize Handle -->
                 <!-- Chat Sidebar -->
                 <div class="chat-sidebar" id="chat-sidebar">
@@ -315,6 +319,8 @@
             <!-- Customizable offline screen (image / video / custom HTML) — filled by JS -->
             <div class="ch-offline-screen" id="ch-offline-screen"></div>
             </div><!-- /.stream-main -->
+            <!-- The Viewer Deck while the channel is offline: same elements, disabled with the offline note. -->
+            <aside class="ch-deck" id="ch-deck-offline" aria-label="Deck" hidden></aside>
             <!-- Streamer's persistent chat (works while offline) — sidebar, mirrors live layout -->
             <div class="offline-global-chat chat-sidebar" id="offline-global-chat">
                 <div class="chat-header">

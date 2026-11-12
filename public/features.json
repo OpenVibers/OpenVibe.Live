@@ -155,6 +155,7 @@
         "/js/channel-support.js",
         "/js/card-preview.js",
         "/js/app-channel.js",
+        "/js/viewer-deck.js",
         "/js/bench-stream-watch.js",
         "/js/agent-cards.js"
       ],

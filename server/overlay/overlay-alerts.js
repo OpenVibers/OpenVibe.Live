@@ -11,7 +11,7 @@
  *
  *   { type: 'overlay-alert', kind, id, at, who: { name, avatar }|null, amount: { value, unit }|null, text }
  *
- *   kind     follow | tip | sub | raid | goal
+ *   kind     follow | tip | sub | raid | goal | element
  *   id       unique per moment (for de-duplication on the overlay); a hash of the moment's natural key,
  *            so it says nothing about who tipped, how much, or which account it was
  *   at       when the moment happened (ISO 8601)
@@ -33,7 +33,7 @@
 const crypto = require('crypto');
 const delivery = require('../chat/chat-delivery');
 
-const KINDS = ['follow', 'tip', 'sub', 'raid', 'goal'];
+const KINDS = ['follow', 'tip', 'sub', 'raid', 'goal', 'element'];
 const UNITS = ['vibes', 'usd', 'viewers'];
 const TEXT_MAX = 200;
 const NAME_MAX = 120;

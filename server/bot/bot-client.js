@@ -73,4 +73,34 @@ async function post(robotId, route, subject, body) {
 const command = (robotId, subject, { id, kind, value, ms }) => post(robotId, 'commands', subject, { id, kind, value, ms });
 const controlTicket = (robotId, subject) => post(robotId, 'control-ticket', subject, {});
 
-module.exports = { command, controlTicket, BotRefusal, BotUnavailable, AUDIENCE };
+// The role a person holds on a robot, for the element deck's operator-only buttons. Bot answers the
+// service that may control the robot (the same capability as a command); a miss or an unreachable Bot is
+// "no role", because the command itself still asks Bot and Bot decides. Cached 30 seconds per person.
+const ROLE_TTL_MS = 30 * 1000;
+const _roles = new Map();
+
+async function role(robotId, subject) {
+    if (!robotId || !subject) return null;
+    const key = `${robotId}|${subject}`;
+    const hit = _roles.get(key);
+    if (hit && Date.now() - hit.at < ROLE_TTL_MS) return hit.role;
+    if (drill()) return null;
+    const tokens = serviceTokens();
+    if (!tokens) return null;
+    let res;
+    try {
+        res = await fetch(`${baseUrl()}/api/v1/robots/${encodeURIComponent(robotId)}/role?subject=${encodeURIComponent(subject)}`, {
+            headers: { Accept: 'application/json', Authorization: `Bearer ${await tokens.getToken()}` },
+            signal: AbortSignal.timeout(TIMEOUT_MS),
+        });
+    } catch (err) { note(err); return null; }
+    if (res.status === 401) { tokens.invalidate && tokens.invalidate(); return null; }
+    if (!res.ok) return null;
+    const out = await res.json().catch(() => ({}));
+    const value = out && typeof out.role === 'string' ? out.role : null;
+    _roles.set(key, { role: value, at: Date.now() });
+    if (_roles.size > 5000) _roles.clear();
+    return value;
+}
+
+module.exports = { command, controlTicket, role, BotRefusal, BotUnavailable, AUDIENCE, _resetRoles: () => _roles.clear() };
