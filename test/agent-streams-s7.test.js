@@ -238,7 +238,7 @@ async function check(name, fn) {
             );
             assert.deepStrictEqual(out, { stopped: true, robot_id: 'rob_sim123' });
             assert.strictEqual(calls.length, 1);
-            assert.strictEqual(calls[0].url, 'https://bot.test/internal/robots/rob_sim123/estop');
+            assert.strictEqual(calls[0].url, 'https://bot.test/internal/robots/rob_sim123/stop');
             assert.strictEqual(calls[0].opts.headers['X-OV-Bot-Kill'], 'kill-secret');
             assert.strictEqual(JSON.parse(calls[0].opts.body).reason, 'agent_stream_ended');
         } finally {

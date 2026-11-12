@@ -500,7 +500,7 @@ effectsRouter.post('/media-queue', async (req, res) => {
 
 // !forward, !say … : a channel's chat commands drive the OpenVibe.Bot robot the channel is bound to (channels.bot_robot_id),
 // through Bot's gate as the viewer who typed them (server/bot/bot-client.js): the robot's access policy, queue, turn
-// budget, cooldowns and e-stop all apply, and Bot audits every one. Live keeps no robot code and no control socket
+// budget and cooldowns all apply, and Bot audits every one. Live keeps no robot code and no control socket
 // (plan T15). OpenVibe.Chat names the viewer by Network subject (`from_subject`); a viewer who is not signed in cannot
 // drive a robot. Each motion is a short pulse: Bot clamps `ms` to the profile's max_command_ms and the device stops
 // by itself after it. A per-viewer cooldown keeps a chat flood from queueing faster than a held key.
@@ -544,7 +544,6 @@ const ROBOT_REFUSALS = {
     'bot.not_your_turn': 'It is not your turn at the robot yet.',
     'bot.turn_budget': 'Your turn at the robot is used up.',
     'bot.cooldown': null,
-    'bot.estop_latched': 'The robot\'s emergency stop is on.',
     'bot.device_offline': 'The robot is offline.',
     'bot.command_not_allowed': 'This robot does not do that.',
     'bot.unknown_actuator': 'This robot does not do that.',
