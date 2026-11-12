@@ -6,7 +6,11 @@
   "port": 3000,
   "domain": "openvibe.live (www, ingest, whip)",
   "contracts": "openvibe-contracts v0.416.0",
+<<<<<<< HEAD
   "sdk": "openvibe-sdk v0.158.0",
+=======
+  "sdk": "openvibe-sdk v0.158.0",
+>>>>>>> origin/main
   "shared": "openvibe-shared v4.223.0",
   "capabilities": [
     "live.chat_context.read",

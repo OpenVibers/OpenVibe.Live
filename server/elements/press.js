@@ -6,7 +6,7 @@
  * VIP or subscriber, follower, everyone), whether the channel is live, the element's cooldowns and
  * daily caps, and its channel-points cost (Live's own ledger, debited atomically); then each action
  * is sent to the product that owns it: Live's screen and stream actions here, Bot's command path
- * for a robot (turns, operators, limits, Stop, the e-stop and owner takeover are Bot's), Chat's
+ * for a robot (turns, operators, limits, Stop and owner takeover are Bot's), Chat's
  * ingress for a message. A refusal from any of them stops the run and refunds the points.
  *
  * The press is shown on stream through the existing overlay alert feed with the presser's name,

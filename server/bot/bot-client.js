@@ -11,7 +11,7 @@
  *                                                         sign-in (Bot's POST /api/v1/robots/:id/control-ticket)
  *
  * The token is Live's client-credentials token for audience openvibe.bot (Network's grant to `live`:
- * bot.robot.control); X-OV-Subject names the viewer, so Bot's roles, queue, cooldowns and e-stop apply to them.
+ * bot.robot.control); X-OV-Subject names the viewer, so Bot's roles, queue and cooldowns apply to them.
  * In a restore drill (LIVE_DRILL) nothing is sent.
  */
 'use strict';
