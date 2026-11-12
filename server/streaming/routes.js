@@ -296,6 +296,12 @@ router.get('/channel/:username', optionalAuth, async (req, res) => {
             delete liveStream.stream_key;
             delete liveStream.managed_stream_key;
         }
+        // The one view store's numbers for the live cards (Media, GET /api/v1/views/counts); a watcher sees a
+        // card even when Media is down, so a failure is an absent count, never an error.
+        try {
+            const viewCounts = await require('../media-client').viewCounts(liveStreams.map((x) => ({ service: 'live', kind: 'stream', id: String(x.id) })));
+            for (const liveStream of liveStreams) liveStream.counts = viewCounts[`live:stream:${liveStream.id}`] || null;
+        } catch { /* a card without a count */ }
 
         // Show hidden (private + unlisted) VODs/clips to the channel owner AND admins;
         // everyone else sees public only.
@@ -2155,6 +2161,9 @@ router.get('/:id', optionalAuth, async (req, res) => {
         const networkFollows = require('../social/network-follows');
         if (req.user) stream.isFollowing = await networkFollows.isFollowing(req.user.id, stream.user_id);
         stream.follower_count = await networkFollows.followerCount(stream.user_id);
+
+        // The one view store's numbers (views, engaged viewers, peak concurrent) for the stream page.
+        try { stream.counts = (await require('../media-client').viewCounts([{ service: 'live', kind: 'stream', id: String(stream.id) }]))[`live:stream:${stream.id}`] || null; } catch { stream.counts = null; }
 
         res.json({ stream });
     } catch (err) {
