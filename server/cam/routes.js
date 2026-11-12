@@ -21,19 +21,8 @@ const router = express.Router();
 const SLOT_RE = /^@?[A-Za-z0-9][A-Za-z0-9_.-]{0,79}$/;
 const SHARE_TEXT_MAX = 500;
 
-// The browser never receives its Network token. Live forwards only the signed-in person's choices to Cam.
-router.get('/settings', requireAuth, async (req, res) => {
-    try {
-        if (req.authSource === 'api_token') return res.status(403).json({ error: 'Sign in with your Network account' });
-        return res.json(await cam.cameraSettings({ token: extractToken(req) }));
-    } catch (err) { return res.status(err.status || 502).json({ error: err.message }); }
-});
-router.put('/settings', requireAuth, async (req, res) => {
-    try {
-        if (req.authSource === 'api_token') return res.status(403).json({ error: 'Sign in with your Network account' });
-        return res.json(await cam.cameraSettings({ token: extractToken(req), method: 'PUT', settings: req.body }));
-    } catch (err) { return res.status(err.status || 502).json({ error: err.message }); }
-});
+// The go-live camera's own choices (facing, lens, microphone, resolution, mirror) stay on the device that made them:
+// public/js/live-capture.js. They were synced through OpenVibe.Cam until 11-12, when Live's capture became its own.
 
 async function liveStream(req, res) {
     const streamId = req.body && Number(req.body.stream_id);

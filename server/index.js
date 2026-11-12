@@ -391,11 +391,10 @@ app.use(helmet({
     contentSecurityPolicy: {
         directives: {
             defaultSrc: ["'self'"],
-            scriptSrc: ["'self'", "'unsafe-inline'", "cdnjs.cloudflare.com", "cdn.jsdelivr.net", "https://openvibe.network", "https://jsmpeg.com", "https://esm.sh", "https://static.cloudflareinsights.com", "https://openvibe.cam"],
-            // esm.sh: mediasoup-client dynamic import for WebRTC SFU restreaming + RS restream
-            // openvibe.cam: the go-live page's camera kit (cam-kit.js, hash-pinned) and the stylesheet it adds. Without
-            // it every browser refused the kit and "Turn on camera" said "Could not load camera controls" (11-09 to 11-12).
-            styleSrc: ["'self'", "'unsafe-inline'", "cdnjs.cloudflare.com", "fonts.googleapis.com", "https://openvibe.cam"],
+            scriptSrc: ["'self'", "'unsafe-inline'", "cdnjs.cloudflare.com", "cdn.jsdelivr.net", "https://openvibe.network", "https://jsmpeg.com", "https://esm.sh", "https://static.cloudflareinsights.com"],
+            // esm.sh: mediasoup-client dynamic import for WebRTC SFU restreaming + RS restream. No other site's script
+            // runs the camera: the go-live page's capture is Live's own (public/js/live-capture.js, 11-12).
+            styleSrc: ["'self'", "'unsafe-inline'", "cdnjs.cloudflare.com", "fonts.googleapis.com"],
             fontSrc: ["'self'", "fonts.gstatic.com", "cdnjs.cloudflare.com"],
             // i.ytimg.com / i.vimeocdn.com carry media-request thumbnails. Without them
             // every queued item renders as a broken image, which is what the media

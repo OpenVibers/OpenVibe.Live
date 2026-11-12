@@ -1,10 +1,10 @@
 'use strict';
 /**
- * Turning the camera on to go live from a browser (broadcast-devices.js requestMediaPermissions, _glFixFor;
- * broadcast-workspace.js the camera card, _glCamCore). The owner, 11-12: a streamer on a phone saw "Could not access
+ * Turning the camera on to go live from a browser (broadcast-devices.js requestMediaPermissions; live-capture.js, Live's
+ * own capture system and its 'explain' part; broadcast-workspace.js the camera card). The owner, 11-12: a streamer on a phone saw "Could not access
  * camera/mic: Could not load camera controls" and "Error: Could not load camera controls" and said "I don't
  * understand … my brain too tired to figure it out". Now:
- *   - the camera never waits on openvibe.cam: when the kit cannot load, the same core runs from this page;
+ *   - the camera is Live's own (live-capture.js): no other site's script is loaded to open it;
  *   - the card says what is about to happen and the three steps;
  *   - a failure says what happened and what to tap, for the browser the person is in, and never a raw error;
  *   - the Go Live button turns the camera on first instead of refusing.
@@ -17,11 +17,12 @@ const read = (f) => fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
 const devices = read('public/js/broadcast-devices.js');
 const workspace = read('public/js/broadcast-workspace.js');
 
-// _glFixFor, run under each browser.
-const start = devices.indexOf('function _glFixFor(');
-const end = devices.indexOf('\nfunction _glShowFix', start);
-assert.ok(start > 0 && end > start, '_glFixFor is there');
-const fixUnder = (ua, touch = 0) => new Function('navigator', `${devices.slice(start, end)}; return _glFixFor;`)({ userAgent: ua, maxTouchPoints: touch });
+// The 'explain' part (live-capture.js explainFailure), run under each browser.
+const capture = read('public/js/live-capture.js');
+const start = capture.indexOf('    function explainFailure(');
+const end = capture.indexOf('\n    parts.explain = explainFailure;', start);
+assert.ok(start > 0 && end > start, 'explainFailure is there');
+const fixUnder = (ua, touch = 0) => new Function('navigator', `${capture.slice(start, end)}; return explainFailure;`)({ userAgent: ua, maxTouchPoints: touch });
 const UA = {
     androidChrome: 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Mobile Safari/537.36',
     iphoneSafari: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1',
@@ -55,7 +56,7 @@ for (const ua of Object.values(UA)) {
 }
 
 // The failure shows in the card, never as raw text; the button under it says Try again.
-assert.ok(devices.includes('_glShowFix(_glFixFor(err, permMode))'), 'a failure fills the card\'s fix box');
+assert.ok(devices.includes('_glShowFix(OVCapture.explain(err, permMode))'), 'a failure fills the card\'s fix box');
 assert.ok(!/toast\('Could not access camera\/mic/.test(devices), 'no raw "Could not access camera/mic" toast');
 assert.ok(devices.includes("'Try again'") || devices.includes('>Try again<'), 'the button says Try again after a failure');
 assert.ok(workspace.includes('<p id="bc-perm-debug" hidden></p>'), 'the debug line is never shown to people');
@@ -65,11 +66,11 @@ assert.ok(workspace.includes('Your browser will ask first: tap Allow.'), 'the ca
 assert.ok(workspace.includes('id="gl-steps"') && workspace.includes('Press Go Live'), 'the three steps');
 assert.ok(workspace.includes('id="gl-fix"'), 'the fix box');
 
-// The camera never waits on openvibe.cam.
-const core = workspace.slice(workspace.indexOf('function _glCamCore()'), workspace.indexOf('function _glOtherWays()'));
-assert.ok(core.includes('resolve(_glLocalCore)') && !core.includes('reject('), 'a kit that cannot load falls back to the built-in core');
-assert.ok(core.includes('setTimeout(() => fallback'), 'and a kit that never answers too');
-for (const m of ['devices', 'constraints', 'open', 'stop', 'network', 'meter']) assert.ok(new RegExp(`\\b${m}: `).test(workspace.slice(workspace.indexOf('const _glLocalCore'), workspace.indexOf('function _glCamCore()'))), `the built-in core has ${m}`);
+// The camera is Live's own: no other site's kit, and the page opens it through OVCapture.
+const stripComments = (t) => t.replace(/\/\/[^\n]*/g, '');
+assert.ok(!/openvibe\.cam\/embed|cam-kit\.js|OpenVibeCam/.test(stripComments(workspace)), 'broadcast-workspace.js loads nothing from OpenVibe.Cam');
+assert.ok(!/openvibe\.cam\/embed|cam-kit\.js|OpenVibeCam/.test(stripComments(devices)), 'broadcast-devices.js loads nothing from OpenVibe.Cam');
+assert.ok(devices.includes('await OVCapture.open(') && workspace.includes('await OVCapture.open('), 'both the permission and the preview open through OVCapture');
 
 // Go Live turns the camera on first instead of refusing.
 const go = workspace.slice(workspace.indexOf('async function goLiveFromWorkspace()'), workspace.indexOf('await _wsFlushSave();', workspace.indexOf('async function goLiveFromWorkspace()')));

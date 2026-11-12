@@ -295,49 +295,7 @@ function _bcSyncPicks() {
     });
 }
 
-/**
- * What went wrong turning the camera on, in words, and what to tap to fix it (the owner, 11-12: a streamer on a
- * phone saw "Could not access camera/mic: Could not load camera controls" and "Error: …", and said "I don't
- * understand"). One box on the card, never a raw error; the button under it says Try again.
- */
-function _glFixFor(err, mode) {
-    const ua = navigator.userAgent || '';
-    const ios = /iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
-    const android = /Android/.test(ua);
-    const firefox = /Firefox|FxiOS/.test(ua);
-    const safari = /Safari/.test(ua) && !/Chrome|CriOS|Chromium|Edg|FxiOS/.test(ua);
-    const inApp = /FBAN|FBAV|Instagram|Line\/|Twitter|Discord|TikTok|musical_ly|Snapchat|GSA\//.test(ua) || /; wv\)/.test(ua);
-    const what = mode === 'mic_only' ? 'microphone' : mode === 'camera_only' ? 'camera' : 'camera and microphone';
-    const name = err && err.name;
-    if (name === 'NoApi' || inApp && name !== 'NotReadableError') {
-        return { title: 'This browser can\'t use your camera here', steps: inApp
-            ? ['You opened this inside another app (like Discord, Instagram or TikTok). Those can\'t share a camera.', `Tap the ⋮ or ⋯ menu and choose "Open in ${ios ? 'Safari' : 'Chrome'}" (or "Open in browser").`, 'Sign in there if asked, then press Turn on camera again.']
-            : ['Open openvibe.live in Chrome, Safari, Edge or Firefox, then press Turn on camera.'] };
-    }
-    if (name === 'NotAllowedError' || name === 'PermissionDeniedError' || name === 'SecurityError') {
-        const steps = ios && safari ? ['Tap "aA" (or the page icon) at the left of the address bar.', 'Tap Website Settings.', `Set Camera${mode === 'camera_only' ? '' : ' and Microphone'} to Allow.`]
-            : ios ? ['Open the iPhone Settings app, find this browser, and turn on Camera and Microphone.', 'Come back here.']
-            : android && !firefox ? ['Tap the icon at the left of the address bar (a lock or two sliders).', 'Tap Permissions (or Site settings).', `Set Camera${mode === 'camera_only' ? '' : ' and Microphone'} to Allow.`]
-            : firefox ? ['Click the camera icon with a line through it, at the left of the address bar.', 'Remove "Blocked temporarily" (the ×).']
-            : safari ? ['Open Safari\'s menu → Settings for openvibe.live.', `Set Camera${mode === 'camera_only' ? '' : ' and Microphone'} to Allow.`]
-            : ['Click the camera icon at the right end of the address bar (or the lock at the left).', `Choose "Always allow" for the ${what}, then Done.`];
-        return { title: `Your browser said no to the ${what}`, steps: [...steps, 'Then press Try again below.'] };
-    }
-    if (name === 'NotReadableError' || name === 'TrackStartError' || name === 'AbortError') {
-        return { title: 'Another app is using your camera', steps: ['Close apps that use the camera, like Zoom, FaceTime, WhatsApp, Instagram or the Camera app (and other tabs with a call).', 'Then press Try again below.'] };
-    }
-    if (name === 'NotFoundError' || name === 'DevicesNotFoundError') {
-        return { title: `No ${what} found`, steps: [mode === 'mic_only' ? 'Plug in a microphone or headset, then press Try again.' : 'Plug in a camera (or open its privacy cover), then press Try again.', 'Or go live with your screen instead: "Use a screen or an app instead" below.'] };
-    }
-    if (name === 'OverconstrainedError') {
-        return { title: 'That camera can\'t start with these settings', steps: ['Press Try again: it starts with simpler settings.', 'Still stuck? Pick another camera in Camera settings.'] };
-    }
-    if (name === 'TimeoutError') {
-        return { title: 'Your browser didn\'t answer', steps: ['Look for the browser\'s question at the top of the screen and tap Allow.', 'Nothing there? Press Try again below.'] };
-    }
-    return { title: 'The camera didn\'t start', steps: ['Press Try again below.', 'Still stuck? Reload this page, or try Chrome or Safari.'] };
-}
-
+/** The fix box on the go-live card: what went wrong and what to tap (the words are OVCapture's 'explain' part). */
 function _glShowFix(fix) {
     const box = document.getElementById('gl-fix');
     if (!box) return;
@@ -553,44 +511,24 @@ async function requestMediaPermissions() {
     // Feature detection: an in-app browser (Discord, Instagram, TikTok) or a page outside HTTPS has no camera API.
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
         console.warn('[Broadcast] Camera/mic API not available');
-        _glShowFix(_glFixFor({ name: 'NoApi' }, permMode));
+        _glShowFix(OVCapture.explain({ name: 'NoApi' }, permMode));
         if (btn) { btn.disabled = false; btn.innerHTML = btnOrigText; }
         return;
     }
     let failed = false;
 
     try {
-        let tempStream;
-        const core = await _glCamCore();
+        // Live's own capture system opens it (public/js/live-capture.js: preferred, then separately, then basic, each
+        // timed); a refusal stops at once, because asking another way would only ask again.
         const mode = _wsState.selectedMs?.browser_mode || _wsState.profile?.browserMode || 'camera';
-        // Strategy 1: combined audio+video
-        try {
-            if (dbg) dbg.textContent = 'Requesting camera + mic...';
-            tempStream = await core.open({ audio: mode !== 'camera_only', video: mode !== 'mic_only', facing: window._glCamSettings?.facing || 'user', resolution: window._glCamSettings?.resolution || '720' });
-        } catch (firstErr) {
-            console.warn('[Broadcast] Combined getUserMedia failed:', firstErr.message, '— trying separately');
-            // Strategy 2: separate requests (common on Android)
-            if (dbg) dbg.textContent = 'Combined failed, trying separately...';
-            let vidStream, audStream;
-            try { if (mode !== 'mic_only') vidStream = await _getUserMediaWithTimeout({ video: { facingMode: 'user' } }, 10000); } catch (ve) {
-                console.warn('[Broadcast] Video facingMode failed:', ve.message);
-                // Strategy 2b: bare minimum video
-                try { vidStream = await _getUserMediaWithTimeout({ video: true }, 10000); } catch (ve2) {
-                    console.warn('[Broadcast] Video-only getUserMedia failed:', ve2.message);
-                }
-            }
-            try { if (mode !== 'camera_only') audStream = await _getUserMediaWithTimeout({ audio: true }, 10000); } catch (ae) { console.warn('[Broadcast] Audio-only getUserMedia failed:', ae.message); }
-            if (!vidStream && !audStream) throw new Error('No camera or microphone available');
-            tempStream = new MediaStream();
-            if (vidStream) vidStream.getTracks().forEach(t => { tempStream.addTrack(t); });
-            if (audStream) audStream.getTracks().forEach(t => { tempStream.addTrack(t); });
-        }
+        if (dbg) dbg.textContent = 'Requesting camera + mic...';
+        const tempStream = await OVCapture.open({ mode, facing: window._glCamSettings?.facing || 'user', resolution: window._glCamSettings?.resolution || '720' });
         const hasVideo = tempStream.getVideoTracks().length > 0;
         const hasAudio = tempStream.getAudioTracks().length > 0;
         tempStream.getTracks().forEach(t => t.stop());
         if (mode !== 'mic_only' && !hasVideo || mode !== 'camera_only' && !hasAudio) throw new DOMException('The requested device was not available', 'NotFoundError');
         if (dbg) dbg.textContent = 'Enumerating devices...';
-        const devices = await core.devices();
+        const devices = await OVCapture.devices();
         _populateCreateDeviceDropdowns(devices);
         const saved = window._glCamSettings;
         const camSelect = document.getElementById('bc-create-camera');
@@ -621,11 +559,11 @@ async function requestMediaPermissions() {
         _glPreviewSync();
         toast(permMode === 'mic_only' ? 'Your microphone is on. Press Go Live when you are ready.' : 'Your camera is on. Check how you look, then press Go Live.', 'success');
     } catch (err) {
-        // The details stay in the console for us; the person reads what happened and what to tap (_glFixFor).
+        // The details stay in the console for us; the person reads what happened and what to tap (OVCapture.explain).
         console.warn('[Broadcast] Permission request failed:', err.name, err.message);
         if (dbg) dbg.textContent = `${err.name || 'Error'}: ${err.message}`;
         failed = true;
-        _glShowFix(_glFixFor(err, permMode));
+        _glShowFix(OVCapture.explain(err, permMode));
         document.getElementById('gl-fix')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     } finally {
         if (btn) {
