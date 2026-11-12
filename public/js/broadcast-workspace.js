@@ -1070,74 +1070,8 @@ function _glCopyLink() {
    stream starts or Go live is pressed. Turning it off is remembered on this device. ── */
 const _glPv = { stream: null, key: '', starting: false, timer: 0, raf: 0, ctx: null, hold: 0, failed: '', stopMeter: null };
 const _GL_PV_OFF = 'ov_gl_preview_off';
-let _glCoreLoad;
-/**
- * The camera kit's capture core, kept here as well: the same constraints, open, devices and meter as OpenVibe.Cam's
- * cam-kit.js core, used when the kit cannot load (a blocked or slow openvibe.cam, an extension, a stale cache). From
- * 11-09 to 11-12 the page's policy refused the kit and nobody could turn a camera on; the camera must never depend on
- * a second site answering.
- */
-const _glLocalCore = Object.freeze({
-    devices: () => navigator.mediaDevices.enumerateDevices(),
-    constraints: (o = {}) => {
-        const height = Number(o.resolution) || 720;
-        return {
-            video: o.video === false ? false : {
-                facingMode: { ideal: o.facing || 'user' },
-                ...(o.lens && o.lens !== 'main' && o.lens !== 'default' ? { deviceId: { ideal: o.lens } } : {}),
-                width: { ideal: Math.round(height * 16 / 9) }, height: { ideal: height },
-            },
-            audio: o.audio === false ? false : o.mic && o.mic !== 'default' ? { deviceId: { ideal: o.mic } } : true,
-        };
-    },
-    open: (o) => navigator.mediaDevices.getUserMedia(_glLocalCore.constraints(o)),
-    stop: (stream) => { try { stream?.getTracks().forEach((t) => t.stop()); } catch { /* already stopped */ } },
-    network: () => {
-        if (navigator.onLine === false) return 'offline';
-        const c = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
-        return c && (/2g|3g/.test(c.effectiveType || '') || (c.downlink && c.downlink < 2.5)) ? 'weak' : 'good';
-    },
-    meter: (stream, onLevel) => {
-        const AC = window.AudioContext || window.webkitAudioContext;
-        if (!AC || !stream.getAudioTracks().length) return () => {};
-        const ctx = new AC(), analyser = ctx.createAnalyser(), data = new Uint8Array(512);
-        let frame = 0, closed = false;
-        analyser.fftSize = 512;
-        ctx.createMediaStreamSource(stream).connect(analyser);
-        if (ctx.state === 'suspended') {
-            ctx.resume().catch(() => {});
-            document.addEventListener('pointerdown', () => { ctx.resume().catch(() => {}); }, { once: true, capture: true });
-        }
-        const tick = () => {
-            if (closed) return;
-            analyser.getByteTimeDomainData(data);
-            let sum = 0;
-            for (let i = 0; i < data.length; i++) { const d = (data[i] - 128) / 128; sum += d * d; }
-            onLevel(Math.min(1, Math.sqrt(sum / data.length) * 4));
-            frame = requestAnimationFrame(tick);
-        };
-        frame = requestAnimationFrame(tick);
-        return () => { closed = true; cancelAnimationFrame(frame); ctx.close().catch(() => {}); };
-    },
-});
-function _glCamCore() {
-    if (window.OpenVibeCam?.core) return Promise.resolve(window.OpenVibeCam.core);
-    if (!_glCoreLoad) _glCoreLoad = new Promise((resolve) => {
-        const script = document.createElement('script');
-        // The query names this version (the start of its hash): a new Cam release is a new cache key, so Cloudflare never
-        // hands an older copy to this integrity check (it served one for a day after Cam #116, 11-09).
-        script.src = 'https://openvibe.cam/embed/cam-kit.js?v=yqqjh1FiP7a4';
-        script.integrity = 'sha384-yqqjh1FiP7a4l9uelJHaryd8Y5IwnHVbqjt1d0AXbgCcytI9Z5MMmItFqbwB4YZG';
-        script.crossOrigin = 'anonymous';
-        // Five seconds at most: a kit that never answers must not keep the camera waiting.
-        const fallback = (why) => { console.warn('[Broadcast] camera kit unavailable, using the built-in core:', why); resolve(_glLocalCore); };
-        const timer = setTimeout(() => fallback('timeout'), 5000);
-        script.onload = () => { clearTimeout(timer); window.OpenVibeCam?.core ? resolve(window.OpenVibeCam.core) : fallback('no core'); };
-        script.onerror = () => { clearTimeout(timer); fallback('load error'); };
-        document.head.append(script);
-    });
-    return _glCoreLoad;
-}
+// The camera is Live's own: public/js/live-capture.js (window.OVCapture), every part replaceable. The page loaded
+// OpenVibe.Cam's cam-kit.js for this until 11-12 (the owner: "we don't want to use openvibe.cam for OpenVibe.Live").
 function _glOtherWays() {
     const fold = document.getElementById('gl-how');
     if (fold) { fold.open = true; fold.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
@@ -1162,8 +1096,8 @@ function _glSheetMirror(wanted) {
     try { localStorage.setItem('ov_bc_mirror_preview', wanted ? '1' : '0'); } catch {}
     const cam = document.getElementById('bc-create-camera');
     const settings = { facing: cam?.selectedOptions[0]?.dataset.facing || 'user', lens: cam?.value || 'main', mic: document.getElementById('bc-create-audio')?.value || 'default', resolution: document.getElementById('bc-ws-resolution')?.value || '720', mirror: wanted };
-    window._glCamSettings = settings;
-    fetch('/api/cam/settings', { method: 'PUT', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(settings) }).catch(() => {});
+    // This device's camera choices are kept on this device (OVCapture's 'store' part): device ids are this browser's own.
+    window._glCamSettings = OVCapture.settings.save(settings);
     _glPreviewSync();
 }
 
@@ -1244,8 +1178,7 @@ async function _glPreviewStart(key) {
     _glPreviewStop();
     const [mode, cam, mic, resolution] = key.split('|');
     try {
-        const core = await _glCamCore();
-        const stream = await core.open({ video: cam !== '-', audio: mic !== '-', lens: cam, mic, facing: window._glCamSettings?.facing || 'user', resolution });
+        const stream = await OVCapture.open({ video: cam !== '-', audio: mic !== '-', lens: cam, mic, facing: window._glCamSettings?.facing || 'user', resolution });
         // Things moved on while the camera opened: let it go again.
         if (_glPreviewWant() !== key) { stream.getTracks().forEach((t) => t.stop()); return; }
         _glPv.stream = stream;
@@ -1268,7 +1201,7 @@ async function _glPreviewStart(key) {
         if (box) box.dataset.state = 'on';
         const note = document.getElementById('gl-pv-note');
         if (note) note.textContent = '';
-        if (mode !== 'camera_only' && stream.getAudioTracks().length) _glPv.stopMeter = core.meter(stream, (level) => {
+        if (mode !== 'camera_only' && stream.getAudioTracks().length) _glPv.stopMeter = OVCapture.meter(stream, (level) => {
             const bar = document.getElementById('gl-pv-lvl');
             if (bar) bar.style.transform = `scaleX(${level.toFixed(3)})`;
         });
@@ -1286,7 +1219,7 @@ async function _glPreviewStart(key) {
 function _glPreviewNetwork() {
     const chip = document.getElementById('gl-pv-net');
     if (!chip) return;
-    const shared = window.OpenVibeCam?.core?.network?.();
+    const shared = window.OVCapture ? OVCapture.network() : '';
     const c = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
     let text = '', cls = '';
     if (shared === 'offline' || navigator.onLine === false) { text = 'Offline'; cls = 'is-bad'; }
@@ -1322,7 +1255,7 @@ function _glPreviewSync() {
 function _glPreviewWatch() {
     _glPreviewSync();
     if (_glPv.timer) return;
-    fetch('/api/cam/settings', { credentials: 'same-origin' }).then((r) => r.ok ? r.json() : null).then((saved) => {
+    Promise.resolve(OVCapture.settings.load()).then((saved) => {
         if (!saved) return;
         window._glCamSettings = saved;
         const cam = document.getElementById('bc-create-camera');
@@ -1346,8 +1279,7 @@ function _glPreviewWatch() {
             resolution: document.getElementById('bc-ws-resolution')?.value || '720',
             mirror: (() => { try { return localStorage.getItem('ov_bc_mirror_preview') === '1'; } catch { return true; } })(),
         };
-        window._glCamSettings = settings;
-        fetch('/api/cam/settings', { method: 'PUT', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(settings) }).catch(() => {});
+        window._glCamSettings = OVCapture.settings.save(settings);
         _glPreviewSync();
     });
     _glPv.timer = setInterval(() => {

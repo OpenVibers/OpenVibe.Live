@@ -37,7 +37,7 @@
         try { localStorage.setItem(MIRROR_KEY, mirror ? '1' : '0'); } catch { /* a private window keeps the default */ }
         if (window._glCamSettings) {
             window._glCamSettings.mirror = mirror;
-            fetch('/api/cam/settings', { method: 'PUT', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mirror }) }).catch(() => {});
+            if (window.OVCapture) OVCapture.settings.save({ mirror });   // this device's camera choices (live-capture.js)
         }
         refresh();
     }

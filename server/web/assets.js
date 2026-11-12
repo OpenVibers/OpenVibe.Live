@@ -422,7 +422,7 @@ function cspReportOnly(html) {
         if (/type="application\/(ld\+)?json"/i.test(m[1])) continue;
         hashes.add(`'sha256-${crypto.createHash('sha256').update(m[2], 'utf8').digest('base64')}'`);
     }
-    const scriptHosts = "cdnjs.cloudflare.com cdn.jsdelivr.net https://openvibe.network https://esm.sh https://static.cloudflareinsights.com https://openvibe.cam";
+    const scriptHosts = "cdnjs.cloudflare.com cdn.jsdelivr.net https://openvibe.network https://esm.sh https://static.cloudflareinsights.com";
     const policy = [
         // The shared navbar adds inline speculation rules (same-site prefetch); CSP 3 allows them with their own
         // keyword, not a hash (11-03: every guest's direct /broadcast load reported one).

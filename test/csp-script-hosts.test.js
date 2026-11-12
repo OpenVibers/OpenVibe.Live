@@ -2,9 +2,9 @@
 // Every script a page adds from another host is allowed by Live's Content Security Policy, both the enforced one
 // (server/index.js helmet scriptSrc) and the report-only one (server/web/assets.js cspReportOnly).
 //
-// 11-12: the go-live page loads OpenVibe.Cam's camera kit (public/js/broadcast-workspace.js, cam-kit.js with an
-// integrity hash), but script-src never named https://openvibe.cam, so every browser refused it and "Turn on camera"
-// answered "Could not load camera controls" from 11-09 until this test.
+// 11-12: the go-live page loaded OpenVibe.Cam's camera kit while script-src never named https://openvibe.cam, so every
+// browser refused it and "Turn on camera" answered "Could not load camera controls" from 11-09. (Since 11-12 the
+// camera is Live's own, public/js/live-capture.js, and no page loads a script from openvibe.cam.)
 //   node test/csp-script-hosts.test.js
 const assert = require('assert');
 const fs = require('fs');
@@ -41,12 +41,12 @@ for (const f of files) {
         hosts.set(m[1], path.relative(root, f));
     }
 }
-assert.ok(hosts.has('https://openvibe.cam'), 'the scan finds the camera kit (or the test no longer reads the page)');
+assert.ok(hosts.has('https://cdn.jsdelivr.net'), 'the scan finds a known third-party script (pastes.js), so it reads the pages');
+assert.ok(!hosts.has('https://openvibe.cam'), 'no page loads a script from OpenVibe.Cam: the camera is Live\'s own');
 for (const [host, file] of hosts) {
     const bare = host.replace(/^https:\/\//, '');   // a source may be written with or without its scheme
     assert.ok(scriptSrc.includes(`"${host}"`) || scriptSrc.includes(`"${bare}"`), `${file} loads a script from ${host}: script-src must allow it`);
     assert.ok(reportOnly.split(' ').some((x) => x === host || x === bare), `${file} loads a script from ${host}: the report-only script-src-elem must allow it`);
 }
-// The camera kit adds its own stylesheet from the same host.
-assert.ok(styleSrc.includes('"https://openvibe.cam"'), 'style-src allows the camera kit\'s stylesheet');
+assert.ok(!scriptSrc.includes('openvibe.cam') && !styleSrc.includes('openvibe.cam'), 'and the policy no longer lets one');
 console.log(`csp script hosts: ${hosts.size} third-party script host(s) allowed`);
