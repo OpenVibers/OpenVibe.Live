@@ -684,6 +684,8 @@ router.get('/:id', optionalAuth, async (req, res) => {
         } catch { /* */ }
 
         vod.comment_count = comments;
+        // The one view store (Media, POST /api/v1/views): views and engaged viewers for this recording page.
+        try { vod.counts = (await media.viewCounts([{ service: 'media', kind: 'vod', id: String(vod.id) }]))[`media:vod:${vod.id}`] || null; } catch { vod.counts = null; }
         res.json({ vod, clips });
     } catch {
         res.status(500).json({ error: 'Failed to get VOD' });

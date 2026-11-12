@@ -98,6 +98,26 @@ function _qs(query) {
 }
 
 /**
+ * The one view store's numbers for a batch of refs ({ service, kind, id }), from Media's public
+ * GET /api/v1/views/counts. No token needed: the counters are public. An unreachable Media answers {} (a card
+ * without a view count), never an error: a page must still render.
+ * → { "media:vod:12": { views, engaged, previews, preview_share, peak_concurrent }, … }
+ */
+async function viewCounts(refs, { timeoutMs = 4000 } = {}) {
+    const list = (Array.isArray(refs) ? refs : [refs]).filter((r) => r && r.service && r.kind && r.id != null).slice(0, 50);
+    if (!list.length) return {};
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+    try {
+        const url = `${MEDIA_URL}/api/v1/views/counts?refs=${encodeURIComponent(JSON.stringify(list))}`;
+        const res = await fetch(url, { headers: { Accept: 'application/json' }, signal: ctrl.signal });
+        if (!res.ok) return {};
+        const body = await res.json();
+        return body && body.counts && typeof body.counts === 'object' ? body.counts : {};
+    } catch { return {}; } finally { clearTimeout(timer); }
+}
+
+/**
  * Core request helper. `body` may be a plain object (JSON) or FormData (multipart).
  * Returns parsed JSON (or null for empty responses). Throws MediaApiError on !ok.
  */
@@ -477,7 +497,7 @@ module.exports = {
     signedMediaUrl,
     MEDIA_URL, MEDIA_PUBLIC_URL, MEDIA_APP_ID,
     MediaApiError,
-    request, proxy, actingUserFrom, _formData, _authHeader, _reset, MEDIA_AUDIENCE,
+    request, proxy, actingUserFrom, _formData, _authHeader, _reset, MEDIA_AUDIENCE, viewCounts,
     // vods
     createVod, ingestRtmp, ingestRtpStart, ingestRtpStop,
     uploadVodChunk, finalizeVod,

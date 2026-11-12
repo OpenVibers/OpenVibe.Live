@@ -366,6 +366,8 @@ router.get('/:id', optionalAuth, async (req, res) => {
         } catch { /* */ }
 
         clip.comment_count = comments;
+        // The one view store (Media, GET /api/v1/views/counts): views and engaged viewers for this clip page.
+        try { clip.counts = (await media.viewCounts([{ service: 'media', kind: 'clip', id: String(clip.id) }]))[`media:clip:${clip.id}`] || null; } catch { clip.counts = null; }
         clip.can_delete = await canActorDeleteClip(req.user, clip);
         clip.can_edit = await canActorModerateClip(req.user, clip);
 
