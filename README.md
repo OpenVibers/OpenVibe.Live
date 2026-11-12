@@ -82,7 +82,7 @@ The media subsystem lives in **OpenVibe.Media**:
 
 ## Does not own
 
-- **Identity, sessions, follows, blocks, notifications, OpenCoins**: OpenVibe.Network. Live verifies its RS256 tokens offline and follows `network.user.*`, `network.follow.*` and deletion, export and merge events.
+- **Identity, sessions, follows, blocks, notifications, OpenCoins**: OpenVibe.Network. Live verifies its RS256 tokens offline and follows `network.user.*`, `network.follow.*`, deletion and export events.
 - **Chat, its messages and every chat table**: OpenVibe.Chat (since 2026-09-23). Live keeps no copy: reads and writes go through `server/chat/chat-reads.js` and `chat-delivery.js`, and the twelve tables it once held do not exist on PostgreSQL (`migrations/0002_live.sql` leaves them out; SQLite-era migration 007 dropped them).
 - **Recordings, clips, thumbnails, files**: OpenVibe.Media; their watch pages are OpenVibe.Video's. The local `vods`/`clips`/`pastes` tables are frozen (`test/frozen-tables.test.js`).
 - **Pastes and comments**: OpenVibe.Community.
@@ -182,7 +182,7 @@ Minimum `.env`: `BASE_URL`, `JWT_SECRET`, `OV_NETWORK_URL`, `OV_NETWORK_INTERNAL
 - [docs/restream-branding.md](docs/restream-branding.md) — branding guide for restream channels.
 
 <!-- versions:start -->
-- openvibe-contracts: v0.406.0
+- openvibe-contracts: v0.408.0
 - openvibe-sdk: v0.150.0
-- openvibe-shared: v4.209.0
+- openvibe-shared: v4.211.0
 <!-- versions:end -->

@@ -1392,6 +1392,8 @@ function showPage(page) {
         if (link) link.classList.add('active');
     }
     if (window.LiveNav) window.LiveNav.setActive(navPage || null);
+    // The wallet pill's channel-points context belongs to a channel page (Shared 4.212.0): no channel, no streamer.
+    if (window.LiveNav && page !== 'channel') window.LiveNav.setStreamer(null);
     updateNavHeroTransparency();
 }
 
