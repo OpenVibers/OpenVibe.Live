@@ -146,6 +146,8 @@ const whipHandler = require('./streaming/whip-handler');
 
 // ── Express App ──────────────────────────────────────────────
 const app = express();
+// Times leave with their zone (openvibe.design rule 148): the SQLite-era text columns are UTC.
+app.use(require('./iso-times').isoJsonTimes);
 // GET /openapi.json (SEO-3): this service's public API as OpenAPI 3.1, generated from the contracts
 // (openvibe-contracts); the operations they mark internal-only are left out.
 app.get('/openapi.json', (_req, res) => {
