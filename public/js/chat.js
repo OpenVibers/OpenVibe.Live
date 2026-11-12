@@ -3043,7 +3043,12 @@ function renderDeployCard(data, opts = {}) {
     if (!container) return;
     _deployCss();
     const seen = new Set();
-    const commits = (Array.isArray(data.commits) ? data.commits : []).filter(c => c && c.subject && !seen.has(c.hash || c.subject) && seen.add(c.hash || c.subject));
+    // What changed for the people in chat: a commit that only touched the docs (README, CHANGELOG, docs/) is not news
+    // to a viewer, and "(#843)" is our number, not theirs (the 11-12 review: "README: the event list no longer includes
+    // merge events (#841)" was in a channel's chat).
+    const DOCS_ONLY = /^(readme|changelog|docs?|agents(\.md)?|contributing)\b\s*[:\-]/i;
+    const commits = (Array.isArray(data.commits) ? data.commits : []).filter(c => c && c.subject && !DOCS_ONLY.test(c.subject) && !seen.has(c.hash || c.subject) && seen.add(c.hash || c.subject))
+        .map(c => ({ ...c, subject: String(c.subject).replace(/\s*\(#\d+\)\s*$/, '') }));
     if (!commits.length) return;
     const fresh = new Set(data.fresh || []);
     const first = _parseMsgTime(data.first_at) || new Date(), last = _parseMsgTime(data.updated_at) || first;
