@@ -75,6 +75,7 @@ async function deleteEpisode(streamId, user) {
     await db.run("DELETE FROM rundown_reactions WHERE item_type = 'episode' AND item_id = ?", [id]);
     if (segIds.length) await db.run('DELETE FROM rundown_segments WHERE id = ANY(?)', [segIds]);
     await db.run('DELETE FROM rundown_episodes WHERE stream_id = ?', [id]);
+    await db.run('DELETE FROM rundown_pictures WHERE stream_id = ?', [id]);
     await recountTopics(segs.map((s) => s.topic_id).filter(Boolean));
     await forgetShare(id);
     await markDeleted(id, user.id);
@@ -91,6 +92,7 @@ async function deleteAll(user, { keepOut = false } = {}) {
     if (epIds.length) await db.run("DELETE FROM rundown_reactions WHERE item_type = 'episode' AND item_id = ANY(?)", [epIds]);
     if (segIds.length) await db.run('DELETE FROM rundown_segments WHERE id = ANY(?)', [segIds]);
     if (epIds.length) await db.run('DELETE FROM rundown_episodes WHERE stream_id = ANY(?)', [epIds]);
+    if (epIds.length) await db.run('DELETE FROM rundown_pictures WHERE stream_id = ANY(?)', [epIds]);
     await recountTopics(segs.map((s) => s.topic_id).filter(Boolean));
     for (const id of epIds) { await forgetShare(id); await markDeleted(id, user.id); }
     // A take without an episode (a stream still live) is a write-up too: the desk must not make it again.

@@ -187,6 +187,7 @@ async function episodesOut(rows, voter) {
             type: 'episode', stream_id: Number(r.stream_id), title: r.title, logline: r.logline || null, recap: r.recap || null,
             chapters: parseJson(r.chapters_json, []).map((c) => ({ sec: Math.max(0, Math.floor(Number(c.sec) || 0)), title: c.title, segment_id: c.segment_id ? Number(c.segment_id) : null })),
             user: ppl.get(Number(r.user_id)) || null, vod_id: r.vod_id ? Number(r.vod_id) : null, minutes: r.minutes == null ? null : Number(r.minutes),
+            picture_url: r.picture_url || null,
             aired_at: r.aired_at, topics: byStream.get(Number(r.stream_id)) || [],
             reactions: rx.counts.get(Number(r.stream_id)) || {}, my_reaction: rx.mine.get(Number(r.stream_id)) || null,
             audience: a.audience || 'public', audience_chip: a.chip || null,
@@ -197,7 +198,7 @@ async function episodesOut(rows, voter) {
 
 // The columns are qualified: the audience joins bring a second table with the same names.
 const SEGMENT_COLS = 's.id, s.stream_id, s.user_id, s.topic_id, s.start_sec, s.title, s.what, s.take, s.quip, s.score, s.quotes_json, s.mentions, s.vod_id, s.said_at';
-const EPISODE_COLS = 'r.stream_id, r.user_id, r.title, r.logline, r.recap, r.chapters_json, r.vod_id, r.minutes, r.aired_at';
+const EPISODE_COLS = 'r.stream_id, r.user_id, r.title, r.logline, r.recap, r.chapters_json, r.vod_id, r.minutes, r.aired_at, (SELECT p.media_url FROM rundown_pictures p WHERE p.stream_id = r.stream_id AND p.status = \'done\') AS picture_url';
 
 async function onAir() {
     const rows = await db.all(`SELECT s.id AS stream_id, s.user_id, s.title AS stream_title, s.is_nsfw, s.thumbnail_url,
@@ -276,7 +277,7 @@ async function streamsFeed({ before = null, limit = STREAMS_PAGE, viewer = null,
     for (const t of await segmentsOut(chosen, v.key)) { const l = takes.get(t.stream_id) || []; l.push(t); takes.set(t.stream_id, l); }
     const eps = new Map((await episodesOut(await db.all(`SELECT ${EPISODE_COLS} FROM rundown_episodes r ${AUDIENCE_JOINS('r')}
         WHERE r.status = 'live' AND r.stream_id = ANY(@ids) AND ${VISIBLE('r')}`, { ids, viewer: v.userId }), v.key))
-        .map((e) => [e.stream_id, { title: e.title, logline: e.logline, minutes: e.minutes, aired_at: e.aired_at, topics: e.topics, reactions: e.reactions, my_reaction: e.my_reaction, audience: e.audience, audience_chip: e.audience_chip }]));
+        .map((e) => [e.stream_id, { title: e.title, logline: e.logline, minutes: e.minutes, aired_at: e.aired_at, picture_url: e.picture_url, topics: e.topics, reactions: e.reactions, my_reaction: e.my_reaction, audience: e.audience, audience_chip: e.audience_chip }]));
     const streams = new Map((await db.all(`SELECT s.id, s.user_id, s.title, s.is_live, s.started_at, s.ended_at, s.duration_seconds,
             s.is_nsfw, s.thumbnail_url, COALESCE(c.force_nsfw, 0) AS channel_force_nsfw
         FROM streams s LEFT JOIN channels c ON c.user_id = s.user_id WHERE s.id = ANY(@ids)`, { ids })).map((s) => [Number(s.id), s]));
