@@ -371,6 +371,7 @@ async function writeEpisode(stream, user) {
         // Read again (after a desk fix) and nothing was kept: the old write-up goes too (one staff took down stays down).
         await db.run("DELETE FROM rundown_reactions WHERE item_type = 'episode' AND item_id = ? AND EXISTS (SELECT 1 FROM rundown_episodes WHERE stream_id = ? AND status = 'live')", [stream.id, stream.id]);
         await db.run("DELETE FROM rundown_episodes WHERE stream_id = ? AND status = 'live'", [stream.id]);
+        await db.run('DELETE FROM rundown_pictures WHERE stream_id = ?', [stream.id]);
         await setProgress(stream.id, stream.read_to_sec, 1);
         return { called: false };
     }
@@ -396,6 +397,9 @@ async function writeEpisode(stream, user) {
     [stream.id, user.id, title, clean(out.logline, 220), recap ? recap.replace(/ ¶ /g, '\n\n') : null, JSON.stringify(chapters), vod, minutes, stream.started_at || sqlTime(Date.now())]);
     await setProgress(stream.id, stream.read_to_sec, 1);
     await ensureShare(stream.id, user.id);
+    // The episode's own picture: one pending row from these words; the job (pictures.js) makes it due-based.
+    try { await require('./pictures').ensure(stream, user, { title, logline: out.logline, recap }, [...topics.values()]); }
+    catch (e) { console.warn('[Rundown] picture not queued:', e.message); }
     if (!rewrite) await announce(stream, user, title).catch(() => {});   // written again (a re-read): announced once already
     return { called: true, episode: true };
 }

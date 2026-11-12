@@ -45,6 +45,41 @@ Speech-to-text hears a stream's whole audio track. On 2026-10-18 the Arena's "qu
 - **Opting out.** A streamer can keep themselves out ("Keep me out of The Rundown" on their page, `PUT /api/rundown/opt-out`; the Arena's opt-outs carry over). The desk stops reading their streams, and what was written about them is set aside (status `out`). Coming back restores it, never anything staff took down.
 - **Staff** take an item down with `POST /api/rundown/hide {type, id}` (segment, episode or topic).
 
+## Pictures
+
+Every episode gets one picture of its own: a funny editorial illustration of what was talked about, made from the
+episode's title, topics, takes and recap, and stored in OpenVibe.Media at 1200×630. It is the Rundown's card in the
+feed; until it exists (or when it is refused) the stream's own thumbnail is the fallback.
+
+- **The words decide first.** The episode's text goes through `server/ai/explicit.js` before any prompt leaves Live. A
+  `sex_acts` or `minor_sexual` text, and any text that mentions a minor, is **refused**: no picture is requested, no
+  prompt is sent, and the row says why. The prompt itself also forbids a real person's likeness, text/letters/logos,
+  sexual content, minors, gore, drugs and firearms; it asks for symbolic, cartoonish objects rather than faces.
+- **One per episode.** `rundown_pictures` (migration `0042`) has the stream id as its key. The desk queues a row when
+  it writes an episode; a second write never makes a second picture, and an episode deleted with its write-up takes
+  its row with it.
+- **Due-based, not a loop.** `server/rundown/pictures.js` runs every minute and claims at most one due row. A network
+  failure waits 15 minutes, then 30, 60, 120 and is final after four attempts; the same `Idempotency-Key` is reused
+  while a picture is retried, so a storage failure never pays the provider twice. A provider's safety refusal is
+  final at once. A worker that dies after claiming a row releases it after five minutes.
+- **The month's cap.** `rundown_picture_monthly_cap_usd` is checked before each request against the USD that finished
+  pictures cost this UTC month; a cap that is reached leaves the row pending until the next month. The cap is also
+  sent as the run's ceiling, so the provider cannot be asked for more than is left.
+- **AI and Media.** The image is asked for through OpenVibe.AI's Exchange-compatible `POST /v1/images/generations`
+  (model, size, `Idempotency-Key`), which routes the model the owner chose. When that route is not configured on the
+  network yet, the job falls back once to the ordinary `ai.image` workflow; a later `AI_IMAGE_MODEL` turns it on
+  without a Live deploy. The answer is resized and cropped to 1200×630 and uploaded through Live's Media client as the
+  streamer's file. `GET /api/rundown/streams` carries the result as `episode.picture_url` (null until it exists).
+
+The owner's controls are in the admin panel (OpenVibe.Network `/admin#ai`, "The Rundown's episode pictures") and in
+Live's API, owner-only:
+
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/api/admin/rundown` | `settings`, this month's `spend` (`usd`, `cap_usd`, `remaining_usd`, `pictures`) and the recent pictures with their status, cost and error |
+| PUT | `/api/admin/rundown/settings` | `{settings: {enabled, model, size, style, monthly_cap_usd}}`; validated before one configuration revision is written; an empty cap means no cap |
+| POST | `/api/admin/rundown/episodes/:streamId/remake` | "Remake this episode's picture": a fresh attempt (a refusal is re-judged), started at once in the background |
+
 ## Who sees it
 
 A streamer decides who sees their Rundown with the same Share sheet the rest of the network uses: **Everyone**, **Anyone with the link**, **Specific people**, **Only me** (`server/rundown/visibility.js`, `server/rundown/sharing.js`).
@@ -182,6 +217,7 @@ Migration `0010_rundown.sql`:
 - `rundown_segments`: stream, streamer, topic, seconds, headline, what, take, quip, score, verified quotes, named streamers (`mentions`), VOD, said at.
 - `rundown_episodes`: one per stream, holding the title, logline, recap, chapters, VOD and minutes.
 - `rundown_progress`: how far the desk has read each stream.
+- `rundown_pictures` (migration `0042`): one row per stream: `status` (`pending`, `working`, `done`, `refused`, `failed`), the source text and prompt hash, the model and size, the Media key and URL, `cost_usd`, `attempts`, the idempotency key, `next_attempt_at` and the last error. An episode's picture is its `done` row.
 - `rundown_reactions`: readers' reactions.
 
 Migration `0030_rundown_audiences.sql` (expand only, 2026-11-06) holds what the sharing system does not know:
@@ -203,9 +239,14 @@ When an episode is written within 6 hours of its stream ending, it is announced 
 | Key | Default | Effect |
 |---|---|---|
 | `rundown_enabled` | `true` | `false` stops the desk (pages keep what was written) |
+| `rundown_picture_enabled` | `true` | `false` stops new episode pictures (the thumbnail stays the fallback) |
+| `rundown_picture_model` | `openai/gpt-image-1-mini` | the Exchange model id the picture is asked for |
+| `rundown_picture_size` | `1536x1024` | the generation size; the stored picture is cropped to 1200×630 |
+| `rundown_picture_style` | a funny, warm editorial illustration: thick ink lines, flat colour, a little surreal, magazine cover energy | the style line in the prompt |
+| `rundown_picture_monthly_cap_usd` | `5` | the month's cap in US dollars; empty means no cap |
 | `ai_timeline_enabled` | `false` | the speech-to-text the desk reads: must be on |
 
-Tests: `test/rundown.test.js` (filters, the desk on a stubbed AI, topics, episodes, opt-outs, the API and the redirects) and `test/rundown-audiences.test.js` (the four audiences and who may see each, the gathered pages and their counts, a non-public take never reaching the streamer it names, the recording's rule, and deleting). `test/recap-audience.test.js` covers the after-show report's setting.
+Tests: `test/rundown.test.js` (filters, the desk on a stubbed AI, topics, episodes, opt-outs, the API and the redirects) and `test/rundown-pictures.test.js` (the picture request and its recorded answers, the 1200×630 upload, one per episode and the reused idempotency key, explicit and minor refusals, the monthly cap, back-off, and the owner-only settings and remake) and `test/rundown-audiences.test.js` (the four audiences and who may see each, the gathered pages and their counts, a non-public take never reaching the streamer it names, the recording's rule, and deleting). `test/recap-audience.test.js` covers the after-show report's setting.
 
 ## The bar: search and filters
 

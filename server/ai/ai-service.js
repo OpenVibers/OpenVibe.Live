@@ -141,6 +141,56 @@ function ownerRef(ownerUserId) {
 }
 
 /**
+ * One generated picture through the Exchange-compatible image endpoint (the API's own image route):
+ * { prompt, model?, size?, n?, maxCostUsd?, idempotencyKey?, timeoutMs? } → { ok, b64|url, model, cost_usd, run_id }
+ * or { ok:false, status, code, detail, retry_after_seconds }. The endpoint routes the named model and applies the
+ * network's quotas; the Idempotency-Key header makes a retry the same run. It is the same ai.image workflow the
+ * /api/v1/image route runs, so the answer has the same shape.
+ */
+const IMAGE_PATH = ['/v1', 'images', 'generations'].join('/');
+
+async function image(o = {}) {
+    if (!enabled()) return { ok: false, status: 0, code: 'ai.disabled', detail: 'AI is off' };
+    const body = { prompt: String(o.prompt || ''), n: Math.max(1, Math.min(4, Number(o.n) || 1)), response_format: 'b64_json' };
+    if (o.model) body.model = String(o.model).slice(0, 200);
+    if (o.size) body.size = String(o.size);
+    if (o.maxCostUsd != null && Number.isFinite(Number(o.maxCostUsd)) && Number(o.maxCostUsd) >= 0) body.max_cost_usd = Number(o.maxCostUsd);
+    const idem = o.idempotencyKey ? String(o.idempotencyKey).slice(0, 200) : '';
+    const once = async (retried = false) => {
+        let headers;
+        try { headers = await principal.serviceHeaders(AUDIENCE); } catch (e) { warn(`no service token for ${AUDIENCE}: ${e.message}`); return { ok: false, status: 0, code: 'ai.no_token', detail: e.message }; }
+        let res;
+        try {
+            res = await fetch(`${baseUrl()}${IMAGE_PATH}`, {
+                method: 'POST',
+                headers: { ...headers, Accept: 'application/json', 'Content-Type': 'application/json', ...(idem ? { 'Idempotency-Key': idem } : {}) },
+                body: JSON.stringify(body),
+                signal: AbortSignal.timeout(Math.max(10_000, Math.min(300_000, Number(o.timeoutMs) || 150000))),
+            });
+        } catch (e) { return { ok: false, status: 0, code: 'ai.unreachable', detail: e.message }; }
+        if (res.status === 401 && !retried) { principal.invalidate(AUDIENCE); return await once(true); }
+        const json = await res.json().catch(() => null);
+        if (!res.ok || !json || !Array.isArray(json.data)) {
+            const err = (json && (json.error && typeof json.error === 'object' ? json.error : json)) || {};
+            return {
+                ok: false, status: res.status,
+                code: String(err.code || (json && json.code) || 'ai.image_failed').slice(0, 80),
+                detail: String(err.message || err.detail || `HTTP ${res.status}`).slice(0, 400),
+                retry_after_seconds: Number(res.headers.get('retry-after')) || null,
+            };
+        }
+        const img = json.data.find((d) => d && (d.b64_json || d.url));
+        if (!img) return { ok: false, status: 502, code: 'output.invalid', detail: 'no image was returned' };
+        return {
+            ok: true, b64: img.b64_json || null, url: img.url || null, model: json.model || null,
+            cost_usd: Number(json.x_openvibe && json.x_openvibe.cost_usd) || 0,
+            run_id: (json.x_openvibe && json.x_openvibe.run_id) || json.id || null,
+        };
+    };
+    return await once();
+}
+
+/**
  * An image for a workflow input. OpenVibe.Media URLs stay URLs (the service fetches only
  * allow-listed OpenVibe hosts); files, buffers and any other URL are downscaled here, as before,
  * and sent inline.
@@ -197,4 +247,4 @@ async function complete(o = {}, { toVisionJpeg } = {}) {
     };
 }
 
-module.exports = { enabled, run, structured, complete, usable, meter, imageInput, ownerRef, workflowFor, setRecorder, lastProblem, KIND_TO_WORKFLOW, AUDIENCE };
+module.exports = { enabled, run, structured, complete, image, usable, meter, imageInput, ownerRef, workflowFor, setRecorder, lastProblem, KIND_TO_WORKFLOW, AUDIENCE };
