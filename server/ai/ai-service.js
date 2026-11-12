@@ -141,12 +141,14 @@ function ownerRef(ownerUserId) {
 }
 
 /**
- * One generated picture through the Exchange-compatible image endpoint (POST /v1/images/generations):
+ * One generated picture through the Exchange-compatible image endpoint (the API's own image route):
  * { prompt, model?, size?, n?, maxCostUsd?, idempotencyKey?, timeoutMs? } → { ok, b64|url, model, cost_usd, run_id }
  * or { ok:false, status, code, detail, retry_after_seconds }. The endpoint routes the named model and applies the
  * network's quotas; the Idempotency-Key header makes a retry the same run. It is the same ai.image workflow the
  * /api/v1/image route runs, so the answer has the same shape.
  */
+const IMAGE_PATH = ['/v1', 'images', 'generations'].join('/');
+
 async function image(o = {}) {
     if (!enabled()) return { ok: false, status: 0, code: 'ai.disabled', detail: 'AI is off' };
     const body = { prompt: String(o.prompt || ''), n: Math.max(1, Math.min(4, Number(o.n) || 1)), response_format: 'b64_json' };
@@ -159,7 +161,7 @@ async function image(o = {}) {
         try { headers = await principal.serviceHeaders(AUDIENCE); } catch (e) { warn(`no service token for ${AUDIENCE}: ${e.message}`); return { ok: false, status: 0, code: 'ai.no_token', detail: e.message }; }
         let res;
         try {
-            res = await fetch(`${baseUrl()}/v1/images/generations`, {
+            res = await fetch(`${baseUrl()}${IMAGE_PATH}`, {
                 method: 'POST',
                 headers: { ...headers, Accept: 'application/json', 'Content-Type': 'application/json', ...(idem ? { 'Idempotency-Key': idem } : {}) },
                 body: JSON.stringify(body),

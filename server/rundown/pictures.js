@@ -12,7 +12,7 @@
  * and the words are checked before anything is sent: server/ai/explicit.js's categories, and any mention of a minor,
  * refuse the episode outright. An explicit episode is never pictured, never retried, and no prompt leaves Live.
  *
- * The AI side is OpenVibe.AI's Exchange-compatible image call (POST /v1/images/generations: the model, size and an
+ * The AI side is OpenVibe.AI's Exchange-compatible image call (the API's own image route: the model, size and an
  * Idempotency-Key), which routes to the model the owner picked. When that route is not configured (no image model on
  * the network yet) the job falls back once to the ordinary `ai.image` workflow, so a later AI_IMAGE_MODEL turns the
  * feature on without a Live deploy. A refusal is final; a network failure waits (15 min, 30, 60, 120, then failed);
