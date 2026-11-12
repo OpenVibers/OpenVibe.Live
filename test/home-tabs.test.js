@@ -26,7 +26,8 @@ const { parseHTML } = loadLinkedom();
 const assets = require('../server/web/assets');
 try { assets.setSharedDir(require('openvibe-shared/files').dir); } catch { /* */ }
 const html = assets.renderRoute(assets.document('index.html').html, '/');
-const home = html.slice(html.indexOf('<section id="page-home"'), html.indexOf('</section>', html.indexOf('<section id="page-home"')));
+// The home page runs to the next page's shell (its phone tabs are <section>s of their own, so not to the first </section>).
+const home = html.slice(html.indexOf('<section id="page-home"'), html.indexOf('<section id="page-', html.indexOf('<section id="page-home"') + 10));
 const css = fs.readFileSync(path.join(__dirname, '../public/css/features/home.css'), 'utf8');
 const js = fs.readFileSync(path.join(__dirname, '../public/js/app-home.js'), 'utf8');
 
@@ -137,6 +138,27 @@ check('the OpenVibe network is its own section: every site a real link, by group
     assert.ok(/data-ovnet-switcher><span class="ovnet-orb" aria-hidden="true"><svg class="ovmb"[^>]*><rect class="ovmb-bar"/.test(net) && net.includes('<b>Every site is in the menu</b>') && !/one tap away in the/.test(net), 'the line about the menu carries the menu button as the bar draws it now, and says where it is');
 });
 
+check('on a phone the rest of the home is three parts as tabs (For you, Catch up, OpenVibe), every one in the HTML', () => {
+    // The owner, 2026-11-11: "consolidate these into tabs, self-contained tabs, so the page isn't so freaking huge … at
+    // least on mobile". openvibe-shared ov-parts.css draws it (radios and :has(), no script); wide screens stack them.
+    const start = home.indexOf('<div class="ov-parts ov-parts--front home-parts" data-parts="3">');
+    assert.ok(start > home.indexOf('id="stream-grid-live"'), 'below Live Now');
+    const parts = [...home.slice(start).matchAll(/<section class="ov-part" data-part="([a-z]+)"/g)].map((m) => m[1]);
+    assert.deepStrictEqual(parts, ['foryou', 'catchup', 'openvibe']);
+    for (const [id, label] of [['foryou', 'For you'], ['catchup', 'Catch up'], ['openvibe', 'OpenVibe']]) {
+        assert.ok(home.includes(`<input type="radio" class="ov-parts-r" name="ovp-home" id="ovp-home-${id}" value="${id}"`), `${id}: its radio`);
+        assert.ok(home.includes(`<label for="ovp-home-${id}">${label}</label>`), `${id}: its tab`);
+    }
+    const at = (needle) => home.indexOf(needle);
+    const sec = (id) => at(`data-part="${id}"`);
+    assert.ok(sec('foryou') < at('id="home-around"') && at('id="home-around"') < sec('catchup'), 'For you holds Around OpenVibe');
+    assert.ok(sec('catchup') < at('id="home-catchup"') && at('id="home-catchup"') < sec('openvibe'), 'Catch up holds the rails');
+    assert.ok(sec('openvibe') < at('id="home-intro"') && at('id="home-intro"') < at('id="home-network"'), 'OpenVibe holds New here? and the network');
+    const features = JSON.parse(fs.readFileSync(path.join(__dirname, '../public/features.json'), 'utf8'));
+    assert.ok(JSON.stringify(features).includes('/shared/ov-parts.css'), 'the home links the tabs\' stylesheet (blocking, so nothing jumps)');
+    assert.ok(/function openHomePartFor\(hash\)/.test(js) && /closest\('\.ov-part'\)/.test(js), 'a link into a closed tab opens it; a returning reader\'s New here? stays inside its tab');
+});
+
 check('the network section is built by its script, between its markers, and nothing in it is a tab', () => {
     const frag = fs.readFileSync(path.join(__dirname, '../public/fragments/home.html'), 'utf8');
     assert.strictEqual(frag.split('<!--ov:network-->').length, 2, 'one start marker');
@@ -198,16 +220,17 @@ check('the tour still loads when its mount nears the viewport', () => {
         assert.notStrictEqual(block.parentElement, p.el('home-changelog-wrapper').parentElement, 'and before the changelog');
     });
 
-    await check('after enough visits the whole block moves to the end of the page, and still works there', async () => {
+    await check('after enough visits the whole block moves to the end of its OpenVibe tab, and still works there', async () => {
         const p = openHome({ views: 18 });
         p.run('initHomeNetwork(); demoteHomeIntroSections();');
         await tick();
         const block = p.el('home-intro');
         assert.strictEqual(block.dataset.ovDemoted, '1', 'it was demoted');
         assert.ok(block.classList.contains('home-intro-demoted'), 'and marked as such');
-        const container = p.el('home-changelog-wrapper').parentElement;
-        assert.strictEqual(block.parentElement, container, 'it moved into the changelog\'s container');
-        assert.strictEqual(container.lastElementChild, block, 'and to the end of it');
+        const part = block.parentElement;
+        assert.strictEqual(part && part.getAttribute('data-part'), 'openvibe', 'it stays inside its phone tab, never out of it');
+        assert.strictEqual(part.lastElementChild, block, 'at the end of it, after the network');
+        assert.ok(part.contains(p.el('home-network')), 'the network stays in the same tab');
         for (const id of ['home-tour-mount', 'home-cta-banner']) {
             assert.ok(block.contains(p.el(id)), `${id} travelled with it`);
         }

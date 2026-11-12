@@ -1213,8 +1213,26 @@ function demoteHomeIntroSections() {
     if (!last) return;
     block.dataset.ovDemoted = '1';
     block.classList.add('home-intro-demoted');
-    try { last.appendChild(block); } catch { /* */ }
+    // On a phone the intro is in the OpenVibe tab (home-parts): it moves to the end of its own part, never out of it.
+    const part = block.closest('.ov-part');
+    try { (part || last).appendChild(block); } catch { /* */ }
 }
+
+/* A link to something inside a phone tab that is not open (#home-network, #ovnet-g-streams…) opens that tab first, so
+ * the jump lands on what it names. Wide screens stack the parts and need nothing. */
+function openHomePartFor(hash) {
+    let el = null;
+    try { el = hash && hash.length > 1 ? document.getElementById(decodeURIComponent(hash.slice(1))) : null; } catch { el = null; }
+    const part = el && el.closest('.home-parts > .ov-part');
+    if (!part) return;
+    const radio = document.getElementById(`ovp-home-${part.dataset.part}`);
+    if (radio && !radio.checked) { radio.checked = true; requestAnimationFrame(() => { try { el.scrollIntoView({ block: 'start' }); } catch { /* */ } }); }
+}
+window.addEventListener('hashchange', () => openHomePartFor(location.hash));
+document.addEventListener('click', (e) => {
+    const a = e.target && e.target.closest && e.target.closest('a[href^="#"]');
+    if (a) openHomePartFor(a.getAttribute('href'));
+}, true);
 
 /* ── The OpenVibe network (2026-11-07 redesign) ──────────────────────────────────────────────────────────────
  * The section's tiles are in the page already (scripts/build-network-section.js, from OpenVibe.Network's frame), so
@@ -1350,6 +1368,7 @@ function initHomeNetwork() {
 async function loadHome() {
     initHomeNetwork();    // the OpenVibe network: every site, alive (no tabs: everything shows)
     demoteHomeIntroSections();
+    openHomePartFor(location.hash);
     void loadHomeChangelog();
     _initHomeAbout();
     updateNavHeroTransparency();  // transparent nav over the hero at the top

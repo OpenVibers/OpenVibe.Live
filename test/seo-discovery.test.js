@@ -83,7 +83,7 @@ async function check(name, fn) {
             assert.strictEqual(current.headers['cdn-cache-control'], 'public, max-age=31536000, immutable');
             const wrong = await get(`/shared/shipped.js?v=${v === '0123456789ab' ? 'ba9876543210' : '0123456789ab'}`);
             assert.strictEqual(wrong.status, 200);
-            assert.strictEqual(wrong.headers['cache-control'], 'public, max-age=300, stale-while-revalidate=86400');
+            assert.strictEqual(wrong.headers['cache-control'], 'public, max-age=300, stale-while-revalidate=300');
             assert.strictEqual(wrong.headers['cdn-cache-control'], undefined);
         });
         code = failures ? 1 : 0;

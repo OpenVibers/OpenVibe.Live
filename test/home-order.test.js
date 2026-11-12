@@ -12,7 +12,8 @@ const assert = require('assert');
 const assets = require('../server/web/assets');
 try { assets.setSharedDir(require('openvibe-shared/files').dir); } catch { /* */ }
 const html = assets.renderRoute(assets.document('index.html').html, '/');
-const home = html.slice(html.indexOf('<section id="page-home"'), html.indexOf('</section>', html.indexOf('<section id="page-home"')));
+// The home page runs to the next page's shell (its phone tabs are <section>s of their own, so not to the first </section>).
+const home = html.slice(html.indexOf('<section id="page-home"'), html.indexOf('<section id="page-', html.indexOf('<section id="page-home"') + 10));
 const at = (needle) => {
     const i = home.indexOf(needle);
     assert.ok(i >= 0, `${needle} is on the home page`);
