@@ -131,11 +131,16 @@ function _syncCameraSelectionUI(cameraId, { persist = true } = {}) {
             if (facing) localStorage.setItem(`bc-last-camera-${facing}`, normalized);
         } catch { /* */ }
     }
+    const goLiveSelect = document.getElementById('bc-create-camera');
+    const changed = !!goLiveSelect && goLiveSelect.value !== normalized;
     _setSelectValueIfPresent(document.getElementById('bc-forceCamera'), normalized);
-    _setSelectValueIfPresent(document.getElementById('bc-create-camera'), normalized);
+    _setSelectValueIfPresent(goLiveSelect, normalized);
     _setSelectValueIfPresent(document.getElementById('bc-screen-camera'), normalized);
     broadcastState.settings.forceCamera = normalized;
     _bcRenderCameraChooser();
+    // Tell the page, as a person's own pick from the list does: the camera settings (its side, its lens) are saved and
+    // the preview switches now, not at the next check (Back used to keep the front camera's side, 11-12).
+    if (changed && goLiveSelect.value === normalized) goLiveSelect.dispatchEvent(new Event('change', { bubbles: true }));
     if (persist) {
         saveBroadcastSettings();
         try { localStorage.setItem('bc-last-camera', normalized); } catch {}
