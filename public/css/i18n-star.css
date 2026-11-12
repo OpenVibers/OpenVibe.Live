@@ -111,15 +111,7 @@
 
 html[data-ov-motion=off] .chat-translation,html[data-ov-motion=off] .ch-caption,html[data-ov-motion=off] .star-card-border{opacity: 1;transform: none}
 
-/* ── Chat: "translate to my language" hover button (sits left of the reply button) ── */
-.chat-msg-hoverable .chat-translate-btn {
-    display: none; position: absolute; right: 30px; top: 2px;
-    padding: 2px 6px; font-size: 0.65rem; line-height: 1; z-index: 5; cursor: pointer;
-    background: var(--bg-card, #1e1e2e); border: 1px solid var(--border, #333); border-radius: var(--radius-sm, 4px);
-    color: var(--text-muted, #888); transition: color var(--ov-dur-2, 0.15s), border-color var(--ov-dur-2, 0.15s);
-}
-.chat-msg-hoverable:hover .chat-translate-btn { display: inline-flex; }
-.chat-msg-hoverable .chat-translate-btn:hover { color: var(--accent-light); border-color: var(--accent); }
+/* "Translate to my language" is one of a message's actions: style.css .chat-msg-actions. */
 .chat-translation[hidden] { display: none; }
 
 /* Lite mode (phones / weak GPUs): no blur, no filters, no shadow animations */
