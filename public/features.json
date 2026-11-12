@@ -8,6 +8,8 @@
       ],
       "js": [
         "/js/chat-shared.js",
+        "/shared/ov-composer.js",
+        "/js/composer.js",
         "/js/chat.js"
       ],
       "stubs": [
