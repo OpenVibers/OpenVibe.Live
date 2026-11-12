@@ -15,7 +15,9 @@ assert.ok(start > 0 && end > start, 'the function is there');
 const preflight = new Function(`${src.slice(start, end)}; return _wsPreflight;`)();
 
 const cam = preflight('camera');
-assert.ok(cam.includes('Picture from <b data-pick-for="bc-create-camera">') && cam.includes('Sound from <b data-pick-for="bc-create-audio">'), 'camera: the chosen devices by name');
+assert.ok(cam.includes('Picture from <b data-pick-for="bc-create-camera"') && cam.includes('Sound from <b data-pick-for="bc-create-audio"'), 'camera: the chosen devices by name');
+// Until a device is chosen by name it is "your camera" / "your microphone" (11-12: "Picture from Default" said nothing).
+assert.ok(cam.includes('>your camera</b>') && cam.includes('>your microphone</b>') && !cam.includes('>Default<'), 'never "Default"');
 assert.ok(cam.includes('you can mute, turn the camera off or switch cameras') && cam.includes('Sharing your screen instead means a new stream'), 'what can change once live, and what cannot');
 assert.ok(cam.includes('Works in Chrome, Edge, Firefox and Safari.'), 'the browsers');
 assert.ok(preflight('screen').includes('your browser asks which when you press Go Live'), 'screen: what is captured is picked at the button');
@@ -24,4 +26,5 @@ assert.ok(preflight('camera_only').includes('No sound') && !preflight('camera_on
 assert.ok(src.includes('${_wsPreflight(browserMode)}'), 'it sits in the Go Live section');
 const syncer = fs.readFileSync(path.join(__dirname, '..', 'public', 'js', 'broadcast-devices.js'), 'utf8');
 assert.ok(syncer.includes("document.querySelectorAll('[data-pick-for]')"), 'and _bcSyncPicks keeps every [data-pick-for] current');
+assert.ok(syncer.includes('el.dataset.pickDefault'), 'and keeps "your camera" while the choice is the browser\'s own');
 console.log('golive-preflight: what viewers will get, said before the button');

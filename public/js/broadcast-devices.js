@@ -21,7 +21,7 @@ async function refreshDeviceLists() {
         const audioSelect = document.getElementById('bc-forceAudio');
         if (camSelect) {
             const prev = camSelect.value;
-            camSelect.innerHTML = '<option value="default">Default</option>';
+            camSelect.innerHTML = '<option value="default">Automatic</option>';
             devices.filter(d => d.kind === 'videoinput').forEach(d => {
                 const opt = document.createElement('option');
                 opt.value = d.deviceId;
@@ -88,8 +88,8 @@ async function populateDeviceLists() {
         const camSelect = document.getElementById('bc-forceCamera');
         const audioSelect = document.getElementById('bc-forceAudio');
         if (!camSelect || !audioSelect) return;
-        camSelect.innerHTML = '<option value="default">Default</option>';
-        audioSelect.innerHTML = '<option value="default">Default</option>';
+        camSelect.innerHTML = '<option value="default">Automatic</option>';
+        audioSelect.innerHTML = '<option value="default">Automatic</option>';
         devices.forEach(d => {
             const opt = document.createElement('option');
             opt.value = d.deviceId;
@@ -290,8 +290,69 @@ function _bcSyncPicks() {
     document.querySelectorAll('[data-pick-for]').forEach((el) => {
         const sel = document.getElementById(el.dataset.pickFor);
         const opt = sel && sel.selectedOptions && sel.selectedOptions[0];
-        el.textContent = opt ? opt.textContent : 'Default';
+        // "your camera" (data-pick-default) until a device is chosen by name: "Picture from Default" said nothing.
+        el.textContent = opt && opt.value !== 'default' ? opt.textContent : (el.dataset.pickDefault || (opt ? opt.textContent : 'Automatic'));
     });
+}
+
+/**
+ * What went wrong turning the camera on, in words, and what to tap to fix it (the owner, 11-12: a streamer on a
+ * phone saw "Could not access camera/mic: Could not load camera controls" and "Error: …", and said "I don't
+ * understand"). One box on the card, never a raw error; the button under it says Try again.
+ */
+function _glFixFor(err, mode) {
+    const ua = navigator.userAgent || '';
+    const ios = /iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+    const android = /Android/.test(ua);
+    const firefox = /Firefox|FxiOS/.test(ua);
+    const safari = /Safari/.test(ua) && !/Chrome|CriOS|Chromium|Edg|FxiOS/.test(ua);
+    const inApp = /FBAN|FBAV|Instagram|Line\/|Twitter|Discord|TikTok|musical_ly|Snapchat|GSA\//.test(ua) || /; wv\)/.test(ua);
+    const what = mode === 'mic_only' ? 'microphone' : mode === 'camera_only' ? 'camera' : 'camera and microphone';
+    const name = err && err.name;
+    if (name === 'NoApi' || inApp && name !== 'NotReadableError') {
+        return { title: 'This browser can\'t use your camera here', steps: inApp
+            ? ['You opened this inside another app (like Discord, Instagram or TikTok). Those can\'t share a camera.', `Tap the ⋮ or ⋯ menu and choose "Open in ${ios ? 'Safari' : 'Chrome'}" (or "Open in browser").`, 'Sign in there if asked, then press Turn on camera again.']
+            : ['Open openvibe.live in Chrome, Safari, Edge or Firefox, then press Turn on camera.'] };
+    }
+    if (name === 'NotAllowedError' || name === 'PermissionDeniedError' || name === 'SecurityError') {
+        const steps = ios && safari ? ['Tap "aA" (or the page icon) at the left of the address bar.', 'Tap Website Settings.', `Set Camera${mode === 'camera_only' ? '' : ' and Microphone'} to Allow.`]
+            : ios ? ['Open the iPhone Settings app, find this browser, and turn on Camera and Microphone.', 'Come back here.']
+            : android && !firefox ? ['Tap the icon at the left of the address bar (a lock or two sliders).', 'Tap Permissions (or Site settings).', `Set Camera${mode === 'camera_only' ? '' : ' and Microphone'} to Allow.`]
+            : firefox ? ['Click the camera icon with a line through it, at the left of the address bar.', 'Remove "Blocked temporarily" (the ×).']
+            : safari ? ['Open Safari\'s menu → Settings for openvibe.live.', `Set Camera${mode === 'camera_only' ? '' : ' and Microphone'} to Allow.`]
+            : ['Click the camera icon at the right end of the address bar (or the lock at the left).', `Choose "Always allow" for the ${what}, then Done.`];
+        return { title: `Your browser said no to the ${what}`, steps: [...steps, 'Then press Try again below.'] };
+    }
+    if (name === 'NotReadableError' || name === 'TrackStartError' || name === 'AbortError') {
+        return { title: 'Another app is using your camera', steps: ['Close apps that use the camera, like Zoom, FaceTime, WhatsApp, Instagram or the Camera app (and other tabs with a call).', 'Then press Try again below.'] };
+    }
+    if (name === 'NotFoundError' || name === 'DevicesNotFoundError') {
+        return { title: `No ${what} found`, steps: [mode === 'mic_only' ? 'Plug in a microphone or headset, then press Try again.' : 'Plug in a camera (or open its privacy cover), then press Try again.', 'Or go live with your screen instead: "Use a screen or an app instead" below.'] };
+    }
+    if (name === 'OverconstrainedError') {
+        return { title: 'That camera can\'t start with these settings', steps: ['Press Try again: it starts with simpler settings.', 'Still stuck? Pick another camera in Camera settings.'] };
+    }
+    if (name === 'TimeoutError') {
+        return { title: 'Your browser didn\'t answer', steps: ['Look for the browser\'s question at the top of the screen and tap Allow.', 'Nothing there? Press Try again below.'] };
+    }
+    return { title: 'The camera didn\'t start', steps: ['Press Try again below.', 'Still stuck? Reload this page, or try Chrome or Safari.'] };
+}
+
+function _glShowFix(fix) {
+    const box = document.getElementById('gl-fix');
+    if (!box) return;
+    if (!fix) { box.hidden = true; box.replaceChildren(); return; }
+    const title = document.createElement('p');
+    title.className = 'gl-fix-title';
+    const icon = document.createElement('i');
+    icon.className = 'fa-solid fa-circle-info';
+    icon.setAttribute('aria-hidden', 'true');
+    title.append(icon, document.createTextNode(fix.title));
+    const list = document.createElement('ol');
+    list.className = 'gl-fix-steps';
+    for (const s of fix.steps) { const li = document.createElement('li'); li.textContent = s; list.append(li); }
+    box.replaceChildren(title, list);
+    box.hidden = false;
 }
 
 /**
@@ -485,17 +546,18 @@ async function requestMediaPermissions() {
         btn.disabled = true;
         btn.innerHTML = '<span class="ov-mark" data-state="busy" data-size="16" data-tone="ink" aria-hidden="true"></span> Requesting access...';
     }
-    if (dbg) { dbg.style.display = ''; dbg.textContent = 'Requesting permissions...'; }
+    const permMode = _wsState?.selectedMs?.browser_mode || _wsState?.profile?.browserMode || 'camera';
+    _glShowFix(null);
+    if (dbg) dbg.textContent = 'Requesting permissions...';
 
-    // Feature detection
+    // Feature detection: an in-app browser (Discord, Instagram, TikTok) or a page outside HTTPS has no camera API.
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        const msg = 'Camera/mic API not available — make sure you\'re using HTTPS';
-        console.warn('[Broadcast]', msg);
-        if (dbg) dbg.textContent = msg;
-        toast(msg, 'error');
+        console.warn('[Broadcast] Camera/mic API not available');
+        _glShowFix(_glFixFor({ name: 'NoApi' }, permMode));
         if (btn) { btn.disabled = false; btn.innerHTML = btnOrigText; }
         return;
     }
+    let failed = false;
 
     try {
         let tempStream;
@@ -557,32 +619,18 @@ async function requestMediaPermissions() {
         window._glCameraAllowed = true;
         document.getElementById('gl-preview')?.classList.add('is-allowed');
         _glPreviewSync();
-        toast('Camera & microphone access granted', 'success');
+        toast(permMode === 'mic_only' ? 'Your microphone is on. Press Go Live when you are ready.' : 'Your camera is on. Check how you look, then press Go Live.', 'success');
     } catch (err) {
-        console.warn('[Broadcast] Permission request failed:', err.message, err.name);
-        const errDetail = `${err.name || 'Error'}: ${err.message}`;
-        if (dbg) { dbg.style.display = ''; dbg.textContent = errDetail; }
-        if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-            const hint = document.getElementById('bc-perm-hint-text');
-            if (hint) hint.textContent = /firefox/i.test(navigator.userAgent)
-                ? 'Camera blocked. Select the permission icon beside this address, clear the block, then try again.'
-                : /safari/i.test(navigator.userAgent) && !/chrome/i.test(navigator.userAgent)
-                    ? 'Camera blocked. Open this site’s camera and microphone settings in Safari, allow access, then try again.'
-                    : 'Camera blocked. Select the lock or camera icon beside this address, allow access, then try again.';
-            toast('Camera/mic permission denied — check your browser settings or tap the lock icon in the address bar', 'error');
-        } else if (err.name === 'NotFoundError') {
-            toast('No camera or microphone found on this device', 'error');
-        } else if (err.name === 'NotReadableError') {
-            toast('Camera/mic in use by another app — close other camera/video apps and try again', 'error');
-        } else if (err.name === 'OverconstrainedError') {
-            toast('Camera does not support the requested settings — try a different camera', 'error');
-        } else {
-            toast('Could not access camera/mic: ' + err.message, 'error');
-        }
+        // The details stay in the console for us; the person reads what happened and what to tap (_glFixFor).
+        console.warn('[Broadcast] Permission request failed:', err.name, err.message);
+        if (dbg) dbg.textContent = `${err.name || 'Error'}: ${err.message}`;
+        failed = true;
+        _glShowFix(_glFixFor(err, permMode));
+        document.getElementById('gl-fix')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     } finally {
         if (btn) {
             btn.disabled = false;
-            btn.innerHTML = btnOrigText;
+            btn.innerHTML = failed ? '<i class="fa-solid fa-rotate-right" aria-hidden="true"></i><span id="bc-perm-btn-text">Try again</span>' : btnOrigText;
         }
     }
 }
@@ -591,7 +639,7 @@ function _populateCreateDeviceDropdowns(devices) {
     const camSelect = document.getElementById('bc-create-camera');
     const audioSelect = document.getElementById('bc-create-audio');
     if (camSelect) {
-        camSelect.innerHTML = '<option value="default">Default</option>';
+        camSelect.innerHTML = '<option value="default">Automatic</option>';
         for (const c of _bcCameraChoices(devices)) {
             const opt = document.createElement('option');
             opt.value = c.deviceId;

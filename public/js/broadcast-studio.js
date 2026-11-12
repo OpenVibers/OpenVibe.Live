@@ -917,7 +917,7 @@
                 const onlyMic = (_wsState?.selectedMs?.browser_mode || _wsState?.profile?.browserMode) === 'mic_only';
                 dock.querySelector('.bcs-golive-btn i').className = onlyMic ? 'fa-solid fa-microphone' : 'fa-solid fa-video';
                 dock.querySelector('.bcs-golive-t').textContent = onlyMic ? 'Turn on microphone' : 'Turn on camera';
-                dock.querySelector('.bcs-golive-where').textContent = onlyMic ? 'Microphone off · you choose when to start' : 'Camera off · you choose when to start';
+                dock.querySelector('.bcs-golive-where').textContent = 'Step 1 of 3 · your browser asks, tap Allow';
                 dock.querySelector('.bcs-golive-btn').disabled = false;
             } else if (mode === 'resume') {
                 const s = liveMine[0];
