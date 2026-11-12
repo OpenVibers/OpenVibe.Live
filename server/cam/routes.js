@@ -21,8 +21,27 @@ const router = express.Router();
 const SLOT_RE = /^@?[A-Za-z0-9][A-Za-z0-9_.-]{0,79}$/;
 const SHARE_TEXT_MAX = 500;
 
-// The go-live camera's own choices (facing, lens, microphone, resolution, mirror) stay on the device that made them:
-// public/js/live-capture.js. They were synced through OpenVibe.Cam until 11-12, when Live's capture became its own.
+// The go-live camera's choices that mean the same on any device (facing, resolution, mirror) follow the signed-in person
+// through OpenVibe.Cam: the shared capture core (/shared/ov-capture.js settings.sync) reads and writes them here; camera
+// and microphone ids stay on the device. The browser never receives its Network token: Live forwards only the choices.
+const PORTABLE = ['facing', 'resolution', 'mirror'];
+router.get('/settings', requireAuth, async (req, res) => {
+    try {
+        if (req.authSource === 'api_token') return res.status(403).json({ error: 'Sign in with your Network account' });
+        const s = await cam.cameraSettings({ token: extractToken(req) });
+        return res.json(Object.fromEntries(PORTABLE.filter((k) => s && s[k] !== undefined).map((k) => [k, s[k]])));
+    } catch (err) { return res.status(err.status || 502).json({ error: err.message }); }
+});
+router.put('/settings', requireAuth, async (req, res) => {
+    try {
+        if (req.authSource === 'api_token') return res.status(403).json({ error: 'Sign in with your Network account' });
+        const body = req.body && typeof req.body === 'object' ? req.body : {};
+        const settings = Object.fromEntries(PORTABLE.filter((k) => body[k] !== undefined).map((k) => [k, body[k]]));
+        if (!Object.keys(settings).length) return res.status(400).json({ error: 'Nothing to save' });
+        const s = await cam.cameraSettings({ token: extractToken(req), method: 'PUT', settings });
+        return res.json(Object.fromEntries(PORTABLE.filter((k) => s && s[k] !== undefined).map((k) => [k, s[k]])));
+    } catch (err) { return res.status(err.status || 502).json({ error: err.message }); }
+});
 
 async function liveStream(req, res) {
     const streamId = req.body && Number(req.body.stream_id);

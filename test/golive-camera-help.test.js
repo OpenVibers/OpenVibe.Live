@@ -17,12 +17,18 @@ const read = (f) => fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
 const devices = read('public/js/broadcast-devices.js');
 const workspace = read('public/js/broadcast-workspace.js');
 
-// The 'explain' part (live-capture.js explainFailure), run under each browser.
-const capture = read('public/js/live-capture.js');
-const start = capture.indexOf('    function explainFailure(');
-const end = capture.indexOf('\n    parts.explain = explainFailure;', start);
-assert.ok(start > 0 && end > start, 'explainFailure is there');
-const fixUnder = (ua, touch = 0) => new Function('navigator', `${capture.slice(start, end)}; return explainFailure;`)({ userAgent: ua, maxTouchPoints: touch });
+// The 'explain' part of the shared capture core (openvibe-shared ov-capture.js, served at /shared/ov-capture.js), run
+// under each browser, with Live's own last step (the screen).
+const vm = require('vm');
+const capture = fs.readFileSync(require.resolve('openvibe-shared/ov-capture'), 'utf8');
+const INSTEAD = devices.match(/const GL_SCREEN_INSTEAD = '([^']+)';/);
+assert.ok(INSTEAD, "Live's last step is one constant");
+const fixUnder = (ua, touch = 0) => {
+    const ctx = vm.createContext({ navigator: { userAgent: ua, maxTouchPoints: touch }, console });
+    ctx.window = ctx;
+    vm.runInContext(capture, ctx);
+    return (err, mode) => JSON.parse(JSON.stringify(ctx.OVCapture.explain(err, mode, { instead: INSTEAD[1] })));
+};
 const UA = {
     androidChrome: 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Mobile Safari/537.36',
     iphoneSafari: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1',
@@ -56,7 +62,7 @@ for (const ua of Object.values(UA)) {
 }
 
 // The failure shows in the card, never as raw text; the button under it says Try again.
-assert.ok(devices.includes('_glShowFix(OVCapture.explain(err, permMode))'), 'a failure fills the card\'s fix box');
+assert.ok(devices.includes('_glShowFix(OVCapture.explain(err, permMode, { instead: GL_SCREEN_INSTEAD }))'), 'a failure fills the card\'s fix box');
 assert.ok(!/toast\('Could not access camera\/mic/.test(devices), 'no raw "Could not access camera/mic" toast');
 assert.ok(devices.includes("'Try again'") || devices.includes('>Try again<'), 'the button says Try again after a failure');
 assert.ok(workspace.includes('<p id="bc-perm-debug" hidden></p>'), 'the debug line is never shown to people');
@@ -66,7 +72,9 @@ assert.ok(workspace.includes('Your browser will ask first: tap Allow.'), 'the ca
 assert.ok(workspace.includes('id="gl-steps"') && workspace.includes('Press Go Live'), 'the three steps');
 assert.ok(workspace.includes('id="gl-fix"'), 'the fix box');
 
-// The camera is Live's own: no other site's kit, and the page opens it through OVCapture.
+// The camera is the shared core, served by Live itself: no other site's kit, and the page opens it through OVCapture.
+const features = read('public/features.json');
+assert.ok(features.includes('"/shared/ov-capture.js"') && !features.includes('live-capture.js'), 'the go-live feature loads Live\'s own copy of the shared core');
 const stripComments = (t) => t.replace(/\/\/[^\n]*/g, '');
 assert.ok(!/openvibe\.cam\/embed|cam-kit\.js|OpenVibeCam/.test(stripComments(workspace)), 'broadcast-workspace.js loads nothing from OpenVibe.Cam');
 assert.ok(!/openvibe\.cam\/embed|cam-kit\.js|OpenVibeCam/.test(stripComments(devices)), 'broadcast-devices.js loads nothing from OpenVibe.Cam');

@@ -1070,8 +1070,10 @@ function _glCopyLink() {
    stream starts or Go live is pressed. Turning it off is remembered on this device. ── */
 const _glPv = { stream: null, key: '', starting: false, timer: 0, raf: 0, ctx: null, hold: 0, failed: '', stopMeter: null };
 const _GL_PV_OFF = 'ov_gl_preview_off';
-// The camera is Live's own: public/js/live-capture.js (window.OVCapture), every part replaceable. The page loaded
-// OpenVibe.Cam's cam-kit.js for this until 11-12 (the owner: "we don't want to use openvibe.cam for OpenVibe.Live").
+// The camera is OpenVibe's shared capture core, served by Live itself: /shared/ov-capture.js (window.OVCapture, every
+// part replaceable; openvibe-shared 4.216.0). Live and OpenVibe.Cam use the same one, and a signed-in person's camera
+// choices (facing, resolution, mirror) follow them through Cam (the owner, 11-12: "OpenVibe.cam is actually fine …
+// Harmony"). Until 11-12 the page loaded Cam's kit from openvibe.cam, which Live's content policy refused.
 function _glOtherWays() {
     const fold = document.getElementById('gl-how');
     if (fold) { fold.open = true; fold.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
@@ -1255,6 +1257,26 @@ function _glPreviewSync() {
 function _glPreviewWatch() {
     _glPreviewSync();
     if (_glPv.timer) return;
+    // Signed in: the choices that mean the same anywhere follow the person through OpenVibe.Cam (Live's /api/cam/settings
+    // proxy); camera and microphone ids stay on this device.
+    if (typeof currentUser !== 'undefined' && currentUser && !window._glCamSync && OVCapture.settings.sync) {
+        window._glCamSync = OVCapture.settings.sync({
+            load: () => fetch('/api/cam/settings', { credentials: 'include' }).then((r) => (r.ok ? r.json() : null)),
+            save: (s) => fetch('/api/cam/settings', { method: 'PUT', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(s) }),
+        });
+        OVCapture.on('synced', (e) => {
+            const saved = e && e.settings;
+            if (!saved) return;
+            window._glCamSettings = saved;
+            const res = document.getElementById('bc-ws-resolution');
+            if (res && [...res.options].some((o) => o.value === saved.resolution)) res.value = saved.resolution;
+            const sheetRes = document.getElementById('gl-sheet-resolution');
+            if (sheetRes) sheetRes.value = saved.resolution;
+            const sheetMirror = document.getElementById('gl-sheet-mirror');
+            if (sheetMirror) sheetMirror.checked = !!saved.mirror;
+            try { localStorage.setItem('ov_bc_mirror_preview', saved.mirror ? '1' : '0'); } catch {}
+        });
+    }
     Promise.resolve(OVCapture.settings.load()).then((saved) => {
         if (!saved) return;
         window._glCamSettings = saved;

@@ -260,7 +260,7 @@
         "/shared/kit-web.js",
         "/js/broadcast-state.js",
         "/js/broadcast-media-setup.js",
-        "/js/live-capture.js",
+        "/shared/ov-capture.js",
         "/js/broadcast-devices.js",
         "/js/call.js",
         "/js/broadcast-workspace.js",

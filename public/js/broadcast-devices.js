@@ -491,6 +491,8 @@ function _getUserMediaWithTimeout(constraints, timeoutMs = 15000) {
  * On mobile Android, requesting audio+video together can silently fail,
  * so we try combined first, then individually.
  */
+// Live's own last step in the camera help: there is always the screen (OVCapture.explain's { instead }).
+const GL_SCREEN_INSTEAD = 'Or go live with your screen instead: "Use a screen or an app instead" below.';
 async function requestMediaPermissions() {
     console.log('[Broadcast] requestMediaPermissions() called');
     const permReq = document.getElementById('bc-perm-request');
@@ -511,14 +513,14 @@ async function requestMediaPermissions() {
     // Feature detection: an in-app browser (Discord, Instagram, TikTok) or a page outside HTTPS has no camera API.
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
         console.warn('[Broadcast] Camera/mic API not available');
-        _glShowFix(OVCapture.explain({ name: 'NoApi' }, permMode));
+        _glShowFix(OVCapture.explain({ name: 'NoApi' }, permMode, { instead: GL_SCREEN_INSTEAD }));
         if (btn) { btn.disabled = false; btn.innerHTML = btnOrigText; }
         return;
     }
     let failed = false;
 
     try {
-        // Live's own capture system opens it (public/js/live-capture.js: preferred, then separately, then basic, each
+        // The shared capture core opens it (openvibe-shared ov-capture.js: preferred, then separately, then basic, each
         // timed); a refusal stops at once, because asking another way would only ask again.
         const mode = _wsState.selectedMs?.browser_mode || _wsState.profile?.browserMode || 'camera';
         if (dbg) dbg.textContent = 'Requesting camera + mic...';
@@ -563,7 +565,7 @@ async function requestMediaPermissions() {
         console.warn('[Broadcast] Permission request failed:', err.name, err.message);
         if (dbg) dbg.textContent = `${err.name || 'Error'}: ${err.message}`;
         failed = true;
-        _glShowFix(OVCapture.explain(err, permMode));
+        _glShowFix(OVCapture.explain(err, permMode, { instead: GL_SCREEN_INSTEAD }));
         document.getElementById('gl-fix')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     } finally {
         if (btn) {
