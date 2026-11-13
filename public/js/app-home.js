@@ -2453,12 +2453,12 @@ function _renderHomeStar(data) {
     } else if (bioSrc) {
         bioHtml = `<p class="star-bio">${_linkify(esc(bioSrc))}</p>`;
     }
-    const overview = s.ai_overview ? `<p class="star-overview"><i class="fa-solid fa-wand-magic-sparkles"></i> ${esc(String(s.ai_overview).slice(0, 260))}${String(s.ai_overview).length > 260 ? '…' : ''}</p>` : '';
+    const overview = s.ai_overview ? `<p class="star-overview"><i class="fa-solid fa-sparkles"></i> ${esc(String(s.ai_overview).slice(0, 260))}${String(s.ai_overview).length > 260 ? '…' : ''}</p>` : '';
     const pick = s.pick || null;
     // Who picked them and when the next star lands are two separate facts, each kept on one line:
     // as one uppercase run the countdown broke in half ("NEXT STAR / IN 3H") on a phone.
     const why = pick && (pick.headline || pick.reason)
-        ? `<div class="star-why">${pick.headline ? `<div class="star-why-head">${esc(pick.headline)}</div>` : ''}${pick.reason ? `<div class="star-why-body">${esc(pick.reason)}</div>` : ''}<div class="star-why-meta"><span><i class="fa-solid fa-wand-magic-sparkles"></i> ${pick.by === 'ai' ? 'Picked by OpenVibe\'s AI' : 'Picked on the numbers'}</span>${pick.next_at ? `<span class="star-why-next"><i class="fa-regular fa-clock"></i> Next star ${esc(_starCountdown(pick.next_at))}</span>` : ''}</div></div>`
+        ? `<div class="star-why">${pick.headline ? `<div class="star-why-head">${esc(pick.headline)}</div>` : ''}${pick.reason ? `<div class="star-why-body">${esc(pick.reason)}</div>` : ''}<div class="star-why-meta"><span><i class="fa-solid fa-sparkles"></i> ${pick.by === 'ai' ? 'Picked by OpenVibe\'s AI' : 'Picked on the numbers'}</span>${pick.next_at ? `<span class="star-why-next"><i class="fa-regular fa-clock"></i> Next star ${esc(_starCountdown(pick.next_at))}</span>` : ''}</div></div>`
         : '';
     const chips = [
         foreign ? `<span class="star-chip pink">${esc(lang.flag)} Streams in ${esc(lang.name)}</span>` : '',

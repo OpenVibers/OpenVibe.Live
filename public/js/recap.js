@@ -69,7 +69,7 @@
                 <header class="recap-head">
                     <div class="recap-grade" title="${esc(g.label)}"><span>${esc(w.grade || 'B')}</span><small>${esc(g.label)}</small></div>
                     <div class="recap-head-body">
-                        <div class="recap-kicker"><i class="fa-solid fa-clipboard-list"></i> After-show report ${r.ai ? '<span class="recap-ai"><i class="fa-solid fa-wand-magic-sparkles"></i> written by OpenVibe AI</span>' : ''}</div>
+                        <div class="recap-kicker"><i class="fa-solid fa-clipboard-list"></i> After-show report ${r.ai ? '<span class="recap-ai"><i class="fa-solid fa-sparkles"></i> written by OpenVibe AI</span>' : ''}</div>
                         <h1 class="recap-headline">${esc(w.headline || s.title)}</h1>
                         <div class="recap-by">${av(u, 34)}<a class="recap-by-name" ${go(path)}>${esc(u.display_name)}</a><span class="muted">streamed</span><b>${esc(s.title)}</b><span class="recap-by-meta">${esc(when(s.started_at))} · ${dur(s.duration_seconds)}${s.category ? ` · ${esc(s.category)}` : ''}</span></div>
                         ${(w.tags || []).length ? `<div class="recap-tags">${w.tags.map(t => `<span>#${esc(t)}</span>`).join('')}</div>` : ''}

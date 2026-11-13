@@ -409,7 +409,7 @@ function _ensurePlayerLoaderStructure(placeholder) {
                 <div class="player-loader-expanded">
                     <p class="player-loader-detail"></p>
                     <p class="player-loader-hint">
-                        <i class="fa-solid fa-wand-magic-sparkles"></i>
+                        <i class="fa-solid fa-sparkles"></i>
                         <span></span>
                     </p>
                     <div class="player-loader-actions">

@@ -2,8 +2,9 @@
    One stylesheet for every PIP (2026-11-11, owner: "move it anywhere … more solid feeling and more responsive … use the
    OV animations"). A PIP sits in the player (absolute, its place in fractions of the player) or over the page
    (.is-floating: fixed, fractions of the window, above the page and below the navbar's menus); while it is moved it is
-   lifted (.is-lifted: fixed, moved by a transform each frame), and it lands with a spring. Tucked into a side, only its
-   tab stays on screen (the `translate` property; `transform` is the landing's). Its waits are the mark at work. */
+   lifted (.is-lifted: fixed, moved by a transform each frame), and it lands with a spring. Tucked into a side it folds
+   into a small handle at the edge (openvibe-shared 4.235.0's clip; the handle is .ov-pip-tab). Its waits are the mark
+   at work. */
 
 .ov-pip {
     container: ovpip / inline-size;
@@ -21,8 +22,10 @@
     -webkit-tap-highlight-color: transparent;
     contain: layout paint;
     transition: box-shadow var(--ov-dur-2, .15s) var(--ov-ease-out, ease), border-color var(--ov-dur-2, .15s) var(--ov-ease-out, ease),
-        translate var(--ov-dur-3, .3s) var(--ov-ease-spring, cubic-bezier(.2, 1.25, .3, 1)), opacity var(--ov-dur-2, .2s);
+        opacity var(--ov-dur-2, .2s), visibility 0s;
 }
+/* Out of the browser in its own window: the box in the page steps aside until that window closes. */
+.ov-pip.is-popped { opacity: 0; visibility: hidden; pointer-events: none; transition: opacity var(--ov-dur-2, .2s), visibility 0s linear var(--ov-dur-2, .2s); }
 .ov-pip.is-floating { position: fixed; z-index: 900; }
 .ov-pip.is-lifted { position: fixed; z-index: 905; will-change: transform; transition: none; }
 .ov-pip:hover { border-color: rgba(255, 255, 255, .3); }
@@ -102,20 +105,29 @@
 .ov-pip-state-t { max-width: 100%; overflow-wrap: anywhere; text-shadow: 0 1px 3px rgba(0, 0, 0, .6); }
 .ov-pip[data-state="offline"] .ov-pip-state-t { color: color-mix(in srgb, #fbbf24 70%, #fff); }
 
-/* Tucked into a side: only the tab and an edge of its picture stay on screen; a tap brings it back. */
-.ov-pip.is-tucked-left { translate: calc(-100% + 30px) 0; }
-.ov-pip.is-tucked-right { translate: calc(100% - 30px) 0; }
-.ov-pip.is-tucked .ov-pip-bar, .ov-pip.is-tucked .ov-pip-resize, .ov-pip.is-tucked .ov-pip-state-t { opacity: 0; pointer-events: none; }
-.ov-pip.is-tucked .ov-pip-video { filter: brightness(.75); }
+/* Tucked into a side: it folds into a small handle at the edge (the engine's clip), its picture still going behind the
+   glass; a tap opens it, a drag up or down slides it along the side, a pull brings it out. */
+.ov-pip.is-tucked { border-color: transparent; }
+.ov-pip.is-tucked .ov-pip-bar, .ov-pip.is-tucked .ov-pip-resize, .ov-pip.is-tucked .ov-pip-state { opacity: 0; pointer-events: none; }
 .ov-pip-tab {
-    position: absolute; top: 0; bottom: 0; z-index: 4; width: 30px; display: none; place-items: center; padding: 0; cursor: pointer;
-    border: 0; color: #fff; font-size: .85rem;
-    background: linear-gradient(90deg, rgba(0, 0, 0, .55), rgba(0, 0, 0, .25));
-    -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+    position: absolute; top: 50%; z-index: 4; display: none; place-items: center; padding: 0; cursor: pointer; touch-action: none;
+    width: var(--ov-float-tab-w, 30px); height: min(var(--ov-float-tab-h, 64px), 100%); translate: 0 -50%;
+    border: 0; color: #fff; font-size: .9rem;
+    background: color-mix(in srgb, rgba(10, 12, 18, .58) 82%, var(--accent, #3b82f6));
+    -webkit-backdrop-filter: blur(10px) saturate(1.25); backdrop-filter: blur(10px) saturate(1.25);
 }
-.ov-pip.is-tucked .ov-pip-tab { display: grid; }
-.ov-pip.is-tucked-left .ov-pip-tab { right: 0; }
-.ov-pip.is-tucked-right .ov-pip-tab { left: 0; background: linear-gradient(270deg, rgba(0, 0, 0, .55), rgba(0, 0, 0, .25)); }
+.ov-pip.is-tucked .ov-pip-tab { display: grid; animation: ovPipTabIn var(--ov-dur-3, .32s) var(--ov-ease-out, ease-out); }
+@keyframes ovPipTabIn { from { opacity: 0; } }
+.ov-pip.is-tucked-left .ov-pip-tab { left: 0; border-radius: 0 12px 12px 0; box-shadow: inset -1px 0 0 rgba(255, 255, 255, .22); }
+.ov-pip.is-tucked-right .ov-pip-tab { right: 0; border-radius: 12px 0 0 12px; box-shadow: inset 1px 0 0 rgba(255, 255, 255, .22); }
+.ov-pip-tab:hover i, .ov-pip-tab:focus-visible i { transform: scale(1.18); }
+.ov-pip-tab i { transition: transform var(--ov-dur-1, .12s) var(--ov-ease-spring, ease); }
+/* Its live dot: the picture is still going behind the handle. */
+.ov-pip-tab::after {
+    content: ""; position: absolute; top: 9px; left: 50%; width: 6px; height: 6px; margin-left: -3px; border-radius: 50%;
+    background: #ef4444; box-shadow: 0 0 0 2px rgba(239, 68, 68, .25);
+}
+.ov-pip:not([data-state="live"]) .ov-pip-tab::after { background: rgba(255, 255, 255, .5); box-shadow: none; }
 .ov-pip-tab-l, .ov-pip-tab-r { display: none; }
 .ov-pip.is-tucked-right .ov-pip-tab-l, .ov-pip.is-tucked-left .ov-pip-tab-r { display: grid; place-items: center; }
 
@@ -142,6 +154,9 @@
 @media (max-width: 640px) {
     .ov-pip { border-radius: 12px; }
 }
+
+/* While it moves, the glass under its buttons is plain (a blur repainted every frame made a phone's drag stutter). */
+.ov-pip.is-lifted .ov-pip-actions button, .ov-pip.is-lifted .ov-pip-state { -webkit-backdrop-filter: none; backdrop-filter: none; }
 
 /* Motion off: no spring and no fade, it is simply where it goes. */
 html[data-ov-motion="off"] .ov-pip, html[data-ov-motion="off"] .ov-pip-bar { transition: none; animation: none; }

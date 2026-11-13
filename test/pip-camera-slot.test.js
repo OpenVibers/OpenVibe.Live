@@ -102,8 +102,10 @@ console.log('OK H: overlay is a full independent viewer session, attached and de
 assert.ok(/localStorage\.setItem\(LS_KEY\(o\.slot, o\.pip\.source_msid\)/.test(pip), 'the place persists per slot and per PIP');
 assert.ok(/account\.put\(`\$\{o\.slot\}:\$\{o\.pip\.source_msid\}`, o\.geom\)/.test(pip), 'and in the account when signed in');
 assert.ok(/localStorage\.getItem\(LS_V1\(streamId, pip\.source_msid\)\)/.test(pip), 'a place saved per session before still counts');
-assert.ok(/data-act="untuck"/.test(pip) && read('public/css/features/pip.css').includes('.ov-pip.is-tucked .ov-pip-tab { display: grid; }'),
-    'a PIP tucked aside keeps its tab on screen to bring it back');
+assert.ok(/class="ov-pip-tab" data-ov-float-tab/.test(pip) && read('public/css/features/pip.css').includes('.ov-pip.is-tucked .ov-pip-tab { display: grid;'),
+    'a PIP tucked aside keeps its handle on screen to bring it back');
+assert.ok(/enterpictureinpicture/.test(pip) && /leavepictureinpicture/.test(pip) && read('public/css/features/pip.css').includes('.ov-pip.is-popped {'),
+    'popped out of the browser, the box in the page steps aside until that window closes');
 assert.ok(/muted: pip\.muted !== false/.test(pip),
     'the overlay starts as the streamer chose, muted unless they said otherwise');
 assert.ok(/is-offline/.test(pip), 'a camera going offline must degrade to a badge, not a broken overlay');

@@ -16,6 +16,16 @@
 }
 .global-ai-strip:hover { background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 20%, transparent), transparent); }
 .gai-strip-caret { flex-shrink: 0; opacity: 0.6; transition: transform var(--ov-dur-2, 0.2s); }
+/* The ticker (app-chatpage.js): a sentence rolls up into place; one longer than the strip pans to its end, then holds. */
+.global-ai-strip .gai-strip-text { position: relative; text-overflow: clip; }
+.global-ai-strip .gai-t { display: inline-block; white-space: nowrap; }
+.global-ai-strip .gai-strip-text.gai-roll .gai-t { animation: gaiRoll var(--ov-dur-3, .42s) var(--ov-ease-out, cubic-bezier(.2, .9, .25, 1)); }
+@keyframes gaiRoll { from { opacity: 0; transform: translateY(70%); } }
+.global-ai-strip .gai-strip-text.gai-pan .gai-t { animation: gaiPan var(--gai-pan-s, 4s) ease-in-out 1.4s both; }
+.global-ai-strip .gai-strip-text.gai-roll.gai-pan .gai-t { animation: gaiRoll var(--ov-dur-3, .42s) var(--ov-ease-out, ease-out), gaiPan var(--gai-pan-s, 4s) ease-in-out 1.6s both; }
+@keyframes gaiPan { to { transform: translateX(var(--gai-shift, 0)); } }
+.global-ai-strip:not(.open) .gai-strip-text { -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 18px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 18px), transparent); }
+html[data-ov-motion="off"] .global-ai-strip .gai-t { animation: none !important; }
 .global-ai-strip.open .gai-strip-caret { transform: rotate(180deg); }
 
 .global-ai-panel {

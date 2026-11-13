@@ -30,7 +30,7 @@
             { id: 'home', page: 'home', label: 'Home', href: '/', icon: 'fa-house' },
             // VODs, clips and pastes people made are one feed; what the AI made is the other.
             { id: 'content', page: 'content', label: 'Content', href: '/content', icon: 'fa-photo-film' },
-            { id: 'moments', page: 'moments', label: 'Moments', href: '/moments', icon: 'fa-wand-magic-sparkles' },
+            { id: 'moments', page: 'moments', label: 'Moments', href: '/moments', icon: 'fa-sparkles' },
             { id: 'chat', page: 'chat', label: 'Chat', href: '/chat', icon: 'fa-comments' },
             { id: 'rundown', page: 'rundown', label: 'Rundown', href: '/rundown', icon: 'fa-newspaper' },
             { id: 'broadcast', page: 'broadcast', elId: 'nav-broadcast', label: 'Go Live', href: '/broadcast', icon: 'fa-tower-broadcast', dot: false, dotId: 'nav-live-dot',

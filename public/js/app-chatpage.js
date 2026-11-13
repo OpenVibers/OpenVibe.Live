@@ -21,7 +21,11 @@ async function loadGlobalChatAi() {
     if (!strip || !panel) return;
     let insight = null;
     try { insight = (await api('/chat/ai/global')).insight; } catch { /* silent */ }
+    // A read older than 12 hours is not "now": the strip steps aside (the panel keeps the notes and the timeline). The
+    // owner, 11-13: Global's line was three days old.
+    if (insight && insight.updated_at && _gaiAgeMs(insight.updated_at) > 12 * 3600e3) insight = { ...insight, overview: '' };
     if (!insight || !insight.overview) {
+        _gaiTicker(null, '');
         strip.style.display = 'none';
         // Keep the panel only if the user had already opened it.
         if (!panel.classList.contains('gai-user-opened')) panel.style.display = 'none';
@@ -29,8 +33,8 @@ async function loadGlobalChatAi() {
     }
     // Header strip (compact)
     const stripText = document.getElementById('global-ai-strip-text');
-    if (stripText) stripText.textContent = insight.overview;
     strip.style.display = 'flex';
+    if (stripText) _gaiTicker(stripText, insight.overview);
 
     // Full panel
     const ov = document.getElementById('global-ai-overview');
@@ -48,6 +52,45 @@ async function loadGlobalChatAi() {
     const mem = document.getElementById('global-ai-memory');
     if (mem) mem.textContent = insight.memory || '';
     if (mem && !insight.memory) { mem.innerHTML = '<span class="gai-empty">Still building a picture of the community…</span>'; }
+}
+
+/** How old a read is; Chat's times are UTC with no zone ("2026-11-10 08:38:23"). */
+function _gaiAgeMs(ts) {
+    const s = String(ts || '');
+    const t = Date.parse(/[zZ]|[+-]\d\d:?\d\d$/.test(s) ? s : `${s.replace(' ', 'T')}Z`);
+    return Number.isFinite(t) ? Date.now() - t : 0;
+}
+
+/**
+ * The strip reads like a ticker (the owner, 11-13: "make it scroll … scrolls through the summary … click to expand"):
+ * one sentence at a time, each rolling in every five seconds; one longer than the strip pans to its end first. It
+ * waits while a pointer is over it, while the panel is open and while the tab is hidden. With motion off the words
+ * change in place.
+ */
+let _gaiTick = { timer: 0, parts: [], i: 0 };
+function _gaiTicker(el, text) {
+    clearInterval(_gaiTick.timer);
+    const parts = (String(text || '').match(/[^.!?…]+[.!?…]+["”’)]*|[^.!?…]+$/g) || []).map((x) => x.trim()).filter(Boolean).slice(0, 4);
+    _gaiTick = { timer: 0, parts, i: 0 };
+    if (!el) return;
+    const show = (i, roll) => {
+        let t = el.querySelector('.gai-t');
+        if (!t) { t = document.createElement('span'); t.className = 'gai-t'; el.replaceChildren(t); }
+        t.textContent = parts[i] || '';
+        el.classList.remove('gai-roll', 'gai-pan');
+        void el.offsetWidth;
+        if (roll) el.classList.add('gai-roll');
+        const over = t.scrollWidth - el.clientWidth;
+        if (over > 4) { el.style.setProperty('--gai-shift', `${-over - 8}px`); el.style.setProperty('--gai-pan-s', `${Math.min(9, 2 + over / 40)}s`); el.classList.add('gai-pan'); }
+    };
+    show(0, false);
+    if (parts.length < 2 && !el.classList.contains('gai-pan')) return;
+    _gaiTick.timer = setInterval(() => {
+        if (document.hidden || !el.isConnected || el.matches(':hover') || el.closest('.global-ai-strip.open')) return;
+        if (parts.length < 2) { show(0, false); return; }
+        _gaiTick.i = (_gaiTick.i + 1) % parts.length;
+        show(_gaiTick.i, true);
+    }, 5200 + (el.classList.contains('gai-pan') ? 2000 : 0));
 }
 
 // ── Global chat AI timeline browser (search + period jump + infinite scroll) ─────────────

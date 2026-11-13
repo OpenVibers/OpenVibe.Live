@@ -85,7 +85,7 @@ function _getGifPicker() {
         document.addEventListener('pointerdown', (event) => {
             if (!_gifPickerOpen || !_gifPickerEl) return;
             const t = event.target;
-            if (_gifPickerEl.contains(t) || (t && t.closest && t.closest('.gif-btn'))) return;
+            if (_gifPickerEl.contains(t) || (t && t.closest && (t.closest('.gif-btn') || t.closest('.ovc-t-gif') || t.closest('.ovc-tray-i')))) return;
             closeGifPicker();
         }, true);
         document.addEventListener('keydown', (event) => {

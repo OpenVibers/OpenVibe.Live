@@ -4729,7 +4729,7 @@ body :is(.modal-overlay, .bc-ws-confirm-overlay, .bc-modal, .bc-perm-overlay, .b
 }
 .gai-strip-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .gai-panel-head h3 { margin: 0; font-size: 1.05rem; display: flex; align-items: center; gap: 8px; }
-.gai-panel-head h3 .fa-wand-magic-sparkles { color: var(--accent); }
+.gai-panel-head h3 .fa-sparkles { color: var(--accent); }
 .gai-col h4 { margin: 0 0 10px; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.03em; color: var(--text-secondary); display: flex; align-items: center; gap: 6px; }
 /* Timeline browser: head (title + search), period chips, scrollable list with day dividers. */
 .gai-tl-head h4 { margin: 0; }
@@ -9098,7 +9098,7 @@ html[data-theme-mode="light"] .hero h1 { background-image: linear-gradient(90deg
     display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
 }
 .card-ai-overview { position: relative; }
-.card-ai-clamp i.fa-wand-magic-sparkles { opacity: 0.85; margin-right: 2px; }
+.card-ai-clamp i.fa-sparkles { opacity: 0.85; margin-right: 2px; }
 /* Reserve space at the end so the chevron never overlaps the text. */
 .card-ai-clamp { padding-right: 16px; }
 .card-ai-overview.expanded .card-ai-clamp { -webkit-line-clamp: unset; overflow: visible; }

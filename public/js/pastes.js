@@ -83,7 +83,7 @@ function renderPasteCard(p) {
                         <span class="paste-card-time">${timeAgo}</span>
                     </div>
                 </div>
-                ${(typeof _cardAiHTML === 'function') ? _cardAiHTML(p.ai_summary) : ((p.ai_summary && p.ai_summary.trim()) ? `<div class="card-ai-overview"><i class="fa-solid fa-wand-magic-sparkles"></i> ${escapeHtml(p.ai_summary)}</div>` : '')}
+                ${(typeof _cardAiHTML === 'function') ? _cardAiHTML(p.ai_summary) : ((p.ai_summary && p.ai_summary.trim()) ? `<div class="card-ai-overview"><i class="fa-solid fa-sparkles"></i> ${escapeHtml(p.ai_summary)}</div>` : '')}
             </div>
         </a>`;
     // Wrap for admin bulk-select (ctrl/shift multi-select + bulk delete) when enabled.
@@ -344,7 +344,7 @@ async function loadPasteViewer(slug) {
         try { _aiTags = p.ai_tags ? JSON.parse(p.ai_tags) : []; } catch { _aiTags = []; }
         const aiHtml = p.ai_summary ? `
             <div class="paste-ai-analysis">
-                <div class="paste-ai-title"><i class="fa-solid fa-wand-magic-sparkles"></i> AI Analysis</div>
+                <div class="paste-ai-title"><i class="fa-solid fa-sparkles"></i> AI Analysis</div>
                 <div class="paste-ai-summary">${escapeHtml(p.ai_summary)}</div>
                 ${_aiTags.length ? `<div class="paste-ai-tags">${_aiTags.map(t => `<span class="paste-ai-tag">${escapeHtml(String(t))}</span>`).join('')}</div>` : ''}
             </div>` : '';

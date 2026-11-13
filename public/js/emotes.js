@@ -620,7 +620,8 @@ function closeEmotePicker() {
 document.addEventListener('pointerdown', (e) => {
     if (!_emotePickerOpen) return;
     const t = e.target && e.target.closest ? e.target : null;
-    if (t && (t.closest('.emote-picker') || t.closest('.emote-picker-btn'))) return;
+    // Its own button toggles it (the shared box's emote tool, or an old row's): a press there is left to that button.
+    if (t && (t.closest('.emote-picker') || t.closest('.emote-picker-btn') || t.closest('.ovc-t-emote'))) return;
     closeEmotePicker();
 }, true);
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && _emotePickerOpen) closeEmotePicker(); });

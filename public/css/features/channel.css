@@ -1926,14 +1926,8 @@ html[data-ov-motion=off] #page-channel .ch-tab-panel{scroll-margin-top: calc(var
 #page-channel .ch-more-item i { width: 17px; color: var(--text-secondary); }
 #page-channel .ch-more-item[hidden], #page-channel .ch-more-mod[hidden] { display: none; }
 #page-channel .ch-more-mod { border-top: 1px solid var(--border); margin-top: 5px; padding-top: 5px; }
-/* Open, it is in the top layer and placed on the screen by app-channel.js (a phone's live layout clipped it). */
-#page-channel .ch-more-menu.is-layer { position: fixed; inset: auto; margin: 0; right: auto; max-height: calc(100dvh - 16px); overflow-y: auto; color: var(--text-primary);
-    transform-origin: top right; animation: chMoreIn var(--ov-dur-2, .16s) var(--ov-ease-out, cubic-bezier(.2, .9, .25, 1)); }
-#page-channel .ch-more-menu.is-layer.is-above { transform-origin: bottom right; }
-@keyframes chMoreIn { from { opacity: 0; transform: translateY(-4px) scale(.96); } }
-#page-channel .ch-more-menu.is-layer.is-above { animation-name: chMoreUp; }
-@keyframes chMoreUp { from { opacity: 0; transform: translateY(4px) scale(.96); } }
-html[data-ov-motion="off"] #page-channel .ch-more-menu.is-layer { animation: none; }
+/* Open, the network's layer anchors it to its button in the top layer (OVSurfaces, app-channel.js). */
+#page-channel .ch-more-menu[data-ov-anchored] { color: var(--text-primary); }
 #page-channel .ch-more-heading { display: block; padding: 5px 9px; color: var(--text-muted); font-size: 11px; font-weight: 750; text-transform: uppercase; letter-spacing: .05em; }
 .ch-action-dialog { width: min(420px, calc(100vw - 32px)); box-sizing: border-box; border: 1px solid var(--border); border-radius: 14px; padding: 22px; background: var(--bg-card); color: var(--text-primary); }
 .ch-action-dialog::backdrop { background: rgba(0,0,0,.65); }
@@ -2252,6 +2246,9 @@ html[data-ov-motion="off"] #page-channel .ch-rec-dot { animation: none; }
 #page-channel .ch-sec-ic { display: inline-grid; place-items: center; flex: none; width: 30px; height: 30px; border-radius: 9px; font-size: .9rem;
     color: var(--accent-light, var(--accent)); background: color-mix(in srgb, var(--accent) 14%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 22%, transparent); }
 #page-channel svg.ch-sec-ic { padding: 7px; box-sizing: border-box; }
+/* The glyph inside the tile, not the tile: an OV glyph draws its picture at 100% of its element, and here the element
+   is the tile, so every glyph ran to the tile's edges (ask 371, 11-13: "a tiny bit of padding"). 62% of it. */
+#page-channel .ch-sec-ic > svg { width: 62%; height: 62%; }
 /* A part of a section (AI Moments in Clips, About's latest videos and popular clips): the same tile, a size down. */
 #page-channel .ch-sub-h { display: flex; align-items: center; gap: 9px; margin: 22px 0 6px; font-size: 1rem; font-weight: 800; line-height: 1.2; letter-spacing: -.005em; text-transform: none; color: var(--text-primary); }
 #page-channel .ch-sub-h > .ch-sec-ic { width: 26px; height: 26px; border-radius: 8px; font-size: .78rem; }

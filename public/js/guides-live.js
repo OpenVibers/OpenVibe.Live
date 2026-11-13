@@ -139,9 +139,9 @@
                 el.querySelectorAll('[data-pick]').forEach(x => x.classList.remove('on')); b.classList.add('on');
                 if (b.dataset.pick === 'new') { D.slot = null; form.classList.remove('is-hidden'); el.querySelector('#ovg-title-in').focus(); }
                 else { D.slot = D.slots.find(s => String(s.id) === b.dataset.pick) || null; form.classList.add('is-hidden'); }
-                const n = document.querySelector('#ovg-foot [data-act="next"]'); if (n) n.innerHTML = D.slot ? 'Next <i class="fa-solid fa-arrow-right"></i>' : '<i class="fa-solid fa-wand-magic-sparkles"></i> Create my stream';
+                const n = document.querySelector('#ovg-foot [data-act="next"]'); if (n) n.innerHTML = D.slot ? 'Next <i class="fa-solid fa-arrow-right"></i>' : '<i class="fa-solid fa-sparkles"></i> Create my stream';
             }));
-            const n = document.querySelector('#ovg-foot [data-act="next"]'); if (n && !D.slot) n.innerHTML = D.slots.length ? 'Pick a stream above' : '<i class="fa-solid fa-wand-magic-sparkles"></i> Create my stream';
+            const n = document.querySelector('#ovg-foot [data-act="next"]'); if (n && !D.slot) n.innerHTML = D.slots.length ? 'Pick a stream above' : '<i class="fa-solid fa-sparkles"></i> Create my stream';
         },
         validate: async () => {
             if (D.slot) { D.method = D.slot.streaming_method || 'browser'; D.mode = D.slot.browser_mode || 'camera'; await loadEndpoint(); await loadDests(); return true; }
@@ -519,7 +519,7 @@
                 <div class="ovg-join-cta">
                     <a class="btn btn-primary btn-lg ovg-join-go" href="/api/auth/sso/login"><i class="fa-solid fa-user-plus"></i> Create your free account</a>
                     <a class="btn btn-outline ovg-join-in" href="/api/auth/sso/login"><i class="fa-solid fa-right-to-bracket"></i> I already have one</a>
-                    <button type="button" class="ovg-join-tour"><i class="fa-solid fa-wand-magic-sparkles"></i> Just show me around first</button>
+                    <button type="button" class="ovg-join-tour"><i class="fa-solid fa-sparkles"></i> Just show me around first</button>
                 </div>
             </div>`;
         el.querySelector('.ovg-join-tour').addEventListener('click', () => openSiteTour());

@@ -21,9 +21,9 @@ assert.ok(/> \.chat-sidebar > :is\(\.chat-settings-panel, \.chat-users-panel\) \
 assert.ok(/> \.chat-sidebar \.chat-header \{ padding-top: 4px; padding-bottom: 4px; min-height: 44px; \}/.test(css), 'a compact header');
 assert.ok(/> \.chat-sidebar > \.chat-grip \{ position: absolute; top: 0; height: 14px;/.test(css), 'the grip over its top edge, no row of its own');
 const js = fs.readFileSync(path.join(__dirname, '..', 'public', 'js', 'app-channel.js'), 'utf8');
-assert.ok(/function _wireChannelMoreLayer\(menu\)/.test(js) && /pop\.setAttribute\('popover', 'manual'\)/.test(js) && /_wireChannelMoreLayer\(menu\);\n    menu\.open = false;/.test(js),
-    'the ⋯ menu opens in the top layer, placed on the screen (a phone\'s live layout clipped it)');
-assert.ok(css.includes('#page-channel .ch-more-menu.is-layer { position: fixed;'), 'and is fixed there');
+assert.ok(/function _wireChannelMoreLayer\(menu\)/.test(js) && /window\.OVSurfaces\.popover\(\{ el: menu, trigger: summary, pop, place: 'bottom-end'/.test(js) && /_wireChannelMoreLayer\(menu\);\n    menu\.open = false;/.test(js),
+    'the ⋯ menu is the network\'s layer: anchored to its button in the top layer (a phone\'s live layout clipped it)');
+assert.ok(!/_wireChannelMoreLayer[\s\S]{0,1500}showPopover/.test(js), 'Live keeps no placement of its own');
 assert.ok(css.includes('.ch-bot-tabs button > :is(i, svg) { flex: none; display: inline-grid; place-items: center; width: 20px; height: 20px;'),
     'every tab icon fills the same box (the robot was drawn smaller than the chat bubble)');
 const html = fs.readFileSync(path.join(__dirname, '..', 'public', 'fragments', 'channel.html'), 'utf8');

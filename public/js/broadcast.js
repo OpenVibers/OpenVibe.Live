@@ -4878,7 +4878,7 @@ function _renderCameraSwitcherChoices(devices, activeCameraId) {
     options.forEach((device, index) => {
         const current = (activeCameraId || 'default') === device.deviceId;
         const meta = device._default
-            ? { icon: 'fa-solid fa-wand-magic-sparkles', title: 'Default Camera', detail: 'Let the browser choose the preferred camera for this device.' }
+            ? { icon: 'fa-solid fa-sparkles', title: 'Default Camera', detail: 'Let the browser choose the preferred camera for this device.' }
             : _describeCameraRole(device, index - 1);
         const titleText = device._default ? 'System Default Camera' : (device.label || meta.title);
         const subtitleText = device._default ? meta.detail : `${meta.title} • ${meta.detail}`;

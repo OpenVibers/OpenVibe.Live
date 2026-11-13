@@ -83,7 +83,7 @@ assert.ok(/\.gl-chips \{ display: grid; grid-template-columns: repeat\(2, minmax
 assert.ok(panel.includes('<span class="gl-chip-k">Address</span><span class="gl-chip-v" id="gl-link">') && panel.includes('class="gl-chip gl-chip--link" onclick="_glCopyLink()"'), 'the address tile copies');
 assert.ok((panel.match(/class="gl-chip-i" aria-hidden="true"/g) || []).length === 4, 'each tile has its icon in a tile of its own');
 // Suggest sits against the title with the network's glyph, not an emoji.
-assert.ok(panel.includes('<i class="fa-solid fa-wand-magic-sparkles" aria-hidden="true"></i><span>Suggest</span>') && !/gl-suggest[\s\S]{0,200}\\u2728/.test(panel), 'Suggest wears the network glyph');
+assert.ok(panel.includes('<i class="fa-solid fa-sparkles" aria-hidden="true"></i><span>Suggest</span>') && !/gl-suggest[\s\S]{0,200}\\u2728/.test(panel), 'Suggest wears the network glyph');
 assert.ok(/\.gl-title-row \.gl-title \{ flex: 0 1 auto; width: auto; max-width: 100%; field-sizing: content;/.test(css), 'the title is as wide as its words, so Suggest follows them');
 // The head: Streamer setup at the row's end, and the line under it never leaves one word alone.
 assert.ok(frag.includes('<span class="gl-head-t">Go Live</span> <button type="button" class="glw-open-btn" onclick="openSetupHub()"'), 'the head');

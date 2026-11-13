@@ -2456,7 +2456,7 @@ function buildChatMessageEl(msg, opts = {}) {
                 ? `<div class="clip-chat-thumb"><img src="${esc(clip.thumbnail_url)}" alt="" loading="lazy">${dur ? `<span class="clip-chat-dur">${esc(dur)}</span>` : ''}<span class="clip-chat-play"><i class="fa-solid fa-play"></i></span></div>`
                 : `<div class="clip-chat-thumb clip-chat-thumb-ph"><i class="fa-solid fa-scissors"></i></div>`;
             const label = isAuto
-                ? `<div class="clip-chat-label"><i class="fa-solid fa-wand-magic-sparkles"></i> AI clip</div>`
+                ? `<div class="clip-chat-label"><i class="fa-solid fa-sparkles"></i> AI clip</div>`
                 : `<div class="clip-chat-label"><i class="fa-solid fa-scissors"></i> New clip</div>`;
             const creator = esc(clip.creator || msg.username || 'someone');
             const avatar = clip.creator_avatar
@@ -3496,6 +3496,13 @@ function setChatReply(replyData) {
     _chatReplyTo = replyData;
     // Show/update reply bar on all chat input areas
     document.querySelectorAll('.chat-input-area').forEach(area => {
+        // The shared box says it inside itself, joined to it, with its own × (ask 371, 11-13: "more connected to the
+        // actual composer"); clearing it there clears the reply here.
+        const ovc = area.querySelector('form.ovc-v2')?.__ovc;
+        if (ovc && typeof ovc.reply === 'function') {
+            ovc.reply({ name: replyData.username, text: _spoilFree(replyData.message || ''), data: replyData, onClear: () => { if (_chatReplyTo === replyData) _chatReplyTo = null; } });
+            return;
+        }
         let bar = area.querySelector('.chat-reply-bar:not(.chat-edit-bar)');
         if (!bar) {
             bar = document.createElement('div');
@@ -3520,7 +3527,9 @@ function setChatReply(replyData) {
  * Clear the reply target — hides the reply bar.
  */
 function clearChatReply() {
+    const was = _chatReplyTo;
     _chatReplyTo = null;
+    if (was) document.querySelectorAll('.chat-input-area form.ovc-v2').forEach(f => { if (f.__ovc && f.classList.contains('is-replying')) f.__ovc.clearBar(); });
     document.querySelectorAll('.chat-reply-bar:not(.chat-edit-bar)').forEach(bar => {
         bar.style.display = 'none';
     });
