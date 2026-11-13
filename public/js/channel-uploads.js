@@ -222,7 +222,7 @@
     function renderSoundTab(body) {
         body.innerHTML = `
             <form class="cu-form" id="cu-sound-form">
-                <input type="text" id="cu-sound-cmd" maxlength="24" placeholder="Command name (e.g. airhorn) → !airhorn" autocomplete="off">
+                <input type="text" id="cu-sound-cmd" maxlength="24" placeholder="Command name (e.g. airhorn, then !airhorn)" autocomplete="off">
                 <input type="file" id="cu-sound-file" accept="audio/*" multiple>
                 <input type="text" id="cu-sound-emote" maxlength="32" placeholder="Attach an emote code (optional) — shows the emote instead of “played !cmd”" autocomplete="off">
                 <div id="cu-sound-preview" style="display:none;margin:2px 0"></div>
@@ -303,7 +303,7 @@
                 </div>
                 <div class="cu-set-group">
                     <div class="cu-set-group-title">Channel Points</div>
-                    <div class="cu-hint">Channel Points, rewards, and the redemption queue moved to your <b>Dashboard → Points</b> tab.</div>
+                    <div class="cu-hint">Channel Points, rewards, and the redemption queue moved to the <b>Points</b> tab in your <b>Dashboard</b>.</div>
                 </div>
                 <button class="cu-btn" id="cu-set-save" type="button">Save channel settings</button>
                 <div class="cu-hint">Applies to everyone in your channel's chat. Pitch/speed limits live in your dashboard's moderation panel.</div>

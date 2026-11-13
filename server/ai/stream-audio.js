@@ -372,7 +372,7 @@ async function startContinuousCapture(stream) {
     };
     ff.on('close', onExit);
     ff.on('error', (e) => onExit(e && e.message));
-    if (!retry) console.log(`[AI-Hear] stream ${stream.id}: continuous capture started (${SEGMENT_SEC}s segments → ${dir})`);
+    if (!retry) console.log(`[AI-Hear] stream ${stream.id}: continuous capture started (${SEGMENT_SEC}s segments to ${dir})`);
     return true;
 }
 

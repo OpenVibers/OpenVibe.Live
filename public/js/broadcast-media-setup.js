@@ -86,7 +86,7 @@
         if (/Firefox\//.test(ua)) return 'Firefox shows the prompt just under the address bar. Tick “Remember this decision” so it stops asking.';
         if (/Edg\//.test(ua)) return 'Edge shows the prompt under the address bar, on the left.';
         if (/Chrome\//.test(ua)) return 'Chrome shows the prompt under the address bar, on the left.';
-        if (/Safari\//.test(ua)) return 'Safari asks once per site — if you miss it, use Safari → Settings for This Website.';
+        if (/Safari\//.test(ua)) return 'Safari asks once per site — if you miss it, use Settings for This Website in Safari.';
         return 'Your browser will show the prompt near the address bar.';
     }
 
@@ -94,7 +94,7 @@
         const ua = navigator.userAgent;
         const what = KIND[kind]?.label || 'device';
         if (/Firefox\//.test(ua)) return `Click the padlock in the address bar, then clear the blocked ${what} permission and reload.`;
-        if (/Safari\//.test(ua)) return `Open Safari → Settings for This Website, set ${what} to Allow, then reload.`;
+        if (/Safari\//.test(ua)) return `Open Settings for This Website in Safari, set ${what} to Allow, then reload.`;
         return `Click the padlock (or camera icon) in the address bar, set ${what} to Allow, then reload.`;
     }
 

@@ -80,7 +80,7 @@ function problems(env = process.env, { repoRoot = REPO_ROOT, cwd = process.cwd()
         const abs = path.resolve(cwd, value);
         const real = realish(abs);
         const root = roots.find((r) => inside(abs, r) || inside(real, r));
-        if (root) out.push(`${name} (${abs}${real !== abs ? ` → ${real}` : ''}) is inside ${root}; a drill writes nothing in the checkout or in production's data`);
+        if (root) out.push(`${name} (${abs}${real !== abs ? ` resolves to ${real}` : ''}) is inside ${root}; a drill writes nothing in the checkout or in production's data`);
     };
     // The database: the restored copy, never production's. Boot migrates through DATABASE_DIRECT_URL, so it must name
     // the copy too whenever DATABASE_URL does.

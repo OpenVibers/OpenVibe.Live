@@ -224,7 +224,7 @@ async function threadsBlock(channelUserId, limit) {
         rows,
         text: rows.map(t => {
             let who = []; try { who = JSON.parse(t.participants_json || '[]'); } catch { /* */ }
-            return `- thread #${t.id} (${t.kind.replace('_', '↔')}, ${who.join(' & ')}${t.topic ? `, about: ${clip(t.topic, 60)}` : ''}, ${t.turns} turns)${t.last_line ? ` last: ${t.last_line_by}: "${clip(t.last_line, 120)}"` : ''}${t.awaiting ? ` — waiting on ${t.awaiting}` : ''}`;
+            return `- thread #${t.id} (${t.kind.replace('_', ' to ')}, ${who.join(' & ')}${t.topic ? `, about: ${clip(t.topic, 60)}` : ''}, ${t.turns} turns)${t.last_line ? ` last: ${t.last_line_by}: "${clip(t.last_line, 120)}"` : ''}${t.awaiting ? ` — waiting on ${t.awaiting}` : ''}`;
         }).join('\n'),
     };
 }

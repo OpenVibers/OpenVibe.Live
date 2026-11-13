@@ -111,7 +111,7 @@ function init({ eventsUrl = EVENTS_URL, clientSecret = CLIENT_SECRET, fetchImpl,
     outbox.start();
     pruneTimer = setInterval(() => { if (outbox) outbox.prune().catch(() => { /* next time */ }); }, PRUNE_EVERY_MS);
     if (pruneTimer.unref) pruneTimer.unref();
-    outbox.pending().then((n) => console.log(`[Events] stream lifecycle → ${eventsUrl} (${n} pending)`), () => {});
+    outbox.pending().then((n) => console.log(`[Events] stream lifecycle to ${eventsUrl} (${n} pending)`), () => {});
     return outbox;
 }
 

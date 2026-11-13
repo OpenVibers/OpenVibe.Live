@@ -126,7 +126,7 @@ assert.strictEqual(ep.title, 'The Fridge Files');
 assert.strictEqual(ep.recap, 'goosely opened with French fridges.\n\nThen ranked.');
 assert.deepStrictEqual(JSON.parse(ep.chapters_json).map((c) => [c.title, Number(c.segment_id)]), [['Fridges', Number(segs[0].id)], ['Ranked', Number(segs[1].id)]], 'chapters name real segments');
 assert.strictEqual(announced.length, 1);
-assert.match(announced[0].message, /^📰 goosely: “The Fridge Files” → .*\/rundown\/e\/\d+$/);
+assert.match(announced[0].message, /^📰 goosely: “The Fridge Files” at .*\/rundown\/e\/\d+$/);
 assert.strictEqual((await db.get('SELECT done FROM rundown_progress WHERE stream_id = ?', [s1])).done, 1);
 const before = calls.length;
 await desk.tick();

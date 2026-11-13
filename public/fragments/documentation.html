@@ -96,7 +96,7 @@
 <h3>Base URL &amp; Auth</h3>
 <p>Base URL: <code>https://openvibe.live</code> (replace with your instance).</p>
 <p>Auth: <code>Authorization: Bearer &lt;JWT&gt;</code> header. On WebSockets, the header on the upgrade request or the <code>token</code> of the first <code>join</code> message. A token in the URL or a cookie does not sign a socket in.</p>
-<p>API tokens: <code>hbt_</code> prefix, scoped permissions, created from Dashboard → API Tokens.</p>
+<p>API tokens: <code>hbt_</code> prefix, scoped permissions, created from Dashboard, then API Tokens.</p>
 </div>
 
 <!-- ═══════════════════════════════════════════════════════════ -->
@@ -145,9 +145,9 @@
 
 <h3>Admin Proxy Architecture</h3>
 <p>openvibe.network admin panel proxies requests to OpenVibe.Live:</p>
-<pre><code>openvibe.network /api/admin/streamer/*  →  OpenVibe.Live /api/admin/*
-openvibe.network /api/admin/streamer-tts/*  →  OpenVibe.Live /api/tts/*
-openvibe.network /api/admin/streamer-mod/*  →  OpenVibe.Live /api/mod/*</code></pre>
+<pre><code>openvibe.network /api/admin/streamer/*  maps to  OpenVibe.Live /api/admin/*
+openvibe.network /api/admin/streamer-tts/*  maps to  OpenVibe.Live /api/tts/*
+openvibe.network /api/admin/streamer-mod/*  maps to  OpenVibe.Live /api/mod/*</code></pre>
 <p>Server-to-server calls carry a short-lived service token from openvibe.network, scoped to the one capability each route performs.</p>
 </div>
 
@@ -171,8 +171,8 @@ openvibe.network /api/admin/streamer-mod/*  →  OpenVibe.Live /api/mod/*</code>
 <table class="doc-table" tabindex="0">
 <thead><tr><th>Method</th><th>Path</th><th>Auth</th><th>Notes</th></tr></thead>
 <tbody>
-<tr><td>GET</td><td>/api/auth/sso/login</td><td>No</td><td>302 &rarr; openvibe.network OAuth authorize</td></tr>
-<tr><td>GET</td><td>/api/auth/callback?code&amp;state</td><td>No</td><td>OAuth code&rarr;token exchange (PKCE); sets cookies</td></tr>
+<tr><td>GET</td><td>/api/auth/sso/login</td><td>No</td><td>302 redirects to openvibe.network OAuth authorize</td></tr>
+<tr><td>GET</td><td>/api/auth/callback?code&amp;state</td><td>No</td><td>OAuth code to token exchange (PKCE); sets cookies</td></tr>
 <tr><td>GET</td><td>/api/auth/health</td><td>No</td><td>OAuth client health; 503 only when the Network refuses this site's client</td></tr>
 <tr><td>POST</td><td>/api/auth/refresh</td><td>Cookie</td><td>Refresh access token via httpOnly <code>ov_refresh</code> cookie</td></tr>
 <tr><td>POST</td><td>/api/auth/logout</td><td>No</td><td>Clear auth cookies</td></tr>
@@ -189,11 +189,11 @@ openvibe.network /api/admin/streamer-mod/*  →  OpenVibe.Live /api/mod/*</code>
 </table>
 
 <h3>API Tokens (<code>hbt_</code> prefix)</h3>
-<p>Long-lived, scoped tokens for bots/integrations. Create them from Dashboard &rarr; API Tokens (max 10 active). The token string is shown once. Use as <code>Authorization: Bearer hbt_xxxxxxxxxxxx</code>.</p>
+<p>Long-lived, scoped tokens for bots/integrations. Create them from Dashboard, then API Tokens (max 10 active). The token string is shown once. Use as <code>Authorization: Bearer hbt_xxxxxxxxxxxx</code>.</p>
 <table class="doc-table" tabindex="0">
 <thead><tr><th>Method</th><th>Path</th><th>Notes</th></tr></thead>
 <tbody>
-<tr><td>POST</td><td>/api/auth/tokens</td><td>Create <code>{ label, scopes[], expiresAt? }</code> &rarr; <code>{ id, token, ... }</code> (JWT auth only, not an hbt_ token)</td></tr>
+<tr><td>POST</td><td>/api/auth/tokens</td><td>Create <code>{ label, scopes[], expiresAt? }</code> returns <code>{ id, token, ... }</code> (JWT auth only, not an hbt_ token)</td></tr>
 <tr><td>GET</td><td>/api/auth/tokens</td><td>List tokens + <code>valid_scopes</code>, <code>scope_definitions</code>, <code>token_presets</code></td></tr>
 <tr><td>DELETE</td><td>/api/auth/tokens/:id</td><td>Revoke a token</td></tr>
 </tbody>
@@ -201,7 +201,7 @@ openvibe.network /api/admin/streamer-mod/*  →  OpenVibe.Live /api/mod/*</code>
 <p><strong>Scopes:</strong> <code>chat</code>, <code>read</code>, <code>stream</code>, <code>control</code>, <code>vibe_coding_publish</code>. <strong>Presets:</strong> chat-bot (<code>chat,read</code>), stream-controller (<code>read,stream,control</code>), vibe-coding-publisher (<code>read,vibe_coding_publish</code>).</p>
 
 <h3>Example: use an API token</h3>
-<pre><code>// Create the token once from Dashboard &rarr; API Tokens (scopes: chat, read),
+<pre><code>// Create the token once from Dashboard, then API Tokens (scopes: chat, read),
 // then use it directly &mdash; no login flow needed.
 const TOKEN = 'hbt_xxxxxxxxxxxxxxxx';
 
@@ -226,7 +226,7 @@ console.log('Acting as:', me.user.username);
 <thead><tr><th>Method</th><th>Path</th><th>Auth</th><th>Notes</th></tr></thead>
 <tbody>
 <tr><td>GET</td><td>/api/streams/managed</td><td>Yes</td><td>My slots + slot limit</td></tr>
-<tr><td>POST</td><td>/api/streams/managed</td><td>Yes</td><td>Create a slot &rarr; unique <code>stream_key</code>. Body: <code>title, description, category, protocol, is_nsfw, slug, streaming_method</code></td></tr>
+<tr><td>POST</td><td>/api/streams/managed</td><td>Yes</td><td>Create a slot; it returns a unique <code>stream_key</code>. Body: <code>title, description, category, protocol, is_nsfw, slug, streaming_method</code></td></tr>
 <tr><td>PUT</td><td>/api/streams/managed/:id</td><td>Owner</td><td>Update slot + slot settings (see below)</td></tr>
 <tr><td>DELETE</td><td>/api/streams/managed/:id</td><td>Owner</td><td>Delete slot (409 if live)</td></tr>
 <tr><td>POST</td><td>/api/streams/managed/:id/regenerate-key</td><td>Owner</td><td>New slot stream key</td></tr>
@@ -238,7 +238,7 @@ console.log('Acting as:', me.user.username);
 <table class="doc-table" tabindex="0">
 <thead><tr><th>Method</th><th>Path</th><th>Auth</th><th>Notes</th></tr></thead>
 <tbody>
-<tr><td>POST</td><td>/api/streams</td><td>Yes</td><td><strong>Go live</strong> from a slot. Body: <code>managed_stream_id</code> (required) + optional <code>title, category, tags, is_nsfw</code> &rarr; <code>{ stream, endpoint }</code></td></tr>
+<tr><td>POST</td><td>/api/streams</td><td>Yes</td><td><strong>Go live</strong> from a slot. Body: <code>managed_stream_id</code> (required) + optional <code>title, category, tags, is_nsfw</code> returns <code>{ stream, endpoint }</code></td></tr>
 <tr><td>GET</td><td>/api/streams/:id/endpoint</td><td>Owner</td><td>Ingest endpoint + <code>stream_key</code> for the session's protocol</td></tr>
 <tr><td>PUT</td><td>/api/streams/:id</td><td>Owner</td><td>Update live session (title/description/category/tags)</td></tr>
 <tr><td>DELETE</td><td>/api/streams/:id</td><td>Owner</td><td>End the session</td></tr>
@@ -325,32 +325,32 @@ const { answer, location } = await live.whip.publish(live.whip.url(slot.stream_k
 <table class="doc-table" tabindex="0">
 <thead><tr><th>Type</th><th>Dir</th><th>Key Fields</th><th>Description</th></tr></thead>
 <tbody>
-<tr><td>welcome</td><td>S→C</td><td>peerId, role, streamId, viewerCount, iceServers</td><td>Sent immediately on connect</td></tr>
-<tr><td>watch</td><td>C→S</td><td>—</td><td>Viewer requests to start watching (triggers SFU consumer)</td></tr>
-<tr><td>broadcaster-ready</td><td>S→Viewer</td><td>peerId</td><td>Broadcaster or SFU source is live, safe to send/refresh <code>watch</code></td></tr>
-<tr><td>watch-queued</td><td>S→Viewer</td><td>reason, detail</td><td>Viewer is queued while the live source warms up or reconnects</td></tr>
-<tr><td>sfu-viewer-ready</td><td>S→Viewer</td><td>rtpCapabilities, producers</td><td>Server has live SFU producers ready for consumption</td></tr>
-<tr><td>sfu-viewer-create-transport</td><td>C→S</td><td>—</td><td>Viewer asks the server to create an SFU recv transport</td></tr>
-<tr><td>sfu-viewer-transport-created</td><td>S→Viewer</td><td>id, iceParameters, iceCandidates, dtlsParameters, iceServers</td><td>Viewer recv transport parameters</td></tr>
-<tr><td>sfu-viewer-connect-transport</td><td>C→S</td><td>transportId, dtlsParameters</td><td>Connect the viewer recv transport</td></tr>
-<tr><td>sfu-viewer-transport-connected</td><td>S→Viewer</td><td>transportId</td><td>Viewer recv transport connected</td></tr>
-<tr><td>sfu-viewer-consume</td><td>C→S</td><td>transportId, producerId, rtpCapabilities</td><td>Create an SFU consumer for a live producer</td></tr>
-<tr><td>sfu-viewer-consumed</td><td>S→Viewer</td><td>id, producerId, kind, rtpParameters</td><td>Consumer parameters returned to mediasoup-client</td></tr>
-<tr><td>sfu-source-unavailable</td><td>S→Viewer</td><td>reason</td><td>Live source exists, but it is not currently healthy for viewers</td></tr>
-<tr><td>sfu-get-capabilities</td><td>C→S</td><td>—</td><td>Get Mediasoup RTP capabilities</td></tr>
-<tr><td>sfu-create-transport</td><td>C→S</td><td>direction: send|recv</td><td>Create WebRTC transport</td></tr>
-<tr><td>sfu-connect-transport</td><td>C→S</td><td>transportId, dtlsParameters</td><td>Connect DTLS</td></tr>
-<tr><td>sfu-produce</td><td>C→S</td><td>transportId, kind, rtpParameters</td><td>Start producing audio/video</td></tr>
-<tr><td>sfu-stop-produce</td><td>C→S</td><td>producerId</td><td>Stop a producer</td></tr>
-<tr><td>viewer-count</td><td>S→All</td><td>count</td><td>Updated viewer count broadcast</td></tr>
-<tr><td>stream-ended</td><td>S→Viewers</td><td>—</td><td>Stream has ended</td></tr>
+<tr><td>welcome</td><td>S to C</td><td>peerId, role, streamId, viewerCount, iceServers</td><td>Sent immediately on connect</td></tr>
+<tr><td>watch</td><td>C to S</td><td>—</td><td>Viewer requests to start watching (triggers SFU consumer)</td></tr>
+<tr><td>broadcaster-ready</td><td>S to Viewer</td><td>peerId</td><td>Broadcaster or SFU source is live, safe to send/refresh <code>watch</code></td></tr>
+<tr><td>watch-queued</td><td>S to Viewer</td><td>reason, detail</td><td>Viewer is queued while the live source warms up or reconnects</td></tr>
+<tr><td>sfu-viewer-ready</td><td>S to Viewer</td><td>rtpCapabilities, producers</td><td>Server has live SFU producers ready for consumption</td></tr>
+<tr><td>sfu-viewer-create-transport</td><td>C to S</td><td>—</td><td>Viewer asks the server to create an SFU recv transport</td></tr>
+<tr><td>sfu-viewer-transport-created</td><td>S to Viewer</td><td>id, iceParameters, iceCandidates, dtlsParameters, iceServers</td><td>Viewer recv transport parameters</td></tr>
+<tr><td>sfu-viewer-connect-transport</td><td>C to S</td><td>transportId, dtlsParameters</td><td>Connect the viewer recv transport</td></tr>
+<tr><td>sfu-viewer-transport-connected</td><td>S to Viewer</td><td>transportId</td><td>Viewer recv transport connected</td></tr>
+<tr><td>sfu-viewer-consume</td><td>C to S</td><td>transportId, producerId, rtpCapabilities</td><td>Create an SFU consumer for a live producer</td></tr>
+<tr><td>sfu-viewer-consumed</td><td>S to Viewer</td><td>id, producerId, kind, rtpParameters</td><td>Consumer parameters returned to mediasoup-client</td></tr>
+<tr><td>sfu-source-unavailable</td><td>S to Viewer</td><td>reason</td><td>Live source exists, but it is not currently healthy for viewers</td></tr>
+<tr><td>sfu-get-capabilities</td><td>C to S</td><td>—</td><td>Get Mediasoup RTP capabilities</td></tr>
+<tr><td>sfu-create-transport</td><td>C to S</td><td>direction: send|recv</td><td>Create WebRTC transport</td></tr>
+<tr><td>sfu-connect-transport</td><td>C to S</td><td>transportId, dtlsParameters</td><td>Connect DTLS</td></tr>
+<tr><td>sfu-produce</td><td>C to S</td><td>transportId, kind, rtpParameters</td><td>Start producing audio/video</td></tr>
+<tr><td>sfu-stop-produce</td><td>C to S</td><td>producerId</td><td>Stop a producer</td></tr>
+<tr><td>viewer-count</td><td>S to All</td><td>count</td><td>Updated viewer count broadcast</td></tr>
+<tr><td>stream-ended</td><td>S to Viewers</td><td>—</td><td>Stream has ended</td></tr>
 </tbody>
 </table>
 <p class="muted" style="margin-top:10px">Viewer media is delivered exclusively through the Mediasoup SFU. There is no direct peer-to-peer relay: legacy <code>offer</code> / <code>answer</code> / <code>ice-candidate</code> messages are not supported.</p>
 
 <h3>RTMP Ingest (OBS)</h3>
 <pre><code>Server: rtmp://openvibe.live/live
-Key:    YOUR_STREAM_KEY   (get from Dashboard → Stream Key)
+Key:    YOUR_STREAM_KEY   (get from Dashboard, then Stream Key)
 
 # Playback proxy for browser
 GET /api/streams/rtmp-proxy/:streamId.flv
@@ -368,7 +368,7 @@ GET /api/streams/rtmp-proxy/:streamId.flv
 <p>Connect: <code>wss://openvibe.live/ws/chat?stream=STREAM_ID</code> with an <code>Authorization: Bearer &lt;token&gt;</code> header (a JWT or an <code>hbt_</code> API token), then send <code>{ "type": "join", "streamId": STREAM_ID }</code>. A client that cannot set headers (a browser) puts the token in that join instead: <code>{ "type": "join", "streamId": STREAM_ID, "token": "…" }</code>.</p>
 <p>Omit <code>stream</code> for global chat; omit the token to connect anonymously (assigned an anonXXXXX identity). A token in the URL does not sign the socket in: URLs end up in logs.</p>
 
-<h3>Client → Server Messages</h3>
+<h3>Client to Server Messages</h3>
 <table class="doc-table" tabindex="0">
 <thead><tr><th>Type</th><th>Payload</th><th>Description</th></tr></thead>
 <tbody>
@@ -380,7 +380,7 @@ GET /api/streams/rtmp-proxy/:streamId.flv
 </tbody>
 </table>
 
-<h3>Server → Client Messages</h3>
+<h3>Server to Client Messages</h3>
 <table class="doc-table" tabindex="0">
 <thead><tr><th>Type</th><th>Key Fields</th><th>Description</th></tr></thead>
 <tbody>
@@ -526,8 +526,8 @@ while True:
 <tbody>
 <tr><td>GET</td><td>/api/funds/balance</td><td>Yes</td><td>Both balances + USD cashout values (<code>usd_value = cashout_balance / 100</code>)</td></tr>
 <tr><td>POST</td><td>/api/funds/donate</td><td>Yes</td><td>Donate spendable bucks to a streamer; credits their cashout balance + advances a goal. Body: <code>amount, streamer_id|stream_id, message?, goal_id?</code></td></tr>
-<tr><td>POST</td><td>/api/funds/cashout</td><td>Yes</td><td>Request cashout &rarr; escrow. Body: <code>amount</code> (&ge; 500), <code>paypal_email</code></td></tr>
-<tr><td>POST</td><td>/api/funds/recycle</td><td>Yes</td><td>Move cashout balance &rarr; spendable (re-donate instead of cashing out)</td></tr>
+<tr><td>POST</td><td>/api/funds/cashout</td><td>Yes</td><td>Request cashout to escrow. Body: <code>amount</code> (&ge; 500), <code>paypal_email</code></td></tr>
+<tr><td>POST</td><td>/api/funds/recycle</td><td>Yes</td><td>Move cashout balance to spendable (re-donate instead of cashing out)</td></tr>
 <tr><td>GET</td><td>/api/funds/history</td><td>Yes</td><td>Transaction history (<code>?limit</code> &le; 200)</td></tr>
 <tr><td>GET</td><td>/api/funds/leaderboard/:streamId</td><td>No</td><td>Top donors for a stream</td></tr>
 <tr><td>GET</td><td>/api/funds/goals/:userId</td><td>No</td><td>Public goal widget set (active + recently reached)</td></tr>
@@ -544,14 +544,14 @@ while True:
 <thead><tr><th>Method</th><th>Path</th><th>Auth</th><th>Notes</th></tr></thead>
 <tbody>
 <tr><td>GET</td><td>/api/payments/config</td><td>No</td><td>Live providers + pricing: <code>packages</code>, <code>cashoutBucksPerUsd</code> (100), <code>minPurchaseBucks</code>, <code>subPriceUsd</code></td></tr>
-<tr><td>POST</td><td>/api/payments/bucks/checkout</td><td>Yes</td><td>Buy bucks (USD derived from volume tiers). Body: <code>provider, bucks</code> &rarr; <code>{ url }</code> hosted checkout</td></tr>
+<tr><td>POST</td><td>/api/payments/bucks/checkout</td><td>Yes</td><td>Buy bucks (USD derived from volume tiers). Body: <code>provider, bucks</code> returns <code>{ url }</code> hosted checkout</td></tr>
 <tr><td>POST</td><td>/api/payments/subscribe</td><td>Yes</td><td>Subscribe to a channel. Body: <code>provider</code> (<code>stripe</code>|<code>bucks</code>), <code>streamer</code></td></tr>
 <tr><td>GET</td><td>/api/payments/subscriptions/mine &middot; /channel/:username</td><td>Yes/Opt</td><td>My subs / am-I-subscribed + count + price</td></tr>
 <tr><td>POST</td><td>/api/payments/subscriptions/:id/cancel</td><td>Yes</td><td>Cancel (Stripe at period end; bucks immediate)</td></tr>
 <tr><td>POST/ALL</td><td>/api/payments/webhook/{stripe,paypal,ccbill,crypto}</td><td>No</td><td><code>410 Gone</code> with <code>webhook_url</code>: providers deliver to OpenVibe.Billing (<code>https://billing.openvibe.network/webhooks/{stripe,paypal,ccbill,nowpayments}</code>)</td></tr>
 </tbody>
 </table>
-<p><strong>Packages</strong>: <code>100, 500, 1000, 2500, 5000, 10000, 25000</code> bucks. <strong>Per-buck price tiers</strong>: &ge;25000&rarr;$0.0110, &ge;10000&rarr;$0.0115, &ge;5000&rarr;$0.0120, &ge;2500&rarr;$0.0124, &ge;1000&rarr;$0.0130, &ge;500&rarr;$0.0140, else $0.0150. Streamers keep <code>sub_streamer_share_pct</code> (default 70%) of sub value into their cashout balance.</p>
+<p><strong>Packages</strong>: <code>100, 500, 1000, 2500, 5000, 10000, 25000</code> bucks. <strong>Per-buck price tiers</strong>: &ge;25000: $0.0110, &ge;10000: $0.0115, &ge;5000: $0.0120, &ge;2500: $0.0124, &ge;1000: $0.0130, &ge;500: $0.0140, else $0.0150. Streamers keep <code>sub_streamer_share_pct</code> (default 70%) of sub value into their cashout balance.</p>
 
 <h3>OpenCoins / Coins &mdash; <code>/api/coins</code></h3>
 <p>Free currencies. <strong>GOLD</strong> is a global wallet (games, cosmetics, media requests). <strong>Channel points ("OpenCoins")</strong> are per-streamer loyalty points earned by watching/chatting a channel and spent on that streamer's rewards. Defaults: watch = 10/5min, chat = 5 (max 1/min), follow = 50 once; not earnable on your own stream.</p>
@@ -559,7 +559,7 @@ while True:
 <thead><tr><th>Method</th><th>Path</th><th>Auth</th><th>Notes</th></tr></thead>
 <tbody>
 <tr><td>GET</td><td>/api/coins/balance &middot; /channel-balance</td><td>Yes</td><td>Global GOLD / per-streamer points (<code>?streamerId</code>)</td></tr>
-<tr><td>POST</td><td>/api/coins/heartbeat &middot; /bonus</td><td>Yes</td><td>Watch-time tick / claim bonus game &rarr; earn points (<code>streamId</code>)</td></tr>
+<tr><td>POST</td><td>/api/coins/heartbeat &middot; /bonus</td><td>Yes</td><td>Watch-time tick / claim bonus game, then earn points (<code>streamId</code>)</td></tr>
 <tr><td>GET</td><td>/api/coins/rewards/:userId &middot; /config/:userId</td><td>No</td><td>A streamer's rewards + points config</td></tr>
 <tr><td>PUT</td><td>/api/coins/config</td><td>Yes</td><td>Configure my channel points (name, icon, watch/game rates)</td></tr>
 <tr><td>POST / PUT / DELETE</td><td>/api/coins/rewards[/:id]</td><td>Yes</td><td>Manage my rewards (<code>title, cost, cooldown_seconds, max_per_stream, requires_input</code>)</td></tr>
@@ -878,7 +878,7 @@ https://www.101soundboards.com/sounds/12345 150p 2</code></pre>
 <table class="doc-table" tabindex="0">
 <thead><tr><th>Method</th><th>Path</th><th>Auth</th><th>Notes</th></tr></thead>
 <tbody>
-<tr><td>GET</td><td>/api/comments/:type/:id</td><td>Opt</td><td>List comments + replies, newest first (<code>type</code> = <code>vod|clip</code>, <code>?limit,offset</code>) &rarr; <code>{ comments, total, thread? }</code>; <code>thread.url</code> is the same thread on OpenVibe.Community (public and unlisted items)</td></tr>
+<tr><td>GET</td><td>/api/comments/:type/:id</td><td>Opt</td><td>List comments + replies, newest first (<code>type</code> = <code>vod|clip</code>, <code>?limit,offset</code>) returns <code>{ comments, total, thread? }</code>; <code>thread.url</code> is the same thread on OpenVibe.Community (public and unlisted items)</td></tr>
 <tr><td>GET</td><td>/api/comments/:commentId/replies</td><td>Opt</td><td>All replies of a comment</td></tr>
 <tr><td>POST</td><td>/api/comments/:type/:id</td><td>Yes</td><td>Add a comment/reply (<code>message</code>, <code>parent_id?</code>)</td></tr>
 <tr><td>PUT</td><td>/api/comments/:commentId</td><td>Author</td><td>Edit your own comment</td></tr>
@@ -893,7 +893,7 @@ https://www.101soundboards.com/sounds/12345 150p 2</code></pre>
 <tbody>
 <tr><td>GET</td><td>/api/pastes</td><td>Opt</td><td>List public pastes (<code>?limit,offset,type,username,search,sort</code>)</td></tr>
 <tr><td>GET</td><td>/api/pastes/:slug &middot; /:slug/raw</td><td>Opt/No</td><td>Get a paste / raw content</td></tr>
-<tr><td>POST</td><td>/api/pastes</td><td>Opt</td><td>Create text paste (<code>content</code> + <code>title, language, visibility</code>); anon allowed if enabled &rarr; <code>{ paste, url }</code></td></tr>
+<tr><td>POST</td><td>/api/pastes</td><td>Opt</td><td>Create text paste (<code>content</code> + <code>title, language, visibility</code>); anon allowed if enabled returns <code>{ paste, url }</code></td></tr>
 <tr><td>POST</td><td>/api/pastes/screenshot</td><td>Opt</td><td>Upload an image paste</td></tr>
 <tr><td>PUT / DELETE</td><td>/api/pastes/:slug</td><td>Owner/staff</td><td>Edit / delete a paste</td></tr>
 </tbody>

@@ -89,7 +89,7 @@ function toCommunity(subPath, whenDown = null) {
             }
             res.send(Buffer.from(await upstream.arrayBuffer()));
         } catch (err) {
-            console.warn('[Pastes → Community]', err.message);
+            console.warn('[Pastes to Community]', err.message);
             if (!res.headersSent) {
                 if (whenDown) return res.json(whenDown(req));
                 res.status(502).json({ error: 'Paste service unavailable' });
@@ -115,7 +115,7 @@ communityRouter.post('/:slug/set-avatar', requireAuth, async (req, res) => {
         } catch { /* next report */ }
         res.json({ success: true, avatar_url: stored });
     } catch (err) {
-        console.warn('[Pastes → Community] set-avatar:', err.message);
+        console.warn('[Pastes to Community] set-avatar:', err.message);
         res.status(500).json({ error: 'Failed to set avatar' });
     }
 });

@@ -654,7 +654,7 @@ button{font:inherit}
 <script>
 (() => {
   "use strict";
-  // Served from openvibe.live/kiosk → everything is same-origin (no CORS, no cross-host WS).
+  // Served from openvibe.live/kiosk, so everything is same-origin (no CORS, no cross-host WS).
   const API="/api";
   const WS_URL=(location.protocol==="https:"?"wss://":"ws://")+location.host+"/ws/chat";
   const $=s=>document.querySelector(s);
@@ -1046,7 +1046,7 @@ button{font:inherit}
   const LS_PROV="openvibe_kiosk_search", LS_HIST="openvibe_kiosk_history";
   let provider=localStorage.getItem(LS_PROV); if(!PROVIDERS[provider]) provider="google";
   let hist=[]; try{ hist=JSON.parse(localStorage.getItem(LS_HIST)||"[]"); if(!Array.isArray(hist)) hist=[]; }catch{}
-  const resolved=new Map();      // domain(lowercased) → {reachable,url,host,title}
+  const resolved=new Map();      // domain (lowercased): {reachable,url,host,title}
   const resolving=new Set();
   let curItems=[], selIdx=-1, isOpen=false, resolveTimer=null;
 
@@ -1130,7 +1130,7 @@ button{font:inherit}
       if(looksLikeDomain(q)){
         const key=q.toLowerCase(), c=resolved.get(key);
         if(c && !c.reachable){
-          // resolved as unreachable → offer search only
+          // resolved as unreachable, so offer search only
         } else if(c && c.reachable){
           add({type:"domain",title:c.title||q,sub:c.host+(c.title?" · "+c.title:""),host:c.host,url:c.url});
         } else {
@@ -1244,7 +1244,7 @@ button{font:inherit}
   document.addEventListener("click",e=>{ if(!provMenu.hidden && !provMenu.contains(e.target) && e.target!==provBtn && !provBtn.contains(e.target)) setProvMenu(false); });
   document.addEventListener("keydown",e=>{ if(e.key==="Escape" && !provMenu.hidden){ e.stopPropagation(); setProvMenu(false); } },true);
 
-  // Global: start typing anywhere → focus the (possibly ghosted or hidden) bar and seed it.
+  // Global: start typing anywhere, focus the (possibly ghosted or hidden) bar and seed it.
   document.addEventListener("keydown",e=>{
     if(document.activeElement===input) return;   // already typing in the bar — let it be
     if(e.key==="Escape") return;

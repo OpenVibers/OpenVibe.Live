@@ -152,7 +152,7 @@
                         </summary>
                         <div class="bc-app-guide-body">
                             <ol>
-                                <li>Open OBS → Settings → Stream</li>
+                                <li>Open OBS, then Settings, then Stream</li>
                                 <li>Set Service to <strong>Custom</strong></li>
                                 <li>Paste the <strong>Server URL</strong> above</li>
                                 <li>Paste the <strong>Stream Key</strong></li>
@@ -202,8 +202,8 @@
 
                             <h4 style="margin:12px 0 8px">IRL Pro Step-by-Step</h4>
                             <ol>
-                                <li>Open <strong>IRL Pro</strong> → <strong>⚙️ Settings</strong> → <strong>Streaming</strong></li>
-                                <li>Select <strong>Platform</strong> → <strong>Custom RTMP</strong></li>
+                                <li>Open <strong>IRL Pro</strong>, then <strong>⚙️ Settings</strong>, then <strong>Streaming</strong></li>
+                                <li>Select <strong>Platform</strong>, then <strong>Custom RTMP</strong></li>
                                 <li>Paste the <strong>Server URL</strong> and <strong>Stream Key</strong> from Option A above</li>
                                 <li><strong>Leave Username and Password empty</strong></li>
                                 <li>Set <strong>Resolution</strong> to 720p, <strong>Bitrate</strong> to 2500–4000 kbps</li>
@@ -236,14 +236,14 @@
                         <div class="bc-app-guide-body">
                             <p class="bc-app-guide-desc">Stream directly from a terminal — great for headless servers, Raspberry Pi, 3D printer cams, and automated pipelines.</p>
                             <div class="bc-code-block" style="margin-bottom:12px">
-                                <label><i class="fa-solid fa-video"></i> Webcam + Audio → RTMP</label>
+                                <label><i class="fa-solid fa-video"></i> Webcam + Audio to RTMP</label>
                                 <div class="bc-code-copy">
                                     <code id="bc-rtmp-ffmpeg-cam" style="white-space:pre-wrap;word-break:break-all">loading...</code>
                                     <button class="btn btn-small" onclick="copyToClipboard(document.getElementById('bc-rtmp-ffmpeg-cam').textContent)"><i class="fa-solid fa-copy"></i></button>
                                 </div>
                             </div>
                             <div class="bc-code-block" style="margin-bottom:12px">
-                                <label><i class="fa-solid fa-display"></i> Screen Capture → RTMP</label>
+                                <label><i class="fa-solid fa-display"></i> Screen Capture to RTMP</label>
                                 <div class="bc-code-copy">
                                     <code id="bc-rtmp-ffmpeg-screen" style="white-space:pre-wrap;word-break:break-all">loading...</code>
                                     <button class="btn btn-small" onclick="copyToClipboard(document.getElementById('bc-rtmp-ffmpeg-screen').textContent)"><i class="fa-solid fa-copy"></i></button>
@@ -314,7 +314,7 @@
                         </div>
                     </div>
                     <div class="bc-code-block">
-                        <label><i class="fa-solid fa-display"></i> OBS Virtual Camera → JSMPEG</label>
+                        <label><i class="fa-solid fa-display"></i> OBS Virtual Camera to JSMPEG</label>
                         <div class="bc-code-copy">
                             <code id="bc-jsmpeg-cmd-obs" style="white-space:pre-wrap;word-break:break-all">loading...</code>
                             <button class="btn btn-small" onclick="copyToClipboard(document.getElementById('bc-jsmpeg-cmd-obs').textContent)"><i class="fa-solid fa-copy"></i></button>
@@ -403,7 +403,7 @@
                         <div class="bc-code-block" style="margin-bottom:8px">
                             <label>Use PulseAudio instead of ALSA</label>
                             <div class="bc-code-copy">
-                                <code style="white-space:pre-wrap">Replace: -f alsa -i default → -f pulse -i default</code>
+                                <code style="white-space:pre-wrap">Replace: -f alsa -i default with -f pulse -i default</code>
                                 <button class="btn btn-small" onclick="copyToClipboard('-f pulse -i default')"><i class="fa-solid fa-copy"></i></button>
                             </div>
                         </div>
@@ -411,7 +411,7 @@
                         <div class="bc-code-block" style="margin-bottom:8px">
                             <label>OBS Virtual Camera</label>
                             <div class="bc-code-copy">
-                                <code style="white-space:pre-wrap">Start OBS → Tools → Start Virtual Camera → use /dev/video2 (or check v4l2-ctl --list-devices)</code>
+                                <code style="white-space:pre-wrap">Start OBS, then Tools, then Start Virtual Camera, then use /dev/video2 (or check v4l2-ctl --list-devices)</code>
                                 <button class="btn btn-small" onclick="copyToClipboard('v4l2-ctl --list-devices')"><i class="fa-solid fa-copy"></i></button>
                             </div>
                         </div>
@@ -481,7 +481,7 @@
                             </div>
                         </div>
                         <div class="bc-code-block" style="margin-bottom:12px">
-                            <label>IP camera (RTSP) → JSMPEG</label>
+                            <label>IP camera (RTSP) to JSMPEG</label>
                             <div class="bc-code-copy">
                                 <code id="bc-jsmpeg-cmd-ipcam" style="white-space:pre-wrap;word-break:break-all">loading...</code>
                                 <button class="btn btn-small" onclick="copyToClipboard(document.getElementById('bc-jsmpeg-cmd-ipcam').textContent)"><i class="fa-solid fa-copy"></i></button>
@@ -550,7 +550,7 @@ WantedBy=multi-user.target</code>
 
                     <h2><i class="fa-solid fa-desktop"></i> WebRTC via OBS (WHIP)</h2>
                     <p class="bc-instructions-intro">Your stream is created! Paste the info below into OBS Studio 30+ to start streaming with ultra-low latency via WebRTC. This is newer and faster than RTMP.</p>
-                    <p class="muted" style="margin-top:8px"><i class="fa-solid fa-info-circle"></i> Note: on some Linux distributions, the system OBS package may disable WHIP even in OBS 30+. If you do not see the WHIP service in Settings → Stream, install OBS from Flatpak or AppImage instead of the distro package.</p>
+                    <p class="muted" style="margin-top:8px"><i class="fa-solid fa-info-circle"></i> Note: on some Linux distributions, the system OBS package may disable WHIP even in OBS 30+. If you do not see the WHIP service in Settings, then Stream, install OBS from Flatpak or AppImage instead of the distro package.</p>
                     <div class="bc-code-block">
                         <label>WHIP Endpoint</label>
                         <div class="bc-code-copy">
@@ -570,7 +570,7 @@ WantedBy=multi-user.target</code>
                     <div class="bc-instructions-steps">
                         <h3>OBS 30+ Setup</h3>
                         <ol>
-                            <li>Open OBS → Settings → Stream</li>
+                            <li>Open OBS, then Settings, then Stream</li>
                             <li>Set Service to <strong>WHIP</strong></li>
                             <li>Paste the <strong>WHIP Endpoint</strong> URL above</li>
                             <li>Paste the <strong>Bearer Token</strong> as the auth key</li>

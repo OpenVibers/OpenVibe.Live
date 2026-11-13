@@ -235,7 +235,7 @@ class StreamRecorder {
         const rtmpUrl = `rtmp://127.0.0.1:${config.rtmp.port}/live/${endpoint.streamKey}`;
         await media.ingestRtmp(rec.vodId, rtmpUrl);
         this._partStarted(stream, rec);
-        console.log(`[VOD] Media RTMP ingest started: stream ${streamId} → vod ${rec.vodId} (${rec.mode})`);
+        console.log(`[VOD] Media RTMP ingest started: stream ${streamId} to vod ${rec.vodId} (${rec.mode})`);
     }
 
     async _startRtpRecording(streamId, stream, rec) {
@@ -342,7 +342,7 @@ class StreamRecorder {
 
         rec.webrtcState = webrtcState;
         this._partStarted(stream, rec);
-        console.log(`[VOD] Media RTP ingest started: stream ${streamId} → vod ${rec.vodId} (${videoPort ? `v:${videoPort}` : 'audio only'}${audioPort ? ` a:${audioPort}` : ''}, ${rec.mode})`);
+        console.log(`[VOD] Media RTP ingest started: stream ${streamId} to vod ${rec.vodId} (${videoPort ? `v:${videoPort}` : 'audio only'}${audioPort ? ` a:${audioPort}` : ''}, ${rec.mode})`);
     }
 
     /**
@@ -425,7 +425,7 @@ class StreamRecorder {
                 await media.deleteVod(rec.vodId).catch(() => {});
                 console.log(`[VOD] Discarded ephemeral clips-only recording (vod ${rec.vodId}, stream ${streamId})`);
             } else {
-                console.log(`[VOD] Recording stopped: stream ${streamId} → vod ${rec.vodId} (Media finalizing)`);
+                console.log(`[VOD] Recording stopped: stream ${streamId} to vod ${rec.vodId} (Media finalizing)`);
             }
         })();
         finish.catch(() => {}).finally(() => this._finalizing.delete(streamId));

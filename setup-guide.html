@@ -477,8 +477,8 @@ npm run init-db</code></pre>
 <h3>Main website</h3>
 <p>Create these records in Cloudflare DNS:</p>
 <ul>
-<li><code>A</code> record for <code>@</code> → <code>YOUR_OVH_PUBLIC_IP</code></li>
-<li><code>CNAME</code> for <code>www</code> → your apex hostname</li>
+<li><code>A</code> record for <code>@</code> pointing at <code>YOUR_OVH_PUBLIC_IP</code></li>
+<li><code>CNAME</code> for <code>www</code> pointing at your apex hostname</li>
 </ul>
 <p>Set both to <strong>Proxied</strong> (orange cloud) after the origin is working.</p>
 
@@ -1031,18 +1031,18 @@ sudo ufw status verbose</code></pre>
 
 <h3>Approximate retained recording hours (at 2.5 Mbps)</h3>
 <ul>
-<li>30 GB usable → ~27 hours</li>
-<li>80 GB usable → ~73 hours</li>
-<li>180 GB usable → ~164 hours</li>
-<li>380 GB usable → ~345 hours</li>
+<li>30 GB usable, about 27 hours</li>
+<li>80 GB usable, about 73 hours</li>
+<li>180 GB usable, about 164 hours</li>
+<li>380 GB usable, about 345 hours</li>
 </ul>
 
 <h3>At 4.0 Mbps</h3>
 <ul>
-<li>30 GB usable → ~17 hours</li>
-<li>80 GB usable → ~45 hours</li>
-<li>180 GB usable → ~102 hours</li>
-<li>380 GB usable → ~216 hours</li>
+<li>30 GB usable, about 17 hours</li>
+<li>80 GB usable, about 45 hours</li>
+<li>180 GB usable, about 102 hours</li>
+<li>380 GB usable, about 216 hours</li>
 </ul>
 
 <div class="card tip"><strong>Storage takeaway:</strong> 50 GB is test-only. 100 GB is okay for dev/alpha. <strong>200 GB</strong> is the first production-usable size. 400 GB is much better but still not archival. Long-term, push older VODs to object storage.</div>

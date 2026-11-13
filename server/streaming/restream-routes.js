@@ -413,11 +413,11 @@ router.post('/destinations/:id/start', requireAuth, async (req, res) => {
         }
 
         if (stream.protocol === 'webrtc') {
-            // WebRTC → RTMP requires Mediasoup SFU
+            // WebRTC to RTMP requires Mediasoup SFU
             const webrtcSFU = require('./webrtc-sfu');
             if (!webrtcSFU.ready) {
                 return res.status(400).json({
-                    error: 'WebRTC → RTMP restreaming requires Mediasoup. Install mediasoup: npm install mediasoup',
+                    error: 'WebRTC to RTMP restreaming requires Mediasoup. Install mediasoup: npm install mediasoup',
                 });
             }
         }
@@ -650,7 +650,7 @@ router.get('/oauth/:platform/start', requireAuth, async (req, res) => {
 function oauthErrorText(platform, err, description) {
     const name = (platformOAuth.PLATFORMS[platform] && platformOAuth.PLATFORMS[platform].name) || String(platform).charAt(0).toUpperCase() + String(platform).slice(1);
     if (/redirect/i.test(String(err || '')) || /redirect[_ ]?ur[il]/i.test(String(description || ''))) {
-        return `${name} refused the sign-in because this site's address is not on its app's list. In the ${name} developer console, add ${platformOAuth.redirectUri(platform)} as an OAuth redirect URL for the app whose client ID is set in Admin → Integrations, then connect again. Until then, paste the stream key into the destination by hand.`;
+        return `${name} refused the sign-in because this site's address is not on its app's list. In the ${name} developer console, add ${platformOAuth.redirectUri(platform)} as an OAuth redirect URL for the app whose client ID is set in Admin, under Integrations, then connect again. Until then, paste the stream key into the destination by hand.`;
     }
     return description || err;
 }

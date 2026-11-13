@@ -69,7 +69,7 @@
     <div class="card">
         <label for="whip-url">WHIP URL</label>
         <input id="whip-url" type="url" placeholder="https://ingest.openvibe.live/whip/&lt;your-stream-key&gt;" autocomplete="off" spellcheck="false">
-        <p class="hint">Copy it from <strong>Broadcast → your stream → Streaming method: WHIP</strong>. The key inside the URL is your credential — treat the URL like a password. It is remembered in this browser only.</p>
+        <p class="hint">Copy it from <strong>Broadcast, then your stream, then Streaming method: WHIP</strong>. The key inside the URL is your credential — treat the URL like a password. It is remembered in this browser only.</p>
 
         <label for="whip-token">Bearer token <span style="text-transform:none;letter-spacing:0">(optional — only needed if your URL uses the numeric slot form <code>/whip/42</code>)</span></label>
         <input id="whip-token" type="password" placeholder="stream key" autocomplete="off">
@@ -216,7 +216,7 @@
             els.preview.srcObject = stream;
             for (const track of stream.getTracks()) {
                 log(`${track.kind} track: ${track.label || 'unnamed'}`);
-                // "Stop sharing" in the browser's screen-share bar ends the track → end the session.
+                // "Stop sharing" in the browser's screen-share bar ends the track, so end the session.
                 track.addEventListener('ended', () => { if (state.phase === 'live' || state.phase === 'connecting') stop('source ended'); });
             }
 

@@ -27,12 +27,12 @@ async function syncUsername(userId, newName) {
     const user = await db.get('SELECT id, username FROM users WHERE id = ?', [userId]);
     if (!user || String(user.username || '').toLowerCase() === newName.toLowerCase()) return false;
     const clash = await db.get('SELECT id FROM users WHERE lower(username) = lower(?) AND id != ?', [newName, userId]);
-    if (clash) { console.warn(`[Usernames] ${user.username} → ${newName}: another Live user holds that name; not renamed`); return false; }
+    if (clash) { console.warn(`[Usernames] ${user.username} to ${newName}: another Live user holds that name; not renamed`); return false; }
     await db.getDb().tx(async () => {
         await db.run('INSERT INTO username_history (user_id, old_username, new_username) VALUES (?, ?, ?)', [user.id, user.username, newName]);
         await db.run('UPDATE users SET username = ? WHERE id = ?', [newName, user.id]);
     });
-    console.log(`[Usernames] renamed ${user.username} → ${newName} (Network)`);
+    console.log(`[Usernames] renamed ${user.username} to ${newName} (Network)`);
     return true;
 }
 

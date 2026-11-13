@@ -79,7 +79,7 @@
                 <span title="Live transcript"><i class="fa-solid fa-ear-listen"></i> heard ${st.senses.heard_lines ? `${st.senses.heard_lines} lines, latest ${ago(st.senses.heard_age_ms)}` : (st.timeline_enabled ? 'nothing recent' : 'off')}</span>
                 <span title="Latest screen analysis"><i class="fa-solid fa-eye"></i> seen ${st.senses.seen_age_ms != null ? ago(st.senses.seen_age_ms) : 'never'}${st.senses.seen_text ? ` — ${esc(st.senses.seen_text.slice(0, 90))}` : ''}</span>
                 <span title="Cached prompt prefix"><i class="fa-solid fa-bolt"></i> context ${st.senses.stable_prefix_chars ? `${Math.round(st.senses.stable_prefix_chars / 4)} tokens cached` : 'building'}</span>
-                <span><i class="fa-solid fa-clock"></i> next pass ${st.next_tick_in_ms != null ? `in ${Math.round(st.next_tick_in_ms / 1000)}s` : '—'} · ${st.lines_last_minute}/min · bot↔bot ${Math.round((st.bot_share || 0) * 100)}%</span>`;
+                <span><i class="fa-solid fa-clock"></i> next pass ${st.next_tick_in_ms != null ? `in ${Math.round(st.next_tick_in_ms / 1000)}s` : '—'} · ${st.lines_last_minute}/min · bot-to-bot ${Math.round((st.bot_share || 0) * 100)}%</span>`;
         }
         if (b) _setUsageMeter(b, st);
     }
@@ -162,7 +162,7 @@
     function logRow(r) {
         const icon = { line: 'fa-comment', tick: 'fa-clapperboard', skip: 'fa-forward', mention: 'fa-bullhorn', fold: 'fa-brain', vision: 'fa-eye', degrade: 'fa-gauge', pause: 'fa-pause', error: 'fa-triangle-exclamation', info: 'fa-circle-info' }[r.event] || 'fa-circle';
         const cost = r.cost_usd != null ? `<span class="muted" title="${r.tokens_in || 0} in (${r.tokens_cached || 0} cached) / ${r.tokens_out || 0} out · ${esc(r.model || '')}">${money(r.cost_usd)}${r.tokens_in ? ` · ${Math.round(((r.tokens_cached || 0) / r.tokens_in) * 100)}% cached` : ''}</span>` : '';
-        const who = r.bot_username ? `<b>${esc(r.bot_username)}</b>${r.target ? ` <span class="muted">→ ${esc(r.target)}</span>` : ''}` : `<span class="muted">${esc(r.event)}</span>`;
+        const who = r.bot_username ? `<b>${esc(r.bot_username)}</b>${r.target ? ` <span class="muted">to ${esc(r.target)}</span>` : ''}` : `<span class="muted">${esc(r.event)}</span>`;
         return `<div class="aiv-log-row aiv-log-${esc(r.event)}"><i class="fa-solid ${icon}"></i><div><div>${who} ${r.text ? `— ${esc(r.text)}` : ''}</div>${r.reason ? `<div class="muted aiv-log-reason">${esc(r.reason)}</div>` : ''}</div><div class="aiv-log-meta">${cost}<span class="muted">${tsAgo(r.created_at)}</span></div></div>`;
     }
     async function pollLog() {
@@ -272,7 +272,7 @@
             const p = d.plan;
             box.innerHTML = `
                 <div class="muted" style="font-size:0.78rem">Context: ${d.context ? `${Math.round(d.context.stable_chars / 4)} tokens stable (cached) + ${Math.round(d.context.volatile_chars / 4)} tokens fresh · heard ${d.context.sources.heardAgeMs != null ? ago(d.context.sources.heardAgeMs) : 'nothing'} · seen ${d.context.sources.seenAgeMs != null ? ago(d.context.sources.seenAgeMs) : 'never'} · ${d.context.sources.chatLines} chat lines · ${d.context.sources.people} people known` : ''}${d.cost != null ? ` · this preview cost ${money(d.cost)}${d.usage && d.usage.cached ? ` (${Math.round((d.usage.cached / d.usage.input) * 100)}% cached)` : ''}` : ''}</div>
-                ${p && p.lines && p.lines.length ? p.lines.map(l => `<div class="aiv-preview-line"><b>${esc(l.bot)}</b> <span class="muted">→ ${esc(l.target)}${l.reply_to ? ' @' + esc(l.reply_to) : ''} · +${Math.round((l.delay_ms || 0) / 1000)}s</span><br>${esc(l.text)}<br><span class="muted aiv-log-reason">${esc(l.reason || '')}</span></div>`).join('') : `<p class="muted">The director would stay quiet right now${p && p.notes ? ` — ${esc(p.notes)}` : ''}.</p>`}
+                ${p && p.lines && p.lines.length ? p.lines.map(l => `<div class="aiv-preview-line"><b>${esc(l.bot)}</b> <span class="muted">to ${esc(l.target)}${l.reply_to ? ' @' + esc(l.reply_to) : ''} · +${Math.round((l.delay_ms || 0) / 1000)}s</span><br>${esc(l.text)}<br><span class="muted aiv-log-reason">${esc(l.reason || '')}</span></div>`).join('') : `<p class="muted">The director would stay quiet right now${p && p.notes ? ` — ${esc(p.notes)}` : ''}.</p>`}
                 <details style="margin-top:6px"><summary class="muted" style="cursor:pointer;font-size:0.78rem">What the bots were shown</summary><pre class="aiv-pre">${esc(d.stable_preview || '')}\n\n---\n\n${esc(d.volatile_preview || '')}</pre></details>`;
         } catch (e) { if (box) box.innerHTML = `<span class="muted">${esc(e.message || 'Preview failed')}</span>`; }
         finally { if (btn) btn.disabled = false; }

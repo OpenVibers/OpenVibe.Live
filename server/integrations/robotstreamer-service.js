@@ -859,7 +859,7 @@ class RobotStreamerService {
                     };
                     outgoing = JSON.stringify(msg);
                 }
-                console.log(`[RS Publish] Client → SFU: ${msg.method} (id=${msg.id}) | upstream ready: ${upstreamReady} | queued: ${outboundQueue.length}`);
+                console.log(`[RS Publish] Client to SFU: ${msg.method} (id=${msg.id}) | upstream ready: ${upstreamReady} | queued: ${outboundQueue.length}`);
             }
 
             if (!upstreamReady) outboundQueue.push(outgoing);
@@ -992,11 +992,11 @@ class RobotStreamerService {
             const parsed = safeJsonParse(raw);
             if (parsed?.response) {
                 const status = parsed.ok === false ? 'ERROR' : 'OK';
-                console.log(`[RS Publish] SFU → client: response id=${parsed.id} ${status}`, parsed.ok === false ? JSON.stringify({ error: parsed.error, reason: parsed.reason }) : '');
+                console.log(`[RS Publish] SFU to client: response id=${parsed.id} ${status}`, parsed.ok === false ? JSON.stringify({ error: parsed.error, reason: parsed.reason }) : '');
             } else if (parsed?.request) {
-                console.log(`[RS Publish] SFU → client: request method=${parsed.method}`);
+                console.log(`[RS Publish] SFU to client: request method=${parsed.method}`);
             } else if (parsed?.notification) {
-                console.log(`[RS Publish] SFU → client: notification method=${parsed.method}`);
+                console.log(`[RS Publish] SFU to client: notification method=${parsed.method}`);
             }
         });
 
