@@ -37,7 +37,7 @@ function plainText(value) {
     }
     text = db.publicMemoryText(text)
         .replace(/<[^>]*>/g, ' ')
-        .replace(/-->/g, '→')
+        .replace(/-->/g, ' ')
         .replace(/\s+/g, ' ')
         .trim();
     return text;

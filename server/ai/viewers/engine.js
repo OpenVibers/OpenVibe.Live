@@ -256,7 +256,7 @@ class AiViewersEngineV3 {
             const accepted = await this._acceptPlan(w, res.plan, bots, consumed);
             await poster.log(w, {
                 event: 'tick', reason: res.plan.notes || (res.plan.skip ? 'director: skip' : `planned ${accepted} line(s)`),
-                text: accepted ? res.plan.lines.slice(0, accepted).map(l => `${l.bot}→${l.target}${l.reply_to ? '@' + l.reply_to : ''}`).join(', ') : null,
+                text: accepted ? res.plan.lines.slice(0, accepted).map(l => `${l.bot} to ${l.target}${l.reply_to ? '@' + l.reply_to : ''}`).join(', ') : null,
                 tokens_in: res.usage.input, tokens_cached: res.usage.cached, tokens_out: res.usage.output, cost_usd: res.cost, model: res.model,
             });
             for (const id of res.plan.threads_close || []) { const n = parseInt(id, 10); if (n) { try { await db.closeAiViewerThread(n); } catch { /* */ } } }

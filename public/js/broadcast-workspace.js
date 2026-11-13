@@ -704,7 +704,7 @@ function _wsRenderPanel() {
                     <label class="bc-ws-saver">
                         <input type="checkbox" id="bc-ws-battery-saver"${typeof batterySaverOn === 'function' && batterySaverOn() ? ' checked' : ''}
                             onchange="setBatterySaver(this.checked); if (broadcastState.activeStreamId) applyBroadcastQuality().catch(() => {})">
-                        <span><b>Battery saver on this device</b><small>480p at 30 fps, whatever is set above: a cooler phone and a longer stream. Change it while live under More → Video.</small></span>
+                        <span><b>Battery saver on this device</b><small>480p at 30 fps, whatever is set above: a cooler phone and a longer stream. Change it while live under More, then Video.</small></span>
                     </label>
                 </details>
                 </div>
@@ -795,7 +795,7 @@ function _wsRenderPanel() {
                                 </label>
                                 <p class="muted" style="font-size:0.78rem;margin:4px 0 0">
                                     Covers OpenVibe chat, RobotStreamer chat and every restream chat relay on this slot.
-                                    Each restream destination below also has its own <strong>→ PowerChat</strong> switch, so you can keep e.g. Twitch chat on the overlay but leave Kick off.
+                                    Each restream destination below also has its own <strong>PowerChat</strong> switch, so you can keep e.g. Twitch chat on the overlay but leave Kick off.
                                 </p>
                             </div>
                         </div>
@@ -1803,7 +1803,7 @@ function _wsRenderMethodEndpoint(method, streamKey, managedStreamId) {
                 <span class="bc-ws-method-info-note">Use the key shown above</span>
             </div>
             <p class="bc-ws-method-info-hint">
-                <strong>OBS:</strong> Settings &rarr; Stream &rarr; Service: Custom &rarr; paste server &amp; key above.<br>
+                <strong>OBS:</strong> Settings, then Stream, then Service: Custom, then paste server &amp; key above.<br>
                 <strong>Streamlabs / IRL Pro:</strong> Use Custom RTMP with the same server &amp; key.
             </p>
         </div>`;
@@ -1841,7 +1841,7 @@ function _wsRenderMethodEndpoint(method, streamKey, managedStreamId) {
                 <span class="bc-ws-method-info-note">Use the stream key shown above as the Bearer Token in OBS.</span>
             </div>
             <p class="bc-ws-method-info-hint">
-                <strong>OBS WHIP setup:</strong> Settings &rarr; Stream &rarr; Service: WHIP &rarr; paste URL above.
+                <strong>OBS WHIP setup:</strong> Settings, then Stream, then Service: WHIP, then paste URL above.
                 Set Bearer Token to your stream key. Your stream will auto-start when OBS begins transmitting.
             </p>
         </div>`;
@@ -1889,7 +1889,7 @@ function _wsRenderMethodEndpoint(method, streamKey, managedStreamId) {
   ${esc(jsmpegServer)}/${esc(streamKey)}/640/480/</pre>
 
                 <h5><i class="fa-solid fa-microchip"></i> Raspberry Pi Camera</h5>
-                <pre class="bc-ws-cli-code"># Pi Camera v2 / libcamera &rarr; JSMPEG
+                <pre class="bc-ws-cli-code"># Pi Camera v2 / libcamera to JSMPEG
 rpicam-vid -t 0 --width 640 --height 480 --framerate 24 \\
   --codec yuv420 -o - | \\
   ffmpeg -f rawvideo -pix_fmt yuv420p -s 640x480 -r 24 -i - \\
@@ -1954,7 +1954,7 @@ rpicam-vid -t 0 --width 640 --height 480 --framerate 24 \\
   -f flv ${esc(rtmpServer)}/${esc(streamKey)}</pre>
 
                 <h5><i class="fa-solid fa-microchip"></i> Raspberry Pi Camera</h5>
-                <pre class="bc-ws-cli-code"># Pi Camera &rarr; RTMP
+                <pre class="bc-ws-cli-code"># Pi Camera to RTMP
 rpicam-vid -t 0 --width 1280 --height 720 --framerate 30 \\
   --codec h264 --bitrate 2000000 -o - | \\
   ffmpeg -f h264 -i - -c:v copy -an \\

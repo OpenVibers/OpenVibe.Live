@@ -482,7 +482,7 @@ class RsPassthroughRelay {
         session.state = 'restarting';
         session.nextRestartAt = Date.now() + delay;
         log(session.streamId, `⚠️ passthrough restart #${session.restarts}/${MAX_RESTARTS} in ${delay}ms — reason: ${reason} ` +
-            `(RS viewers see this as the video cutting out: new SSRC → new consumer → client blanks the MediaStream)`);
+            `(RS viewers see this as the video cutting out: new SSRC, then a new consumer, then the client blanks the MediaStream)`);
         session.restartTimer = setTimeout(async () => {
             session.restartTimer = null;
             if (session.stopped) return;
@@ -632,7 +632,7 @@ class RsPassthroughRelay {
         const isH264 = /h264/i.test(videoIn.mimeType || 'video/VP8');
         const videoCodec = isH264 ? useH264({ payloadType: 103 }) : useVP8({ payloadType: 101 });
         const audioCodec = useOPUS({ payloadType: 100 });
-        log(sid, `source video codec: ${videoIn.mimeType} → producing ${videoCodec.mimeType}`);
+        log(sid, `source video codec ${videoIn.mimeType}, producing ${videoCodec.mimeType}`);
         const pc = new RTCPeerConnection({
             codecs: { video: [videoCodec], audio: [audioCodec] },
             headerExtensions: {
@@ -1040,7 +1040,7 @@ class RsPassthroughRelay {
                 // RS was told one codec; a source that changed codec needs a new RS producer (a restart).
                 if (kind === 'video' && String(next.mimeType).toLowerCase() !== String(videoIn.mimeType).toLowerCase()) {
                     closeIngest(next);
-                    log(sid, `source video codec changed (${videoIn.mimeType} → ${next.mimeType}) — restarting for a new RS producer`);
+                    log(sid, `source video codec changed (${videoIn.mimeType} to ${next.mimeType}) — restarting for a new RS producer`);
                     this._teardown(session);
                     this._scheduleRestart(session, 'source video codec changed').catch(err => log(sid, 'restart check error:', err.message));
                     return false;
@@ -1050,7 +1050,7 @@ class RsPassthroughRelay {
                 session.ingests = session.ingests.filter(i => i !== cur).concat(next);
                 closeIngest(cur);
                 stats.switches = (stats.switches || 0) + 1;
-                log(sid, `↪ ${kind} now from producer ${producer.id} (${why}) — same RS producer and SSRC, no restart`);
+                log(sid, `switched: ${kind} now from producer ${producer.id} (${why}) — same RS producer and SSRC, no restart`);
                 if (kind === 'video') { reqKeyNow(0); setTimeout(() => reqKeyNow(250), 400); }
                 return true;
             } finally { _switching = false; }
@@ -1143,7 +1143,7 @@ class RsPassthroughRelay {
                 `aIn ${Math.round((stats.aIn - lastAIn) / 10)}/s aOut ${Math.round((stats.aOut - lastAOut) / 10)}/s${stalled} ` +
                 `| writeErr v=${stats.vErr} a=${stats.aErr} alienSsrc v=${stats.vAlien} a=${stats.aAlien} | stalls=${stats.ingestStalls} (${Math.round(stats.ingestStallMs / 1000)}s total) ` +
                 `| kf ${stats.kf - lastKf}/10s maxKfGap ${stats.maxKfGap}ms injSPS/PPS=${stats.inj}${INJECT_PARAMS ? '' : '(off)'} gopDmg=${stats.gopDamaged} ` +
-                `| lossIN ${stats.lostIn - lastLostIn} (goosely→relay) lateFill ${stats.lateFill - lastLateFill} ` +
+                `| lossIN ${stats.lostIn - lastLostIn} (goosely to relay) lateFill ${stats.lateFill - lastLateFill} ` +
                 `| RS lost=${rsLostPct}% pktsLost=${s.remotePacketsLost ?? '?'} pliRx=${s.pliCount ?? '?'} firRx=${s.firCount ?? '?'} nackRx=${s.nackCount ?? '?'} retx=${s.retransmittedPacketsSent ?? '?'} deepRtx=${stats.rtxDeep} rtxMiss=${stats.rtxMiss} rtxTooOld=${stats.rtxTooOld} rtt=${Math.round((s.rtt || 0) * 1000)}ms ` +
                 `| rsRemb=${remb} bwe=${bwe} | keyReq=${stats.pli} werift=${pc.connectionState} dtls/ice=${vSenderState()}`);
             lastVIn = stats.vIn; lastVOut = stats.vOut; lastAIn = stats.aIn; lastAOut = stats.aOut;

@@ -183,7 +183,7 @@ async function _checkLiveStream(stream) {
             // deduplicated: Media handed back a clip someone already cut of this window. It stays in
             // the log for the caps, but it is theirs, not the AI's (syncAutoClipFlags skips it).
             await _logClip({ stream_id: streamId, vod_id: rec.vodId, start_time: clipStart, title, clip_id: clip.id, dedup: !!clip.deduplicated || undefined, desc: verdict.desc || '', speech, sig: _sceneSig(verdict.desc || title), score: rated.score, visibility: rated.verdict === 'public' ? 'public' : 'unlisted', bucket: rated.bucket, peak: peak.count, chatters: chatters == null ? undefined : chatters });
-            console.log(`[AutoClip] LIVE clip for stream ${streamId} @${Math.round(momentOffset)}s ("${title}") — spike ${peak.count} msgs, score ${rated.score} → ${rated.verdict}${cut.snapped ? ', on sentences' : ''}`);
+            console.log(`[AutoClip] LIVE clip for stream ${streamId} @${Math.round(momentOffset)}s ("${title}") — spike ${peak.count} msgs, score ${rated.score}, verdict ${rated.verdict}${cut.snapped ? ', on sentences' : ''}`);
         }
     } catch (e) {
         console.warn(`[AutoClip] live check failed for stream ${streamId}:`, e.message);
@@ -454,7 +454,7 @@ async function clipVodMoment(o) {
             await _logClip({ stream_id: vod.stream_id || null, vod_id: vodId, start_time: start, title: title || 'Standout Moment', clip_id: clip.id, dedup: !!clip.deduplicated || undefined, desc: desc || '', speech, archival: archival || undefined, sig: _sceneSig(desc || title),
                 score: rated.score, visibility: wanted, bucket: rated.bucket, peak: Number(sp.peak) || 0, chatters: evidence.chatters == null ? undefined : evidence.chatters,
                 picked_by: evidence.picked_by || undefined, policy: VOD_POLICY, verified: verified ? verified.verdict : undefined });
-            console.log(`[AutoClip] VOD ${vodId} @${Math.round(offset)}s cut (${evidence.picked_by || 'signals'}) — score ${rated.score} → ${wanted}${verified ? ` (check: ${verified.verdict})` : ''}, bucket ${rated.bucket}${cut.snapped ? ', on sentences' : ''}`);
+            console.log(`[AutoClip] VOD ${vodId} @${Math.round(offset)}s cut (${evidence.picked_by || 'signals'}) — score ${rated.score}, verdict ${wanted}${verified ? ` (check: ${verified.verdict})` : ''}, bucket ${rated.bucket}${cut.snapped ? ', on sentences' : ''}`);
         }
         return clip || null;
     } catch { return null; }

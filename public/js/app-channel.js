@@ -3607,7 +3607,7 @@ function _startCaptions(username, displayName, isLive) {
     panel.classList.remove('collapsed');
     panel.innerHTML = `<div class="ch-captions-head">
             <span class="ch-captions-title"><span class="ch-captions-dot"></span> <i class="fa-solid fa-closed-captioning"></i> Live translation</span>
-            <span class="ch-captions-sub">${esc(_chLang.flag || '')} ${esc(_chLang.name || '')} → 🇺🇸 English · what ${esc(displayName)} is saying</span>
+            <span class="ch-captions-sub">${esc(_chLang.flag || '')} ${esc(_chLang.name || '')} to 🇺🇸 English · what ${esc(displayName)} is saying</span>
             <button class="ch-captions-toggle" type="button" onclick="toggleCaptionsPanel()" title="Collapse / expand"><i class="fa-solid fa-chevron-up"></i></button>
         </div>
         <div class="ch-captions-lines" id="ch-captions-lines"><div class="ch-captions-wait">Listening… lines land a few seconds behind live.</div></div>`;

@@ -502,7 +502,7 @@ html[data-ov-motion=off] .name-fx-twofat{filter: drop-shadow(0 0 3px rgba(255, 4
     let reconnectDelay = RECONNECT_BASE;
     let reconnectTimer = null;
     let intentionalClose = false;
-    let emoteMap = {};           // code → {url, animated}
+    let emoteMap = {};           // code: {url, animated}
     let fadeTimers = [];
 
     // ── URL params for customization ───────────────────────────
@@ -531,7 +531,7 @@ html[data-ov-motion=off] .name-fx-twofat{filter: drop-shadow(0 0 3px rgba(255, 4
             document.body.classList.add('no-shadow');
         }
     }
-    // ?streamtitle=1 → show which stream slot each message came from (default off).
+    // ?streamtitle=1 shows which stream slot each message came from (default off).
     // Handy for a per-user overlay aggregating several live slots.
     const showStreamTitle = ['1', 'true', 'on', 'yes'].includes(String(params.get('streamtitle') || '').toLowerCase());
 
@@ -629,7 +629,7 @@ html[data-ov-motion=off] .name-fx-twofat{filter: drop-shadow(0 0 3px rgba(255, 4
         YouTube: '#ff0000',
         RS:      '#7dd3fc',
     };
-    // Relay platform → icon badge (replaces the old "[Twitch]/[RS]" text prefix).
+    // Relay platform: icon badge (replaces the old "[Twitch]/[RS]" text prefix).
     const RELAY_BADGE = {
         twitch:  { icon: 'fa-brands fa-twitch',  label: 'Twitch' },
         kick:    { icon: 'fa-solid fa-bolt',     label: 'Kick' },
@@ -705,7 +705,7 @@ html[data-ov-motion=off] .name-fx-twofat{filter: drop-shadow(0 0 3px rgba(255, 4
         // Suppress noisy OpenVibe.Live join/system lines (a clean "connected" shows on open).
         if (msg.type === 'system' && OV_JOIN_RE.test(_rawText)) return;
 
-        // RobotStreamer relayed noise → suppress; announce RS connection once on first RS msg.
+        // RobotStreamer relayed noise: suppress; announce RS connection once on first RS msg.
         if (_isRs) {
             if (!_rsConnectedShown) { _rsConnectedShown = true; _showConnected('Connected to RobotStreamer chat successfully'); }
             if (RS_NOISE_RE.test(_rawText)) return;

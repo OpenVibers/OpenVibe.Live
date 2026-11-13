@@ -39,7 +39,7 @@ assert.match(sent.pop(), /Beefs are gone.*\/rundown$/);
 await run({ anonId: 'zz', streamId: liveId }, '!beef');
 assert.match(sent.pop(), /Beefs are gone/);
 await run({ anonId: 'zy', streamId: liveId }, '!arena');
-assert.match(sent.pop(), /^📰 Nova — latest episode: “The Fridge Files” · talks about Fridges → .*\/rundown\/nova$/, 'the streamer whose chat it is');
+assert.match(sent.pop(), /^📰 Nova — latest episode: “The Fridge Files” · talks about Fridges at .*\/rundown\/nova$/, 'the streamer whose chat it is');
 await run({ anonId: 'zx', streamId: liveId }, '!arena quietguy');
 assert.match(sent.pop(), /Nothing on The Rundown about Quietguy yet/);
 await run({ anonId: 'zw', streamId: liveId }, '!arena nobody_here');

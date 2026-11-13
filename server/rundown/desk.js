@@ -415,7 +415,7 @@ async function announce(stream, user, title) {
     let base = 'https://openvibe.live';
     try { base = String(require('../config').baseUrl || base).replace(/\/$/, ''); } catch { /* */ }
     const url = `${base}/rundown/e/${stream.id}`;
-    await require('../chat/chat-delivery').message({ username: 'THE RUNDOWN', user_id: null, message: `📰 ${user.display_name || user.username}: “${title}” → ${url}`.slice(0, 480), message_type: 'system', key: `rundown:episode:${stream.id}`, metadata: { rundown_episode: stream.id, url }, is_global: true });
+    await require('../chat/chat-delivery').message({ username: 'THE RUNDOWN', user_id: null, message: `📰 ${user.display_name || user.username}: “${title}” at ${url}`.slice(0, 480), message_type: 'system', key: `rundown:episode:${stream.id}`, metadata: { rundown_episode: stream.id, url }, is_global: true });
     return true;
 }
 

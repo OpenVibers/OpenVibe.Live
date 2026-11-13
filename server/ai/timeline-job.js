@@ -206,7 +206,7 @@ let _interval = null;
 function start() {
     if (_interval) return;
     _interval = setInterval(() => { tick().catch(() => {}); }, POLL_MS);
-    console.log('[AI] Timeline job started (continuous audio → stream_timeline_events)');
+    console.log('[AI] Timeline job started (continuous audio to stream_timeline_events)');
 }
 
 /**

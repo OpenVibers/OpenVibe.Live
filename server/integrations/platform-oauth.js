@@ -149,7 +149,7 @@ async function postForm(url, formObj, headers = {}) {
     try { json = text ? JSON.parse(text) : {}; } catch { /* non-json */ }
     if (!res.ok) {
         const msg = (json && (json.message || json.error_description || json.error)) || text || res.statusText;
-        throw new Error(`${url} -> ${res.status}: ${msg}`);
+        throw new Error(`${url} returned ${res.status}: ${msg}`);
     }
     return json || {};
 }
@@ -200,7 +200,7 @@ async function getJson(url, headers) {
     try { json = text ? JSON.parse(text) : {}; } catch { /* */ }
     if (!res.ok) {
         const msg = (json && (json.message || json.error?.message || json.error)) || text || res.statusText;
-        throw new Error(`${url} -> ${res.status}: ${msg}`);
+        throw new Error(`${url} returned ${res.status}: ${msg}`);
     }
     return json || {};
 }
@@ -286,7 +286,7 @@ async function createYouTubeStream(headers) {
         body: JSON.stringify(body),
     });
     const json = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(`YouTube liveStreams.insert -> ${res.status}: ${json.error?.message || res.statusText}`);
+    if (!res.ok) throw new Error(`YouTube liveStreams.insert returned ${res.status}: ${json.error?.message || res.statusText}`);
     return json;
 }
 

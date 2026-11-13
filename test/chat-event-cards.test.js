@@ -31,10 +31,16 @@ assert.strictEqual(old.kind, 'live'); assert.strictEqual(old.name, 'AmberFieraGa
 const fromMeta = _chatEventOf({ message_type: 'system', message: 'something else', metadata: { kind: 'live_link', url: 'https://openvibe.live/@iZoR_One' } });
 assert.strictEqual(fromMeta.name, 'iZoR_One', 'the name comes from the link when the text is not the usual one');
 
-const rd = _chatEventOf({ message_type: 'system', message: '\u{1F4F0} goosely: “Second McDoanld\'s Run: Bug Fix Later” → https://openvibe.live/rundown/e/2891',
+const rd = _chatEventOf({ message_type: 'system', message: '\u{1F4F0} goosely: “Second McDoanld\'s Run: Bug Fix Later” at https://openvibe.live/rundown/e/2891',
     metadata: { rundown_episode: 2891, url: 'https://openvibe.live/rundown/e/2891' } });
 assert.deepStrictEqual({ kind: rd.kind, name: rd.name, title: rd.title, url: rd.url },
     { kind: 'rundown', name: 'goosely', title: "Second McDoanld's Run: Bug Fix Later", url: 'https://openvibe.live/rundown/e/2891' });
+
+// Rows posted before the wording changed still read as the same card (the parser keeps the old separator as an escape).
+const oldRd = _chatEventOf({ message_type: 'system', message: '\u{1F4F0} goosely: “Old episode” \u2192 https://openvibe.live/rundown/e/2890',
+    metadata: { rundown_episode: 2890, url: 'https://openvibe.live/rundown/e/2890' } });
+assert.deepStrictEqual({ kind: oldRd.kind, name: oldRd.name, title: oldRd.title, url: oldRd.url },
+    { kind: 'rundown', name: 'goosely', title: 'Old episode', url: 'https://openvibe.live/rundown/e/2890' });
 
 assert.strictEqual(_chatEventOf({ message_type: 'system', message: '\u{1F534} x is live. Share the stream: https://evil.example/@x' }), null, 'never a link to another site');
 assert.strictEqual(_chatEventOf({ message_type: 'system', message: '\u{1F534} x is live. Share the stream: javascript:alert(1)' }), null);

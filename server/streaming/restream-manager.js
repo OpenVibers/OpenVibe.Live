@@ -326,7 +326,7 @@ class RestreamManager extends EventEmitter {
         if (protocol === 'webrtc') {
             const webrtcSFU = require('./webrtc-sfu');
             if (!webrtcSFU.ready) {
-                console.warn('[Restream] WebRTC → RTMP requires Mediasoup SFU. Mediasoup not available.');
+                console.warn('[Restream] WebRTC to RTMP requires Mediasoup SFU. Mediasoup not available.');
                 return null;
             }
         }
@@ -532,7 +532,7 @@ class RestreamManager extends EventEmitter {
     }
 
     /**
-     * Start WebRTC → RTMP restream.
+     * Start WebRTC to RTMP restream.
      * 
      * Flow:
      *   1. Signal the broadcaster to produce tracks into Mediasoup SFU

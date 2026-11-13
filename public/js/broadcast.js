@@ -54,7 +54,7 @@ function parseRsRestreamSlotValue() {
                 // Migrate to managed format in-place
                 const migratedId = ss.streamData.managed_stream_id;
                 localStorage.setItem('bc-rs-restream-slot', `m:${migratedId}`);
-                console.log(`[RS Slot] Migrated legacy s:${legacyId} → m:${migratedId}`);
+                console.log(`[RS Slot] Migrated legacy s:${legacyId} to m:${migratedId}`);
                 return { managedStreamId: migratedId };
             }
         }

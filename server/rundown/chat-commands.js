@@ -35,19 +35,19 @@ async function handle(chat, ws, client, cmd, parts) {
     if (limited(_last, voterKey(client), RATE_MS)) { reply('Easy — one command every few seconds.'); return true; }
     const work = (async () => {
         try {
-            if (cmd !== '!arena') return reply(`Beefs are gone. The Rundown writes up what streamers talk about instead → ${base()}/rundown`);
+            if (cmd !== '!arena') return reply(`Beefs are gone. The Rundown writes up what streamers talk about instead: ${base()}/rundown`);
             const stream = client.streamId ? await db.getStreamById(client.streamId) : null;
             const target = parts[1] ? await db.get('SELECT id, username, display_name FROM users WHERE lower(username) = lower(?)', [String(parts[1]).replace(/^@/, '')])
                 : (stream ? await db.get('SELECT id, username, display_name FROM users WHERE id = ?', [stream.user_id]) : null);
-            if (!target) return reply(parts[1] ? `Nobody called ${String(parts[1]).slice(0, 30)} here.` : `What streamers talked about, written up → ${base()}/rundown`);
+            if (!target) return reply(parts[1] ? `Nobody called ${String(parts[1]).slice(0, 30)} here.` : `What streamers talked about, written up at ${base()}/rundown`);
             const read = require('./read');
             const page = await read.streamer(target.username);
             const name = target.display_name || target.username;
             if (!page || page.opted_out) return reply(`${name} keeps themselves out of The Rundown.`);
             const ep = page.episodes[0];
             const topics = page.topics.slice(0, 3).map((t) => t.title);
-            if (!ep && !topics.length) return reply(`Nothing on The Rundown about ${name} yet: it takes talk on a transcribed stream → ${base()}/rundown`);
-            return reply(`📰 ${name}${ep ? ` — latest episode: “${ep.title}”` : ''}${topics.length ? ` · talks about ${topics.join(', ')}` : ''} → ${base()}/rundown/${encodeURIComponent(target.username)}`);
+            if (!ep && !topics.length) return reply(`Nothing on The Rundown about ${name} yet: it takes talk on a transcribed stream. See ${base()}/rundown`);
+            return reply(`📰 ${name}${ep ? ` — latest episode: “${ep.title}”` : ''}${topics.length ? ` · talks about ${topics.join(', ')}` : ''} at ${base()}/rundown/${encodeURIComponent(target.username)}`);
         } catch (err) {
             reply(`The Rundown: ${err.message}`);
         }

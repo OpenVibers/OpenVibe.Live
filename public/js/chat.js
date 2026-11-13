@@ -1871,7 +1871,7 @@ function _updateTranslateHint(lang) {
         if (!pill) { pill = document.createElement('span'); pill.className = 'chat-translate-hint'; row.appendChild(pill); }
         const name = _LANG_LABEL[_chatChannelLang] || _chatChannelLang;
         pill.title = `This streamer reads ${name}. Type in YOUR language — every message is auto-translated to ${name} for them, and their ${name} is translated to English for you.`;
-        pill.innerHTML = `<i class="fa-solid fa-language"></i> <span>Auto-translated ↔ ${esc(name)}</span>`;
+        pill.innerHTML = `<i class="fa-solid fa-language"></i> <span>Auto-translated with ${esc(name)}</span>`;
     });
 }
 
@@ -2824,13 +2824,13 @@ function addRichSystemMessage(html, style = 'info') {
 
 /* ── Event cards: someone went live, a Rundown episode is out ──────────────────
  * Live posts these as system rows ("🔴 <name> is live. Share the stream: <url>", metadata.kind 'live_link';
- * "📰 <name>: “<title>” → <url>", metadata.rundown_episode). They were italic blue sentences with a bare URL; now
+ * "📰 <name>: “<title>” at <url>", metadata.rundown_episode). They were italic blue sentences with a bare URL; now
  * each is a small card like the deploy card: what happened, who, when (with the viewer's timestamp setting, always in
  * global chat as messages are), a Watch/Read button and a copy-link button. Old rows are recognised by their text.
  * The same person going live again within 15 minutes updates the card instead of adding another. Built from DOM
  * nodes; a link is used only when it is an OpenVibe address. */
 const _CHAT_EV_LIVE_RE = /^\s*\u{1F534}\s*(.+?) is live\. Share the stream:\s*(https?:\/\/\S+)\s*$/u;
-const _CHAT_EV_RUNDOWN_RE = /^\s*\u{1F4F0}\s*(.+?):\s*[“"](.+)[”"]\s*→\s*(https?:\/\/\S+)\s*$/u;
+const _CHAT_EV_RUNDOWN_RE = /^\s*\u{1F4F0}\s*(.+?):\s*[“"](.+)[”"]\s+(?:\u2192|at)\s+(https?:\/\/\S+)\s*$/u;
 const _CHAT_EV_FOLD_MS = 15 * 60 * 1000;
 function _chatEvSafeUrl(u) {
     try {
@@ -4272,7 +4272,7 @@ async function ctxRenameUsername(username, userId) {
     if (newUsername == null || !newUsername.trim()) return;
     try {
         await api(`/admin/users/${userId}`, { method: 'PUT', body: { username: newUsername.trim() } });
-        toast(`Username changed: @${username} → @${newUsername.trim()}`, 'success');
+        toast(`Username changed: @${username} to @${newUsername.trim()}`, 'success');
     } catch (err) {
         toast('Failed to rename username: ' + (err.message || 'unknown error'), 'error');
     }
@@ -4284,7 +4284,7 @@ async function ctxRenameDisplayName(username, userId, currentDisplay) {
     if (newName == null || !newName.trim()) return;
     try {
         await api(`/admin/users/${userId}`, { method: 'PUT', body: { display_name: newName.trim() } });
-        toast(`Display name changed: @${username} → ${newName.trim()}`, 'success');
+        toast(`Display name changed: @${username} to ${newName.trim()}`, 'success');
     } catch (err) {
         toast('Failed to rename display name: ' + (err.message || 'unknown error'), 'error');
     }

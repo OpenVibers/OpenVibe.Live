@@ -477,7 +477,7 @@ function showEndpointInfo(stream) {
     } else if (proto === 'webrtc') {
         info = `Protocol: WebRTC\n\nUse the browser "Start Broadcasting" feature.\nYour webcam/screen will be shared via Mediasoup SFU.`;
     } else if (proto === 'rtmp') {
-        info = `Protocol: RTMP\n\nServer: rtmp://${host}:1935/live\nStream Key: ${stream.stream_key || '(use your stream key)'}\n\nIn OBS: Settings → Stream → Custom → paste above.`;
+        info = `Protocol: RTMP\n\nServer: rtmp://${host}:1935/live\nStream Key: ${stream.stream_key || '(use your stream key)'}\n\nIn OBS: Settings, then Stream, then Custom, then paste above.`;
     }
 
     el.textContent = info;
@@ -991,7 +991,7 @@ function _bucksTxRow(t) {
     else if (t.type === 'donation') { icon = 'fa-gift'; if (!t.label) label = `Received from ${esc(t.from_display || t.from_username || 'someone')}`; sign = '+'; cls = 'pos'; }
     else if (t.type === 'cashout' || t.type === 'cashout_request') { icon = 'fa-money-bill-transfer'; if (!t.label) label = 'Cashout requested'; sign = '−'; cls = 'neg'; }
     else if (t.type === 'refund') { icon = 'fa-rotate-left'; if (!t.label) label = 'Cashout refunded'; sign = '+'; cls = 'pos'; }
-    else if (t.type === 'recycle') { icon = 'fa-recycle'; if (!t.label) label = 'Moved cashout → spendable'; sign = ''; cls = ''; }
+    else if (t.type === 'recycle') { icon = 'fa-recycle'; if (!t.label) label = 'Moved cashout to spendable'; sign = ''; cls = ''; }
     const url = t.subject && t.subject.url;
     const text = url && /^https:\/\//.test(url)
         ? `<a href="${esc(url)}" target="_blank" rel="noopener">${esc(label)}</a>` : esc(label);

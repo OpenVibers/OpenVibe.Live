@@ -275,7 +275,7 @@
     (function parseUrl() {
         const seg = window.location.pathname.split('/').filter(Boolean); // ['popout'|'popout-chat', user?, id?]
         if (seg[0] === 'popout' || seg[0] === 'popout-chat') {
-            // No username (or explicit "global") → global chat.
+            // No username (or explicit "global") means global chat.
             if (!seg[1] || seg[1].toLowerCase() === 'global') { mode = 'global'; return; }
             mode = 'channel';
             channelName = decodeURIComponent(seg[1]);
@@ -314,7 +314,7 @@
     // across tabs by the shared storage listener.
 
     // Request the viewer list over the shared chat WebSocket. The reply is
-    // handled by chat.js → renderChatUsersList(), which now also fills #pc-users-body.
+    // handled by chat.js: renderChatUsersList(), which now also fills #pc-users-body.
     window.requestUserList = function() {
         try {
             if (typeof chatWs !== 'undefined' && chatWs && chatWs.readyState === WebSocket.OPEN) {
@@ -407,9 +407,9 @@
     }
 
     // Decide which stream the popout SHOULD be in right now:
-    // pinned stream while it's live → the stream we're already in while it's live
-    // (concurrent slots can reorder by viewer count — never flap between them) →
-    // any other live stream → channel chat (null).
+    // pinned stream while it's live: the stream we're already in while it's live
+    // (concurrent slots can reorder by viewer count — never flap between them), then
+    // any other live stream: channel chat (null).
     function desiredTarget(liveStreams) {
         const liveIds = liveStreams.map(s => Number(s.id));
         if (pinnedStreamId && liveIds.includes(Number(pinnedStreamId))) return Number(pinnedStreamId);

@@ -17,6 +17,7 @@
 'use strict';
 const seo = require('openvibe-shared/seo');
 const kit = require('openvibe-shared/kit');
+const glyphs = require('openvibe-shared/glyphs');
 const { esc } = seo;
 const { setRobotsHeader } = require('../web/robots-header');
 const db = require('../db/database');
@@ -278,7 +279,7 @@ async function _channelSectionMeta(username, section, page) {
     const hasNext = pages ? page < pages : rows.length === CHANNEL_PAGE_SIZE;
     const pager = `<nav class="pagination" aria-label="Pages">${page > 1 ? `<a rel="prev" href="${href(page - 1)}">Previous</a>` : ''}<span>Page ${page}${pages ? ` of ${pages}` : ''}</span>${hasNext ? `<a rel="next" href="${href(page + 1)}">Next</a>` : ''}</nav>`;
     const list = items.length ? `<ol>${items.map((item) => `<li><a href="${esc(abs(item.url))}">${esc(clean(item.name, 120))}</a><time>${esc(item.meta)}</time></li>`).join('')}</ol>` : '<p>No items on this page.</p>';
-    const snapshot = `<p><a href="${esc(abs(`/@${acct.username}`))}">← ${esc(name)}'s channel</a></p><h1>${esc(name)} · ${esc(title)}</h1>${list}${pager}`;
+    const snapshot = `<p><a href="${esc(abs(`/@${acct.username}`))}">${glyphs.svg('arrow-left', { size: 16 })} ${esc(name)}'s channel</a></p><h1>${esc(name)} · ${esc(title)}</h1>${list}${pager}`;
     return {
         title: `${name} — ${title}, page ${page} | ${SITE_NAME}`, description: `Browse ${name}'s ${title.toLowerCase()} on ${SITE_NAME}.`,
         canonicalPath, robots: page > 1 && !rows.length ? 'noindex,follow' : 'index,follow',

@@ -66,7 +66,8 @@
         .go:hover { transform: translateY(-2px) scale(1.03); }
         .go:active { transform: scale(0.97); }
         .go:disabled { cursor: default; animation: none; opacity: 0.85; }
-        .go .arrow { display: inline-block; transition: transform var(--ov-dur-2, 0.2s); }
+        .go .arrow { display: inline-block; margin-left: 5px; vertical-align: -0.18em; transition: transform var(--ov-dur-2, 0.2s); }
+        .go .arrow svg { display: block; width: 15px; height: 15px; }
         .go:hover .arrow { transform: translateX(4px); }
         .go .rip { position: absolute; border-radius: 50%; background: rgba(255,255,255,0.5); transform: scale(0); animation: rip var(--ov-dur-4, 0.7s) var(--ov-ease-out, ease-out) forwards; pointer-events: none; }
         @keyframes sheen { to { background-position: -200% 0; } }
@@ -126,7 +127,7 @@
         <div class="sorry rv" style="--d:8.2s">
             <h3 class="sorry-head">Sorry I'm being a bitch about this whole thing.</h3>
             <p class="sorry-body">I don't actually want to lock you out. Press continue and the ban is gone — on every network and every device. Just be decent to me.</p>
-            <button class="go" id="go" type="button">♥ Continue <span class="arrow">→</span></button>
+            <button class="go" id="go" type="button">♥ Continue<span class="arrow"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3.2 12h16.7M13.7 5.7l6.3 6.3l-6.3 6.3"/></svg></span></button>
             <span class="go-hint">One press. That's it.</span>
         </div>
         <p class="fine rv" style="--d:8.6s"><span class="logo">OpenVibe.Live</span> · you will see this page every time you open the site, on every device and every network you use — until you press continue.</p>
@@ -136,6 +137,7 @@
         // Continue: lift the ban server-side, then play the lift and go home.
         (function () {
             var btn = document.getElementById('go');
+            var ARROW = '<span class="arrow"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3.2 12h16.7M13.7 5.7l6.3 6.3l-6.3 6.3"/></svg></span>';
             if (!btn) return;
             btn.addEventListener('click', async function (ev) {
                 if (btn.disabled) return;
@@ -148,7 +150,7 @@
                     var j = await res.json();
                     ok = !!(res.ok && j.ok); name = j.name || null;
                 } catch (e) { ok = false; }
-                if (!ok) { btn.disabled = false; btn.innerHTML = 'Try again <span class="arrow">→</span>'; return; }
+                if (!ok) { btn.disabled = false; btn.innerHTML = 'Try again' + ARROW; return; }
                 var reduced = (document.documentElement.getAttribute('data-ov-motion') === 'off');
                 if (name) document.getElementById('welcome-line').textContent = name + ', the ban is lifted. Taking you to the site…';
                 if (!reduced) {

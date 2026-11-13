@@ -151,7 +151,7 @@ class ChatRelayService {
         // every relayed message is duplicated (once per stale overlapping bridge).
         for (const [existingKey, b] of this.bridges) {
             if (b.destId === dest.id && b.streamId !== streamId) {
-                console.log(`[ChatRelay] Replacing stale bridge ${existingKey} -> ${key} (same destination, prevents duplicate relay)`);
+                console.log(`[ChatRelay] Replacing stale bridge ${existingKey} with ${key} (same destination, prevents duplicate relay)`);
                 this._teardown(b);
                 this.bridges.delete(existingKey);
             }
@@ -881,7 +881,7 @@ class ChatRelayService {
                     try {
                         const current = await findLiveChatId();
                         if (current && current !== liveChatId) {
-                            console.log(`[ChatRelay] YouTube: live chat rotated for stream ${bridge.streamId} → ${current}`);
+                            console.log(`[ChatRelay] YouTube: live chat rotated for stream ${bridge.streamId} to ${current}`);
                             liveChatId = current;
                             bridge._ytPageToken = undefined;
                             bridge._ytFirstPoll = true; // don't dump the new chat's backlog

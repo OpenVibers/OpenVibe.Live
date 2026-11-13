@@ -77,7 +77,7 @@ async function _fetchJson(method, path, body, timeoutMs, retried = false) {
     if (!res.ok && res.status !== 202) {
         // AI is resting (ai.resting): keep its sentence so a product can show it instead of "could not answer".
         if (res.status === 503 && json && json.code === 'ai.resting') _lastProblem = { ...RESTING, retry_after_seconds: Number(res.headers.get('retry-after')) || null };
-        warn(`${method} ${path} -> ${res.status} ${(json && (json.code || json.detail)) || ''}`);
+        warn(`${method} ${path} returned ${res.status} ${(json && (json.code || json.detail)) || ''}`);
         return null;
     }
     return json;
