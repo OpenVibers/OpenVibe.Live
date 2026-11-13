@@ -1,5 +1,5 @@
 /**
- * Home tabs: there are none any more (2026-11-07, the owner's rule: never hide content behind tabs).
+ * Home tabs: there are none (2026-11-07 and again 2026-11-13, the owner's rule: never hide content behind tabs).
  *
  * The explainer at the foot (New here?: the restream tour and the About banner) shows both, one after the other, and
  * the OpenVibe network is its own section with every site. The content blocks are never tabbed again (the owner, 2026-10-31: "now I can't see the videos and clips on the homepage…
@@ -138,25 +138,21 @@ check('the OpenVibe network is its own section: every site a real link, by group
     assert.ok(/data-ovnet-switcher><span class="ovnet-orb" aria-hidden="true"><svg class="ovmb"[^>]*><rect class="ovmb-bar"/.test(net) && net.includes('<b>Every site is in the menu</b>') && !/one tap away in the/.test(net), 'the line about the menu carries the menu button as the bar draws it now, and says where it is');
 });
 
-check('on a phone the rest of the home is three parts as tabs (For you, Catch up, OpenVibe), every one in the HTML', () => {
-    // The owner, 2026-11-11: "consolidate these into tabs, self-contained tabs, so the page isn't so freaking huge … at
-    // least on mobile". openvibe-shared ov-parts.css draws it (radios and :has(), no script); wide screens stack them.
-    const start = home.indexOf('<div class="ov-parts ov-parts--front home-parts" data-parts="3">');
-    assert.ok(start > home.indexOf('id="stream-grid-live"'), 'below Live Now');
-    const parts = [...home.slice(start).matchAll(/<section class="ov-part" data-part="([a-z]+)"/g)].map((m) => m[1]);
+check('the rest of the home is three parts stacked on every screen (For you, Catch up, OpenVibe), with no tabs', () => {
+    // The owner, 2026-11-13, of the phone tabs added on 11-12: "get rid of these tabs … I want … how it was back … so that
+    // the homepage has all the content and it's more SEO friendly". The same rule as 10-31 and 11-07.
+    assert.ok(!home.includes('ov-parts') && !home.includes('ovp-home') && !/type="radio"[^>]*name="ovp-/.test(home), 'no tab wrapper, radios or bar');
+    const parts = [...home.matchAll(/<section class="home-part" data-part="([a-z]+)"/g)].map((m) => m[1]);
     assert.deepStrictEqual(parts, ['foryou', 'catchup', 'openvibe']);
-    for (const [id, label] of [['foryou', 'For you'], ['catchup', 'Catch up'], ['openvibe', 'OpenVibe']]) {
-        assert.ok(home.includes(`<input type="radio" class="ov-parts-r" name="ovp-home" id="ovp-home-${id}" value="${id}"`), `${id}: its radio`);
-        assert.ok(home.includes(`<label for="ovp-home-${id}">${label}</label>`), `${id}: its tab`);
-    }
     const at = (needle) => home.indexOf(needle);
     const sec = (id) => at(`data-part="${id}"`);
+    assert.ok(at('id="stream-grid-live"') < sec('foryou'), 'below Live Now');
     assert.ok(sec('foryou') < at('id="home-around"') && at('id="home-around"') < sec('catchup'), 'For you holds Around OpenVibe');
-    assert.ok(sec('catchup') < at('id="home-catchup"') && at('id="home-catchup"') < sec('openvibe'), 'Catch up holds the rails');
+    assert.ok(sec('catchup') < at('id="home-catchup"') && at('id="home-catchup"') < sec('openvibe'), 'Catch up holds the videos, clips and pastes');
     assert.ok(sec('openvibe') < at('id="home-intro"') && at('id="home-intro"') < at('id="home-network"'), 'OpenVibe holds New here? and the network');
     const features = JSON.parse(fs.readFileSync(path.join(__dirname, '../public/features.json'), 'utf8'));
-    assert.ok(JSON.stringify(features).includes('/shared/ov-parts.css'), 'the home links the tabs\' stylesheet (blocking, so nothing jumps)');
-    assert.ok(/function openHomePartFor\(hash\)/.test(js) && /closest\('\.ov-part'\)/.test(js), 'a link into a closed tab opens it; a returning reader\'s New here? stays inside its tab');
+    assert.ok(!JSON.stringify(features).includes('/shared/ov-parts.css'), 'the home links no tab stylesheet');
+    assert.ok(!/openHomePartFor/.test(js), 'no code that opens a closed tab, because there are none');
 });
 
 check('the network section is built by its script, between its markers, and nothing in it is a tab', () => {

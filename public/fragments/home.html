@@ -97,16 +97,10 @@
         <div class="agent-cards" id="home-agents-grid"></div>
     </div>
 
-    <!-- Below Live Now, a phone (600 px and under) shows one part at a time as tabs: For you, Catch up, OpenVibe (the
-         owner, 2026-11-11: "consolidate these into tabs, self-contained tabs, so the page isn't so freaking huge … at
-         least on mobile"). Every part stays in this HTML for crawlers and readers; a wider screen stacks them as before.
-         openvibe-shared ov-parts.css (showcase.parts()) draws it with radios and :has(), no script. -->
-    <div class="ov-parts ov-parts--front home-parts" data-parts="3">
-    <input type="radio" class="ov-parts-r" name="ovp-home" id="ovp-home-foryou" value="foryou" checked>
-    <input type="radio" class="ov-parts-r" name="ovp-home" id="ovp-home-catchup" value="catchup">
-    <input type="radio" class="ov-parts-r" name="ovp-home" id="ovp-home-openvibe" value="openvibe">
-    <div class="ov-parts-bar" role="group" aria-label="The rest of the home page"><label for="ovp-home-foryou">For you</label><label for="ovp-home-catchup">Catch up</label><label for="ovp-home-openvibe">OpenVibe</label></div>
-    <section class="ov-part" data-part="foryou" aria-label="For you">
+    <!-- Below Live Now, every part of the home is stacked on every screen: For you, Catch up (the videos, clips and
+         pastes), OpenVibe. No tabs (the owner, 2026-11-13: "get rid of these tabs … I want … how it was back"; the
+         same as 10-31 and 11-07: never hide content behind tabs). Everything is in the page for readers and crawlers. -->
+    <section class="home-part" data-part="foryou" aria-label="For you">
     <!-- Around OpenVibe: the digest, the star spotlight and the pulse, every one shown on every screen (the owner,
          2026-10-31: "don't reduce size by removing features"). -->
     <div class="home-around" id="home-around">
@@ -142,7 +136,7 @@
     </div>
     </div><!-- /home-around -->
     </section>
-    <section class="ov-part" data-part="catchup" aria-label="Catch up">
+    <section class="home-part" data-part="catchup" aria-label="Catch up">
 
     <!-- What people made, above the introduction to the site (roadmap 32.7: the home leads with live
          content and creators): channels that were just on, their recordings, the clips people took
@@ -195,7 +189,7 @@
     </div>
     </div><!-- /home-catchup -->
     </section>
-    <section class="ov-part" data-part="openvibe" aria-label="OpenVibe">
+    <section class="home-part" data-part="openvibe" aria-label="OpenVibe">
 
     <!-- New here?: the restream tour and the About banner, one after the other on every screen (2026-11-07: the
          tab row that showed one at a time on a phone is gone; the owner's rule is never to hide content behind
@@ -375,7 +369,6 @@
     </footer>
     <!--/ov:network--></div>
     </section>
-    </div><!-- /ov-parts -->
 
 </div>
 
