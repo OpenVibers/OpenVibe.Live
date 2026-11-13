@@ -282,7 +282,8 @@ router.post('/users/:id/ban', async (req, res) => {
 });
 
 // ── Unban User ───────────────────────────────────────────────
-router.delete('/users/:id/ban', async (req, res) => {
+// Lifting a site-wide ban is the owner's alone (the owner, 2026-11-13: "admins can't unban … only owner rank, but they can view").
+router.delete('/users/:id/ban', permissions.requireOwner, async (req, res) => {
     try {
         await db.run('UPDATE users SET is_banned = 0, ban_reason = NULL WHERE id = ?', [req.params.id]);
         await db.run('DELETE FROM bans WHERE user_id = ?', [req.params.id]);

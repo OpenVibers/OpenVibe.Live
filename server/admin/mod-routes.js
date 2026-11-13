@@ -183,7 +183,8 @@ router.post('/users/:id/ban', permissions.requireGlobalMod, async (req, res) => 
     }
 });
 
-router.delete('/users/:id/ban', permissions.requireGlobalMod, async (req, res) => {
+// Lifting a site-wide ban is the owner's alone (the owner, 2026-11-13: "admins can't unban … only owner rank, but they can view").
+router.delete('/users/:id/ban', permissions.requireOwner, async (req, res) => {
     try {
         const userId = parseInt(req.params.id);
         const targetUser = await db.getUserById(userId);
@@ -290,8 +291,9 @@ router.delete('/ban/:id', async (req, res) => {
 
         // Permission check: global bans require global_mod+, stream bans require stream mod
         if (!ban.stream_id) {
-            if (!permissions.isGlobalModOrAbove(req.user)) {
-                return res.status(403).json({ error: 'Only global mods can remove global bans' });
+            // A site-wide ban is lifted by the owner only (2026-11-13); a stream's own ban stays with its moderators.
+            if (!permissions.isOwner(req.user)) {
+                return res.status(403).json({ error: 'Only the owner can lift a site-wide ban' });
             }
             // Clear is_banned flag if this was a global user ban
             if (ban.user_id) {
