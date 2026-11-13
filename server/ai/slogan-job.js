@@ -122,10 +122,10 @@ async function tick() {
             global: String(global || '').slice(0, 4000), users, streamers, vods,
             usernames: usernames.map(u => String(u).slice(0, 64)).slice(0, 40), count: TARGET,
         }, { meter: { kind: 'hero_slogans', role: 'legacy' } });
-        if (!parsed) return;
+        if (!parsed) { _failedAt = Date.now(); console.warn('[Slogans] the AI answered nothing usable; trying again in an hour'); return; }
         let audiences = _cleanList((parsed.audiences || []).map(_stripAudiencePrefix).filter(a => a && !_BAD_AUDIENCE.test(a) && !/^for\b/i.test(a)), 60, TARGET);
         let quips = _cleanList(parsed.quips || [], 110, TARGET);
-        if (audiences.length < 6 && quips.length < 6) return; // bad batch — keep yesterday's
+        if (audiences.length < 6 && quips.length < 6) { _failedAt = Date.now(); console.warn('[Slogans] a thin batch; keeping the last one, trying again in an hour'); return; } // bad batch — keep yesterday's
 
         // Fresh daily batch; top up from the previous batch only if the model returned few.
         const old = await _loadPool();
@@ -134,6 +134,7 @@ async function tick() {
         await db.setState('home_hero_slogans', JSON.stringify({ v: SLOGAN_FORMAT, audiences, quips, updated_at: Date.now() }));
         console.log(`[Slogans] Fresh daily batch: ${audiences.length} words, ${quips.length} slogans (from full AI context)`);
     } catch (e) {
+        _failedAt = Date.now();
         console.warn('[Slogans] generation failed:', e.message);
     } finally {
         _busy = false;
@@ -142,7 +143,13 @@ async function tick() {
 
 // Is a fresh batch due? Based on the stored batch's age (NOT a from-boot timer) so the
 // countdown the hero shows (updated_at + 12h) always matches when we actually regenerate.
+// A failed attempt waits an hour before the next one (from 11-10 to 11-13 a failing model was asked 850 times, once
+// every five minutes).
+const RETRY_AFTER_FAIL_MS = 60 * 60 * 1000;
+let _failedAt = 0;
+
 async function _dueForRegen() {
+    if (_failedAt && Date.now() - _failedAt < RETRY_AFTER_FAIL_MS) return false;
     const pool = await _loadPool();
     if (pool.v !== SLOGAN_FORMAT) return true;                 // new prompt/format
     if (pool.audiences.length < 8) return true;                // empty / too small
