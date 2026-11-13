@@ -1,7 +1,7 @@
 'use strict';
 // Content labels (L1, 2026-10-31; Contracts 0.257.0 common.content-labels@1): a creator labels a stream slot, each
 // live session copies them, the channel page and the watch screen return them, the home list skips 18+, and the AI's
-// suggestion is stored in `suggested` and never applied until the creator confirms it.
+// AI infers a live session's labels (2026-11-13): what it notices applies at once; the creator may remove one.
 //   node test/content-labels.test.js
 const assert = require('assert');
 const http = require('http');
@@ -76,13 +76,13 @@ console.warn = () => {};
         assert.deepStrictEqual(labelsOf(shown).labels, ['18+'], 'with its chip');
         ok('the home page skips 18+; the channel page shows it with its label');
 
-        // The AI suggests on the plain stream: stored as suggested, never applied.
+        // The AI infers labels on the plain stream: applied to the live session at once (2026-11-13).
         const streamId = Number(plainLive.body.stream.id);
-        const suggested = await db.suggestStreamContentLabels(streamId, ['nudity', '18+']);
-        assert.deepStrictEqual(suggested.suggested, ['nudity', '18+']);
+        const inferred = await db.inferStreamContentLabels(streamId, ['nudity', '18+']);
+        assert.deepStrictEqual(inferred.labels, ['language', 'nudity', '18+']);
         let live = await call('GET', `/${streamId}`);
-        assert.deepStrictEqual(labelsOf(live.body.stream), { labels: ['language'], suggested: ['nudity', '18+'] }, 'a suggestion changes no label');
-        ok('the AI suggestion is stored as suggested, never applied');
+        assert.deepStrictEqual(labelsOf(live.body.stream), { labels: ['language', 'nudity', '18+'], suggested: [] }, 'what the AI noticed applies');
+        ok('the AI infers labels and they apply to the live session');
 
         // The creator confirms: the labels apply, the confirmed ones leave the suggestions.
         let r = await call('PUT', `/${streamId}`, { labels: ['language', 'nudity', '18+'] });
@@ -93,13 +93,13 @@ console.warn = () => {};
         assert.strictEqual((await call('PUT', `/${streamId}`, { labels: ['gore'] })).status, 400, 'an unknown label is refused');
         ok('the creator confirms; an unknown label is refused');
 
-        // The setup/dashboard writes the slot: the live session follows, and its suggestions are kept.
-        await db.suggestStreamContentLabels(streamId, ['flashing']);
+        // The setup/dashboard writes the slot: the live session follows.
+        await db.inferStreamContentLabels(streamId, ['flashing']);
         r = await call('PUT', `/managed/${plain}`, { labels: ['language', 'spoilers'] });
         assert.strictEqual(r.status, 200);
         assert.deepStrictEqual(labelsOf(r.body.managed_stream), { labels: ['language', 'spoilers'], suggested: [] }, 'the slot stores the creator labels');
         live = await call('GET', `/${streamId}`);
-        assert.deepStrictEqual(labelsOf(live.body.stream), { labels: ['language', 'spoilers'], suggested: ['flashing'] }, 'the live session takes the new labels and keeps the AI suggestion');
+        assert.deepStrictEqual(labelsOf(live.body.stream), { labels: ['language', 'spoilers'], suggested: [] }, 'the live session takes the creator\'s labels');
         assert.strictEqual((await call('PUT', `/managed/${plain}`, { labels: ['gore'] })).status, 400, 'the setup refuses an unknown label');
         ok('the setup writes the slot and the live session follows');
 

@@ -171,7 +171,12 @@ function loadStudio({ stream, cameras = [], screenShare = false }) {
         assert.ok(/NARROW\.matches && onBroadcastPage\(\)/.test(dock), 'phones on the studio page');
         assert.ok(/localStream\(\)\) mode = 'live'/.test(dock), 'the dock follows a live stream');
         assert.ok(/mode = 'connecting'/.test(dock), 'the dock shows connection progress');
-        assert.ok(/real = goLiveButton\(\);\s*if \(real && !inView\(real\)\) mode = !window\._glCameraAllowed/.test(dock), 'the dock asks for camera access before it can go live');
+        assert.ok(/real = goLiveButton\(\);[\s\S]{0,400}else if \(real && !inView\(real\)\) mode = !window\._glCameraAllowed/.test(dock), 'without the shared floating action, the dock asks for camera access before it can go live');
+        // 2026-11-13 (the owner: "this camera button will flash in and out … a single button with smart positioning"): with
+        // openvibe-shared's OVFloat.action the card's own "Turn on camera" and "Go live" float themselves; no copy is drawn.
+        assert.ok(/if \(floatActions\(\)\) real = null;/.test(dock), 'the floating action replaces the copied dock for these two');
+        const fa = extract(studioSrc, 'floatActions');
+        assert.ok(/\['bc-perm-btn', 'bc-ws-golive-btn'\]/.test(fa) && /F\.action\(el, \{ when: \(\) => NARROW\.matches/.test(fa) && /was\.destroy\(\)/.test(fa), 'each button floats once on a phone; a redrawn card replaces its float');
         assert.ok(/function inView\(n\) \{[^}]*getBoundingClientRect\(\)/.test(studioSrc));
         assert.ok(/b && !b\.disabled\) \{ st\.startingSince = Date\.now\(\); b\.click\(\)/.test(dock), 'it clicks the real Go Live button (same checks, same settings)');
         assert.ok(/id="bc-ws-golive-btn"/.test(read('public/js/broadcast-workspace.js')), 'the button it presses exists');

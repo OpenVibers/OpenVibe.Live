@@ -2,9 +2,11 @@
 /**
  * Content labels (L1, labels and choices, 2026-10-31; Contracts 0.257.0 common.content-labels@1).
  *
- * The one label list, the shape a stream stores and returns, the creator's write, and the AI's *suggestion*.
- * A label is never a ban: it never hides content from the person who posted it, and it changes nothing until the
- * creator confirms it. The AI only ever writes to `suggested`; a suggestion never moves itself into `labels`.
+ * The one label list, the shape a stream stores and returns, the creator's write, and what the AI notices.
+ * A label is never a ban: it never hides content from the person who posted it; it is each viewer's choice to show,
+ * blur or hide. Since 2026-11-13 the AI infers a live session's labels (the owner: "use AI to infer labels … don't
+ * make that customizable"): what it notices is applied to the session; the streamer sets 18+ by hand and may remove a
+ * wrong label. `suggested` remains in the shape for old rows and for clips.
  */
 const LABELS = Object.freeze(['nudity', 'language', 'graphic', '18+', 'flashing', 'spoilers']);
 const SHAPE = Object.freeze({ labels: Object.freeze([]), suggested: Object.freeze([]) });
