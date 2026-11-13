@@ -493,18 +493,31 @@ function _wsRenderPanel() {
                             oninput="_wsMarkDirty()">
                     </div>
                 </div>
+                <!-- 18+ (the owner, 11-13: "add like a 18+ to the description drop down"): the one label a streamer sets by
+                     hand; the rest are noticed by the AI as the stream runs (server/ai/stream-memory-job.js). -->
+                <label class="gl-adult">
+                    <input type="checkbox" id="gl-adult" role="switch" ${_glLabelsOf(ms).labels.includes('18+') ? 'checked' : ''} onchange="_glSetAdult(this.checked)">
+                    <span class="gl-adult-t"><b>18+</b><small>Keeps it off the home page; viewers choose to see it</small></span>
+                </label>
                     <button type="button" class="gl-danger-link" onclick="_wsConfirmDelete(${ms.id})"><i class="fa-solid fa-trash" aria-hidden="true"></i> Delete this slot</button>
                 </div>
             </details>
-
-            <details class="gl-fold" id="gl-labels">
-                <summary><i class="fa-solid fa-tag" aria-hidden="true"></i><span class="bc-sum-title">Labels</span><small class="bc-sum-val" id="gl-labels-sum">${esc(_glLabelsSummary(ms))}</small><i class="fa-solid fa-chevron-down bc-sum-chev" aria-hidden="true"></i></summary>
-                <div class="gl-fold-body">
-                    <p class="gl-labels-why">Labels are choices, not bans. Each viewer decides whether what carries them shows, blurs until tapped or hides; the home page leaves 18+ out.</p>
-                    <div class="gl-labels" id="gl-labels-pick" role="group" aria-label="Labels on this stream">${_glLabelsChips(ms)}</div>
-                    <div class="gl-labels-ai" id="gl-labels-ai">${_glLabelsSuggested(ms)}</div>
+            <!-- Restream Destinations -->
+            <details class="gl-fold" id="bc-ws-restream-details">
+                <summary><i class="fa-solid fa-share-nodes" aria-hidden="true"></i><span class="bc-sum-title">Restreams</span><small class="bc-sum-val" id="gl-rs-sum">…</small><i class="fa-solid fa-chevron-down bc-sum-chev" aria-hidden="true"></i></summary>
+                <div class="bc-ws-slot-settings-inner">
+                    <p class="muted" style="font-size:0.82rem;margin-bottom:10px">
+                        Stream this slot to external platforms (Twitch, YouTube, Kick, etc.). Each slot can have its own destinations.
+                    </p>
+                    <div id="bc-ws-restream-list" class="bc-ws-restream-list">
+                        <div class="bc-ws-loading">Loading your destinations…</div>
+                    </div>
+                    <button class="btn btn-small btn-outline" style="margin-top:8px" onclick="_wsAddRestreamDest()">
+                        <i class="fa-solid fa-plus"></i> Add Destination
+                    </button>
                 </div>
             </details>
+
 
             <details class="gl-fold" id="gl-how">
                 <summary><i class="fa-solid fa-${_glMethodIcon(method, browserMode)}" aria-hidden="true"></i><span class="bc-sum-title">How you stream</span><small class="bc-sum-val" id="gl-how-sum">${esc(_glHowSummary(method, browserMode))}</small><i class="fa-solid fa-chevron-down bc-sum-chev" aria-hidden="true"></i></summary>
@@ -724,21 +737,6 @@ function _wsRenderPanel() {
                     </div>
                 </details>
 
-                <!-- Restream Destinations -->
-                <details class="gl-fold" id="bc-ws-restream-details">
-                    <summary><i class="fa-solid fa-share-nodes" aria-hidden="true"></i><span class="bc-sum-title">Restreams</span><small class="bc-sum-val" id="gl-rs-sum">…</small><i class="fa-solid fa-chevron-down bc-sum-chev" aria-hidden="true"></i></summary>
-                    <div class="bc-ws-slot-settings-inner">
-                        <p class="muted" style="font-size:0.82rem;margin-bottom:10px">
-                            Stream this slot to external platforms (Twitch, YouTube, Kick, etc.). Each slot can have its own destinations.
-                        </p>
-                        <div id="bc-ws-restream-list" class="bc-ws-restream-list">
-                            <div class="bc-ws-loading">Loading your destinations…</div>
-                        </div>
-                        <button class="btn btn-small btn-outline" style="margin-top:8px" onclick="_wsAddRestreamDest()">
-                            <i class="fa-solid fa-plus"></i> Add Destination
-                        </button>
-                    </div>
-                </details>
 
                 <!-- Chat Overlay -->
                 <details class="gl-fold">
@@ -967,9 +965,10 @@ function _glHowSummary(method, browserMode) {
 }
 
 function _glDetailsSummary(ms) {
+    const adult = _glLabelsOf(ms).labels.includes('18+') ? ' · 18+' : '';
     const desc = (document.getElementById('bc-description')?.value ?? ms.description ?? '').trim();
     const slug = (document.getElementById('bc-slug')?.value ?? ms.slug ?? '').trim();
-    return `${desc ? 'Description set' : 'No description'} · ${slug ? '/' + esc(slug) : 'no short link'}`;
+    return (`${desc ? 'Description set' : 'No description'} · ${slug ? '/' + esc(slug) : 'no short link'}`) + adult;
 }
 
 function _glRecSummary(ms) {
@@ -989,7 +988,6 @@ function _glSyncSummaries() {
     if (!ms) return;
     const set = (id, html) => { const el = document.getElementById(id); if (el) el.innerHTML = html; };
     set('gl-details-sum', _glDetailsSummary(ms));
-    set('gl-labels-sum', esc(_glLabelsSummary(ms)));
     const method = ms.streaming_method || 'browser', mode = ms.browser_mode || _wsState.profile?.browserMode || 'camera';
     set('gl-how-sum', esc(_glHowSummary(method, mode)));
     const howIcon = document.querySelector('#gl-how > summary > i:first-child');
@@ -1470,29 +1468,13 @@ function _glLabelsSummary(ms, short = false) {
     return labels.map(_glLabelName).join(', ');
 }
 
-function _glLabelsChips(ms) {
-    const { labels } = _glLabelsOf(ms);
-    return _GL_LABELS.map(([id, name]) => `<button type="button" class="gl-label${labels.includes(id) ? ' is-on' : ''}${id === '18+' ? ' gl-label--adult' : ''}" aria-pressed="${labels.includes(id)}" onclick="_glToggleLabel('${id}')">${esc(name)}</button>`).join('');
-}
-
-function _glLabelsSuggested(ms) {
-    const { labels, suggested } = _glLabelsOf(ms);
-    const open = suggested.filter((l) => !labels.includes(l));
-    if (!open.length) return '';
-    return `<p class="gl-labels-ai-h">The AI noticed these on your last stream. Nothing changes until you add one.</p>`
-        + open.map((id) => `<button type="button" class="gl-label gl-label--ai" onclick="_glToggleLabel('${id}')">+ ${esc(_glLabelName(id))}</button>`).join('');
-}
-
-function _glToggleLabel(id) {
+/** 18+ by its switch in Details: the one label set by hand (the AI notices the others as the stream runs). */
+function _glSetAdult(on) {
     const ms = _wsState.selectedMs;
-    if (!ms || !_GL_LABELS.some(([k]) => k === id)) return;
+    if (!ms) return;
     const cur = _glLabelsOf(ms);
-    const labels = cur.labels.includes(id) ? cur.labels.filter((l) => l !== id) : [...cur.labels, id];
+    const labels = on ? [...new Set([...cur.labels, '18+'])] : cur.labels.filter((l) => l !== '18+');
     ms.content_labels = { labels, suggested: cur.suggested.filter((l) => !labels.includes(l)) };
-    const pick = document.getElementById('gl-labels-pick');
-    if (pick) pick.innerHTML = _glLabelsChips(ms);
-    const ai = document.getElementById('gl-labels-ai');
-    if (ai) ai.innerHTML = _glLabelsSuggested(ms);
     _wsMarkDirty();
 }
 

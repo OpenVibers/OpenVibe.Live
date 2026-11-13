@@ -832,7 +832,9 @@
     // ── Before going live on a phone: "Go live" stays in reach ──
     // The slot workspace puts the real Go Live button below the title, method, capture mode, quality and devices,
     // about two screens down on a phone. While it is out of view, a bar at the bottom presses it.
-    function goLiveButton() { const b = $('bc-ws-golive-btn'); return b && b.offsetParent ? b : null; }
+    // A floating button (OVFloat.action) is fixed, so it has no offsetParent: it still counts as shown.
+    const shown = (b) => !!b && (!!b.offsetParent || b.dataset.ovFab === 'floating');
+    function goLiveButton() { const b = $('bc-ws-golive-btn'); return shown(b) ? b : null; }
     // Nothing until the page knows the streamer's streams (broadcast.js loadExistingStreams): the bar said "Go live" for
     // a moment on every load, and while a stream of theirs was already live (owner, 2026-10-27). With one live and this
     // page not holding it, the bar resumes it instead of starting another.
@@ -871,6 +873,24 @@
         const edge = window.innerHeight - (parseFloat(getComputedStyle(document.body).getPropertyValue('--ovnav-appbar-h')) || 0);
         dock.style.setProperty('--bcs-lift', `${Math.max(0, Math.round(edge - top))}px`);
     }
+    // The owner, 2026-11-13: "this camera button will flash in and out … a single button with smart positioning". The
+    // card's "Turn on camera" and "Go live" become floating actions (OVFloat.action): on a phone, while the card is off
+    // screen, the same button rides at the bottom above the tab bar and the keyboard, and glides home when the card comes
+    // back. Each is attached once; a page without OVFloat.action keeps the old dock.
+    const floatHandles = {};
+    function floatActions() {
+        const F = window.OVFloat;
+        if (!F || typeof F.action !== 'function') return false;
+        for (const id of ['bc-perm-btn', 'bc-ws-golive-btn']) {
+            const el = $(id), was = floatHandles[id];
+            if (was && was.el === el) continue;
+            // The card was drawn again: the old button's float goes with it.
+            if (was) { try { was.destroy(); } catch { /* already gone */ } delete floatHandles[id]; }
+            if (!el) continue;
+            floatHandles[id] = F.action(el, { when: () => NARROW.matches && onBroadcastPage() && !localStream() && shown(el) && !el.disabled, maxWidth: 520, side: 'both' });
+        }
+        return true;
+    }
     function syncGoLiveDock() {
         const ready = NARROW.matches && onBroadcastPage() && !!window._bcMyLoaded;
         const liveMine = ready ? (window._bcMyLive || []) : [];
@@ -882,7 +902,10 @@
             if (!inView(card)) mode = 'resume';
         } else if (ready) {
             real = goLiveButton();
-            if (real && !inView(real)) mode = !window._glCameraAllowed && (_wsState?.selectedMs?.browser_mode || _wsState?.profile?.browserMode || 'camera') !== 'screen' ? 'allow' : 'golive';
+            // With the shared floating action (openvibe-shared 4.239.0) the card's own buttons float themselves: one
+            // element glides from its place to the bottom and back, so the copy below is not drawn for these two.
+            if (floatActions()) real = null;
+            else if (real && !inView(real)) mode = !window._glCameraAllowed && (_wsState?.selectedMs?.browser_mode || _wsState?.profile?.browserMode || 'camera') !== 'screen' ? 'allow' : 'golive';
         }
         let dock = $('bcs-golive');
         if (mode && !dock) {

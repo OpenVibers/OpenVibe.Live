@@ -1201,15 +1201,16 @@ async function setLiveStreamsContentLabels(managedStreamId, labels) {
     return await run(`UPDATE streams SET content_labels = jsonb_set(content_labels, '{labels}', ?::jsonb) WHERE managed_stream_id = ? AND is_live = 1`, [JSON.stringify(labels || []), managedStreamId]);
 }
 
-/** Add AI suggestions to a live session. Read-modify-write in a transaction so two frames never lose a suggestion. */
-async function suggestStreamContentLabels(streamId, labels) {
+/** Apply the labels the AI noticed to a live session (2026-11-13: the AI infers labels; a streamer sets only 18+ by
+ *  hand, and may remove a wrong one). Read-modify-write in a transaction so two frames never lose one. */
+async function inferStreamContentLabels(streamId, labels) {
     const shape = require('../labels');
     return await getDb().tx(async () => {
         const row = await get('SELECT content_labels FROM streams WHERE id = ? FOR UPDATE', [streamId]);
         if (!row) return null;
         const current = shape.labelsOf(row);
-        const next = shape.shape(current.labels, [...current.suggested, ...(labels || [])]);
-        if (next.suggested.length === current.suggested.length) return current;
+        const next = shape.shape([...current.labels, ...(labels || [])], current.suggested.filter((l) => !(labels || []).includes(l)));
+        if (next.labels.length === current.labels.length && next.suggested.length === current.suggested.length) return current;
         await run('UPDATE streams SET content_labels = ? WHERE id = ?', [JSON.stringify(next), streamId]);
         return next;
     });
@@ -3774,7 +3775,7 @@ module.exports = {
     createManagedStream, getManagedStreamById, getManagedStreamsByUserId,
     getManagedStreamBySlug, getManagedStreamByStreamKey, getManagedStreamByIdOrSlug,
     updateManagedStream, deleteManagedStream,
-    setLiveStreamsContentLabels, suggestStreamContentLabels,
+    setLiveStreamsContentLabels, inferStreamContentLabels,
     getManagedStreamBroadcastSettings, updateManagedStreamBroadcastSettings,
     getPipOverlayForManagedStream, getPipCandidateSlots, getPipsForManagedStream, setPipsForManagedStream, getPipSourceSlots, MAX_PIPS,
     countManagedStreamsByUser, getManagedStreamLimit,

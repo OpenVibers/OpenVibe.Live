@@ -3439,21 +3439,21 @@ html[data-ov-motion=off] .bcs-gl-burst{display: none}
 .gl-test-done:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 @media (pointer: coarse) { .gl-test-done { min-height: 44px; } }
 
-/* Labels (L1) in the go-live card's fold: six toggles; the AI's suggestions dashed, to confirm. */
-.gl-labels-why { margin: 0 0 10px; font-size: .82rem; line-height: 1.45; color: var(--text-secondary); }
-.gl-labels, .gl-labels-ai { display: flex; flex-wrap: wrap; gap: 6px; }
-.gl-labels-ai { margin-top: 12px; }
-.gl-labels-ai:empty { display: none; }
-.gl-labels-ai-h { flex-basis: 100%; margin: 0 0 2px; font-size: .78rem; color: var(--text-muted); }
-.gl-label { all: unset; box-sizing: border-box; display: inline-flex; align-items: center; min-height: 36px; padding: 0 14px; border-radius: 999px; cursor: pointer;
-    font-size: .84rem; font-weight: 650; color: var(--text-secondary); border: 1px solid var(--border); background: color-mix(in srgb, var(--text-primary) 4%, transparent);
-    transition: background-color var(--ov-dur-2, .15s), border-color var(--ov-dur-2, .15s), color var(--ov-dur-2, .15s); }
-.gl-label:hover { color: var(--text-primary); border-color: color-mix(in srgb, var(--accent) 40%, var(--border)); }
-.gl-label:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.gl-label.is-on { color: var(--text-primary); border-color: color-mix(in srgb, var(--accent) 60%, var(--border)); background: color-mix(in srgb, var(--accent) 16%, transparent); }
-.gl-label--adult.is-on { color: var(--warning-text, var(--warning)); border-color: color-mix(in srgb, var(--warning-text, var(--warning)) 55%, var(--border)); background: color-mix(in srgb, var(--warning-text, var(--warning)) 10%, transparent); }
-.gl-label--ai { border-style: dashed; color: var(--accent); }
-@media (pointer: coarse) { .gl-label { min-height: 44px; } }
+/* 18+ in Details (2026-11-13): the one label a streamer sets by hand; the AI notices the others as the stream runs. A
+   row that is one switch: the words on the left, the switch on the right, the warning colour when on. */
+.gl-adult { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 52px; margin: 6px 0 10px; padding: 8px 12px; border-radius: 14px; cursor: pointer;
+  background: color-mix(in srgb, var(--text-primary) 4%, transparent); border: 1px solid var(--border); }
+.gl-adult-t { order: -1; display: grid; gap: 2px; min-width: 0; }
+.gl-adult-t b { font-size: .95rem; color: var(--text-primary); }
+.gl-adult-t small { font-size: .8rem; color: var(--text-secondary); }
+.gl-adult input { appearance: none; -webkit-appearance: none; flex: none; position: relative; width: 46px; height: 28px; margin: 0; border-radius: 999px; cursor: pointer;
+  background: color-mix(in srgb, var(--text-primary) 18%, transparent); transition: background-color .2s; }
+.gl-adult input::after { content: ""; position: absolute; top: 3px; left: 3px; width: 22px; height: 22px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.4); transition: transform .22s cubic-bezier(.3, 1.4, .4, 1); }
+.gl-adult input:checked { background: var(--warning, #f59e0b); }
+.gl-adult input:checked::after { transform: translateX(18px); }
+.gl-adult input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.gl-adult:has(input:checked) { border-color: color-mix(in srgb, var(--warning, #f59e0b) 55%, var(--border)); }
+html[data-ov-motion=off] .gl-adult input, html[data-ov-motion=off] .gl-adult input::after { transition: none; }
 
 /* One "Turn on camera" (11-09 review): on a phone the Go live dock at the thumb carries it, so the card keeps the words
    and the other ways, not a second identical button. */
