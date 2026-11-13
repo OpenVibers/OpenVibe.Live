@@ -19,6 +19,18 @@
       },
     });
     if (!c) return;
+    // The shared box sizes itself on the next frame and on typing; Live's full stylesheet can arrive after that first
+    // measure, and a chat panel can open narrow and widen. Measure again whenever the width changes.
+    if (window.ResizeObserver) {
+      var lastW = 0;
+      new ResizeObserver(function () {
+        var w = c.text.clientWidth;
+        if (!w || w === lastW) return;
+        lastW = w;
+        c.text.style.height = 'auto';
+        c.text.style.height = Math.min(c.text.scrollHeight + 2, Math.round((window.innerHeight || 800) * 0.4)) + 'px';
+      }).observe(c.text);
+    }
     c.text.id = id;
     c.text.classList.add('chat-textarea');
     c.text.setAttribute('enterkeyhint', 'send');

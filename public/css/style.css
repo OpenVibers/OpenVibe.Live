@@ -9862,3 +9862,18 @@ body.ov-panel-open #floating-chat-fab { opacity: 0; pointer-events: none; transf
     color: var(--text-secondary); background: color-mix(in srgb, var(--text-primary) 7%, transparent); border: 1px solid var(--border); }
 .ovk-label--adult { color: var(--warning-text, #fbbf24); border-color: color-mix(in srgb, var(--warning-text, #fbbf24) 45%, transparent); background: color-mix(in srgb, var(--warning-text, #fbbf24) 9%, transparent); }
 .stream-labels:empty { display: none; }
+
+/* 2026-11-13, reported by Maticus: the composer had shrunk to an 18 px column ("Send a message" one letter a line).
+   The shared composer (public/js/composer.js mounts openvibe-shared's ov-composer into each .chat-input-row): its form
+   fills the row, and the old textarea rules stay off its text box (the box keeps .chat-textarea only so sendChat and
+   the emote picker still find it). The selectors outrank every older .chat-textarea rule on purpose. */
+.chat-input-row > .ovc-v2 { flex: 1 1 auto; min-width: 0; width: 100%; max-width: 100%; box-sizing: border-box; }
+.chat-input-row .ovc-v2 textarea.chat-textarea,
+.global-chat-main .chat-input-row .ovc-v2 textarea.chat-textarea,
+.offline-global-chat .chat-input-row .ovc-v2 textarea.chat-textarea,
+.fcw-input-area .chat-input-row .ovc-v2 textarea.chat-textarea {
+    flex: none; display: block; width: 100%; min-width: 0; height: auto; min-height: 26px; max-height: 40vh;
+    padding: 9px 2px; margin: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none;
+    font-size: 16px; line-height: 1.4; overflow-y: auto; writing-mode: horizontal-tb;
+}
+.chat-input-row .ovc-v2 textarea.chat-textarea:focus { border: 0; outline: 0; }
