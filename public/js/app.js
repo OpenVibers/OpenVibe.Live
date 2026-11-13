@@ -117,7 +117,7 @@ function _cardAiHTML(text, full) {
     // -webkit-line-clamp overflow can't clip it away; it sits at the bottom-right.
     const showToggle = hasMore || display.length > 100;
     return `<div class="card-ai-overview${showToggle ? '' : ' card-ai-static'}" role="button" tabindex="0" onclick="toggleCardAi(event,this)" onkeydown="if(event.key==='Enter'||event.key===' ')toggleCardAi(event,this)"${hasMore ? ` data-full="${esc(long)}"` : ''}>
-        <div class="card-ai-clamp"><i class="fa-solid fa-wand-magic-sparkles"></i> <span class="card-ai-text">${esc(display)}</span></div>
+        <div class="card-ai-clamp"><i class="fa-solid fa-sparkles"></i> <span class="card-ai-text">${esc(display)}</span></div>
         ${showToggle ? '<i class="card-ai-toggle fa-solid fa-chevron-down" aria-label="Toggle overview"></i>' : ''}
     </div>`;
 }
@@ -1487,7 +1487,7 @@ async function _openChatInsightModal(opts) {
         <div class="user-ai-modal">
             <div class="user-ai-modal-head">
                 <h3><i class="fa-solid ${opts.iconClass || 'fa-user-tag'}"></i> ${esc(opts.title || 'User')}</h3>
-                <span class="gai-badge"><i class="fa-solid fa-wand-magic-sparkles"></i> AI</span>
+                <span class="gai-badge"><i class="fa-solid fa-sparkles"></i> AI</span>
                 <button class="uai-close" onclick="document.getElementById('user-ai-modal-overlay').remove()"><i class="fa-solid fa-xmark"></i></button>
             </div>
             <div id="user-ai-modal-body"><div class="gai-empty">Loading insight…</div></div>
@@ -1523,7 +1523,7 @@ async function _openChatInsightModal(opts) {
         html += `<div class="uai-group-label"><i class="fa-solid fa-tower-broadcast"></i> As a streamer</div>`;
         html += `<p class="uai-sub uai-group-sub">Who they are as a streamer — from the AI analysis of their streams.</p>`;
         html += `
-            ${_uaiCollapsible('Streamer overview', '<span class="uai-tag uai-tag-streamer">channel</span>', esc(st.overview || st.overview_short || ''), { icon: 'fa-wand-magic-sparkles' })}
+            ${_uaiCollapsible('Streamer overview', '<span class="uai-tag uai-tag-streamer">channel</span>', esc(st.overview || st.overview_short || ''), { icon: 'fa-sparkles' })}
             ${mems.length ? `<div class="uai-section">
                 <h4><i class="fa-solid fa-timeline"></i> Recent stream moments</h4>
                 <div class="gai-timeline">${mems.map(m => `
@@ -1578,7 +1578,7 @@ function _uaiCollapsible(title, tagHtml, bodyHtml, opts = {}) {
     const preview = plain.length > 90 ? plain.slice(0, 90).trimEnd() + '…' : plain;
     return `<div class="uai-section uai-collapsible">
         <h4 class="uai-collapse-toggle" onclick="_uaiToggleSection(this)" role="button" tabindex="0">
-            <i class="fa-solid ${opts.icon || 'fa-wand-magic-sparkles'}"></i> ${title} ${tagHtml || ''}
+            <i class="fa-solid ${opts.icon || 'fa-sparkles'}"></i> ${title} ${tagHtml || ''}
             <i class="fa-solid fa-chevron-down uai-collapse-caret"></i>
         </h4>
         <div class="uai-collapse-preview">${esc(preview)}</div>

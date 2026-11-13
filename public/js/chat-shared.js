@@ -394,7 +394,7 @@
                 </div>
                 <div class="ctx-actions">
                     ${replyBtn}
-                    <button class="ctx-btn" onclick="dismissContextMenu();window.openRelayUserChatInsight&&openRelayUserChatInsight('${esc(platform)}','${esc(externalUsername)}','${esc(displayPlatform)}')"><i class="fa-solid fa-wand-magic-sparkles"></i> AI Insight</button>
+                    <button class="ctx-btn" onclick="dismissContextMenu();window.openRelayUserChatInsight&&openRelayUserChatInsight('${esc(platform)}','${esc(externalUsername)}','${esc(displayPlatform)}')"><i class="fa-solid fa-sparkles"></i> AI Insight</button>
                     ${cu && cu.id && ctx.currentStreamData && ctx.currentStreamData.user_id === cu.id ? `<button class="ctx-btn" onclick="dismissContextMenu();window.aivCloneChatter&&aivCloneChatter('relay','${esc(platform)}:${esc(externalUsername)}','${esc(externalUsername)}')"><i class="fa-solid fa-clone"></i> AI Clone</button>` : ''}
                     ${cap.view_all_logs ? `<button class="ctx-btn" onclick="dismissContextMenu();ctxViewRelayLogs('${esc(platform)}','${esc(externalUsername)}')"><i class="fa-solid fa-clock-rotate-left"></i> Chat Logs</button>` : ''}
                     ${modBtns ? '<div class="ctx-divider"></div>' + modBtns : ''}
@@ -427,7 +427,7 @@
                 <div class="ctx-actions">
                     ${replyBtn}
                     <button class="ctx-btn" data-username="${esc(username)}" onclick="ctxWhisper(this.dataset.username)"><i class="fa-solid fa-comment"></i> Message</button>
-                    <button class="ctx-btn" data-username="${esc(username)}" onclick="dismissContextMenu();window.openAnonChatInsight&&openAnonChatInsight(this.dataset.username)"><i class="fa-solid fa-wand-magic-sparkles"></i> AI Insight</button>
+                    <button class="ctx-btn" data-username="${esc(username)}" onclick="dismissContextMenu();window.openAnonChatInsight&&openAnonChatInsight(this.dataset.username)"><i class="fa-solid fa-sparkles"></i> AI Insight</button>
                     ${cap.view_all_logs ? `<button class="ctx-btn" data-username="${esc(username)}" onclick="dismissContextMenu();ctxViewAnonLogs(this.dataset.username)"><i class="fa-solid fa-clock-rotate-left"></i> Chat Logs</button>` : ''}
                     ${modBtns}
                     ${banBtns}
@@ -492,7 +492,7 @@
                 <button class="ctx-btn" data-username="${esc(username)}" onclick="ctxWhisper(this.dataset.username)"><i class="fa-solid fa-comment"></i> Message</button>
                 ${cu && cu.id && cu.id !== p.id ? `<button class="ctx-btn" data-username="${esc(username)}" data-uid="${esc(String(p.id))}" onclick="ctxCallUser(this.dataset.username, this.dataset.uid)"><i class="fa-solid fa-phone"></i> Call this user</button>` : ''}
                 <button class="ctx-btn" data-username="${esc(username)}" onclick="ctxViewChannel(this.dataset.username)"><i class="fa-solid fa-user"></i> Channel</button>
-                ${p.id ? `<button class="ctx-btn" data-username="${esc(username)}" data-uid="${esc(String(p.id))}" onclick="dismissContextMenu();window.openUserChatInsight&&openUserChatInsight(this.dataset.uid, this.dataset.username)"><i class="fa-solid fa-wand-magic-sparkles"></i> AI Insight</button>` : ''}
+                ${p.id ? `<button class="ctx-btn" data-username="${esc(username)}" data-uid="${esc(String(p.id))}" onclick="dismissContextMenu();window.openUserChatInsight&&openUserChatInsight(this.dataset.uid, this.dataset.username)"><i class="fa-solid fa-sparkles"></i> AI Insight</button>` : ''}
                 ${p.id && cu && cu.id && ctx.currentStreamData && ctx.currentStreamData.user_id === cu.id ? `<button class="ctx-btn" data-username="${esc(username)}" data-uid="${esc(String(p.id))}" onclick="dismissContextMenu();window.aivCloneChatter&&aivCloneChatter('user', this.dataset.uid, this.dataset.username)"><i class="fa-solid fa-clone"></i> AI Clone</button>` : ''}
                 ${cap.view_all_logs ? `<button class="ctx-btn" data-username="${esc(username)}" data-uid="${esc(String(p.id))}" onclick="ctxViewLogs(this.dataset.username, this.dataset.uid)"><i class="fa-solid fa-clock-rotate-left"></i> Chat Logs</button>` : ''}
                 ${cap.manage_users ? `<div class="ctx-rename-group">

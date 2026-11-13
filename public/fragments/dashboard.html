@@ -26,7 +26,7 @@
                     <button class="ch-tab active" data-cdtab="videos" onclick="switchDashContentTab('videos', this)"><i class="fa-solid fa-video"></i> Videos</button>
                     <button class="ch-tab" data-cdtab="streamclips" onclick="switchDashContentTab('streamclips', this)"><i class="fa-solid fa-scissors"></i> Clips of My Stream</button>
                     <button class="ch-tab" data-cdtab="myclips" onclick="switchDashContentTab('myclips', this)"><i class="fa-solid fa-film"></i> My Clips</button>
-                    <button class="ch-tab" data-cdtab="aimoments" onclick="switchDashContentTab('aimoments', this)"><i class="fa-solid fa-wand-magic-sparkles"></i> AI Moments<span class="dash-subtab-count" id="dash-ai-moments-count" hidden></span></button>
+                    <button class="ch-tab" data-cdtab="aimoments" onclick="switchDashContentTab('aimoments', this)"><i class="fa-solid fa-sparkles"></i> AI Moments<span class="dash-subtab-count" id="dash-ai-moments-count" hidden></span></button>
                     <button class="ch-tab" data-cdtab="pastes" onclick="switchDashContentTab('pastes', this)"><i class="fa-solid fa-paste"></i> Pastes</button>
                 </div>
                 <div class="dash-subpanel active" id="dash-content-videos"><div class="dash-grid" id="dash-grid-content-videos"></div></div>
@@ -134,7 +134,7 @@
                     </label>
                     <ul class="dash-el-list" id="dash-el-list" aria-label="Your buttons"></ul>
                     <p class="dash-el-actions">
-                        <a class="btn btn-primary btn-small" href="https://openvibe.design/create?kind=element" target="_blank" rel="noopener"><i class="fa-solid fa-wand-magic-sparkles" aria-hidden="true"></i> Make one with AI</a>
+                        <a class="btn btn-primary btn-small" href="https://openvibe.design/create?kind=element" target="_blank" rel="noopener"><i class="fa-solid fa-sparkles" aria-hidden="true"></i> Make one with AI</a>
                         <a class="btn btn-small" href="https://openvibe.design/gallery" target="_blank" rel="noopener"><i class="fa-solid fa-grip" aria-hidden="true"></i> Free ones in the gallery</a>
                         <a class="btn btn-small" id="dash-el-see" href="/" hidden><i class="fa-solid fa-eye" aria-hidden="true"></i> See them on your channel</a>
                     </p>
@@ -193,7 +193,7 @@
 
                 <!-- Vibe on stream (server/ai/vibe-voice.js): the streamer's call word wakes OpenVibe's assistant -->
                 <div class="dash-card dash-card-wide" id="dash-card-vibe">
-                    <h3><i class="fa-solid fa-wand-magic-sparkles"></i> Vibe on stream <span class="muted">your call word</span></h3>
+                    <h3><i class="fa-solid fa-sparkles"></i> Vibe on stream <span class="muted">your call word</span></h3>
                     <p class="muted" style="font-size:0.9rem">Say your call word on stream and Vibe, OpenVibe's assistant, jumps in. <b>"<span data-vibe-word>hey vibe</span>, clip that"</b> clips the last 45 seconds and posts the link. Anything else, like <b>"<span data-vibe-word>hey vibe</span>, what was the score last night?"</b>, gets an answer in your chat.</p>
                     <form class="vibe-form" id="dash-vibe-form">
                         <label class="vibe-switch"><input type="checkbox" name="enabled"> <span>Listen for my call word</span></label>
@@ -333,7 +333,7 @@
                             Clips
                         </label>
                         <button class="btn btn-small btn-danger" onclick="dashBulkActionByAge()">
-                            <i class="fa-solid fa-wand-magic-sparkles"></i> Apply
+                            <i class="fa-solid fa-sparkles"></i> Apply
                         </button>
                     </div>
                     <div id="dash-vods-list" class="vod-grid"></div>
@@ -365,7 +365,7 @@
 
                 <!-- AI Moments of my stream: auto-clips, kept apart from the clips people took (roadmap 33.7) -->
                 <div class="dash-card dash-card-wide" id="dash-card-aimoments">
-                    <h3 style="margin:0 0 6px"><i class="fa-solid fa-wand-magic-sparkles"></i> AI Moments of My Stream</h3>
+                    <h3 style="margin:0 0 6px"><i class="fa-solid fa-sparkles"></i> AI Moments of My Stream</h3>
                     <p class="muted">Clips OpenVibe's AI cut from your streams when chat reacted. Nobody clipped these, so they are not in "My Clips". You can publish, unlist or delete them, and turn the AI off for your channel under Home &rarr; AI Moments from my streams.</p>
                     <div id="dash-ai-clips" class="vod-grid"></div>
                 </div>
@@ -499,7 +499,7 @@
 
                 <!-- AI Moments from my streams: the channel's AI derivation switch (roadmap 33.7) -->
                 <div class="dash-card dash-card-wide" id="dash-card-ai-derivation">
-                    <h3><i class="fa-solid fa-wand-magic-sparkles"></i> AI Moments from my streams</h3>
+                    <h3><i class="fa-solid fa-sparkles"></i> AI Moments from my streams</h3>
                     <label class="staff-inline-toggle" style="margin-bottom:8px">
                         <input type="checkbox" id="dash-ai-derivation" checked onchange="saveAiDerivationSetting(this)">
                         <span>Let OpenVibe's AI make Moments from my streams</span>

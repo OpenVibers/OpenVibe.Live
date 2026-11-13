@@ -74,7 +74,7 @@ html[data-ov-motion=off] .al::after{display: none}
         sub: { icon: 'fa-star', say: 'subscribed' },
         raid: { icon: 'fa-users', say: 'raided' },
         goal: { icon: 'fa-trophy', say: 'Goal reached' },
-        element: { icon: 'fa-wand-magic-sparkles', say: 'pressed' },
+        element: { icon: 'fa-sparkles', say: 'pressed' },
     };
     var queue = [], showing = false, seen = new Set();
     function el(tag, cls, kids) { var n = document.createElement(tag); if (cls) n.className = cls; (kids || []).forEach(function (k) { if (k != null) n.append(k); }); return n; }

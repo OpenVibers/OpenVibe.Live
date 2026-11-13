@@ -244,15 +244,6 @@
                             </button>
                         </div>
                         <div class="chat-tools-row">
-                            <button class="emote-picker-btn" onclick="toggleEmotePicker('chat-input')" title="Emotes">
-                                <i class="fa-solid fa-face-smile"></i>
-                            </button>
-                            <button class="emote-picker-btn gif-btn" onclick="toggleGifPicker('chat-input')" title="GIFs">
-                                <span class="gif-btn-text">GIF</span>
-                            </button>
-                            <button class="emote-picker-btn" onclick="openChannelUploadModal()" title="Add channel emote / sound">
-                                <i class="fa-solid fa-plus"></i>
-                            </button>
                             <button class="emote-picker-btn chat-limits-btn" style="display:none" onclick="toggleChatLimitsPopover(this)" title="Chat limits (message + TTS length)">
                                 <i class="fa-solid fa-sliders"></i>
                             </button>
@@ -369,15 +360,6 @@
                         </button>
                     </div>
                     <div class="chat-tools-row">
-                        <button class="emote-picker-btn" onclick="toggleEmotePicker('offline-chat-input')" title="Emotes">
-                            <i class="fa-solid fa-face-smile"></i>
-                        </button>
-                        <button class="emote-picker-btn gif-btn" onclick="toggleGifPicker('offline-chat-input')" title="GIFs">
-                            <span class="gif-btn-text">GIF</span>
-                        </button>
-                        <button class="emote-picker-btn" onclick="openChannelUploadModal()" title="Add channel emote / sound">
-                            <i class="fa-solid fa-plus"></i>
-                        </button>
                         <button class="chat-tts-toggle tts-active" onclick="toggleChatTTS(this)" title="TTS On (click to mute)">
                             <i class="fa-solid fa-volume-high"></i>
                         </button>
@@ -457,7 +439,7 @@
                     <div id="ch-clips-of-pagination" class="pastes-pagination" style="display:none"></div>
                     <!-- What the AI cut from these streams, after what people made (roadmap 33.6). -->
                     <div class="ch-ai-clips" id="ch-ai-clips-section" hidden>
-                        <h3 class="ch-sub-h"><i class="fa-solid fa-wand-magic-sparkles ch-sec-ic" aria-hidden="true"></i>AI Moments</h3>
+                        <h3 class="ch-sub-h"><i class="fa-solid fa-sparkles ch-sec-ic" aria-hidden="true"></i>AI Moments</h3>
                         <p class="ch-panel-hint">Clips OpenVibe's AI cut automatically when chat reacted. No one clipped these.</p>
                         <div class="stream-grid" id="ch-ai-clips-grid"></div>
                         <div id="ch-ai-clips-pagination" class="pastes-pagination" style="display:none"></div>

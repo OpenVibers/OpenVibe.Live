@@ -349,7 +349,7 @@ function _wsRenderPanel() {
                     placeholder="What are you streaming?" maxlength="200"
                     oninput="_wsMarkDirty()">
                 <button type="button" class="gl-suggest" id="gl-suggest" onclick="_glSuggestTitles(this)" title="Three title ideas from your last streams on this slot">
-                    <i class="fa-solid fa-wand-magic-sparkles" aria-hidden="true"></i><span>Suggest</span>
+                    <i class="fa-solid fa-sparkles" aria-hidden="true"></i><span>Suggest</span>
                 </button>
                 <span id="bc-ws-save-status" class="bc-ws-save-status" role="status" aria-live="polite"></span>
             </div>
@@ -3385,7 +3385,7 @@ function _wsShowRestreamForm(existing) {
                 <p style="margin:0;font-size:0.82rem;color:var(--text-secondary)"><i class="fa-solid fa-robot" style="color:#4a9eff"></i> <strong>RobotStreamer</strong> uses a dedicated WebSocket connection (not RTMP). The token and robot below apply to <strong>this stream slot only</strong> — each slot can restream to a different robot.</p>
             </div>
             <div class="form-group">
-                <label><i class="fa-solid fa-wand-magic-sparkles" style="color:#4a9eff"></i> Easiest: log in with RobotStreamer</label>
+                <label><i class="fa-solid fa-sparkles" style="color:#4a9eff"></i> Easiest: log in with RobotStreamer</label>
                 <div style="display:flex;gap:8px">
                     <input type="text" id="ws-rs-rs-username" class="form-input form-input-sm" style="flex:1" placeholder="RobotStreamer username" autocomplete="off">
                     <input type="password" id="ws-rs-rs-password" class="form-input form-input-sm" style="flex:1" placeholder="Password" autocomplete="off">
@@ -3477,7 +3477,7 @@ function _wsShowRestreamForm(existing) {
                 </div>
             </div>
             <div class="bc-ws-toggle-group bc-ws-pc-only">
-                <div class="bc-ws-toggle-group-title"><i class="fa-solid fa-wand-magic-sparkles"></i> PowerChat overlay</div>
+                <div class="bc-ws-toggle-group-title"><i class="fa-solid fa-sparkles"></i> PowerChat overlay</div>
                 <div class="bc-ws-toggle-grid">
                     <label class="bc-toggle-label bc-ws-toggle-chip" title="Forward this platform's relayed chat to your PowerChat overlay (needs Chat relay)">
                         <input type="checkbox" id="ws-rs-powerchat-relay" ${(!existing || existing.powerchat_relay !== false) ? 'checked' : ''}>

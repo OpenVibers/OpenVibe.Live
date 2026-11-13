@@ -17,11 +17,15 @@
    - a PIP lives in the player (docked) or over the page (floating, position: fixed, it stays on screen while the page
      scrolls); it follows the finger or the mouse with a transform each frame and lands with a spring (FLIP), dropped
      over the player it docks, anywhere else it floats; a flick carries on the way it was thrown;
-   - thrown past the side of the screen (or of the player) it tucks into that side, a tab with its picture still going
-     at the edge, and a tap brings it out ("get out of the way" without hiding it);
-   - it is never smaller than a 150 px wide 16:9 box on a phone; two fingers pinch it, the corner sizes it, a double
-     tap (or click) toggles small and large; with focus the arrows move it, + and − size it, M mutes, T tucks, F pops it
-     out of the player or back in, Home puts it back where the streamer put it.
+   - thrown past the side of the screen (or of the player) it tucks into that side: it folds into a small handle at
+     the edge (openvibe-shared 4.235.0; owner 11-13: "a small button that lets you pop it in and out"), the handle
+     slides up and down its side, a tap opens it where it was and a pull brings it out under the finger;
+   - it is never smaller than a 150 px wide 16:9 box on a phone and grows to the whole width of the window (past the
+     player it floats over the page); two fingers pinch it, the corner sizes it, a double tap (or click) toggles small
+     and large (on a phone, the screen's width); with focus the arrows move it, + and − size it, M mutes, T tucks, F
+     pops it out of the player or back in, Home puts it back where the streamer put it;
+   - popped out of the browser (its own window on top of everything), the box in the page steps aside until that
+     window closes, so the picture is not shown twice.
    Waiting (owner: "this black thing that's just stuck there … use the OV animations"): until its first frame, and
    whenever its frames stop for 4 s, it shows the mark at work over its last picture, and tries again by itself after
    15 s and on a backoff when its connection drops (2, 4, 8, 15, 30 s); a source that ended leaves with an animation.
@@ -38,7 +42,7 @@
 
     const LS_KEY = (slot, sourceMsid) => `ov-pip-${slot}-${sourceMsid}`;
     const LS_V1 = (streamId, sourceMsid) => `ov-pip-geom-${streamId}-${sourceMsid}`;   // per session, before 2026-11-11
-    const MIN_W = 0.08, MAX_W = 0.60;
+    const MIN_W = 0.08, MAX_W = 1;   // a viewer may make it as wide as the window (the streamer's default stays ≤ 0.6)
     const POLL_MS = 30000;
     const BASE = 16 / 9;          // the shape `w` is measured for
     const MAX_H = 0.85;           // of the frame's height, whatever the shape
@@ -202,7 +206,7 @@
                     <button type="button" data-act="tuck" title="Tuck ${escapeHtml(label)} to the side" aria-label="Tuck ${escapeHtml(label)} to the side"><i class="fa-solid fa-angles-right"></i></button>
                 </span>
             </div>
-            <button type="button" class="ov-pip-tab" data-act="untuck" data-ov-float-tab title="Bring ${escapeHtml(label)} back" aria-label="Bring ${escapeHtml(label)} back"><span class="ov-pip-tab-l"><i class="fa-solid fa-chevron-left"></i></span><span class="ov-pip-tab-r"><i class="fa-solid fa-chevron-right"></i></span></button>
+            <button type="button" class="ov-pip-tab" data-ov-float-tab title="Bring ${escapeHtml(label)} back" aria-label="Bring ${escapeHtml(label)} back"><span class="ov-pip-tab-l"><i class="fa-solid fa-chevron-left"></i></span><span class="ov-pip-tab-r"><i class="fa-solid fa-chevron-right"></i></span></button>
             <div class="ov-pip-resize" data-ov-float-resize title="Drag to resize" aria-hidden="true"></div>`;
         o.el = el;
         o.container = container;
@@ -233,8 +237,6 @@
                 minPx: MIN_PX,
                 bigW: BIG_W,
                 tabPx: TAB_PX,
-                tab: false,
-                resize: false,
                 hintClass: 'ov-pip-dock-hint',
                 ignore: '[data-act], .ov-pip-resize, [data-ov-float-resize], a',
                 onChange(geom) { o.geom = geom; saveGeom(o); },
@@ -251,41 +253,29 @@
             container.appendChild(el);
         }
         wireMuteKey(o);
-        wireResize(o);
+        wirePopout(o);
         setTimeout(() => el.classList.remove('is-entering'), 420);
     }
 
-    /** The corner grip: the shared engine owns pinch and the keys; this is the same sizing on the PIP's own handle. */
-    function wireResize(o) {
-        const el = o.el;
-        const handle = el.querySelector('.ov-pip-resize');
-        let start = null;
-        handle.addEventListener('pointerdown', (e) => {
-            if (e.button > 0) return;
-            const b = o.float.metrics();
-            start = { px: e.clientX, py: e.clientY, w: o.float.geom().w, rw: b.rw };
-            el.classList.add('is-resizing');
-            try { handle.setPointerCapture(e.pointerId); } catch { /* */ }
-            e.preventDefault();
-            e.stopPropagation();
-        });
-        handle.addEventListener('pointermove', (e) => {
-            if (!start || !start.rw) return;
-            // The handle's diagonal pull is the box's own width; `w` is the 16:9 width of the same area.
-            const k = Math.sqrt((o.aspect || BASE) / BASE) || 1;
-            const pull = ((e.clientX - start.px) + (e.clientY - start.py) * (o.aspect || BASE)) / 2;
-            o.float.set({ w: clamp(start.w + pull / start.rw / k, MIN_W, MAX_W, start.w) });
-        });
-        const end = (e) => {
-            if (!start) return;
-            start = null;
-            el.classList.remove('is-resizing');
-            try { handle.releasePointerCapture(e.pointerId); } catch { /* */ }
-            o.float.settle();
-            o.float.save();
+    /**
+     * Out of the browser: while the browser's own picture-in-picture window shows this PIP, the box in the page steps
+     * aside (owner, 11-13: "it just goes twice like this and ugly"), and comes back when that window closes.
+     */
+    function wirePopout(o) {
+        const v = o.el.querySelector('.ov-pip-video');
+        const btn = o.el.querySelector('[data-act="popout"]');
+        const set = (out) => {
+            o.el.classList.toggle('is-popped', out);
+            if (btn) btn.setAttribute('aria-pressed', String(out));
+            if (!out && !reduced()) {
+                o.el.classList.remove('is-entering');
+                void o.el.offsetWidth;
+                o.el.classList.add('is-entering');
+                setTimeout(() => o.el && o.el.classList.remove('is-entering'), 420);
+            }
         };
-        handle.addEventListener('pointerup', end);
-        handle.addEventListener('pointercancel', end);
+        v.addEventListener('enterpictureinpicture', () => set(true));
+        v.addEventListener('leavepictureinpicture', () => set(false));
     }
 
     /** With focus, M mutes; the engine owns the arrows, + and −, T, F and Home. */
@@ -321,7 +311,6 @@
         }
         if (!o.float) return;
         if (what === 'tuck') o.float.tuck();
-        else if (what === 'untuck') o.float.untuck();
         else if (what === 'reset') o.float.reset();
         else if (what === 'float') { o.float.toggleMode(); }
         else if (what === 'mute') {

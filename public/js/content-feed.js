@@ -34,7 +34,7 @@
             types: ['all', 'clips', 'shots', 'recaps'],
             titles: { all: 'AI Moments', clips: 'AI auto-clips', shots: 'AI moments', recaps: 'AI recaps' },
             empty: {
-                all: ['fa-wand-magic-sparkles', 'No AI moments yet', 'The AI clips standout moments and writes recaps after streams.'],
+                all: ['fa-sparkles', 'No AI moments yet', 'The AI clips standout moments and writes recaps after streams.'],
                 clips: ['fa-scissors', 'No auto-clips yet', 'When chat erupts during a stream, the AI cuts a clip of it.'],
                 shots: ['fa-image', 'No AI moments yet', 'The AI picks standout frames from recent streams.'],
                 recaps: ['fa-clipboard-list', 'No AI recaps yet', 'After a long enough stream the AI writes a recap.'],
@@ -129,7 +129,7 @@
         });
         return img;
     }
-    const aiBadge = () => el('span', { class: 'cf-ai', title: 'Made by AI' }, icon('fa-wand-magic-sparkles'), 'AI');
+    const aiBadge = () => el('span', { class: 'cf-ai', title: 'Made by AI' }, icon('fa-sparkles'), 'AI');
 
     // ── cards ──────────────────────────────────────────────────────────────────────────────
     function meta(it, extra) {
@@ -220,7 +220,7 @@
         const stats = el('span', { class: 'cf-recap-stats' });
         if (it.duration_seconds) stats.append(el('span', null, el('b', { text: duration(it.duration_seconds) }), ' live'));
         if (it.views) stats.append(el('span', null, el('b', { text: compact(it.views) }), ' peak'));
-        band.append(el('span', { class: 'cf-recap-head' }, el('span', { class: 'cf-recap-label' }, icon('fa-wand-magic-sparkles'), ' AI recap'), el('span', { class: 'cf-recap-sub', text: 'After-show report' }), stats));
+        band.append(el('span', { class: 'cf-recap-head' }, el('span', { class: 'cf-recap-label' }, icon('fa-sparkles'), ' AI recap'), el('span', { class: 'cf-recap-sub', text: 'After-show report' }), stats));
         const body = el('div', { class: 'cf-body' }, spa(it.href, { class: 'cf-title', text: it.title }));
         if (it.stream_title && it.stream_title !== it.title) body.append(el('div', { class: 'cf-streamtitle', text: it.stream_title }));
         body.append(meta(it));

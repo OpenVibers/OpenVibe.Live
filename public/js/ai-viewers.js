@@ -128,7 +128,7 @@
             <div class="aiv-senses" id="aiv-senses"></div>
             ${GROUPS.map((g, i) => `<details class="aiv-group" ${i === 0 ? 'open' : ''}><summary><i class="fa-solid ${g.icon}"></i> ${g.title}</summary><div class="aiv-group-body">${g.keys.filter(k => byKey[k]).map(k => fieldHtml(byKey[k], s[k])).join('')}</div></details>`).join('')}
             <div class="ai-bot-actions">
-                <button class="btn btn-outline btn-small" onclick="previewAiViewers(this)"><i class="fa-solid fa-wand-magic-sparkles"></i> Preview what they'd say now</button>
+                <button class="btn btn-outline btn-small" onclick="previewAiViewers(this)"><i class="fa-solid fa-sparkles"></i> Preview what they'd say now</button>
                 <span class="muted" id="aiv-save-state" style="font-size:0.8rem"></span>
             </div>
             <div id="aiv-preview" class="ai-bot-preview" style="display:none;"></div>`;

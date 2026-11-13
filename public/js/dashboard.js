@@ -1150,7 +1150,7 @@ function renderDashTokenPresetButtons() {
         <div style="display:flex;flex-wrap:wrap;gap:8px">
             ${dashTokenPresets.map((preset) => `
                 <button type="button" class="btn btn-small btn-outline" onclick="applyDashTokenPreset('${preset.id}')">
-                    <i class="fa-solid fa-wand-magic-sparkles"></i> ${esc(preset.label)}
+                    <i class="fa-solid fa-sparkles"></i> ${esc(preset.label)}
                 </button>`).join('')}
         </div>
         <p class="muted" id="token-preset-hint" style="font-size:0.78rem;margin-top:8px">Use a preset to preselect the scopes needed for a common integration.</p>`;

@@ -171,7 +171,7 @@
                             ${up ? `<span class="hf-up"><i class="fa-solid fa-clock"></i> ${escText(up)}</span>` : ''}
                         </a>
                     </div>
-                    ${now ? `<div class="hf-now"><span class="hf-now-head"><i class="fa-solid fa-wand-magic-sparkles"></i> Right now <span>${m.captured_at ? escText(typeof timeAgo === 'function' ? timeAgo(m.captured_at) : '') : ''}</span></span>${escText(now)}</div>` : ''}
+                    ${now ? `<div class="hf-now"><span class="hf-now-head"><i class="fa-solid fa-sparkles"></i> Right now <span>${m.captured_at ? escText(typeof timeAgo === 'function' ? timeAgo(m.captured_at) : '') : ''}</span></span>${escText(now)}</div>` : ''}
                     ${overview ? `<div class="hf-overview">${escText(overview)}</div>` : ''}
                     <div class="hf-actions">
                         <a class="hf-watch" href="${escText(chan)}" onclick="return handleLinkClick(event, '${escText(chan)}')"><i class="fa-solid fa-play"></i> Watch &amp; chat</a>

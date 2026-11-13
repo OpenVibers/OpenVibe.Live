@@ -763,7 +763,7 @@ function _channelPasteCardHTML(p, canManage) {
         <div class="ch-paste-info">
             <div class="ch-paste-title">${esc(p.title || 'Untitled')} ${vis}</div>
             <div class="ch-paste-meta muted"><span>${timeAgo(p.created_at)}</span> · <span><i class="fa-solid fa-eye"></i> ${p.views || 0}</span></div>
-            ${(typeof _cardAiHTML === 'function') ? _cardAiHTML(p.ai_summary) : ((p.ai_summary && p.ai_summary.trim()) ? `<div class="card-ai-overview"><i class="fa-solid fa-wand-magic-sparkles"></i> ${esc(p.ai_summary)}</div>` : '')}
+            ${(typeof _cardAiHTML === 'function') ? _cardAiHTML(p.ai_summary) : ((p.ai_summary && p.ai_summary.trim()) ? `<div class="card-ai-overview"><i class="fa-solid fa-sparkles"></i> ${esc(p.ai_summary)}</div>` : '')}
         </div>
     </a>`;
 }
@@ -2975,7 +2975,7 @@ async function loadChannelAiTimeline(username) {
         const hasBothOverviews = !!(streamerOv && chatOverall);
         const topText = hasBothOverviews ? (combined || `${streamerOv}\n\n${chatOverall}`) : '';
         const header = topText
-            ? `<div class="ai-tl-overview-card"><div class="ai-tl-overview-label"><i class="fa-solid fa-wand-magic-sparkles"></i> Overall AI overview <span class="ai-tl-ov-sub">as a streamer &amp; chatter</span></div>${_collapsibleOverview(topText)}</div>`
+            ? `<div class="ai-tl-overview-card"><div class="ai-tl-overview-label"><i class="fa-solid fa-sparkles"></i> Overall AI overview <span class="ai-tl-ov-sub">as a streamer &amp; chatter</span></div>${_collapsibleOverview(topText)}</div>`
             : '';
 
         // ── As a streamer (inner content, no label — the sub-tab / side-label supplies it) ──
@@ -3498,7 +3498,7 @@ function _aboutAiEffectiveShow() {
 function _aboutAiOverviewHTML() {
     if (!_aboutAiEffectiveShow()) return '';
     return `<section class="ch-about-sec about-ai-overview" aria-label="AI summary">
-        <h3 class="ch-about-h ch-sub-h"><i class="fa-solid fa-wand-magic-sparkles ch-sec-ic" aria-hidden="true"></i>AI summary <span class="ch-about-h-note">from past streams</span></h3>
+        <h3 class="ch-about-h ch-sub-h"><i class="fa-solid fa-sparkles ch-sec-ic" aria-hidden="true"></i>AI summary <span class="ch-about-h-note">from past streams</span></h3>
         ${_collapsibleOverview(_aboutAiOverview)}
     </section>`;
 }
@@ -3952,7 +3952,7 @@ function _renderAboutEdit() {
         <div class="ch-about-ai-toggle">
             <label class="ch-about-mods-toggle" title="Show the AI-generated overview at the top of your About tab">
                 <input type="checkbox" id="ch-about-ai-overview-toggle" ${_aboutAiEffectiveShow() ? 'checked' : ''} onchange="_aboutAiPref=this.checked?'show':'hide';_markAboutDirty()">
-                <span><i class="fa-solid fa-wand-magic-sparkles"></i> Show AI overview</span>
+                <span><i class="fa-solid fa-sparkles"></i> Show AI overview</span>
             </label>
             <span class="muted ch-about-ai-hint">An AI-written summary of your streams. Shown automatically until you add a bio; turn it on here to keep showing it, or off to hide it.</span>
         </div>` : ''}
@@ -4555,55 +4555,20 @@ async function offerLiveAlerts(name) {
 }
 
 /**
- * The ⋯ menu opens in the top layer, placed on the screen (ask 371, 2026-11-13: "the little three dots doesn't actually
- * open a menu, at least not on mobile"): on a phone the live layout clips what hangs out of it, so the menu opened
- * unseen. Below its button, or above it when there is no room; inside the visible screen; again on a scroll or a resize;
- * a press elsewhere or Escape closes it. Without the Popover API it is fixed, which a clipping ancestor still allows.
+ * The ⋯ menu is the network's layer (openvibe-shared 4.235.0 OVSurfaces): anchored to its button in the top layer,
+ * placed inside the visible screen, above the button when there is no room below, again on a scroll or a resize; one
+ * open at a time, a press elsewhere or Escape closes it (ask 371: on a phone the live layout clipped it).
  */
 function _wireChannelMoreLayer(menu) {
     if (menu.dataset.layer) return;
     menu.dataset.layer = '1';
     const pop = menu.querySelector('.ch-more-menu');
     const summary = menu.querySelector('summary');
-    if (!pop || !summary) return;
-    const place = () => {
-        if (!menu.open) return;
-        const s = summary.getBoundingClientRect();
-        const vv = window.visualViewport;
-        const ox = vv ? vv.offsetLeft : 0, oy = vv ? vv.offsetTop : 0;
-        const vw = vv ? vv.width : innerWidth, vh = vv ? vv.height : innerHeight;
-        const w = pop.offsetWidth, h = pop.offsetHeight, m = 8, gap = 6;
-        const left = Math.min(Math.max(ox + m, s.right - w), ox + vw - w - m);
-        let top = s.bottom + gap;
-        const above = top + h > oy + vh - m;
-        if (above) top = s.top - h - gap >= oy + m ? s.top - h - gap : Math.max(oy + m, oy + vh - h - m);
-        pop.style.left = `${Math.round(left)}px`;
-        pop.style.top = `${Math.round(top)}px`;
-        pop.classList.toggle('is-above', above);
-    };
-    const onDown = (e) => { if (!menu.contains(e.target)) menu.open = false; };
-    const onKey = (e) => { if (e.key === 'Escape') { menu.open = false; summary.focus(); } };
+    let surface = null;
     menu.addEventListener('toggle', () => {
-        const topLayer = typeof pop.showPopover === 'function';
-        if (!menu.open) {
-            if (topLayer && pop.hasAttribute('popover')) { try { pop.hidePopover(); } catch { /* closed */ } pop.removeAttribute('popover'); }
-            pop.classList.remove('is-layer', 'is-above');
-            pop.style.left = pop.style.top = '';
-            document.removeEventListener('pointerdown', onDown, true);
-            document.removeEventListener('keydown', onKey, true);
-            window.removeEventListener('scroll', place, true);
-            window.removeEventListener('resize', place);
-            window.visualViewport?.removeEventListener('resize', place);
-            return;
-        }
-        pop.classList.add('is-layer');
-        if (topLayer) { pop.setAttribute('popover', 'manual'); try { pop.showPopover(); } catch { /* stays fixed */ } }
-        place();
-        document.addEventListener('pointerdown', onDown, true);
-        document.addEventListener('keydown', onKey, true);
-        window.addEventListener('scroll', place, { capture: true, passive: true });
-        window.addEventListener('resize', place);
-        window.visualViewport?.addEventListener('resize', place);
+        if (!window.OVSurfaces || !pop || !summary) return;
+        if (!surface) surface = window.OVSurfaces.popover({ el: menu, trigger: summary, pop, place: 'bottom-end', close: () => { menu.open = false; } });
+        if (menu.open) surface.open(); else surface.close();
     });
 }
 
