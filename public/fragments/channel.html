@@ -194,7 +194,7 @@
                 <!-- Chat Sidebar -->
                 <div class="chat-sidebar" id="chat-sidebar">
                     <div class="chat-header">
-                        <button type="button" class="chat-settings-btn ch-chat-collapse" onclick="toggleChannelChat(true)" title="Hide chat" aria-label="Hide chat"><i class="fa-solid fa-angles-right"></i></button>
+                        <button type="button" class="chat-settings-btn ch-chat-collapse" onclick="toggleChannelChat(true)" title="Hide chat" aria-label="Hide chat"><i class="fa-solid fa-angles-right ch-ic-side" aria-hidden="true"></i><i class="fa-solid fa-chevron-down ch-ic-sheet" aria-hidden="true"></i></button>
                         <span class="ch-chat-title">STREAM CHAT</span>
                         <!-- A channel with a robot, on a phone: Chat and Robot share this sheet (app-channel.js _applyBotEmbed). -->
                         <div class="ch-bot-tabs" id="ch-bot-tabs" role="tablist" aria-label="Chat or robot">
@@ -324,7 +324,7 @@
             <!-- Streamer's persistent chat (works while offline) — sidebar, mirrors live layout -->
             <div class="offline-global-chat chat-sidebar" id="offline-global-chat">
                 <div class="chat-header">
-                    <button type="button" class="chat-settings-btn ch-chat-collapse" onclick="toggleChannelChat(true)" title="Hide chat" aria-label="Hide chat"><i class="fa-solid fa-angles-right"></i></button>
+                    <button type="button" class="chat-settings-btn ch-chat-collapse" onclick="toggleChannelChat(true)" title="Hide chat" aria-label="Hide chat"><i class="fa-solid fa-angles-right ch-ic-side" aria-hidden="true"></i><i class="fa-solid fa-chevron-down ch-ic-sheet" aria-hidden="true"></i></button>
                     <span><i class="fa-solid fa-comments"></i> STREAM CHAT</span>
                     <div class="chat-header-actions">
                         <button class="chat-settings-btn" onclick="toggleChatUsers(this)" title="Users">

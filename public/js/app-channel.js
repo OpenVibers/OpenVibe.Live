@@ -4554,9 +4554,63 @@ async function offerLiveAlerts(name) {
     box.appendChild(card);
 }
 
+/**
+ * The ⋯ menu opens in the top layer, placed on the screen (ask 371, 2026-11-13: "the little three dots doesn't actually
+ * open a menu, at least not on mobile"): on a phone the live layout clips what hangs out of it, so the menu opened
+ * unseen. Below its button, or above it when there is no room; inside the visible screen; again on a scroll or a resize;
+ * a press elsewhere or Escape closes it. Without the Popover API it is fixed, which a clipping ancestor still allows.
+ */
+function _wireChannelMoreLayer(menu) {
+    if (menu.dataset.layer) return;
+    menu.dataset.layer = '1';
+    const pop = menu.querySelector('.ch-more-menu');
+    const summary = menu.querySelector('summary');
+    if (!pop || !summary) return;
+    const place = () => {
+        if (!menu.open) return;
+        const s = summary.getBoundingClientRect();
+        const vv = window.visualViewport;
+        const ox = vv ? vv.offsetLeft : 0, oy = vv ? vv.offsetTop : 0;
+        const vw = vv ? vv.width : innerWidth, vh = vv ? vv.height : innerHeight;
+        const w = pop.offsetWidth, h = pop.offsetHeight, m = 8, gap = 6;
+        const left = Math.min(Math.max(ox + m, s.right - w), ox + vw - w - m);
+        let top = s.bottom + gap;
+        const above = top + h > oy + vh - m;
+        if (above) top = s.top - h - gap >= oy + m ? s.top - h - gap : Math.max(oy + m, oy + vh - h - m);
+        pop.style.left = `${Math.round(left)}px`;
+        pop.style.top = `${Math.round(top)}px`;
+        pop.classList.toggle('is-above', above);
+    };
+    const onDown = (e) => { if (!menu.contains(e.target)) menu.open = false; };
+    const onKey = (e) => { if (e.key === 'Escape') { menu.open = false; summary.focus(); } };
+    menu.addEventListener('toggle', () => {
+        const topLayer = typeof pop.showPopover === 'function';
+        if (!menu.open) {
+            if (topLayer && pop.hasAttribute('popover')) { try { pop.hidePopover(); } catch { /* closed */ } pop.removeAttribute('popover'); }
+            pop.classList.remove('is-layer', 'is-above');
+            pop.style.left = pop.style.top = '';
+            document.removeEventListener('pointerdown', onDown, true);
+            document.removeEventListener('keydown', onKey, true);
+            window.removeEventListener('scroll', place, true);
+            window.removeEventListener('resize', place);
+            window.visualViewport?.removeEventListener('resize', place);
+            return;
+        }
+        pop.classList.add('is-layer');
+        if (topLayer) { pop.setAttribute('popover', 'manual'); try { pop.showPopover(); } catch { /* stays fixed */ } }
+        place();
+        document.addEventListener('pointerdown', onDown, true);
+        document.addEventListener('keydown', onKey, true);
+        window.addEventListener('scroll', place, { capture: true, passive: true });
+        window.addEventListener('resize', place);
+        window.visualViewport?.addEventListener('resize', place);
+    });
+}
+
 function _setupChannelMore(ch) {
     const menu = document.getElementById('ch-more');
     if (!menu) return;
+    _wireChannelMoreLayer(menu);
     menu.open = false;
     const username = ch.username;
     _setWatchAlert(document.getElementById('ch-watch-offline'), username);

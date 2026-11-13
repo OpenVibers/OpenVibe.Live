@@ -1447,6 +1447,7 @@ a.ai-tl-cm:hover .ai-tl-cm-go { opacity: 1; }
 
 /* ── Hide / show the chat (desktop) ─────────────────────────── */
 .chat-header .ch-chat-collapse { margin-right: 2px; }
+.ch-chat-collapse .ch-ic-sheet { display: none; }
 @media (min-width: 1181px) {
     #page-channel.chat-collapsed .stream-layout > .chat-sidebar { display: none !important; }
     #page-channel.chat-revealing .stream-layout > .chat-sidebar { animation: chChatReveal var(--ov-dur-3, .32s) var(--ov-ease-out, cubic-bezier(.22,1,.36,1)); }
@@ -1666,7 +1667,10 @@ a.ai-tl-cm:hover .ai-tl-cm-go { opacity: 1; }
         display: flex; flex-direction: column; overflow: hidden;
         height: calc(100dvh - var(--navbar-h) - var(--live-tabs-h, 0px));
     }
-    #page-channel.ch-is-live.has-live-tabs .stream-layout { --live-tabs-h: 40px; }
+    #page-channel.ch-is-live.has-live-tabs:has(.live-stream-tabs .live-tab:nth-child(2)) .stream-layout { --live-tabs-h: 40px; }
+    /* Down to the bottom of the screen (ask 371, 11-13: "empty space at the bottom … should be using the full size"): the
+       bar's 40 px were taken while a phone hid the bar, and the page kept its 32 px of bottom padding under the sheet. */
+    #page-channel.ch-is-live.page { padding-bottom: 0; }
     #page-channel.ch-is-live .stream-main { flex: 0 0 auto; overflow: visible; min-height: 0; }
 
     /* The chat: in the page, under the player, taking what is left. */
@@ -1922,6 +1926,14 @@ html[data-ov-motion=off] #page-channel .ch-tab-panel{scroll-margin-top: calc(var
 #page-channel .ch-more-item i { width: 17px; color: var(--text-secondary); }
 #page-channel .ch-more-item[hidden], #page-channel .ch-more-mod[hidden] { display: none; }
 #page-channel .ch-more-mod { border-top: 1px solid var(--border); margin-top: 5px; padding-top: 5px; }
+/* Open, it is in the top layer and placed on the screen by app-channel.js (a phone's live layout clipped it). */
+#page-channel .ch-more-menu.is-layer { position: fixed; inset: auto; margin: 0; right: auto; max-height: calc(100dvh - 16px); overflow-y: auto; color: var(--text-primary);
+    transform-origin: top right; animation: chMoreIn var(--ov-dur-2, .16s) var(--ov-ease-out, cubic-bezier(.2, .9, .25, 1)); }
+#page-channel .ch-more-menu.is-layer.is-above { transform-origin: bottom right; }
+@keyframes chMoreIn { from { opacity: 0; transform: translateY(-4px) scale(.96); } }
+#page-channel .ch-more-menu.is-layer.is-above { animation-name: chMoreUp; }
+@keyframes chMoreUp { from { opacity: 0; transform: translateY(4px) scale(.96); } }
+html[data-ov-motion="off"] #page-channel .ch-more-menu.is-layer { animation: none; }
 #page-channel .ch-more-heading { display: block; padding: 5px 9px; color: var(--text-muted); font-size: 11px; font-weight: 750; text-transform: uppercase; letter-spacing: .05em; }
 .ch-action-dialog { width: min(420px, calc(100vw - 32px)); box-sizing: border-box; border: 1px solid var(--border); border-radius: 14px; padding: 22px; background: var(--bg-card); color: var(--text-primary); }
 .ch-action-dialog::backdrop { background: rgba(0,0,0,.65); }
@@ -1955,7 +1967,10 @@ html[data-ov-motion=off] #page-channel .ch-tab-panel{scroll-margin-top: calc(var
    bottom right brings it back. The choice is kept (toggleChannelChat: ov_ch_chat_hidden). */
 @media (max-width: 768px) and (orientation: portrait) {
     #page-channel.ch-is-live .chat-header .ch-chat-collapse { display: inline-flex !important; align-items: center; justify-content: center; order: 3; margin: 0 0 0 2px; }
-    #page-channel.ch-is-live .chat-header .ch-chat-collapse i { transform: rotate(90deg); }
+    /* Folding the sheet down: the set's own chevron, solid like the people and gear beside it (ask 371: the side panel's
+       double arrow turned on its side "doesn't match the style"). */
+    #page-channel.ch-is-live .chat-header .ch-chat-collapse .ch-ic-side { display: none; }
+    #page-channel.ch-is-live .chat-header .ch-chat-collapse .ch-ic-sheet { display: inline-block; }
     #page-channel.ch-is-live .chat-sidebar .chat-header { justify-content: flex-start; }
     #page-channel.ch-is-live .chat-sidebar .chat-header .chat-header-actions { margin-left: auto; }
     #page-channel.ch-is-live.chat-collapsed .stream-layout { height: auto; }
@@ -2086,6 +2101,17 @@ html[data-ov-motion=off] #page-channel .ch-tab-panel{scroll-margin-top: calc(var
 .chat-header .ch-bot-tabs { margin-right: auto; }
 .ch-bot-tabs button { display: inline-flex; align-items: center; gap: 7px; min-height: 36px; padding: 0 12px; border: 0; border-radius: 10px; background: transparent; color: var(--text-secondary); font: 700 .85rem/1 inherit; }
 .ch-bot-tabs button[aria-selected="true"] { background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--text-primary); }
+/* The tabs (ask 371, 11-13): one icon box for each, a hover, a press and the open tab's icon in the accent. The set's
+   glyphs differ in shape (the robot is wide and short, the chat bubble square), so each fills the same 20 px box
+   instead of sharing a font size ("the robot icon is so much smaller"). */
+.ch-bot-tabs button { cursor: pointer; transition: background-color var(--ov-dur-2, .15s) var(--ov-ease-out, ease), color var(--ov-dur-2, .15s), transform var(--ov-dur-1, .12s) var(--ov-ease-spring, ease); }
+.ch-bot-tabs button:hover { color: var(--text-primary); }
+.ch-bot-tabs button:not([aria-selected="true"]):hover { background: color-mix(in srgb, var(--text-primary, #fff) 6%, transparent); }
+.ch-bot-tabs button:active { transform: scale(.96); }
+.ch-bot-tabs button > :is(i, svg) { flex: none; display: inline-grid; place-items: center; width: 20px; height: 20px; font-size: 16px; line-height: 1; transition: color var(--ov-dur-2, .15s), transform var(--ov-dur-2, .15s) var(--ov-ease-spring, ease); }
+.ch-bot-tabs button > i.fa-robot { font-size: 20px; }
+.ch-bot-tabs button[aria-selected="true"] > :is(i, svg) { color: var(--accent-light, var(--accent)); }
+.ch-bot-tabs button[aria-selected="true"]:hover > :is(i, svg) { transform: translateY(-1px); }
 .ch-bot-switch { display: inline-flex; flex: none; gap: 2px; padding: 3px; border-radius: 12px; background: color-mix(in srgb, var(--text-primary, #fff) 7%, transparent); }
 .ch-bot-switch button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-width: 36px; min-height: 34px; padding: 0 10px; border: 0; border-radius: 9px; background: transparent; color: var(--text-secondary); font-size: .78rem; font-weight: 600; }
 .ch-bot-switch button:hover { color: var(--text-primary); }
@@ -2140,7 +2166,14 @@ html[data-ov-motion=off] #page-channel .ch-tab-panel{scroll-margin-top: calc(var
     #page-channel.ch-is-live.ch-bot-panel:not(.ch-bot-chat):not(.chat-collapsed) .stream-layout:not(:has(.video-container.is-vertical)) > .stream-main > #ch-bot-section { order: 4; flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; border: 0; }
     #page-channel.ch-is-live.ch-bot-panel:not(.ch-bot-chat):not(.chat-collapsed) #ch-bot-container { flex: 1 1 0; min-height: 0; height: auto !important; max-height: none; }
     #page-channel.ch-is-live.ch-bot-panel:not(.ch-bot-chat):not(.chat-collapsed).page .stream-layout > .chat-sidebar { flex: none; min-height: 0; }
-    #page-channel.ch-is-live.ch-bot-panel:not(.ch-bot-chat):not(.chat-collapsed) .stream-layout > .chat-sidebar > :not(.chat-header) { display: none !important; }
+    #page-channel.ch-is-live.ch-bot-panel:not(.ch-bot-chat):not(.chat-collapsed) .stream-layout > .chat-sidebar > :not(.chat-header):not(.chat-settings-panel):not(.chat-users-panel) { display: none !important; }
+    /* Its gear and people button still work (ask 371, 11-13: "the settings button … doesn't open"): their panels open
+       over the robot's, under the header, instead of inside the chat that this tab hides. */
+    #page-channel.ch-is-live.ch-bot-panel:not(.ch-bot-chat):not(.chat-collapsed) .stream-layout > .chat-sidebar { overflow: visible; z-index: 6; }
+    #page-channel.ch-is-live.ch-bot-panel:not(.ch-bot-chat):not(.chat-collapsed) .stream-layout > .chat-sidebar > :is(.chat-settings-panel, .chat-users-panel) {
+        position: absolute; top: 100%; left: 0; right: 0; z-index: 20; max-height: min(70dvh, 520px); overflow-y: auto;
+        border-bottom: 1px solid var(--border); box-shadow: 0 18px 40px -12px rgba(0, 0, 0, .6);
+    }
     /* The Chat tab: the panel's frame waits, still loaded (a driver keeps their place). */
     #page-channel.ch-is-live.ch-bot-panel.ch-bot-chat:not(.chat-collapsed) #ch-bot-section { display: none !important; }
 
@@ -2298,8 +2331,9 @@ html[data-ov-motion="off"] #page-channel.ch-tabbed .ch-tab-panel.is-entering { a
     #page-channel.ch-is-live:not(.chat-collapsed) .channel-below-fold { display: none; }
     body:has(#page-channel.active.ch-is-live:not(.chat-collapsed)) #ov-footer { display: none; }
     #page-channel.ch-is-live.chat-collapsed #ch-bot-section { display: none !important; }
-    #page-channel.ch-is-live .stream-layout:not(:has(.video-container.is-vertical)) > .chat-sidebar > .chat-grip { position: absolute; top: 0; height: 16px; z-index: 4; }
-    #page-channel.ch-is-live .stream-layout:not(:has(.video-container.is-vertical)) > .chat-sidebar .chat-header { padding-top: 8px; min-height: 46px; }
+    #page-channel.ch-is-live .stream-layout:not(:has(.video-container.is-vertical)) > .chat-sidebar > .chat-grip { position: absolute; top: 0; height: 14px; width: 72px; margin-left: -36px; z-index: 4; }
+    #page-channel.ch-is-live .stream-layout:not(:has(.video-container.is-vertical)) > .chat-sidebar > .chat-grip::after { top: 4px; width: 32px; height: 4px; margin-left: -16px; border-radius: 4px; }
+    #page-channel.ch-is-live .stream-layout:not(:has(.video-container.is-vertical)) > .chat-sidebar .chat-header { padding-top: 4px; padding-bottom: 4px; min-height: 44px; }
     #page-channel.ch-is-live .chat-sidebar .ch-goal-widget { padding: 3px 6px 0; }
     #page-channel.ch-is-live .chat-sidebar .cgw-goal { height: 30px; }
     #page-channel.ch-is-live .chat-sidebar .cgw-track .cgw-goal { margin-bottom: 3px; }
