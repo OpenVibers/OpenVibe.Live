@@ -140,4 +140,13 @@ console.log('✅ page shell: canonical and icon');
     console.log('✅ docs twins');
 }
 
+// A long command or URL in running text breaks anywhere instead of pushing the page sideways on a phone (11-14: /docs/whip
+// was 504 px wide at 390, rundown 594); a code block keeps its lines and scrolls inside itself.
+{
+    const src = fs.readFileSync(path.join(__dirname, '..', 'server', 'docs', 'routes.js'), 'utf8');
+    assert.ok(/\n\s*code \{[^}]*overflow-wrap: anywhere;[^}]*\}/.test(src), 'inline code wraps anywhere');
+    assert.ok(/pre code \{[^}]*overflow-wrap: normal;[^}]*\}/.test(src), 'a code block keeps its lines');
+    console.log('✅ docs inline code wraps on a phone');
+}
+
 console.log('\n✅ All docs renderer tests passed');
