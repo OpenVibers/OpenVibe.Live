@@ -1454,14 +1454,17 @@ a.ai-tl-cm:hover .ai-tl-cm-go { opacity: 1; }
 }
 @keyframes chChatReveal { from { opacity: 0; transform: translateX(36px); } to { opacity: 1; transform: none; } }
 .ch-chat-reopen {
-    position: fixed; right: 0; top: 50%; transform: translateY(-50%); z-index: 60;   /* mid-edge: clear of the header's buttons */
+    /* Mid-edge, clear of the header's buttons. Centered with `translate`, which no press rule touches: a pressed button
+       used to lose its transform to the shared forms press (transform: scale), drop 19 px and miss the click (owner, 11-14). */
+    position: fixed; right: 0; top: 50%; translate: 0 -50%; transform-origin: right center; z-index: 60;
     display: inline-flex; align-items: center; gap: 7px; padding: 9px 12px 9px 12px;
     border: 1px solid var(--border); border-right: 0; border-radius: 12px 0 0 12px;
     background: color-mix(in srgb, var(--bg-card, var(--bg-secondary)) 90%, transparent); backdrop-filter: blur(10px);
     color: var(--text-secondary); font: 700 0.8rem/1 inherit; cursor: pointer; box-shadow: var(--shadow);
-    transition: color var(--ov-dur-2, .15s), border-color var(--ov-dur-2, .15s), padding-right var(--ov-dur-2, .18s) var(--ov-ease-out, ease);
+    transition: color var(--ov-dur-2, .15s), border-color var(--ov-dur-2, .15s), padding-right var(--ov-dur-2, .18s) var(--ov-ease-out, ease), scale .12s ease;
 }
 .ch-chat-reopen:hover { color: var(--text-primary); border-color: var(--accent); padding-right: 16px; }
+.ch-chat-reopen:active { transform: none; }   /* the press is Live's own `scale` only, shrinking toward the edge */
 .ch-chat-reopen .fa-comments { color: var(--accent); }
 .ch-chat-reopen[hidden] { display: none; }
 /* Below 1181px the chat is an overlay or a bottom sheet with its own open/close button, so no hide/show here. */
@@ -1971,7 +1974,7 @@ html[data-ov-motion=off] #page-channel .ch-tab-panel{scroll-margin-top: calc(var
     #page-channel.ch-is-live.chat-collapsed .stream-layout > .chat-sidebar { display: none !important; }
     #page-channel.ch-is-live.chat-revealing .stream-layout > .chat-sidebar { animation: chChatRise var(--ov-dur-3, .32s) var(--ov-ease-out, cubic-bezier(.22,1,.36,1)); }
     body:has(#page-channel.active.ch-is-live) .ch-chat-reopen:not([hidden]) {
-        display: inline-flex !important; top: auto; transform: none;
+        display: inline-flex !important; top: auto; translate: none; transform-origin: center;
         right: max(16px, env(safe-area-inset-right, 0px)); bottom: calc(16px + env(safe-area-inset-bottom, 0px));
         height: 44px; padding: 0 18px; gap: 8px; border: 0; border-radius: 999px;
         background: var(--accent-strong, var(--accent)); color: var(--on-accent-strong, #fff); font: 700 15px/1 inherit;
