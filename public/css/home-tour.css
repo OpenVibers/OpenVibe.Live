@@ -136,7 +136,9 @@
    block of wrapped labels between the diagram and the sign-up panel. */
 @media (max-width: 599px) {
     .tour-features { display: grid; grid-template-rows: repeat(2, auto); grid-auto-flow: column; grid-auto-columns: max-content; justify-content: start;
-        overflow-x: auto; scrollbar-width: none; margin-left: -14px; margin-right: -14px; padding: 0 14px 2px; scroll-padding-inline: 14px; }
+        overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; scrollbar-width: none; margin-left: -14px; margin-right: -14px; padding: 4px 14px 6px; scroll-padding-inline: 14px; }
+    /* 2026-11-14 (the owner: "you can accidentally scroll a little bit, which causes the top of it to be cut off"): a row that
+       scrolls sideways never scrolls up and down (overflow-x: auto alone makes overflow-y auto too). */
     .tour-features::-webkit-scrollbar { display: none; }
     /* The sign-up panel's perks, collapsed, are the same two sideways rows (open, they are the list with sentences). */
     .ovg-join:not(.is-open) .ovg-join-perks { display: grid; grid-template-rows: repeat(2, auto); grid-auto-flow: column; grid-auto-columns: max-content;
