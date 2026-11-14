@@ -287,10 +287,12 @@ function renderPage({ name, title, html, headings }) {
         h1:hover .anchor, h2:hover .anchor, h3:hover .anchor, h4:hover .anchor, .anchor:focus { opacity: 1; }
         p, ul, ol, blockquote, pre, .table-wrap { margin: 0 0 1em; }
         li { margin: 0.25em 0; }
-        code { font: 0.9em ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; background: var(--d-bg-3); padding: 1px 5px; border-radius: 4px; }
+        /* A long command or URL in running text breaks anywhere rather than pushing the page sideways on a phone (11-14:
+           /docs/whip was 504 px wide at 390, rundown 594); a code block keeps its lines and scrolls inside itself. */
+        code { font: 0.9em ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; background: var(--d-bg-3); padding: 1px 5px; border-radius: 4px; overflow-wrap: anywhere; }
         pre { background: var(--d-bg-2); border: 1px solid var(--d-border); border-radius: 10px; padding: 14px 16px; overflow-x: auto; position: relative; }
         pre:focus-visible { outline: 2px solid var(--d-link); outline-offset: 2px; }
-        pre code { background: none; padding: 0; font-size: 0.85rem; line-height: 1.5; }
+        pre code { background: none; padding: 0; font-size: 0.85rem; line-height: 1.5; overflow-wrap: normal; }
         pre[data-lang]::before { content: attr(data-lang); position: absolute; top: 6px; right: 12px; font-size: 0.7rem; color: var(--d-muted); text-transform: uppercase; letter-spacing: 0.06em; }
         blockquote { border-left: 3px solid var(--d-accent); background: color-mix(in srgb, var(--d-accent) 8%, transparent); padding: 10px 16px; border-radius: 0 8px 8px 0; }
         blockquote p:last-child { margin: 0; }
