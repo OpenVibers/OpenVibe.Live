@@ -1565,8 +1565,22 @@ html[data-ov-motion=off] .ovnet-sky i{opacity: .45}html[data-ov-motion=off] .ovn
 .ovnet-switch-t { display: grid; gap: 1px; min-width: 0; }
 .ovnet-switch-t b { font-size: .95rem; color: var(--ovnet-ink, var(--text-primary)); }
 .ovnet-switch-t small { font-size: .78rem; color: var(--ovnet-soft, var(--text-secondary)); }
-.ovnet-switch-go { flex: none; margin-left: auto; width: 9px; height: 9px; border: solid var(--accent-light, #60a5fa); border-width: 2px 2px 0 0; transform: rotate(-45deg); animation: ovnetGo 2.4s ease-in-out infinite; }
-@keyframes ovnetGo { 0%, 70%, 100% { transform: translate(0, 0) rotate(-45deg); opacity: .8; } 85% { transform: translate(0, calc(-5px * var(--ov-move, 1))) rotate(-45deg); opacity: 1; } }
+/* 11-14 (the owner: "why does it look like a drop down when it … opens it?"): the end of the line says what pressing does,
+   Open, with an arrow up toward the bar; no chevron. */
+.ovnet-switch-go { flex: none; display: inline-flex; align-items: center; gap: 6px; margin-left: auto; height: 34px; padding: 0 12px 0 14px; border-radius: 999px;
+  background: color-mix(in srgb, var(--accent, #3b82f6) 16%, transparent); color: var(--accent-light, #60a5fa); font-size: .82rem; font-weight: 750;
+  transition: background-color .2s ease, color .2s ease; }
+.ovnet-switch-go > i { font-size: 14px; animation: ovnetGo 2.4s ease-in-out infinite; }
+.ovnet-switch:is(:hover, :focus-visible) .ovnet-switch-go { background: var(--accent, #3b82f6); color: #fff; }
+@keyframes ovnetGo { 0%, 70%, 100% { transform: translateY(0); } 85% { transform: translateY(calc(-3px * var(--ov-move, 1))); } }
+html[data-ov-motion=off] .ovnet-switch-go > i { animation: none; }
+/* The picture is the bar's own button (copied from it by app-home.js), drawn as the bar draws it. */
+.ovnet-switch .ovnet-orb svg { width: 26px; height: 26px; }
+/* Its copy on the way up to the real button. */
+.ovnet-ghost { position: fixed; z-index: 2147483000; display: grid; place-items: center; margin: 0; pointer-events: none; border-radius: 13px;
+  color: var(--ovnet-ink, var(--text-primary, #e6edf7)); background: color-mix(in srgb, var(--accent, #3b82f6) 24%, var(--bg-card, #131c2e));
+  box-shadow: 0 10px 30px -8px color-mix(in srgb, var(--accent, #3b82f6) 60%, transparent); will-change: transform, opacity; }
+.ovnet-ghost svg { width: 26px; height: 26px; }
 /* The real button, lit for a moment when the line is pressed. */
 .ovnav-orb.ovnet-point { animation: ovnetPoint .9s cubic-bezier(.2, .8, .2, 1); border-radius: 12px; }
 @keyframes ovnetPoint { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent, #3b82f6) 70%, transparent); } 100% { box-shadow: 0 0 0 16px transparent; } }

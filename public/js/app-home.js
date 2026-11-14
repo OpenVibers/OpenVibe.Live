@@ -1236,6 +1236,66 @@ function _ovnetSignedIn(root, user) {
     const me = user !== undefined ? user : (typeof currentUser !== 'undefined' ? currentUser : null); // eslint-disable-line no-undef
     if (cta) cta.hidden = !!me;
 }
+/** The menu button in the bar, whichever one this page shows. */
+function _ovnetMenuButton() {
+    const visible = (el) => el && el.getBoundingClientRect().width > 0;
+    return [document.getElementById('openvibe-burger'), document.getElementById('openvibe-search-btn'), document.getElementById('openvibe-switch-btn')].find(visible) || null;
+}
+
+/**
+ * The line about the menu draws the bar's own button (2026-11-14, the owner: "sync" — the line drew its own copy, which
+ * fell behind the bar's): its picture is the real button's, copied when the bar is there.
+ */
+function _ovnetSyncOrb(root) {
+    const real = _ovnetMenuButton();
+    const svg = real && real.querySelector('svg');
+    const orb = root.querySelector('[data-ovnet-switcher] .ovnet-orb');
+    if (!svg || !orb) return false;
+    const copy = svg.cloneNode(true);
+    copy.removeAttribute('id');
+    copy.setAttribute('aria-hidden', 'true');
+    orb.replaceChildren(copy);
+    return true;
+}
+
+/**
+ * Pressing the line: its picture flies up to the real button, the button lights, then the menu opens (so the next time
+ * the person knows where it is). The bar comes back first if it stepped away on the way down. Motion Off: it just opens.
+ */
+function _ovnetOpenMenu(line) {
+    const menu = _ovnetMenuButton();
+    if (!menu) return;
+    const bar = document.querySelector('.openvibe-navbar.ovnav-hide');
+    if (bar) bar.classList.remove('ovnav-hide');
+    const still = document.documentElement.dataset.ovMotion === 'off' || (window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
+    const press = () => {
+        menu.classList.add('ovnet-point');
+        setTimeout(() => { menu.classList.remove('ovnet-point'); }, 900);
+        menu.click();
+    };
+    const from = line.querySelector('.ovnet-orb');
+    if (still || !from || typeof from.animate !== 'function') { press(); return; }
+    const a = from.getBoundingClientRect();
+    const ghost = from.cloneNode(true);
+    ghost.classList.add('ovnet-ghost');
+    Object.assign(ghost.style, { left: `${a.left}px`, top: `${a.top}px`, width: `${a.width}px`, height: `${a.height}px` });
+    document.body.appendChild(ghost);
+    // Measured after the bar is back (its slide takes .32 s).
+    setTimeout(() => {
+        const b = menu.getBoundingClientRect();
+        const dx = b.left + b.width / 2 - (a.left + a.width / 2);
+        const dy = b.top + b.height / 2 - (a.top + a.height / 2);
+        const k = Math.max(0.5, Math.min(1, b.width / a.width));
+        const fly = ghost.animate([
+            { transform: 'translate(0, 0) scale(1)', opacity: 1 },
+            { transform: `translate(${dx * 0.55}px, ${dy * 0.55 - 40}px) scale(${(1 + k) / 2})`, opacity: 1, offset: 0.6 },
+            { transform: `translate(${dx}px, ${dy}px) scale(${k})`, opacity: 0 },
+        ], { duration: 560, easing: 'cubic-bezier(.3, .7, .2, 1)' });
+        fly.onfinish = () => { ghost.remove(); press(); };
+        fly.oncancel = () => { ghost.remove(); };
+    }, bar ? 340 : 0);
+}
+
 function _ovnetCount(root) {
     const el = root.querySelector('.ovnet-count');
     const n = Number(root.querySelector('.ovnet-groups')?.dataset.sites || el?.dataset.count || 0);
@@ -1311,22 +1371,15 @@ function initHomeNetwork() {
             if (to) { e.preventDefault(); to.scrollIntoView({ behavior: 'smooth', block: 'start' }); try { history.replaceState(history.state, '', jump.getAttribute('href')); } catch { /* */ } }
             return;
         }
-        if (e.target.closest('[data-ovnet-switcher]')) {
-            // The OpenVibe menu (the orb at the top right) holds every site.
-            const visible = (el) => el && el.getBoundingClientRect().width > 0;
-            const menu = [document.getElementById('openvibe-burger'), document.getElementById('openvibe-search-btn'), document.getElementById('openvibe-switch-btn')].find(visible);
-            if (!menu) return;
-            // Show where the button is, then press it: the next time, the person knows where to go.
-            menu.classList.add('ovnet-point');
-            setTimeout(() => { menu.classList.remove('ovnet-point'); }, 950);
-            setTimeout(() => menu.click(), document.documentElement.dataset.ovMotion === 'off' ? 0 : 320);
-        }
+        const sw = e.target.closest('[data-ovnet-switcher]');
+        if (sw) _ovnetOpenMenu(sw);
     });
     // The first time it nears the screen: tiles rise in, the count counts up, the ring icons load.
     const wake = () => {
         if (root._ovnetAwake) return;
         root._ovnetAwake = true;
         root.classList.add('is-in');
+        if (!_ovnetSyncOrb(root)) setTimeout(() => _ovnetSyncOrb(root), 1500);
         _ovnetCount(root);
         _ovnetIcons();
     };
