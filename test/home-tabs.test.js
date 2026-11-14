@@ -182,17 +182,17 @@ check('the tour still loads when its mount nears the viewport', () => {
         const p = openHome();
         const before = p.window.document.querySelectorAll('.ovnet-site').length;
         p.window.OpenVibeFrame = { get: () => ({ groups: [], nav: [
-            { id: 'brandnew', name: 'Brand New', url: 'https://openvibe.brandnew/', icon: 'ov', tagline: 'Just opened', group: 'games' },
-            { id: 'evil', name: 'Evil', url: 'https://evil.example/', group: 'games' },
-            { id: 'secret', name: 'Secret', url: 'https://openvibe.recipes/', group: 'games' },
-            { id: 'live', name: 'Live', url: 'https://openvibe.live/', group: 'streams' },
+            { id: 'brandnew', name: 'Brand New', url: 'https://openvibe.brandnew/', icon: 'ov', tagline: 'Just opened', group: 'play' },
+            { id: 'evil', name: 'Evil', url: 'https://evil.example/', group: 'play' },
+            { id: 'secret', name: 'Secret', url: 'https://openvibe.recipes/', group: 'play' },
+            { id: 'live', name: 'Live', url: 'https://openvibe.live/', group: 'watch' },
         ] }) };
         p.run('initHomeNetwork();');
         await tick();
         const sites = [...p.window.document.querySelectorAll('.ovnet-site')];
         assert.strictEqual(sites.length, before + 1, 'one new site, the rest refused or already there');
         const added = sites.find((a) => a.dataset.site === 'brandnew');
-        assert.ok(added && added.closest('.ovnet-group').dataset.group === 'games', 'in its group');
+        assert.ok(added && added.closest('.ovnet-group').dataset.group === 'play', 'in its group (the eight groups of the one site list)');
         assert.strictEqual(added.querySelector('b').textContent, 'Brand New');
         assert.strictEqual(p.window.document.querySelector('.ovnet-count').textContent, String(before + 1), 'the count follows');
     });
