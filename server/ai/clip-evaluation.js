@@ -23,7 +23,7 @@ const principal = require('../net/network-principal');
 const { isExplicit } = require('./explicit');
 const { parseTs } = require('./clip-policy');
 
-const BENCH_URL = String(process.env.LIVE_BENCH_URL || 'https://bench.openvibe.services').replace(/\/+$/, '');
+const BENCH_URL = String(process.env.LIVE_BENCH_URL || 'https://openvibe.compare').replace(/\/+$/, '');
 // The picker as it stands: the date of its last change (score bar, calibration, freshness, sweep). Change it with the
 // picker, so Bench's accept rate is per version.
 const AUTO_CLIP_POLICY = process.env.LIVE_AUTO_CLIP_POLICY || '2026-11-02';
