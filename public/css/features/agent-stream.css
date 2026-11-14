@@ -1,6 +1,6 @@
 /* Agent streams (Agent Streams S1): the owner's page (/@person/agents/<id>) and the embed (/embed/agent/<id>).
    Theme tokens only, so both follow the person's chosen look. */
-.agent-page { max-width: 1180px; margin: 0 auto; padding: 20px 16px 56px; }
+.agent-page { max-width: 1180px; margin: 0 auto; padding: 12px 16px 56px; }
 .agent-head { display: flex; flex-direction: column; gap: 4px; margin-bottom: 16px; }
 .agent-label { align-self: flex-start; padding: 2px 10px; border: 1px solid var(--accent, #7c5cff); border-radius: 999px; color: var(--accent, #7c5cff); font-size: 0.75rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
 .agent-title { margin: 0; font-size: clamp(1.4rem, 1.1rem + 1.2vw, 2rem); font-weight: 800; letter-spacing: -0.02em; overflow-wrap: anywhere; }
@@ -199,3 +199,5 @@
 .agent-schedule-title { font-size: .98rem; line-height: 1.25; }
 .agent-schedule-task, .agent-schedule-meta { font-size: .82rem; opacity: .8; }
 @media (max-width: 640px) { .agent-scene { min-height: 44px; } }
+/* Design rule 201 (the owner, 11-14): a page starts within 12 px of the bar, 8 px on a phone. */
+@media (max-width: 640px) { .agent-page { padding-top: 8px; } }
