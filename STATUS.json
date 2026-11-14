@@ -7,7 +7,7 @@
   "domain": "openvibe.live (www, ingest, whip)",
   "contracts": "openvibe-contracts v0.419.0",
   "sdk": "openvibe-sdk v0.168.0",
-  "shared": "openvibe-shared v4.253.0",
+  "shared": "openvibe-shared v4.256.0",
   "capabilities": [
     "live.chat_context.read",
     "live.chat_effects.write",
