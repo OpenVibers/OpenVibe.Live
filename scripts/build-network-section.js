@@ -30,12 +30,14 @@ const NEVER = /(^|\.)(openvibe\.(fund|ai|recipes|page)|openvalve\.games|therecip
 
 // What each group looks like: an accent, a Font Awesome icon and one plain line.
 const GROUPS = {
-    streams: { accent: '#ef4444', icon: 'fa-tower-broadcast', line: 'Go live, watch, share pictures and video' },
-    games: { accent: '#a855f7', icon: 'fa-gamepad', line: 'Play in the browser, laugh, explore' },
-    answers: { accent: '#f59e0b', icon: 'fa-newspaper', line: 'News, reports, reviews and answers' },
-    make: { accent: '#3b82f6', icon: 'fa-wand-magic-sparkles', line: 'Tools, sites, bots, designs and code' },
-    shop: { accent: '#22c55e', icon: 'fa-basket-shopping', line: 'Deals, jobs, food, homes and trades' },
-    people: { accent: '#ec4899', icon: 'fa-user-group', line: 'Your people, your account, your stuff' },
+    // The eight groups of the owner's one site list (OpenVibe.Network frame/sites.js, 2026-11-10), in its order.
+    watch: { accent: '#ef4444', icon: 'fa-tower-broadcast', line: 'Go live, watch, share pictures and video' },
+    talk: { accent: '#ec4899', icon: 'fa-comments', line: 'Chat, forums, your account and your people' },
+    play: { accent: '#a855f7', icon: 'fa-gamepad', line: 'Play in the browser, laugh, collect' },
+    read: { accent: '#f59e0b', icon: 'fa-newspaper', line: 'News, reports, wikis and answers' },
+    shop: { accent: '#22c55e', icon: 'fa-basket-shopping', line: 'Deals, jobs, markets, homes and money' },
+    tools: { accent: '#06b6d4', icon: 'fa-screwdriver-wrench', line: 'Free tools, design, domains and hosting' },
+    make: { accent: '#3b82f6', icon: 'fa-wand-magic-sparkles', line: 'Agents, sites, bots and code, made with AI' },
     build: { accent: '#14b8a6', icon: 'fa-code', line: 'APIs and services to build on' },
 };
 const FALLBACK_GROUP = { accent: '#38bdf8', icon: 'fa-circle-nodes', line: '' };
