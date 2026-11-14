@@ -9877,3 +9877,8 @@ body.ov-panel-open #floating-chat-fab { opacity: 0; pointer-events: none; transf
     font-size: 16px; line-height: 1.4; overflow-y: auto; writing-mode: horizontal-tb;
 }
 .chat-input-row .ovc-v2 textarea.chat-textarea:focus { border: 0; outline: 0; }
+
+/* 2026-11-14 (the owner: a sideways row "can accidentally scroll a little bit, which causes the top of it to be cut off"):
+   overflow-x: auto makes overflow-y auto too, so a slightly diagonal swipe moved these rows up and down. A sideways row
+   scrolls sideways only (Design rule rows-say-they-scroll / one-scroller-per-layer). */
+:is(.tour-features, .ovg-join-perks, .moments-row, .rd-rail-track, .rd-day-rail, .rd-onair-list, .ovnet-jump, .tab-bar, .admin-tabs, .ch-about-row, .ov-rail-track) { overflow-y: hidden; overscroll-behavior-x: contain; }
