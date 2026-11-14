@@ -504,3 +504,29 @@ html[data-ov-motion=off] .tour-feat{opacity: 1;transform: none}
     .hero-quest-slot { margin-top: 10px; }
     .hero-quest-slot .ovg-quest { padding: 10px 12px; }
 }
+
+/* 2026-11-14 (the owner: icons "don't have that tacky like circle design anymore … modern and minimalist"): on the home a
+   glyph stands alone, larger, in its colour. The tile stays only where it means something: the main stream button, a
+   picture's placeholder, the logo, a real button. Loaded last, so it wins over home.css, home-fx.css and style.css. */
+#page-home .section-header h2 > i:first-child:not(.live-dot),
+#page-home .hero-stat-strip .hero-stat > i,
+#page-home .home-cta-feature > i:first-child,
+#page-home .cta-money-grid .home-cta-feature > i:first-child,
+#page-home .cta-section-label i,
+#page-home .cta-method-icon,
+#page-home .tour-node-ico,
+#page-home .ovg-join-ico,
+#page-home .hero-links .hb-ico,
+#page-home .hero-links .hb:hover .hb-ico,
+#page-home .hero-links .hb:focus-visible .hb-ico {
+    background: none !important; border: 0 !important; box-shadow: none !important; border-radius: 0 !important;
+}
+#page-home .section-header h2 > i:first-child:not(.live-dot) { font-size: 1.15rem; }
+#page-home .hero-stat-strip .hero-stat > i { font-size: 0.95rem; }
+#page-home .home-cta-feature > i:first-child { font-size: 1.4rem; width: 30px; height: 30px; }
+#page-home .cta-section-label i { font-size: 1rem; }
+#page-home .cta-method-icon { font-size: 1.55rem; color: var(--accent-light, var(--accent)); }
+#page-home .tour-node-ico { font-size: 1.1rem; }
+#page-home .ovg-join-ico { font-size: 0.95rem; color: var(--accent-light, var(--accent)); }
+#page-home .hero-links .hb-ico { font-size: 1.05rem; color: var(--c); }
+#page-home .hero-links .hb:hover .hb-ico, #page-home .hero-links .hb:focus-visible .hb-ico { color: var(--c); }
