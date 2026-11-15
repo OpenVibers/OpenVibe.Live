@@ -132,7 +132,19 @@ async function meter(r, m) {
 async function structured(workflow, input, opts = {}) {
     const r = await run(workflow, input, { ...opts, attribution: opts.attribution || ownerRef(opts.meter && opts.meter.ownerUserId) });
     await meter(r, opts.meter);
+    // The hard floor refused the input: the same input is refused again, so the caller may remember it (onRefused).
+    const rule = refusalRule(r);
+    if (rule && typeof opts.onRefused === 'function') {
+        try { await opts.onRefused(rule); } catch { /* remembering is best-effort */ }
+    }
     return usable(r);
+}
+
+/** The hard-floor line a failed run was refused under ('minors', 'non_consensual', …), or null. */
+function refusalRule(r) {
+    const err = r && r.error;
+    if (!err || err.code !== 'policy.floor_refused') return null;
+    return err.rule || (/"rule":"([a-z_]+)"/.exec(String(err.detail || '')) || [])[1] || 'floor';
 }
 
 /** EntityRef for the Live user a spend is attributed to (Live's per-streamer budgets). */
@@ -248,4 +260,5 @@ async function complete(o = {}, { toVisionJpeg } = {}) {
     };
 }
 
-module.exports = { enabled, run, structured, complete, image, usable, meter, imageInput, ownerRef, workflowFor, setRecorder, lastProblem, KIND_TO_WORKFLOW, AUDIENCE };
+module.exports = {
+    refusalRule, enabled, run, structured, complete, image, usable, meter, imageInput, ownerRef, workflowFor, setRecorder, lastProblem, KIND_TO_WORKFLOW, AUDIENCE };
