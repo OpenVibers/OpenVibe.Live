@@ -266,6 +266,7 @@ const observability = require('./web/observability');
 const { registry: metricsRegistry } = observability.mountMetrics(app, { release });
 app.use(telemetry.middleware);   // request telemetry (openvibe-sdk/service): a no-op until start() calls telemetry.init()
 if (!drill.enabled) require('./ai/ai-media-analyze').registerMetrics(metricsRegistry);
+if (!drill.enabled) require('./ai/media-analysis').registerMetrics(metricsRegistry);
 
 function normalizeOrigin(origin) {
     if (!origin || typeof origin !== 'string') return null;

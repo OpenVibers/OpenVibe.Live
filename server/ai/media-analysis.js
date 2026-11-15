@@ -223,7 +223,27 @@ async function _aiWindow(src, start, len, language = 'en') {
     }, { waitMs: 60000, pollMs: 20 * 60000 });
     const out = aiService.usable(r);
     if (!out) return { ok: false, segments: [], error: (r && r.error && (r.error.code || r.error.detail)) || 'OpenVibe.AI did not transcribe' };
-    return { ok: true, segments: (out.segments || []).filter(g => g && g.text).map(g => ({ start: Number(g.start) || 0, end: Number(g.end) || 0, text: String(g.text) })), error: null };
+    if (out.floor && out.floor.rule) flagged(out.floor.rule, src, start);
+    return { ok: true, segments: (out.segments || []).filter(g => g && g.text).map(g => ({ start: Number(g.start) || 0, end: Number(g.end) || 0, text: String(g.text) })), error: null, floor: out.floor || null };
+}
+
+/**
+ * A window whose words read as one of the hard floor's lines (OpenVibe.AI delivers it flagged, never drops it,
+ * 2026-11-15): counted for the operator alert (live_transcript_floor_flags_total{rule}, deploy/prometheus) and logged
+ * with the recording's path and the window's start, never the words or the signed URL's query.
+ */
+let floorCounter = null;
+function registerMetrics(registry) {
+    if (registry && typeof registry.counter === 'function') {
+        floorCounter = registry.counter({ name: 'live_transcript_floor_flags_total', help: 'Transcribed windows whose words read as a hard-floor line, by rule (for review)', labelNames: ['rule'] });
+    }
+}
+function flagged(rule, src, start) {
+    const name = String(rule).replace(/[^a-z_]/g, '').slice(0, 32) || 'unknown';
+    try { if (floorCounter) floorCounter.inc({ rule: name }); } catch { /* metrics are best-effort */ }
+    let where = '';
+    try { where = new URL(String(src)).pathname; } catch { where = '(a local file)'; }
+    console.warn(`[transcribe] a window of ${where} at ${Math.round(Number(start) || 0)} s reads as the floor's ${name} line: flagged for review`);
 }
 
 // AI errors that a later attempt will not fix: anything else (its whisper down, a run interrupted, a timeout) is worth
@@ -361,6 +381,8 @@ async function transcribeOnly(src, opts = {}) {
 }
 
 module.exports = {
+    registerMetrics,
+    _flagged: flagged, _aiWindow,
     analyzeMedia, transcribeOnly, killActive,
     probeDuration: _ffprobeDuration,
     pickFrameTimes, pickActiveTimes, captureFrameMemories, anchorTimes, targetFrameCount,
