@@ -939,6 +939,17 @@ async function upsertStreamerOverview(userId, { overview, line = null, model = n
                     sources = excluded.sources, generated_at = ov_now()`,
         [userId, _plainProse(overview || ''), short, model, sources]);
 }
+/**
+ * OpenVibe.AI's hard floor refused the streamer's overview (2026-11-15: one input was resent every 20 minutes for
+ * hours, refused each time). The refusal and its time are kept; the overview text a person already had stays. A row
+ * with a refusal and no overview waits a day (getStreamersNeedingOverview), a decent one the usual 12 hours.
+ */
+async function markStreamerOverviewRefused(userId, rule) {
+    const sources = JSON.stringify({ refused: String(rule || 'floor').replace(/[^a-z_]/g, '').slice(0, 32) || 'floor' });
+    return await run(`INSERT INTO streamer_overviews (user_id, overview, overview_short, model, sources, generated_at)
+                VALUES (?, '', NULL, 'openvibe-ai', ?, ov_now())
+                ON CONFLICT(user_id) DO UPDATE SET sources = excluded.sources, generated_at = ov_now()`, [userId, sources]);
+}
 async function getStreamerOverview(userId) {
     return await get('SELECT * FROM streamer_overviews WHERE user_id = ?', [userId]);
 }
@@ -1088,7 +1099,8 @@ async function getStreamersNeedingOverview({ decentLen = 220, limit = 4 } = {}) 
           AND (
                 o.user_id IS NULL
              OR (LENGTH(TRIM(COALESCE(o.overview,''))) >= ? AND o.generated_at <= datetime('now','-12 hours'))
-             OR (LENGTH(TRIM(COALESCE(o.overview,''))) <  ? AND o.generated_at <= datetime('now','-1 hours'))
+             OR (LENGTH(TRIM(COALESCE(o.overview,''))) <  ? AND o.generated_at <= datetime('now',
+                    CASE WHEN COALESCE(o.sources,'') LIKE '%"refused"%' THEN '-24 hours' ELSE '-1 hours' END))
               )
         ORDER BY (o.generated_at IS NULL) DESC, o.generated_at ASC
         LIMIT ?
@@ -3792,7 +3804,7 @@ module.exports = {
     cleanupMalformedAiText, publicMemoryText: _publicMemoryText, plainProse: _plainProse, recordAiUsage, getAiCostToday, getAiCostTodayForUser, getAiUsageSummary,
     getStreamMemoriesByUser, countStreamMemoriesByUser, getStreamTranscriptSegments,
     addTimelineEvents, getTimeline, getTimelineText, getTimelineCoverage, linkTimelineToVod, getTimelineByVod, getTimelineVodId,
-    upsertStreamerOverview, getStreamerOverview, shapeStoredStreamerOverviewShorts, getAllStreamerOverviews, getStreamersNeedingOverview,
+    upsertStreamerOverview, markStreamerOverviewRefused, getStreamerOverview, shapeStoredStreamerOverviewShorts, getAllStreamerOverviews, getStreamersNeedingOverview,
     readStreamerAiTimelineCache, buildStreamerAiTimeline, assembleStreamerAiTimeline, setStreamAiTitle, getUntitledAiSessions, clearAiTimelineCache,
     // Homepage helpers
     getRecentlyOnlineStreamers, countRecentlyOnlineStreamers,

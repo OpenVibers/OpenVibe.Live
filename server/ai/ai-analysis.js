@@ -119,7 +119,14 @@ async function generateStreamerOverview(userId) {
         memories: memLines,
         vods: vods.map(v => ({ title: String(v.title || 'Untitled VOD').slice(0, 300), category: (v.ai_category || v.category) ? String(v.ai_category || v.category) : undefined })),
         pastes: summarized.map(p => ({ title: String(p.title || 'paste').slice(0, 300), summary: String(p.ai_summary).slice(0, 600) })),
-    }, { target: { service: 'live', type: 'user', id: String(userId) }, meter: { kind: 'streamer_overview', role: 'legacy' } });
+    }, {
+        target: { service: 'live', type: 'user', id: String(userId) }, meter: { kind: 'streamer_overview', role: 'legacy' },
+        // Refused by the hard floor: the job waits a day instead of resending the same input every tick.
+        onRefused: async (rule) => {
+            console.warn(`[AI] streamer overview for user ${userId} refused by the floor's ${rule} line: retried in a day`);
+            await db.markStreamerOverviewRefused(userId, rule);
+        },
+    });
     const text = o && o.overview;
     if (!text) return null;
     const overview = String(text).slice(0, 4000);
