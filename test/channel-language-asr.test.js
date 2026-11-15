@@ -28,7 +28,7 @@ const transcribe = require('../server/ai/transcribe');
     const src = (f) => fs.readFileSync(path.join(__dirname, '..', 'server', 'ai', f), 'utf8');
     const ma = src('media-analysis.js');
     assert.doesNotMatch(ma, /language: 'en', start_sec/, 'AI windows carry the language');
-    assert.match(ma, /_transcribeSpan\(src, duration, \{ userId \}\)/, 'analysis passes the channel');
+    assert.match(ma, /_transcribeSpan\(src, duration, \{ userId(, ref)? \}\)/, 'analysis passes the channel');
     assert.match(ma, /transcribeWavDetailed\(wav, \{[^}]*language: lang/, 'local windows decode in it');
     assert.doesNotMatch(src('ai-media-analyze.js'), /language: 'en'/, 'AI\'s media.analyze is not forced to English');
     assert.match(src('ai-analysis.js'), /transcribeOnly\(src, \{ userId: clip\.user_id/, 'clip transcripts know their channel');

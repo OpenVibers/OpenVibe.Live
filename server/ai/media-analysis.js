@@ -216,21 +216,22 @@ function _ffprobeHasAudio(src) {
  * recording where it lies (range requests, nothing downloaded), loudness-normalises it and runs whisper.cpp with the
  * same models; low power while streams are live. → { ok, segments, error }
  */
-async function _aiWindow(src, start, len, language = 'en') {
+async function _aiWindow(src, start, len, language = 'en', ref = null) {
     const aiService = require('./ai-service');
     const r = await aiService.run('live.media.transcribe', {
         media_url: src, language: language || 'en', start_sec: start, seconds: Math.max(0, Math.round(len)), low_power: require('./transcribe').isLowPower(),
     }, { waitMs: 60000, pollMs: 20 * 60000 });
     const out = aiService.usable(r);
     if (!out) return { ok: false, segments: [], error: (r && r.error && (r.error.code || r.error.detail)) || 'OpenVibe.AI did not transcribe' };
-    if (out.floor && out.floor.rule) flagged(out.floor.rule, src, start);
+    if (out.floor && out.floor.rule) await flagged(out.floor.rule, src, start, ref);
     return { ok: true, segments: (out.segments || []).filter(g => g && g.text).map(g => ({ start: Number(g.start) || 0, end: Number(g.end) || 0, text: String(g.text) })), error: null, floor: out.floor || null };
 }
 
 /**
  * A window whose words read as one of the hard floor's lines (OpenVibe.AI delivers it flagged, never drops it,
- * 2026-11-15): counted for the operator alert (live_transcript_floor_flags_total{rule}, deploy/prometheus) and logged
- * with the recording's path and the window's start, never the words or the signed URL's query.
+ * 2026-11-15): counted for the operator alert (live_transcript_floor_flags_total{rule}, deploy/prometheus), logged
+ * with the recording's path and the window's start, and kept for staff review (server/admin/transcript-flags.js: the
+ * VOD or clip and the second, the queue on openvibe.network/admin), never the words or the signed URL's query.
  */
 let floorCounter = null;
 function registerMetrics(registry) {
@@ -238,19 +239,20 @@ function registerMetrics(registry) {
         floorCounter = registry.counter({ name: 'live_transcript_floor_flags_total', help: 'Transcribed windows whose words read as a hard-floor line, by rule (for review)', labelNames: ['rule'] });
     }
 }
-function flagged(rule, src, start) {
+async function flagged(rule, src, start, ref = null) {
     const name = String(rule).replace(/[^a-z_]/g, '').slice(0, 32) || 'unknown';
     try { if (floorCounter) floorCounter.inc({ rule: name }); } catch { /* metrics are best-effort */ }
     let where = '';
     try { where = new URL(String(src)).pathname; } catch { where = '(a local file)'; }
     console.warn(`[transcribe] a window of ${where} at ${Math.round(Number(start) || 0)} s reads as the floor's ${name} line: flagged for review`);
+    await require('../admin/transcript-flags').record({ rule: name, src, startSec: start, ref });
 }
 
 // AI errors that a later attempt will not fix: anything else (its whisper down, a run interrupted, a timeout) is worth
 // waiting out rather than skipping the window.
 const PERMANENT_AI_ERRORS = new Set(['media.unreadable', 'media.not_found', 'media.too_long', 'validation.failed']);
 
-async function _transcribeSpan(src, duration, { resumeFromSec = 0, priorSegments = null, onWindow = null, userId = null, language = null } = {}) {
+async function _transcribeSpan(src, duration, { resumeFromSec = 0, priorSegments = null, onWindow = null, userId = null, language = null, ref = null } = {}) {
     const transcribe = require('./transcribe');
     // Recordings on Media are transcribed by OpenVibe.AI; only a local file (legacy) is still decoded here.
     const viaAi = /^https?:\/\//i.test(String(src || '')) && require('./ai-service').enabled();
@@ -258,7 +260,7 @@ async function _transcribeSpan(src, duration, { resumeFromSec = 0, priorSegments
     // The channel's language (C11): a Japanese stream is heard as Japanese, not decoded as English.
     const lang = language || (userId ? await transcribe.speechLanguage(userId, { local: !viaAi }) : 'en');
     if (viaAi && duration > 0 && duration <= 200) {
-        const w = await _aiWindow(src, 0, 0, lang);
+        const w = await _aiWindow(src, 0, 0, lang, ref);
         return { text: w.segments.map(g => g.text).join(' ').replace(/\s+/g, ' ').trim(), segments: w.segments, ok: w.ok, error: w.error };
     }
     if (duration > 0 && duration <= 200) {
@@ -294,7 +296,7 @@ async function _transcribeSpan(src, duration, { resumeFromSec = 0, priorSegments
     for (const start of windows) {
         const len = Math.min(WINDOW_SEC, total - start);
         if (viaAi) {
-            const w = await _aiWindow(src, start, len, lang);
+            const w = await _aiWindow(src, start, len, lang, ref);
             if (w.ok) anyOk = true; else lastErr = w.error || lastErr;
             if (w.segments.length) segments.push(...w.segments);
             if (w.ok && typeof onWindow === 'function') {
@@ -337,7 +339,7 @@ async function _transcribeSpan(src, duration, { resumeFromSec = 0, priorSegments
  * descriptions (optionally stored as memories) + sampled transcript → overview.
  * @returns {{ overview, transcript, segments, transcriptOk, frames, duration }}
  */
-async function analyzeMedia(src, { streamId = null, userId = null, numFrames = null, storeMemories = false, offsetBase = 0, audioOnly = false } = {}) {
+async function analyzeMedia(src, { streamId = null, userId = null, numFrames = null, storeMemories = false, offsetBase = 0, audioOnly = false, ref = null } = {}) {
     if (!src) return { overview: null, transcript: '', frames: [], duration: 0 };
     // Lazy require (avoids a load-time circular dep with ai-analysis, which pulls us in).
     const ai = require('./ai-analysis');
@@ -356,7 +358,7 @@ async function analyzeMedia(src, { streamId = null, userId = null, numFrames = n
         frames = await captureFrameMemories(src, times, { streamId, userId, offsetBase, store: storeMemories });
     }
 
-    const { text: transcript, segments, ok: transcriptOk } = await _transcribeSpan(src, duration, { userId });
+    const { text: transcript, segments, ok: transcriptOk } = await _transcribeSpan(src, duration, { userId, ref });
 
     let overview = null;
     if ((frames.length || transcript) && await ai.isEnabled() && await ai.withinBudget()) {

@@ -204,6 +204,7 @@ async function _generateVodOverviewInner(vod) {
     const r = await ma.analyzeMedia(src, {
         streamId: vod.stream_id || null, userId: vod.user_id || null,
         storeMemories: !!vod.stream_id, offsetBase: 0, audioOnly: !!vod.audio_only,
+        ref: { kind: 'vod', id: vod.id, userId: vod.user_id || null },
     });
     const overview = r && r.overview ? r.overview : ' '; // ' ' = tried, nothing to say
     try { await db.setVodAiOverview(vod.id, overview); } catch { /* */ }
@@ -290,6 +291,7 @@ async function generateVodTranscript(vod) {
             const prog = db.getVodTranscriptProgress ? await db.getVodTranscriptProgress(vod.id) : { progressSec: 0, segments: [] };
             r = await require('./media-analysis').transcribeOnly(src, {
                 userId: vod.user_id || null,
+                ref: { kind: 'vod', id: vod.id, userId: vod.user_id || null },
                 resumeFromSec: prog.progressSec,
                 priorSegments: prog.segments,
                 onWindow: async (sec, segs) => await db.saveVodTranscriptProgress(vod.id, sec, segs),
@@ -331,7 +333,7 @@ async function generateClipTranscript(clip) {
         }
         await db.setClipTranscriptStatus(clip.id, 'processing');
         let r = { text: '', segments: [], ok: false, error: 'unknown' };
-        try { r = await require('./media-analysis').transcribeOnly(src, { userId: clip.user_id || null }); } catch (e) { r = { text: '', segments: [], ok: false, error: e.message }; }
+        try { r = await require('./media-analysis').transcribeOnly(src, { userId: clip.user_id || null, ref: { kind: 'clip', id: clip.id, userId: clip.user_id || null } }); } catch (e) { r = { text: '', segments: [], ok: false, error: e.message }; }
         if (r.text) {
             try { await db.setClipTranscript(clip.id, r.text, r.segments || []); } catch { /* */ }
             await db.setClipTranscriptStatus(clip.id, 'done');
@@ -360,7 +362,7 @@ async function generateClipOverview(clip) {
     const r = await require('./media-analysis').analyzeMedia(src, {
         streamId: clip.stream_id || null, userId: clip.user_id || null,
         numFrames: 3, storeMemories: !!clip.stream_id, offsetBase: clip.start_time || 0,
-        audioOnly: !!clip.audio_only,
+        audioOnly: !!clip.audio_only, ref: { kind: 'clip', id: clip.id, userId: clip.user_id || null },
     });
     const overview = (r && r.overview) ? r.overview : ' ';
     const transcript = r ? r.transcript : '';

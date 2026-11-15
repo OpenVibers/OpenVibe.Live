@@ -25,6 +25,8 @@
  * POST   /api/mod/ip-approval/:channelId/approve  - Approve all messages from an IP
  * POST   /api/mod/ip-approval/:channelId/deny     - Deny all messages from an IP
  * POST   /api/mod/ip-approval/:channelId/review   - Review a single pending message
+ * GET    /api/mod/transcript-flags            - Flagged speech: windows the hard floor flagged (admin/transcript-flags.js)
+ * POST   /api/mod/transcript-flags/:id        - Staff looked: { status: 'cleared' | 'handled' | 'open' }
  */
 const express = require('express');
 const db = require('../db/database');
@@ -33,6 +35,7 @@ const permissions = require('../auth/permissions');
 const delivery = require('../chat/chat-delivery');
 const chatReads = require('../chat/chat-reads');
 const ipUtils = require('./ip-utils');
+const transcriptFlags = require('./transcript-flags');
 
 const router = express.Router();
 
@@ -54,6 +57,27 @@ function invalidateRelayHidden(channelId) {
 
 // All mod routes require auth (individual routes check specific permissions)
 router.use(requireAuth);
+
+// ── Flagged speech (plan §AD.11 item 3) ─────────────────────
+// A transcribed window whose words read as one of OpenVibe.AI's hard-floor lines: the recording and the second, never
+// the words. Staff open it there, act with the other tools (remove the recording, ban), and mark it.
+router.get('/transcript-flags', permissions.requireGlobalMod, async (req, res) => {
+    try {
+        const status = ['open', 'cleared', 'handled', 'all'].includes(req.query.status) ? req.query.status : 'open';
+        res.set('Cache-Control', 'private, no-store').json(await transcriptFlags.list({ status, limit: req.query.limit }));
+    } catch (err) {
+        res.status(500).json({ error: 'Could not read the flagged speech' });
+    }
+});
+router.post('/transcript-flags/:id', permissions.requireGlobalMod, async (req, res) => {
+    try {
+        const flag = await transcriptFlags.review(req.params.id, String((req.body && req.body.status) || ''), req.user.id);
+        if (!flag) return res.status(404).json({ error: 'No such flag' });
+        res.json({ flag });
+    } catch (err) {
+        res.status(err.status || 500).json({ error: err.status ? err.message : 'Could not mark the flag' });
+    }
+});
 
 // ── List bans ────────────────────────────────────────────────
 router.get('/bans', permissions.requireGlobalMod, async (req, res) => {

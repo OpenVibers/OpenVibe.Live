@@ -35,7 +35,8 @@ const DELETION_RE = /^del_[0-9A-HJKMNP-TV-Z]{26}$/;
 const FROZEN = new Set(['vods', 'clips', 'pastes', 'paste_likes', 'paste_comments', 'comments']);
 // Money history is OpenVibe.Billing's (Live's own ledger went in migration 0016): what stays here is points and
 // moderation records.
-const RETAIN = new Set(['coin_transactions', 'channel_points_log', 'bans',
+// transcript_flags (flagged speech, migration 0043) is a moderation record, kept like bans.
+const RETAIN = new Set(['coin_transactions', 'channel_points_log', 'bans', 'transcript_flags',
     'token_revocations', 'verification_keys', 'subject_merges', 'account_data_events']);
 // Rows the schema keeps without the person (SET NULL) that are theirs to erase all the same: sign-in IPs.
 const OVERRIDE_DELETE = new Set(['ip_log.user_id']);
