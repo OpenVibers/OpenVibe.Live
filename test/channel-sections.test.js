@@ -48,4 +48,6 @@ assert.ok(!/onclick=\\"/.test(html), 'no backslash-escaped onclick attributes');
 const handlers = [...html.matchAll(/\son(click|change|input|submit)="([^"]*)"/g)].map((m) => m[2]);
 assert.ok(handlers.length > 9, 'the handlers were found');
 handlers.forEach((code) => assert.doesNotThrow(() => new Function('event', code), `the handler parses: ${code.slice(0, 80)}`));
+// The loading sentinel a rail adds is a status, so its name is allowed and read out (axe aria-prohibited-attr, 11-15).
+assert.match(js, /sentinel\.setAttribute\('role', 'status'\);\s*sentinel\.setAttribute\('aria-label', 'Loading more items'\);/);
 console.log('channel sections: every section on the page, a jump bar, two counted folds, every handler parses');

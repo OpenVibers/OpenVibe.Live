@@ -77,7 +77,8 @@ async function _fetchJson(method, path, body, timeoutMs, retried = false) {
     if (!res.ok && res.status !== 202) {
         // AI is resting (ai.resting): keep its sentence so a product can show it instead of "could not answer".
         if (res.status === 503 && json && json.code === 'ai.resting') _lastProblem = { ...RESTING, retry_after_seconds: Number(res.headers.get('retry-after')) || null };
-        warn(`${method} ${path} returned ${res.status} ${(json && (json.code || json.detail)) || ''}`);
+        // The code and AI's own detail (it names the workflow a 403 refused, 11-15: nine namespace_denied a day, unnamed).
+        warn(`${method} ${path} returned ${res.status} ${(json && json.code) || ''}${json && json.detail ? `: ${String(json.detail).slice(0, 160)}` : ''}`);
         return null;
     }
     return json;

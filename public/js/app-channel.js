@@ -188,6 +188,8 @@ function _channelRail(grid, offset, count, total, loadNext, old = []) {
     if (!loadNext || offset + count >= total || !('IntersectionObserver' in window)) return;
     const sentinel = document.createElement('div');
     sentinel.className = 'ch-rail-skeleton';
+    // A status, so its name is allowed (axe aria-prohibited-attr on a bare div, the browser check 11-15) and is read out.
+    sentinel.setAttribute('role', 'status');
     sentinel.setAttribute('aria-label', 'Loading more items');
     grid.append(sentinel);
     const observer = new IntersectionObserver((entries) => {
