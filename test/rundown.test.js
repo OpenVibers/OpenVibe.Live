@@ -96,7 +96,7 @@ const answers = {
     'live.rundown.episode': (input) => ({ title: 'The Fridge Files', logline: 'A night of cold takes.', recap: 'goosely opened with French fridges.\n\nThen ranked.', chapters: [{ index: 0, title: 'Fridges' }, { index: 1, title: 'Ranked' }, { index: 9, title: 'Nope' }] }),
     'live.rundown.topic': () => ({ headline: 'Two streamers agree fridges should stay offline', summary: 'goosely and iZoR_One both think internet fridges are a bad idea.' }),
 };
-require('../server/ai/ai-service').structured = async (workflow, input) => { calls.push({ workflow, input }); return answers[workflow] ? answers[workflow](input) : null; };
+require('../server/ai/ai-service').structured = async (workflow, input, opts = {}) => { calls.push({ workflow, input, opts }); return answers[workflow] ? answers[workflow](input) : null; };
 const announced = [];
 require('../server/chat/chat-delivery').message = async (line) => { announced.push(line); return true; };
 
@@ -107,6 +107,7 @@ const segCalls = calls.filter((c) => c.workflow === 'live.rundown.segment');
 assert.strictEqual(segCalls.length, 1, 'one stretch read; the opted-out streamer never');
 assert.ok(!segCalls[0].input.lines.some((l) => /slain an enemy/.test(l.text)), 'the game line never reaches the AI');
 assert.strictEqual(segCalls[0].input.streamer, 'goosely');
+assert.ok(segCalls[0].opts.pollMs >= 180000, 'the desk waits out AI\'s 180 s background timeout (11-15: at 60 s a quarter came too late)');
 assert.strictEqual((await db.get('SELECT done FROM rundown_progress WHERE stream_id = ?', [sShy])).done, 1, 'an opted-out streamer is marked done, unread');
 const segs = await db.all('SELECT * FROM rundown_segments WHERE stream_id = ? ORDER BY start_sec', [s1]);
 assert.strictEqual(segs.length, 2, 'the invented threat dropped its segment');

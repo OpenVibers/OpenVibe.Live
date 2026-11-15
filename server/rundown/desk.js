@@ -65,9 +65,12 @@ function budgetLeft() {
     _calls = _calls.filter((t) => now - t < 3600_000);
     return _calls.length < CALLS_PER_HOUR;
 }
+const AI_WAIT_MS = 200_000;
 async function ai(workflow, input, userId) {
     _calls.push(Date.now());
-    return await require('../ai/ai-service').structured(workflow, input, { meter: { kind: workflow.replace(/^live\./, '').replace(/\./g, '_'), role: 'chat', ownerUserId: userId, source: 'rundown' } });
+    // Background writing: AI gives these 180 s (its background timeout), so the desk waits that long and a little more
+    // for the queue. At 60 s a quarter of the answers came after the desk had stopped waiting (2026-11-15).
+    return await require('../ai/ai-service').structured(workflow, input, { pollMs: AI_WAIT_MS, meter: { kind: workflow.replace(/^live\./, '').replace(/\./g, '_'), role: 'chat', ownerUserId: userId, source: 'rundown' } });
 }
 const clean = (t, n) => {
     const s = String(t == null ? '' : t).replace(/\s+/g, ' ').trim();
