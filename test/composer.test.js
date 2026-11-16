@@ -11,13 +11,16 @@ const h = require('openvibe-shared/browser-harness');
 if (process.env.OV_SKIP_BROWSER === '1' || !h.findChrome()) { console.log('composer: skipped (no Chrome; set CHROME_BIN)'); process.exit(0); }
 const SHARED = process.env.OV_SHARED_DIR || path.join(__dirname, '..', 'node_modules', 'openvibe-shared');
 const SITE = path.join(__dirname, '..');
-const row = `<div class="chat-input-area"><div class="chat-input-row"><textarea id="chat-input" class="chat-textarea" placeholder="Send a message..." maxlength="500" rows="1"></textarea><button class="chat-send-btn" aria-label="Send message">Send</button></div></div>`;
+// Inside .global-chat-main, as on the chat page: there Live's longer selectors outrank the shared composer's own rules.
+const row = `<div class="global-chat-main"><div class="chat-input-area"><div class="chat-input-row"><textarea id="chat-input" class="chat-textarea" placeholder="Send a message..." maxlength="500" rows="1"></textarea><button class="chat-send-btn" aria-label="Send message">Send</button></div></div></div>`;
 const server = http.createServer((req, res) => {
     if (req.url === '/') {
         res.writeHead(200, { 'content-type': 'text/html' });
-        return res.end(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Live chat</title><link rel="icon" href="data:,"></head><body style="margin:0;padding:12px;background:#0b1220;color:#e6edf7;font-family:sans-serif"><div id="chat-input-area">${row}</div><script>window.sent=[]; window.sendChat=function(t){ if(!t||!t.value.trim()) return; window.sent.push(t.value.trim()); t.value=''; t.dispatchEvent(new Event('input',{bubbles:true})); };</script><script src="/ov-composer.js"></script><script src="/composer.js"></script></body></html>`);
+        return res.end(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Live chat</title><link rel="icon" href="data:,"><link rel="stylesheet" href="/style.css"></head><body style="margin:0;padding:12px;background:#0b1220;color:#e6edf7;font-family:sans-serif"><div id="chat-input-area">${row}</div><script>window.sent=[]; window.sendChat=function(t){ if(!t||!t.value.trim()) return; window.sent.push(t.value.trim()); t.value=''; t.dispatchEvent(new Event('input',{bubbles:true})); };</script><script src="/ov-composer.js"></script><script src="/composer.js"></script></body></html>`);
     }
     if (req.url === '/ov-composer.js') { res.writeHead(200, { 'content-type': 'application/javascript' }); return res.end(fs.readFileSync(path.join(SHARED, 'ov-composer.js'))); }
+    // Live's own stylesheet too: its old .chat-textarea rules are what broke the box's one row (11-16).
+    if (req.url === '/style.css') { res.writeHead(200, { 'content-type': 'text/css' }); return res.end(fs.readFileSync(path.join(SITE, 'public/css/style.css'))); }
     if (req.url === '/composer.js') { res.writeHead(200, { 'content-type': 'application/javascript' }); return res.end(fs.readFileSync(path.join(SITE, 'public/js/composer.js'))); }
     res.writeHead(404); res.end();
 });
@@ -34,6 +37,12 @@ const server = http.createServer((req, res) => {
         const shape = await page.evaluate(`(() => { const f = document.querySelector('.chat-input-row form'); const t = f.querySelector('textarea'); return { preset: f.dataset.preset, id: t.id, cls: t.className, placeholder: t.placeholder, max: t.maxLength, old: !!f.querySelector('.chat-send-btn') }; })()`);
         assert.deepEqual(shape, { preset: 'chat', id: 'chat-input', cls: 'chat-textarea', placeholder: 'Send a message...', max: 500, old: false });
         assert.equal(await page.evaluate(`document.documentElement.scrollWidth`), 390, 'nothing is wider than a phone');
+        // One row on a phone (the owner, 11-16: "all messed up and in the wrong spots"): the tools, the words and Send on one
+        // line, Send last, with Live's own stylesheet loaded (its old .chat-textarea width split the box into three rows).
+        const box = await page.evaluate(`(() => { const f = document.querySelector('.chat-input-row form'); const r = (e) => e.getBoundingClientRect(); const t = r(f.querySelector('textarea')); const s = r(f.querySelector('[data-ovt-send]')); const tools = [...f.querySelectorAll('.ovt-c-tools .ovt-btn')].map(r);
+            return { oneRow: [s, ...tools].every((b) => Math.abs((b.top + b.height / 2) - (t.top + t.height / 2)) < 12), sendRight: s.left >= t.right - 1, textWide: t.width > 150, formHeight: Math.round(r(f).height) }; })()`);
+        assert.deepEqual([box.oneRow, box.sendRight, box.textWide], [true, true, true], JSON.stringify(box));
+        assert.ok(box.formHeight < 80, `one line tall (${box.formHeight} px)`);
         await page.evaluate(`(() => { const t = document.querySelector('#chat-input'); t.value = 'Hello stream'; t.dispatchEvent(new Event('input', { bubbles: true })); document.querySelector('.chat-input-row [data-ovt-send]').click(); })()`);
         for (let i = 0; i < 100 && !(await page.evaluate(`window.sent.length`)); i++) await wait(40);
         assert.deepEqual(await page.evaluate(`window.sent`), ['Hello stream']);
