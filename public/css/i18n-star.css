@@ -96,6 +96,8 @@
     font-size: 0.66rem; font-weight: 900; letter-spacing: 0.1em; text-transform: uppercase;
     box-shadow: 0 4px 14px rgba(251,191,36,0.45);
 }
+/* 2026-11-16: the star is our glyph, not an emoji (the owner: icons as emoji look cheap). */
+.star-badge i, .star-badge svg { width: 1em; height: 1em; vertical-align: -0.12em; margin-right: 2px; }
 .star-live-pill {
     position: absolute; top: -4px; right: -6px; padding: 2px 8px; border-radius: 999px;
     background: var(--live-red); color: #fff; font-size: 0.64rem; font-weight: 900; letter-spacing: 0.08em;
