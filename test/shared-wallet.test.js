@@ -50,7 +50,7 @@ assert(!security.includes('"https://billing.openvibe.network"') && !security.inc
     'the shared wallet asks Network\'s relays, so connect-src needs neither host');
 // The wallet sheet and the navbar's openWallet/refreshWallet arrived in openvibe-shared 4.170.0: a pin below it threw
 // "refreshWallet is not a function" in onAuthChange for every signed-in person (2026-11-09, Live #717 on 4.168.0).
-const pin = /refs\/tags\/v(\d+)\.(\d+)\.(\d+)/.exec(JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')).dependencies['openvibe-shared']);
+const pin = /(?:refs\/tags|\/archive)\/v(\d+)\.(\d+)\.(\d+)/.exec(JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')).dependencies['openvibe-shared']);
 assert(pin && (Number(pin[1]) > 4 || (Number(pin[1]) === 4 && Number(pin[2]) >= 170)), 'openvibe-shared is pinned at 4.170.0 or later');
 assert(/typeof window\.OpenVibeNavbar\.refreshWallet === 'function'\) window\.OpenVibeNavbar\.refreshWallet\(\)/.test(appSrc),
     'sign-in never stops on a navbar without the wallet');

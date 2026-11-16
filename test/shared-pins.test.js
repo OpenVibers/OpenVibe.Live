@@ -41,7 +41,9 @@ check('node_modules holds the release package.json and package-lock.json pin', (
     const lock = require('../package-lock.json');
     for (const name of PACKAGES) {
         const spec = pkg.dependencies[name];
-        const tag = /\/tags\/v(\d+\.\d+\.\d+)$/.exec(spec || '');
+        // GitHub's tag tarball or our own forge's archive (the pin bot's default since openvibe-shared 4.284.0).
+        const t = /\/tags\/v(\d+\.\d+\.\d+)$|\/archive\/v(\d+\.\d+\.\d+)\.tar\.gz$/.exec(spec || '');
+        const tag = t && [t[0], t[1] || t[2]];
         assert.ok(tag, `${name} is pinned to a release tag in package.json (${spec})`);
         assert.strictEqual(lock.packages[''].dependencies[name], spec, `package-lock.json's root ${name} is package.json's`);
         const locked = lock.packages[`node_modules/${name}`];
