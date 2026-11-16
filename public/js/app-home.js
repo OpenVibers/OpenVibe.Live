@@ -2482,7 +2482,7 @@ function _renderHomeStar(data) {
                     <div class="star-avatar-ring" aria-hidden="true"></div>
                     <a class="star-avatar" href="${esc(path)}" onclick="return handleLinkClick(event, '${esc(path)}')" style="${s.profile_color ? `background:${esc(s.profile_color)}` : ''}">${avatar}</a>
                     ${isLive ? '<span class="star-live-pill">LIVE</span>' : ''}
-                    <span class="star-badge">⭐ Star</span>
+                    <span class="star-badge"><i class="fa-solid fa-star" aria-hidden="true"></i> Star</span>
                 </div>
                 <div class="star-body">
                     <div class="star-kicker"><i class="fa-solid fa-star"></i> ${s.rotates ? 'Star of the day' : 'Featured streamer'}</div>
