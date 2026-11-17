@@ -7,7 +7,9 @@ const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
 
-const css = fs.readFileSync(path.join(__dirname, '..', 'public', 'css', 'cosmetics.css'), 'utf8');
+// Since 4.290 the site's name effects are openvibe-shared's items.css (index.html links it); Live keeps no copy.
+const css = fs.readFileSync(path.join(__dirname, '..', 'node_modules', 'openvibe-shared', 'items.css'), 'utf8');
+assert.ok(!/^\.name-fx-[a-z]+ \{/m.test(fs.readFileSync(path.join(__dirname, '..', 'public', 'css', 'cosmetics.css'), 'utf8')), 'cosmetics.css keeps no copy of an effect');
 const effects = [...new Set([...css.matchAll(/^\.name-fx-([a-z]+) \{/gm)].map((m) => m[1]))];
 assert.ok(effects.length >= 15, `the effects (${effects.length})`);
 effects.forEach((fx) => {

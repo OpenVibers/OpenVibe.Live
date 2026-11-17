@@ -2,7 +2,8 @@
 // A one-of-a-kind cosmetic (fx_vegas, "Josh Vegas", 2026-10-22): it is in Live's catalog of renderers, so the person
 // who holds it shows it in chat (getCosmeticProfile maps a worn alias through the catalog), but GET
 // /api/cosmetics/catalog never lists it, and its
-// class is drawn by both of Live's stylesheets (the site's cosmetics.css and the OBS chat overlay).
+// class is drawn on the site by openvibe-shared's items.css (index.html links /shared/items.css; Live's own copy of the
+// name effects left cosmetics.css with 4.290) and in the OBS chat overlay; its particles stay Live's (cosmetics.css).
 const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
@@ -40,8 +41,13 @@ const cosmetics = require('../server/monetization/cosmetics');
         server.close();
     }
 
-    for (const file of ['public/css/cosmetics.css', 'public/obs/chat.html']) {
-        const css = fs.readFileSync(path.join(__dirname, '..', file), 'utf8');
+    const index = fs.readFileSync(path.join(__dirname, '..', 'public', 'index.html'), 'utf8');
+    assert.ok(index.includes('href="/shared/items.css"'), 'the site links openvibe-shared\'s name effects');
+    const particles = fs.readFileSync(path.join(__dirname, '..', 'public', 'css', 'cosmetics.css'), 'utf8');
+    for (const file of [path.join(__dirname, '..', 'node_modules', 'openvibe-shared', 'items.css'), 'public/obs/chat.html']) {
+        const own = fs.readFileSync(path.isAbsolute(file) ? file : path.join(__dirname, '..', file), 'utf8');
+        // The effect from the file; the particles from Live's own sheet (the overlay carries both).
+        const css = file.endsWith('.html') ? own : `${own}\n${particles}`;
         assert.ok(css.includes('.name-fx-vegas {') && css.includes('@keyframes nameFxVegasReel') && css.includes('@keyframes nameFxVegasJackpot'), `${file} draws the effect`);
         assert.ok(css.includes('.px-vegas .chat-particle'), `${file} colours the Vegas particles`);
         assert.ok(!css.includes('prefers-reduced-motion') && css.includes('html[data-ov-motion=off] .name-fx-vegas{filter:'), `${file}: Calm plays the reels; with motion off the glow stays`);
