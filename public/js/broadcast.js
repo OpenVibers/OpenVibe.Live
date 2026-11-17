@@ -4545,6 +4545,17 @@ async function handleSignalingMessage(streamId, msg) {
             }
             break;
         case 'error': toast(msg.message || 'Broadcast error', 'error'); break;
+        // 11-17 (Maticus streamed 16 minutes not knowing the server could not record): the server says when it cannot
+        // record this stream, once, and when it records again.
+        case 'recording-status':
+            if (msg.state === 'refused' && !ss._recordWarned) {
+                ss._recordWarned = true;
+                toast(msg.message || 'This stream is not being recorded right now. You are still live, and it keeps trying.', 'warning');
+            } else if (msg.state === 'recording' && ss._recordWarned) {
+                ss._recordWarned = false;
+                toast('Recording again from here on.', 'success');
+            }
+            break;
 
         // ── SFU Produce (for server-side WebRTC → RTMP restreaming) ──
         case 'sfu-produce-request':

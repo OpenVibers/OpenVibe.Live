@@ -165,7 +165,17 @@ class StreamRecorder {
             // offload sweep, which is exactly what needs to run when the disk is full.
             this._abort(streamId, rec).catch(() => {});
             this._maybeRetryAfterDiskRefusal(streamId, protocol, endpoint, opts, err);
+            // The person streaming hears it now, not from a missing replay afterwards (11-17).
+            if (/disk/i.test(String(err && err.message || ''))) {
+                this._tellBroadcaster(streamId, { type: 'recording-status', state: 'refused', reason: 'disk',
+                    message: 'This stream is not being recorded right now: the server is short of space. You are still live, and it keeps trying.' });
+            }
         });
+    }
+
+    /** A recording's state to the stream's broadcaster (broadcast-server.notifyBroadcaster); never throws. */
+    _tellBroadcaster(streamId, msg) {
+        try { require('./broadcast-server').notifyBroadcaster(streamId, msg); } catch { /* the recording matters more than the notice */ }
     }
 
     static get AUDIO_WAIT_MS() { return Number(process.env.VOD_AUDIO_WAIT_MS) || 5000; }
@@ -343,6 +353,7 @@ class StreamRecorder {
         rec.webrtcState = webrtcState;
         this._partStarted(stream, rec);
         console.log(`[VOD] Media RTP ingest started: stream ${streamId} to vod ${rec.vodId} (${videoPort ? `v:${videoPort}` : 'audio only'}${audioPort ? ` a:${audioPort}` : ''}, ${rec.mode})`);
+        this._tellBroadcaster(streamId, { type: 'recording-status', state: 'recording' });
     }
 
     /**
