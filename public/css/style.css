@@ -6627,6 +6627,17 @@ textarea.paste-textarea {
     padding-bottom: 8px;
 }
 
+/* A switch for a yes/no choice (the paste dialog's): the checkbox stays underneath for the form and screen readers
+   (role="switch", class ov-native), drawn as a track and a knob in the theme's tokens; motion follows data-ov-motion. */
+.checkbox-label.ov-toggle { position: relative; display: inline-flex; align-items: center; gap: 8px; min-height: 44px; margin: 0; padding-bottom: 0; }
+.ov-toggle input.ov-native { position: absolute; width: 1px; height: 1px; margin: 0; opacity: 0; pointer-events: none; }
+.ov-toggle-track { position: relative; display: inline-block; flex: none; width: 38px; height: 22px; border-radius: 999px; background: var(--bg-hover); transition: background var(--ov-dur-2, 0.2s); }
+.ov-toggle-track::after { content: ''; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: var(--text-muted); transition: transform var(--ov-dur-2, 0.2s) ease-out, background var(--ov-dur-2, 0.2s); }
+.ov-toggle input:checked + .ov-toggle-track { background: var(--accent); }
+.ov-toggle input:checked + .ov-toggle-track::after { transform: translateX(16px); background: #fff; }
+.ov-toggle input:focus-visible + .ov-toggle-track { outline: 2px solid var(--accent); outline-offset: 2px; }
+html[data-ov-motion="off"] .ov-toggle-track, html[data-ov-motion="off"] .ov-toggle-track::after { transition: none; }
+
 /* Screenshot upload modal (redesigned) */
 .paste-modal-upload {
     max-width: 560px;
