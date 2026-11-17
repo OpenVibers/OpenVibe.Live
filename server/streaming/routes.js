@@ -1437,22 +1437,39 @@ router.get('/recently-online', async (req, res) => {
             for (const s of streamers) {
                 s.recent_facts = summarize(rows.filter(r => r.user_id === s.user_id));
                 for (const k of RECENT_FACT_KEYS) if (s.recent_facts[k] === undefined) s.recent_facts[k] = null;
+            }
+            // Each row is its own stream's recording, asked of Media by stream id. Rows used to take their slot's
+            // newest recording, so two streams on one slot showed one picture and both opened it (Maticus,
+            // 2026-11-17: a 9:34 and a 6:07 stream Media had refused to record, the disk being full, both opened
+            // the 32-second part of the first). Parts are summed; Media's "none" is said; not knowing claims nothing.
+            const ended = streamers.flatMap(s => s.recent_facts.streams.filter(h => !h.is_live).map(h => h.id));
+            let parts = new Map();
+            if (ended.length) {
+                try { parts = await require('../media-proxy/lookups').publicPartsForStreams(ended, { budgetMs: 3000 }); } catch (err) {
+                    console.warn('[Streaming] recently-online recordings failed:', err.message);
+                }
+            }
+            const media = require('../media-client');
+            for (const s of streamers) {
                 for (const h of s.recent_facts.streams) {
-                    const slot = (s.managed_streams || []).find(ms => Number(ms.managed_stream_id) === Number(h.managed_stream_id));
-                    if (slot) {
-                        h.vod_id = slot.vod_id || null;
-                        // A replay's picture is its recording's durable thumbnail. streams.thumbnail_url is the
-                        // stream's last live capture (/api/thumbnails/stream-*.jpg), deleted when the stream ends
-                        // (or a stale Media URL from before a regeneration), so every replay row named a 404 or a
-                        // 1×1 pixel (owner, 2026-11-10). While live the capture still exists and stays first; with
-                        // no recording the row carries null and the page marks it, instead of an address that fails.
-                        h.thumbnail_url = h.is_live ? (h.thumbnail_url || null) : (slot.vod_thumbnail || null);
-                        h.audio_only = !h.is_live && slot.audio_only != null ? !!slot.audio_only : null;
-                    } else {
-                        h.vod_id = null;
-                        h.audio_only = null;
-                        if (!h.is_live) h.thumbnail_url = null;
-                    }
+                    h.vod_id = null;
+                    h.audio_only = null;
+                    h.recorded = null;
+                    h.recorded_seconds = null;
+                    // While live the stream's capture still exists and is its picture. After, streams.thumbnail_url
+                    // is that deleted capture (owner, 2026-11-10: every replay row named a 404 or a 1×1 pixel), so
+                    // an ended row pictures its recording or nothing, and the page marks it.
+                    if (h.is_live) continue;
+                    h.thumbnail_url = null;
+                    const list = parts.get(Number(h.id));
+                    if (!list) continue;
+                    h.recorded = list.length > 0;
+                    h.recorded_seconds = Math.round(list.reduce((n, v) => n + (Number(v.duration_seconds) || 0), 0));
+                    if (!list.length) continue;
+                    h.vod_id = list[0].id;
+                    const pic = list.find(v => v.thumbnail_url);
+                    h.thumbnail_url = pic ? media.publicUrl(pic.thumbnail_url) : null;
+                    h.audio_only = list[0].audio_only != null ? !!list[0].audio_only : null;
                 }
             }
         }
