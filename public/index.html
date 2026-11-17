@@ -116,10 +116,12 @@
     <link rel="stylesheet" href="/css/i18n-star.css">
     <!-- chat-shared.css belongs to the chat (features.json → chatUI): the pages that have chat ask
          for it there, and a page without chat does not download it. -->
+    <link rel="stylesheet" href="/shared/items.css" media="print" onload="this.media='all';this.onload=null">
     <link rel="stylesheet" href="/css/cosmetics.css" media="print" onload="this.media='all';this.onload=null">
     <noscript>
         <!-- Without JavaScript the chat never fills, but the pages that have one still show it. -->
         <link rel="stylesheet" href="/css/chat-shared.css">
+        <link rel="stylesheet" href="/shared/items.css">
         <link rel="stylesheet" href="/css/cosmetics.css">
     </noscript>
     
