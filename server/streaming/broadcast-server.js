@@ -660,6 +660,17 @@ class BroadcastServer extends EventEmitter {
         this.clients.delete(ws);
     }
 
+    /**
+     * Tell a stream's broadcaster something about their stream (its recording: 11-17, Maticus streamed 16 minutes not
+     * knowing the server could not record). → whether it was sent (a WHIP or RTMP stream has no broadcaster socket).
+     */
+    notifyBroadcaster(streamId, msg) {
+        const room = this.rooms.get(Number(streamId));
+        if (!room?.broadcaster || room.broadcaster.readyState !== WebSocket.OPEN) return false;
+        this.safeSend(room.broadcaster, msg);
+        return true;
+    }
+
     broadcastViewerCount(streamId) {
         const room = this.rooms.get(streamId);
         if (!room) return;
