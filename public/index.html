@@ -285,12 +285,12 @@
                             <option value="unlisted">Unlisted</option>
                         </select>
                     </div>
-                    <div class="form-group" style="display:flex;align-items:flex-end;gap:6px;">
-                        <label class="checkbox-label">
-                            <input type="checkbox" id="paste-create-burn"> Burn after read
+                    <div class="form-group" style="display:flex;flex-wrap:wrap;align-items:flex-end;column-gap:16px;">
+                        <label class="checkbox-label ov-toggle">
+                            <input type="checkbox" id="paste-create-burn" class="ov-native" role="switch"><span class="ov-toggle-track" aria-hidden="true"></span> Burn after read
                         </label>
-                        <label class="checkbox-label">
-                            <input type="checkbox" id="paste-create-nsfw"> NSFW
+                        <label class="checkbox-label ov-toggle">
+                            <input type="checkbox" id="paste-create-nsfw" class="ov-native" role="switch"><span class="ov-toggle-track" aria-hidden="true"></span> NSFW
                         </label>
                     </div>
                 </div>
@@ -429,7 +429,7 @@
             <div class="chat-input-row">
                 <textarea id="fcw-chat-input" class="chat-textarea" placeholder="Send a message..." maxlength="500"
                           rows="1" autocomplete="off" spellcheck="true" enterkeyhint="send"></textarea>
-                <button class="chat-send-btn" onclick="fcwSendChat()">
+                <button class="chat-send-btn" onclick="fcwSendChat()" aria-label="Send message" title="Send">
                     <i class="fa-solid fa-paper-plane"></i>
                 </button>
             </div>
