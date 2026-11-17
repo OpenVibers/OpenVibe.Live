@@ -41,6 +41,8 @@ const db = require('../server/db/database');
 
     // Media's answer for a slot-less stream's public recording (lookups asks Media by stream id).
     require('../server/media-proxy/lookups').publicVodsForStreams = async (ids) => new Map(ids.map((id) => [Number(id), { id: 9, thumbnail_url: '/t/dreezy-part-2.jpg' }]));
+    // The history rows ask Media for each stream's own parts: none known here (never a network call in a test).
+    require('../server/media-proxy/lookups').publicPartsForStreams = async () => new Map();
     const app = express();
     app.use('/api/streams', require('../server/streaming/routes'));
     const server = await new Promise((r) => { const s = http.createServer(app).listen(0, '127.0.0.1', () => r(s)); });
@@ -86,5 +88,7 @@ const db = require('../server/db/database');
     const body = src.slice(src.indexOf('function renderRecentlyOnline('), src.indexOf('async function loadHomeRecentVods('));
     assert.ok(body.includes('const replay = !h.is_live && h.vod_id;'));
     assert.ok(body.includes("row.href = replay ? videoHref('vod', h.vod_id) : channelHref;"));
-    assert.ok(body.includes("(h.is_live ? 'Live' : 'Replay')"));
+    // The picture says what was recorded: Live, the replay's own length (or "0:32 of 9:34"), or Not recorded.
+    assert.ok(body.includes("const tag = h.is_live ? 'Live' + span(len)"));
+    assert.ok(body.includes(": unrecorded ? 'Not recorded' + span(len)"));
 }

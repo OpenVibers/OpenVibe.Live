@@ -230,11 +230,12 @@ const safe = { DATA_DIR, HOST: '127.0.0.1', PORT: '13000' };
         assert.deepStrictEqual(drill.blocked, [], 'none of these asked another service');
         assert.deepStrictEqual(await counts(), countsBefore, 'and none of them wrote');
     });
-    await check('/api/streams/recently-online asks Media for thumbnails only (the inventory ignores vod_thumbnail)', async () => {
+    await check('/api/streams/recently-online asks Media for thumbnails and each ended stream\'s recordings only (the inventory ignores vod_thumbnail)', async () => {
         const online = await request('GET', '/api/streams/recently-online?limit=20');
         assert.strictEqual(online.status, 200);
         assert.deepStrictEqual(online.json.streamers.map((x) => [x.username, x.managed_streams.length, x.managed_streams[0].vod_thumbnail]), [['drillstar', 1, null]]);
-        assert.deepStrictEqual(drill.blocked.map((b) => b.target), ['http://127.0.0.1:9/api/v1/live/vods/latest-thumbs'], 'the thumbnail lookup, refused');
+        // The slot's thumbnail, then each ended history row's own recordings by stream id (2026-11-17): both refused.
+        assert.deepStrictEqual(drill.blocked.map((b) => b.target), ['http://127.0.0.1:9/api/v1/live/vods/latest-thumbs', 'http://127.0.0.1:9/api/v1/live/vods'], 'the two Media reads, refused');
         drill.blocked.length = 0;
     });
     await check('other reads from Live\'s own DB work (home, channel poll, SPA shell)', async () => {

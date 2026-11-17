@@ -29,13 +29,13 @@ const KEYS = ['streams_this_week', 'hours_this_week', 'usual_time', 'days_in_a_r
     await db.run('UPDATE users SET is_test = 1 WHERE id = ?', [probe]);
     const stream = async (uid, ms, { live = false, startedAgo, endedAgo = null, thumb = null }) => await db.run(
         `INSERT INTO streams (user_id, managed_stream_id, title, protocol, is_live, viewer_count, started_at, ended_at, thumbnail_url, created_at)
-         VALUES (?, ?, ?, 'webrtc', ?, 0, to_char(now() - make_interval(mins => ?), 'YYYY-MM-DD HH24:MI:SS'), ${live ? 'NULL' : "to_char(now() - make_interval(mins => ?), 'YYYY-MM-DD HH24:MI:SS')"}, ?, ov_now())`,
+         VALUES (?, ?, ?, 'webrtc', ?, 0, to_char(now() - make_interval(mins => ?), 'YYYY-MM-DD HH24:MI:SS'), ${live ? 'NULL' : "to_char(now() - make_interval(mins => ?), 'YYYY-MM-DD HH24:MI:SS')"}, ?, ov_now()) RETURNING id`,
         live ? [uid, ms, 'LIVE NOW', 1, startedAgo, thumb] : [uid, ms, 'old', 0, startedAgo, endedAgo, thumb]);
-    // Ended streams whose stored picture is the deleted live capture.
-    await stream(pic, picSlot, { startedAgo: 3000, endedAgo: 2900, thumb: '/api/thumbnails/stream-9101-1.jpg' });
-    await stream(pic, picSlot, { startedAgo: 600, endedAgo: 500, thumb: '/api/thumbnails/stream-9102-2.jpg' });
+    // Ended streams whose stored picture is the deleted live capture, on one slot.
+    const picOld = Number((await stream(pic, picSlot, { startedAgo: 3000, endedAgo: 2900, thumb: '/api/thumbnails/stream-9101-1.jpg' })).lastInsertRowid);
+    const picNew = Number((await stream(pic, picSlot, { startedAgo: 600, endedAgo: 500, thumb: '/api/thumbnails/stream-9102-2.jpg' })).lastInsertRowid);
     // An ended stream with no slot and no recording anywhere.
-    await stream(nov, null, { startedAgo: 700, endedAgo: 650, thumb: '/api/thumbnails/stream-9103-3.jpg' });
+    const novId = Number((await stream(nov, null, { startedAgo: 700, endedAgo: 650, thumb: '/api/thumbnails/stream-9103-3.jpg' })).lastInsertRowid);
     // A live stream: its capture still exists.
     await stream(liv, livSlot, { live: true, startedAgo: 10, thumb: '/api/thumbnails/stream-9104-live.jpg' });
     await stream(probe, probeSlot, { startedAgo: 400, endedAgo: 350, thumb: '/api/thumbnails/stream-9105-probe.jpg' });
@@ -48,13 +48,24 @@ const KEYS = ['streams_this_week', 'hours_this_week', 'usual_time', 'days_in_a_r
     assert.ok(await db.shapeStoredStreamerOverviewShorts(50) >= 1);
     assert.match((await db.getStreamerOverview(pic)).overview_short, CHANNEL_LINE_RE, 'stored line reshaped in place');
 
-    // Media: the slot's recording has a durable picture and is audio-only; the loose stream has no VOD.
+    // Media: the slot's newest recording (VOD 9) is the newer stream's. The older stream was recorded in two parts
+    // (a reconnect), the first with no picture yet; the loose stream has none, and Media says so.
     const media = require('../server/media-client');
     media.request = async (method, p) => {
         assert.strictEqual(p, '/vods/latest-thumbs');
         return { thumbs: { [picSlot]: { vod_id: 9, thumbnail_url: '/t/vod-9-new.jpg', audio_only: true } } };
     };
-    require('../server/media-proxy/lookups').publicVodsForStreams = async () => new Map();
+    const lookups = require('../server/media-proxy/lookups');
+    let asked = null;
+    lookups.publicPartsForStreams = async (ids) => {
+        asked = ids.slice().sort((a, b) => a - b);
+        return new Map([
+            [picOld, [{ id: 7, duration_seconds: 40, thumbnail_url: null, audio_only: false }, { id: 8, duration_seconds: 20.4, thumbnail_url: '/t/vod-8.jpg', audio_only: false }]],
+            [picNew, [{ id: 9, duration_seconds: 32, thumbnail_url: '/t/vod-9-new.jpg', audio_only: true }]],
+            [novId, []],
+        ]);
+    };
+    lookups.publicVodsForStreams = async () => new Map();
 
     const app = express();
     app.use('/api/streams', require('../server/streaming/routes'));
@@ -70,23 +81,28 @@ const KEYS = ['streams_this_week', 'hours_this_week', 'usual_time', 'days_in_a_r
         assert.ok(!JSON.stringify(body).includes('ovprobe_recently'), 'the test account is nowhere in the public read');
         assert.strictEqual(body.streamers.length, 3, 'the probe is counted out too');
 
-        // The replay rows picture the recording, not the deleted capture.
+        // Media is asked about the ended rows only, by their own stream ids.
+        assert.deepStrictEqual(asked, [picOld, picNew, novId].sort((a, b) => a - b));
+        // Each replay row is its own stream's recording, never the slot's newest (Maticus, 2026-11-17).
         assert.strictEqual(p.recent_facts.streams.length, 2);
-        for (const h of p.recent_facts.streams) {
-            assert.ok(String(h.thumbnail_url).endsWith('/t/vod-9-new.jpg'), h.thumbnail_url);
-            assert.strictEqual(h.vod_id, 9);
-            assert.strictEqual(h.audio_only, true, 'audio-only says so with a field');
-        }
-        // No recording: nulls, never a dead address.
+        const [newer, older] = p.recent_facts.streams;
+        assert.deepStrictEqual([newer.id, older.id], [picNew, picOld]);
+        assert.ok(String(newer.thumbnail_url).endsWith('/t/vod-9-new.jpg'), newer.thumbnail_url);
+        assert.deepStrictEqual([newer.vod_id, newer.recorded, newer.recorded_seconds, newer.audio_only], [9, true, 32, true], 'audio-only says so with a field');
+        // Two parts: the row opens the first and counts both; the picture is the first part that has one.
+        assert.deepStrictEqual([older.vod_id, older.recorded, older.recorded_seconds, older.audio_only], [7, true, 60, false]);
+        assert.ok(String(older.thumbnail_url).endsWith('/t/vod-8.jpg'), older.thumbnail_url);
+        // No recording: Media's "none" is said; nulls, never a dead address.
         assert.strictEqual(n.recent_facts.streams.length, 1);
         assert.deepStrictEqual(
-            [n.recent_facts.streams[0].thumbnail_url, n.recent_facts.streams[0].vod_id, n.recent_facts.streams[0].audio_only],
-            [null, null, null]);
+            [n.recent_facts.streams[0].thumbnail_url, n.recent_facts.streams[0].vod_id, n.recent_facts.streams[0].audio_only, n.recent_facts.streams[0].recorded],
+            [null, null, null, false]);
         // Live: the capture stays.
         const liveRow = l.recent_facts.streams.find((h) => h.is_live);
         assert.ok(liveRow, 'the live row is listed');
         assert.strictEqual(liveRow.thumbnail_url, '/api/thumbnails/stream-9104-live.jpg');
         assert.strictEqual(liveRow.audio_only, null, 'a live row never borrows an old recording\u2019s flag');
+        assert.deepStrictEqual([liveRow.vod_id, liveRow.recorded], [null, null], 'a live row claims no recording');
 
         // The same five numbers on every card, present or null.
         for (const s of body.streamers) {

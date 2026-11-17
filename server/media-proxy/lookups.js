@@ -81,12 +81,13 @@ const aiState = async (fn, id) => { try { return (await fn(id)) || null; } catch
 
 const _streamVod = ttlCache(5 * 60_000);
 /**
- * The public, finished VOD of each stream (the newest if there are several). Media has no batch
- * filter by stream id, so this asks per stream, six at a time, and remembers each answer (also "no
- * VOD") for five minutes. The whole lookup gets `budgetMs`: a stream not asked about by then goes
- * without its VOD this time, so a slow Media cannot hold a list for minutes. → Map(streamId → row)
+ * Every public, finished recording of each stream, oldest part first (a reconnect rolls the recording to a new part).
+ * Media has no batch filter by stream id, so this asks per stream, six at a time, and remembers each answer (also "no
+ * recording") for five minutes. The whole lookup gets `budgetMs`: a stream not asked about by then is left out of the
+ * map this time, so a slow Media cannot hold a list for minutes. → Map(streamId → rows[]): an empty list is Media's
+ * answer "none"; a stream missing from the map is not known.
  */
-async function publicVodsForStreams(streamIds, { budgetMs = 4000 } = {}) {
+async function publicPartsForStreams(streamIds, { budgetMs = 4000 } = {}) {
     const ids = [...new Set((streamIds || []).map(Number).filter((n) => Number.isFinite(n) && n > 0))];
     const out = new Map();
     const deadline = Date.now() + budgetMs;
@@ -94,14 +95,22 @@ async function publicVodsForStreams(streamIds, { budgetMs = 4000 } = {}) {
         const left = deadline - Date.now();
         if (left <= 0) return;
         try {
-            const vod = await _streamVod.get(sid, async () => {
+            const parts = await _streamVod.get(sid, async () => {
                 const r = await media.listVods({ stream_id: sid, limit: 10 }, { timeoutMs: Math.min(TIMEOUT_MS, left) });
                 return rowsOf(r, 'vods').filter((v) => isPublic(v) && finished(v))
-                    .sort((a, b) => Number(b.id) - Number(a.id))[0] || null;
+                    .sort((a, b) => Number(a.id) - Number(b.id));
             });
-            if (vod) out.set(sid, vod);
-        } catch { /* Media down: no VOD for this stream */ }
+            out.set(sid, parts);
+        } catch { /* Media down: not known this time */ }
     });
+    return out;
+}
+/** The public, finished VOD of each stream (the newest part if there are several). → Map(streamId → row) */
+async function publicVodsForStreams(streamIds, opts = {}) {
+    const out = new Map();
+    for (const [sid, parts] of await module.exports.publicPartsForStreams(streamIds, opts)) {
+        if (parts.length) out.set(sid, parts[parts.length - 1]);
+    }
     return out;
 }
 
@@ -389,7 +398,7 @@ function _resetCaches() {
 
 module.exports = {
     isPublic,
-    publicVodsForStreams, attachPublicVods, publicVodIdsByStream, vodsForManagedStream, userVods, vodCounts,
+    publicPartsForStreams, publicVodsForStreams, attachPublicVods, publicVodIdsByStream, vodsForManagedStream, userVods, vodCounts,
     userClips, countClipsTaken, streamClips, clipStartTimes, refreshStreamClipCount, topContentRanges,
     userPastes, countUserPastes, userPastesForAi, avatarPastes,
     siteMediaStats, sitePasteStats, withArchiveStats,

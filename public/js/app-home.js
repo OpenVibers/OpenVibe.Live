@@ -1619,14 +1619,22 @@ function renderRecentlyOnline(containerId, streamers, append) {
         const history = el('div', 'recent-streamer-history');
         for (const h of (facts.streams || []).slice(0, 2)) {
             const replay = !h.is_live && h.vod_id;
-            const row = el('a', 'recent-stream-row' + (h.is_live ? ' is-live' : ''));
+            // What was recorded, said on the picture: the replay's own length, "0:32 of 9:34" when only part of the
+            // stream was (Maticus, 2026-11-17: two tiles said Replay and opened one 32-second part), and "Not
+            // recorded" when Media has nothing for it. Not knowing (Media slow) claims neither.
+            const unrecorded = !h.is_live && h.recorded === false;
+            const len = Number(h.length_seconds) || 0, rec = Number(h.recorded_seconds) || 0;
+            const partial = replay && rec > 0 && len - rec > 30 && rec < len * 0.9;
+            const row = el('a', 'recent-stream-row' + (h.is_live ? ' is-live' : '') + (unrecorded ? ' is-unrecorded' : ''));
             row.href = replay ? videoHref('vod', h.vod_id) : channelHref;
+            if (unrecorded) row.title = 'This stream was not recorded';
+            else if (partial) row.title = `Only ${formatDuration(rec)} of this ${formatDuration(len)} stream was recorded`;
             // A picture on every one: the replay's own, else the one Live can make from the recording, else a mark
             // that says what it is. Never an empty box.
             const thumb = el('span', 'recent-stream-thumb');
             const made = replay ? `/api/thumbnails/generate/vod/${encodeURIComponent(h.vod_id)}` : null;
             const src = _sgThumbSrc(h.thumbnail_url) || made;
-            const blank = () => { thumb.querySelectorAll('img, i').forEach((n) => n.remove()); thumb.classList.add('is-blank'); const i = el('i', 'fa-solid ' + (h.is_live ? 'fa-tower-broadcast' : 'fa-play')); i.setAttribute('aria-hidden', 'true'); thumb.prepend(i); };
+            const blank = () => { thumb.querySelectorAll('img, i').forEach((n) => n.remove()); thumb.classList.add('is-blank'); const i = el('i', 'fa-solid ' + (h.is_live ? 'fa-tower-broadcast' : unrecorded ? 'fa-camera-slash' : 'fa-play')); i.setAttribute('aria-hidden', 'true'); thumb.prepend(i); };
             if (src) {
                 const img = el('img');
                 img.alt = ''; img.loading = 'lazy'; img.decoding = 'async';
@@ -1635,7 +1643,12 @@ function renderRecentlyOnline(containerId, streamers, append) {
                 img.src = src;
                 thumb.append(img);
             } else blank();
-            thumb.append(el('span', 'recent-stream-tag', (h.is_live ? 'Live' : 'Replay') + (h.length_seconds ? ' · ' + formatDuration(h.length_seconds) : '')));
+            const span = (n) => (n ? ' · ' + formatDuration(n) : '');
+            const tag = h.is_live ? 'Live' + span(len)
+                : unrecorded ? 'Not recorded' + span(len)
+                    : replay ? 'Replay' + (partial ? ` · ${formatDuration(rec)} of ${formatDuration(len)}` : span(rec || len))
+                        : 'Stream' + span(len);
+            thumb.append(el('span', 'recent-stream-tag', tag));
             row.append(thumb, el('span', 'recent-stream-title', h.title || 'Stream'));
             history.append(row);
         }
