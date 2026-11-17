@@ -260,6 +260,45 @@ async function api(path, opts = {}) {
     return data;
 }
 
+/** The access token's expiry (ms since 1970) from its payload, or 0 when it cannot be read. */
+function _tokenExpiry(token) {
+    try {
+        const part = String(token || '').split('.')[1];
+        if (!part) return 0;
+        const json = JSON.parse(atob(part.replace(/-/g, '+').replace(/_/g, '/')));
+        return Number(json.exp) > 0 ? Number(json.exp) * 1000 : 0;
+    } catch { return 0; }
+}
+
+/**
+ * Keep the navbar's token live (2026-11-17, the owner: "The history tab no longer loads"): the menu reads the navbar's
+ * token for History, the feed and notifications, and Live used to refresh only its own copy, only after a call failed.
+ * Now every refresh is handed to the navbar, a refresh is planned a minute before the token expires, and a tab that
+ * comes back to the front (a phone's background tab sleeps its timers) refreshes at once when the token is stale.
+ */
+let _tokenTimer = null;
+function _tokenToNavbar() {
+    try { if (window.LiveNav && typeof currentUser !== 'undefined' && currentUser) window.LiveNav.sync(currentUser); } catch { /* the bar is optional */ }
+    _planTokenRefresh();
+}
+function _planTokenRefresh() {
+    clearTimeout(_tokenTimer);
+    let token = null;
+    try { token = localStorage.getItem('token'); } catch { /* storage blocked */ }
+    const exp = _tokenExpiry(token);
+    if (!exp || typeof currentUser === 'undefined' || !currentUser) return;
+    const wait = Math.max(5000, exp - Date.now() - 60000);
+    _tokenTimer = setTimeout(() => { tryRefreshToken(); }, Math.min(wait, 2147483000));
+}
+document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible' || typeof currentUser === 'undefined' || !currentUser) return;
+    let token = null;
+    try { token = localStorage.getItem('token'); } catch { /* storage blocked */ }
+    const exp = _tokenExpiry(token);
+    if (exp && exp - Date.now() < 90000) tryRefreshToken();
+    else _planTokenRefresh();
+});
+
 /** Attempt to refresh the access token using the httpOnly refresh cookie */
 let _refreshPromise = null;
 async function tryRefreshToken() {
@@ -276,6 +315,9 @@ async function tryRefreshToken() {
                 localStorage.setItem('ov_token', data.access_token);
                 // Update account-switcher token for the active account
                 _syncAccountSwitcherToken(data.access_token);
+                // The navbar and its menu hold the token too (History, the feed, notifications): hand them the new one,
+                // and plan the next refresh before this one expires.
+                _tokenToNavbar();
                 return true;
             }
             return false;
@@ -783,6 +825,7 @@ function onAuthChange() {
     if (currentUser) _enableHandoff(); else if (window.OpenVibeSSO) { try { window.OpenVibeSSO.handoffLinks({ signedIn: false }); } catch { /* */ } }
     // The navbar is the network's shared component; tell it who is here (js/ov-navbar-live.js).
     if (window.LiveNav) window.LiveNav.sync(currentUser || null);
+    _planTokenRefresh();   // the navbar's token stays live from here on
     // The navbar's wallet chips (Shared 4.170+). Sign-in must never stop here, whatever navbar a page has.
     if (currentUser && window.OpenVibeNavbar && typeof window.OpenVibeNavbar.refreshWallet === 'function') window.OpenVibeNavbar.refreshWallet();
     // Older notification links point at a Live DM route. Keep the reader here in the Dock.
