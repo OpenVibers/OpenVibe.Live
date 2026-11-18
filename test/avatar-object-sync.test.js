@@ -37,6 +37,10 @@ const notify = require('../server/utils/notify');
 
         assert.strictEqual(await notify.syncAvatarChange({ id: 8, avatar_url: SOURCE }), null, 'an account with no Network link makes no call');
         assert.strictEqual(seen.length, 1);
+        // An upload kept as a path Live serves through its Media proxy goes to the Network as its openvibe.media address
+        // (11-17: the Network refused "/f/<key>" with 422, and the person kept their initial everywhere else).
+        await notify.syncAvatarChange({ id: 7, avatar_url: '/f/79f4d7da9e6a-avatar-upload' });
+        assert.strictEqual(seen[seen.length - 1].body.avatar_url, 'https://openvibe.media/f/79f4d7da9e6a-avatar-upload', 'a path is sent as its full address');
 
         global.fetch = async () => ({ ok: false, status: 422, json: async () => ({ error: 'refused' }) });
         assert.strictEqual(await notify.syncAvatarChange({ id: 7, avatar_url: SOURCE }), null, 'a refused report leaves the source in place');

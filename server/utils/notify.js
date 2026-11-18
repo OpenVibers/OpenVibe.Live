@@ -102,7 +102,9 @@ async function _reportAvatarChange(user) {
     if (!user?.id || !require('../net/network-principal').configured()) return null;
     const networkId = await toNetworkId(user.id);
     if (!networkId) return null;
-    const r = await _post('/internal/user-avatar', { user_id: networkId, avatar_url: user.avatar_url || null, origin: 'live' });
+    // A path Live serves through its Media proxy (/f/<key>, an older upload) is sent as its openvibe.media address.
+    const avatar = user.avatar_url && String(user.avatar_url).startsWith('/') ? require('../media-client').publicUrl(user.avatar_url) : (user.avatar_url || null);
+    const r = await _post('/internal/user-avatar', { user_id: networkId, avatar_url: avatar, origin: 'live' });
     if (!r) return null;
     if (!r.ok) { console.warn(`[Notify] avatar sync refused (${r.status})`); return null; }
     // Network copies the picture into the person's own avatar object and answers the address to store: Live keeps

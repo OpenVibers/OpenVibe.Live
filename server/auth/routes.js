@@ -210,7 +210,10 @@ router.post('/avatar', requireAuth, avatarUpload.single('avatar'), async (req, r
         const staged = await media.uploadFile({ buffer: imageBuffer, filename: 'avatar-upload', contentType: req.file.mimetype || 'application/octet-stream' },
             { user_id: req.user.id }, { actingUser: req.user.id });
         if (!staged || !staged.key || !staged.url) throw new Error('Media did not return the uploaded picture address');
-        const avatarUrl = staged.url;
+        // The picture's full openvibe.media address: Media answers a path (/f/<key>), which Live serves through its own
+        // proxy, but the Network takes openvibe.media addresses only (11-17: every picture chosen here was refused, and
+        // the person kept their initial everywhere else: "Why can't I change my photo … Just shows a M").
+        const avatarUrl = media.publicUrl(staged.url);
         await db.updateUserAvatar(req.user.id, avatarUrl, null);
 
         // The Network copies the picture into the person's own avatar object (the paste stays as the source, and
