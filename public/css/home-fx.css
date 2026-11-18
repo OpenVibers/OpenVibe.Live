@@ -199,6 +199,15 @@ html[data-ov-motion=off] .hfx-sparks,html[data-ov-motion=off] .hfx-spot{display:
    Below-the-fold sections are skipped by layout and paint until they approach the viewport.
    contain-intrinsic-size keeps the scrollbar honest so the page doesn't jump as they resolve. */
 #page-home .home-section-lazy { content-visibility: auto; contain-intrinsic-size: auto 480px; }
+/* The home's three parts below Live Now (For you, Catch up, OpenVibe) are drawn only when they near the screen
+   (2026-11-18, the owner: "loads insanely slow"): until then their style, layout, paint and animations are skipped.
+   Measured on a 4x-throttled phone: style recalculation 5.4 s to 3.8 s, main-thread work 12.8 s to 9.9 s. Each
+   placeholder is the part's real height on a phone (1689, 1821, 3223 px), and `auto` keeps the real size once it has
+   been drawn, so the scroll bar does not jump. Find in page and anchors still reach what is inside. */
+#page-home .home-part { content-visibility: auto; }
+#page-home .home-part[data-part="foryou"] { contain-intrinsic-size: auto 1700px; }
+#page-home .home-part[data-part="catchup"] { contain-intrinsic-size: auto 1800px; }
+#page-home .home-part[data-part="openvibe"] { contain-intrinsic-size: auto 3200px; }
 
 /* ── "Build & Mod": the one hero button that asks for something back ──
    Everything else in this row sends you somewhere to watch. This one says the site is yours to
