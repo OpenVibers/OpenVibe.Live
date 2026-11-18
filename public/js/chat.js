@@ -2831,6 +2831,8 @@ function addRichSystemMessage(html, style = 'info') {
  * nodes; a link is used only when it is an OpenVibe address. */
 const _CHAT_EV_LIVE_RE = /^\s*\u{1F534}\s*(.+?) is live\. Share the stream:\s*(https?:\/\/\S+)\s*$/u;
 const _CHAT_EV_RUNDOWN_RE = /^\s*\u{1F4F0}\s*(.+?):\s*[“"](.+)[”"]\s+(?:\u2192|at)\s+(https?:\/\/\S+)\s*$/u;
+// A saved broadcast (server/media-proxy/vod-notify.js): "📼 name saved a broadcast: “title” (1h 02m) at url".
+const _CHAT_EV_VOD_RE = /^\s*\u{1F4FC}\s*(.+?) saved a broadcast:\s*[“"](.+)[”"](?:\s*\(([^)]{1,16})\))?\s+at\s+(https?:\/\/\S+)\s*$/u;
 const _CHAT_EV_FOLD_MS = 15 * 60 * 1000;
 function _chatEvSafeUrl(u) {
     try {
@@ -2867,6 +2869,13 @@ function _chatEventOf(m) {
         if (!url) return null;
         return { kind: 'rundown', id: m.id, name: rd ? rd[1] : 'A streamer', title: rd ? rd[2] : 'A new episode', url, at, key: `rundown:${url}` };
     }
+    const vod = text.match(_CHAT_EV_VOD_RE);
+    if ((meta && meta.kind === 'vod_link') || vod) {
+        const url = _chatEvSafeUrl((meta && meta.url) || (vod && vod[4]));
+        if (!url) return null;
+        const title = (meta && typeof meta.title === 'string' && meta.title) || (vod && vod[2]) || 'A broadcast';
+        return { kind: 'vod', id: m.id, name: vod ? vod[1] : 'A streamer', title, length: vod && vod[3] ? vod[3] : '', url, at, key: `vod:${url}` };
+    }
     return null;
 }
 function _chatEvCss() {
@@ -2880,7 +2889,7 @@ function _chatEvCss() {
 .chat-ev{--ev:var(--accent,#3b82f6);container-type:inline-size;position:relative;display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:0 8px;min-height:36px;margin:3px 0;padding:3px 5px 3px 4px;border-radius:999px;border:1px solid color-mix(in srgb,var(--ev) 26%,transparent);background:linear-gradient(90deg,color-mix(in srgb,var(--ev) 13%,transparent),color-mix(in srgb,var(--ev) 3%,transparent) 75%);color:var(--text-secondary,#a8b3c4);font-size:.84rem;line-height:1.3;transition:border-color .15s ease,background-color .15s ease}
 .chat-ev:hover{border-color:color-mix(in srgb,var(--ev) 55%,transparent)}
 .chat-ev--live{--ev:var(--live,#ef4444)}
-.chat-ev--rundown{border-radius:16px;padding:5px 6px 5px 5px}
+.chat-ev--rundown,.chat-ev--vod{border-radius:16px;padding:5px 6px 5px 5px}
 .chat-ev.chat-msg-new{animation:chatEvIn .32s var(--ov-ease-out,cubic-bezier(.2,.8,.2,1)) both}
 @keyframes chatEvIn{from{opacity:0;transform:translateY(calc(6px * var(--ov-move,1))) scale(.98)}to{opacity:1;transform:none}}
 .chat-ev-icon{position:relative;display:grid;place-items:center;width:28px;height:28px;border-radius:50%;background:color-mix(in srgb,var(--ev) 18%,transparent);color:var(--ev);font-size:.78rem;flex:none}
@@ -2956,6 +2965,7 @@ function renderChatEventCard(ev, opts = {}) {
     icon.className = 'chat-ev-icon';
     icon.setAttribute('aria-hidden', 'true');
     if (ev.kind === 'rundown') icon.innerHTML = '<i class="fa-solid fa-newspaper"></i>';
+    if (ev.kind === 'vod') icon.innerHTML = '<i class="fa-solid fa-film"></i>';
     // The streamer's own picture (the network's address for it, by name); the live dot stays where there is none.
     if (ev.kind === 'live' && /^[A-Za-z0-9_]{2,32}$/.test(String(ev.name || ''))) {
         const face = document.createElement('img');
@@ -2980,6 +2990,9 @@ function renderChatEventCard(ev, opts = {}) {
     } else if (ev.kind === 'live') {
         what.textContent = here ? 'went live' : 'is live';
         line.append(who, what);
+    } else if (ev.kind === 'vod') {
+        what.textContent = 'saved a broadcast';
+        line.append(who, what);
     } else {
         what.textContent = 'on The Rundown';
         line.append(who, what);
@@ -2993,8 +3006,9 @@ function renderChatEventCard(ev, opts = {}) {
         line.appendChild(meta);
     }
     body.appendChild(line);
-    if (ev.kind === 'rundown') {
-        const title = document.createElement('span'); title.className = 'chat-ev-title'; title.textContent = `“${ev.title}”`;
+    if (ev.kind === 'rundown' || ev.kind === 'vod') {
+        const title = document.createElement('span'); title.className = 'chat-ev-title';
+        title.textContent = ev.kind === 'vod' && ev.length ? `“${ev.title}” · ${ev.length}` : `“${ev.title}”`;
         body.appendChild(title);
     }
 
@@ -3003,8 +3017,8 @@ function renderChatEventCard(ev, opts = {}) {
     const cta = document.createElement('a');
     cta.className = 'chat-ev-cta';
     cta.href = ev.url;
-    cta.innerHTML = ev.kind === 'live' ? '<i class="fa-solid fa-play" aria-hidden="true"></i> Watch' : '<i class="fa-solid fa-book-open" aria-hidden="true"></i> Read';
-    cta.setAttribute('aria-label', ev.kind === 'live' ? `Watch ${ev.name} live` : `Read ${ev.name}'s Rundown episode`);
+    cta.innerHTML = ev.kind === 'rundown' ? '<i class="fa-solid fa-book-open" aria-hidden="true"></i> Read' : '<i class="fa-solid fa-play" aria-hidden="true"></i> Watch';
+    cta.setAttribute('aria-label', ev.kind === 'live' ? `Watch ${ev.name} live` : ev.kind === 'vod' ? `Watch ${ev.name}'s broadcast` : `Read ${ev.name}'s Rundown episode`);
     cta.addEventListener('click', (e) => {
         try {
             const u = new URL(ev.url);

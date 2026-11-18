@@ -50,7 +50,7 @@ assert.strictEqual(_chatEventOf({ message_type: 'chat', message: '\u{1F534} me i
 // The card: DOM nodes only, the viewer's timestamp setting, the 15-minute fold.
 const card = src.slice(src.indexOf('function renderChatEventCard('), src.indexOf('/* ── Deploy notices'));
 assert.ok(!/innerHTML\s*=\s*[^;]*ev\.(name|title)/.test(card), 'the name and title never go through innerHTML');
-assert.ok(/who\.textContent = ev\.name/.test(card) && /title\.textContent = `“\$\{ev\.title\}”`/.test(card), 'they are text nodes');
+assert.ok(/who\.textContent = ev\.name/.test(card) && /title\.textContent = [^;]*`“\$\{ev\.title\}”/.test(card), 'they are text nodes');
 assert.ok(/showTime = !!opts\.isGlobal \|\| !!chatSettings\.showTimestamps/.test(card), 'time: global always, elsewhere the viewer\'s setting');
 assert.ok(/_CHAT_EV_FOLD_MS/.test(card) && /\$\{when\.text\} · again/.test(card), 'the same person within 15 minutes updates the card');
 // One row a card (the owner, 2026-11-10: the cards took more room than the messages around them).
@@ -61,4 +61,14 @@ const evCss = src.slice(src.indexOf('function _chatEvCss('), src.indexOf('functi
 assert.ok(/\.chat-ev\{[^}]*min-height:36px;margin:3px 0;/.test(evCss), 'a row the height of a message');
 assert.ok(/\.chat-ev-cta::after\{content:'';position:absolute;inset:-4px 0\}/.test(evCss), 'the whole row opens it, so the button can be small');
 assert.ok(!/prefers-reduced-motion/.test(src.slice(src.indexOf('function _chatEvCss('), src.indexOf('function _chatEvTime('))), 'Calm plays the cards (openvibe-shared 4.183.0); only motion off stops them, by the loader\'s one rule');
+// A saved broadcast (server/media-proxy/vod-notify.js): from its metadata, and from the words alone (an old row or a
+// relay that kept no metadata); only Live's own address is a link.
+const vod = _chatEventOf({ id: 9, message_type: 'system', message: '\u{1F4FC} Maticus saved a broadcast: “Robot rally: the final” (1h 02m) at https://openvibe.live/vod/501',
+    metadata: { kind: 'vod_link', url: 'https://openvibe.live/vod/501', vod_id: 501, title: 'Robot rally: the final', duration: 3725 } });
+assert.deepStrictEqual({ kind: vod.kind, name: vod.name, title: vod.title, length: vod.length, url: vod.url },
+    { kind: 'vod', name: 'Maticus', title: 'Robot rally: the final', length: '1h 02m', url: 'https://openvibe.live/vod/501' });
+const vodWords = _chatEventOf({ message_type: 'system', message: '\u{1F4FC} ana saved a broadcast: “Cooking” (12 min) at https://openvibe.live/vod/77' });
+assert.deepStrictEqual([vodWords.kind, vodWords.title, vodWords.length], ['vod', 'Cooking', '12 min']);
+assert.strictEqual(_chatEventOf({ message_type: 'system', message: '\u{1F4FC} x saved a broadcast: “y” (2 min) at https://evil.example/vod/1' }), null, 'another site is never a card link');
+
 console.log('chat event cards: ok');

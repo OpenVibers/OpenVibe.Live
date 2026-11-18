@@ -131,6 +131,12 @@ overview exists: 3-6 words about what happens, never about what anyone looks lik
 (`server/ai/clip-title.js`). A name a person gives always wins, even one given while the AI was writing. The clip's
 "clipped: …" line in chat waits up to 3 minutes for the AI's name.
 
+A finished public recording of a Live stream is said in chat when Media's `vod.ready` arrives
+(`server/media-proxy/vod-notify.js`): "📼 name saved a broadcast: “title” (1h 02m) at https://openvibe.live/vod/<id>",
+drawn as an event card with Watch. It goes to the channel's chat and, unless the stream was 18+, to global chat (a
+channel at most once in 30 minutes there, six recordings an hour in all). Recordings that are private, under two
+minutes or not a Live stream's are not said; Chat's keys make a repeated `vod.ready` post nothing.
+
 ## VOD Management
 
 From the dashboard:

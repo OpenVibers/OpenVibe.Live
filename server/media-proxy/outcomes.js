@@ -141,6 +141,8 @@ async function apply(event, data) {
                             if (ai.isEnabled && await ai.isEnabled() && ai.withinBudget && await ai.withinBudget()) ai.generateVodOverview(vodMeta).catch(() => {});
                         }
                     } catch { /* backfill poller will pick it up */ }
+                    // A public recording of a Live stream is said in its channel's chat and in global chat (vod-notify.js).
+                    try { await require('./vod-notify').announce({ ...data, id: vodId }); } catch (e) { console.warn('[MediaOutcome] VOD line failed:', e.message); }
                     console.log(`[MediaOutcome] VOD ${vodId} ready (${data.duration || data.duration_seconds || '?'}s)`);
                 },
             };
