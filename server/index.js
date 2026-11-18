@@ -1640,6 +1640,8 @@ async function start() {
         try {
             setTimeout(() => { try { recorder.reconcileLiveRecordings(); } catch (e) { console.warn('[VOD] reconcile:', e.message); } }, 20000);
             setInterval(() => { try { recorder.reconcileLiveRecordings(); } catch (e) { console.warn('[VOD] reconcile:', e.message); } }, 45000);
+            // A recording Media stopped (a Media restart) resumes within 15 s instead of after its orphan sweep (~4 min).
+            setInterval(() => { recorder.checkActiveRecordings().catch((e) => console.warn('[VOD] recording check:', e.message)); }, 15000);
             console.log('[VOD] Recording reconciler started (ingest via OpenVibe.Media)');
         } catch (e) { console.warn('[VOD] recording reconciler not started:', e.message); }
         // Announce newly-created clips in the source channel's chat. Scheduling comes

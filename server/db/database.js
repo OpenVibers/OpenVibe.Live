@@ -372,9 +372,14 @@ async function endStream(streamId, reason = null) {
         if (!stream) return null;
         // The first reason given stays: a stream another path already ended keeps why it ended.
         const why = END_REASONS.has(reason) ? reason : null;
+        // A stream ended for its lost heartbeat ended when the heartbeat stopped, not five minutes later when the sweep
+        // noticed (the owner, 2026-11-18, replays: Thaywan's 1:25 broadcast read as a 7:03 stream "Not recorded" in full).
+        const end = why === 'heartbeat_lost' && stream.is_live
+            ? 'CASE WHEN last_heartbeat IS NOT NULL AND last_heartbeat > started_at THEN last_heartbeat ELSE ov_now() END'
+            : 'ov_now()';
         const result = await run(
-            `UPDATE streams SET is_live = 0, ended_at = ov_now(),
-             duration_seconds = CAST((julianday(ov_now()) - julianday(started_at)) * 86400 AS INTEGER),
+            `UPDATE streams SET is_live = 0, ended_at = ${end},
+             duration_seconds = CAST((julianday(${end}) - julianday(started_at)) * 86400 AS INTEGER),
              end_reason = COALESCE(end_reason, ?)
              WHERE id = ?`,
             [why, streamId]

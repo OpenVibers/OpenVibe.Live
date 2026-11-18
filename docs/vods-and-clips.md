@@ -137,6 +137,16 @@ drawn as an event card with Watch. It goes to the channel's chat and, unless the
 channel at most once in 30 minutes there, six recordings an hour in all). Recordings that are private, under two
 minutes or not a Live stream's are not said; Chat's keys make a repeated `vod.ready` post nothing.
 
+## When a recording breaks
+
+A stream is recorded by OpenVibe.Media (RTMP pulled by Media's ffmpeg; browser and WHIP streams as PlainRTP from the
+SFU). When that recording stops while the stream goes on (a Media restart ends every ingest), Live's recorder notices
+within 15 s (`checkActiveRecordings`, asking Media's `GET /vods/:id/ingest`), finishes the broken part at once and
+goes on in a new part; Media joins a stream's parts into one video, which its first part plays. Before 2026-11-18 the
+recorder waited for Media's orphan sweep (about four minutes) and those minutes were lost. Recently-online cards and
+the recently-ended list count every part (`include_parts`), so "Replay · 32:15 of 36:51" means 32:15 of the stream is
+in the replay. A stream that ends for a lost heartbeat ends at its last heartbeat, not five minutes later.
+
 ## VOD Management
 
 From the dashboard:
