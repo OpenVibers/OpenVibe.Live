@@ -368,7 +368,7 @@ const END_REASONS = new Set(['streamer', 'staff', 'broadcaster_left', 'ingest_en
 
 async function endStream(streamId, reason = null, { atLastHeartbeat = false } = {}) {
     return await getDb().tx(async () => {
-        const stream = await get('SELECT started_at, is_live FROM streams WHERE id = ?', [streamId]);
+        const stream = await get('SELECT started_at, ended_at, is_live FROM streams WHERE id = ?', [streamId]);
         if (!stream) return null;
         // The first reason given stays: a stream another path already ended keeps why it ended.
         const why = END_REASONS.has(reason) ? reason : null;
@@ -378,13 +378,18 @@ async function endStream(streamId, reason = null, { atLastHeartbeat = false } = 
         const end = (why === 'heartbeat_lost' || atLastHeartbeat) && stream.is_live
             ? 'CASE WHEN last_heartbeat IS NOT NULL AND last_heartbeat > started_at THEN last_heartbeat ELSE ov_now() END'
             : 'ov_now()';
-        const result = await run(
-            `UPDATE streams SET is_live = 0, ended_at = ${end},
-             duration_seconds = CAST((julianday(${end}) - julianday(started_at)) * 86400 AS INTEGER),
-             end_reason = COALESCE(end_reason, ?)
-             WHERE id = ?`,
-            [why, streamId]
-        );
+        // A stream that already ended keeps when it ended and how long it ran: a second end path (the stale sweep, a
+        // slot dedup, the encoder's grace) only fills a missing reason. It used to move ended_at to now each time.
+        const ended = !stream.is_live && stream.ended_at;
+        const result = ended
+            ? await run('UPDATE streams SET end_reason = COALESCE(end_reason, ?) WHERE id = ?', [why, streamId])
+            : await run(
+                `UPDATE streams SET is_live = 0, ended_at = ${end},
+                 duration_seconds = CAST((julianday(${end}) - julianday(started_at)) * 86400 AS INTEGER),
+                 end_reason = COALESCE(end_reason, ?)
+                 WHERE id = ?`,
+                [why, streamId]
+            );
         if (stream.is_live) await fireStreamLifecycle('ended', streamId);
         return result;
     });

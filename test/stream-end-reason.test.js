@@ -43,6 +43,16 @@ const db = require('../server/db/database');
     const fr = await db.get('SELECT ended_at, duration_seconds, end_reason FROM streams WHERE id = ?', [f]);
     assert.deepStrictEqual([fr.ended_at, Number(fr.duration_seconds), fr.end_reason], ['2026-11-18 19:32:08', 713, 'ingest_ended']);
 
-    console.log('stream end reason: first known reason kept; a lost heartbeat ends at the last heartbeat');
+    // Ended once: a second end keeps its end time and length, and only fills a missing reason.
+    const g = Number((await db.run(`INSERT INTO streams (user_id, title, protocol, is_live, started_at, last_heartbeat) VALUES (?, 't', 'rtmp', 1, '2026-11-18 10:00:00', '2026-11-18 10:30:00') RETURNING id`, [user])).lastInsertRowid);
+    await db.endStream(g, null, { atLastHeartbeat: true });
+    const first = await db.get('SELECT ended_at, duration_seconds, end_reason FROM streams WHERE id = ?', [g]);
+    assert.deepStrictEqual([first.ended_at, Number(first.duration_seconds), first.end_reason], ['2026-11-18 10:30:00', 1800, null]);
+    await db.endStream(g, 'heartbeat_lost');
+    const again = await db.get('SELECT ended_at, duration_seconds, end_reason, is_live FROM streams WHERE id = ?', [g]);
+    assert.deepStrictEqual([again.ended_at, Number(again.duration_seconds), again.end_reason, again.is_live], ['2026-11-18 10:30:00', 1800, 'heartbeat_lost', 0],
+        'a second end keeps when it ended and fills the missing reason');
+
+    console.log('stream end reason: first known reason kept; a lost heartbeat ends at the last heartbeat; ended once');
     process.exit(0);
 })().catch((e) => { console.error(e); process.exit(1); });
