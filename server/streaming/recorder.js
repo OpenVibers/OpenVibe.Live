@@ -499,6 +499,35 @@ class StreamRecorder {
         for (const id of Array.from(this._healAttempts.keys())) if (!liveIds.has(id)) this._healAttempts.delete(id);
     }
 
+    /**
+     * The recordings Live thinks are running, checked against Media (every 15 s, server/index.js). A Media restart ends
+     * every ingest, but its rows stay "recording" until Media's orphan sweep finalizes them about four minutes later,
+     * and this map waited for that (onVodSettled) before the reconciler started the next part: a broadcast lost those
+     * minutes (the owner, 2026-11-18: "it doesn't have the full VOD"; iZoR_One's 3058 lost 4.5 min between parts).
+     * Now a part Media no longer records is finished at once (Media keeps what reached the disk) and the stream goes on
+     * in a new part on the spot. Only an explicit `recording: false` counts: a Media that is down or too old to answer
+     * changes nothing. Browser chunk sessions are not ingests and are left alone. → the stream ids resumed
+     */
+    async checkActiveRecordings({ now = Date.now(), minAgeMs = 30000 } = {}) {
+        const resumed = [];
+        for (const [sid, rec] of Array.from(this.activeRecordings)) {
+            if (!rec || !rec.vodId || rec._cancel || (rec.type !== 'rtmp' && rec.type !== 'rtp')) continue;
+            if (now - (Number(rec.startedAt) || now) < minAgeMs || this._finalizing.has(sid)) continue;
+            let status = null;
+            try { status = await media.ingestStatus(rec.vodId); } catch { continue; }
+            if (!status || status.recording !== false) continue;
+            if (this.activeRecordings.get(sid) !== rec) continue;   // stopped or replaced meanwhile
+            console.warn(`[VOD] Media is no longer recording stream ${sid} (vod ${rec.vodId}${status.row_recording ? ', left recording by a restart' : ''}): finishing that part and resuming in a new one`);
+            this._closePlainConsumers(rec.webrtcState);
+            this.activeRecordings.delete(sid);
+            if (status.row_recording) media.finalizeVod(rec.vodId).catch(() => { /* Media's own sweep finalizes it */ });
+            this._healAttempts.delete(sid);
+            resumed.push(sid);
+        }
+        if (resumed.length) await this.reconcileLiveRecordings();
+        return resumed;
+    }
+
     /** Called by the Media webhook when a vod finishes/fails so state can't go stale. */
     onVodSettled(vodId) {
         for (const [sid, rec] of this.activeRecordings) {

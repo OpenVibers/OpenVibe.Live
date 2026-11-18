@@ -218,6 +218,14 @@ async function uploadVodChunk(vodId, chunk, fields = {}, opts = {}) {
 }
 
 /** POST /vods/:id/finalize → close recording, kick off thumbnail + probe */
+/**
+ * GET /vods/:id/ingest → { recording, row_recording, kind, since, bytes, file_age_ms }: whether Media is recording the VOD
+ * right now. After a Media restart the row still says recording while nothing is (OpenVibe.Media #511).
+ */
+async function ingestStatus(vodId, opts = {}) {
+    return await request('GET', `/vods/${vodId}/ingest`, { timeoutMs: 5000, ...opts });
+}
+
 async function finalizeVod(vodId, opts = {}) {
     return await request('POST', `/vods/${vodId}/finalize`, opts);
 }
@@ -499,7 +507,7 @@ module.exports = {
     MediaApiError,
     request, proxy, actingUserFrom, _formData, _authHeader, _reset, MEDIA_AUDIENCE, viewCounts,
     // vods
-    createVod, ingestRtmp, ingestRtpStart, ingestRtpStop,
+    createVod, ingestRtmp, ingestRtpStart, ingestRtpStop, ingestStatus,
     uploadVodChunk, finalizeVod,
     getVod, listVods, wholeVideo, updateVod, deleteVod,
     // recordings

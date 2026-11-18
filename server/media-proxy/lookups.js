@@ -96,7 +96,10 @@ async function publicPartsForStreams(streamIds, { budgetMs = 4000 } = {}) {
         if (left <= 0) return;
         try {
             const parts = await _streamVod.get(sid, async () => {
-                const r = await media.listVods({ stream_id: sid, limit: 10 }, { timeoutMs: Math.min(TIMEOUT_MS, left) });
+                // Every part (include_parts): Media lists only a recording's first part unless asked, so a stream recorded in
+                // two parts read as its first part's length (the owner, 2026-11-18: iZoR_One's 36:51 stream said "Replay ·
+                // 14:46 of 36:51" though 32:15 was recorded, in two parts Media had joined into one video).
+                const r = await media.listVods({ stream_id: sid, limit: 20, include_parts: 1 }, { timeoutMs: Math.min(TIMEOUT_MS, left) });
                 return rowsOf(r, 'vods').filter((v) => isPublic(v) && finished(v))
                     .sort((a, b) => Number(a.id) - Number(b.id));
             });
@@ -105,11 +108,14 @@ async function publicPartsForStreams(streamIds, { budgetMs = 4000 } = {}) {
     });
     return out;
 }
-/** The public, finished VOD of each stream (the newest part if there are several). → Map(streamId → row) */
+/**
+ * The public, finished VOD of each stream: its first part, which plays the whole recording once Media has joined the
+ * parts (and was the only part Media listed before include_parts). → Map(streamId → row)
+ */
 async function publicVodsForStreams(streamIds, opts = {}) {
     const out = new Map();
     for (const [sid, parts] of await module.exports.publicPartsForStreams(streamIds, opts)) {
-        if (parts.length) out.set(sid, parts[parts.length - 1]);
+        if (parts.length) out.set(sid, parts[0]);
     }
     return out;
 }
