@@ -90,6 +90,17 @@ const tokens = { getToken: async () => 'tok-run', invalidate() {} };
     await b.decode(seg);
     assert.ok(bad.calls.length > before, 'asked again after five minutes');
 
+    // LIVE_ASR_LOCAL_FALLBACK=off (11-18: nothing heavy decodes on production): a failed segment is { ok: false } and
+    // the next one asks the node again at once, no cooldown.
+    const offRun = fakeRun({ states: ['running', 'failed'] });
+    const noLocal = createAsrRun({ env: { ...ENV, LIVE_ASR_LOCAL_FALLBACK: 'off' }, fetchImpl: offRun.fetchImpl, tokens, now, sleep, log: quiet });
+    assert.strictEqual(noLocal.localFallback(), false);
+    assert.strictEqual((await noLocal.decode(seg)).ok, false);
+    const offBefore = offRun.calls.length;
+    await noLocal.decode(seg);
+    assert.ok(offRun.calls.length > offBefore, 'fallback off: the next segment asks the node again, no cooldown');
+    assert.strictEqual(createAsrRun({ env: ENV }).localFallback(), true, 'on by default');
+
     // Run refuses the submit; a job that never ends in time.
     assert.match((await createAsrRun({ env: ENV, fetchImpl: fakeRun({ submitStatus: 403 }).fetchImpl, tokens, now, sleep, log: quiet }).decode(seg)).error, /Run answered 403 run\.denied/);
     assert.match((await createAsrRun({ env: ENV, fetchImpl: fakeRun({ states: ['queued'] }).fetchImpl, tokens, now, sleep, log: quiet }).decode(seg, { timeoutMs: 2000 })).error, /no answer within 2 s/);
