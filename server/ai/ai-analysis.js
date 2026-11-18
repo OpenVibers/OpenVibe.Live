@@ -201,9 +201,20 @@ async function _generateVodOverviewInner(vod) {
         // case. generateVodOverview() rejected, the VOD was never marked done, and the
         // backfill logged "[AI backfill] vod: stream is not defined" once a minute
         // forever. That is why ai_overview was null on every recent VOD.
-        const overview = await summarizeStreamMemories(existing, vod.stream_id || null);
-        if (overview) { try { await db.setVodAiOverview(vod.id, overview); } catch { /* */ } }
-        return overview;
+        // summarizeStreamMemories answers { overview, category, tags } (the same run classifies the stream). Storing that
+        // object threw inside setVodAiOverview (text.trim), the catch hid it, and the backfill asked again every minute
+        // for the same newest VOD: no stream-backed VOD got an overview, and the queue never moved (11-18: 481 waiting,
+        // about 1,100 cached live.stream.summarize runs a day). Store its text; a save that fails says so.
+        const summary = await summarizeStreamMemories(existing, vod.stream_id || null);
+        const text = summary && (typeof summary === 'string' ? summary : summary.overview);
+        if (text && String(text).trim()) {
+            try { await db.setVodAiOverview(vod.id, String(text)); } catch (e) { console.warn(`[AI backfill] vod ${vod.id} overview not saved: ${e.message}`); }
+            return String(text);
+        }
+        // AI off or over today's budget: wait (the media pass below would mark it done with nothing to say).
+        if (!await sharedKeyReady()) return null;
+        // No summary from its memories (the model said nothing, or none answered): the media itself is analysed below,
+        // which always marks the VOD done, so one VOD never holds the queue.
     }
     // No stream_id (or still sparse) — analyze the media directly (smart frame selection).
     const src = await _mediaSource(vod);
