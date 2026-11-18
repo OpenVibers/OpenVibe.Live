@@ -681,6 +681,13 @@ app.use('/assets/sounds', express.static(soundsPath, {
 // cache can pin the wrong bytes under that URL. HTML is always no-cache — it names the versions.
 const noCacheHeaders = assets.setNoCache;
 const assetOpts = { etag: true, lastModified: true, setHeaders: assets.staticHeaders };
+// The players' libraries (hls.js, flv.js), kept here at one version each, the version in the file's name: such a name
+// never changes its bytes, so it is immutable for a year. They were fetched from cdn.jsdelivr.net as @latest, which
+// sent every viewer whatever was published last (the unminified build) from a third party (2026-11-18).
+app.use('/js/vendor', express.static(path.join(assets.PUBLIC_DIR, 'js', 'vendor'), {
+    index: false, fallthrough: false, dotfiles: 'deny', immutable: true, maxAge: '365d',
+    setHeaders: (res, file) => { res.setHeader('X-Content-Type-Options', 'nosniff'); if (!/-\d+\.\d+\.\d+\.min\.js$/.test(file)) res.setHeader('Cache-Control', 'public, max-age=300'); },
+}));
 app.use('/js', assets.versionedStatic('/js'), express.static(path.join(assets.PUBLIC_DIR, 'js'), assetOpts));
 // The first-paint subset of style.css is generated (server/web/critical-css.js), so it is served before the static mount.
 app.get(assets.CORE_CSS, assets.serveCoreCss);

@@ -18,7 +18,7 @@
     if (window.cardPreview) return;
     const FINE = window.matchMedia('(hover: hover) and (pointer: fine)');
     const REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)');
-    const HLS_SRC = 'https://cdn.jsdelivr.net/npm/hls.js@latest';
+    const HLS_SRC = '/js/vendor/hls-1.7.4.min.js';
     const REST_MS = 260;          // a pointer resting this long on a card means "show me"
     const SETTLE_MS = 420;        // a phone's scroll has stopped this long: play the card in the middle
     const motion = () => document.documentElement.getAttribute('data-ov-motion') || '';
