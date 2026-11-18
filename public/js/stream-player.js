@@ -2224,7 +2224,7 @@ function initHLS(endpoint, stream) {
             detail: 'Fetching the HLS playback engine for this browser.',
             hint: 'If this hangs, a CDN issue or browser extension may be blocking the player script.',
         });
-        loadExternalScriptOnce('https://cdn.jsdelivr.net/npm/hls.js@latest').then(() => {
+        loadExternalScriptOnce('/js/vendor/hls-1.7.4.min.js').then(() => {
             const hls = new Hls({
                 enableWorker: true,
                 lowLatencyMode: true,
@@ -2316,7 +2316,7 @@ function tryFlvPlayer(flvUrl, video) {
         playThenSound(video, () => flvPlayer.play());
         player = { flv: flvPlayer, video };
     } else {
-        loadExternalScriptOnce('https://cdn.jsdelivr.net/npm/flv.js@latest').then(() => {
+        loadExternalScriptOnce('/js/vendor/flv-1.6.2.min.js').then(() => {
             if (flvjs.isSupported()) {
                 const flvPlayer = flvjs.createPlayer(
                     { type: 'flv', url: flvUrl, isLive: true },
@@ -2722,7 +2722,7 @@ function _playDvrHls(video, targetTime, src = null) {
         dvrState.hlsUrl = null;
         if (!dvrState.isLive) _playDvrFile(video, targetTime);
     };
-    loadExternalScriptOnce('https://cdn.jsdelivr.net/npm/hls.js@latest').then(() => {
+    loadExternalScriptOnce('/js/vendor/hls-1.7.4.min.js').then(() => {
         if (dvrState.isLive || dvrState.dvrSrc !== url) return;   // back to live, or another source, meanwhile
         if (src) video.addEventListener('ended', _dvrPartEnded, { once: true });
         if (!window.Hls || !Hls.isSupported()) {

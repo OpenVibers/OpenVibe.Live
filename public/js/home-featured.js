@@ -64,7 +64,7 @@
         try { p.destroy(); } catch { /* */ }
     }
     async function playFlv(url, media) {
-        if (typeof flvjs === 'undefined') await loadScript('https://cdn.jsdelivr.net/npm/flv.js@latest/dist/flv.min.js');
+        if (typeof flvjs === 'undefined') await loadScript('/js/vendor/flv-1.6.2.min.js');
         if (typeof flvjs === 'undefined' || !flvjs.isSupported()) throw new Error('flv unsupported');
         const video = document.createElement('video');
         video.muted = !st.unmuted; video.autoplay = true; video.playsInline = true; video.setAttribute('playsinline', '');

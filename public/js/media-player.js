@@ -115,7 +115,7 @@ async function mpAttachSource(media, url) {
         return;
     }
 
-    await mpLoadExternalScriptOnce('https://cdn.jsdelivr.net/npm/hls.js@latest');
+    await mpLoadExternalScriptOnce('/js/vendor/hls-1.7.4.min.js');
     if (typeof Hls === 'undefined' || !Hls.isSupported()) {
         throw new Error('HLS playback is not supported in this browser');
     }
