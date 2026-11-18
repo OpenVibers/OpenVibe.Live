@@ -228,7 +228,8 @@
                 const time = document.createElement('a');
                 time.className = 'agent-chapter-time';
                 time.textContent = clock(chapter.at);
-                time.href = vodBase ? `${vodBase}?t=${chapter.at}` : '#';
+                // The watch link already has ?v= (11-18: links went out as /watch?v=…?t=99, which openvibe.video answers 404).
+                time.href = vodBase ? `${vodBase}${vodBase.includes('?') ? '&' : '?'}t=${Math.max(0, Math.floor(Number(chapter.at) || 0))}` : '#';
                 if (!vodBase) time.removeAttribute('href');
                 const title = document.createElement('span');
                 title.className = 'agent-chapter-title';
