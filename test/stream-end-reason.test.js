@@ -37,6 +37,12 @@ const db = require('../server/db/database');
     await db.endStream(e, 'heartbeat_lost');
     assert.ok(Number((await db.get('SELECT duration_seconds FROM streams WHERE id = ?', [e])).duration_seconds) >= 0, 'never before its start');
 
+    // An encoder that left a grace ago (rtmp-server.js): ended at its last heartbeat too, with its own reason.
+    const f = Number((await db.run(`INSERT INTO streams (user_id, title, protocol, is_live, started_at, last_heartbeat) VALUES (?, 't', 'rtmp', 1, '2026-11-18 19:20:15', '2026-11-18 19:32:08') RETURNING id`, [user])).lastInsertRowid);
+    await db.endStream(f, 'ingest_ended', { atLastHeartbeat: true });
+    const fr = await db.get('SELECT ended_at, duration_seconds, end_reason FROM streams WHERE id = ?', [f]);
+    assert.deepStrictEqual([fr.ended_at, Number(fr.duration_seconds), fr.end_reason], ['2026-11-18 19:32:08', 713, 'ingest_ended']);
+
     console.log('stream end reason: first known reason kept; a lost heartbeat ends at the last heartbeat');
     process.exit(0);
 })().catch((e) => { console.error(e); process.exit(1); });

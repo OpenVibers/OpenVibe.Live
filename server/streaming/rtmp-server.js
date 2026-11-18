@@ -9,6 +9,19 @@ const EventEmitter = require('events');
 const config = require('../config');
 const db = require('../db/database');
 const recorder = require('./recorder');
+const { createResumeGrace, RTMP_RESUME_GRACE_MS } = require('./resume-grace');
+
+/**
+ * Whether a live RTMP stream has already been fed (a reconnect after a Live restart carries it on): Media holds a
+ * recording of it. A stream the Go Live page made, still waiting for its first encoder, has none. Media slow or down:
+ * not known, treated as new (the stream's start moves to now, as before).
+ */
+async function wasFed(streamId) {
+    try {
+        const r = await require('../media-client').listVods({ stream_id: streamId, limit: 1, include_parts: 1, include_recording: 1 }, { timeoutMs: 2000 });
+        return !!(r && Array.isArray(r.vods) && r.vods.length);
+    } catch { return false; }
+}
 
 const RTMP_HEARTBEAT_INTERVAL_MS = 30000; // Refresh live stream timestamp while RTMP session is active
 const RECORD_WAIT_VIDEO_MS = 20000;        // how long the recording waits for the publisher's first video
@@ -43,6 +56,16 @@ class RTMPServer extends EventEmitter {
         super();
         this.nms = null;
         this.activeStreams = new Map(); // streamKey → { streamId, userId }
+        // A publisher that left is kept for a reconnect (server/streaming/resume-grace.js): the same key publishing again
+        // within RTMP_RESUME_GRACE_MS carries on the same stream; after it, the stream ends when the publisher left.
+        this.resumeGrace = createResumeGrace({
+            graceMs: RTMP_RESUME_GRACE_MS,
+            onExpire: async (info) => {
+                await db.endStream(info.streamId, 'ingest_ended', { atLastHeartbeat: true });
+                try { await db.computeAndCacheStreamAnalytics(info.streamId); } catch { /* best effort */ }
+                console.log(`[RTMP] Stream ended: ${maskKey(info.streamKey)} (stream ${info.streamId}; no reconnect within ${Math.round(RTMP_RESUME_GRACE_MS / 1000)} s)`);
+            },
+        });
     }
 
     start() {
@@ -155,13 +178,23 @@ class RTMPServer extends EventEmitter {
             // slot's stream: it got the second slot's controls (below) and ended when that encoder left.
             const existingStreams = await db.getLiveStreamsByUserId(resolvedUser.id);
             const fed = new Set([...this.activeStreams.values()].map((info) => info.streamId));
-            const rtmpStream = existingStreams.find(s => s.protocol === 'rtmp' && !fed.has(s.id)
-                && (!managedStream || s.managed_stream_id === managedStream.id));
+            // The same key back within the grace: its stream, held for it (a blip, or OBS reconnecting).
+            const held = this.resumeGrace.take(streamKey);
+            const rtmpStream = (held && existingStreams.find(s => s.id === held.streamId))
+                || existingStreams.find(s => s.protocol === 'rtmp' && !fed.has(s.id)
+                    && (!managedStream || s.managed_stream_id === managedStream.id));
             let streamId;
             if (rtmpStream) {
                 streamId = rtmpStream.id;
-                await db.run('UPDATE streams SET is_live = 1, started_at = ov_now() WHERE id = ?',
-                    [streamId]);
+                // Carrying on a broadcast (held for this key, or already recorded before a Live restart) keeps its start;
+                // a stream the Go Live page made for this encoder starts now.
+                const resuming = (held && held.streamId === streamId) || await wasFed(streamId);
+                if (resuming) {
+                    await db.run('UPDATE streams SET is_live = 1 WHERE id = ?', [streamId]);
+                    console.log(`[RTMP] Publisher back on stream ${streamId}: the same broadcast goes on`);
+                } else {
+                    await db.run('UPDATE streams SET is_live = 1, started_at = ov_now() WHERE id = ?', [streamId]);
+                }
             } else {
                 // No pre-created RTMP stream — auto-create one (direct OBS connect without Go Live page)
                 await db.ensureChannel(resolvedUser.id);
@@ -247,10 +280,11 @@ class RTMPServer extends EventEmitter {
                     info.heartbeatTimer = null;
                 }
 
-                await db.endStream(info.streamId, 'ingest_ended');
-                try { await db.computeAndCacheStreamAnalytics(info.streamId); } catch {}
+                // Not ended yet: the same key may publish again within the grace and carry on this stream (a blip, an
+                // encoder reconnecting). Ended after it, at the publisher's last heartbeat.
                 this.activeStreams.delete(streamKey);
-                console.log(`[RTMP] Stream ended: ${maskKey(streamKey)} (stream ${info.streamId})`);
+                this.resumeGrace.hold(streamKey, { streamId: info.streamId, userId: info.userId, streamKey });
+                console.log(`[RTMP] Publisher left stream ${info.streamId} (${maskKey(streamKey)}): kept ${Math.round(RTMP_RESUME_GRACE_MS / 1000)} s for a reconnect`);
             } else {
                 console.log(`[RTMP] donePublish received for unknown stream key: ${maskKey(streamKey)}`);
             }
