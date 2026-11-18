@@ -333,7 +333,8 @@ async function _parakeetInner(wavPath, opts = {}) {
 }
 
 // A live segment goes to the shared node first (server/ai/asr-run.js, plan §AD.21b item 6): the same parakeet-cli and
-// model there, its per-token output parsed here as a local run's. Not configured, or any failure there, decodes here.
+// model there, its per-token output parsed here as a local run's. Not configured decodes here; a failure there decodes
+// here too, unless LIVE_ASR_LOCAL_FALLBACK=off (11-18), when that segment is skipped and the next asks the node again.
 async function _parakeetOnce(wavPath, opts = {}) {
     const { offsetSec = 0, live = false } = opts;
     if (live && parakeetAvailable() && wavPath) {
@@ -344,6 +345,8 @@ async function _parakeetOnce(wavPath, opts = {}) {
                 const segments = _cleanSegments(parseParakeet(r.stderr, offsetSec));
                 return { text: _joinSegments(segments), segments, ok: true, engine: 'parakeet', on: 'node' };
             }
+            // The node missed and this host may not decode (LIVE_ASR_LOCAL_FALLBACK=off): this segment is a gap.
+            if (remote.localFallback && !remote.localFallback()) return { text: '', segments: [], ok: false, error: r.error || 'the shared node did not decode', on: 'node' };
         }
     }
     return _parakeetLocal(wavPath, opts);

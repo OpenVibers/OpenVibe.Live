@@ -27,6 +27,11 @@ const DONE = new Set(['succeeded', 'failed', 'cancelled', 'expired']);
 
 function drill() { try { return require('../drill').enabled; } catch { return false; } }
 
+/** May a live segment the node missed decode on this host? LIVE_ASR_LOCAL_FALLBACK=off (the owner, 11-18: heavy work
+ *  runs on the shared node via Link, not on production) says no: that segment is lost, and the next one asks the node
+ *  again at once, with no cooldown. */
+function localFallback(env) { return !/^(off|0|false|no)$/i.test(String((env || {}).LIVE_ASR_LOCAL_FALLBACK || '').trim()); }
+
 function settingsOf(env) {
     const url = String(env.ASR_RUN_URL || '').replace(/\/+$/, '');
     const subject = String(env.ASR_RUN_SUBJECT || '');
@@ -57,8 +62,10 @@ function createAsrRun({ env = process.env, fetchImpl = globalThis.fetch, tokens 
         return client;
     };
     const fail = (error) => {
-        coolUntil = now() + COOL_MS;
-        if (error !== lastNote) { lastNote = error; if (log && log.warn) log.warn(`[ASR] the shared node did not decode (${error}); decoding here for 5 minutes`); }
+        // With the local fallback off there is nothing to cool down for: each next segment asks the node again.
+        const here = localFallback(env);
+        if (here) coolUntil = now() + COOL_MS;
+        if (error !== lastNote) { lastNote = error; if (log && log.warn) log.warn(`[ASR] the shared node did not decode (${error}); ${here ? 'decoding here for 5 minutes' : 'this segment is skipped (LIVE_ASR_LOCAL_FALLBACK=off)'}`); }
         return { ok: false, error };
     };
 
@@ -111,7 +118,7 @@ function createAsrRun({ env = process.env, fetchImpl = globalThis.fetch, tokens 
         }
     }
 
-    return { configured, decode };
+    return { configured, decode, localFallback: () => localFallback(env) };
 }
 
 let shared = null;
@@ -121,4 +128,4 @@ function asrRun() {
     return shared;
 }
 
-module.exports = { createAsrRun, asrRun, settingsOf, MAX_WAV, COOL_MS };
+module.exports = { createAsrRun, asrRun, settingsOf, localFallback, MAX_WAV, COOL_MS };
