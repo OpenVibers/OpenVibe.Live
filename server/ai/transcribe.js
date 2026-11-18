@@ -332,7 +332,24 @@ async function _parakeetInner(wavPath, opts = {}) {
     }
 }
 
-function _parakeetOnce(wavPath, { timeoutMs = 180000, offsetSec = 0, live = false } = {}) {
+// A live segment goes to the shared node first (server/ai/asr-run.js, plan §AD.21b item 6): the same parakeet-cli and
+// model there, its per-token output parsed here as a local run's. Not configured, or any failure there, decodes here.
+async function _parakeetOnce(wavPath, opts = {}) {
+    const { offsetSec = 0, live = false } = opts;
+    if (live && parakeetAvailable() && wavPath) {
+        const remote = require('./asr-run').asrRun();
+        if (remote.configured()) {
+            const r = await remote.decode(wavPath, { timeoutMs: Math.min(opts.timeoutMs || 15000, 15000) });
+            if (r.ok) {
+                const segments = _cleanSegments(parseParakeet(r.stderr, offsetSec));
+                return { text: _joinSegments(segments), segments, ok: true, engine: 'parakeet', on: 'node' };
+            }
+        }
+    }
+    return _parakeetLocal(wavPath, opts);
+}
+
+function _parakeetLocal(wavPath, { timeoutMs = 180000, offsetSec = 0, live = false } = {}) {
     return new Promise((resolve) => {
         if (!parakeetAvailable() || !wavPath || !fs.existsSync(wavPath)) return resolve({ text: '', segments: [], ok: false, error: 'parakeet unavailable' });
         const args = ['-t', String(_threads(live)), '-ps', '-np', '-m', PARAKEET_MODEL, '-f', wavPath];
