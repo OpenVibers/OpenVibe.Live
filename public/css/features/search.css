@@ -1,6 +1,6 @@
 /* The /search page (public/js/app-search.js, fragment search.html). Theme tokens only. */
 .ls-wrap [hidden] { display: none !important; }
-.ls-wrap { max-width: 860px; margin: 0 auto; padding: 20px 16px 48px; }
+.ls-wrap { max-width: 860px; margin: 0 auto; padding: 12px 16px 48px; }
 .ls-h1 { margin: 0; font-size: clamp(1.5rem, 1.2rem + 1.2vw, 2rem); font-weight: 800; letter-spacing: -0.02em; display: flex; align-items: center; gap: 10px; }
 .ls-sub { margin: 6px 0 14px; color: var(--text-secondary); font-size: 0.92rem; }
 .ls-network { white-space: nowrap; }
@@ -39,3 +39,5 @@
 
 /* Without JavaScript (the server inlines this fragment for a direct visit): what needs it, and where to go instead. */
 .ls-noscript { margin: 16px 0 0; line-height: 1.6; }
+/* Design rule 201 (the owner, 11-14): a page starts within 12 px of the bar, 8 px on a phone. */
+@media (max-width: 640px) { .ls-wrap { padding-top: 8px; } }

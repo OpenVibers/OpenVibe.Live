@@ -3458,3 +3458,5 @@ html[data-ov-motion=off] .gl-adult input, html[data-ov-motion=off] .gl-adult inp
 /* One "Turn on camera" (11-09 review): on a phone the Go live dock at the thumb carries it, so the card keeps the words
    and the other ways, not a second identical button. */
 body.bc-golive-dock-on #bc-perm-btn { display: none; }
+/* Design rule 201: the intro is one line on a computer, at most two on a phone. */
+@media (max-width: 640px) { .bc-first-lede, .bc-instructions-intro { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; } }

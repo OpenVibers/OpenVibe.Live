@@ -12,7 +12,7 @@
     --cf-ai-fill: linear-gradient(135deg, #6d28d9, #0e7490);   /* behind white text: 4.5:1 or better */
     max-width: 1240px;
     margin: 0 auto;
-    padding: 20px 16px 48px;
+    padding: 12px 16px 48px;
 }
 
 /* ── header ─────────────────────────────────────────────────────────────── */
@@ -521,3 +521,5 @@ a.cf-recap-band:hover .cf-recap-sub { text-decoration: underline; text-underline
     .cf-moment-link { min-height: 44px; }
     .cf-recap-read { min-height: 44px; }
 }
+/* Design rule 201 (the owner, 11-14): a page starts within 12 px of the bar, 8 px on a phone. */
+@media (max-width: 640px) { .cf-wrap { padding-top: 8px; } }
