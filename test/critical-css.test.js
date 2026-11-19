@@ -75,6 +75,19 @@ for (const url of ['/dashboard', '/broadcast', '/settings', '/admin', '/document
 }
 ok('public routes block on the subset and load style.css after it in the same place; every other route is unchanged');
 
+// A feature's deferCss (the home tour's styles, for content its script draws below the fold) arrives without blocking,
+// in its place in the cascade; the home page's own and hero styles still block.
+{
+    const home = assets.renderRoute(doc, '/');
+    const head = home.slice(0, home.indexOf('</head>'));
+    const blocking = blockingLinks(head.replace(/<noscript>[\s\S]*?<\/noscript>/g, ''));
+    assert.ok(!blocking.some((h) => h.startsWith('/css/home-tour.css')), 'the home tour does not block the first paint');
+    assert.match(head, /<link rel="stylesheet" href="\/css\/home-tour\.css\?v=[^"]+" media="print" onload="this\.media='all';this\.onload=null" data-ov-feature-asset>/, 'it loads without blocking');
+    assert.ok(blocking.some((h) => h.startsWith('/css/features/home.css')) && blocking.some((h) => h.startsWith('/css/home-fx.css')), 'the home layout and hero styles still block');
+    assert.ok(head.indexOf('/css/home-fx.css') < head.indexOf('/css/home-tour.css') && head.indexOf('/css/home-tour.css') < head.indexOf('<meta name="ov-css-anchor">'), 'in its place in the cascade');
+}
+ok('a feature\'s deferCss arrives without blocking, in its cascade place');
+
 assert.strictEqual(assets.hashOf(assets.CORE_CSS), core.hash, 'the subset is versioned by its content');
 ok('the subset is versioned by its content');
 

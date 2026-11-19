@@ -37,6 +37,9 @@
         "/css/home-fx.css",
         "/css/home-tour.css"
       ],
+      "deferCss": [
+        "/css/home-tour.css"
+      ],
       "js": [
         "/shared/kit-web.js",
         "/js/ov-rail.js",

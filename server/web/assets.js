@@ -244,16 +244,19 @@ function featuresFor(urlPath) {
     return out;
 }
 
-/** The CSS and JS a route needs at first paint, in load order, without duplicates. */
+/** The CSS and JS a route needs at first paint, in load order, without duplicates; `deferred` are the stylesheets a
+ * feature names in `deferCss` (styles for content its script draws later, below the fold), which are linked without
+ * blocking the first paint (2026-11-19: the home tour's 10 KB held up the home page's first paint on slow lines). */
 function routeAssets(urlPath) {
     const reg = features();
-    const css = [], js = [];
+    const css = [], js = [], deferred = new Set();
     for (const name of featuresFor(urlPath)) {
         const f = reg.features[name];
         for (const c of f.css || []) if (!css.includes(c)) css.push(c);
         for (const j of f.js || []) if (!js.includes(j)) js.push(j);
+        for (const c of f.deferCss || []) deferred.add(c);
     }
-    return { features: featuresFor(urlPath), css, js };
+    return { features: featuresFor(urlPath), css, js, deferred };
 }
 
 /** Rewrite asset references in an HTML string and fill the manifest placeholder, if present. */
@@ -287,8 +290,11 @@ function rewriteHtml(html) {
  */
 function renderRoute(html, urlPath) {
     if (!html.includes(ROUTE_CSS_MARK) && !html.includes(ROUTE_JS_MARK)) return html;
-    const { features: names, css, js } = routeAssets(urlPath);
-    const tag = (c) => `<link rel="stylesheet" href="${versioned(c)}" data-ov-feature-asset>`;
+    const { features: names, css, js, deferred } = routeAssets(urlPath);
+    // A deferred stylesheet keeps its place in the cascade and arrives without blocking (media="print" until loaded).
+    const tag = (c) => (deferred.has(c)
+        ? `<link rel="stylesheet" href="${versioned(c)}" media="print" onload="this.media='all';this.onload=null" data-ov-feature-asset>`
+        : `<link rel="stylesheet" href="${versioned(c)}" data-ov-feature-asset>`);
     // Split-out rules keep their cascade position (right after style.css); stylesheets that were always
     // separate files keep theirs (after every global stylesheet). js/ov-loader.js applies the same rule.
     const cssTags = css.filter(isEarlyCss).map(tag).join('\n    ');
