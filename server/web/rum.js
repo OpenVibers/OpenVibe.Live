@@ -20,7 +20,12 @@
 const express = require('express');
 
 // ttff: a live channel's first picture (stream-player.js), from navigation; 0 when no live picture showed.
-const METRICS = { ttfb: 60000, fcp: 60000, lcp: 60000, inp: 60000, tbt: 120000, cls: 10, ttff: 120000 };
+// tplayer: when the player started (the page and the stream's data were in), from navigation; ttff_<path>: ttff again
+// under the playback path that showed the picture (2026-11-19: ttff's p75 was 8-10 s and nothing said where it went).
+const METRICS = {
+    ttfb: 60000, fcp: 60000, lcp: 60000, inp: 60000, tbt: 120000, cls: 10, ttff: 120000,
+    tplayer: 120000, ttff_webrtc: 120000, ttff_hls: 120000, ttff_flv: 120000, ttff_jsmpeg: 120000,
+};
 const KEEP = 400;            // samples per reservoir (the newest)
 const MAX_ERRORS = 100;      // distinct error messages kept
 const PER_MINUTE = 20;       // beacons per address per minute (held in memory for that minute only)

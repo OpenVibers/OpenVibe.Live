@@ -52,10 +52,15 @@
         const r = (v) => Math.round(v);
         let path = location.pathname;   // the page these timings are for: the one loaded, not where the SPA went since
         try { if (nav) path = new URL(nav.name).pathname; } catch (e) { /* keep */ }
-        navigator.sendBeacon('/api/rum', JSON.stringify({
+        const body = {
             path, w: innerWidth, ttfb: nav ? r(nav.responseStart) : 0, ttff: r(window.__ovFirstFrameAt || 0),
+            tplayer: r(window.__ovPlayerStartAt || 0),
             fcp: r(m.fcp), lcp: r(m.lcp), cls: Math.round(m.cls * 1000) / 1000, inp: r(m.inp), tbt: r(m.tbt), errs: m.errs,
-        }));
+        };
+        // The first picture again under the path that showed it (WebRTC, HLS, FLV or JSMpeg), so each has its own p75.
+        const via = String(window.__ovFirstFrameVia || '');
+        if (/^(webrtc|hls|flv|jsmpeg)$/.test(via) && window.__ovFirstFrameAt) body['ttff_' + via] = r(window.__ovFirstFrameAt);
+        navigator.sendBeacon('/api/rum', JSON.stringify(body));
     };
     addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') send(); });
     addEventListener('pagehide', send);
