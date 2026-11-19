@@ -38,34 +38,55 @@
         const parts = [];
         const COLORS = ['139,92,246', '167,139,250', '125,211,252', '251,191,36', '244,114,182'];
         function resize() { const r = hero.getBoundingClientRect(); w = canvas.width = Math.max(1, Math.round(r.width)); h = canvas.height = Math.max(1, Math.round(r.height)); }
-        function spawn() { return { x: Math.random() * w, y: h + 10 + Math.random() * 40, r: 1 + Math.random() * 2.4, vy: 12 + Math.random() * 26, vx: (Math.random() - 0.5) * 10, sw: Math.random() * Math.PI * 2, c: COLORS[(Math.random() * COLORS.length) | 0], a: 0.25 + Math.random() * 0.5, life: 0 }; }
+        function spawn() {
+            const c = COLORS[(Math.random() * COLORS.length) | 0];
+            return { x: Math.random() * w, y: h + 10 + Math.random() * 40, r: 1 + Math.random() * 2.4, vy: 12 + Math.random() * 26, vx: (Math.random() - 0.5) * 10, sw: Math.random() * Math.PI * 2, c, fill: `rgb(${c})`, glow: `rgba(${c},0.8)`, a: 0.25 + Math.random() * 0.5, life: 0 };
+        }
         resize();
         // A phone's hero is narrow: fewer sparks, and no glow around each (the blur is the costly part of a frame).
         const N = Math.min(70, Math.max(16, Math.round(w / 18)));
         const GLOW = COARSE ? 0 : 8;
         for (let i = 0; i < N; i++) { const p = spawn(); p.y = Math.random() * h; parts.push(p); }
+        // At most 60 frames a second: a 120 Hz screen (a tablet's) drew the same slow drift twice as often (2026-11-19: the
+        // sparks were the largest script cost of a tablet's home page). Colours are prepared per spark; the fade is alpha.
         function tick(now) {
             if (!running) return;
+            if (last && now - last < 15) { raf = requestAnimationFrame(tick); return; }
             const dt = Math.min(0.05, (now - (last || now)) / 1000); last = now;
             ctx.clearRect(0, 0, w, h);
+            ctx.shadowBlur = GLOW;
             for (let i = 0; i < parts.length; i++) {
                 const p = parts[i];
                 p.sw += dt * 1.2; p.x += (p.vx + Math.sin(p.sw) * 8) * dt; p.y -= p.vy * dt;
                 if (p.y < -10 || p.x < -10 || p.x > w + 10) parts[i] = spawn();
                 const fade = Math.min(1, p.y / 80) * Math.min(1, (h - p.y) / 120);
+                if (fade <= 0) continue;
                 ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
-                ctx.fillStyle = `rgba(${p.c},${(p.a * Math.max(0, fade)).toFixed(3)})`;
-                ctx.shadowBlur = GLOW; if (GLOW) ctx.shadowColor = `rgba(${p.c},0.8)`;
+                ctx.globalAlpha = p.a * fade;
+                ctx.fillStyle = p.fill;
+                if (GLOW) ctx.shadowColor = p.glow;
                 ctx.fill();
             }
+            ctx.globalAlpha = 1;
             ctx.shadowBlur = 0;
             raf = requestAnimationFrame(tick);
         }
-        const onVis = () => { if (document.hidden) { running = false; cancelAnimationFrame(raf); } else if (!running) { running = true; last = 0; raf = requestAnimationFrame(tick); } };
+        // Drawn only while the tab is visible and the hero is on screen: scrolled past, it kept drawing every frame.
+        let heroOnScreen = true;
+        const sync = () => {
+            const want = !document.hidden && heroOnScreen;
+            if (!want && running) { running = false; cancelAnimationFrame(raf); }
+            else if (want && !running) { running = true; last = 0; raf = requestAnimationFrame(tick); }
+        };
+        const onVis = sync;
+        const heroIo = 'IntersectionObserver' in window
+            ? new IntersectionObserver((entries) => { heroOnScreen = entries[entries.length - 1].isIntersecting; sync(); })
+            : null;
+        if (heroIo) heroIo.observe(hero);
         window.addEventListener('resize', resize);
         document.addEventListener('visibilitychange', onVis);
         raf = requestAnimationFrame(tick);
-        sparksStop = () => { running = false; cancelAnimationFrame(raf); window.removeEventListener('resize', resize); document.removeEventListener('visibilitychange', onVis); canvas.remove(); sparksStop = null; };
+        sparksStop = () => { running = false; cancelAnimationFrame(raf); if (heroIo) heroIo.disconnect(); window.removeEventListener('resize', resize); document.removeEventListener('visibilitychange', onVis); canvas.remove(); sparksStop = null; };
     }
 
     // ── Cursor spotlight + magnetic buttons ─────────────────────
@@ -107,13 +128,21 @@
      * sections that mount late.
      */
     let revealScrollHooked = false;
+    // Every waiting element's place is read first, then the ones on screen (or passed) are shown: adding the class
+    // between two reads made the next read lay the whole page out again (550 ms of a tablet's first seconds, 11-19).
+    function revealOnScreen() {
+        const vh = window.innerHeight;
+        const show = [];
+        document.querySelectorAll('.hfx-reveal:not(.is-in)').forEach((el) => {
+            const r = el.getBoundingClientRect();
+            if (r.height && r.top < vh) show.push(el);
+        });
+        for (const el of show) el.classList.add('is-in');
+    }
     function startRevealSafety() {
         if (revealSafety) return;
         const sweep = () => {
-            document.querySelectorAll('.hfx-reveal:not(.is-in)').forEach(el => {
-                const r = el.getBoundingClientRect();
-                if (r.height && r.top < window.innerHeight) el.classList.add('is-in');   // on screen, or already passed
-            });
+            revealOnScreen();   // on screen, or already passed
             revealPasses++;
             revealSafety = revealPasses < 5 ? setTimeout(sweep, 2000) : 0;
         };
@@ -127,12 +156,7 @@
         let settle = 0;
         window.addEventListener('scroll', () => {
             clearTimeout(settle);
-            settle = setTimeout(() => {
-                document.querySelectorAll('.hfx-reveal:not(.is-in)').forEach(el => {
-                    const r = el.getBoundingClientRect();
-                    if (r.height && r.top < window.innerHeight) el.classList.add('is-in');
-                });
-            }, 140);
+            settle = setTimeout(revealOnScreen, 140);
         }, { passive: true });
     }
 
