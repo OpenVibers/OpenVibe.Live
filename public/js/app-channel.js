@@ -155,6 +155,26 @@ const channelVodsPageByUser = Object.create(null);
 const channelClipsPageByUser = Object.create(null);
 const channelClipsOfPageByUser = Object.create(null);
 const channelAiClipsPageByUser = Object.create(null);
+/**
+ * The rails' arrows, measured together (2026-11-19): each rail read its size and then changed its arrows in a frame of
+ * its own, so every rail after the first made the browser lay the page out again (a channel's first load spent 254 ms
+ * there at 4x CPU). One frame now runs every waiting rail's measure (reads only), then all their writes, and a write
+ * only touches an arrow whose state changed.
+ */
+const _railWaiting = new Set();
+let _railRaf = 0;
+function _railFrame(measure) {
+    _railWaiting.add(measure);
+    if (_railRaf) return;
+    _railRaf = requestAnimationFrame(() => {
+        _railRaf = 0;
+        const all = [..._railWaiting];
+        _railWaiting.clear();
+        const writes = all.map((f) => { try { return f(); } catch { return null; } });
+        for (const w of writes) if (typeof w === 'function') w();
+    });
+}
+
 function _channelRail(grid, offset, count, total, loadNext, old = []) {
     if (!grid) return;
     if (old.length) grid.prepend(...old);
@@ -174,16 +194,21 @@ function _channelRail(grid, offset, count, total, loadNext, old = []) {
             arrow.addEventListener('click', () => grid.scrollBy({ left: (dir === 'prev' ? -1 : 1) * grid.clientWidth * .75, behavior: _channelReduceMotion() ? 'auto' : 'smooth' }));
             bar.append(arrow);
         }
+        // Read now, write later (_railFrame): every rail's arrows in one frame, all measured before any is changed.
         const update = () => {
             const overflow = grid.scrollWidth > grid.clientWidth + 2;
-            bar.querySelectorAll(`[data-rail-for="${grid.id}"]`).forEach((arrow) => {
-                arrow.hidden = !overflow;
-                arrow.disabled = arrow.dataset.dir === 'prev' ? grid.scrollLeft < 2 : grid.scrollLeft + grid.clientWidth >= grid.scrollWidth - 2;
+            const atStart = grid.scrollLeft < 2;
+            const atEnd = grid.scrollLeft + grid.clientWidth >= grid.scrollWidth - 2;
+            return () => bar.querySelectorAll(`[data-rail-for="${grid.id}"]`).forEach((arrow) => {
+                const hide = !overflow;
+                const off = arrow.dataset.dir === 'prev' ? atStart : atEnd;
+                if (arrow.hidden !== hide) arrow.hidden = hide;
+                if (arrow.disabled !== off) arrow.disabled = off;
             });
         };
-        grid.addEventListener('scroll', update, { passive: true });
-        window.addEventListener('resize', update, { passive: true });
-        requestAnimationFrame(update);
+        grid.addEventListener('scroll', () => _railFrame(update), { passive: true });
+        window.addEventListener('resize', () => _railFrame(update), { passive: true });
+        _railFrame(update);
     }
     if (!loadNext || offset + count >= total || !('IntersectionObserver' in window)) return;
     const sentinel = document.createElement('div');
@@ -4325,10 +4350,11 @@ function _offlineCyclerRender() {
     if (r.vod) cards.push(_offlineTopCard('vod', r.vod));
     if (r.clip) cards.push(_offlineTopCard('clip', r.clip));
     body.classList.remove('off-cyc-fade');
-    // reflow to restart the fade-in animation
-    void body.offsetWidth;
     body.innerHTML = cards.join('');
-    body.classList.add('off-cyc-fade');
+    // The fade starts again two frames on, once a frame was drawn without it: reading offsetWidth here made the browser
+    // lay the page out at once, on every turn and in the middle of a channel's first load (2026-11-19 profile: 80 ms at
+    // 4x CPU).
+    requestAnimationFrame(() => requestAnimationFrame(() => { if (body.isConnected) body.classList.add('off-cyc-fade'); }));
 }
 function _offlineTopCard(kind, item) {
     const isVod = kind === 'vod';
