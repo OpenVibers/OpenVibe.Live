@@ -52,6 +52,10 @@
         box.style.setProperty('--video-ar', ratio.toFixed(4));
         box.dataset.shape = ratio < 0.95 ? 'portrait' : ratio > 1.05 ? 'landscape' : 'square';
         box.classList.toggle('is-vertical', ratio < 0.95);   // the chat sidebar's width on a desktop keys on it
+        // The layout around it says so too (channel.css keys 74 rules on it): it asked .stream-layout:has(.video-container
+        // .is-vertical), and every :has() made each style recalc of a channel page cost three times as much (2026-11-19).
+        const layout = box.closest && box.closest('.stream-layout');
+        if (layout) layout.classList.toggle('has-vertical-video', ratio < 0.95);
         box.classList.toggle('is-tall', ratio < 0.66);        // a phone's own 9:16 or taller: it may fill a phone screen
         if (st.glow) st.glow.check();
     }

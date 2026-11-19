@@ -334,9 +334,13 @@ function activePage(html, names, reg) {
     const frag = [...names].reverse().map((n) => reg.features[n] && reg.features[n].fragment)
         .find((f) => f && html.includes(`class="page" data-fragment="${f}"`));
     if (!frag) return html;
-    return html
+    let out = html
         .replace('<section id="page-home" class="page active"', '<section id="page-home" class="page"')
         .replace(`class="page" data-fragment="${frag}"`, `class="page active" data-fragment="${frag}"`);
+    // channel.css keys on body.on-channel (it was body:has(#page-channel.active); app-channel.js keeps it after this):
+    // written here so the first paint of a channel has it (2026-11-19).
+    if (frag === 'channel') out = out.replace(/<body(\s[^>]*)?>/i, (m, attrs) => (attrs && /\bclass="/.test(attrs) ? m.replace(/\bclass="/, 'class="on-channel ') : `<body${attrs || ''} class="on-channel">`));
+    return out;
 }
 
 /**

@@ -15,15 +15,16 @@ const phone = block.slice(block.indexOf('@media (max-width: 768px) and (orientat
 assert.ok(phone.startsWith('@media (max-width: 768px) and (orientation: portrait)'), 'only on a phone held upright');
 
 // The app bar and every floating button step aside while a stream is live on the open channel page.
-assert.match(phone, /html:has\(#page-channel\.active\.ch-is-live\) \{ --ovnav-appbar-h: 0px; \}/, 'the page keeps no room for the bar');
-assert.match(phone, /html:has\(#page-channel\.active\.ch-is-live\) \.ovnav-appbar,/, 'the bar is hidden');
+// (html.on-channel-live is the page's state mirrored by app-channel.js: it was html:has(#page-channel.active.ch-is-live).)
+assert.match(phone, /html:is\(\.on-channel-live, #page-channel\.active\.ch-is-live\) \{ --ovnav-appbar-h: 0px; \}/, 'the page keeps no room for the bar');
+assert.match(phone, /html:is\(\.on-channel-live, #page-channel\.active\.ch-is-live\) \.ovnav-appbar,/, 'the bar is hidden');
 assert.match(phone, /:is\(\.mobile-chat-toggle, #floating-chat-fab\) \{ display: none !important; \}/, 'no floating buttons');
 
 // The chat is in the page under the player, taking what is left: not a sheet behind a button.
 assert.match(phone, /#page-channel\.ch-is-live\.page \.stream-layout > \.chat-sidebar \{[^}]*position: relative;[^}]*flex: 1 1 0;[^}]*transform: none;/, 'the chat is docked');
 // A portrait stream fills the screen; the chat runs over its lower part and the channel line over its top.
-assert.match(phone, /\.stream-layout:has\(\.video-container\.is-vertical\) \.video-container\.is-vertical \{[^}]*position: absolute; inset: 0;/, 'a portrait picture fills the screen');
-assert.match(phone, /\.stream-layout:has\(\.video-container\.is-vertical\) > \.chat-sidebar \{[^}]*position: absolute;[^}]*bottom: 0;/, 'the chat over its lower part');
+assert.match(phone, /\.stream-layout:is\(\.has-vertical-video, \.video-container\.is-vertical\) \.video-container\.is-vertical \{[^}]*position: absolute; inset: 0;/, 'a portrait picture fills the screen');
+assert.match(phone, /\.stream-layout:is\(\.has-vertical-video, \.video-container\.is-vertical\) > \.chat-sidebar \{[^}]*position: absolute;[^}]*bottom: 0;/, 'the chat over its lower part');
 assert.match(phone, /\.video-container\.is-tall :is\(#video-element, #video-canvas\) \{ object-fit: cover; \}/, 'a 9:16 picture is not letterboxed');
 
 // The live state is marked on the page in both directions, and the channel line opens on a tap.

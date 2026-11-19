@@ -6,6 +6,41 @@
    ═══════════════════════════════════════════════════════════════ */
 let _streamSwitchToken = 0;
 
+/**
+ * The channel page's state, mirrored as classes for channel.css (2026-11-19): it asked the whole document with :has()
+ * (body:has(#page-channel.active.ch-is-live), html:has(.openvibe-navbar.ovnav-hide) …), and with 107 such rules every
+ * style recalc of a channel page cost 30 ms instead of 11 at 4x CPU (820 ms of one load). Now: body.on-channel (also
+ * written by the server on a channel route, so the first paint has it), body.on-channel-live, body.on-channel-live-chat,
+ * html.on-channel-live, html.ovnav-hidden; .stream-layout.has-vertical-video comes from player-shape.js. An observer
+ * on #page-channel's and the navbar's class keeps them; a toggle to the same state writes nothing.
+ */
+function _mirrorChannelState() {
+    const page = document.getElementById('page-channel');
+    if (!page || page._ovMirrored) return;
+    page._ovMirrored = true;
+    const sync = () => {
+        const on = page.classList.contains('active');
+        const live = on && page.classList.contains('ch-is-live');
+        const b = document.body, h = document.documentElement;
+        b.classList.toggle('on-channel', on);
+        b.classList.toggle('on-channel-live', live);
+        b.classList.toggle('on-channel-live-chat', live && !page.classList.contains('chat-collapsed'));
+        h.classList.toggle('on-channel-live', live);
+    };
+    sync();
+    new MutationObserver(sync).observe(page, { attributes: true, attributeFilter: ['class'] });
+    let tries = 0;
+    const navbar = () => {
+        const bar = document.querySelector('.openvibe-navbar');
+        if (!bar) { if (++tries < 10) setTimeout(navbar, 500); return; }
+        const hidden = () => document.documentElement.classList.toggle('ovnav-hidden', bar.classList.contains('ovnav-hide'));
+        hidden();
+        new MutationObserver(hidden).observe(bar, { attributes: true, attributeFilter: ['class'] });
+    };
+    navbar();
+}
+_mirrorChannelState();
+
 /* The player's viewer count: the watched stream's viewers everywhere it goes out, added up, and a tap lists them
    (viewer-places.js; owner, 2026-10-26: on a phone it left out Twitch, Kick, YouTube and RobotStreamer). The server's
    places (GET /streams/channel, on load and every poll) give the platforms. OpenVibe's own count also comes live from
