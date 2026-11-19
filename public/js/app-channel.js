@@ -4350,10 +4350,11 @@ function _offlineCyclerRender() {
     if (r.vod) cards.push(_offlineTopCard('vod', r.vod));
     if (r.clip) cards.push(_offlineTopCard('clip', r.clip));
     body.classList.remove('off-cyc-fade');
-    // reflow to restart the fade-in animation
-    void body.offsetWidth;
     body.innerHTML = cards.join('');
-    body.classList.add('off-cyc-fade');
+    // The fade starts again two frames on, once a frame was drawn without it: reading offsetWidth here made the browser
+    // lay the page out at once, on every turn and in the middle of a channel's first load (2026-11-19 profile: 80 ms at
+    // 4x CPU).
+    requestAnimationFrame(() => requestAnimationFrame(() => { if (body.isConnected) body.classList.add('off-cyc-fade'); }));
 }
 function _offlineTopCard(kind, item) {
     const isVod = kind === 'vod';
