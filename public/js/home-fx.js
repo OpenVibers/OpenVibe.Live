@@ -253,19 +253,22 @@
             document.querySelectorAll('[data-fx-viewport]').forEach(el => el.classList.add('fx-live'));
             return;
         }
+        // In view: a fifth of the section, or of the screen for a section taller than five screens (2026-11-19: the
+        // OpenVibe and Star sections joined the gate, and a tall one could never show a fifth of itself).
+        const inView = (en) => en.isIntersecting && (en.intersectionRatio >= 0.2 || en.intersectionRect.height >= (window.innerHeight || 0) * 0.2);
         const io = new IntersectionObserver((entries) => {
             for (const en of entries) {
                 const el = en.target;
-                if (en.isIntersecting) {
-                    // Re-trigger from the top so the effect is seen, not joined mid-cycle.
-                    el.classList.remove('fx-live');
-                    void el.offsetWidth;
-                    el.classList.add('fx-live');
+                if (inView(en)) {
+                    // Re-trigger from the top so the effect is seen, not joined mid-cycle: once, as it comes into view
+                    // (the observer answers at three thresholds; a restart on each would force a layout each time).
+                    if (el.classList.contains('fx-live')) continue;
+                    el.classList.add('fx-live');   // it left the view frames ago, so its effects start from the top
                 } else {
                     el.classList.remove('fx-live');
                 }
             }
-        }, { rootMargin: '0px 0px 0px 0px', threshold: 0.2 });
+        }, { rootMargin: '0px 0px 0px 0px', threshold: [0, 0.05, 0.2] });
         const watch = () => document.querySelectorAll('[data-fx-viewport]:not([data-fx-bound])').forEach(el => {
             el.setAttribute('data-fx-bound', '1');
             io.observe(el);

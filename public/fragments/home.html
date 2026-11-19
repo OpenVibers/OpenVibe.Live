@@ -108,7 +108,7 @@
     <div class="home-digest" id="home-digest"><div class="ovsk ovsk-panel" aria-hidden="true"><div class="ovsk-bar" style="height:14px;width:45%"></div><div class="ovsk-bar" style="height:10px;width:92%"></div><div class="ovsk-bar" style="height:10px;width:68%"></div></div></div>
 
     <!-- Star of OpenVibe — featured streamer spotlight (star_streamer setting / STAR_STREAMER env) -->
-    <div class="home-star-section" id="home-star-section"><div class="ovsk ovsk-panel" aria-hidden="true"><div class="ovsk-bar" style="height:14px;width:45%"></div><div class="ovsk-bar" style="height:10px;width:92%"></div><div class="ovsk-bar" style="height:10px;width:68%"></div><div class="ovsk-bar" style="height:10px;width:80%"></div></div></div>
+    <div class="home-star-section" id="home-star-section" data-fx-viewport><div class="ovsk ovsk-panel" aria-hidden="true"><div class="ovsk-bar" style="height:14px;width:45%"></div><div class="ovsk-bar" style="height:10px;width:92%"></div><div class="ovsk-bar" style="height:10px;width:68%"></div><div class="ovsk-bar" style="height:10px;width:80%"></div></div></div>
 
         <div class="home-daily-quest" id="home-daily-quest" hidden>
             <button class="home-daily-head" type="button" id="home-daily-toggle" aria-expanded="false" aria-controls="home-daily-body">
@@ -354,7 +354,7 @@
          frame (the OV mark's site switcher list). The inside is written by scripts/build-network-section.js so crawlers
          get every site as a real link; app-home.js initHomeNetwork() animates it, draws the ring icons and adds a site
          that opened since. On a phone each group is a row that scrolls sideways; nothing is hidden behind a tab. -->
-    <div class="ovnet" id="home-network" role="region" aria-labelledby="ovnet-title"><!--ov:network-->
+    <div class="ovnet" id="home-network" role="region" aria-labelledby="ovnet-title" data-fx-viewport><!--ov:network-->
     <div class="ovnet-sky" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
     <header class="ovnet-head">
         <p class="ovnet-eyebrow"><span class="ovnet-dot" aria-hidden="true"></span>The OpenVibe network</p>
