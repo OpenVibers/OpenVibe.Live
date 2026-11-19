@@ -431,6 +431,9 @@ async function _channelMeta(username, page = 1) {
         canonicalPath, image, ogType: 'profile',
         robots: acct.banned || pastEnd ? 'noindex,follow' : 'index,follow',
         jsonLd: ld, snapshot: body, askText,
+        // A live channel's player library starts downloading with the page, not after the stream's data has come back
+        // and the player has started (2026-11-19: a live picture took 8-10 s at p75; the library was the last step).
+        playerPreload: page === 1 && liveNow && !acct.banned ? (PLAYER_PRELOAD[liveNow.protocol] ? liveNow.protocol : null) : null,
         rails: page === 1 ? {
             'ch-vods-grid': _channelRailHtml(vods, 'vod'),
             'ch-clips-of-grid': _channelRailHtml(clips, 'clip'),
@@ -922,6 +925,14 @@ function oneGraph(nodes) {
     return { '@context': 'https://schema.org', '@graph': nodes.map(({ '@context': _context, ...node }) => node) };
 }
 
+// The live player's library per stream protocol (public/js/stream-player.js loads the same files; vendor-players.test.js
+// checks the names match). WebRTC imports mediasoup-client as a module; an RTMP stream plays as HLS through hls.js,
+// except where the browser plays HLS itself (the player's own canPlayType test), so that hint is a two-line script.
+const PLAYER_PRELOAD = {
+    webrtc: '<link rel="modulepreload" href="/js/vendor/mediasoup-client-3.18.7.min.js">',
+    rtmp: `<script>(function(){try{if(document.createElement('video').canPlayType('application/vnd.apple.mpegurl'))return;var l=document.createElement('link');l.rel='preload';l.as='script';l.href='/js/vendor/hls-1.7.4.min.js';document.head.appendChild(l)}catch(e){}})()</script>`,
+};
+
 function _headBlock(meta) {
     const canonical = abs(meta.canonicalPath || '/');
     let tags = seo.headTags({
@@ -941,6 +952,7 @@ function _headBlock(meta) {
     }
     if (meta.snapshot) parts.push(NOJS_STYLE);
     if (meta.heroImage) parts.push(`<link rel="preload" as="image" href="${esc(meta.heroImage)}" fetchpriority="high">`);
+    if (meta.playerPreload && PLAYER_PRELOAD[meta.playerPreload]) parts.push(PLAYER_PRELOAD[meta.playerPreload]);
     return '\n' + parts.map(x => '    ' + x).join('\n') + '\n';
 }
 
