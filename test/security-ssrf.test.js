@@ -340,6 +340,7 @@ async function check(name, fn) {
             'server/home/routes.js': 'the digest\'s cards from other sites: OpenVibe.Network\'s frame (OV_NETWORK_INTERNAL_URL, configured) and OpenVibe.Report\'s stats (OV_REPORT_INTERNAL_URL, configured), fixed paths; no URL comes from a request',
             'server/report.js': 'OpenVibe.Report (OV_REPORT_INTERNAL_URL, configured) for the report of an agent stream, and the Network token endpoint (OV_NETWORK_INTERNAL_URL, configured) for the Live service token; the paths are fixed, no URL from a person',
             'server/config.js': 'Network registry (configured)',
+            'server/seo/pages.js': 'no server request: its fetch( is in CHANNEL_EARLY, a script it writes into channel pages that the visitor\'s browser runs against this site\'s own /api (two fixed paths)',
             'server/media-client.js': 'OpenVibe.Media (configured)',
             'server/media-proxy/live-thumbs.js': 'OpenVibe.Media (configured)',
             'server/media-proxy/outcomes.js': 'ops alert webhook (env / owner-only setting)',
