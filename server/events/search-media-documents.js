@@ -150,7 +150,7 @@ function touchLater(kind, ids) {
 }
 
 async function listPage(kind, offset, media, limit = PAGE) {
-    const r = kind === 'vod' ? await media.listVods({ limit, offset }, { timeoutMs: 20000 }) : await media.listClips({ limit, offset }, { timeoutMs: 20000 });
+    const r = kind === 'vod' ? await media.listVods({ limit, offset }, { timeoutMs: 20000, whole: true }) : await media.listClips({ limit, offset }, { timeoutMs: 20000 });
     return { rows: (r && (kind === 'vod' ? r.vods : r.clips)) || [], hasMore: !!(r && r.hasMore) };
 }
 

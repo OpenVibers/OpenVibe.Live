@@ -1497,7 +1497,8 @@ router.get('/recent-vods', async (req, res) => {
         const limit = Math.min(Math.max(parseInt(req.query.limit || '12', 10), 1), 48);
         const offset = Math.max(parseInt(req.query.offset || '0', 10), 0);
         const media = require('../media-client');
-        const r = await media.listVods({ limit, offset }).catch(() => null);
+        // whole: a broadcast recorded in parts is one card with the whole length (iZoR_One's 3058 read 14:46 of 32:15).
+        const r = await media.listVods({ limit, offset }, { whole: true }).catch(() => null);
         const vods = r?.vods || (Array.isArray(r) ? r : []);
         for (const v of vods) {
             if (v && v.user_id != null && !v.username) {
