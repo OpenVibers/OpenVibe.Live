@@ -40,7 +40,7 @@ The SPA is plain JavaScript with no build step. What loads is decided per route:
 
 ```
 public/index.html        shell: navbar, empty <section id="page-*"> shells, core scripts (no page markup)
-public/features.json     registry: feature → fragment, stylesheets, scripts, dependencies, stubs, idle prefetch
+public/features.json     registry: feature → fragment, stylesheets (deferCss: linked without blocking), scripts, dependencies, stubs, idle prefetch
                          routes: URL pattern → features
 public/fragments/*.html  page markup for home, channel, dashboard, broadcast, chat, documentation, content, moments, search,
                          rundown, updates (VOD and clip pages are OpenVibe.Video's)
