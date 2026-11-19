@@ -633,7 +633,10 @@ html[data-ov-motion=off] .cta-hero-grad{-webkit-text-fill-color: var(--accent);c
 .hero-tagline { text-wrap: balance; overflow-wrap: break-word; }
 @media (max-width: 760px) {
     .hero-tagline { font-size: clamp(1.15rem, 6vw, 1.7rem); line-height: 1.25; }
-    .hero-rotate { display: inline; white-space: normal; }
+    /* Its own box on phones too, wrapping inside the line (2026-11-19): as display:inline every new word was a new paint
+       of the tagline's text, and with the glow's shadow it outgrew the first paint, so the browser called the 3rd or
+       6th second the largest paint (lab: LCP 4.6 s at 390, 0.8 s as its own box; field p95 4.9 s on phones). */
+    .hero-rotate { display: inline-block; white-space: normal; max-width: 100%; }
 }
 .hero-stats { margin-bottom: 8px; }
 @media (max-width: 380px) { .hero-stats { min-height: 224px; } }

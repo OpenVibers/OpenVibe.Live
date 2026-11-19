@@ -154,7 +154,9 @@ function startHeroRotation(words) {
     const el = document.getElementById('hero-rotate');
     if (!el) return;
     _heroRotateIdx = 0;
-    el.textContent = list[0];
+    // The server already drew the first word: replacing it with the same text is a new paint for nothing (and a late
+    // largest-paint candidate on phones).
+    if (el.textContent !== list[0]) el.textContent = list[0];
     el.classList.add('visible');
     if (_heroRotateTimer) clearInterval(_heroRotateTimer);
     _heroRotateTimer = setInterval(() => {
