@@ -956,6 +956,17 @@ async function _loadNextStream(username) {
     box.hidden = false;
 }
 
+// The channel's first answers, asked for by the page's own head before any script ran (server/seo/pages.js
+// CHANNEL_EARLY, 2026-11-19): taken once, for the same path and while fresh; a miss, a stale one or a failed one
+// (null) asks as before.
+function _takeEarly(path) {
+    const box = window.__ovEarly;
+    const e = box && box[path];
+    if (!e) return null;
+    delete box[path];
+    return Date.now() - e.at < 20000 ? e.p : null;
+}
+
 async function loadChannelPage(username, managedStreamRef = null, legacySessionId = null) {
     _restoreChannelChat();
     _watchTabsClip();
@@ -988,8 +999,14 @@ async function loadChannelPage(username, managedStreamRef = null, legacySessionI
 
         // The offline screen's "most watched" (its picture is the page's largest paint) is asked for with the channel,
         // not after it: _fillOfflineExplore takes this answer when it is for the same channel and recent.
-        if (isNewChannel) _popularAhead = { username: String(username).toLowerCase(), at: Date.now(), p: api(`/streams/channel/${encodeURIComponent(username)}/popular`).catch(() => null) };
-        const data = await api(`/streams/channel/${username}?vodLimit=${CHANNEL_VODS_PAGE_SIZE}&vodOffset=${channelVodOffset}&clipLimit=${CHANNEL_CLIPS_PAGE_SIZE}&clipOffset=${channelClipOffset}${initialVodExtra}`);
+        if (isNewChannel) {
+            const popularPath = `/streams/channel/${encodeURIComponent(username)}/popular`;
+            const early = _takeEarly(popularPath);
+            _popularAhead = { username: String(username).toLowerCase(), at: Date.now(), p: early ? early.then((d) => d || api(popularPath).catch(() => null)) : api(popularPath).catch(() => null) };
+        }
+        const channelPath = `/streams/channel/${username}?vodLimit=${CHANNEL_VODS_PAGE_SIZE}&vodOffset=${channelVodOffset}&clipLimit=${CHANNEL_CLIPS_PAGE_SIZE}&clipOffset=${channelClipOffset}${initialVodExtra}`;
+        const earlyChannel = isNewChannel ? _takeEarly(channelPath) : null;
+        const data = (earlyChannel && await earlyChannel) || await api(channelPath);
         const ch = data.channel;
         // The wallet pill shows this channel's points once they are known (Shared 4.212.0, `purse.streamer`): the
         // channel-points ledger keys a streamer by the owner's numeric user id, ch.user_id, and only now is it here.
