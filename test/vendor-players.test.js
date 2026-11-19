@@ -31,6 +31,12 @@ for (const [f, sha] of Object.entries(PINNED)) {
     const got = crypto.createHash('sha256').update(fs.readFileSync(path.join(JS, 'vendor', f))).digest('hex');
     assert.strictEqual(got, sha, `${f} is the release's own bytes`);
 }
+// The channel page's preload hints (server/seo/pages.js) name exactly the files the player loads.
+const player = fs.readFileSync(path.join(JS, 'stream-player.js'), 'utf8');
+const seoPages = fs.readFileSync(path.join(ROOT, 'server', 'seo', 'pages.js'), 'utf8');
+const hinted = [...seoPages.matchAll(/\/js\/vendor\/([A-Za-z0-9_.-]+\.js)/g)].map((m) => m[1]);
+assert.ok(hinted.length >= 2, 'the channel page hints its players');
+for (const f of hinted) assert.ok(player.includes(`/js/vendor/${f}`) && fs.existsSync(path.join(JS, 'vendor', f)), `${f}: hinted, loaded by the player, and here`);
 const server = fs.readFileSync(path.join(ROOT, 'server', 'index.js'), 'utf8');
 assert.match(server, /app\.use\('\/js\/vendor', express\.static\([^)]*'vendor'\)[\s\S]{0,200}immutable: true/, 'the folder is served immutable');
 assert.ok(server.indexOf("app.use('/js/vendor'") < server.indexOf("app.use('/js', assets.versionedStatic"), 'before the /js mount');

@@ -297,10 +297,21 @@ const server = http.createServer(app).listen(0, '127.0.0.1', async () => {
         assert.ok(video.startDate);
         assert.deepStrictEqual(video.creator, { '@type': 'Person', name: 'Carol', url: 'https://openvibe.live/@carol' });
         assert.deepStrictEqual(video.author, video.creator);
+        // The WebRTC player's library starts downloading with the page.
+        assert.ok(head(html).includes('<link rel="modulepreload" href="/js/vendor/mediasoup-client-3.18.7.min.js">'), 'a live WebRTC channel preloads its player');
+        assert.ok(!head(html).includes('hls-1.7.4'), 'and not the HLS one');
         assert.match((await get('/sitemap.xml')).body, /<video:live>yes<\/video:live>/);
         await db.run('UPDATE streams SET is_live = 0, ended_at = ov_now() WHERE user_id = 6');
         const ended = (await get('/@carol')).body;
         assert.ok(!ldOf(ended).some((n) => n['@type'] === 'VideoObject'), 'ended stream is absent even when the live page was cached');
+        assert.ok(!head(ended).includes('/js/vendor/'), 'an offline channel preloads no player');
+        // An RTMP stream plays as HLS: hls.js is preloaded only where the browser does not play HLS itself.
+        await addUser(7, 'dave', 'Dave', 'I race.');
+        await db.run("INSERT INTO streams (user_id, title, protocol, is_live, started_at, last_heartbeat) VALUES (7, 'Lap one', 'rtmp', 1, ov_now(), ov_now())");
+        const rtmpHead = head((await get('/@dave')).body);
+        assert.ok(rtmpHead.includes("canPlayType('application/vnd.apple.mpegurl')") && rtmpHead.includes("l.href='/js/vendor/hls-1.7.4.min.js'"), 'a live RTMP channel preloads hls.js where it will be used');
+        assert.ok(!rtmpHead.includes('modulepreload'), 'and not the WebRTC library');
+        await db.run('UPDATE streams SET is_live = 0, ended_at = ov_now() WHERE user_id = 7');
         assert.ok(!(await get('/sitemap.xml')).body.includes('<video:live>'), 'ended stream is absent from the sitemap');
     });
 
