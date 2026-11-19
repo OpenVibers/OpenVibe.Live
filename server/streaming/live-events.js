@@ -77,7 +77,8 @@ function announceGoLive(stream, streamer) {
 /**
  * The channel's own chat says where to watch, the moment a stream goes live: openvibe.live/@name, plain and easy to copy
  * (the owner, 2026-10-28: "maybe it says it in chat… their live URL… not the slug… easier to copy paste"). Not on a
- * quick reconnect within the hour (the repeat above), and once per stream (Chat keeps the key).
+ * quick reconnect within the hour (the repeat above), and once per stream (Chat keeps the key). Global chat hears the same line a
+ * minute later, when the stream is still live and not 18+ (live-global.js).
  */
 function postLiveLink(stream, streamer) {
     const username = (streamer && streamer.username) || stream.username;
@@ -95,6 +96,8 @@ function postLiveLink(stream, streamer) {
             metadata: { kind: 'live_link', url }, key: `live:link:${stream.id}`,
         }), () => {});
     } catch (e) { console.warn('[LiveEvents] live link line failed:', e.message); }
+    // Live's global chat hears it too, a minute later if the stream is still live (plan §H.14; live-global.js).
+    try { require('./live-global').schedule(stream.id); } catch (e) { console.warn('[LiveEvents] global go-live line:', e.message); }
 }
 
 /** End every open SSE stream. Without this, server.close() never called back on shutdown. */
