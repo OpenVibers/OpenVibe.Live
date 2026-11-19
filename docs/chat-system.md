@@ -247,6 +247,18 @@ in each idle moment (`_historyPieces`), keeping the reader where they are. All o
 user for an instant paint on reload (its newest 50 render). The view follows new messages unless the
 reader scrolled back (`_watchChatPin`).
 
+## Live's activity in chat: going live and saved broadcasts (2026-11-19)
+
+Live posts its own activity as system rows that `public/js/chat.js` draws as one-line event cards (`_chatEventOf`:
+the streamer's picture, who and what, the time, and Watch). Chat keeps each row's `key`, so a repeat posts nothing.
+
+| Row | Channel's chat | Global chat |
+|---|---|---|
+| Going live (`server/streaming/live-events.js` `postLiveLink`): `🔴 <name> is live. Share the stream: …/@name`, metadata `live_link` | At once, not on a reconnect within the hour | A minute later if the stream is still live (`server/streaming/live-global.js`): never an 18+ stream (its flag or the channel's forced one), a banned account's or an agent stream's; a channel at most once in 30 minutes, ten an hour in all |
+| A saved broadcast (`server/media-proxy/vod-notify.js`, on Media's vod.ready): `📼 <name> saved a broadcast: "<title>" (1h 02m) at …/vod/<id>`, metadata `vod_link` | Public recordings of two minutes or more | The same, never 18+; a channel at most once in 30 minutes, six an hour in all |
+
+The same person going live again within 15 minutes updates their card instead of adding another.
+
 ## The overlay alert feed (2026-10-31)
 
 The moments a streamer wants on their OBS overlay — "X followed", "X tipped 5 Vibes: message",
