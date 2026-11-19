@@ -120,7 +120,11 @@ const express = require('express');
 const app = express();
 app.use('/api/content', require('../server/content/routes'));
 const server = http.createServer(app).listen(0);
-function get(p) {
+// The route keeps a page a few seconds (server/content/routes.js); these checks change the sources between calls, so
+// each call asks afresh unless it says { keep: true }.
+const routes = require('../server/content/routes');
+function get(p, { keep = false } = {}) {
+    if (!keep) routes._kept.clear();
     return new Promise((resolve, reject) => {
         http.get({ port: server.address().port, path: p }, (res) => {
             let text = '';
@@ -354,6 +358,28 @@ server.on('listening', async () => {
         puts.length = 0;
         out = await job.syncAutoClipFlags();
         assert.deepStrictEqual(puts, [], 'a second run has nothing left to do');
+    });
+
+    await check('the same page twice is one build, kept for as long as its Cache-Control (2026-11-19)', async () => {
+        const feedMod = require('../server/content/feed');
+        const real = feedMod.page;
+        let builds = 0;
+        feedMod.page = async (...args) => { builds += 1; return real(...args); };
+        try {
+            routes._kept.clear();
+            const [x, y] = await Promise.all([get('/api/content/feed?limit=5', { keep: true }), get('/api/content/feed?limit=5', { keep: true })]);
+            await get('/api/content/feed?limit=5', { keep: true });
+            assert.strictEqual(x.status, 200);
+            assert.deepStrictEqual(x.json.items, y.json.items);
+            assert.strictEqual(builds, 1, 'one build for three asks');
+            await get('/api/content/feed?limit=6', { keep: true });
+            assert.strictEqual(builds, 2, 'another page is its own build');
+            feedMod.page = async () => ({ feed: 'content', items: [], partial: true, sort: 'new', next: null, sources: {} });
+            routes._kept.clear();
+            await get('/api/content/feed?limit=7', { keep: true });
+            await get('/api/content/feed?limit=7', { keep: true });
+            assert.strictEqual(routes._kept.size, 0, 'a partial page is never kept');
+        } finally { feedMod.page = real; routes._kept.clear(); }
     });
 
     server.close();
