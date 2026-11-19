@@ -51,11 +51,11 @@ function frameAncestors(extensions = EXTENSION_ORIGINS) {
 function embedCsp() {
     return [
         "default-src 'none'",
-        "script-src 'self' 'unsafe-inline' https://esm.sh",
+        "script-src 'self' 'unsafe-inline'",
         "style-src 'self' 'unsafe-inline'",
         "img-src 'self' data: blob:",
         "media-src 'self' blob:",
-        "connect-src 'self' wss: https://esm.sh",
+        "connect-src 'self' wss:",
         "font-src 'self' data:",
         `frame-ancestors ${frameAncestors()}`,
         'base-uri none',

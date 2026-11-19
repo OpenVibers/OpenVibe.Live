@@ -14,7 +14,7 @@
     let clientPromise = null;
     function loadClient() {
         if (!clientPromise) {
-            clientPromise = import('https://esm.sh/mediasoup-client@3.18.7');
+            clientPromise = import('/js/vendor/mediasoup-client-3.18.7.min.js');
             clientPromise.catch(() => { clientPromise = null; });
         }
         return clientPromise;

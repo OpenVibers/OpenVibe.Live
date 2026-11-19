@@ -13,12 +13,16 @@ const JS = path.join(ROOT, 'public', 'js');
 const PINNED = {
     'hls-1.7.4.min.js': 'cfc70cc9e9fc63d071919e087670abc760c8fd1bc889b88588026e4d22193bbe',   // npm hls.js@1.7.4 dist/hls.min.js
     'flv-1.6.2.min.js': '733b9b325dbc59871a652c0a84f2f285a2cfd06cf2efcedcd87cb1e194cd1e8f',   // npm flv.js@1.6.2 dist/flv.min.js
+    // 2026-11-19: npm mediasoup-client@3.18.7 as one ES module, built by scripts/vendor/mediasoup-client.js (reproducible);
+    // it was imported from esm.sh, a new origin and a waterfall of modules on every cold start of a stream.
+    'mediasoup-client-3.18.7.min.js': 'dea2ca6c036b5f95faa25c37049cc8daeffe1b0fe061a34b74d80c908e99284d',
 };
 const scripts = fs.readdirSync(JS).filter((f) => f.endsWith('.js'));
 const named = new Set();
 for (const f of scripts) {
     const src = fs.readFileSync(path.join(JS, f), 'utf8');
     assert.ok(!/(cdn\.jsdelivr\.net|unpkg\.com|cdnjs\.cloudflare\.com)\/[^'"`]*\b(hls|flv)\.js/.test(src), `${f} loads a player library from a CDN`);
+    assert.ok(!/esm\.sh\//.test(src), `${f} imports from esm.sh`);
     for (const m of src.matchAll(/['"`]\/js\/vendor\/([^'"`?]+)['"`]/g)) named.add(m[1]);
 }
 assert.ok(named.size >= 2, `the players name their vendored files (${[...named]})`);
@@ -30,4 +34,5 @@ for (const [f, sha] of Object.entries(PINNED)) {
 const server = fs.readFileSync(path.join(ROOT, 'server', 'index.js'), 'utf8');
 assert.match(server, /app\.use\('\/js\/vendor', express\.static\([^)]*'vendor'\)[\s\S]{0,200}immutable: true/, 'the folder is served immutable');
 assert.ok(server.indexOf("app.use('/js/vendor'") < server.indexOf("app.use('/js', assets.versionedStatic"), 'before the /js mount');
-console.log('vendor-players: hls.js and flv.js from Live, pinned and checked, served immutable');
+assert.ok(fs.existsSync(path.join(JS, 'vendor', 'mediasoup-client.LICENSE')), 'the bundled packages\' licenses are beside it');
+console.log('vendor-players: hls.js, flv.js and mediasoup-client from Live, pinned and checked, served immutable');

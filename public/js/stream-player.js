@@ -15,7 +15,8 @@ let _mediasoupDevice = null;
 
 async function loadMediasoupClient() {
     if (!_mediasoupModulePromise) {
-        _mediasoupModulePromise = import('https://esm.sh/mediasoup-client@3.18.7');
+        // From Live itself (scripts/vendor/mediasoup-client.js): esm.sh was a new origin and a waterfall of modules.
+        _mediasoupModulePromise = import('/js/vendor/mediasoup-client-3.18.7.min.js');
         _mediasoupModulePromise.catch(() => { _mediasoupModulePromise = null; });
     }
     return _mediasoupModulePromise;
@@ -1181,6 +1182,9 @@ async function initWebRTC(stream) {
         // The video element stays hidden until ontrack + playing event
         video.style.display = 'none';
         playerType = 'webrtc';
+        // The WebRTC client loads while the viewer session is negotiated (2026-11-19: it was fetched only after the
+        // server's answer, one step after another before the first frame).
+        loadMediasoupClient().catch(() => { /* the session's own step retries it */ });
 
         // Status phase tracking — shown in the rich placeholder so the viewer can see what is happening.
         const _updateStatus = (text, options = {}) => {
