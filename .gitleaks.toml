@@ -27,3 +27,9 @@ description = "RFC 6455 sample WebSocket key in the drill-mode test"
 condition = "AND"
 paths = ['''^test/drill-mode\.test\.js$''']
 regexes = ['''^dGhlIHNhbXBsZSBub25jZQ==$''']
+
+[[allowlists]]
+description = "mediasoup-client's FakeHandler test fixture ICE password, public in npm mediasoup-client@3.18.7 (fakeParameters.js), bundled into Live's vendored copy"
+condition = "AND"
+paths = ['''^public/js/vendor/mediasoup-client-3\.18\.7\.min\.js$''']
+regexes = ['''^yku5ej8nvfaor28lvtrabcx0wkrpkztz$''']

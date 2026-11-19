@@ -3593,7 +3593,7 @@ function createRobotStreamerRpc(ws) {
 
 async function loadRobotStreamerMediasoup() {
     if (!_robotStreamerMediasoupModulePromise) {
-        _robotStreamerMediasoupModulePromise = import('https://esm.sh/mediasoup-client@3.18.7');
+        _robotStreamerMediasoupModulePromise = import('/js/vendor/mediasoup-client-3.18.7.min.js');
         // Clear cache on rejection so the next call retries instead of being
         // permanently broken by a transient network error or CSP violation.
         _robotStreamerMediasoupModulePromise.catch(() => {
