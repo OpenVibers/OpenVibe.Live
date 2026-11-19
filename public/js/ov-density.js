@@ -101,19 +101,20 @@
         // cached per width. Measuring inside render() forced a synchronous layout every time a feed
         // re-rendered its cards: ~0.5s of the home page's load on a 4x-throttled phone profile.
         let measured = null; // { w, max, natural }
-        const measure = (width) => {
-            // Drop an override this function applied on a previous pass before measuring. The
-            // stylesheet's natural column count has to be read with our own clamp *off*: reading
-            // it with the clamp on returns the clamp, the comparison below then goes false, the
-            // clamp is removed, the next pass re-applies it — the grid flickers between one and
-            // two columns forever. A preference-driven override is not ours to remove.
+        // Drop an override this function applied on a previous pass before measuring. The
+        // stylesheet's natural column count has to be read with our own clamp *off*: reading
+        // it with the clamp on returns the clamp, the comparison below then goes false, the
+        // clamp is removed, the next pass re-applies it — the grid flickers between one and
+        // two columns forever. A preference-driven override is not ours to remove.
+        const unclamp = () => {
             if (grid.dataset.ovdAuto === '1') {
                 delete grid.dataset.ovdAuto;
                 delete grid.dataset.ovdCols;
                 grid.style.removeProperty('--ovd-cols');
             }
-            measured = { w: width, max: maxColumns(grid, width), natural: autoColumns(grid, HARD_MAX) };
         };
+        const read = (width) => { measured = { w: width, max: maxColumns(grid, width), natural: autoColumns(grid, HARD_MAX) }; };
+        const measure = (width) => { unclamp(); read(width); };
         const render = () => {
             if (!measured) measure(grid.getBoundingClientRect().width || grid.clientWidth || 0);
             const { max, natural } = measured;
@@ -185,16 +186,10 @@
         // Only a width change can change how many columns fit. The grid's height changes constantly —
         // skeletons resolving, images loading, Load more — and each of those used to re-run the whole
         // render, rewriting the control and, through the page's mutation observers, the reveal pass.
-        let lastW = -1;
         let observing = false;
         try {
-            new ResizeObserver((entries) => {
-                const w = Math.round(entries[0] && entries[0].contentRect ? entries[0].contentRect.width : grid.clientWidth);
-                if (w === lastW) return;
-                lastW = w;
-                measure(w);
-                render();
-            }).observe(grid);
+            sizes().observe(grid);
+            watched.set(grid, { lastW: -1, unclamp, read, render });
             observing = true;   // the first callback arrives after this frame's layout, before paint
         } catch { window.addEventListener('resize', () => { measured = null; render(); }, { passive: true }); }
         if (!observing) render();
@@ -205,6 +200,30 @@
             if (queued) return;
             queued = requestAnimationFrame(() => { queued = 0; render(); });
         };
+    }
+
+    // One ResizeObserver for every grid (2026-11-19). Each grid had its own, and each callback undid its clamp, read the
+    // grid's columns and wrote the result: the next grid's read then forced the layout the last one had just invalidated,
+    // once a grid (four on the home page). Now every grid is unclamped, then all are read (one layout), then all render.
+    const watched = new Map();   // grid -> { lastW, unclamp, read, render }
+    let shared = null;
+    function sizes() {
+        if (shared) return shared;
+        shared = new ResizeObserver((entries) => {
+            const due = [];
+            for (const e of entries) {
+                const h = watched.get(e.target);
+                if (!h) continue;
+                const w = Math.round(e.contentRect ? e.contentRect.width : e.target.clientWidth);
+                if (w === h.lastW) continue;
+                h.lastW = w;
+                due.push([h, w]);
+            }
+            for (const [h] of due) h.unclamp();
+            for (const [h, w] of due) h.read(w);
+            for (const [h] of due) h.render();
+        });
+        return shared;
     }
 
     /** What the browser's own auto-fit is currently producing, so the control can show it. */

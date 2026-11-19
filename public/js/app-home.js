@@ -1337,7 +1337,8 @@ function initHomeNetwork() {
         }, { rootMargin: '0px 0px -10% 0px', threshold: 0.05 });
         io.observe(root);
         // Never left invisible: if the observer has not fired in a few seconds of the section being on screen, show it.
-        setTimeout(() => { try { if (!root._ovnetAwake && root.getBoundingClientRect().top < window.innerHeight) wake(); } catch { wake(); } }, 4000);
+        // Read on a frame (2026-11-19): read from the timer, it forced a layout while the page was still being drawn.
+        setTimeout(() => requestAnimationFrame(() => { try { if (!root._ovnetAwake && root.getBoundingClientRect().top < window.innerHeight) wake(); } catch { wake(); } }), 4000);
     } else wake();
     // Sites that opened since the page was built.
     try {
