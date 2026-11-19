@@ -155,6 +155,13 @@
     </div>
     <div id="stream-grid-recent-pagination" class="pastes-pagination" style="display:none"></div>
 
+    <!-- Trending: the week's most watched (plan §H.15: "a Trending row"), from the content feed's top of the week -->
+    <div class="section-header" style="--sc:#fb923c;display:none" id="home-trending-header">
+        <h2><i class="fa-solid fa-fire"></i> Trending<small class="section-kicker">most watched this week</small></h2>
+        <a href="/content?sort=top&amp;window=week" onclick="return handleLinkClick(event, '/content?sort=top&window=week')" class="section-action">View all</a>
+    </div>
+    <div class="stream-grid" id="home-trending-grid"></div>
+
     <!-- Recent VODs -->
     <div class="section-header" style="--sc:#a78bfa;display:none" id="home-recent-vods-header">
         <h2><i class="fa-solid fa-video"></i> Recent VODs<small class="section-kicker">full streams</small></h2>

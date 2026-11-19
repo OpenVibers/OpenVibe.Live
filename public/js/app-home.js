@@ -1406,7 +1406,8 @@ async function loadHome() {
     void loadHomeDigest();    // "while you were away" / "lately on OpenVibe" — everyone
     void loadHomeStar();      // "Star of OpenVibe" spotlight (star_streamer setting)
 
-    // Load recent VODs
+    // The week's most watched, then recent VODs
+    void loadHomeTrending();
     loadHomeRecentVods();
     // Load recent clips
     loadHomeClips();
@@ -1656,6 +1657,51 @@ function renderRecentlyOnline(containerId, streamers, append) {
         card.append(history);
         container.append(card);
     }
+}
+
+// Trending (plan §H.15): the week's most watched VODs, clips and image pastes, in the rails' own card. One read of the
+// content feed's top of the week (GET /api/content/feed, kept a minute on the server), kept five minutes here; a text
+// paste has no picture, so the row keeps to things with one. Hidden when the week has nothing watched.
+async function loadHomeTrending() {
+    try {
+        const render = (data) => {
+            const header = document.getElementById('home-trending-header');
+            const grid = document.getElementById('home-trending-grid');
+            if (!header || !grid) return;
+            const items = (data && Array.isArray(data.items) ? data.items : [])
+                .filter((it) => Number(it.views) > 0 && (it.kind === 'vod' || it.kind === 'clip' || (it.kind === 'paste' && it.image_url && !it.nsfw)))
+                .slice(0, 8);
+            if (!items.length) { header.style.display = 'none'; grid.innerHTML = ''; return; }
+            header.style.display = '';
+            grid.innerHTML = items.map((it) => {
+                const ch = it.channel || {};
+                const isPaste = it.kind === 'paste';
+                const href = isPaste ? pasteHref(it.id) : videoHref(it.kind, it.id);
+                const kindWord = it.kind === 'vod' ? 'VOD' : it.kind === 'clip' ? 'Clip' : 'Paste';
+                const thumb = isPaste
+                    ? `<img src="${esc(ovImgW(it.image_url, 480))}" alt="${esc(it.title || 'Image paste')}" loading="lazy" decoding="async">`
+                    : thumbImg(it.thumbnail_url, it.kind === 'clip' ? 'fa-scissors' : 'fa-video', it.title, `/api/thumbnails/generate/${it.kind}/${it.id}`);
+                return `
+                    <a class="stream-card" href="${esc(href)}" onclick="return handleLinkClick(event, '${esc(href)}')">
+                        <div class="stream-card-thumb">
+                            ${thumb}
+                            ${it.duration_seconds ? `<span class="stream-card-duration">${formatDuration(it.duration_seconds)}</span>` : ''}
+                            ${ovViewsBadge(it.views)}
+                        </div>
+                        <div class="stream-card-info">
+                            <div class="stream-card-title">${esc(it.title || kindWord)}</div>
+                            <div class="stream-card-streamer">
+                                ${_avatarSpan(ch.avatar_url, ch.username, ch.profile_color)}
+                                ${esc(ch.display_name || ch.username || 'Anonymous')}
+                                <span class="muted" style="margin-left:auto;font-size:0.75rem">${kindWord} · ${timeAgo(it.created_at)}</span>
+                            </div>
+                        </div>
+                    </a>`;
+            }).join('');
+            if (window.OVDensity) OVDensity.attach(grid, { key: 'trending', header });
+        };
+        await apiSWR('/content/feed?type=all&sort=top&window=week&limit=24', render, { ttl: 300000 });
+    } catch { /* the row stays hidden */ }
 }
 
 async function loadHomeRecentVods(opts) {
