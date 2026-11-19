@@ -10,7 +10,9 @@
  * The read is cached for five minutes per topic: Report answers its public list for everyone, and a topic page is
  * refreshed by the same reader many times a day.
  */
-const REPORT_URL = () => String(process.env.OV_REPORT_URL || 'https://openvibe.report').replace(/\/+$/, '');
+// Report on this host (OV_REPORT_INTERNAL_URL, as server/report.js reads it): through openvibe.report every read went out
+// through Cloudflare and back, 0.41 s against 3 ms for the same answer (2026-11-19).
+const REPORT_URL = () => String(process.env.OV_REPORT_INTERNAL_URL || process.env.OV_REPORT_URL || 'http://127.0.0.1:5080').replace(/\/+$/, '');
 const TTL_MS = 5 * 60_000;
 const cache = new Map();   // topic phrase -> { at, list, expires }
 
