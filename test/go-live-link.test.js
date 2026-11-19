@@ -22,6 +22,9 @@ process.env.NODE_ENV = 'test';
         id: 'chat-delivery', loaded: true,
         exports: { message: async (line) => { lines.push(line); return 1; }, after: (v, fn) => (v && v.then ? v.then(fn) : fn(v)) },
     };
+    // Global chat hears it a minute later (live-global.js, its own test): only that it is asked to, here.
+    const scheduled = [];
+    require.cache[require.resolve('../server/streaming/live-global')] = { id: 'live-global', loaded: true, exports: { schedule: (id) => { scheduled.push(id); } } };
     const liveEvents = require('../server/streaming/live-events');
 
     await check('a stream going live puts its plain link in the channel\'s chat, once', async () => {
@@ -36,6 +39,7 @@ process.env.NODE_ENV = 'test';
         liveEvents.announceGoLive({ id: 502, user_id: 9, managed_stream_id: 77 }, { id: 9, username: 'goosely' });
         await new Promise((r) => setImmediate(r));
         assert.strictEqual(lines.length, 1, 'a quick reconnect within the hour says nothing again');
+        assert.deepStrictEqual(scheduled, [501], 'global chat is asked once, for the first go-live only');
     });
 
     await check('the studio shows /@name/studio, which opens the studio for its owner and the channel for anyone else', async () => {
