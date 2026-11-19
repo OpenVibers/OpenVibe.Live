@@ -1253,6 +1253,14 @@ function _chatCacheForget(ids) {
     c.entry.data.messages = c.entry.data.messages.filter((m) => !drop.has(String(m.id)));
     try { localStorage.setItem(_chatCacheKey(c.room), JSON.stringify(c.entry)); } catch { /* */ }
 }
+/** A message's link cards, kept in the chat cache so a reload draws them without waiting for Chat. */
+function _chatCacheEmbeds(id, embeds) {
+    const c = _chatCacheLive;
+    if (!c.entry) return;
+    for (const row of c.entry.data.messages) if (String(row.id) === String(id)) row.embeds = embeds.slice(0, _CHAT_EMBEDS_MAX);
+    try { localStorage.setItem(_chatCacheKey(c.room), JSON.stringify(c.entry)); } catch { /* cache is optional */ }
+}
+
 function _chatCacheEdit(id, message) {
     const c = _chatCacheLive;
     if (!c.entry) return;
@@ -1951,6 +1959,50 @@ function _applyChatEdited(evt) {
     _chatCacheEdit(evt.id, m);
 }
 
+/*
+ * Link cards (plan §Y.1 A8): OpenVibe.Chat reads the addresses a message carries and, a moment after the line, sends
+ * `chat_embeds` { id, embeds } to the stream's chat; a history row carries its `embeds`. Shared's OVLinkCard draws them
+ * (openvibe-shared 4.320.0, loaded the first time a message has one): https links, OpenVibe.Media pictures only, all
+ * text. Two per message at most: a stream chat moves fast.
+ */
+const _CHAT_EMBEDS_MAX = 2;
+let _linkCardLoad = null;
+function _linkCardReady() {
+    if (window.OVLinkCard) return Promise.resolve(window.OVLinkCard);
+    if (!_linkCardLoad) {
+        _linkCardLoad = new Promise((resolve) => {
+            const sc = document.createElement('script');
+            sc.src = '/shared/ov-linkcard.js'; sc.async = true;
+            sc.onload = () => resolve(window.OVLinkCard || null);
+            // A failed load is tried again after five minutes, not on every line that carries an address.
+            sc.onerror = () => { setTimeout(() => { _linkCardLoad = null; }, 300000); resolve(null); };
+            document.head.appendChild(sc);
+        });
+    }
+    return _linkCardLoad;
+}
+const _chatEmbedsHost = (el) => Array.prototype.find.call(el.children || [], (c) => c.classList && c.classList.contains('chat-embeds')) || null;
+function _chatDrawEmbeds(el, embeds) {
+    if (!el || !Array.isArray(embeds)) return;
+    const list = embeds.filter((e) => e && typeof e === 'object').slice(0, _CHAT_EMBEDS_MAX);
+    const old = _chatEmbedsHost(el);
+    if (!list.length) { if (old) old.remove(); return; }
+    _linkCardReady().then((M) => {
+        if (!M) return;
+        const { messages: container } = getChatEl();
+        const pinned = !!(container && _chatPinned && !_chatUserScrolledUp);
+        let host = _chatEmbedsHost(el);
+        if (!host) { host = document.createElement('div'); host.className = 'chat-embeds'; el.appendChild(host); }
+        if (!M.render(host, list, { max: _CHAT_EMBEDS_MAX })) host.remove();
+        if (pinned && container) container.scrollTop = container.scrollHeight;
+    });
+}
+function _applyChatEmbeds(evt) {
+    if (!evt || !Number.isSafeInteger(Number(evt.id)) || !Array.isArray(evt.embeds)) return;
+    document.querySelectorAll(`.chat-msg[data-msg-id="${CSS.escape(String(evt.id))}"]`).forEach((el) => _chatDrawEmbeds(el, evt.embeds));
+    _chatCacheEmbeds(evt.id, evt.embeds);
+}
+
 function handleChatMessage(msg) {
     switch (msg.type) {
         case 'chat_translation':
@@ -1961,6 +2013,9 @@ function handleChatMessage(msg) {
             break;
         case 'chat_edited':
             _applyChatEdited(msg);
+            break;
+        case 'chat_embeds':
+            _applyChatEmbeds(msg);
             break;
         case 'chat':
             addChatMessage(msg);
@@ -2622,6 +2677,9 @@ function buildChatMessageEl(msg, opts = {}) {
             freezeGifEmote(img);
         });
     }
+
+    // A history row carries its link cards; a new line gets them a moment later (chat_embeds).
+    if (Array.isArray(msg.embeds) && msg.embeds.length) _chatDrawEmbeds(el, msg.embeds);
 
     return el;
 }
