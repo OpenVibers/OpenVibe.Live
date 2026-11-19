@@ -15,6 +15,8 @@ const http = require('http');
 const crypto = require('crypto');
 const express = require('express');
 const contracts = require('openvibe-contracts');
+// Live keeps shared Media reads a few seconds (server/media-client.js): these checks change Media between reads.
+const forgetMedia = () => require('../server/media-client')._forgetSharedReads();
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ov-lineage-'));
 const keys = crypto.generateKeyPairSync('rsa', { modulusLength: 2048, publicKeyEncoding: { type: 'spki', format: 'pem' }, privateKeyEncoding: { type: 'pkcs8', format: 'pem' } });
@@ -254,16 +256,16 @@ function checkContract(out, label) {
     await assert.rejects(lineage.resolveOwner({ slug: 'Not A Slug' }), /slug/);
 
     // ── Media down: nothing that needs it resolves ───────────
-    mediaState.down = true;
+    mediaState.down = true; forgetMedia();
     await expectUnresolved({ vod_id: '42' }, 'source_unavailable');
     await expectUnresolved({ slug: 'alice', vod_id: '42' }, 'source_unavailable');        // it might have disagreed
     await expectUnresolved({ media_object_id: med('A1') }, 'source_unavailable');
     await expectResolved({ slug: 'alice', stream_id: '9' }, { resolved_by: 'slug' });     // no Media needed
-    mediaState.down = false;
+    mediaState.down = false; forgetMedia();
 
     // ── The clips.js call site: stream, else the VOD's lineage, as before ─
     const { clipChannelOwnerId } = require('../server/media-proxy/clips')._internals;
-    mediaState.calls = [];
+    mediaState.calls = []; forgetMedia();
     assert.strictEqual(await clipChannelOwnerId(CLIPS[8]), 17, 'clip stream');
     assert.deepStrictEqual(mediaState.calls, [], 'no Media read when the clip names a live stream row, and the clip is not re-read');
     assert.strictEqual(await clipChannelOwnerId(CLIPS[7]), 17, 'clip -> VOD -> stream');
@@ -275,9 +277,9 @@ function checkContract(out, label) {
     assert.strictEqual(await clipChannelOwnerId(CLIPS[10]), null, 'the clipper never owns the channel');
     assert.strictEqual(await clipChannelOwnerId(CLIPS[12]), null, 'a VOD Media does not have');
     assert.strictEqual(await clipChannelOwnerId(null), null);
-    mediaState.down = true;
+    mediaState.down = true; forgetMedia();
     assert.strictEqual(await clipChannelOwnerId(CLIPS[7]), null, 'Media down: no owner, as before');
-    mediaState.down = false;
+    mediaState.down = false; forgetMedia();
 
     // ── GET|POST /internal/lineage/resolve ───────────────────
     const { serviceAuth } = contracts;
