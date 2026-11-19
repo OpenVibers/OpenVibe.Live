@@ -84,7 +84,7 @@ function serviceTokens() {
 }
 
 /** Drop the cached service-token client (tests flip the OAuth env): the next call rebuilds it. */
-function _reset() { tokens = null; }
+function _reset() { tokens = null; sharedReads.clear(); }
 
 function _qs(query) {
     if (!query) return '';
@@ -118,10 +118,39 @@ async function viewCounts(refs, { timeoutMs = 4000 } = {}) {
 }
 
 /**
+ * Reads every caller shares — the VOD and clip lists and one VOD or clip, asked with Live's own token (no acting person,
+ * no headers of a caller's own) — are kept a few seconds and shared while in flight (2026-11-19: Live asked Media for
+ * VOD lists 37 times a minute, mostly the same ones, for the home, channel pages, cards and search). Each caller gets
+ * its own copy. Any write through this client forgets them all; a recording Media finishes on its own shows up within
+ * SHARED_READ_MS. Ingest status and signed URLs are never kept.
+ */
+const SHARED_READ = /^\/(vods|clips)(\/[A-Za-z0-9_-]+)?$/;
+const SHARED_READ_MS = 10_000;
+const sharedReads = new Map();   // base + path + query → { at, promise }
+function _forgetSharedReads() { sharedReads.clear(); }
+
+async function request(method, apiPath, opts = {}) {
+    const { query, actingUser, headers, base = API_BASE } = opts;
+    if (method !== 'GET') { sharedReads.clear(); return requestNow(method, apiPath, opts); }
+    if (actingUser || (headers && Object.keys(headers).length) || !SHARED_READ.test(apiPath)) return requestNow(method, apiPath, opts);
+    const key = `${base}${apiPath}${_qs(query)}`;
+    const hit = sharedReads.get(key);
+    let promise = hit && Date.now() - hit.at < SHARED_READ_MS ? hit.promise : null;
+    if (!promise) {
+        promise = requestNow(method, apiPath, opts);
+        sharedReads.set(key, { at: Date.now(), promise });
+        promise.catch(() => { if (sharedReads.get(key) && sharedReads.get(key).promise === promise) sharedReads.delete(key); });
+        if (sharedReads.size > 500) sharedReads.delete(sharedReads.keys().next().value);
+    }
+    const json = await promise;
+    return json == null ? json : structuredClone(json);
+}
+
+/**
  * Core request helper. `body` may be a plain object (JSON) or FormData (multipart).
  * Returns parsed JSON (or null for empty responses). Throws MediaApiError on !ok.
  */
-async function request(method, apiPath, { body, query, actingUser, headers = {}, timeoutMs = 30000, base = API_BASE } = {}) {
+async function requestNow(method, apiPath, { body, query, actingUser, headers = {}, timeoutMs = 30000, base = API_BASE } = {}) {
     const auth = await _authHeader({ actingUser });
     const url = `${base}${apiPath}${_qs(query)}`;
     const opts = {
@@ -505,7 +534,7 @@ module.exports = {
     signedMediaUrl,
     MEDIA_URL, MEDIA_PUBLIC_URL, MEDIA_APP_ID,
     MediaApiError,
-    request, proxy, actingUserFrom, _formData, _authHeader, _reset, MEDIA_AUDIENCE, viewCounts,
+    request, proxy, actingUserFrom, _formData, _authHeader, _reset, _forgetSharedReads, MEDIA_AUDIENCE, viewCounts,
     // vods
     createVod, ingestRtmp, ingestRtpStart, ingestRtpStop, ingestStatus,
     uploadVodChunk, finalizeVod,
