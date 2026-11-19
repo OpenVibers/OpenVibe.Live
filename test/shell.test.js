@@ -23,7 +23,7 @@ function fakeRes() {
     res.setHeader('Link', '</index.md>; rel="alternate"; type="text/markdown"');
     res.writeHead(200);
     assert.ok(res.wrote);
-    assert.ok(/rel="alternate"/.test(res.headers.Link) && /rel=preload; as=script/.test(res.headers.Link), res.headers.Link);
+    assert.ok(/rel="alternate"/.test(res.headers.Link) && /rel=preload; as=style/.test(res.headers.Link), res.headers.Link);
 }
 
 {   // A page is hinted in its Link header; no 103 goes out (nginx 1.28 would send the page as the 103's body).
@@ -34,7 +34,8 @@ function fakeRes() {
     assert.strictEqual(res.hints, null, 'no 103');
     const link = res.headers.Link || '';
     assert.ok(link.indexOf('rel=preload') >= 0, 'the links are preloads');
-    assert.ok(/as=script/.test(link) && /as=style/.test(link), 'the scripts and the stylesheet are named');
+    assert.ok(/as=style/.test(link) && /style\.core\.css/.test(link), 'the first paint stylesheet is named');
+    assert.ok(!/as=script/.test(link), 'no script: a deferred script preloaded takes the line from the first paint CSS (11-19)');
     assert.ok(res.headers.Link && res.headers.Link.indexOf('rel=preload') >= 0, 'the page carries the hint too');
 }
 

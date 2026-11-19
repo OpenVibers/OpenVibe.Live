@@ -20,15 +20,14 @@ let shared = null;
 try { shared = require('openvibe-shared/sw'); } catch { /* the pin that carries the shared helper has not landed yet */ }
 
 /**
- * The files every Live page loads, by content hash: the shell's scripts and the first paint CSS. The hash means the browser
- * can keep them for a year, and means a release that changes them hands out new URLs.
+ * What a page hints, by content hash: the first paint CSS only. The shell's scripts are deferred, so the first paint never
+ * waits for them, but preloaded they took the line from the CSS it does wait for: on a throttled phone (1.6 Mbps, 4x CPU,
+ * interleaved runs against production, 2026-11-19) the home painted at 2,272 ms without them against 2,560 ms with them.
+ * The page names them itself a moment later, and the shared worker (manifest() below) keeps them for the next visit.
  */
 function shellLinks() {
     return [
         { href: assets.versioned('/css/style.core.css'), as: 'style' },
-        { href: assets.versioned('/shared/navbar.js'), as: 'script' },
-        { href: assets.versioned('/shared/theme-loader.js'), as: 'script' },
-        { href: assets.versioned('/js/app.js'), as: 'script' },
     ].filter((l) => l && l.href);
 }
 
