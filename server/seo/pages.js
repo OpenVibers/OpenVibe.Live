@@ -308,6 +308,9 @@ async function _channelAccount(username) {
         bio: (ch && ch.bio) || (user && user.bio) || '',
         banned: !!(user && (user.is_banned === 1 || user.is_banned === true)),
         followLinks,
+        // The streamer's offline picture (channels.offline_screen_*, uploaded as /data/offline/<name>.webp): an offline
+        // channel page's largest paint, preloaded with the page (2026-11-19).
+        offlineImage: ch && ch.offline_screen_type === 'image' && /^\/data\/offline\/[A-Za-z0-9._-]{1,120}$/.test(String(ch.offline_screen_url || '')) ? ch.offline_screen_url : null,
     };
 }
 
@@ -434,6 +437,9 @@ async function _channelMeta(username, page = 1) {
         // A live channel's player library starts downloading with the page, not after the stream's data has come back
         // and the player has started (2026-11-19: a live picture took 8-10 s at p75; the library was the last step).
         playerPreload: page === 1 && liveNow && !acct.banned ? (PLAYER_PRELOAD[liveNow.protocol] ? liveNow.protocol : null) : null,
+        // The channel's own data starts with the page too (CHANNEL_EARLY), and an offline channel's picture with it.
+        channelEarly: page === 1 && !acct.banned,
+        heroImage: page === 1 && !liveNow && !acct.banned && acct.offlineImage ? acct.offlineImage : null,
         rails: page === 1 ? {
             'ch-vods-grid': _channelRailHtml(vods, 'vod'),
             'ch-clips-of-grid': _channelRailHtml(clips, 'clip'),
@@ -933,6 +939,14 @@ const PLAYER_PRELOAD = {
     rtmp: `<script>(function(){try{if(document.createElement('video').canPlayType('application/vnd.apple.mpegurl'))return;var l=document.createElement('link');l.rel='preload';l.as='script';l.href='/js/vendor/hls-1.7.4.min.js';document.head.appendChild(l)}catch(e){}})()</script>`,
 };
 
+// A channel page's first two questions (public/js/app-channel.js loadChannelPage: the channel with its first videos and
+// clips, and its most watched), asked by the page itself while it is still being read, in parallel with its scripts,
+// instead of after they all ran (2026-11-19, a phone at 4x: the channel's data was asked at 1.95 s and came back at
+// 2.6 s; its content painted at 3.1 s). Only for a visitor with no stored sign-in (any token: the app's own call goes
+// as before), only on /@name itself, and only the exact paths loadChannelPage asks (channel-early.test.js holds the
+// page sizes to app-channel.js's). Static, so its hash is the same on every page (the report-only CSP lists it).
+const CHANNEL_EARLY = `<script>(function(){try{var m=/^\\/@([A-Za-z0-9_]{3,24})\\/?$/.exec(location.pathname);if(!m||!window.fetch)return;try{if(localStorage.getItem('token')||localStorage.getItem('ov_token'))return}catch(e){return}if(/(?:^|; )ov_token=/.test(document.cookie))return;var u=m[1],E=window.__ovEarly=window.__ovEarly||{},a=Date.now();function g(p){E[p]={at:a,p:fetch('/api'+p,{headers:{'Content-Type':'application/json'}}).then(function(r){return r.ok?r.json():null}).catch(function(){return null})}}g('/streams/channel/'+u+'?vodLimit=12&vodOffset=0&clipLimit=12&clipOffset=0');g('/streams/channel/'+encodeURIComponent(u)+'/popular')}catch(e){}})();</script>`;
+
 function _headBlock(meta) {
     const canonical = abs(meta.canonicalPath || '/');
     let tags = seo.headTags({
@@ -951,6 +965,7 @@ function _headBlock(meta) {
         parts.push(`<meta property="video:duration" content="${meta.video.duration}">`);
     }
     if (meta.snapshot) parts.push(NOJS_STYLE);
+    if (meta.channelEarly) parts.push(CHANNEL_EARLY);
     if (meta.heroImage) parts.push(`<link rel="preload" as="image" href="${esc(meta.heroImage)}" fetchpriority="high">`);
     if (meta.playerPreload && PLAYER_PRELOAD[meta.playerPreload]) parts.push(PLAYER_PRELOAD[meta.playerPreload]);
     return '\n' + parts.map(x => '    ' + x).join('\n') + '\n';
@@ -1159,4 +1174,4 @@ async function middleware(req, res, next) {
     }
 }
 
-module.exports = { middleware, shellHtml, _pageMeta, _pageParam, render, SITE_NAME, baseUrl, isAiClip, isoDate, SEO_ROUTE_RE };
+module.exports = { CHANNEL_EARLY, middleware, shellHtml, _pageMeta, _pageParam, render, SITE_NAME, baseUrl, isAiClip, isoDate, SEO_ROUTE_RE };

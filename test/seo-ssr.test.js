@@ -315,6 +315,23 @@ const server = http.createServer(app).listen(0, '127.0.0.1', async () => {
         assert.ok(!(await get('/sitemap.xml')).body.includes('<video:live>'), 'ended stream is absent from the sitemap');
     });
 
+    await check('a channel page asks for its own data with the page; an offline one preloads its own picture', async () => {
+        const pages = require('../server/seo/pages');
+        await addUser(8, 'erin', 'Erin', 'I knit.');
+        await db.run("INSERT INTO channels (user_id, offline_screen_type, offline_screen_url) VALUES (8, 'image', '/data/offline/off-8-abc.webp')");
+        const html = (await get('/@erin')).body;
+        assert.ok(head(html).includes(pages.CHANNEL_EARLY), 'the early asks are in the head');
+        assert.ok(head(html).includes('<link rel="preload" as="image" href="/data/offline/off-8-abc.webp" fetchpriority="high">'), 'the offline picture is preloaded');
+        assert.ok(!head((await get('/@erin?page=2')).body).includes('__ovEarly'), 'only the first page');
+        await db.run("UPDATE channels SET offline_screen_url = 'https://elsewhere.example/x.webp' WHERE user_id = 8");
+        await db.run("UPDATE users SET bio = 'I knit a lot.' WHERE id = 8");
+        const other = head((await get('/@erin?fresh=1')).body);
+        assert.ok(!other.includes('elsewhere.example'), 'a picture that is not an uploaded offline screen is not preloaded');
+        await db.run('UPDATE users SET is_banned = 1 WHERE id = 8');
+        const banned = (await pages._pageMeta('/@erin'));
+        assert.ok(!banned || (!banned.channelEarly && !banned.heroImage), 'a banned channel asks nothing early');
+    });
+
     await check('the home page\'s JSON-LD lists are named by the snapshot\'s visible headings', async () => {
         const home = (await get('/')).body;
         const lists = ldOf(home).filter((n) => n['@type'] === 'ItemList');
