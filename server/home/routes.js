@@ -435,36 +435,47 @@ router.get('/star', async (req, res) => {
 
 // ── Home pulse: real activity counts, AI moments and the newest shipped update. Cached ~30s.
 let _pulseCache = { at: 0, data: null };
+// Built at most every 30 s; past that the last pulse (under ten minutes old) answers at once while one rebuild runs
+// behind it (2026-11-19: the visitor after each expiry waited about a second).
+let _pulseBuilding = null;
 router.get('/pulse', async (req, res) => {
     try {
         res.set('Cache-Control', 'public, max-age=30');
-        if (Date.now() - _pulseCache.at < 30_000 && _pulseCache.data) return res.json(_pulseCache.data);
-        const pulse = await db.getHomePulse();
-        const channels = pulse.liveChannels || [];
-        pulse.liveNow = channels[0] || null;
-        pulse.busiestChat = null;
-        if (channels.length) {
-            const reads = require('../chat/chat-reads');
-            const recent = await Promise.all(channels.map(async (c) => {
-                const minute = await reads.windowStats({ since: Date.now() - 60_000, streamId: c.stream_id }).catch(() => null);
-                if (Number(minute && minute.messages) > 0) return { ...c, messages_per_minute: Number(minute.messages), window: 'now' };
-                const hour = await reads.windowStats({ since: Date.now() - 3600_000, streamId: c.stream_id }).catch(() => null);
-                return { ...c, messages_per_minute: Math.round(Number(hour && hour.messages || 0) / 60), window: 'last hour' };
-            }));
-            pulse.busiestChat = recent.sort((a, b) => b.messages_per_minute - a.messages_per_minute)[0] || null;
+        const age = Date.now() - _pulseCache.at;
+        if (_pulseCache.data && age < 30_000) return res.json(_pulseCache.data);
+        if (!_pulseBuilding) {
+            _pulseBuilding = buildPulse().finally(() => { _pulseBuilding = null; });
+            _pulseBuilding.catch((err) => console.error('[Home] pulse error:', err.message));
         }
-        delete pulse.liveChannels;
-        const quest = await require('./daily-quest').readDailyQuest();
-        pulse.dailyFinished = Number(quest && quest.quest && quest.quest.finished_today) || 0;
-        pulse.moments = (await heroMoments()).slice(0, 10);
-        pulse.latestUpdate = _latestUpdate();
-        _pulseCache = { at: Date.now(), data: pulse };
-        res.json(pulse);
+        if (_pulseCache.data && age < 10 * 60_000) return res.json(_pulseCache.data);
+        res.json(await _pulseBuilding);
     } catch (err) {
-        console.error('[Home] pulse error:', err.message);
         res.status(500).json({ error: 'Failed to load pulse' });
     }
 });
+async function buildPulse() {
+    const pulse = await db.getHomePulse();
+    const channels = pulse.liveChannels || [];
+    pulse.liveNow = channels[0] || null;
+    pulse.busiestChat = null;
+    if (channels.length) {
+        const reads = require('../chat/chat-reads');
+        const recent = await Promise.all(channels.map(async (c) => {
+            const minute = await reads.windowStats({ since: Date.now() - 60_000, streamId: c.stream_id }).catch(() => null);
+            if (Number(minute && minute.messages) > 0) return { ...c, messages_per_minute: Number(minute.messages), window: 'now' };
+            const hour = await reads.windowStats({ since: Date.now() - 3600_000, streamId: c.stream_id }).catch(() => null);
+            return { ...c, messages_per_minute: Math.round(Number(hour && hour.messages || 0) / 60), window: 'last hour' };
+        }));
+        pulse.busiestChat = recent.sort((a, b) => b.messages_per_minute - a.messages_per_minute)[0] || null;
+    }
+    delete pulse.liveChannels;
+    const quest = await require('./daily-quest').readDailyQuest();
+    pulse.dailyFinished = Number(quest && quest.quest && quest.quest.finished_today) || 0;
+    pulse.moments = (await heroMoments()).slice(0, 10);
+    pulse.latestUpdate = _latestUpdate();
+    _pulseCache = { at: Date.now(), data: pulse };
+    return pulse;
+}
 
 // Newest git commit = the latest shipped update (built-in-the-open hero one-liner).
 // The newest shipped commit, shown as a one-liner in the hero.
@@ -505,20 +516,31 @@ if (!require('../drill').enabled) setTimeout(_refreshLatestUpdate, 1500).unref?.
 // users), the numbers, and the best Rundown takes.
 const { requireAuth, optionalAuth } = require('../auth/auth');
 let acrossCache = { at: 0, frame: [], report: null };
+let acrossLoading = null;
+// Network's frame and Report's numbers, asked over this host's own addresses (through the public names each read went
+// out through Cloudflare and back: 0.28 s against 2 ms, 2026-11-19), kept five minutes and refreshed behind the page:
+// only the first digest after boot waits for them.
+function loadAcross() {
+    if (acrossLoading) return acrossLoading;
+    const read = async (url) => {
+        try {
+            const r = await fetch(url, { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(1300) });
+            return r.ok ? await r.json() : null;
+        } catch { return null; }
+    };
+    const network = String(process.env.OV_NETWORK_INTERNAL_URL || 'http://127.0.0.1:4000').replace(/\/+$/, '');
+    const report = String(process.env.OV_REPORT_INTERNAL_URL || 'http://127.0.0.1:5080').replace(/\/+$/, '');
+    acrossLoading = Promise.all([
+        read(`${network}/api/frame?host=openvibe.live`),
+        read(`${report}/api/v1/stats?days=7`),
+    ]).then(([frame, stats]) => {
+        acrossCache = { at: Date.now(), frame: Array.isArray(frame?.cards) ? frame.cards : [], report: stats };
+    }).finally(() => { acrossLoading = null; });
+    return acrossLoading;
+}
 async function acrossOpenVibe(sinceMs) {
-    if (Date.now() - acrossCache.at > 5 * 60_000) {
-        const read = async (url) => {
-            try {
-                const r = await require('../net/egress').fetchText(url, { timeoutMs: 1300, maxBytes: 128 * 1024 });
-                return r.status === 200 ? JSON.parse(r.text) : null;
-            } catch { return null; }
-        };
-        const [frame, report] = await Promise.all([
-            read('https://openvibe.network/api/frame?host=openvibe.live'),
-            read('https://openvibe.report/api/v1/stats?days=7'),
-        ]);
-        acrossCache = { at: Date.now(), frame: Array.isArray(frame?.cards) ? frame.cards : [], report };
-    }
+    if (!acrossCache.at) await loadAcross();
+    else if (Date.now() - acrossCache.at > 5 * 60_000) loadAcross();   // never awaited: this digest has the last ones
     const picks = [];
     for (const card of acrossCache.frame) {
         if (!['new-pages', 'hot-threads', 'top-stories', 'new-worlds'].includes(card.id)) continue;
@@ -562,86 +584,81 @@ router.get('/digest', optionalAuth, async (req, res) => {
         const since = new Date(sinceMs).toISOString();
         const sinceSql = since.replace('T', ' ').slice(0, 19);
         const uid = req.user ? req.user.id : null;
-        const followed = new Set(uid ? (await db.all('SELECT streamer_id FROM follows WHERE follower_id = ?', [uid]) || []).map(r => r.streamer_id) : []);
-        const liveNow = (await db.all(`SELECT u.id AS user_id, u.username, u.display_name, u.avatar_url, u.profile_color, s.title, s.viewer_count, s.started_at
+        const one = async (sql, params) => { try { return await db.get(sql, params); } catch { return null; } };
+        const count = async (sql, params, key = 'n') => Number((await one(sql, params) || {})[key] || 0);
+        // Every read here is independent of the others, so they run together (2026-11-19: about 25 queries one after
+        // another made the digest 0.9 s on average at the origin). The day-over-day changes are site-wide and kept a
+        // minute; the other sites' cards refresh behind the page.
+        const [followed, liveRows, streamedAll, stats, changes, newPeople, topics, across] = await Promise.all([
+            uid ? db.all('SELECT streamer_id FROM follows WHERE follower_id = ?', [uid]).then((rows) => new Set((rows || []).map(r => r.streamer_id))) : new Set(),
+            db.all(`SELECT u.id AS user_id, u.username, u.display_name, u.avatar_url, u.profile_color, s.title, s.viewer_count, s.started_at
             FROM streams s JOIN users u ON u.id = s.user_id WHERE s.is_live = 1 AND COALESCE(u.is_banned, 0) = 0 AND COALESCE(u.is_test, 0) = 0
               AND NOT (s.content_labels->'labels' @> '["18+"]'::jsonb)
-            ORDER BY s.viewer_count DESC, s.started_at DESC LIMIT 10`) || []).map(r => ({ ...r, followed: followed.has(r.user_id) }));
-        const liveIds = new Set(liveNow.map(r => r.user_id));
-        const streamedRows = (await db.all(`SELECT u.id AS user_id, u.username, u.display_name, u.avatar_url, u.profile_color,
+            ORDER BY s.viewer_count DESC, s.started_at DESC LIMIT 10`),
+            db.all(`SELECT u.id AS user_id, u.username, u.display_name, u.avatar_url, u.profile_color,
                 COUNT(s.id) AS sessions, MAX(s.started_at) AS last_at, MAX(COALESCE(s.peak_viewers, 0)) AS peak_viewers,
                 ROUND(SUM(COALESCE(s.duration_seconds, CASE WHEN s.ended_at IS NOT NULL THEN (julianday(s.ended_at) - julianday(s.started_at)) * 86400 ELSE 0 END)) / 3600.0, 1)::float8 AS hours,
                 (SELECT title FROM streams t WHERE t.user_id = u.id AND t.started_at >= ? ORDER BY t.started_at DESC LIMIT 1) AS last_title,
                 (SELECT id FROM streams t WHERE t.user_id = u.id AND t.started_at >= ? ORDER BY t.started_at DESC LIMIT 1) AS last_stream_id
             FROM streams s JOIN users u ON u.id = s.user_id
             WHERE s.started_at >= ? AND s.is_live = 0 AND COALESCE(u.is_banned, 0) = 0 AND COALESCE(u.is_test, 0) = 0
-            GROUP BY u.id ORDER BY hours DESC, last_at DESC LIMIT 14`, [sinceSql, sinceSql, sinceSql]) || [])
-            .filter(r => !liveIds.has(r.user_id));
-        const streamed = [];
-        for (const r of streamedRows) {
-            let recap_stream_id = null;
-            try { const x = await db.get('SELECT r.stream_id FROM stream_recaps r JOIN streams s ON s.id = r.stream_id WHERE r.user_id = ? AND s.started_at >= ? ORDER BY r.created_at DESC LIMIT 1', [r.user_id, sinceSql]); recap_stream_id = x ? x.stream_id : null; } catch { recap_stream_id = null; }
-            streamed.push({ ...r, followed: followed.has(r.user_id), recap_stream_id });
-        }
-        streamed.sort((a, b) => (b.followed - a.followed) || (b.hours - a.hours));
-        streamed.splice(8);
-        if (streamed.length) {
-            const vods = await require('../media-proxy/lookups').publicVodsForStreams(streamed.slice(0, 3).map((r) => r.last_stream_id), { budgetMs: 900 });
-            for (const r of streamed) {
-                const vod = vods.get(Number(r.last_stream_id));
-                r.watch_url = vod ? videoUrl('vod', vod.id, null, vod.watch_id) : null;
-            }
-        }
-        const one = async (sql, params) => { try { return await get(sql, params); } catch { return null; } };
-        const get = async (sql, params) => await db.get(sql, params);
-        const stats = {
-            streams: Number((await one('SELECT COUNT(*) AS n FROM streams WHERE started_at >= ?', [sinceSql]) || {}).n || 0),
-            hours: Number((await one(`SELECT ROUND(SUM(COALESCE(duration_seconds, CASE WHEN ended_at IS NOT NULL THEN (julianday(ended_at) - julianday(started_at)) * 86400 ELSE (julianday('now') - julianday(started_at)) * 86400 END)) / 3600.0, 1) AS h FROM streams WHERE started_at >= ?`, [sinceSql]) || {}).h || 0),
-            // OpenVibe.Chat's message count since the window opened (Live's own tables in dev /
-            // rollback); a synchronous peek answers the last good count while Chat refreshes.
-            chat_lines: await (async () => { try { const s = await require('../chat/chat-reads').windowStatsPeek({ since: sinceMs }); return s ? s.messages : 0; } catch { return 0; } })(),
-            new_follows: Number((await one('SELECT COUNT(*) AS n FROM follows WHERE created_at >= ?', [sinceSql]) || {}).n || 0),
-            new_members: Number((await one('SELECT COUNT(*) AS n FROM users WHERE created_at >= ? AND COALESCE(is_banned, 0) = 0 AND COALESCE(is_test, 0) = 0 AND deleted_at IS NULL', [sinceSql]) || {}).n || 0),
-            takes: Number((await one(`SELECT COUNT(*) AS n FROM rundown_segments s JOIN users u ON u.id = s.user_id
+            GROUP BY u.id ORDER BY hours DESC, last_at DESC LIMIT 14`, [sinceSql, sinceSql, sinceSql]),
+            Promise.all([
+                count('SELECT COUNT(*) AS n FROM streams WHERE started_at >= ?', [sinceSql]),
+                count(`SELECT ROUND(SUM(COALESCE(duration_seconds, CASE WHEN ended_at IS NOT NULL THEN (julianday(ended_at) - julianday(started_at)) * 86400 ELSE (julianday('now') - julianday(started_at)) * 86400 END)) / 3600.0, 1) AS h FROM streams WHERE started_at >= ?`, [sinceSql], 'h'),
+                // OpenVibe.Chat's message count since the window opened (Live's own tables in dev /
+                // rollback); a synchronous peek answers the last good count while Chat refreshes.
+                (async () => { try { const s = await require('../chat/chat-reads').windowStatsPeek({ since: sinceMs }); return s ? s.messages : 0; } catch { return 0; } })(),
+                count('SELECT COUNT(*) AS n FROM follows WHERE created_at >= ?', [sinceSql]),
+                count('SELECT COUNT(*) AS n FROM users WHERE created_at >= ? AND COALESCE(is_banned, 0) = 0 AND COALESCE(is_test, 0) = 0 AND deleted_at IS NULL', [sinceSql]),
+                count(`SELECT COUNT(*) AS n FROM rundown_segments s JOIN users u ON u.id = s.user_id
                 ${rundownRead.AUDIENCE_JOINS('s')} WHERE s.status = 'live' AND s.said_at >= @since
-                AND COALESCE(u.is_banned, 0) = 0 AND COALESCE(u.is_test, 0) = 0 AND ${rundownRead.VISIBLE('s')}`, { since: sinceSql, viewer: null }) || {}).n || 0),
-        };
-        const previous = new Date(now - 86400000).toISOString().replace('T', ' ').slice(0, 19);
-        const prior = new Date(now - 2 * 86400000).toISOString().replace('T', ' ').slice(0, 19);
-        const changeFor = async (table, column, condition = '1 = 1') => {
-            const rows = await db.all(`SELECT COUNT(*) AS n FROM ${table} WHERE ${column} >= ? AND ${column} < ? AND ${condition}`, [prior, previous]);
-            const current = await db.all(`SELECT COUNT(*) AS n FROM ${table} WHERE ${column} >= ? AND ${condition}`, [previous]);
-            return Number(current[0]?.n || 0) - Number(rows[0]?.n || 0);
-        };
-        const publicTakes = async (start, end) => Number((await one(`SELECT COUNT(*) AS n FROM rundown_segments s JOIN users u ON u.id = s.user_id
-            ${rundownRead.AUDIENCE_JOINS('s')} WHERE s.status = 'live' AND s.said_at >= @start AND s.said_at < @end
-            AND COALESCE(u.is_banned, 0) = 0 AND COALESCE(u.is_test, 0) = 0 AND ${rundownRead.VISIBLE('s')}`, { start, end, viewer: null }) || {}).n || 0);
-        const changes = {
-            streams: await changeFor('streams', 'started_at'),
-            takes: await publicTakes(previous, new Date(now).toISOString().replace('T', ' ').slice(0, 19)) - await publicTakes(prior, previous),
-            new_follows: await changeFor('follows', 'created_at'),
-            new_members: await changeFor('users', 'created_at', 'COALESCE(is_banned, 0) = 0 AND COALESCE(is_test, 0) = 0 AND deleted_at IS NULL'),
-        };
-        const newPeople = (await db.all('SELECT username, display_name, avatar_url FROM users WHERE created_at >= ? AND COALESCE(is_banned, 0) = 0 AND COALESCE(is_test, 0) = 0 AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 3', [sinceSql]) || []);
-        // A take is shown only when the stream is in this visit's window, the topic is live, and Rundown allows everyone to see it.
-        let topics = [];
-        try {
-            const { AUDIENCE_JOINS, VISIBLE } = require('../rundown/read');
-            const rows = await db.all(`SELECT s.id, s.stream_id, s.title, s.quotes_json, s.said_at, t.title AS topic, t.kind, u.username, u.display_name, u.avatar_url
+                AND COALESCE(u.is_banned, 0) = 0 AND COALESCE(u.is_test, 0) = 0 AND ${rundownRead.VISIBLE('s')}`, { since: sinceSql, viewer: null }),
+            ]).then(([streams, hours, chat_lines, new_follows, new_members, takes]) => ({ streams, hours, chat_lines, new_follows, new_members, takes })),
+            digestChanges(now),
+            db.all('SELECT username, display_name, avatar_url FROM users WHERE created_at >= ? AND COALESCE(is_banned, 0) = 0 AND COALESCE(is_test, 0) = 0 AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 3', [sinceSql]).then((rows) => rows || []),
+            // A take is shown only when the stream is in this visit's window, the topic is live, and Rundown allows everyone to see it.
+            (async () => {
+                try {
+                    const { AUDIENCE_JOINS, VISIBLE } = require('../rundown/read');
+                    const rows = await db.all(`SELECT s.id, s.stream_id, s.title, s.quotes_json, s.said_at, t.title AS topic, t.kind, u.username, u.display_name, u.avatar_url
                 FROM rundown_segments s JOIN streams stream ON stream.id = s.stream_id
                 JOIN users u ON u.id = s.user_id JOIN rundown_topics t ON t.id = s.topic_id
                 ${AUDIENCE_JOINS('s')}
                 WHERE s.status = 'live' AND t.status = 'live' AND s.said_at >= @since AND stream.started_at >= @since
                 AND s.score >= 4 AND COALESCE(u.is_banned, 0) = 0 AND COALESCE(u.is_test, 0) = 0 AND ${VISIBLE('s')}
                 ORDER BY s.score DESC, s.said_at DESC LIMIT 40`, { since: sinceSql, viewer: null });
-            topics = selectTopics(rows);
-        } catch { topics = []; }
+                    return selectTopics(rows);
+                } catch { return []; }
+            })(),
+            acrossOpenVibe(sinceMs),
+        ]);
+        const liveNow = (liveRows || []).map(r => ({ ...r, followed: followed.has(r.user_id) }));
+        const liveIds = new Set(liveNow.map(r => r.user_id));
+        const streamed = (streamedAll || []).filter(r => !liveIds.has(r.user_id)).map(r => ({ ...r, followed: followed.has(r.user_id), recap_stream_id: null }));
+        streamed.sort((a, b) => (b.followed - a.followed) || (b.hours - a.hours));
+        streamed.splice(8);
+        if (streamed.length) {
+            // The newest recap of each shown streamer in the window, in one read (was one query per streamer), beside
+            // the videos of the first three.
+            const ids = streamed.map((r) => r.user_id);
+            const [recaps, vods] = await Promise.all([
+                db.all(`SELECT DISTINCT ON (r.user_id) r.user_id, r.stream_id FROM stream_recaps r JOIN streams s ON s.id = r.stream_id
+                    WHERE r.user_id IN (${ids.map(() => '?').join(', ')}) AND s.started_at >= ? ORDER BY r.user_id, r.created_at DESC`, [...ids, sinceSql]).catch(() => []),
+                require('../media-proxy/lookups').publicVodsForStreams(streamed.slice(0, 3).map((r) => r.last_stream_id), { budgetMs: 900 }),
+            ]);
+            const recapOf = new Map((recaps || []).map((x) => [Number(x.user_id), x.stream_id]));
+            for (const r of streamed) {
+                r.recap_stream_id = recapOf.has(Number(r.user_id)) ? recapOf.get(Number(r.user_id)) : null;
+                const vod = vods.get(Number(r.last_stream_id));
+                r.watch_url = vod ? videoUrl('vod', vod.id, null, vod.watch_id) : null;
+            }
+        }
         let nextStream = null;
         if (!stats.streams && !stats.takes && !stats.new_members && !stats.new_follows && !stats.chat_lines) {
             nextStream = await one(`SELECT a.title, a.starts_at, u.username, u.display_name FROM agent_stream_schedules a JOIN users u ON u.id = a.user_id
                 WHERE a.state = 'scheduled' AND a.visibility = 'public' AND a.starts_at > ? AND COALESCE(u.is_banned, 0) = 0 AND COALESCE(u.is_test, 0) = 0 ORDER BY a.starts_at LIMIT 1`, [new Date(now).toISOString()]);
         }
-        const across = await acrossOpenVibe(sinceMs);
         const digest = { since, signed_in: !!uid, liveNow, streamed, stats, topics, newPeople, changes, nextStream, across };
         res.set('Cache-Control', uid ? 'private, max-age=30' : 'public, max-age=60');
         res.json({ ...digest, html: renderDigest(digest) });
@@ -650,6 +667,38 @@ router.get('/digest', optionalAuth, async (req, res) => {
         res.status(500).json({ error: 'Failed to load digest' });
     }
 });
+
+// The digest's day-over-day changes: site-wide (the same for every visitor and window), so kept a minute.
+let _changesCache = { at: 0, data: null, loading: null };
+function digestChanges(now = Date.now()) {
+    if (_changesCache.data && now - _changesCache.at < 60_000) return _changesCache.data;
+    if (_changesCache.loading) return _changesCache.loading;
+    const one = async (sql, params) => { try { return await db.get(sql, params); } catch { return null; } };
+    const previous = new Date(now - 86400000).toISOString().replace('T', ' ').slice(0, 19);
+    const prior = new Date(now - 2 * 86400000).toISOString().replace('T', ' ').slice(0, 19);
+    const changeFor = async (table, column, condition = '1 = 1') => {
+        const [rows, current] = await Promise.all([
+            db.all(`SELECT COUNT(*) AS n FROM ${table} WHERE ${column} >= ? AND ${column} < ? AND ${condition}`, [prior, previous]),
+            db.all(`SELECT COUNT(*) AS n FROM ${table} WHERE ${column} >= ? AND ${condition}`, [previous]),
+        ]);
+        return Number(current[0]?.n || 0) - Number(rows[0]?.n || 0);
+    };
+    const publicTakes = async (start, end) => Number((await one(`SELECT COUNT(*) AS n FROM rundown_segments s JOIN users u ON u.id = s.user_id
+        ${rundownRead.AUDIENCE_JOINS('s')} WHERE s.status = 'live' AND s.said_at >= @start AND s.said_at < @end
+        AND COALESCE(u.is_banned, 0) = 0 AND COALESCE(u.is_test, 0) = 0 AND ${rundownRead.VISIBLE('s')}`, { start, end, viewer: null }) || {}).n || 0);
+    const nowSql = new Date(now).toISOString().replace('T', ' ').slice(0, 19);
+    _changesCache.loading = Promise.all([
+        changeFor('streams', 'started_at'),
+        publicTakes(previous, nowSql), publicTakes(prior, previous),
+        changeFor('follows', 'created_at'),
+        changeFor('users', 'created_at', 'COALESCE(is_banned, 0) = 0 AND COALESCE(is_test, 0) = 0 AND deleted_at IS NULL'),
+    ]).then(([streams, takesNow, takesBefore, new_follows, new_members]) => {
+        const data = { streams, takes: takesNow - takesBefore, new_follows, new_members };
+        _changesCache = { at: Date.now(), data, loading: null };
+        return data;
+    }).finally(() => { _changesCache.loading = null; });
+    return _changesCache.loading;
+}
 
 // ── Discover: what to watch instead when a channel is offline (or anywhere) ────────────
 // ?channel=<username> excludes that streamer from the picks and finds "streamers like them".

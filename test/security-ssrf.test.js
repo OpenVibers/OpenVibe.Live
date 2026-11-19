@@ -337,6 +337,7 @@ async function check(name, fn) {
             'server/net/egress.js': 'the guard itself',
             'server/net/network-json.js': 'OpenVibe.Network internal identity API for the sharing system (configured OV_NETWORK_INTERNAL_URL, fixed paths, no URL from a person)',
             'server/drill.js': 'the restore-drill guard (refuses connections)',
+            'server/home/routes.js': 'the digest\'s cards from other sites: OpenVibe.Network\'s frame (OV_NETWORK_INTERNAL_URL, configured) and OpenVibe.Report\'s stats (OV_REPORT_INTERNAL_URL, configured), fixed paths; no URL comes from a request',
             'server/report.js': 'OpenVibe.Report (OV_REPORT_INTERNAL_URL, configured) for the report of an agent stream, and the Network token endpoint (OV_NETWORK_INTERNAL_URL, configured) for the Live service token; the paths are fixed, no URL from a person',
             'server/config.js': 'Network registry (configured)',
             'server/media-client.js': 'OpenVibe.Media (configured)',

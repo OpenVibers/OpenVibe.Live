@@ -7,7 +7,9 @@ let _catalog = null;   // { at, base, value: { quests, sites } }
 
 /** Quest calls carry only a Network bearer token. The browser never sends Quest a Live cookie. */
 async function readDailyQuest({ token = null, timeZone = 'UTC', more = false, fetchImpl = globalThis.fetch,
-    baseUrl = process.env.OV_QUEST_INTERNAL_URL || 'https://openvibe.quest', now = Date.now } = {}) {
+    // This host's own Quest (127.0.0.1:4980); through openvibe.quest every read went out through Cloudflare and back,
+    // 0.43 s against 3 ms on each home view (2026-11-19).
+    baseUrl = process.env.OV_QUEST_INTERNAL_URL || 'http://127.0.0.1:4980', now = Date.now } = {}) {
     const base = String(baseUrl).replace(/\/+$/, '');
     const headers = { Accept: 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) };
     const get = async (path, options = {}) => {
