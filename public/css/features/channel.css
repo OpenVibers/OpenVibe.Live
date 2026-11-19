@@ -151,7 +151,7 @@
     .video-container.is-vertical #video-canvas {
         max-height: 85vh;
     }
-    .stream-layout:has(.video-container.is-vertical) .chat-sidebar {
+    .stream-layout:is(.has-vertical-video, .video-container.is-vertical) .chat-sidebar {
         width: clamp(340px, 35vw, 500px);
         transition: width var(--ov-dur-3, 0.3s) var(--ov-ease-out, ease);
     }
@@ -1476,7 +1476,7 @@ a.ai-tl-cm:hover .ai-tl-cm-go { opacity: 1; }
    overlay and sheet rules below (:has() adds the specificity of its argument), so a width saved on a wide screen made
    a phone's bottom sheet 260px wide with the page showing beside it (2026-10-14).
    Not for vertical (9:16) streams: their wider chat column (clamp(340px, 35vw, 500px), above) must win. */
-@media (min-width: 1181px) { #page-channel .stream-layout:not(:has(.video-container.is-vertical)) > .chat-sidebar { width: var(--chat-w); } }
+@media (min-width: 1181px) { #page-channel .stream-layout:not(.has-vertical-video, .ov-never.ov-never) > .chat-sidebar { width: var(--chat-w); } }
 @media (max-width: 1180px) and (orientation: landscape) { #page-channel .stream-layout > .chat-sidebar { width: var(--chat-ow, min(420px, 44vw)); } }
 @media (max-width: 1180px) and (orientation: portrait) { #page-channel .stream-layout > .chat-sidebar { width: 100%; height: var(--chat-sheet-h, 55dvh); max-height: 92dvh; } }
 #page-channel.chat-resizing, #page-channel.chat-resizing * { user-select: none; }
@@ -1632,13 +1632,13 @@ a.ai-tl-cm:hover .ai-tl-cm-go { opacity: 1; }
    9:16 one sits in the middle), and the chat opens over the right side from its corner button. Turning back restores
    all of it. */
 @media (orientation: landscape) and (max-height: 540px) and (hover: none) {
-    body:has(#page-channel.active) #navbar-mount { display: none; }
+    body:is(.on-channel, #page-channel.active) #navbar-mount { display: none; }
     #page-channel.page.active { padding-top: 0; }
     #page-channel .video-container,
     #page-channel .video-container.is-vertical { aspect-ratio: auto; height: 100vh; height: 100dvh; max-height: none; border-radius: 0; }
     #page-channel #video-element,
     #page-channel #video-canvas { max-height: none; }
-    body:has(#page-channel.active) .chat-sidebar { top: 0; height: 100vh; height: 100dvh; }
+    body:is(.on-channel, #page-channel.active) .chat-sidebar { top: 0; height: 100vh; height: 100dvh; }
     /* The player's controls run along the bottom edge: the chat button moves to the top right corner. */
     #page-channel .mobile-chat-toggle { top: 10px; bottom: auto; right: 10px; width: 42px; height: 42px; font-size: 0.95rem; }
 }
@@ -1662,9 +1662,9 @@ a.ai-tl-cm:hover .ai-tl-cm-go { opacity: 1; }
    - a portrait stream fills the screen and the chat runs over its lower part, with the channel line over its top.
    Turning the phone on its side keeps the full-screen player above (channel.css, 2026-10-25). */
 @media (max-width: 768px) and (orientation: portrait) {
-    html:has(#page-channel.active.ch-is-live) { --ovnav-appbar-h: 0px; }
-    html:has(#page-channel.active.ch-is-live) .ovnav-appbar,
-    body:has(#page-channel.active.ch-is-live) :is(.mobile-chat-toggle, #floating-chat-fab) { display: none !important; }
+    html:is(.on-channel-live, #page-channel.active.ch-is-live) { --ovnav-appbar-h: 0px; }
+    html:is(.on-channel-live, #page-channel.active.ch-is-live) .ovnav-appbar,
+    body:is(.on-channel-live, #page-channel.active.ch-is-live) :is(.mobile-chat-toggle, #floating-chat-fab) { display: none !important; }
 
     #page-channel.ch-is-live .stream-layout {
         display: flex; flex-direction: column; overflow: hidden;
@@ -1711,50 +1711,50 @@ a.ai-tl-cm:hover .ai-tl-cm-go { opacity: 1; }
     #page-channel.ch-is-live .ch-info-bar.ch-info-open .ch-info-bar-text { max-height: 40dvh; overflow-y: auto; }
 
     /* ── A portrait stream: the picture is the screen ── */
-    #page-channel.ch-is-live .stream-layout:has(.video-container.is-vertical) { position: relative; background: #000; }
-    #page-channel.ch-is-live .stream-layout:has(.video-container.is-vertical) > .stream-main { position: static; }
-    #page-channel.ch-is-live .stream-layout:has(.video-container.is-vertical) .video-container.is-vertical {
+    #page-channel.ch-is-live .stream-layout:is(.has-vertical-video, .video-container.is-vertical) { position: relative; background: #000; }
+    #page-channel.ch-is-live .stream-layout:is(.has-vertical-video, .video-container.is-vertical) > .stream-main { position: static; }
+    #page-channel.ch-is-live .stream-layout:is(.has-vertical-video, .video-container.is-vertical) .video-container.is-vertical {
         position: absolute; inset: 0; height: auto; max-height: none; aspect-ratio: auto; border-radius: 0; box-shadow: none;
     }
     /* A phone-shaped picture (9:16 or taller) fills the screen edge to edge, as phone video apps show it; a squarer
        portrait one keeps its whole picture. */
     #page-channel.ch-is-live .video-container.is-tall :is(#video-element, #video-canvas) { object-fit: cover; }
     /* The channel line over the top of the picture, on a shade so it reads on any picture and in either theme. */
-    #page-channel.ch-is-live .stream-layout:has(.video-container.is-vertical) .ch-info-bar {
+    #page-channel.ch-is-live .stream-layout:is(.has-vertical-video, .video-container.is-vertical) .ch-info-bar {
         position: absolute; top: 0; left: 0; right: 0; z-index: 8;
         padding: 10px 12px 22px; border: 0;
         background: linear-gradient(to bottom, rgba(0, 0, 0, .62), rgba(0, 0, 0, .3) 65%, transparent);
         color: #fff; text-shadow: 0 1px 2px rgba(0, 0, 0, .55);
     }
-    #page-channel.ch-is-live .stream-layout:has(.video-container.is-vertical) .ch-info-bar :is(h2, .ch-stream-title, .ch-stream-description, .ch-cumulative-viewers) { color: #fff; }
-    #page-channel.ch-is-live .stream-layout:has(.video-container.is-vertical) .ch-info-bar.ch-info-open { background: rgba(0, 0, 0, .72); }
-    #page-channel.ch-is-live .stream-layout:has(.video-container.is-vertical) .ch-weather-widget { display: none !important; }
+    #page-channel.ch-is-live .stream-layout:is(.has-vertical-video, .video-container.is-vertical) .ch-info-bar :is(h2, .ch-stream-title, .ch-stream-description, .ch-cumulative-viewers) { color: #fff; }
+    #page-channel.ch-is-live .stream-layout:is(.has-vertical-video, .video-container.is-vertical) .ch-info-bar.ch-info-open { background: rgba(0, 0, 0, .72); }
+    #page-channel.ch-is-live .stream-layout:is(.has-vertical-video, .video-container.is-vertical) .ch-weather-widget { display: none !important; }
     /* The player's own controls move under the channel line: the chat holds the bottom. */
-    #page-channel.ch-is-live .stream-layout:has(.video-container.is-vertical) .video-overlay {
+    #page-channel.ch-is-live .stream-layout:is(.has-vertical-video, .video-container.is-vertical) .video-overlay {
         top: 58px; bottom: auto; background: linear-gradient(to bottom, rgba(0, 0, 0, .45), transparent);
     }
-    #page-channel.ch-is-live .stream-layout:has(.video-container.is-vertical) .dvr-progress-wrap { order: 2; }
+    #page-channel.ch-is-live .stream-layout:is(.has-vertical-video, .video-container.is-vertical) .dvr-progress-wrap { order: 2; }
     /* The chat over the lower part of the picture: no box, the messages fade out upwards, and the input sits on a
        shade at the bottom edge. The right side stays clear so the picture is not covered edge to edge. */
-    #page-channel.ch-is-live.page .stream-layout:has(.video-container.is-vertical) > .chat-sidebar {
+    #page-channel.ch-is-live.page .stream-layout:is(.has-vertical-video, .video-container.is-vertical) > .chat-sidebar {
         position: absolute; left: 0; right: 0; bottom: 0; z-index: 7; flex: none;
         height: var(--watch-chat-h, 46%); border: 0;
         background: linear-gradient(to top, rgba(0, 0, 0, .66), rgba(0, 0, 0, .34) 55%, transparent);
         color: #fff;
     }
-    #page-channel.ch-is-live .stream-layout:has(.video-container.is-vertical) > .chat-sidebar .chat-header { display: none; }
-    #page-channel.ch-is-live .stream-layout:has(.video-container.is-vertical) > .chat-sidebar .chat-messages {
+    #page-channel.ch-is-live .stream-layout:is(.has-vertical-video, .video-container.is-vertical) > .chat-sidebar .chat-header { display: none; }
+    #page-channel.ch-is-live .stream-layout:is(.has-vertical-video, .video-container.is-vertical) > .chat-sidebar .chat-messages {
         margin-right: 16%; padding-top: 28px; scrollbar-width: none;
         -webkit-mask-image: linear-gradient(to bottom, transparent, #000 34%); mask-image: linear-gradient(to bottom, transparent, #000 34%);
     }
-    #page-channel.ch-is-live .stream-layout:has(.video-container.is-vertical) > .chat-sidebar .chat-messages::-webkit-scrollbar { display: none; }
-    #page-channel.ch-is-live .stream-layout:has(.video-container.is-vertical) > .chat-sidebar .chat-msg { color: #fff; text-shadow: 0 1px 2px rgba(0, 0, 0, .8); }
-    #page-channel.ch-is-live .stream-layout:has(.video-container.is-vertical) > .chat-sidebar .chat-conn-note { display: none; }
-    #page-channel.ch-is-live .stream-layout:has(.video-container.is-vertical) > .chat-sidebar .chat-input-area { border-top: 0; background: transparent; }
-    #page-channel.ch-is-live .stream-layout:has(.video-container.is-vertical) > .chat-sidebar :is(.chat-input, .chat-input-row input, .chat-input-row textarea) {
+    #page-channel.ch-is-live .stream-layout:is(.has-vertical-video, .video-container.is-vertical) > .chat-sidebar .chat-messages::-webkit-scrollbar { display: none; }
+    #page-channel.ch-is-live .stream-layout:is(.has-vertical-video, .video-container.is-vertical) > .chat-sidebar .chat-msg { color: #fff; text-shadow: 0 1px 2px rgba(0, 0, 0, .8); }
+    #page-channel.ch-is-live .stream-layout:is(.has-vertical-video, .video-container.is-vertical) > .chat-sidebar .chat-conn-note { display: none; }
+    #page-channel.ch-is-live .stream-layout:is(.has-vertical-video, .video-container.is-vertical) > .chat-sidebar .chat-input-area { border-top: 0; background: transparent; }
+    #page-channel.ch-is-live .stream-layout:is(.has-vertical-video, .video-container.is-vertical) > .chat-sidebar :is(.chat-input, .chat-input-row input, .chat-input-row textarea) {
         background: rgba(0, 0, 0, .45); color: #fff; border-color: rgba(255, 255, 255, .22);
     }
-    #page-channel.ch-is-live .stream-layout:has(.video-container.is-vertical) > .chat-sidebar :is(.emote-picker-btn, .chat-tts-toggle) { color: #fff; }
+    #page-channel.ch-is-live .stream-layout:is(.has-vertical-video, .video-container.is-vertical) > .chat-sidebar :is(.emote-picker-btn, .chat-tts-toggle) { color: #fff; }
 }
 
 /* ── Sections, not tabs (owner 10-31: content is never hidden behind a tab to shorten a page) ──
@@ -1777,7 +1777,7 @@ a.ai-tl-cm:hover .ai-tl-cm-go { opacity: 1; }
     -webkit-backdrop-filter: saturate(1.4) blur(14px);
     backdrop-filter: saturate(1.4) blur(14px);
 }
-html:has(.openvibe-navbar.ovnav-hide) #page-channel .ch-tabs-wrap { top: 0; padding-top: env(safe-area-inset-top, 0px); }
+html:is(.ovnav-hidden, .openvibe-navbar.ovnav-hide) #page-channel .ch-tabs-wrap { top: 0; padding-top: env(safe-area-inset-top, 0px); }
 #page-channel .ch-tabs-wrap:has(#ch-tabs.is-stuck) {
     border-bottom-color: color-mix(in srgb, var(--accent) 28%, var(--border));
     box-shadow: 0 12px 20px -16px rgba(0, 0, 0, .7);
@@ -1973,15 +1973,15 @@ html[data-ov-motion=off] #page-channel .ch-tab-panel{scroll-margin-top: calc(var
     #page-channel.ch-is-live.chat-collapsed .stream-layout { height: auto; }
     #page-channel.ch-is-live.chat-collapsed .stream-layout > .chat-sidebar { display: none !important; }
     #page-channel.ch-is-live.chat-revealing .stream-layout > .chat-sidebar { animation: chChatRise var(--ov-dur-3, .32s) var(--ov-ease-out, cubic-bezier(.22,1,.36,1)); }
-    body:has(#page-channel.active.ch-is-live) .ch-chat-reopen:not([hidden]) {
+    body:is(.on-channel-live, #page-channel.active.ch-is-live) .ch-chat-reopen:not([hidden]) {
         display: inline-flex !important; top: auto; translate: none; transform-origin: center;
         right: max(16px, env(safe-area-inset-right, 0px)); bottom: calc(16px + env(safe-area-inset-bottom, 0px));
         height: 44px; padding: 0 18px; gap: 8px; border: 0; border-radius: 999px;
         background: var(--accent-strong, var(--accent)); color: var(--on-accent-strong, #fff); font: 700 15px/1 inherit;
         box-shadow: 0 10px 24px -10px rgba(0, 0, 0, .7);
     }
-    body:has(#page-channel.active.ch-is-live) .ch-chat-reopen .fa-angles-left { display: none; }
-    body:has(#page-channel.active.ch-is-live) .ch-chat-reopen .fa-comments { color: inherit; }
+    body:is(.on-channel-live, #page-channel.active.ch-is-live) .ch-chat-reopen .fa-angles-left { display: none; }
+    body:is(.on-channel-live, #page-channel.active.ch-is-live) .ch-chat-reopen .fa-comments { color: inherit; }
 }
 @keyframes chChatRise { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: none; } }
 
@@ -2029,35 +2029,35 @@ html[data-ov-motion=off] #page-channel .ch-tab-panel{scroll-margin-top: calc(var
      chat's top right); folded, the picture is whole and the Chat pill brings it back;
    - "Tap for sound" is in the middle of the picture, not under the name. */
 @media (max-width: 768px) and (orientation: portrait) {
-    #page-channel.ch-is-live .stream-layout:has(.video-container.is-vertical) .ch-info-bar:not(.ch-info-open) { flex-wrap: nowrap; row-gap: 0; padding: 8px 10px 20px 12px; }
-    #page-channel.ch-is-live .stream-layout:has(.video-container.is-vertical) .ch-info-bar:not(.ch-info-open) .ch-info-bar-left { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 10px; }
-    #page-channel.ch-is-live .stream-layout:has(.video-container.is-vertical) .ch-info-bar:not(.ch-info-open) .ch-avatar { width: 38px; height: 38px; flex: none; margin: 0; }
-    #page-channel.ch-is-live .stream-layout:has(.video-container.is-vertical) .ch-info-bar:not(.ch-info-open) :is(.ch-meta, .ch-social-pills, .stream-labels, .ch-stream-title, .ch-staff-badge, #ch-share-slot, #ch-ask-slot) { display: none !important; }
-    #page-channel.ch-is-live .stream-layout:has(.video-container.is-vertical) .ch-info-bar .ch-presence { margin: 1px 0 0; font-size: .78rem; color: #fff; }
-    #page-channel.ch-is-live .stream-layout:has(.video-container.is-vertical) .ch-info-bar-top h2::after { content: ""; display: inline-block; width: 6px; height: 6px; margin: 0 0 3px 8px; border: solid currentColor; border-width: 0 2px 2px 0; transform: rotate(45deg); opacity: .75; transition: transform .2s; }
-    #page-channel.ch-is-live .stream-layout:has(.video-container.is-vertical) .ch-info-bar.ch-info-open .ch-info-bar-top h2::after { transform: translateY(3px) rotate(225deg); }
-    #page-channel.ch-is-live .stream-layout:has(.video-container.is-vertical) .ch-info-bar:not(.ch-info-open) .ch-info-bar-right { flex: 0 0 auto; width: auto; gap: 6px; }
-    #page-channel.ch-is-live .stream-layout:has(.video-container.is-vertical) .ch-info-bar:not(.ch-info-open) .ch-action--follow { flex: none; height: 40px; min-height: 40px; padding: 0 14px; }
-    #page-channel.ch-is-live .stream-layout:has(.video-container.is-vertical) .ch-info-bar:not(.ch-info-open) .ch-action--more { width: 40px; height: 40px; min-height: 40px; background: rgba(0, 0, 0, .35); color: #fff; border-color: rgba(255, 255, 255, .22); }
+    #page-channel.ch-is-live .stream-layout:is(.has-vertical-video, .video-container.is-vertical) .ch-info-bar:not(.ch-info-open) { flex-wrap: nowrap; row-gap: 0; padding: 8px 10px 20px 12px; }
+    #page-channel.ch-is-live .stream-layout:is(.has-vertical-video, .video-container.is-vertical) .ch-info-bar:not(.ch-info-open) .ch-info-bar-left { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 10px; }
+    #page-channel.ch-is-live .stream-layout:is(.has-vertical-video, .video-container.is-vertical) .ch-info-bar:not(.ch-info-open) .ch-avatar { width: 38px; height: 38px; flex: none; margin: 0; }
+    #page-channel.ch-is-live .stream-layout:is(.has-vertical-video, .video-container.is-vertical) .ch-info-bar:not(.ch-info-open) :is(.ch-meta, .ch-social-pills, .stream-labels, .ch-stream-title, .ch-staff-badge, #ch-share-slot, #ch-ask-slot) { display: none !important; }
+    #page-channel.ch-is-live .stream-layout:is(.has-vertical-video, .video-container.is-vertical) .ch-info-bar .ch-presence { margin: 1px 0 0; font-size: .78rem; color: #fff; }
+    #page-channel.ch-is-live .stream-layout:is(.has-vertical-video, .video-container.is-vertical) .ch-info-bar-top h2::after { content: ""; display: inline-block; width: 6px; height: 6px; margin: 0 0 3px 8px; border: solid currentColor; border-width: 0 2px 2px 0; transform: rotate(45deg); opacity: .75; transition: transform .2s; }
+    #page-channel.ch-is-live .stream-layout:is(.has-vertical-video, .video-container.is-vertical) .ch-info-bar.ch-info-open .ch-info-bar-top h2::after { transform: translateY(3px) rotate(225deg); }
+    #page-channel.ch-is-live .stream-layout:is(.has-vertical-video, .video-container.is-vertical) .ch-info-bar:not(.ch-info-open) .ch-info-bar-right { flex: 0 0 auto; width: auto; gap: 6px; }
+    #page-channel.ch-is-live .stream-layout:is(.has-vertical-video, .video-container.is-vertical) .ch-info-bar:not(.ch-info-open) .ch-action--follow { flex: none; height: 40px; min-height: 40px; padding: 0 14px; }
+    #page-channel.ch-is-live .stream-layout:is(.has-vertical-video, .video-container.is-vertical) .ch-info-bar:not(.ch-info-open) .ch-action--more { width: 40px; height: 40px; min-height: 40px; background: rgba(0, 0, 0, .35); color: #fff; border-color: rgba(255, 255, 255, .22); }
     /* Opened: a panel over the picture, everything in it, scrolling inside if it is long. */
-    #page-channel.ch-is-live .stream-layout:has(.video-container.is-vertical) .ch-info-bar.ch-info-open { z-index: 12; padding: 12px 12px 16px; max-height: 72%; overflow-y: auto; overscroll-behavior: contain; background: rgba(8, 10, 16, .88); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); border-radius: 0 0 18px 18px; box-shadow: 0 18px 40px rgba(0, 0, 0, .5); animation: chInfoDrop var(--ov-dur-2, .25s) var(--ov-ease-out, cubic-bezier(.22, 1, .36, 1)) both; }
+    #page-channel.ch-is-live .stream-layout:is(.has-vertical-video, .video-container.is-vertical) .ch-info-bar.ch-info-open { z-index: 12; padding: 12px 12px 16px; max-height: 72%; overflow-y: auto; overscroll-behavior: contain; background: rgba(8, 10, 16, .88); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); border-radius: 0 0 18px 18px; box-shadow: 0 18px 40px rgba(0, 0, 0, .5); animation: chInfoDrop var(--ov-dur-2, .25s) var(--ov-ease-out, cubic-bezier(.22, 1, .36, 1)) both; }
     @keyframes chInfoDrop { from { opacity: 0; transform: translateY(calc(-10px * var(--ov-move, 1))); } }
     /* The player's controls: under the folded row, and out of the way of the opened panel. */
-    #page-channel.ch-is-live .stream-layout:has(.video-container.is-vertical) .video-overlay { top: 60px; }
-    #page-channel.ch-is-live .stream-layout:has(.video-container.is-vertical):has(.ch-info-bar.ch-info-open) .video-overlay { visibility: hidden; }
+    #page-channel.ch-is-live .stream-layout:is(.has-vertical-video, .video-container.is-vertical) .video-overlay { top: 60px; }
+    #page-channel.ch-is-live .stream-layout:is(.has-vertical-video, .video-container.is-vertical):has(.ch-info-bar.ch-info-open) .video-overlay { visibility: hidden; }
     #page-channel.ch-is-live .video-container.is-vertical .unmute-pill { left: 50%; top: 42%; transform: translate(-50%, -50%); }
     /* The chat's fold button, back: its header is hidden over a portrait picture, so the button alone is shown, at the
        chat's top right, where the picture is left clear. */
-    #page-channel.ch-is-live .stream-layout:has(.video-container.is-vertical) > .chat-sidebar .chat-header { display: flex !important; position: absolute; z-index: 2; right: 8px; top: 30%; padding: 0; min-height: 0; background: none; border: 0; }
-    #page-channel.ch-is-live .stream-layout:has(.video-container.is-vertical) > .chat-sidebar .chat-header > :not(.ch-chat-collapse) { display: none !important; }
-    #page-channel.ch-is-live .stream-layout:has(.video-container.is-vertical) > .chat-sidebar .chat-header .ch-chat-collapse { width: 44px; height: 44px; margin: 0; border-radius: 50%; color: #fff; background: rgba(0, 0, 0, .45); border: 1px solid rgba(255, 255, 255, .22); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
+    #page-channel.ch-is-live .stream-layout:is(.has-vertical-video, .video-container.is-vertical) > .chat-sidebar .chat-header { display: flex !important; position: absolute; z-index: 2; right: 8px; top: 30%; padding: 0; min-height: 0; background: none; border: 0; }
+    #page-channel.ch-is-live .stream-layout:is(.has-vertical-video, .video-container.is-vertical) > .chat-sidebar .chat-header > :not(.ch-chat-collapse) { display: none !important; }
+    #page-channel.ch-is-live .stream-layout:is(.has-vertical-video, .video-container.is-vertical) > .chat-sidebar .chat-header .ch-chat-collapse { width: 44px; height: 44px; margin: 0; border-radius: 50%; color: #fff; background: rgba(0, 0, 0, .45); border: 1px solid rgba(255, 255, 255, .22); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
     /* Folded: the picture keeps the whole screen (the layout does not shrink to nothing under an absolute player). */
-    #page-channel.ch-is-live.chat-collapsed .stream-layout:has(.video-container.is-vertical) { height: calc(100dvh - var(--navbar-h) - var(--live-tabs-h, 0px)); }
+    #page-channel.ch-is-live.chat-collapsed .stream-layout:is(.has-vertical-video, .video-container.is-vertical) { height: calc(100dvh - var(--navbar-h) - var(--live-tabs-h, 0px)); }
     /* The chat takes a little less of the picture, and its goal bar is a thin strip. */
-    #page-channel.ch-is-live.page .stream-layout:has(.video-container.is-vertical) > .chat-sidebar { height: var(--watch-chat-h, 42%); }
+    #page-channel.ch-is-live.page .stream-layout:is(.has-vertical-video, .video-container.is-vertical) > .chat-sidebar { height: var(--watch-chat-h, 42%); }
 }
 @media (max-width: 768px) and (orientation: portrait) {
-    #page-channel.ch-is-live .stream-layout:has(.video-container.is-vertical) .ch-info-bar:not(.ch-info-open) .ch-username { display: none; }
+    #page-channel.ch-is-live .stream-layout:is(.has-vertical-video, .video-container.is-vertical) .ch-info-bar:not(.ch-info-open) .ch-username { display: none; }
 }
 
 /* ── The robot's panel (OpenVibe.Bot) ──────────────────────────────────────────────────────────────────────────────
@@ -2135,22 +2135,22 @@ html[data-ov-motion=off] #page-channel .ch-tab-panel{scroll-margin-top: calc(var
    - folded, the page reads as before: the player, the channel line, the robot's card, the sections.
    Where the robot's controls go is the player's robot button. A portrait stream keeps its own layout. */
 @media (max-width: 768px) and (orientation: portrait) {
-    #page-channel.ch-is-live .stream-layout:not(:has(.video-container.is-vertical)) > .stream-main { display: contents; }
-    #page-channel.ch-is-live .stream-layout:not(:has(.video-container.is-vertical)) > .stream-main > .video-container { order: 0; flex: none; }
-    #page-channel.ch-is-live .stream-layout:not(:has(.video-container.is-vertical)) > .stream-main > :is(.ch-captions, .ch-info-bar, .ch-weather-widget) { order: 1; flex: none; }
-    #page-channel.ch-is-live .stream-layout:not(:has(.video-container.is-vertical)) > .stream-main > #ch-bot-section { order: 2; flex: none; margin: 0; border-width: 1px 0 0; border-radius: 0; }
-    #page-channel.ch-is-live .stream-layout:not(:has(.video-container.is-vertical)) > .chat-sidebar { order: 3; }
+    #page-channel.ch-is-live .stream-layout:not(.has-vertical-video, .ov-never.ov-never) > .stream-main { display: contents; }
+    #page-channel.ch-is-live .stream-layout:not(.has-vertical-video, .ov-never.ov-never) > .stream-main > .video-container { order: 0; flex: none; }
+    #page-channel.ch-is-live .stream-layout:not(.has-vertical-video, .ov-never.ov-never) > .stream-main > :is(.ch-captions, .ch-info-bar, .ch-weather-widget) { order: 1; flex: none; }
+    #page-channel.ch-is-live .stream-layout:not(.has-vertical-video, .ov-never.ov-never) > .stream-main > #ch-bot-section { order: 2; flex: none; margin: 0; border-width: 1px 0 0; border-radius: 0; }
+    #page-channel.ch-is-live .stream-layout:not(.has-vertical-video, .ov-never.ov-never) > .chat-sidebar { order: 3; }
     /* All the way up: the channel line waits under the chat (fold or lower the chat to see it). */
-    #page-channel.ch-is-live:not(.ch-chat-sized):not(.chat-collapsed) .stream-layout:not(:has(.video-container.is-vertical)) > .stream-main > :is(.ch-info-bar, .ch-weather-widget) { display: none !important; }
+    #page-channel.ch-is-live:not(.ch-chat-sized):not(.chat-collapsed) .stream-layout:not(.has-vertical-video, .ov-never.ov-never) > .stream-main > :is(.ch-info-bar, .ch-weather-widget) { display: none !important; }
     /* A height of its own: the chat keeps it, the channel line takes the rest above it. */
-    #page-channel.ch-is-live.ch-chat-sized:not(.chat-collapsed) .stream-layout:not(:has(.video-container.is-vertical)) > .stream-main > .ch-info-bar { flex: 1 1 0; min-height: 0; overflow-y: auto; align-items: flex-start; align-content: flex-start; }
-    #page-channel.ch-is-live.ch-chat-sized:not(.chat-collapsed) .stream-layout:not(:has(.video-container.is-vertical)) > .stream-main > .ch-weather-widget { display: none !important; }
-    #page-channel.ch-is-live.ch-chat-sized.page .stream-layout:not(:has(.video-container.is-vertical)) > .chat-sidebar { flex: 0 1 var(--chat-sheet-h, 60%); min-height: 120px; }
+    #page-channel.ch-is-live.ch-chat-sized:not(.chat-collapsed) .stream-layout:not(.has-vertical-video, .ov-never.ov-never) > .stream-main > .ch-info-bar { flex: 1 1 0; min-height: 0; overflow-y: auto; align-items: flex-start; align-content: flex-start; }
+    #page-channel.ch-is-live.ch-chat-sized:not(.chat-collapsed) .stream-layout:not(.has-vertical-video, .ov-never.ov-never) > .stream-main > .ch-weather-widget { display: none !important; }
+    #page-channel.ch-is-live.ch-chat-sized.page .stream-layout:not(.has-vertical-video, .ov-never.ov-never) > .chat-sidebar { flex: 0 1 var(--chat-sheet-h, 60%); min-height: 120px; }
 
     /* The chat's header: one row with the grip above it. */
-    #page-channel.ch-is-live .stream-layout:not(:has(.video-container.is-vertical)) > .chat-sidebar > .chat-grip { display: block !important; height: 16px; }
-    #page-channel.ch-is-live .stream-layout:not(:has(.video-container.is-vertical)) > .chat-sidebar > .chat-grip::after { top: 5px; opacity: .8; }
-    #page-channel.ch-is-live .stream-layout:not(:has(.video-container.is-vertical)) > .chat-sidebar .chat-header { padding-top: 12px; min-height: 52px; }
+    #page-channel.ch-is-live .stream-layout:not(.has-vertical-video, .ov-never.ov-never) > .chat-sidebar > .chat-grip { display: block !important; height: 16px; }
+    #page-channel.ch-is-live .stream-layout:not(.has-vertical-video, .ov-never.ov-never) > .chat-sidebar > .chat-grip::after { top: 5px; opacity: .8; }
+    #page-channel.ch-is-live .stream-layout:not(.has-vertical-video, .ov-never.ov-never) > .chat-sidebar .chat-header { padding-top: 12px; min-height: 52px; }
     #page-channel.ch-is-live.ch-has-bot .chat-header .ch-chat-title { display: none; }
     #page-channel.ch-is-live.ch-has-bot .ch-bot-tabs { display: flex; flex: 0 1 auto; }
 
@@ -2159,8 +2159,8 @@ html[data-ov-motion=off] #page-channel .ch-tab-panel{scroll-margin-top: calc(var
     #page-channel.ch-is-live:not(.ch-bot-panel):not(.ch-bot-compact) #ch-bot-section { display: none !important; }
     #page-channel.ch-is-live.ch-bot-compact #ch-bot-container { height: 120px; }
     /* The Robot tab: the panel takes the sheet under the chat's header, and scrolls inside its frame. */
-    #page-channel.ch-is-live.ch-bot-panel:not(.ch-bot-chat):not(.chat-collapsed) .stream-layout:not(:has(.video-container.is-vertical)) > .stream-main > :is(.ch-info-bar, .ch-weather-widget) { display: none !important; }
-    #page-channel.ch-is-live.ch-bot-panel:not(.ch-bot-chat):not(.chat-collapsed) .stream-layout:not(:has(.video-container.is-vertical)) > .stream-main > #ch-bot-section { order: 4; flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; border: 0; }
+    #page-channel.ch-is-live.ch-bot-panel:not(.ch-bot-chat):not(.chat-collapsed) .stream-layout:not(.has-vertical-video, .ov-never.ov-never) > .stream-main > :is(.ch-info-bar, .ch-weather-widget) { display: none !important; }
+    #page-channel.ch-is-live.ch-bot-panel:not(.ch-bot-chat):not(.chat-collapsed) .stream-layout:not(.has-vertical-video, .ov-never.ov-never) > .stream-main > #ch-bot-section { order: 4; flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; border: 0; }
     #page-channel.ch-is-live.ch-bot-panel:not(.ch-bot-chat):not(.chat-collapsed) #ch-bot-container { flex: 1 1 0; min-height: 0; height: auto !important; max-height: none; }
     #page-channel.ch-is-live.ch-bot-panel:not(.ch-bot-chat):not(.chat-collapsed).page .stream-layout > .chat-sidebar { flex: none; min-height: 0; }
     #page-channel.ch-is-live.ch-bot-panel:not(.ch-bot-chat):not(.chat-collapsed) .stream-layout > .chat-sidebar > :not(.chat-header):not(.chat-settings-panel):not(.chat-users-panel) { display: none !important; }
@@ -2175,18 +2175,18 @@ html[data-ov-motion=off] #page-channel .ch-tab-panel{scroll-margin-top: calc(var
     #page-channel.ch-is-live.ch-bot-panel.ch-bot-chat:not(.chat-collapsed) #ch-bot-section { display: none !important; }
 
     /* Folded: the round chat button in the corner brings the sheet back. */
-    body:has(#page-channel.active.ch-is-live) .ch-chat-reopen:not([hidden]) { width: 56px; height: 56px; padding: 0; gap: 0; justify-content: center; border-radius: 50%; }
-    body:has(#page-channel.active.ch-is-live) .ch-chat-reopen span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
-    body:has(#page-channel.active.ch-is-live) .ch-chat-reopen :is(.fa-comments, svg) { font-size: 22px; width: 22px; height: 22px; }
-    body:has(#page-channel.active.ch-is-live) .ch-chat-reopen .fa-angles-left { display: none !important; }
+    body:is(.on-channel-live, #page-channel.active.ch-is-live) .ch-chat-reopen:not([hidden]) { width: 56px; height: 56px; padding: 0; gap: 0; justify-content: center; border-radius: 50%; }
+    body:is(.on-channel-live, #page-channel.active.ch-is-live) .ch-chat-reopen span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+    body:is(.on-channel-live, #page-channel.active.ch-is-live) .ch-chat-reopen :is(.fa-comments, svg) { font-size: 22px; width: 22px; height: 22px; }
+    body:is(.on-channel-live, #page-channel.active.ch-is-live) .ch-chat-reopen .fa-angles-left { display: none !important; }
 
     /* The channel line, folded: who, live now and the title, with its actions; a tap on it (the chevron) opens the
        followers, the alert, the labels and the links. The goal bar is one slim row. */
-    #page-channel.ch-is-live .stream-layout:not(:has(.video-container.is-vertical)) .ch-info-bar:not(.ch-info-open) :is(.ch-username, .ch-meta, .ch-social-pills, .stream-labels) { display: none !important; }
-    #page-channel.ch-is-live .stream-layout:not(:has(.video-container.is-vertical)) .ch-info-bar { row-gap: 8px; padding: 8px 12px; }
-    #page-channel.ch-is-live .stream-layout:not(:has(.video-container.is-vertical)) .ch-info-bar-top h2::after { content: ""; display: inline-block; flex: none; width: 6px; height: 6px; margin: 0 0 3px 8px; border: solid currentColor; border-width: 0 2px 2px 0; transform: rotate(45deg); opacity: .6; transition: transform .2s; }
-    #page-channel.ch-is-live .stream-layout:not(:has(.video-container.is-vertical)) .ch-info-bar.ch-info-open .ch-info-bar-top h2::after { transform: translateY(3px) rotate(225deg); }
-    #page-channel.ch-is-live .stream-layout:not(:has(.video-container.is-vertical)) .ch-info-bar-right :is(.ch-action, .ovk-ask) { height: 40px; min-height: 40px; }
+    #page-channel.ch-is-live .stream-layout:not(.has-vertical-video, .ov-never.ov-never) .ch-info-bar:not(.ch-info-open) :is(.ch-username, .ch-meta, .ch-social-pills, .stream-labels) { display: none !important; }
+    #page-channel.ch-is-live .stream-layout:not(.has-vertical-video, .ov-never.ov-never) .ch-info-bar { row-gap: 8px; padding: 8px 12px; }
+    #page-channel.ch-is-live .stream-layout:not(.has-vertical-video, .ov-never.ov-never) .ch-info-bar-top h2::after { content: ""; display: inline-block; flex: none; width: 6px; height: 6px; margin: 0 0 3px 8px; border: solid currentColor; border-width: 0 2px 2px 0; transform: rotate(45deg); opacity: .6; transition: transform .2s; }
+    #page-channel.ch-is-live .stream-layout:not(.has-vertical-video, .ov-never.ov-never) .ch-info-bar.ch-info-open .ch-info-bar-top h2::after { transform: translateY(3px) rotate(225deg); }
+    #page-channel.ch-is-live .stream-layout:not(.has-vertical-video, .ov-never.ov-never) .ch-info-bar-right :is(.ch-action, .ovk-ask) { height: 40px; min-height: 40px; }
     #page-channel.ch-is-live .chat-sidebar .ch-goal-widget { padding: 4px 6px 0; }
     #page-channel.ch-is-live .chat-sidebar .cgw-goal { height: 32px; }
     #page-channel.ch-is-live .chat-sidebar .cgw-track .cgw-goal { margin-bottom: 4px; }
@@ -2329,22 +2329,22 @@ html[data-ov-motion="off"] #page-channel.ch-tabbed .ch-tab-panel.is-entering { a
    (channel-chat-resize.js), so the line is never cut in half. ─── */
 @media (max-width: 768px) and (orientation: portrait) {
     #page-channel.ch-is-live:not(.chat-collapsed) .channel-below-fold { display: none; }
-    body:has(#page-channel.active.ch-is-live:not(.chat-collapsed)) #ov-footer { display: none; }
+    body:is(.on-channel-live-chat, #page-channel.active.ch-is-live:not(.chat-collapsed)) #ov-footer { display: none; }
     #page-channel.ch-is-live.chat-collapsed #ch-bot-section { display: none !important; }
-    #page-channel.ch-is-live .stream-layout:not(:has(.video-container.is-vertical)) > .chat-sidebar > .chat-grip { position: absolute; top: 0; height: 14px; width: 72px; margin-left: -36px; z-index: 4; }
-    #page-channel.ch-is-live .stream-layout:not(:has(.video-container.is-vertical)) > .chat-sidebar > .chat-grip::after { top: 4px; width: 32px; height: 4px; margin-left: -16px; border-radius: 4px; }
-    #page-channel.ch-is-live .stream-layout:not(:has(.video-container.is-vertical)) > .chat-sidebar .chat-header { padding-top: 4px; padding-bottom: 4px; min-height: 44px; }
+    #page-channel.ch-is-live .stream-layout:not(.has-vertical-video, .ov-never.ov-never) > .chat-sidebar > .chat-grip { position: absolute; top: 0; height: 14px; width: 72px; margin-left: -36px; z-index: 4; }
+    #page-channel.ch-is-live .stream-layout:not(.has-vertical-video, .ov-never.ov-never) > .chat-sidebar > .chat-grip::after { top: 4px; width: 32px; height: 4px; margin-left: -16px; border-radius: 4px; }
+    #page-channel.ch-is-live .stream-layout:not(.has-vertical-video, .ov-never.ov-never) > .chat-sidebar .chat-header { padding-top: 4px; padding-bottom: 4px; min-height: 44px; }
     #page-channel.ch-is-live .chat-sidebar .ch-goal-widget { padding: 3px 6px 0; }
     #page-channel.ch-is-live .chat-sidebar .cgw-goal { height: 30px; }
     #page-channel.ch-is-live .chat-sidebar .cgw-track .cgw-goal { margin-bottom: 3px; }
     /* The channel line above a lowered sheet: its own height, never a sliver. */
-    #page-channel.ch-is-live.ch-chat-sized:not(.chat-collapsed) .stream-layout:not(:has(.video-container.is-vertical)) > .stream-main > .ch-info-bar { overflow: hidden; }
+    #page-channel.ch-is-live.ch-chat-sized:not(.chat-collapsed) .stream-layout:not(.has-vertical-video, .ov-never.ov-never) > .stream-main > .ch-info-bar { overflow: hidden; }
 }
 
 /* ── Compact view (chat settings → Compact view, kept with the person's chat settings; ask 366): the sheet's header,
    the goal bar and the composer's padding take less, so the messages get the room. ─── */
 @media (max-width: 768px) and (orientation: portrait) {
-    html.chat-compact #page-channel.ch-is-live .stream-layout:not(:has(.video-container.is-vertical)) > .chat-sidebar .chat-header { padding-top: 6px; padding-bottom: 2px; min-height: 40px; }
+    html.chat-compact #page-channel.ch-is-live .stream-layout:not(.has-vertical-video, .ov-never.ov-never) > .chat-sidebar .chat-header { padding-top: 6px; padding-bottom: 2px; min-height: 40px; }
     html.chat-compact #page-channel.ch-is-live .chat-sidebar .ch-bot-tabs button { min-height: 32px; }
     html.chat-compact #page-channel.ch-is-live .chat-sidebar .cgw-goal { height: 22px; }
     html.chat-compact #page-channel.ch-is-live .chat-sidebar .cgw-goal * { font-size: .66rem; }
@@ -2355,15 +2355,15 @@ html[data-ov-motion="off"] #page-channel.ch-tabbed .ch-tab-panel.is-entering { a
    get a little more space out of it"): who on the first line, then live, watching and the title on one line, then the
    actions in one slim row with Share as its icon. About a hundred pixels instead of a hundred and fifty. ─── */
 @media (max-width: 768px) and (orientation: portrait) {
-    #page-channel.ch-is-live .stream-layout:not(:has(.video-container.is-vertical)) .ch-info-bar { padding: 8px 12px 10px; row-gap: 8px; }
-    #page-channel.ch-is-live .stream-layout:not(:has(.video-container.is-vertical)) .ch-info-bar .ch-avatar { width: 40px; height: 40px; }
-    #page-channel.ch-is-live .stream-layout:not(:has(.video-container.is-vertical)) .ch-info-bar:not(.ch-info-open) .ch-info-bar-text { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 6px; row-gap: 1px; min-width: 0; }
-    #page-channel.ch-is-live .stream-layout:not(:has(.video-container.is-vertical)) .ch-info-bar:not(.ch-info-open) .ch-info-bar-top { flex: 0 0 100%; }
-    #page-channel.ch-is-live .stream-layout:not(:has(.video-container.is-vertical)) .ch-info-bar:not(.ch-info-open) :is(.ch-presence, .ch-stream-title) { margin: 0; font-size: .82rem; line-height: 1.35; }
-    #page-channel.ch-is-live .stream-layout:not(:has(.video-container.is-vertical)) .ch-info-bar:not(.ch-info-open) .ch-stream-title { min-width: 0; color: var(--text-secondary); overflow-wrap: anywhere; }
-    #page-channel.ch-is-live .stream-layout:not(:has(.video-container.is-vertical)) .ch-info-bar:not(.ch-info-open) .ch-presence:not(:empty) + .ch-meta + .ch-social-pills + .ch-stream-title::before,
-    #page-channel.ch-is-live .stream-layout:not(:has(.video-container.is-vertical)) .ch-info-bar:not(.ch-info-open) .ch-presence:not(:empty) ~ .ch-stream-title::before { content: "·"; margin-right: 6px; color: var(--text-muted); }
-    #page-channel.ch-is-live .stream-layout:not(:has(.video-container.is-vertical)) .ch-info-bar-right :is(.ch-action, .ovk-ask) { height: 38px; min-height: 38px; }
-    #page-channel.ch-is-live .stream-layout:not(:has(.video-container.is-vertical)) .ch-info-bar-right #ch-btn-share { width: 38px; padding: 0; justify-content: center; }
-    #page-channel.ch-is-live .stream-layout:not(:has(.video-container.is-vertical)) .ch-info-bar-right #ch-btn-share > span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+    #page-channel.ch-is-live .stream-layout:not(.has-vertical-video, .ov-never.ov-never) .ch-info-bar { padding: 8px 12px 10px; row-gap: 8px; }
+    #page-channel.ch-is-live .stream-layout:not(.has-vertical-video, .ov-never.ov-never) .ch-info-bar .ch-avatar { width: 40px; height: 40px; }
+    #page-channel.ch-is-live .stream-layout:not(.has-vertical-video, .ov-never.ov-never) .ch-info-bar:not(.ch-info-open) .ch-info-bar-text { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 6px; row-gap: 1px; min-width: 0; }
+    #page-channel.ch-is-live .stream-layout:not(.has-vertical-video, .ov-never.ov-never) .ch-info-bar:not(.ch-info-open) .ch-info-bar-top { flex: 0 0 100%; }
+    #page-channel.ch-is-live .stream-layout:not(.has-vertical-video, .ov-never.ov-never) .ch-info-bar:not(.ch-info-open) :is(.ch-presence, .ch-stream-title) { margin: 0; font-size: .82rem; line-height: 1.35; }
+    #page-channel.ch-is-live .stream-layout:not(.has-vertical-video, .ov-never.ov-never) .ch-info-bar:not(.ch-info-open) .ch-stream-title { min-width: 0; color: var(--text-secondary); overflow-wrap: anywhere; }
+    #page-channel.ch-is-live .stream-layout:not(.has-vertical-video, .ov-never.ov-never) .ch-info-bar:not(.ch-info-open) .ch-presence:not(:empty) + .ch-meta + .ch-social-pills + .ch-stream-title::before,
+    #page-channel.ch-is-live .stream-layout:not(.has-vertical-video, .ov-never.ov-never) .ch-info-bar:not(.ch-info-open) .ch-presence:not(:empty) ~ .ch-stream-title::before { content: "·"; margin-right: 6px; color: var(--text-muted); }
+    #page-channel.ch-is-live .stream-layout:not(.has-vertical-video, .ov-never.ov-never) .ch-info-bar-right :is(.ch-action, .ovk-ask) { height: 38px; min-height: 38px; }
+    #page-channel.ch-is-live .stream-layout:not(.has-vertical-video, .ov-never.ov-never) .ch-info-bar-right #ch-btn-share { width: 38px; padding: 0; justify-content: center; }
+    #page-channel.ch-is-live .stream-layout:not(.has-vertical-video, .ov-never.ov-never) .ch-info-bar-right #ch-btn-share > span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 }

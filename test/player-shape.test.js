@@ -63,7 +63,8 @@ const near = (a, b) => Math.abs(a - b) < 0.001;
 {
     const { api, store } = load();
     const video = element('video');
-    const box = element('div', { clientWidth: 1120, clientHeight: 630 });
+    const layout = element('div');
+    const box = element('div', { clientWidth: 1120, clientHeight: 630, closest: (sel) => (sel === '.stream-layout' ? layout : null) });
     api.watch(video, box, { key: 'goosely' });
     assert.ok(near(ratio(box), 16 / 9), 'before the picture: 16:9 (the first paint keeps its box)');
     assert.strictEqual(box.dataset.shape, 'landscape');
@@ -74,6 +75,7 @@ const near = (a, b) => Math.abs(a - b) < 0.001;
         assert.strictEqual(box.dataset.shape, shape, `${w}x${h} is ${shape}`);
     }
     assert.ok(box.classList.contains('is-vertical'), 'a portrait picture still marks is-vertical (the chat width keys on it)');
+    assert.ok(layout.classList.contains('has-vertical-video'), 'and its stream layout says so (channel.css keys on it instead of :has())');
     // A lowered resolution keeps the shape: nothing moves (WebRTC on a weak network: 720x1280 → 540x960 → 360x640 → 358x640).
     const before = box.vars['--video-ar'];
     for (const [w, h] of [[540, 960], [360, 640], [358, 640]]) { show(w, h); assert.strictEqual(box.vars['--video-ar'], before, `${w}x${h} keeps the box`); }
@@ -81,6 +83,7 @@ const near = (a, b) => Math.abs(a - b) < 0.001;
     show(1280, 720);
     assert.ok(near(ratio(box), 16 / 9));
     assert.ok(!box.classList.contains('is-vertical'));
+    assert.ok(!layout.classList.contains('has-vertical-video'), 'turned back, the layout is not vertical either');
     // A broken size is not a shape: the ratio is held to 9:22 .. 32:10.
     show(4000, 100);
     assert.ok(ratio(box) <= 3.2);
