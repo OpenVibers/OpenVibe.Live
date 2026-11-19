@@ -629,7 +629,7 @@ function _hidePlayerPlaceholder(surface = (playerType === 'jsmpeg' ? 'canvas' : 
     }
     // Real-user measurements (js/ov-rum.js): when the first live picture showed, for a channel opened directly.
     if (window.__ovFirstFrameAt == null) {
-        try { const nav = performance.getEntriesByType('navigation')[0]; if (nav && new URL(nav.name).pathname === location.pathname) window.__ovFirstFrameAt = Math.round(performance.now()); } catch { /* */ }
+        try { const nav = performance.getEntriesByType('navigation')[0]; if (nav && new URL(nav.name).pathname === location.pathname) { window.__ovFirstFrameAt = Math.round(performance.now()); window.__ovFirstFrameVia = playerType; } } catch { /* */ }
     }
 }
 
@@ -990,6 +990,12 @@ function initPlayer(stream) {
     _applyLoaderThumb(stream);
     const proto = stream.protocol || 'jsmpeg';
     const endpoint = stream.endpoint || {};
+    // Real-user measurements (js/ov-rum.js): when the player started, for a channel opened directly, so the time to the
+    // first picture splits into the page and its data before this and the media after it (2026-11-19: p75 8-10 s, and
+    // nothing said where).
+    if (window.__ovPlayerStartAt == null) {
+        try { const nav = performance.getEntriesByType('navigation')[0]; if (nav && new URL(nav.name).pathname === location.pathname) window.__ovPlayerStartAt = Math.round(performance.now()); } catch { /* not measured */ }
+    }
 
     _resetPlayerLoadState(proto, stream);
     _setPlayerStatus({

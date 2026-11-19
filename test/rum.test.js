@@ -54,6 +54,12 @@ const { createRum, pageKind, deviceClass } = require('../server/web/rum');
     assert.strictEqual(snap.pages['channel|desktop'].ttff, undefined, 'no live picture: no ttff');
     await beacon({ path: '/@goosely', w: 1440, ttff: 1800 }, '10.0.1.4');
     assert.strictEqual(rum.snapshot().pages['channel|desktop'].ttff.p50, 1800, 'time to the first live picture');
+    // Where it went: when the player started, and the first picture under the path that showed it.
+    await beacon({ path: '/@goosely', w: 1440, ttff: 2600, tplayer: 900, ttff_hls: 2600 }, '10.0.1.5');
+    const split = rum.snapshot().pages['channel|desktop'];
+    assert.strictEqual(split.tplayer.p50, 900, 'the player started at 900 ms');
+    assert.strictEqual(split.ttff_hls.p50, 2600, 'HLS showed its first picture at 2.6 s');
+    assert.strictEqual(split.ttff_webrtc, undefined, 'no WebRTC sample, no WebRTC number');
     assert.deepStrictEqual(snap.errors.map((e) => e.message), ['TypeError: x is undefined', 'b', 'c'], 'at most three errors per beacon');
     // The gauge: p75 per metric, only for reservoirs with at least 5 samples.
     const g = rum.p75Gauge();
