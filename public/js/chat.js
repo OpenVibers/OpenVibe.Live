@@ -1141,7 +1141,10 @@ async function hydrateActiveChatHistory(streamId, { clear = false } = {}) {
         // raw codes (e.g. "PepeD"). Deduped with the connect-time load, so it's a single fetch; it runs
         // alongside the history request instead of before it.
         const emotes = (typeof loadEmotes === 'function') ? Promise.resolve(loadEmotes(streamId)).catch(() => { }) : null;
-        [payload] = await Promise.all([_fetchHistoryPayload(streamId), emotes, chatEl.isGlobal ? _friendlyEnsureRules() : null]);
+        // At most 1.5 s on the emotes (2026-11-20: Chat's emote list took 8 s while a provider did not answer, and every
+        // chat's history waited on it): a few codes as text beat an empty chat.
+        const emotesOrLate = emotes ? Promise.race([emotes, new Promise((r) => setTimeout(r, 1500))]) : null;
+        [payload] = await Promise.all([_fetchHistoryPayload(streamId), emotesOrLate, chatEl.isGlobal ? _friendlyEnsureRules() : null]);
     } catch {
         payload = null;
     } finally {
