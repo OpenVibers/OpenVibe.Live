@@ -26,7 +26,7 @@ function createLiveGlobal({ db, deliver, base = 'https://openvibe.live', now = (
 
     /** The stream as it is now: live, 18+, banned, an agent slot. */
     async function current(streamId) {
-        return await db.get(`SELECT s.id, s.user_id, s.is_live, s.ended_at, s.is_nsfw, COALESCE(ms.kind, 'normal') AS slot_kind,
+        return await db.get(`SELECT s.id, s.user_id, s.is_live, s.ended_at, s.is_nsfw, s.thumbnail_url, COALESCE(ms.kind, 'normal') AS slot_kind,
                 u.username, u.display_name, u.is_banned, COALESCE(c.force_nsfw, 0) AS force_nsfw
             FROM streams s
             JOIN users u ON u.id = s.user_id
@@ -52,12 +52,14 @@ function createLiveGlobal({ db, deliver, base = 'https://openvibe.live', now = (
         if (times.length >= GLOBAL_PER_HOUR) return { posted: false, why: 'the hour is full' };
         const url = `${String(base).replace(/\/+$/, '')}/@${encodeURIComponent(s.username)}`;
         const name = String(s.display_name || s.username).replace(/\s+/g, ' ').trim().slice(0, 60) || s.username;
+        // The stream's own picture by now (a minute in), for the card's small preview (the owner's register #812).
+        const thumb = /^\/api\/thumbnails\/[A-Za-z0-9._-]{1,120}$/.test(String(s.thumbnail_url || '')) ? `${String(base).replace(/\/+$/, '')}${s.thumbnail_url}` : null;
         lastByChannel.set(s.user_id, t);
         times.push(t);
         try {
             await deliver({
                 user_id: null, username: 'OpenVibe.Live', message: `\u{1F534} ${name} is live. Share the stream: ${url}`.slice(0, 480),
-                message_type: 'system', metadata: { kind: 'live_link', url }, is_global: true, key: `live:link:${id}:global`,
+                message_type: 'system', metadata: { kind: 'live_link', url, ...(thumb ? { thumb } : {}) }, is_global: true, key: `live:link:${id}:global`,
             });
             return { posted: true };
         } catch (e) {
