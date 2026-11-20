@@ -1618,6 +1618,7 @@ async function start() {
         try { require('./ai/ai-moments-job').start(); } catch (e) { console.warn('[AI] moments job not started:', e.message); }
         try { require('./ai/auto-clip-job').start(); } catch (e) { console.warn('[AI] auto-clip job not started:', e.message); }
         try { require('./ai/clip-title').start(); } catch (e) { console.warn('[AI] clip-title job not started:', e.message); }
+        try { require('./rundown/vod-title').start(); } catch (e) { console.warn('[Rundown] recording-title job not started:', e.message); }
         // A stream recorded in parts is one video on Media (streaming/recordings.js): synced, closed, backfilled.
         try { require('./streaming/recordings').start(); } catch (e) { console.warn('[Recordings] sweep not started:', e.message); }
         // When each picture-in-picture was on screen, so a VOD draws it again (streaming/pip-history.js).
