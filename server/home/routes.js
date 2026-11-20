@@ -362,14 +362,30 @@ async function buildHero(timing) {
     return payload;
 }
 
+// The hero is the same for every visitor (it says max-age=20), and was built afresh on every ask: ~50-70 ms on the host,
+// 1,206 asks a day at 208 ms on average (11-20). One build is kept HERO_FRESH_MS and serves everyone; an older one (up to
+// HERO_STALE_MS) is served while the next is built, one build at a time; past that, or before the first, the ask waits.
+const HERO_FRESH_MS = 15_000;
+const HERO_STALE_MS = 120_000;
+let heroCache = null;      // { at, payload, timing }
+let heroBuilding = null;
+function heroPayload() {
+    const age = heroCache ? Date.now() - heroCache.at : Infinity;
+    if (age >= HERO_FRESH_MS && !heroBuilding) {
+        const timing = {};
+        heroBuilding = buildHero(timing).then((payload) => { heroCache = { at: Date.now(), payload, timing }; return heroCache; });
+        heroBuilding.catch(() => {}).finally(() => { heroBuilding = null; });
+    }
+    return age < HERO_STALE_MS ? Promise.resolve(heroCache) : heroBuilding;
+}
+
 router.get('/hero', async (req, res) => {
     try {
         res.set('Cache-Control', 'public, max-age=20');
-        const timing = {};
-        const payload = await buildHero(timing);
-        // Where the time went, visible in devtools and to curl -I. Durations only, no data.
-        res.set('Server-Timing', Object.entries(timing).map(([k, v]) => `${k};dur=${v}`).join(', '));
-        res.json(payload);
+        const hit = await heroPayload();
+        // Where the time went when it was built, visible in devtools and to curl -I. Durations only, no data.
+        res.set('Server-Timing', [...Object.entries(hit.timing).map(([k, v]) => `${k};dur=${v}`), `age;dur=${Date.now() - hit.at}`].join(', '));
+        res.json(hit.payload);
     } catch (err) {
         console.error('[Home] hero error:', err.message);
         res.status(500).json({ error: 'Failed to load hero' });
@@ -799,5 +815,5 @@ module.exports.heroMoments = heroMoments;
 // the first home page load after it used to wait on every upstream call cold (~2.3s measured right
 // after a deploy). The timer is unref'd so it never holds the process open.
 // A restore drill runs no timers (and its hero would only find Media and Network down).
-if (!require('../drill').enabled) setTimeout(() => { buildHero(null).catch(() => {}); }, 15000).unref?.();
+if (!require('../drill').enabled) setTimeout(() => { Promise.resolve(heroPayload()).catch(() => {}); }, 15000).unref?.();
 module.exports._loadableShot = _loadableShot;
