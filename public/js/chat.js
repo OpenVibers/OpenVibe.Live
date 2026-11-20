@@ -2908,6 +2908,15 @@ function _chatEvSafeUrl(u) {
     } catch { /* not a URL */ }
     return null;
 }
+/** A go-live card's preview: only Live's own stream pictures (/api/thumbnails/<name> on openvibe.live or this site). */
+function _chatEvThumb(u) {
+    try {
+        const x = new URL(String(u || ''), window.location.origin);
+        const h = x.hostname.toLowerCase();
+        if (!(x.origin === window.location.origin || (x.protocol === 'https:' && (h === 'openvibe.live' || h.endsWith('.openvibe.live'))))) return null;
+        return /^\/api\/thumbnails\/[A-Za-z0-9._-]{1,120}$/.test(x.pathname) && !x.search ? x.href : null;
+    } catch { return null; }
+}
 function _chatEventOf(m) {
     if (!m || m.message_type !== 'system') return null;
     let meta = null; try { meta = typeof m.metadata === 'string' ? JSON.parse(m.metadata) : m.metadata; } catch { meta = null; }
@@ -2919,7 +2928,7 @@ function _chatEventOf(m) {
         if (!url) return null;
         const handle = (url.match(/\/@([^/?#]+)/) || [])[1];
         const name = (live && live[1]) || (handle ? decodeURIComponent(handle) : 'Someone');
-        return { kind: 'live', id: m.id, name, url, at, key: `live:${name.toLowerCase()}` };
+        return { kind: 'live', id: m.id, name, url, at, key: `live:${name.toLowerCase()}`, thumb: _chatEvThumb(meta && meta.thumb) };
     }
     const rd = text.match(_CHAT_EV_RUNDOWN_RE);
     if ((meta && meta.rundown_episode) || rd) {
@@ -2961,13 +2970,14 @@ function _chatEvCss() {
 .chat-ev-what{flex:none}
 .chat-ev-title{display:block;min-width:0;color:var(--text-secondary,#a8b3c4);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .chat-ev-meta{flex:none;margin-left:.2em;font-size:.72rem;color:var(--text-muted,#7d8aa0)}
-.chat-ev-acts{display:flex;align-items:center}
+.chat-ev-acts{display:flex;align-items:center;gap:6px}
+.chat-ev-thumb{display:block;width:48px;height:27px;border-radius:6px;object-fit:cover;flex:none;background:color-mix(in srgb,var(--ev) 14%,transparent);box-shadow:0 0 0 1px color-mix(in srgb,var(--ev) 35%,transparent)}
 .chat-ev-cta{display:inline-flex;align-items:center;gap:5px;min-height:28px;padding:0 11px;border-radius:999px;background:var(--ev);color:#fff;font-weight:700;font-size:.74rem;text-decoration:none;white-space:nowrap;transition:transform .12s ease,filter .15s ease}
 .chat-ev-cta::after{content:'';position:absolute;inset:-4px 0}
 .chat-ev-cta i{font-size:.68rem}
 .chat-ev:hover .chat-ev-cta{filter:brightness(1.1)}.chat-ev:active .chat-ev-cta{transform:scale(.95)}
 .chat-ev-cta:focus-visible{outline:2px solid var(--ev);outline-offset:2px}
-@container (max-width:260px){.chat-ev-cta{padding:0;width:28px;justify-content:center;font-size:0}.chat-ev-cta i{font-size:.7rem}.chat-ev-meta{display:none}}
+@container (max-width:260px){.chat-ev-cta{padding:0;width:28px;justify-content:center;font-size:0}.chat-ev-cta i{font-size:.7rem}.chat-ev-meta{display:none}.chat-ev-thumb{display:none}}
 .chat-ev--here{grid-template-columns:auto minmax(0,1fr);min-height:30px}.chat-ev--here .chat-ev-icon{width:22px;height:22px}
 `;
     document.head.appendChild(st);
@@ -3083,6 +3093,16 @@ function renderChatEventCard(ev, opts = {}) {
             if (u.origin === window.location.origin && typeof handleLinkClick === 'function') handleLinkClick(e, u.pathname + u.search + u.hash);
         } catch { /* a normal link */ }
     });
+    // A small picture of the stream beside Watch (the owner's register #812), when Live sent one; never on a narrow chat.
+    if (ev.kind === 'live' && ev.thumb) {
+        const pic = document.createElement('img');
+        pic.className = 'chat-ev-thumb';
+        pic.alt = ''; pic.loading = 'lazy'; pic.decoding = 'async';
+        pic.setAttribute('aria-hidden', 'true');
+        pic.src = ev.thumb;
+        pic.onerror = () => pic.remove();
+        acts.append(pic);
+    }
     acts.append(cta);
     if (here) el.append(icon, body);
     else el.append(icon, body, acts);

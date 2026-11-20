@@ -44,9 +44,20 @@ const CARD_RE = /^\s*\u{1F534}\s*(.+?) is live\. Share the stream:\s*(https?:\/\
         const l = sent[0];
         assert.strictEqual(l.message, '\u{1F534} Maticus is live. Share the stream: https://openvibe.live/@maticus');
         assert.ok(CARD_RE.test(l.message), 'chat.js reads it as the go-live card');
-        assert.deepStrictEqual(l.metadata, { kind: 'live_link', url: 'https://openvibe.live/@maticus' });
+        assert.deepStrictEqual(l.metadata, { kind: 'live_link', url: 'https://openvibe.live/@maticus' }, 'no picture yet: no preview');
         assert.deepStrictEqual([l.is_global, l.user_id, l.username, l.message_type, l.key], [true, null, 'OpenVibe.Live', 'system', 'live:link:100:global']);
         assert.strictEqual(l.stream_id, undefined, 'global, not the channel\'s chat');
+    });
+
+    await check('a stream with its picture by now: the card carries it for the preview (register #812); never another address', async () => {
+        await d.prepare("UPDATE streams SET thumbnail_url = '/api/thumbnails/live_101_1.jpg' WHERE id = 101").run();
+        await d.prepare("UPDATE streams SET thumbnail_url = 'https://evil.example/x.jpg' WHERE id = 140").run();
+        const mine = [];
+        const t2 = createLiveGlobal({ db, deliver: async (b) => { mine.push(b); return 1; }, base: 'https://openvibe.live/', now: () => t, log: { warn() {} } });
+        assert.deepStrictEqual(await t2.post(101), { posted: true });
+        assert.deepStrictEqual(mine[0].metadata, { kind: 'live_link', url: 'https://openvibe.live/@maticus', thumb: 'https://openvibe.live/api/thumbnails/live_101_1.jpg' });
+        assert.deepStrictEqual(await t2.post(140), { posted: true });
+        assert.strictEqual(mine[1].metadata.thumb, undefined, 'not a Live picture: no preview');
     });
 
     await check('not a word for 18+, the channel\'s forced 18+, a banned account, an agent stream, or a stream already gone', async () => {

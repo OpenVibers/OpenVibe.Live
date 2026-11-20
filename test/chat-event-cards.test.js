@@ -25,6 +25,14 @@ const live = _chatEventOf({ id: 7, message_type: 'system', message: '\u{1F534} m
 assert.deepStrictEqual({ kind: live.kind, name: live.name, url: live.url, key: live.key },
     { kind: 'live', name: 'moosely', url: 'https://openvibe.live/@moosely', key: 'live:moosely' });
 
+// The stream's picture for the card's preview (register #812): Live's own /api/thumbnails/<name> only.
+const pic = (thumb) => _chatEventOf({ message_type: 'system', message: 'x', metadata: { kind: 'live_link', url: 'https://openvibe.live/@moosely', thumb } }).thumb;
+assert.strictEqual(pic('https://openvibe.live/api/thumbnails/live_3059_17.jpg'), 'https://openvibe.live/api/thumbnails/live_3059_17.jpg');
+assert.strictEqual(pic('/api/thumbnails/live_3059_17.jpg'), 'https://openvibe.live/api/thumbnails/live_3059_17.jpg', 'same-site path');
+for (const bad of ['https://evil.example/api/thumbnails/a.jpg', 'http://openvibe.live/api/thumbnails/a.jpg', 'https://openvibe.live/avatar/x', 'https://openvibe.live/api/thumbnails/a.jpg?x=1', 'javascript:alert(1)', undefined]) {
+    assert.strictEqual(pic(bad), null, `no preview from ${bad}`);
+}
+assert.strictEqual(live.thumb, null, 'none sent, none drawn');
 const old = _chatEventOf({ message_type: 'system', message: '\u{1F534} AmberFieraGames37 is live. Share the stream: https://openvibe.live/@AmberFieraGames37' });
 assert.strictEqual(old.kind, 'live'); assert.strictEqual(old.name, 'AmberFieraGames37');
 
