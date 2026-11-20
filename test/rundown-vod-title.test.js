@@ -65,6 +65,33 @@ const vt = require('../server/rundown/vod-title');
         const out = await vt.titleRecordings({ streamIds: [802] });
         assert.deepStrictEqual([out.named, updates[updates.length - 1]], [1, [9802, 'Ten Percent Earring Whoops']]);
     });
+    // 11-20: no episode to lend a title (28 of the feed's first 240 cards were "Recording: <name>'s stream").
+    await check('a default-named public recording with no episode is named from its stream\'s AI overview, once', async () => {
+        vt._reset();
+        const stream = async (sid, title, overview) => d.prepare(`INSERT INTO streams (id, user_id, title, is_live, started_at, ended_at, ai_overview_short)
+            OVERRIDING SYSTEM VALUE VALUES (?, 80, ?, 0, ?, ?, ?)`).run(sid, title, aired, aired, overview);
+        await stream(811, "iZoR_One's Stream", 'Lava-dungeon boss fights with a facecam and chat on the left.');
+        await stream(812, 'Boss night', 'Typed title, left alone.');
+        await stream(813, "iZoR_One's Stream", 'A private recording.');
+        await stream(814, "iZoR_One's Stream", 'The AI writes something explicit.');
+        await stream(815, "iZoR_One's Stream", null);
+        const vodsBy = { 811: { id: 9811, title: "iZoR_One's Stream" }, 812: { id: 9812, title: 'Boss night' }, 814: { id: 9814, title: "iZoR_One's Stream" } };
+        const lookups = require('../server/media-proxy/lookups');
+        lookups.publicVodsForStreams = async (ids) => new Map(ids.map(Number).filter((id) => vodsBy[id]).map((id) => [id, vodsBy[id]]));
+        const asked = [];
+        const gate = require('../server/ai/ai-analysis');
+        gate.isEnabled = async () => true; gate.withinBudget = async () => true;
+        const ai = require('../server/ai/ai-service');
+        ai.structured = async (name, input) => { asked.push([name, input.summaries]); return { titles: input.summaries.map((x, index) => ({ index, title: /explicit/.test(x) ? 'Having sex on stream' : 'Lava Dungeon Boss Rush' })) }; };
+        const before = updates.length;
+        const out = await vt.titleFromOverviews();
+        assert.deepStrictEqual(asked.map(([n, list]) => [n, list.length]), [['live.stream.titles', 2]], 'one call, the two default-named public ones');
+        assert.deepStrictEqual(updates.slice(before), [[9811, 'Lava Dungeon Boss Rush']], JSON.stringify(updates.slice(before)));
+        assert.strictEqual((await d.prepare('SELECT ai_title FROM streams WHERE id = 811').get()).ai_title, 'Lava Dungeon Boss Rush', 'the stream keeps it too');
+        assert.deepStrictEqual([out.named, out.kept], [1, 1], 'the explicit one is kept (a typed title never reaches the AI)');
+        const again = await vt.titleFromOverviews();
+        assert.deepStrictEqual([again.named, asked.length], [0, 1], 'decided once: no second call');
+    });
     console.log = said;
     if (failures) { console.log(`recording titles: ${failures} failed`); process.exit(1); }
     console.log('recording titles: default-named recordings take their public episode\'s title, once');
