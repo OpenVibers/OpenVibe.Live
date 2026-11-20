@@ -22,6 +22,24 @@ async function loadMediasoupClient() {
     return _mediasoupModulePromise;
 }
 
+/**
+ * Fullscreen on every browser (2026-11-20): an iPhone has no element fullscreen, only a video's own
+ * (webkitEnterFullscreen), and older Safari only the prefixed call. The live player's button threw
+ * "container.requestFullscreen is not a function" 18 times in real visits (RUM). Toggles; the order is
+ * openvibe-shared/player.js's.
+ */
+function _spToggleFullscreen(box, video) {
+    const d = document;
+    if (d.fullscreenElement || d.webkitFullscreenElement) {
+        const exit = d.exitFullscreen || d.webkitExitFullscreen;
+        try { const p = exit && exit.call(d); if (p && p.catch) p.catch(() => {}); } catch { /* already out */ }
+        return;
+    }
+    if (box && box.requestFullscreen) { box.requestFullscreen().catch(() => {}); return; }
+    if (box && box.webkitRequestFullscreen) { try { box.webkitRequestFullscreen(); } catch { /* refused */ } return; }
+    if (video && video.webkitEnterFullscreen) { try { video.webkitEnterFullscreen(); } catch { /* not ready yet */ } }
+}
+
 // Viewer manual play/pause intent. Tracked on the (persistent) <video> element so a
 // stream reconnect — e.g. the streamer's connection cuts out and comes back — does NOT
 // force a stream the viewer deliberately paused back into playback. Reset on every fresh
@@ -3001,14 +3019,7 @@ function setupVideoControls() {
         }
     };
 
-    btnFull.onclick = () => {
-        const container = document.getElementById('video-container');
-        if (document.fullscreenElement) {
-            document.exitFullscreen();
-        } else {
-            container.requestFullscreen().catch(() => {});
-        }
-    };
+    btnFull.onclick = () => _spToggleFullscreen(document.getElementById('video-container'), document.getElementById('video-element'));
 
     // Clip button
     document.getElementById('btn-clip').onclick = () => {
