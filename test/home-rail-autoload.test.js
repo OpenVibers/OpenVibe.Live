@@ -50,7 +50,7 @@ function page(overflowX) {
     };
     ctx.window.loadHomeRecentVods = (o) => { calls.push(o); return Promise.resolve(); };
     vm.createContext(ctx);
-    vm.runInContext(`const HOME_RAIL_BATCH = ${batch[1]};\n${fn('homeRailSideways')}\n${fn('homeRailTail')}\n${fn('renderHomePagination')}\nthis.renderHomePagination = renderHomePagination;`, ctx);
+    vm.runInContext(`const HOME_RAIL_BATCH = ${batch[1]};\n${fn('homeRailSideways')}\n${fn('homeRailTail')}\n${fn('homeRailBind')}\n${fn('homeRailKnownCols')}\n${fn('homeRailAutofill')}\n${fn('_homeRailCols')}\n${fn('renderHomePagination')}\nthis.renderHomePagination = renderHomePagination;`, ctx);
     const rail = { grid: document.getElementById('grid'), loader: 'loadHomeRecentVods', shown: 4, total: 852 };
     return { ctx, document, rail, observed, calls };
 }
