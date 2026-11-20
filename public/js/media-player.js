@@ -30,6 +30,24 @@ const MP_POSITION_SAVE_INTERVAL = 5000;
 const mpExternalScriptPromises = new Map();
 
 // ── Helpers ─────────────────────────────────────────────────
+/**
+ * Fullscreen on every browser (2026-11-20): an iPhone has no element fullscreen, only a video's own
+ * (webkitEnterFullscreen), and older Safari only the prefixed call. The live player's button threw
+ * "container.requestFullscreen is not a function" 18 times in real visits (RUM). Toggles; the order is
+ * openvibe-shared/player.js's.
+ */
+function _mpToggleFullscreen(box, video) {
+    const d = document;
+    if (d.fullscreenElement || d.webkitFullscreenElement) {
+        const exit = d.exitFullscreen || d.webkitExitFullscreen;
+        try { const p = exit && exit.call(d); if (p && p.catch) p.catch(() => {}); } catch { /* already out */ }
+        return;
+    }
+    if (box && box.requestFullscreen) { box.requestFullscreen().catch(() => {}); return; }
+    if (box && box.webkitRequestFullscreen) { try { box.webkitRequestFullscreen(); } catch { /* refused */ } return; }
+    if (video && video.webkitEnterFullscreen) { try { video.webkitEnterFullscreen(); } catch { /* not ready yet */ } }
+}
+
 function mpUsername() {
     return window.location.pathname.split('/').filter(Boolean)[1] || '';
 }
@@ -548,11 +566,7 @@ function wireControls() {
     // Fullscreen
     fsBtn.addEventListener('click', () => {
         const wrap = document.getElementById('mp-player-wrap');
-        if (document.fullscreenElement) {
-            document.exitFullscreen().catch(() => {});
-        } else {
-            wrap.requestFullscreen().catch(() => {});
-        }
+        _mpToggleFullscreen(wrap, wrap && wrap.querySelector('video'));
     });
 
     document.addEventListener('fullscreenchange', () => {
