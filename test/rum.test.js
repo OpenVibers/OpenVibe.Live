@@ -80,6 +80,23 @@ const { createRum, pageKind, deviceClass } = require('../server/web/rum');
     rum.record({ path: '/', w: 390, errs: ['TypeError: x is undefined'] });
     for (let i = 0; i < 120; i++) rum.record({ path: '/', w: 390, errs: [`err ${i}`] });
     assert.ok(rum.snapshot().errors.length <= 25 && rum.snapshot().errors[0].message === 'TypeError: x is undefined');
+
+    // Slow interactions are named (2026-11-20): page, event and element (tag with id or first class), over 200 ms only;
+    // anything else in inp_on is not kept.
+    rum.record({ path: '/broadcast', w: 390, inp: 450, inp_on: 'click button#bc-go-live' });
+    rum.record({ path: '/broadcast', w: 390, inp: 320, inp_on: 'click button#bc-go-live' });
+    rum.record({ path: '/broadcast', w: 390, inp: 150, inp_on: 'click button#bc-go-live' });
+    rum.record({ path: '/', w: 1280, inp: 600, inp_on: 'pointerdown div.ovh-card' });
+    rum.record({ path: '/', w: 1280, inp: 900, inp_on: 'click <img src=x onerror=alert(1)>' });
+    rum.record({ path: '/', w: 1280, inp: 900, inp_on: 'keydown input Hello there' });
+    assert.deepStrictEqual(rum.snapshot().slow, [
+        { page: 'broadcast', on: 'click button#bc-go-live', count: 2, worst: 450 },
+        { page: 'home', on: 'pointerdown div.ovh-card', count: 1, worst: 600 },
+    ]);
+    // The browser side writes only a tag, an id or a first class (ov-rum.js what()).
+    const rumJs = require('fs').readFileSync(require('path').join(__dirname, '..', 'public', 'js', 'ov-rum.js'), 'utf8');
+    assert.match(rumJs, /m\.inpOn = `\$\{e\.name\} \$\{what\(e\.target\)\}`/);
+    assert.ok(!/textContent|innerText|value/.test(rumJs.slice(rumJs.indexOf('const what'), rumJs.indexOf('watch(\'event\''))), 'never the words on it');
     server.close();
 
     // Across a restart: the state is numbers only, and a new process puts it back under what arrived since its boot.

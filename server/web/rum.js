@@ -47,6 +47,10 @@ function createRum({ now = () => Date.now() } = {}) {
     const buckets = new Map();   // "page|device" -> { n, samples: { metric: [] } }
     const errors = new Map();    // message -> count
     const hits = new Map();      // address -> { minute, n }
+    // Slow interactions (INP over 200 ms) by page and what they were on ("click button#bc-go-live", ov-rum.js), so the
+    // slow tap is named (2026-11-20). Kept in memory: counts and the worst.
+    const slow = new Map();      // "page|on" -> { n, worst }
+    const MAX_SLOW = 200;
 
     function record(body) {
         if (!body || typeof body !== 'object') return false;
@@ -61,6 +65,13 @@ function createRum({ now = () => Date.now() } = {}) {
             const arr = b.samples[m];
             arr.push(v);
             if (arr.length > KEEP) arr.shift();
+        }
+        const on = String(body.inp_on || '');
+        const inp = Number(body.inp);
+        if (inp > 200 && inp <= METRICS.inp && /^[a-z]{2,20}( [a-z][a-z0-9]{0,15}([#.][A-Za-z][\w-]{0,40})?)?$/.test(on)) {
+            const k = `${pageKind(body.path)}|${on}`;
+            const s = slow.get(k) || (slow.size < MAX_SLOW ? { n: 0, worst: 0 } : null);
+            if (s) { s.n++; s.worst = Math.max(s.worst, Math.round(inp)); slow.set(k, s); }
         }
         for (const raw of Array.isArray(body.errs) ? body.errs.slice(0, 3) : []) {
             const msg = String(raw || '').replace(/\s+/g, ' ').trim().slice(0, 140);
@@ -108,7 +119,9 @@ function createRum({ now = () => Date.now() } = {}) {
             pages[key] = out;
         }
         const errs = [...errors.entries()].sort((a, b) => b[1] - a[1]).slice(0, 25).map(([message, count]) => ({ message, count }));
-        return { pages, errors: errs };
+        const slowTaps = [...slow.entries()].sort((a, b) => b[1].n - a[1].n || b[1].worst - a[1].worst).slice(0, 25)
+            .map(([k, s]) => { const i = k.indexOf('|'); return { page: k.slice(0, i), on: k.slice(i + 1), count: s.n, worst: s.worst }; });
+        return { pages, errors: errs, slow: slowTaps };
     }
 
     function p75Gauge() {
