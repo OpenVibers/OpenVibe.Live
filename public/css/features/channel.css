@@ -1822,6 +1822,9 @@ html:is(.ovnav-hidden, .openvibe-navbar.ovnav-hide) #page-channel .ch-tabs-wrap 
 @media (max-width: 760px) { #page-channel .ch-tab-panel :is(.stream-grid, .pastes-grid) { grid-auto-columns: minmax(220px, 78%); } }
 #page-channel .ch-rail-skeleton { min-height: 150px; border-radius: 12px; background: linear-gradient(110deg, var(--bg-card) 25%, var(--bg-hover) 50%, var(--bg-card) 75%); background-size: 200% 100%; animation: ch-shimmer 1.5s linear infinite; }
 @keyframes ch-shimmer { to { background-position-x: -200%; } }
+/* The end-of-rail "loading more" placeholder (role=status) shimmers only once it loads: before that it sat off screen in
+   every rail repainting each frame (2026-11-20, an idle channel page). */
+#page-channel .ch-rail-skeleton[role="status"]:not(.is-loading) { animation: none; }
 .ch-list-page { background: var(--bg-primary); color: var(--text-primary); }
 .ch-list-content { max-width: 960px; margin: 0 auto; padding: clamp(20px, 4vw, 48px); }
 .ch-list-content > p:first-child a { color: var(--accent); text-decoration: none; }
