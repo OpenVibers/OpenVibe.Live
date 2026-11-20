@@ -2386,19 +2386,27 @@ function homeRailLoaded(rail, offset, count, total) {
     rail.shown = offset + count;
     rail.total = Number(total) || 0;
     rail.filling = false;
-    if (rail.grid && !rail.grid._ovRailBound) {
-        rail.grid._ovRailBound = true;
-        rail.grid.addEventListener('ovd:columns', () => homeRailAutofill(rail));
-    }
+    homeRailBind(rail);
     homeRailAutofill(rail);
+}
+/** The density control's measurement (ovd:columns) fills the rail's last row and redraws its pager. */
+function homeRailBind(rail) {
+    if (!rail || !rail.grid || rail.grid._ovRailBound) return;
+    rail.grid._ovRailBound = true;
+    rail.grid.addEventListener('ovd:columns', () => { homeRailAutofill(rail); if (rail.pager) renderHomePagination(rail.pager, rail); });
+}
+/** The rail's columns without forcing a layout: 0 while its density control has not measured yet (it sends ovd:columns). */
+function homeRailKnownCols(rail) {
+    const known = window.OVDensity && typeof OVDensity.known === 'function' ? OVDensity.known(rail.grid) : 0;
+    if (known) return known;
+    return rail.grid && rail.grid.dataset && rail.grid.dataset.ovdBound ? 0 : _homeRailCols(rail.grid);
 }
 function homeRailAutofill(rail) {
     if (!rail || rail.filling || !rail.loader || !rail.grid) return;
     // A grid with the density control waits for its first measurement (its ovd:columns event calls this again) rather
     // than forcing a layout of the page right after the cards went in (OVDensity.known).
-    const known = window.OVDensity && typeof OVDensity.known === 'function' ? OVDensity.known(rail.grid) : 0;
-    if (!known && rail.grid.dataset && rail.grid.dataset.ovdBound) return;
-    const cols = known || _homeRailCols(rail.grid);
+    const cols = homeRailKnownCols(rail);
+    if (!cols) return;
     const left = Math.max(0, rail.total - rail.shown);
     const short = rail.shown % cols;
     if (!left || !short) return;
@@ -2485,7 +2493,11 @@ function renderHomePagination(containerId, rail) {
     // Whole rows: whatever completes the current row, then two more rows (one on a phone, where a
     // row is a screen). "8 more" into a four-wide grid was two rows; into a three-wide grid it was
     // two rows and a stray pair.
-    const cols = _homeRailCols(rail.grid);
+    // The count comes from the density control's measurement; until it has measured, four, and its ovd:columns redraws
+    // this (reading the grid's columns here forced a layout of the page right after the cards went in, 11-20).
+    rail.pager = containerId;
+    homeRailBind(rail);
+    const cols = homeRailKnownCols(rail) || 4;
     const short = rail.shown % cols;
     const next = Math.min(left, (short ? cols - short : 0) + cols * (_narrow ? 1 : 2));
     el.innerHTML = `<button type="button" class="home-load-more" onclick="${rail.loader}({ more: ${next} })">
