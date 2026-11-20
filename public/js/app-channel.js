@@ -255,6 +255,7 @@ function _channelRail(grid, offset, count, total, loadNext, old = []) {
     const observer = new IntersectionObserver((entries) => {
         if (!entries.some((entry) => entry.isIntersecting)) return;
         observer.disconnect();
+        sentinel.classList.add('is-loading');
         loadNext();
     }, { root: grid, rootMargin: '0px 260px 0px 0px' });
     grid._railObserver = observer;

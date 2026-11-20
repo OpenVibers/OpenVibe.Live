@@ -2961,10 +2961,12 @@ function _chatEvCss() {
 @keyframes chatEvIn{from{opacity:0;transform:translateY(calc(6px * var(--ov-move,1))) scale(.98)}to{opacity:1;transform:none}}
 .chat-ev-icon{position:relative;display:grid;place-items:center;width:28px;height:28px;border-radius:50%;background:color-mix(in srgb,var(--ev) 18%,transparent);color:var(--ev);font-size:.78rem;flex:none}
 .chat-ev-face{position:absolute;inset:0;width:100%;height:100%;border-radius:50%;object-fit:cover}
-.chat-ev--live .chat-ev-icon{box-shadow:0 0 0 2px var(--ev);animation:chatEvPulse 1.8s ease-out infinite}
+.chat-ev--live .chat-ev-icon{box-shadow:0 0 0 2px var(--ev)}
+.chat-ev--fresh .chat-ev-icon::after{content:'';position:absolute;inset:0;border-radius:50%;box-shadow:0 0 0 2px color-mix(in srgb,var(--ev) 55%,transparent);animation:chatEvRing 1.8s ease-out infinite;pointer-events:none}
+@keyframes chatEvRing{from{transform:scale(1);opacity:.9}to{transform:scale(calc(1 + .45 * var(--ov-move,1)));opacity:0}}
+html[data-ov-motion=off] .chat-ev--fresh .chat-ev-icon::after{animation:none;opacity:0}
 .chat-ev--live .chat-ev-icon::before{content:'';width:9px;height:9px;border-radius:50%;background:var(--ev)}
 .chat-ev--live .chat-ev-icon:has(.chat-ev-face)::before{content:none}
-@keyframes chatEvPulse{0%{box-shadow:0 0 0 2px var(--ev),0 0 0 2px color-mix(in srgb,var(--ev) 55%,transparent)}70%{box-shadow:0 0 0 2px var(--ev),0 0 0 9px transparent}100%{box-shadow:0 0 0 2px var(--ev),0 0 0 2px transparent}}
 .chat-ev-body{min-width:0}
 .chat-ev-line{display:flex;align-items:baseline;column-gap:.3em;min-width:0;color:var(--text-primary,#e6edf7);white-space:nowrap}.chat-ev-line b{min-width:0;overflow:hidden;text-overflow:ellipsis;font-weight:700}
 .chat-ev-what{flex:none}
@@ -2999,6 +3001,18 @@ function _chatEvIsHere(ev) {
     if (m && decodeURIComponent(m[1]).toLowerCase() === name && !studio) return { mine: false };
     return null;
 }
+/**
+ * A go-live card's ring pulses for its first ten minutes only (2026-11-20): a channel page left open kept every old
+ * card in its chat pulsing for good, a box-shadow repainted every frame (5 cards: 540 style recalcs in 3 idle s on a
+ * slow laptop) and a "live" ring for streams long over. The pulse is a transform/opacity ring the compositor runs.
+ */
+const _CHAT_EV_FRESH_MS = 10 * 60 * 1000;
+function _chatEvFreshen(el, at) {
+    const left = _CHAT_EV_FRESH_MS - (Date.now() - at);
+    clearTimeout(el._ovFresh);
+    el.classList.toggle('chat-ev--fresh', left > 0);
+    if (left > 0) el._ovFresh = setTimeout(() => el.classList.remove('chat-ev--fresh'), left);
+}
 function renderChatEventCard(ev, opts = {}) {
     const { messages: container } = getChatEl();
     if (!container || !ev) return;
@@ -3010,6 +3024,7 @@ function renderChatEventCard(ev, opts = {}) {
     if (ev.kind === 'live') {
         const recent = [...container.children].slice(-12).reverse().find((c) => c.dataset && c.dataset.evKey === ev.key);
         if (recent && Math.abs(when.date - Number(recent.dataset.evAt || 0)) < _CHAT_EV_FOLD_MS) {
+            if (!recent.classList.contains('chat-ev--here')) _chatEvFreshen(recent, when.date.getTime());
             recent.dataset.evAt = String(when.date.getTime());
             let meta = recent.querySelector('.chat-ev-meta');
             if (!meta) { meta = document.createElement('span'); meta.className = 'chat-ev-meta'; recent.querySelector('.chat-ev-line').appendChild(meta); }
@@ -3028,6 +3043,7 @@ function renderChatEventCard(ev, opts = {}) {
     el.dataset.evKey = ev.key;
     el.dataset.evAt = String(when.date.getTime());
     el.setAttribute('role', 'article');
+    if (ev.kind === 'live' && !here) _chatEvFreshen(el, when.date.getTime());
 
     const icon = document.createElement('span');
     icon.className = 'chat-ev-icon';
