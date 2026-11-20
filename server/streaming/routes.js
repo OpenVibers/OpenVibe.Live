@@ -1429,7 +1429,7 @@ router.get('/recently-online', async (req, res) => {
         const ids = streamers.map(s => s.user_id).filter(Boolean);
         if (ids.length) {
             const rows = await db.all(`SELECT * FROM (
-                SELECT id,user_id,title,started_at,ended_at,duration_seconds,thumbnail_url,managed_stream_id,is_live,
+                SELECT id,user_id,title,started_at,ended_at,duration_seconds,thumbnail_url,managed_stream_id,is_live,replay_removed_by,
                     ROW_NUMBER() OVER (PARTITION BY user_id ORDER BY started_at DESC) AS history_rank
                 FROM streams WHERE user_id IN (${ids.map(() => '?').join(',')}) AND started_at IS NOT NULL AND COALESCE(is_nsfw,0)=0
             ) history WHERE history_rank <= 40`, ids);
@@ -1464,6 +1464,8 @@ router.get('/recently-online', async (req, res) => {
                     const list = parts.get(Number(h.id));
                     if (!list) continue;
                     h.recorded = list.length > 0;
+                    // Recorded, then the replay deleted (migration 0044): the card says so instead of "Not recorded".
+                    if (!list.length && h.replay_removed_by) h.replay_removed = h.replay_removed_by;
                     h.recorded_seconds = Math.round(list.reduce((n, v) => n + (Number(v.duration_seconds) || 0), 0));
                     if (!list.length) continue;
                     h.vod_id = list[0].id;

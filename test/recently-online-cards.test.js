@@ -36,6 +36,10 @@ const KEYS = ['streams_this_week', 'hours_this_week', 'usual_time', 'days_in_a_r
     const picNew = Number((await stream(pic, picSlot, { startedAgo: 600, endedAgo: 500, thumb: '/api/thumbnails/stream-9102-2.jpg' })).lastInsertRowid);
     // An ended stream with no slot and no recording anywhere.
     const novId = Number((await stream(nov, null, { startedAgo: 700, endedAgo: 650, thumb: '/api/thumbnails/stream-9103-3.jpg' })).lastInsertRowid);
+    // 11-20 (RePlayer009, VOD 6632): recorded, then the streamer deleted the replay (the delete route notes it).
+    const del = await mk('deleter');
+    const delId = Number((await stream(del, null, { startedAgo: 800, endedAgo: 780 })).lastInsertRowid);
+    await db.run("UPDATE streams SET replay_removed_at = ov_now(), replay_removed_by = 'streamer' WHERE id = ?", [delId]);
     // A live stream: its capture still exists.
     await stream(liv, livSlot, { live: true, startedAgo: 10, thumb: '/api/thumbnails/stream-9104-live.jpg' });
     await stream(probe, probeSlot, { startedAgo: 400, endedAgo: 350, thumb: '/api/thumbnails/stream-9105-probe.jpg' });
@@ -63,6 +67,7 @@ const KEYS = ['streams_this_week', 'hours_this_week', 'usual_time', 'days_in_a_r
             [picOld, [{ id: 7, duration_seconds: 40, thumbnail_url: null, audio_only: false }, { id: 8, duration_seconds: 20.4, thumbnail_url: '/t/vod-8.jpg', audio_only: false }]],
             [picNew, [{ id: 9, duration_seconds: 32, thumbnail_url: '/t/vod-9-new.jpg', audio_only: true }]],
             [novId, []],
+            [delId, []],
         ]);
     };
     lookups.publicVodsForStreams = async () => new Map();
@@ -79,10 +84,14 @@ const KEYS = ['streams_this_week', 'hours_this_week', 'usual_time', 'days_in_a_r
         assert.ok(p && n && l, JSON.stringify(body.streamers.map((s) => s.username)));
         assert.strictEqual(by('ovprobe_recently'), undefined, 'a test account is never on Recently Online');
         assert.ok(!JSON.stringify(body).includes('ovprobe_recently'), 'the test account is nowhere in the public read');
-        assert.strictEqual(body.streamers.length, 3, 'the probe is counted out too');
+        assert.strictEqual(body.streamers.length, 4, 'the probe is counted out too');
 
         // Media is asked about the ended rows only, by their own stream ids.
-        assert.deepStrictEqual(asked, [picOld, picNew, novId].sort((a, b) => a - b));
+        assert.deepStrictEqual(asked, [picOld, picNew, novId, delId].sort((a, b) => a - b));
+        // A replay its streamer deleted says so; a stream never recorded says nothing of the kind.
+        const d = by('deleter').recent_facts.streams[0];
+        assert.deepStrictEqual([d.recorded, d.replay_removed], [false, 'streamer'], 'deleted by the streamer, not "Not recorded"');
+        assert.strictEqual(n.recent_facts.streams[0].replay_removed, undefined);
         // Each replay row is its own stream's recording, never the slot's newest (Maticus, 2026-11-17).
         assert.strictEqual(p.recent_facts.streams.length, 2);
         const [newer, older] = p.recent_facts.streams;

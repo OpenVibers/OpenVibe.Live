@@ -1632,7 +1632,10 @@ function renderRecentlyOnline(containerId, streamers, append) {
             const partial = replay && rec > 0 && len - rec > 30 && rec < len * 0.9;
             const row = el('a', 'recent-stream-row' + (h.is_live ? ' is-live' : '') + (unrecorded ? ' is-unrecorded' : ''));
             row.href = replay ? videoHref('vod', h.vod_id) : channelHref;
-            if (unrecorded) row.title = 'This stream was not recorded';
+            // 11-20: a replay its streamer (or a moderator) deleted is not "Not recorded".
+            const removed = unrecorded && (h.replay_removed === 'streamer' || h.replay_removed === 'moderator') ? h.replay_removed : null;
+            if (removed) row.title = removed === 'streamer' ? 'The streamer deleted this replay' : 'This replay was removed';
+            else if (unrecorded) row.title = 'This stream was not recorded';
             else if (partial) row.title = `Only ${formatDuration(rec)} of this ${formatDuration(len)} stream was recorded`;
             // A picture on every one: the replay's own, else the one Live can make from the recording, else a mark
             // that says what it is. Never an empty box.
@@ -1650,6 +1653,7 @@ function renderRecentlyOnline(containerId, streamers, append) {
             } else blank();
             const span = (n) => (n ? ' · ' + formatDuration(n) : '');
             const tag = h.is_live ? 'Live' + span(len)
+                : removed ? (removed === 'streamer' ? 'Replay deleted by the streamer' : 'Replay removed') + span(len)
                 : unrecorded ? 'Not recorded' + span(len)
                     : replay ? 'Replay' + (partial ? ` · ${formatDuration(rec)} of ${formatDuration(len)}` : span(rec || len))
                         : 'Stream' + span(len);
