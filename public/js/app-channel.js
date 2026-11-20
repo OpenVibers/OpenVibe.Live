@@ -1040,9 +1040,12 @@ async function loadChannelPage(username, managedStreamRef = null, legacySessionI
             const early = _takeEarly(popularPath);
             _popularAhead = { username: String(username).toLowerCase(), at: Date.now(), p: early ? early.then((d) => d || api(popularPath).catch(() => null)) : api(popularPath).catch(() => null) };
         }
-        const channelPath = `/streams/channel/${username}?vodLimit=${CHANNEL_VODS_PAGE_SIZE}&vodOffset=${channelVodOffset}&clipLimit=${CHANNEL_CLIPS_PAGE_SIZE}&clipOffset=${channelClipOffset}${initialVodExtra}`;
-        const earlyChannel = isNewChannel ? _takeEarly(channelPath) : null;
-        const data = (earlyChannel && await earlyChannel) || await api(channelPath);
+        // The channel's data address. Never name it channelPath: that is app.js's channelPath(), which this function calls
+        // further down (the live branch's name link and its URL fixes); a local of that name made every live channel
+        // stop at "d is not a function" before its player started (11-19 to 11-20).
+        const channelApi = `/streams/channel/${username}?vodLimit=${CHANNEL_VODS_PAGE_SIZE}&vodOffset=${channelVodOffset}&clipLimit=${CHANNEL_CLIPS_PAGE_SIZE}&clipOffset=${channelClipOffset}${initialVodExtra}`;
+        const earlyChannel = isNewChannel ? _takeEarly(channelApi) : null;
+        const data = (earlyChannel && await earlyChannel) || await api(channelApi);
         const ch = data.channel;
         // The wallet pill shows this channel's points once they are known (Shared 4.212.0, `purse.streamer`): the
         // channel-points ledger keys a streamer by the owner's numeric user id, ch.user_id, and only now is it here.

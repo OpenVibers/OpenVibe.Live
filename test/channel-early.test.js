@@ -44,9 +44,9 @@ function runEarly({ pathname = '/@maticus', storage = {}, cookie = '' } = {}) {
         const clips = Number((/const CHANNEL_CLIPS_PAGE_SIZE = (\d+);/.exec(appChannel) || [])[1]);
         assert.ok(vods > 0 && clips > 0, 'app-channel.js page sizes');
         assert.ok(CHANNEL_EARLY.includes(`'?vodLimit=${vods}&vodOffset=0&clipLimit=${clips}&clipOffset=0'`), 'the channel path with the same sizes');
-        assert.match(appChannel, /const channelPath = `\/streams\/channel\/\$\{username\}\?vodLimit=\$\{CHANNEL_VODS_PAGE_SIZE\}&vodOffset=\$\{channelVodOffset\}&clipLimit=\$\{CHANNEL_CLIPS_PAGE_SIZE\}&clipOffset=\$\{channelClipOffset\}\$\{initialVodExtra\}`;/);
+        assert.match(appChannel, /const channelApi = `\/streams\/channel\/\$\{username\}\?vodLimit=\$\{CHANNEL_VODS_PAGE_SIZE\}&vodOffset=\$\{channelVodOffset\}&clipLimit=\$\{CHANNEL_CLIPS_PAGE_SIZE\}&clipOffset=\$\{channelClipOffset\}\$\{initialVodExtra\}`;/);
         assert.match(appChannel, /const popularPath = `\/streams\/channel\/\$\{encodeURIComponent\(username\)\}\/popular`;/);
-        assert.match(appChannel, /const earlyChannel = isNewChannel \? _takeEarly\(channelPath\) : null;/);
+        assert.match(appChannel, /const earlyChannel = isNewChannel \? _takeEarly\(channelApi\) : null;/);
     });
 
     await check('a visitor with no stored sign-in on /@name: the two answers are asked at once', async () => {
