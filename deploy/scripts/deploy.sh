@@ -53,6 +53,14 @@ done
 
 # Does this ovhost deploy live with the strategy this wrapper hands over to? Sets REASON when not.
 REASON=""
+# Is one line of $1 exactly $2? No pipe: under pipefail, `printf … | grep -q` failed when grep matched and exited before
+# printf finished writing (SIGPIPE, 141), so a host that deploys Live with release-layout was refused at random
+# ("does not deploy live with strategy release-layout (release-layout)", 2026-11-20, twice in CI on one night).
+has_line() {
+    local line
+    while IFS= read -r line; do [ "$line" = "$2" ] && return 0; done <<< "$1"
+    return 1
+}
 probe() {
     if ! command -v "$OVHOST" >/dev/null 2>&1; then REASON="ovhost not found ($OVHOST)"; return 1; fi
     local caps api
@@ -60,8 +68,8 @@ probe() {
     api=$(printf '%s\n' "$caps" | sed -n 's/^deploy-api=//p')
     case "$api" in ''|*[!0-9]*) REASON="this ovhost reports no deploy-api (too old)"; return 1 ;; esac
     if [ "$api" -lt 1 ]; then REASON="this ovhost's deploy-api is $api, 1 is needed"; return 1; fi
-    if ! printf '%s\n' "$caps" | grep -qx "strategy=$STRATEGY"; then REASON="the host inventory does not deploy $SERVICE with strategy $STRATEGY ($(printf '%s\n' "$caps" | sed -n 's/^strategy=//p'))"; return 1; fi
-    if ! printf '%s\n' "$caps" | grep -qx "managed=yes"; then REASON="ovhost does not manage $SERVICE"; return 1; fi
+    if ! has_line "$caps" "strategy=$STRATEGY"; then REASON="the host inventory does not deploy $SERVICE with strategy $STRATEGY ($(printf '%s\n' "$caps" | sed -n 's/^strategy=//p'))"; return 1; fi
+    if ! has_line "$caps" "managed=yes"; then REASON="ovhost does not manage $SERVICE"; return 1; fi
     return 0
 }
 

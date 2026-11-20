@@ -48,6 +48,14 @@ check('the flags map onto ovhost deploy|rollback|plan live', () => {
     assert.match(r.out, /\[Deploy\] ovhost deploy live --wait-idle/);
 });
 
+check('no `| grep -q` under pipefail (a match that exits early fails the pipeline with SIGPIPE, at random)', () => {
+    const src = fs.readFileSync(WRAPPER, 'utf8');
+    assert.ok(/set -euo pipefail/.test(src));
+    assert.deepStrictEqual(src.split('\n').filter((l) => /\|\s*grep -[a-z]*q/.test(l) && !/^\s*#/.test(l)), []);
+    // The probe, many times over: the race showed about once a night in CI.
+    for (let i = 0; i < 40; i++) assert.deepStrictEqual(run([], {}).calls, ['ovhost deploy live'], `run ${i}`);
+});
+
 check("ovhost's exit code is the wrapper's (3: not ready, rolled back)", () => {
     assert.strictEqual(run([], { FAKE_EXIT: '3' }).code, 3);
     assert.strictEqual(run([], { FAKE_EXIT: '5' }).code, 5);
