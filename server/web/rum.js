@@ -49,6 +49,11 @@ const round = (v, metric) => (metric === 'cls' ? Math.round(v * 1000) / 1000 : M
 function createRum({ now = () => Date.now() } = {}) {
     const buckets = new Map();   // "page|device" -> { n, samples: { metric: [] } }
     const errors = new Map();    // message -> count
+    // message -> when it was last seen (ms). 11-20: the counts are kept across restarts for 14 days and said nothing of
+    // when, so errors fixed weeks ago (#328's null player, a removed showToast) read as current. One unseen for a week
+    // is dropped when the state is put back.
+    const errorLast = new Map();
+    const ERROR_KEEP_MS = 7 * 86400000;
     const hits = new Map();      // address -> { minute, n }
     // Slow interactions (INP over 200 ms) by page and what they were on ("click button#bc-go-live", ov-rum.js), so the
     // slow tap is named (2026-11-20). Kept in memory: counts and the worst.
@@ -80,10 +85,12 @@ function createRum({ now = () => Date.now() } = {}) {
             const msg = String(raw || '').replace(/\s+/g, ' ').trim().slice(0, 140);
             if (!msg) continue;
             errors.set(msg, (errors.get(msg) || 0) + 1);
+            errorLast.set(msg, now());
             if (errors.size > MAX_ERRORS) {
                 let least = null;
                 for (const [k, c] of errors) if (k !== msg && (!least || c < errors.get(least))) least = k;
                 errors.delete(least);
+                errorLast.delete(least);
             }
         }
         return true;
@@ -121,7 +128,8 @@ function createRum({ now = () => Date.now() } = {}) {
             }
             pages[key] = out;
         }
-        const errs = [...errors.entries()].sort((a, b) => b[1] - a[1]).slice(0, 25).map(([message, count]) => ({ message, count }));
+        const errs = [...errors.entries()].sort((a, b) => b[1] - a[1]).slice(0, 25)
+            .map(([message, count]) => ({ message, count, last: errorLast.has(message) ? new Date(errorLast.get(message)).toISOString() : null }));
         const slowTaps = [...slow.entries()].sort((a, b) => b[1].n - a[1].n || b[1].worst - a[1].worst).slice(0, 25)
             .map(([k, s]) => { const i = k.indexOf('|'); return { page: k.slice(0, i), on: k.slice(i + 1), count: s.n, worst: s.worst }; });
         return { pages, errors: errs, slow: slowTaps };
@@ -146,7 +154,7 @@ function createRum({ now = () => Date.now() } = {}) {
 
     /** The reservoirs and error counts as plain numbers, to survive a restart (server/index.js keeps them in app_state). */
     function state() {
-        return { v: 1, at: now(), pages: Object.fromEntries(buckets), errors: [...errors] };
+        return { v: 1, at: now(), pages: Object.fromEntries(buckets), errors: [...errors].map(([m, c]) => [m, c, errorLast.get(m) || null]) };
     }
     /** Put a saved state back under what arrived since boot (a beacon can land before the read). Older than 14 days,
      *  malformed or out-of-range parts are left out. */
@@ -162,8 +170,14 @@ function createRum({ now = () => Date.now() } = {}) {
             }
             buckets.set(key, b);
         }
-        for (const [msg, c] of Array.isArray(s.errors) ? s.errors.slice(0, MAX_ERRORS) : []) {
-            if (typeof msg === 'string' && msg && errors.size < MAX_ERRORS) errors.set(msg.slice(0, 140), (errors.get(msg.slice(0, 140)) || 0) + (Number(c) || 0));
+        for (const [msg, c, last] of Array.isArray(s.errors) ? s.errors.slice(0, MAX_ERRORS) : []) {
+            if (typeof msg !== 'string' || !msg || errors.size >= MAX_ERRORS) continue;
+            // A save from before last-seen was kept counts from its own time, so it ages out a week from now.
+            const seen = Number.isFinite(Number(last)) && Number(last) > 0 ? Number(last) : Number(s.at);
+            if (now() - seen > ERROR_KEEP_MS) continue;
+            const k = msg.slice(0, 140);
+            errors.set(k, (errors.get(k) || 0) + (Number(c) || 0));
+            errorLast.set(k, Math.max(errorLast.get(k) || 0, seen));
         }
         return true;
     }

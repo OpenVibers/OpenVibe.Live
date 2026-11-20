@@ -116,6 +116,16 @@ const { createRum, pageKind, deviceClass } = require('../server/web/rum');
     assert.deepStrictEqual(next.p75Gauge().find((x) => x.labels.metric === 'lcp' && x.labels.page === 'home').value, 8000);
     assert.ok(next.snapshot().errors.some((e) => e.message === 'TypeError: x is undefined'));
     assert.strictEqual(createRum({ now: () => t + 15 * 86400000 }).restore(saved), false, 'older than 14 days: start empty');
+    // Each error says when it was last seen, and one unseen for a week is not put back (11-20: errors fixed weeks ago
+    // read as current); a save from before last-seen ages out a week after it is put back.
+    const last = next.snapshot().errors.find((e) => e.message === 'TypeError: x is undefined');
+    assert.strictEqual(last.last, new Date(t).toISOString());
+    const later = createRum({ now: () => t + 8 * 86400000 });
+    later.restore(JSON.parse(JSON.stringify({ ...saved, at: t + 8 * 86400000 - 60000 })));
+    assert.ok(!later.snapshot().errors.some((e) => e.message === 'TypeError: x is undefined'), 'unseen for 8 days: dropped');
+    const legacy = createRum({ now: () => t });
+    legacy.restore({ ...saved, errors: [['Old error', 5]] });
+    assert.deepStrictEqual(legacy.snapshot().errors.map((e) => [e.message, e.count, e.last]), [['Old error', 5, new Date(saved.at).toISOString()]], 'no last-seen: the save\'s time');
     const junk = createRum(); junk.restore({ v: 1, at: Date.now(), pages: { 'evil|key': { n: 9, samples: {} }, 'home|phone': { n: 2, samples: { lcp: [100, 'a', -5, 1e9] } } } });
     assert.deepStrictEqual([Object.keys(junk.snapshot().pages), junk.snapshot().pages['home|phone'].lcp.n], [['home|phone'], 1], 'malformed keys and values are left out');
     const index = fs.readFileSync(path.join(__dirname, '../server/index.js'), 'utf8');
