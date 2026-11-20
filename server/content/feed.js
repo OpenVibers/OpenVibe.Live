@@ -128,6 +128,9 @@ async function vodItem(v) {
         created_at: iso(v.created_at), views: num(v.view_count),
         duration_seconds: Math.round(num(v.duration_seconds ?? v.duration)),
         thumbnail_url: media.publicUrl(v.thumbnail_url) || null,
+        // Media's six-second preview of the recording (preview.make), for a card that plays as it scrolls into view
+        // (the network feed's auto-preview, the owner's register #691; 2026-11-20). None until Media made it.
+        preview_url: v.preview_url ? (media.publicUrl(v.preview_url) || null) : null,
         audio_only: !!v.audio_only,
         excerpt: v.description ? clean(v.description, 220) : null,
         channel: person(owner), ai: false,
