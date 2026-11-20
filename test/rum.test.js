@@ -60,6 +60,11 @@ const { createRum, pageKind, deviceClass } = require('../server/web/rum');
     assert.strictEqual(split.tplayer.p50, 900, 'the player started at 900 ms');
     assert.strictEqual(split.ttff_hls.p50, 2600, 'HLS showed its first picture at 2.6 s');
     assert.strictEqual(split.ttff_webrtc, undefined, 'no WebRTC sample, no WebRTC number');
+    // Before the first paint (11-20): the HTML in, the last render-blocking stylesheet in, the browser's round trip.
+    await beacon({ path: '/', w: 1440, fcp: 1300, thtml: 420, tcss: 1100, rtt: 250 }, '10.0.1.6');
+    await beacon({ path: '/', w: 1440, fcp: 600, thtml: 300, tcss: 0, rtt: 0 }, '10.0.1.7');
+    const paint = rum.snapshot().pages['home|desktop'];
+    assert.deepStrictEqual([paint.thtml.n, paint.tcss.p50, paint.rtt.p50, paint.tcss.n, paint.rtt.n], [2, 1100, 250, 1, 1], 'a browser that could not say is not a 0');
     assert.deepStrictEqual(snap.errors.map((e) => e.message), ['TypeError: x is undefined', 'b', 'c'], 'at most three errors per beacon');
     // The gauge: p75 per metric, only for reservoirs with at least 5 samples.
     const g = rum.p75Gauge();

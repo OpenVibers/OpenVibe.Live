@@ -25,6 +25,9 @@ const express = require('express');
 const METRICS = {
     ttfb: 60000, fcp: 60000, lcp: 60000, inp: 60000, tbt: 120000, cls: 10, ttff: 120000,
     tplayer: 120000, ttff_webrtc: 120000, ttff_hls: 120000, ttff_flv: 120000, ttff_jsmpeg: 120000,
+    // Before the first paint (2026-11-20): the HTML in (thtml), the last render-blocking stylesheet in (tcss), and the
+    // browser's coarse round-trip estimate (rtt, Chrome's Network Information).
+    thtml: 60000, tcss: 60000, rtt: 10000,
 };
 const KEEP = 400;            // samples per reservoir (the newest)
 const MAX_ERRORS = 100;      // distinct error messages kept

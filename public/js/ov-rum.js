@@ -63,9 +63,17 @@
         const r = (v) => Math.round(v);
         let path = location.pathname;   // the page these timings are for: the one loaded, not where the SPA went since
         try { if (nav) path = new URL(nav.name).pathname; } catch (e) { /* keep */ }
+        // Where the time before the first paint goes (2026-11-20: the home's desktop FCP p50 was 1.3 s against 0.56 s on
+        // phones, the same bytes, and 0.5-0.7 s in the lab at 4x CPU): when the HTML was in, when the last stylesheet that
+        // holds the first paint was in (renderBlockingStatus, Chrome 107+), and the browser's own coarse round-trip
+        // estimate (Network Information, rounded by the browser). 0 = not measured.
+        let tcss = 0;
+        try { performance.getEntriesByType('resource').forEach((e) => { if (e.renderBlockingStatus === 'blocking' && e.responseEnd > tcss) tcss = e.responseEnd; }); } catch (e) { /* not in this browser */ }
+        const conn = navigator.connection;
         const body = {
             path, w: innerWidth, ttfb: nav ? r(nav.responseStart) : 0, ttff: r(window.__ovFirstFrameAt || 0),
             tplayer: r(window.__ovPlayerStartAt || 0),
+            thtml: nav ? r(nav.responseEnd) : 0, tcss: r(tcss), rtt: conn && Number.isFinite(conn.rtt) ? r(conn.rtt) : 0,
             fcp: r(m.fcp), lcp: r(m.lcp), cls: Math.round(m.cls * 1000) / 1000, inp: r(m.inp), tbt: r(m.tbt), errs: m.errs,
         };
         if (m.inpOn) body.inp_on = m.inpOn;
