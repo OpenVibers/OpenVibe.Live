@@ -123,6 +123,9 @@ ok('the home blocks on its own small subset of home.css, and the full file follo
     const fx = critical.subset('/css/home-fx.core.css');
     assert.ok(fx && fx.css.length > 1000 && fx.bytes < fx.from, `a home-fx subset is built from its committed list (${fx && fx.bytes} of ${fx && fx.from})`);
     assert.ok(fx.css.includes('.hero-cta'), "the hero's buttons are in it");
+    // 11-20: the rule hiding the row's small lines matched only hidden elements, so the measure left it out and the row
+    // reflowed when the full file came (CLS 0.16 on desktop). Rules for elements hidden beside visible ones are kept.
+    assert.ok(fx.css.includes('#page-home .hero-links .hb-label small'), 'the rule that hides the small lines is in the first paint');
     const listed = JSON.parse(fs.readFileSync(critical.HOME_FX_SELECTORS, 'utf8')).selectors;
     const inFile = new Set();
     const walk = (list) => { for (const n of list) { if (n.type === 'rule') critical.splitSelectors(n.selector).forEach((x) => inFile.add(x)); else if (n.type === 'block') walk(n.children); } };
