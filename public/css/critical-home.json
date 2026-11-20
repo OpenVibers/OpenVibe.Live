@@ -61,6 +61,7 @@
   ".hero-stat-delta.is-flat",
   ".hero-stat-delta.is-up",
   ".hero-stat-delta.is-window .hero-stat-trend",
+  ".hero-stat-full",
   ".hero-stat-label",
   ".hero-stat-more",
   ".hero-stat-more-chev",
@@ -90,7 +91,11 @@
   ".hero-stat:hover",
   ".hero-stats",
   ".hero-tagline",
+  ".home-agents",
   ".home-feed-glimpse",
+  ".home-topics",
+  ".home-topics::-webkit-scrollbar",
+  ".home-topics[hidden]",
   ".section-header:has(+ #stream-grid-live:not(:has(.stream-card:not(.is-featured))):has(.stream-card))",
   ".section-kicker"
  ]

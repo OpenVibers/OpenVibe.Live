@@ -32,11 +32,15 @@ const WIDTHS = [[412, 900, true], [820, 1180, true], [1366, 900, false], [1920, 
 function onScreen(parts) {
     const strip = (sel) => sel.replace(/::?(?:hover|focus-visible|focus-within|focus|active|visited|before|after|placeholder|marker|selection|backdrop|first-line|first-letter|-webkit-[a-z-]+|-moz-[a-z-]+)(?:\([^()]*\))?/g, '').trim() || '*';
     const seen = (el) => { const r = el.getBoundingClientRect(); return r.bottom > 0 && r.top < innerHeight && r.right > 0 && r.left < innerWidth; };
+    // A rule whose job is hiding something matches only hidden elements, so "on screen" alone never kept it: the home's
+    // hero row showed its labels' small lines until the full file hid them, and the row reflowed (CLS 0.16 on desktop,
+    // 11-20). An element hidden inside an element on screen counts too.
+    const hiddenBeside = (el) => { const p = el.parentElement; return Boolean(p && seen(p) && getComputedStyle(el).display === 'none'); };
     const out = [];
     for (const part of parts) {
         let els;
         try { els = document.querySelectorAll(strip(part)); } catch { out.push(part); continue; }
-        for (const el of els) { if (seen(el)) { out.push(part); break; } }
+        for (const el of els) { if (seen(el) || hiddenBeside(el)) { out.push(part); break; } }
     }
     return out;
 }
