@@ -780,6 +780,8 @@ class BroadcastServer extends EventEmitter {
                 roomId, `sfu-${client.peerId}`, msg.transportId, msg.kind, msg.rtpParameters
             );
             this.safeSend(ws, { type: 'sfu-produced', id: result.id, kind: msg.kind });
+            // Record from the first picture or sound (recorder.startOnProduce), not from the next 45 s reconcile.
+            require('./recorder').startOnProduce(client.streamId).catch(() => {});
 
             // Promote to streamer role on first real feed ingest
             if (client.userId) {

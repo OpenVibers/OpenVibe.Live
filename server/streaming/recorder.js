@@ -36,6 +36,7 @@ class StreamRecorder {
         this.activeRecordings = new Map();
         this._finalizing = new Set();
         this._healAttempts = new Map();
+        this._produceStarts = new Set();   // streams whose start on produce is under way (startOnProduce)
         // streamId → timer for a recording start that Media refused for lack of disk;
         // retried while the stream stays live so the drain freeing space still yields
         // a (partial) recording instead of none at all.
@@ -406,6 +407,28 @@ class StreamRecorder {
 
     isRecording(streamId) { return this.activeRecordings.has(streamId); }
     isActivelyRecording(streamId) { return this.activeRecordings.has(streamId); }
+
+    /**
+     * A browser broadcaster's camera or microphone arrived over the SFU (broadcast-server's sfu-produce): record from now.
+     * That path had no start of its own (WHIP, RTMP and JSMpeg do), so a browser stream waited for the 45 s reconcile:
+     * on 11-19 stream 3060's recording began 28 s after the stream (74 of its 95 s recorded), and a stream shorter than
+     * the wait was not recorded at all. Video and audio arrive together: one start. Never rejects.
+     */
+    async startOnProduce(streamId) {
+        if (this.activeRecordings.has(streamId) || this._produceStarts.has(streamId)) return;
+        this._produceStarts.add(streamId);
+        try {
+            const stream = await db.getStreamById(streamId);
+            if (!stream || !stream.is_live || !WEBRTC_PROTOCOLS.has(stream.protocol)) return;
+            const mode = await db.resolveStreamRecordingMode(stream);
+            if (mode === 'none' || this.activeRecordings.has(streamId)) return;
+            await this.startRecording(streamId, stream.protocol, {}, { mode });
+        } catch (e) {
+            console.warn(`[VOD] start on produce failed for stream ${streamId}:`, e.message);
+        } finally {
+            this._produceStarts.delete(streamId);
+        }
+    }
     isFinalizingStream(streamId) { return this._finalizing.has(streamId); }
 
     /**
@@ -466,7 +489,7 @@ class StreamRecorder {
 
         for (const stream of streams) {
             const sid = stream.id;
-            if (this.isActivelyRecording(sid)) continue;
+            if (this.isActivelyRecording(sid) || this._produceStarts.has(sid)) continue;
 
             let mode = 'none';
             try { mode = await db.resolveStreamRecordingMode(stream); } catch { /* */ }
