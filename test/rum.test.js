@@ -153,7 +153,7 @@ const { createRum, pageKind, deviceClass } = require('../server/web/rum');
     assert.ok(!/userAgent[^)]*sendBeacon|JSON\.stringify\(\{[^}]*userAgent/.test(client), 'the user agent is checked, never sent');
 
     // ov-rum.js in a sandbox: what it sends for a page shown at once, one opened in a background tab, and its errors.
-    const runClient = ({ visibility, paints, lcp, errors = [] }) => {
+    const runClient = ({ visibility, paints, lcp, errors = [], early = null }) => {
         const sent = [];
         const handlers = {};
         const observers = {};
@@ -171,12 +171,13 @@ const { createRum, pageKind, deviceClass } = require('../server/web/rum');
             URL, JSON, Math, String, Object, Infinity,
         };
         ctx.window = ctx;
+        if (early) ctx.__ovErrs = early;
         vm.createContext(ctx);
         vm.runInContext(client, ctx);
         const feed = (type, entries) => observers[type] && observers[type]({ getEntries: () => entries });
         feed('paint', paints);
         feed('largest-contentful-paint', lcp);
-        for (const message of errors) handlers.error({ message });
+        for (const message of errors) if (handlers.error) handlers.error({ message });
         ctx.document.visibilityState = 'hidden';
         handlers.visibilitychange();
         return sent[0];
@@ -192,6 +193,29 @@ const { createRum, pageKind, deviceClass } = require('../server/web/rum');
     assert.deepStrictEqual([leftEarly.fcp, leftEarly.lcp], [800, 1200]);
     const errs = runClient({ visibility: [], paints: [], lcp: [], errors: ['ResizeObserver loop completed with undelivered notifications.', 'TypeError: x is undefined'] }).errs;
     assert.deepStrictEqual(errs, ['TypeError: x is undefined'], 'the ResizeObserver notice is not an error');
+
+    // app.js's collector (11-20): errors from the page's first moment, and a code error the page caught and logged.
+    {
+        const src = fs.readFileSync(path.join(__dirname, '../public/js/app.js'), 'utf8');
+        const snippet = src.slice(src.indexOf('/* ov-errors:start'), src.indexOf('/* ov-errors:end */'));
+        assert.ok(snippet.length > 200 && src.indexOf('/* ov-errors:start') < src.indexOf("const API = '';"), 'the collector runs before anything else in app.js');
+        const vm = require('vm');
+        const handlers = {};
+        const logged = [];
+        const ctx = { addEventListener: (type, fn) => { handlers[type] = fn; }, console: { error: (...a) => logged.push(a) }, String, Array };
+        ctx.window = ctx;
+        vm.createContext(ctx);
+        vm.runInContext(snippet, ctx);
+        handlers.error({ message: 'Uncaught ReferenceError: x is not defined' });
+        handlers.error({ message: 'ResizeObserver loop completed with undelivered notifications.' });
+        ctx.console.error('Channel load error:', Object.assign(new Error('d is not a function'), { name: 'TypeError' }));
+        ctx.console.error('Failed to fetch the chat'); // a plain log line, not a code error
+        handlers.unhandledrejection({ reason: new Error('base is not defined') });
+        assert.deepStrictEqual(JSON.parse(JSON.stringify(ctx.__ovErrs)), ['Uncaught ReferenceError: x is not defined', 'Channel load error: TypeError: d is not a function', 'unhandled rejection: base is not defined']);
+        assert.strictEqual(logged.length, 2, 'the log still prints every line');
+        const sent = runClient({ visibility: [], paints: [], lcp: [], early: ['a', 'Channel load error: TypeError: d is not a function', 'c', 'd'] });
+        assert.deepStrictEqual(sent.errs, ['a', 'Channel load error: TypeError: d is not a function', 'c'], 'ov-rum.js sends the collector\'s first three');
+    }
 
     console.log('rum: all checks passed');
 })().catch((e) => { console.error(e); process.exit(1); });

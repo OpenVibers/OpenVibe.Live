@@ -53,8 +53,13 @@
     // "ResizeObserver loop completed with undelivered notifications" is the browser deferring a resize callback to the
     // next frame, not a failure (and the only "error" in the 10-20 snapshot): it is not counted.
     const err = (msg) => { if (m.errs.length < 3 && !/^ResizeObserver loop/.test(String(msg))) m.errs.push(String(msg).slice(0, 140)); };
-    addEventListener('error', (e) => err(e.message || 'error'));
-    addEventListener('unhandledrejection', (e) => err('unhandled rejection: ' + ((e.reason && e.reason.message) || e.reason)));
+    // app.js collects the page's errors from its first moment (window.__ovErrs, logged code errors included); this
+    // script loads when the page is idle, so it listens itself only on a page without that collector.
+    const early = Array.isArray(window.__ovErrs) ? window.__ovErrs : null;
+    if (!early) {
+        addEventListener('error', (e) => err(e.message || 'error'));
+        addEventListener('unhandledrejection', (e) => err('unhandled rejection: ' + ((e.reason && e.reason.message) || e.reason)));
+    }
     let sent = false;
     const send = () => {
         if (sent) return;
@@ -74,7 +79,7 @@
             path, w: innerWidth, ttfb: nav ? r(nav.responseStart) : 0, ttff: r(window.__ovFirstFrameAt || 0),
             tplayer: r(window.__ovPlayerStartAt || 0),
             thtml: nav ? r(nav.responseEnd) : 0, tcss: r(tcss), rtt: conn && Number.isFinite(conn.rtt) ? r(conn.rtt) : 0,
-            fcp: r(m.fcp), lcp: r(m.lcp), cls: Math.round(m.cls * 1000) / 1000, inp: r(m.inp), tbt: r(m.tbt), errs: m.errs,
+            fcp: r(m.fcp), lcp: r(m.lcp), cls: Math.round(m.cls * 1000) / 1000, inp: r(m.inp), tbt: r(m.tbt), errs: early ? early.filter((x) => !/^ResizeObserver loop/.test(x)).slice(0, 3) : m.errs,
         };
         if (m.inpOn) body.inp_on = m.inpOn;
         // The first picture again under the path that showed it (WebRTC, HLS, FLV or JSMpeg), so each has its own p75.

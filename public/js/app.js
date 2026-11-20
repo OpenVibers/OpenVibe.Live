@@ -3,6 +3,30 @@
    URL-based routing with history.pushState
    ═══════════════════════════════════════════════════════════════ */
 
+/* ov-errors:start — the page's script errors from its first moment, for js/ov-rum.js (which loads when the page is
+   idle and so missed every error before it). A code error the page caught and logged counts too: 11-19/20, every
+   live channel stopped at loadChannelPage's caught "TypeError: d is not a function" for 19 hours and no beacon said
+   so. Kept in window.__ovErrs (six at most); ov-rum.js sends the first three. */
+(function () {
+    if (window.__ovErrs) return;
+    const q = window.__ovErrs = [];
+    const add = (msg) => {
+        const text = String(msg == null ? '' : msg).replace(/\s+/g, ' ').trim().slice(0, 140);
+        if (text && q.length < 6 && !/^ResizeObserver loop/.test(text) && !q.includes(text)) q.push(text);
+    };
+    addEventListener('error', (e) => add(e.message || 'error'));
+    addEventListener('unhandledrejection', (e) => add('unhandled rejection: ' + ((e.reason && e.reason.message) || e.reason)));
+    const log = console.error;
+    console.error = function () {
+        try {
+            const text = Array.prototype.map.call(arguments, (a) => (a && typeof a === 'object' && a.message ? `${a.name || 'Error'}: ${a.message}` : String(a))).join(' ');
+            if (/\b(TypeError|ReferenceError|RangeError|SyntaxError)\b/.test(text)) add(text);
+        } catch (e) { /* never in the way of the log */ }
+        return log.apply(this, arguments);
+    };
+})();
+/* ov-errors:end */
+
 const API = '';   // same-origin
 let currentUser = null;
 // The page the server already shows (server/web/assets.js marks the route's own section active), so the first
