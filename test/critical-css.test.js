@@ -83,7 +83,7 @@ ok('public routes block on the subset and load style.css after it in the same pl
     const blocking = blockingLinks(head.replace(/<noscript>[\s\S]*?<\/noscript>/g, ''));
     assert.ok(!blocking.some((h) => h.startsWith('/css/home-tour.css')), 'the home tour does not block the first paint');
     assert.match(head, /<link rel="stylesheet" href="\/css\/home-tour\.css\?v=[^"]+" media="print" onload="this\.media='all';this\.onload=null" data-ov-feature-asset>/, 'it loads without blocking');
-    assert.ok(blocking.some((h) => h.startsWith('/css/features/home.core.css')) && blocking.some((h) => h.startsWith('/css/home-fx.css')), 'the home layout\'s first screen and the hero styles still block');
+    assert.ok(blocking.some((h) => h.startsWith('/css/features/home.core.css')) && blocking.some((h) => h.startsWith('/css/home-fx.core.css')), 'the home layout\'s first screen and the hero styles still block, through their subsets');
     assert.ok(head.indexOf('/css/home-fx.css') < head.indexOf('/css/home-tour.css') && head.indexOf('/css/home-tour.css') < head.indexOf('<meta name="ov-css-anchor">'), 'in its place in the cascade');
 }
 ok('a feature\'s deferCss arrives without blocking, in its cascade place');
@@ -115,6 +115,34 @@ ok('a feature\'s deferCss arrives without blocking, in its cascade place');
     assert.strictEqual(critical.subsetFor('/css/features/home.css', '/?ref=x'), '/css/features/home.core.css');
 }
 ok('the home blocks on its own small subset of home.css, and the full file follows in its place');
+
+// 11-20 (real visitors: the home's last blocking stylesheet arrived at 2.8 s, p75 desktop): the hero's effects layer
+// blocks through its own measured subset, and i18n-star.css (chat translations, captions, the Star card, all drawn by
+// scripts) no longer blocks the home at all; pages with chat still get it, blocking, with the chat.
+{
+    const fx = critical.subset('/css/home-fx.core.css');
+    assert.ok(fx && fx.css.length > 1000 && fx.bytes < fx.from, `a home-fx subset is built from its committed list (${fx && fx.bytes} of ${fx && fx.from})`);
+    assert.ok(fx.css.includes('.hero-cta'), "the hero's buttons are in it");
+    const listed = JSON.parse(fs.readFileSync(critical.HOME_FX_SELECTORS, 'utf8')).selectors;
+    const inFile = new Set();
+    const walk = (list) => { for (const n of list) { if (n.type === 'rule') critical.splitSelectors(n.selector).forEach((x) => inFile.add(x)); else if (n.type === 'block') walk(n.children); } };
+    walk(critical.parse(fs.readFileSync(critical.HOME_FX, 'utf8')));
+    const stale = listed.filter((x) => !inFile.has(x));
+    assert.ok(stale.length <= listed.length * 0.15, `critical-home-fx.json is stale (${stale.length} of ${listed.length}): run node scripts/perf/critical-home-css.js`);
+    const page = assets.renderRoute(doc, '/');
+    const head = page.slice(0, page.indexOf('</head>'));
+    const blocking = blockingLinks(head.replace(/<noscript>[\s\S]*?<\/noscript>/g, ''));
+    assert.ok(!blocking.some((h) => h.startsWith('/css/home-fx.css')), 'home-fx.css itself no longer blocks the home');
+    assert.ok(!blocking.some((h) => h.startsWith('/css/i18n-star.css')), 'i18n-star.css does not block the home');
+    assert.match(head, /<link rel="stylesheet" href="\/css\/i18n-star\.css\?v=[^"]+" media="print" onload="this\.media='all';this\.onload=null" data-ov-feature-asset>/, 'it still arrives, without blocking');
+    assert.deepStrictEqual(blocking.map((h) => h.split('?')[0]), ['/css/style.core.css', '/css/features/home.core.css', '/css/home-fx.core.css'], 'the home blocks on three small subsets, nothing else');
+    for (const url of ['/@someone', '/chat', '/broadcast']) {
+        const h = assets.renderRoute(doc, url);
+        assert.ok(blockingLinks(h.slice(0, h.indexOf('</head>')).replace(/<noscript>[\s\S]*?<\/noscript>/g, '')).some((x) => x.startsWith('/css/i18n-star.css')), `${url}: the chat's translation styles come with the chat`);
+    }
+    assert.strictEqual(critical.subsetFor('/css/home-fx.css', '/content'), null, 'measured on "/" only');
+}
+ok("the hero's effects block through a measured subset; i18n-star.css leaves the home's blocking set and comes with the chat");
 
 assert.strictEqual(assets.hashOf(assets.CORE_CSS), core.hash, 'the subset is versioned by its content');
 ok('the subset is versioned by its content');
