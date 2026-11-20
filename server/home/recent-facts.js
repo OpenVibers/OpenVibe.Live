@@ -32,7 +32,7 @@ function summarizeHistory(rows, now = Date.now()) {
         days_in_a_row: run >= 3 ? run : null, last_stream_seconds: sorted[0] ? duration(sorted[0], now) : null,
         streams: sorted.slice(0, 2).map((r) => ({ id: r.id, title: r.title || 'Stream', started_at: r.started_at,
             length_seconds: duration(r, now), is_live: !!r.is_live, thumbnail_url: r.thumbnail_url || null,
-            managed_stream_id: r.managed_stream_id || null })),
+            managed_stream_id: r.managed_stream_id || null, replay_removed_by: r.replay_removed_by || null })),
     };
 }
 module.exports = { summarizeHistory, moment, duration };

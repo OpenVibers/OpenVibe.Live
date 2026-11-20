@@ -763,6 +763,14 @@ router.delete('/:id', requireAuth, async (req, res) => {
     try {
         await media.deleteVod(req.params.id);
         await purge.afterDelete('vod', req.params.id);
+        // The stream remembers its replay was deleted (migration 0044): once Media has no part left for it, the home's
+        // Recently Online says "Replay deleted by the streamer", not "Not recorded" (11-20, RePlayer009's VOD 6632).
+        if (vod.stream_id) {
+            const stream = await db.getStreamById(vod.stream_id).catch(() => null);
+            const by = stream && stream.user_id === req.user.id ? 'streamer' : (vod.user_id === req.user.id ? 'streamer' : 'moderator');
+            await db.run('UPDATE streams SET replay_removed_at = ov_now(), replay_removed_by = ? WHERE id = ?', [by, vod.stream_id])
+                .catch((err) => console.warn('[VOD] could not note the deleted replay on its stream:', err.message));
+        }
         res.json({ message: 'VOD deleted' });
     } catch (err) {
         mediaErr(res, err, 'Failed to delete VOD');
