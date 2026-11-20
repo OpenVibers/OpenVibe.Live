@@ -57,4 +57,20 @@ log.length = 0;
 callback([{ target: a, contentRect: { width: 900 } }, { target: b, contentRect: { width: 900 } }]);
 assert.deepStrictEqual(log, [], 'no width change, nothing done');
 
-console.log('density: one observer, every grid unclamped, then read, then rendered');
+// OVDensity.known (11-20): the columns without a layout read, 0 before the first measurement; the rails wait for it.
+const c = grid('trending', 3);
+c.dataset = {};
+sandbox.OVDensity.attach(c, { key: 'trending' });
+log.length = 0;
+assert.strictEqual(sandbox.OVDensity.known(c), 0, 'not measured yet: 0');
+assert.deepStrictEqual(log, [], 'known() reads nothing');
+callback([{ target: c, contentRect: { width: 900 } }]);
+assert.strictEqual(sandbox.OVDensity.known(c), 3, 'after the observer: the measured count');
+c.dataset.ovdCols = '2';
+assert.strictEqual(sandbox.OVDensity.known(c), 2, 'the reader\'s choice first');
+const home = fs.readFileSync(path.join(__dirname, '..', 'public/js/app-home.js'), 'utf8');
+const autofill = home.slice(home.indexOf('function homeRailAutofill('), home.indexOf('function homeRailSideways('));
+assert.match(autofill, /OVDensity\.known\(rail\.grid\)/, 'the rail asks without forcing a layout');
+assert.match(autofill, /if \(!known && rail\.grid\.dataset && rail\.grid\.dataset\.ovdBound\) return;/, 'and waits for ovd:columns until it is known');
+
+console.log('density: one observer, every grid unclamped, then read, then rendered; known() reads no layout');

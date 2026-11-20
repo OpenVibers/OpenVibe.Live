@@ -2394,7 +2394,11 @@ function homeRailLoaded(rail, offset, count, total) {
 }
 function homeRailAutofill(rail) {
     if (!rail || rail.filling || !rail.loader || !rail.grid) return;
-    const cols = _homeRailCols(rail.grid);
+    // A grid with the density control waits for its first measurement (its ovd:columns event calls this again) rather
+    // than forcing a layout of the page right after the cards went in (OVDensity.known).
+    const known = window.OVDensity && typeof OVDensity.known === 'function' ? OVDensity.known(rail.grid) : 0;
+    if (!known && rail.grid.dataset && rail.grid.dataset.ovdBound) return;
+    const cols = known || _homeRailCols(rail.grid);
     const left = Math.max(0, rail.total - rail.shown);
     const short = rail.shown % cols;
     if (!left || !short) return;
