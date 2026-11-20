@@ -1405,6 +1405,7 @@ async function loadHome() {
     } })();
 
     loadHomeRecentOnline();
+    loadHomeFeedGlimpse();    // the start of the network's feed, under Live Now (drawn when it comes near)
     void loadHomePulse();     // happening-now rail + weekly leaders + AI moments + latest update
     void loadHomeDigest();    // "while you were away" / "lately on OpenVibe" — everyone
     void loadHomeStar();      // "Star of OpenVibe" spotlight (star_streamer setting)
@@ -1418,6 +1419,46 @@ async function loadHome() {
     loadHomePastes();
 
     startHomeRefresh(); // live grid + sections auto-update in real time
+}
+
+/* ── A glimpse of the feed (plan §V.1, the owner's #800) ──
+   The start of the network's public feed under Live Now, drawn by openvibe-shared's ov-home.js (OpenVibeHome.feed with
+   glimpse: four cards, no chips or endless loading). The script is asked for only when the section comes within 800 px
+   of the screen, so the first paint carries none of it. Show more opens the menu's Feed; a feed that does not answer
+   takes the section away. */
+let _feedGlimpseOn = false;
+function loadHomeFeedGlimpse() {
+    const section = document.getElementById('home-feed-glimpse');
+    const list = document.getElementById('home-feed-glimpse-list');
+    if (!section || !list || _feedGlimpseOn) return;
+    const draw = () => {
+        if (_feedGlimpseOn || !window.OpenVibeHome || typeof OpenVibeHome.feed !== 'function') return;
+        _feedGlimpseOn = true;
+        // openvibe-shared 4.329.0 and later say they draw a glimpse; an older copy would draw the whole endless feed here.
+        if (OpenVibeHome.glimpse !== true) { section.hidden = true; return; }
+        try {
+            OpenVibeHome.feed(list, {
+                glimpse: 4,
+                moreLabel: 'Show more of the feed',
+                onMore: () => {
+                    if (window.OpenVibeNavbar && typeof OpenVibeNavbar.openSearch === 'function') { OpenVibeNavbar.openSearch('', 'feed'); return; }
+                    location.href = 'https://openvibe.network/feed';
+                },
+                mountIcons: (scope) => { try { if (window.OpenVibeIcons) OpenVibeIcons.mount(scope); } catch { /* the marks stay letters */ } },
+                feedMissing: () => { section.hidden = true; },
+            });
+        } catch { section.hidden = true; }
+    };
+    const load = () => {
+        if (window.OpenVibeHome) { draw(); return; }
+        let sc = document.querySelector('script[data-ov-home]');
+        if (!sc) { sc = document.createElement('script'); sc.src = '/shared/ov-home.js'; sc.async = true; sc.dataset.ovHome = '1'; document.head.appendChild(sc); }
+        sc.addEventListener('load', draw, { once: true });
+        sc.addEventListener('error', () => { section.hidden = true; }, { once: true });
+    };
+    if (typeof IntersectionObserver !== 'function') { load(); return; }
+    const io = new IntersectionObserver((es) => { if (es.some((e) => e.isIntersecting)) { io.disconnect(); load(); } }, { rootMargin: '800px 0px' });
+    io.observe(section);
 }
 
 /* ── Community pulse: happening-now rail, weekly leaders, AI moments, latest ship ── */
