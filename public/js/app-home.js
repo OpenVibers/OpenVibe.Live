@@ -1694,7 +1694,9 @@ function renderRecentlyOnline(containerId, streamers, append) {
             } else blank();
             const span = (n) => (n ? ' · ' + formatDuration(n) : '');
             const tag = h.is_live ? 'Live' + span(len)
-                : removed ? (removed === 'streamer' ? 'Replay deleted by the streamer' : 'Replay removed') + span(len)
+                // Short enough for a phone's 100 px thumbnail (11-20: "Replay deleted by the streamer · 18:08" took four lines there
+                // and its first word was clipped).
+                : removed ? (removed === 'streamer' ? 'Deleted by streamer' : 'Replay removed') + span(len)
                 : unrecorded ? 'Not recorded' + span(len)
                     : replay ? 'Replay' + (partial ? ` · ${formatDuration(rec)} of ${formatDuration(len)}` : span(rec || len))
                         : 'Stream' + span(len);
