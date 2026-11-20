@@ -138,6 +138,14 @@
                 delete grid.dataset.ovdAuto;
                 grid.style.removeProperty('--ovd-cols');
             }
+            // What the grid shows, said before anything about the control: a grid with no control on the page still
+            // tells its rail (app-home.js waits for this event before filling the last row).
+            const effective = active || Math.min(natural, max);
+            if (grid._ovdEffective !== effective) {
+                grid._ovdEffective = effective;
+                // Rails fill their last row to this count (app-home.js listens).
+                try { grid.dispatchEvent(new CustomEvent('ovd:columns', { detail: { columns: effective } })); } catch { /* */ }
+            }
             if (!ctrl) return;
 
             // One button per achievable count. A container that only fits one column offers no
@@ -168,12 +176,6 @@
                     });
                     ctrl.appendChild(b);
                 }
-            }
-            const effective = active || Math.min(natural, max);
-            if (grid._ovdEffective !== effective) {
-                grid._ovdEffective = effective;
-                // Rails fill their last row to this count (app-home.js listens).
-                try { grid.dispatchEvent(new CustomEvent('ovd:columns', { detail: { columns: effective } })); } catch { /* */ }
             }
             for (const b of ctrl.querySelectorAll('.ovd-btn')) {
                 const pressed = String(Number(b.dataset.n) === effective);
@@ -245,5 +247,16 @@
         return autoColumns(grid, HARD_MAX);
     }
 
-    window.OVDensity = { attach, apply, columns, MIN_CARD, HARD_MAX };
+    /**
+     * The columns a grid shows, when that is known without a layout read: the reader's choice or the last measurement
+     * (the shared ResizeObserver's, after layout); 0 before the first. A caller that gets 0 waits for the grid's
+     * ovd:columns event, which the first measurement sends (11-20: the home's rails asked columns() right after
+     * inserting their cards, before that, and each forced a layout of the page: ~290 ms at 4x CPU).
+     */
+    function known(grid) {
+        if (!grid) return 0;
+        return Number(grid.dataset && grid.dataset.ovdCols) || grid._ovdEffective || 0;
+    }
+
+    window.OVDensity = { attach, apply, columns, known, MIN_CARD, HARD_MAX };
 })();
