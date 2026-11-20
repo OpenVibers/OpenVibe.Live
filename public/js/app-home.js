@@ -2418,9 +2418,14 @@ function homeRailAutofill(rail) {
     if (typeof fn === 'function') fn({ more: need, auto: true }); else rail.filling = false;
 }
 
-/** True when the grid is a row that scrolls sideways (features/home.css makes Catch up's grids one on a phone). */
+/**
+ * True when the grid is a row that scrolls sideways: features/home.css makes Catch up's grids one under
+ * @media (max-width: 759px). Asked of the media query, not the grid's computed overflow: that read recalculated the page's
+ * style right after the cards went in (11-20: 240 ms at 4x CPU in a profile of the home's load).
+ */
+const HOME_RAIL_SIDEWAYS_MQ = '(max-width: 759px)';
 function homeRailSideways(grid) {
-    try { return !!grid && getComputedStyle(grid).overflowX === 'auto'; } catch { return false; }
+    try { return !!grid && !!grid.closest('#home-catchup') && window.matchMedia(HOME_RAIL_SIDEWAYS_MQ).matches; } catch { return false; }
 }
 /** Cards a sideways rail asks for at a time: a few swipes' worth. */
 const HOME_RAIL_BATCH = 6;

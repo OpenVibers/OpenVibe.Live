@@ -26,13 +26,17 @@ function fn(name) {
     throw new Error(`unbalanced ${name}`);
 }
 const batch = /const HOME_RAIL_BATCH = (\d+);/.exec(src);
+const sidewaysMq = /const HOME_RAIL_SIDEWAYS_MQ = '([^']+)';/.exec(src);
+assert.ok(sidewaysMq, 'the sideways media query is named');
 assert.ok(batch, 'the batch size is named');
 
 function page(overflowX) {
-    const { window, document } = parseHTML(`<!doctype html><html><body>
+    const { window, document } = parseHTML(`<!doctype html><html><body><div id="home-catchup">
 <div class="section-header" id="vods-header"><h2>Recent VODs</h2><a href="/content?type=vods" class="section-action">View all</a></div>
 <div class="stream-grid" id="grid"><a class="stream-card">1</a><a class="stream-card">2</a><a class="stream-card">3</a><a class="stream-card">4</a></div>
-<div id="pager" style="display:none"></div></body></html>`);
+<div id="pager" style="display:none"></div></div></body></html>`);
+    // Sideways is the media query's answer (homeRailSideways), never the grid's computed style.
+    window.matchMedia = () => ({ matches: overflowX === 'auto' });
     const observed = [];
     class IO {
         constructor(cb, opts) { this.cb = cb; this.opts = opts; observed.push(this); }
@@ -43,14 +47,15 @@ function page(overflowX) {
     const calls = [];
     const ctx = {
         window, document, IntersectionObserver: IO, Promise, Math, Number, String,
-        getComputedStyle: () => ({ overflowX }),
+        styleReads: 0,
+        getComputedStyle() { ctx.styleReads++; return { overflowX }; },
         handleLinkClick: () => false,
         _homeRailCols: () => 1,
         _narrow: true,
     };
     ctx.window.loadHomeRecentVods = (o) => { calls.push(o); return Promise.resolve(); };
     vm.createContext(ctx);
-    vm.runInContext(`const HOME_RAIL_BATCH = ${batch[1]};\n${fn('homeRailSideways')}\n${fn('homeRailTail')}\n${fn('homeRailBind')}\n${fn('homeRailKnownCols')}\n${fn('homeRailAutofill')}\n${fn('_homeRailCols')}\n${fn('renderHomePagination')}\nthis.renderHomePagination = renderHomePagination;`, ctx);
+    vm.runInContext(`const HOME_RAIL_BATCH = ${batch[1]};\nconst HOME_RAIL_SIDEWAYS_MQ = '${sidewaysMq[1]}';\n${fn('homeRailSideways')}\n${fn('homeRailTail')}\n${fn('homeRailBind')}\n${fn('homeRailKnownCols')}\n${fn('homeRailAutofill')}\n${fn('_homeRailCols')}\n${fn('renderHomePagination')}\nthis.renderHomePagination = renderHomePagination;`, ctx);
     const rail = { grid: document.getElementById('grid'), loader: 'loadHomeRecentVods', shown: 4, total: 852 };
     return { ctx, document, rail, observed, calls };
 }
@@ -98,12 +103,16 @@ function page(overflowX) {
         const { ctx, document, rail } = page('visible');
         ctx.renderHomePagination('pager', rail);
         assert.strictEqual(document.getElementById('pager').style.display, 'block');
+        assert.strictEqual(ctx.styleReads, 0, 'the pager reads no computed style (11-20: 240 ms at 4x)');
         assert.match(document.getElementById('pager').innerHTML, /class="home-load-more"/);
         assert.strictEqual(document.querySelectorAll('#grid > .home-rail-tail').length, 0);
     }
     // The styles: the tail shows only in a sideways rail, the placeholders keep still for reduced motion, and the density
     // control's column clamp never squeezes a rail's cards.
     assert.match(css, /\.home-rail-tail \{ display: none; \}/);
+    // homeRailSideways asks this media query: it must be the one that makes Catch up's grids sideways.
+    const mq = /const HOME_RAIL_SIDEWAYS_MQ = '([^']+)';/.exec(src);
+    assert.ok(mq && new RegExp(`@media ${mq[1].replace(/[()]/g, '\\$&')} \\{[^@]*#home-catchup \\.stream-grid, #home-catchup \\.home-pastes-list \\{[^}]*overflow-x: auto`).test(css), 'the media query matches the stylesheet');
     assert.match(css, /#home-catchup \.stream-grid > \.home-rail-tail, #home-catchup \.home-pastes-list > \.home-rail-tail \{ display: flex; \}/);
     assert.doesNotMatch(css, /\.home-rail-skel \{ animation: none/, 'the placeholder shimmers under Calm too (slower, by the loader)');
     assert.match(css, /#home-catchup \.stream-grid\[data-ovd-cols\], #home-catchup \.home-pastes-list\[data-ovd-cols\] \{ grid-template-columns: none !important; \}/);
