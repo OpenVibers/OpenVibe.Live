@@ -113,7 +113,8 @@
     <!-- Feature stylesheets always go directly above this marker (server and js/ov-loader.js alike), so
          their rules sit in the cascade exactly where they sat inside style.css. -->
     <meta name="ov-css-anchor">
-    <link rel="stylesheet" href="/css/i18n-star.css">
+    <!-- i18n-star.css (chat translations, captions, the home's Star card: all drawn by scripts) comes with the chat
+         (features.json → chatUI) and, without blocking, with the home (2026-11-20). -->
     <!-- chat-shared.css belongs to the chat (features.json → chatUI): the pages that have chat ask
          for it there, and a page without chat does not download it. -->
     <link rel="stylesheet" href="/shared/items.css" media="print" onload="this.media='all';this.onload=null">

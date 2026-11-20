@@ -36,11 +36,16 @@ const SELECTORS = path.join(PUBLIC_DIR, 'css', 'critical-selectors.json');
 // scroll, with and without JavaScript, at four widths), blocks there instead, and the full file follows without blocking.
 const HOME = path.join(PUBLIC_DIR, 'css', 'features', 'home.css');
 const HOME_SELECTORS = path.join(PUBLIC_DIR, 'css', 'critical-home.json');
+// The home's effects layer (home-fx.css, 27 KB raw) also blocked the first paint, for the hero's buttons; real visitors'
+// last blocking stylesheet arrived at 2.8 s (p75, desktop, 11-20). Its first-screen rules are measured the same way.
+const HOME_FX = path.join(PUBLIC_DIR, 'css', 'home-fx.css');
+const HOME_FX_SELECTORS = path.join(PUBLIC_DIR, 'css', 'critical-home-fx.json');
 // Each generated subset: the URL it is served at, the file it comes from, its selector list, the full stylesheet's URL
 // it stands in for, and the routes whose first view it was measured on (null: the shell decides, as for style.css).
 const SUBSETS = {
     '/css/style.core.css': { source: STYLE, selectors: SELECTORS, full: '/css/style.css', routes: null },
     '/css/features/home.core.css': { source: HOME, selectors: HOME_SELECTORS, full: '/css/features/home.css', routes: /^\/$/ },
+    '/css/home-fx.core.css': { source: HOME_FX, selectors: HOME_FX_SELECTORS, full: '/css/home-fx.css', routes: /^\/$/ },
 };
 /** The subset URL that stands in for a full stylesheet on a route, or null. */
 function subsetFor(fullHref, urlPath) {
@@ -181,4 +186,4 @@ function core() {
     return subset('/css/style.core.css');
 }
 
-module.exports = { parse, splitSelectors, extract, core, subset, subsetFor, SUBSETS, STYLE, SELECTORS, HOME, HOME_SELECTORS, DOCUMENT_LEVEL };
+module.exports = { parse, splitSelectors, extract, core, subset, subsetFor, SUBSETS, STYLE, SELECTORS, HOME, HOME_SELECTORS, HOME_FX, HOME_FX_SELECTORS, DOCUMENT_LEVEL };

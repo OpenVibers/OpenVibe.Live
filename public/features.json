@@ -4,7 +4,8 @@
     "chatUI": {
       "_comment": "The chat UI: the socket, the messages, the panels. Only the pages that have chat ask for it (the routes below name it); the part of chat every page needs is public/js/chat-core.js.",
       "css": [
-        "/css/chat-shared.css"
+        "/css/chat-shared.css",
+        "/css/i18n-star.css"
       ],
       "js": [
         "/js/chat-shared.js",
@@ -35,10 +36,12 @@
       "css": [
         "/css/features/home.css",
         "/css/home-fx.css",
-        "/css/home-tour.css"
+        "/css/home-tour.css",
+        "/css/i18n-star.css"
       ],
       "deferCss": [
-        "/css/home-tour.css"
+        "/css/home-tour.css",
+        "/css/i18n-star.css"
       ],
       "js": [
         "/shared/kit-web.js",
