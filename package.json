@@ -46,7 +46,7 @@
     "onnxruntime-node": "^1.20.0",
     "openvibe-contracts": "https://git.openvibe.codes/api/v1/repos/openvibers/openvibe.contracts/archive/v0.449.0.tar.gz",
     "openvibe-sdk": "https://git.openvibe.codes/api/v1/repos/openvibers/openvibe.sdk/archive/v0.188.0.tar.gz",
-    "openvibe-shared": "https://git.openvibe.codes/api/v1/repos/openvibers/openvibe.shared/archive/v4.331.0.tar.gz",
+    "openvibe-shared": "https://git.openvibe.codes/api/v1/repos/openvibers/openvibe.shared/archive/v4.332.0.tar.gz",
     "pg": "^8.23.1",
     "sanitize-html": "^2.17.7",
     "sdp-transform": "^3.0.0",
