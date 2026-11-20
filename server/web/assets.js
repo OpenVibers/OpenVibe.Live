@@ -89,7 +89,7 @@ function resolveIn(root, urlPath) {
  * bytes belong to the old hash — and Cloudflare would cache that for a year.
  */
 function hashOf(urlPath, { fresh = false } = {}) {
-    if (urlPath === CORE_CSS) { const c = critical.core(); return c ? c.hash : null; }
+    if (critical.SUBSETS[urlPath]) { const c = critical.subset(urlPath); return c ? c.hash : null; }
     const now = Date.now();
     const entry = files.get(urlPath);
     if (entry && !fresh && now - entry.checkedAt < RECHECK_MS) return entry.hash;
@@ -292,9 +292,16 @@ function renderRoute(html, urlPath) {
     if (!html.includes(ROUTE_CSS_MARK) && !html.includes(ROUTE_JS_MARK)) return html;
     const { features: names, css, js, deferred } = routeAssets(urlPath);
     // A deferred stylesheet keeps its place in the cascade and arrives without blocking (media="print" until loaded).
-    const tag = (c) => (deferred.has(c)
-        ? `<link rel="stylesheet" href="${versioned(c)}" media="print" onload="this.media='all';this.onload=null" data-ov-feature-asset>`
-        : `<link rel="stylesheet" href="${versioned(c)}" data-ov-feature-asset>`);
+    // A stylesheet with a first-paint subset measured on this route (critical-css.js: home.css on "/") links the subset
+    // as the blocking file and itself right after it, without blocking: once it has arrived the cascade is the same.
+    const later = (c) => `<link rel="stylesheet" href="${versioned(c)}" media="print" onload="this.media='all';this.onload=null" data-ov-feature-asset>`;
+    const tag = (c) => {
+        if (deferred.has(c)) return later(c);
+        const sub = critical.subsetFor(c, urlPath);
+        const h = sub && hashOf(sub);
+        if (h) return `<link rel="stylesheet" href="${sub}?v=${h}" data-ov-first-paint>\n    ${later(c)}\n    <noscript><link rel="stylesheet" href="${versioned(c)}"></noscript>`;
+        return `<link rel="stylesheet" href="${versioned(c)}" data-ov-feature-asset>`;
+    };
     // Split-out rules keep their cascade position (right after style.css); stylesheets that were always
     // separate files keep theirs (after every global stylesheet). js/ov-loader.js applies the same rule.
     const cssTags = css.filter(isEarlyCss).map(tag).join('\n    ');
@@ -362,9 +369,10 @@ function firstPaintCss(html, urlPath) {
     <noscript><link rel="stylesheet" href="${full}"></noscript>`);
 }
 
-/** GET /css/style.core.css: the generated subset, immutable under its current ?v=, short-cached otherwise. */
+/** GET /css/style.core.css (and every other subset in critical-css.js): the generated subset, immutable under its
+ * current ?v=, short-cached otherwise. */
 function serveCoreCss(req, res, next) {
-    const c = critical.core();
+    const c = critical.subset(req.path);
     if (!c) return next();
     const v = typeof req.query.v === 'string' ? req.query.v : '';
     if (v && v === c.hash) setImmutable(res); else setNoCache(res);
