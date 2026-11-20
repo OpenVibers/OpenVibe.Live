@@ -277,7 +277,10 @@
         "/js/pastes.js"
       ],
       "stubs": [
-        "captureScreenshot"
+        "captureScreenshot",
+        "_updatePasteLineCount",
+        "closePasteModal",
+        "submitPaste"
       ]
     },
     "money": {
