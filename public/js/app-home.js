@@ -1340,7 +1340,8 @@ function initHomeNetwork() {
         io.observe(root);
         // Never left invisible: if the observer has not fired in a few seconds of the section being on screen, show it.
         // Read on a frame (2026-11-19): read from the timer, it forced a layout while the page was still being drawn.
-        setTimeout(() => requestAnimationFrame(() => { try { if (!root._ovnetAwake && root.getBoundingClientRect().top < window.innerHeight) wake(); } catch { wake(); } }), 4000);
+        // The section that skips its rendering off screen is read by its own box (reading inside it rendered all of it, 11-20).
+        setTimeout(() => requestAnimationFrame(() => { try { if (!root._ovnetAwake && (root.closest('.home-part, .home-section-lazy') || root).getBoundingClientRect().top < window.innerHeight) wake(); } catch { wake(); } }), 4000);
     } else wake();
     // Sites that opened since the page was built.
     try {
