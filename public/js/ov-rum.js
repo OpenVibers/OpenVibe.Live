@@ -38,7 +38,18 @@
         if (win > m.cls) m.cls = win;
     });
     watch('longtask', (e) => { if (m.fcp && e.startTime > m.fcp) m.tbt += Math.max(0, e.duration - 50); });
-    watch('event', (e) => { if (e.interactionId && e.duration > m.inp) m.inp = e.duration; }, { durationThreshold: 40 });
+    // The slowest interaction, and what it was on (2026-11-20: the Go live page's INP p75 was 232 ms on phones and
+    // nothing said which tap): the event and the element's tag with its id or first class, never any words.
+    const what = (el) => {
+        try {
+            if (!el || !el.tagName) return '';
+            const tag = el.tagName.toLowerCase();
+            if (el.id && /^[A-Za-z][\w-]{0,40}$/.test(el.id)) return `${tag}#${el.id}`;
+            const c = String(el.getAttribute && el.getAttribute('class') || '').trim().split(/\s+/)[0];
+            return /^[A-Za-z][\w-]{0,40}$/.test(c) ? `${tag}.${c}` : tag;
+        } catch (e) { return ''; }
+    };
+    watch('event', (e) => { if (e.interactionId && e.duration > m.inp) { m.inp = e.duration; m.inpOn = `${e.name} ${what(e.target)}`.trim(); } }, { durationThreshold: 40 });
     // "ResizeObserver loop completed with undelivered notifications" is the browser deferring a resize callback to the
     // next frame, not a failure (and the only "error" in the 10-20 snapshot): it is not counted.
     const err = (msg) => { if (m.errs.length < 3 && !/^ResizeObserver loop/.test(String(msg))) m.errs.push(String(msg).slice(0, 140)); };
@@ -57,6 +68,7 @@
             tplayer: r(window.__ovPlayerStartAt || 0),
             fcp: r(m.fcp), lcp: r(m.lcp), cls: Math.round(m.cls * 1000) / 1000, inp: r(m.inp), tbt: r(m.tbt), errs: m.errs,
         };
+        if (m.inpOn) body.inp_on = m.inpOn;
         // The first picture again under the path that showed it (WebRTC, HLS, FLV or JSMpeg), so each has its own p75.
         const via = String(window.__ovFirstFrameVia || '');
         if (/^(webrtc|hls|flv|jsmpeg)$/.test(via) && window.__ovFirstFrameAt) body['ttff_' + via] = r(window.__ovFirstFrameAt);
