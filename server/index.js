@@ -690,7 +690,7 @@ app.use('/js/vendor', express.static(path.join(assets.PUBLIC_DIR, 'js', 'vendor'
 }));
 app.use('/js', assets.versionedStatic('/js'), express.static(path.join(assets.PUBLIC_DIR, 'js'), assetOpts));
 // The first-paint subset of style.css is generated (server/web/critical-css.js), so it is served before the static mount.
-app.get(assets.CORE_CSS, assets.serveCoreCss);
+for (const url of Object.keys(require('./web/critical-css').SUBSETS)) app.get(url, assets.serveCoreCss);
 app.use('/css', assets.versionedStatic('/css'), express.static(path.join(assets.PUBLIC_DIR, 'css'), assetOpts));
 // Page markup that is fetched when a route is first opened instead of shipping inside index.html.
 app.use('/fragments', assets.versionedStatic('/fragments'), express.static(path.join(assets.PUBLIC_DIR, 'fragments'), { ...assetOpts, fallthrough: false }));

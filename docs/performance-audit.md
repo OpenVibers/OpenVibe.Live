@@ -152,6 +152,14 @@ used 436 of its selectors, 17–18 % of the file.
 - Re-run `node scripts/perf/critical-css.js` after changing a public page's look: a rule it does not list still arrives
   with the full file, just after the first paint. `test/critical-css.test.js` fails when more than a tenth of the listed
   selectors are no longer in `style.css`.
+- **The home's own stylesheet (2026-11-20).** With `style.css` split, `features/home.css` (118 KB raw, 21 KB brotli) was
+  the last render-blocking file on the home: first paint came about 120-180 ms after it in the lab, and real desktop
+  visits had their HTML and blocking CSS in by about 0.5 s but painted at 1.3 s (RUM p50; few samples).
+  `scripts/perf/critical-home-css.js` asks the page which `home.css` selectors style something on the first screen (no
+  scroll; script off and on; 412, 820, 1366 and 1920 px) and writes `public/css/critical-home.json`; the home ("/" only)
+  blocks on `/css/features/home.core.css` (18 KB raw, 3.3 KB brotli) and the full `home.css` follows in its place
+  without blocking. With the full file held back 2 s, the first paint came at 0.35-0.38 s instead of 2.5-2.8 s, and the
+  first screen was the same before and after it arrived. Re-run that script after changing how the top of the home looks.
 
 ## Measurement 2026-10-12: layout shift on direct visits
 
