@@ -130,10 +130,26 @@
     let revealScrollHooked = false;
     // Every waiting element's place is read first, then the ones on screen (or passed) are shown: adding the class
     // between two reads made the next read lay the whole page out again (550 ms of a tablet's first seconds, 11-19).
+    // A section that skips its rendering while off screen (content-visibility: auto: .home-part, .home-section-lazy) is
+    // read by its own box first: reading anything inside it made the browser render the whole section to answer
+    // (1,160 elements, 250 ms of a slow laptop's first seconds per sweep, 11-20). Below the screen: nothing in it is
+    // shown yet; above it (passed): all of it is; on screen: each element as before.
     function revealOnScreen() {
         const vh = window.innerHeight;
         const show = [];
+        const places = new Map();
         document.querySelectorAll('.hfx-reveal:not(.is-in)').forEach((el) => {
+            const part = el.closest('.home-part, .home-section-lazy');
+            if (part && part !== el) {
+                let place = places.get(part);
+                if (place === undefined) {
+                    const p = part.getBoundingClientRect();
+                    place = p.bottom <= 0 ? 'passed' : p.top >= vh ? 'below' : 'here';
+                    places.set(part, place);
+                }
+                if (place === 'below') return;
+                if (place === 'passed') { show.push(el); return; }
+            }
             const r = el.getBoundingClientRect();
             if (r.height && r.top < vh) show.push(el);
         });
