@@ -92,6 +92,9 @@ const KEYS = ['streams_this_week', 'hours_this_week', 'usual_time', 'days_in_a_r
         const d = by('deleter').recent_facts.streams[0];
         assert.deepStrictEqual([d.recorded, d.replay_removed], [false, 'streamer'], 'deleted by the streamer, not "Not recorded"');
         assert.strictEqual(n.recent_facts.streams[0].replay_removed, undefined);
+        // The card's words fit a phone's 100 px thumbnail in three lines (11-20: the longer label lost its first word).
+        const homeJs = require('fs').readFileSync(require('path').join(__dirname, '..', 'public', 'js', 'app-home.js'), 'utf8');
+        assert.ok(homeJs.includes("removed === 'streamer' ? 'Deleted by streamer' : 'Replay removed'"), 'the short label');
         // Each replay row is its own stream's recording, never the slot's newest (Maticus, 2026-11-17).
         assert.strictEqual(p.recent_facts.streams.length, 2);
         const [newer, older] = p.recent_facts.streams;
