@@ -245,7 +245,7 @@
         "setupNextUp"
       ]
     },
-    "broadcast": {
+    "broadcast": {"stubs": ["showCreateManagedStreamModal"], 
       "fragment": "broadcast",
       "css": [
         "/css/features/broadcast.css",
