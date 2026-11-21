@@ -3460,3 +3460,9 @@ html[data-ov-motion=off] .gl-adult input, html[data-ov-motion=off] .gl-adult inp
 body.bc-golive-dock-on #bc-perm-btn { display: none; }
 /* Design rule 201: the intro is one line on a computer, at most two on a phone. */
 @media (max-width: 640px) { .bc-first-lede, .bc-instructions-intro { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; } }
+
+/* The floating Go Live (OVFloat.action, 11-21): a soft band of the page's own colour above it, so what scrolls under it
+   fades out instead of showing round its edges ("you can see the button behind it"). */
+@media (max-width: 680px) {
+    .bc-ws-golive-btn.ov-fab-floating, #bc-perm-btn.ov-fab-floating { box-shadow: 0 10px 28px rgba(0, 0, 0, .35), 0 -16px 22px 12px var(--bg-primary, #0b0f19); }
+}

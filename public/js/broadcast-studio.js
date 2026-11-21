@@ -887,7 +887,11 @@
             // The card was drawn again: the old button's float goes with it.
             if (was) { try { was.destroy(); } catch { /* already gone */ } delete floatHandles[id]; }
             if (!el) continue;
-            floatHandles[id] = F.action(el, { when: () => NARROW.matches && onBroadcastPage() && !localStream() && shown(el) && !el.disabled, maxWidth: 520, side: 'both' });
+            // One button floats (the owner, 11-21: "you can see the button behind it … it's glitched out"): Go Live already
+            // turns the camera on first, so while it is on the page the card's "Turn on camera" stays in its card.
+            // And Go Live waits while the card's camera step is on screen: that step is the action there, one button at a time.
+            const alone = id === 'bc-perm-btn' ? () => !shown($('bc-ws-golive-btn')) : () => !inView($('bc-perm-btn'));
+            floatHandles[id] = F.action(el, { when: () => NARROW.matches && onBroadcastPage() && !localStream() && shown(el) && !el.disabled && alone(), maxWidth: 520, side: 'both' });
         }
         return true;
     }
