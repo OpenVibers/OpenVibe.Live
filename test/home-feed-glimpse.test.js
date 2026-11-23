@@ -24,16 +24,20 @@ assert.ok(fn.length > 200, 'the loader is there');
 assert.match(fn, /new IntersectionObserver\([\s\S]*rootMargin: '800px 0px'/, 'asked for when it comes near');
 assert.match(fn, /sc\.src = '\/shared\/ov-home\.js'/);
 assert.match(fn, /if \(OpenVibeHome\.glimpse !== true\) \{ section\.hidden = true; return; \}/, 'an older Shared draws nothing');
-// 11-23 (the owner: "fade out really early and bring people to the actual feed menu"): a peek of two cards (four on a
-// wide screen) that fades out, and three ways into the menu's Feed: the button over the fade, the header's, the fade.
-assert.match(fn, /glimpse: window\.matchMedia && window\.matchMedia\('\(min-width: 1400px\)'\)\.matches \? 4 : 2/);
+// 11-23 (the owner: "fade out really early and bring people to the actual feed menu"): a peek that fades out, and two
+// ways into the menu's Feed: the button over the fade, and the fade itself.
+// 11-23 night (the owner, desktop: "this looks retarded"): the peek takes the home row's whole width (not the menu's
+// 720 px column), a column per card (4 from 1100 px, 3 from 700 px), no empty filter bar, one "Open the feed".
+assert.match(fn, /glimpse: window\.matchMedia && window\.matchMedia\('\(min-width: 1100px\)'\)\.matches \? 4 : \(window\.matchMedia && window\.matchMedia\('\(min-width: 700px\)'\)\.matches \? 3 : 2\)/);
 assert.match(fn, /onMore: openHomeFeed/);
-assert.match(fn, /section\.querySelector\('\[data-open-feed\]'\)/, 'the header\'s Open the feed');
 assert.match(fn, /openHomeFeed\(\); \}\s*\}, true\)/, 'a tap on the faded part opens the Feed');
 assert.match(js, /function openHomeFeed\(\) \{[\s\S]{0,120}OpenVibeNavbar\.openSearch\('', 'feed'\)/, 'Open the feed opens the menu\'s Feed');
-assert.match(html, /<button type="button" class="section-action" data-open-feed>Open the feed<\/button>/);
+assert.doesNotMatch(html, /data-open-feed/, 'one Open the feed (the one on the fade), not a second in the header');
 const css = require('fs').readFileSync(require('path').join(__dirname, '..', 'public', 'css', 'features', 'home.css'), 'utf8');
 assert.match(css, /\.home-feed-glimpse-list \.ovfd-list \{[^}]*max-height: 340px;[^}]*mask-image: linear-gradient\(to bottom/, 'the peek fades out');
+assert.match(css, /\.home-feed-glimpse-list\.ovfd \{ max-width: none; margin-inline: 0; \}/, 'the whole row, not the menu\'s 720 px column');
+assert.match(css, /\.home-feed-glimpse-list \.ovfd-chips \{ display: none; \}/, 'no empty filter bar');
+assert.match(css, /repeat\(auto-fit, minmax\(220px, 1fr\)\)/, 'a column per card');
 assert.match(fn, /feedMissing: \(\) => \{ section\.hidden = true; \}/, 'a dead feed takes the section away');
 assert.match(js, /\n {4}loadHomeFeedGlimpse\(\);/, 'the home starts it');
 console.log('home-feed-glimpse: under Live Now, loaded when near, never an older Shared\'s whole feed, a peek that fades into the menu\'s Feed');

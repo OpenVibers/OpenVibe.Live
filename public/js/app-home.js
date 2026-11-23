@@ -1428,7 +1428,8 @@ async function loadHome() {
    takes the section away.
    11-23 (the owner: "should fade out really early and bring people to the actual feed menu rather than taking up a lot
    of space on the home page"): a peek of two cards (four side by side on a wide screen) that fades out after about one
-   card; the button over the fade, the header's "Open the feed" and a tap on the faded part open the menu's Feed. */
+   card; the button over the fade and a tap on the faded part open the menu's Feed (one button: the header's went, 11-23
+   night, so nothing says it twice). */
 let _feedGlimpseOn = false;
 function openHomeFeed() {
     if (window.OpenVibeNavbar && typeof OpenVibeNavbar.openSearch === 'function') { OpenVibeNavbar.openSearch('', 'feed'); return; }
@@ -1438,8 +1439,6 @@ function loadHomeFeedGlimpse() {
     const section = document.getElementById('home-feed-glimpse');
     const list = document.getElementById('home-feed-glimpse-list');
     if (!section || !list || _feedGlimpseOn) return;
-    const header = section.querySelector('[data-open-feed]');
-    if (header && !header.dataset.bound) { header.dataset.bound = '1'; header.addEventListener('click', openHomeFeed); }
     // The faded end of the peek is part of the way in: a tap below the clear cards opens the Feed, not the card under it.
     if (!list.dataset.bound) {
         list.dataset.bound = '1';
@@ -1457,7 +1456,8 @@ function loadHomeFeedGlimpse() {
         if (OpenVibeHome.glimpse !== true) { section.hidden = true; return; }
         try {
             OpenVibeHome.feed(list, {
-                glimpse: window.matchMedia && window.matchMedia('(min-width: 1400px)').matches ? 4 : 2,
+                // A column per card across the home's row: 4 from 1100 px, 3 from 700 px, 2 stacked on a phone.
+                glimpse: window.matchMedia && window.matchMedia('(min-width: 1100px)').matches ? 4 : (window.matchMedia && window.matchMedia('(min-width: 700px)').matches ? 3 : 2),
                 moreLabel: 'Open the feed',
                 onMore: openHomeFeed,
                 mountIcons: (scope) => { try { if (window.OpenVibeIcons) OpenVibeIcons.mount(scope); } catch { /* the marks stay letters */ } },
