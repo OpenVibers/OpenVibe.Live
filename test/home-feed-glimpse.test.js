@@ -24,8 +24,16 @@ assert.ok(fn.length > 200, 'the loader is there');
 assert.match(fn, /new IntersectionObserver\([\s\S]*rootMargin: '800px 0px'/, 'asked for when it comes near');
 assert.match(fn, /sc\.src = '\/shared\/ov-home\.js'/);
 assert.match(fn, /if \(OpenVibeHome\.glimpse !== true\) \{ section\.hidden = true; return; \}/, 'an older Shared draws nothing');
-assert.match(fn, /glimpse: 4/);
-assert.match(fn, /OpenVibeNavbar\.openSearch\('', 'feed'\)/, 'Show more opens the menu\'s Feed');
+// 11-23 (the owner: "fade out really early and bring people to the actual feed menu"): a peek of two cards (four on a
+// wide screen) that fades out, and three ways into the menu's Feed: the button over the fade, the header's, the fade.
+assert.match(fn, /glimpse: window\.matchMedia && window\.matchMedia\('\(min-width: 1400px\)'\)\.matches \? 4 : 2/);
+assert.match(fn, /onMore: openHomeFeed/);
+assert.match(fn, /section\.querySelector\('\[data-open-feed\]'\)/, 'the header\'s Open the feed');
+assert.match(fn, /openHomeFeed\(\); \}\s*\}, true\)/, 'a tap on the faded part opens the Feed');
+assert.match(js, /function openHomeFeed\(\) \{[\s\S]{0,120}OpenVibeNavbar\.openSearch\('', 'feed'\)/, 'Open the feed opens the menu\'s Feed');
+assert.match(html, /<button type="button" class="section-action" data-open-feed>Open the feed<\/button>/);
+const css = require('fs').readFileSync(require('path').join(__dirname, '..', 'public', 'css', 'features', 'home.css'), 'utf8');
+assert.match(css, /\.home-feed-glimpse-list \.ovfd-list \{[^}]*max-height: 340px;[^}]*mask-image: linear-gradient\(to bottom/, 'the peek fades out');
 assert.match(fn, /feedMissing: \(\) => \{ section\.hidden = true; \}/, 'a dead feed takes the section away');
 assert.match(js, /\n {4}loadHomeFeedGlimpse\(\);/, 'the home starts it');
-console.log('home-feed-glimpse: under Live Now, loaded when near, never an older Shared\'s whole feed, Show more opens the Feed');
+console.log('home-feed-glimpse: under Live Now, loaded when near, never an older Shared\'s whole feed, a peek that fades into the menu\'s Feed');
