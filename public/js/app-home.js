@@ -1425,12 +1425,31 @@ async function loadHome() {
    The start of the network's public feed under Live Now, drawn by openvibe-shared's ov-home.js (OpenVibeHome.feed with
    glimpse: four cards, no chips or endless loading). The script is asked for only when the section comes within 800 px
    of the screen, so the first paint carries none of it. Show more opens the menu's Feed; a feed that does not answer
-   takes the section away. */
+   takes the section away.
+   11-23 (the owner: "should fade out really early and bring people to the actual feed menu rather than taking up a lot
+   of space on the home page"): a peek of two cards (four side by side on a wide screen) that fades out after about one
+   card; the button over the fade, the header's "Open the feed" and a tap on the faded part open the menu's Feed. */
 let _feedGlimpseOn = false;
+function openHomeFeed() {
+    if (window.OpenVibeNavbar && typeof OpenVibeNavbar.openSearch === 'function') { OpenVibeNavbar.openSearch('', 'feed'); return; }
+    location.href = 'https://openvibe.network/feed';
+}
 function loadHomeFeedGlimpse() {
     const section = document.getElementById('home-feed-glimpse');
     const list = document.getElementById('home-feed-glimpse-list');
     if (!section || !list || _feedGlimpseOn) return;
+    const header = section.querySelector('[data-open-feed]');
+    if (header && !header.dataset.bound) { header.dataset.bound = '1'; header.addEventListener('click', openHomeFeed); }
+    // The faded end of the peek is part of the way in: a tap below the clear cards opens the Feed, not the card under it.
+    if (!list.dataset.bound) {
+        list.dataset.bound = '1';
+        list.addEventListener('click', (e) => {
+            const cards = list.querySelector('.ovfd-list');
+            if (!cards || e.target.closest('.ovfd-more')) return;
+            const box = cards.getBoundingClientRect();
+            if (e.clientY > box.top + box.height * 0.55) { e.preventDefault(); e.stopPropagation(); openHomeFeed(); }
+        }, true);
+    }
     const draw = () => {
         if (_feedGlimpseOn || !window.OpenVibeHome || typeof OpenVibeHome.feed !== 'function') return;
         _feedGlimpseOn = true;
@@ -1438,12 +1457,9 @@ function loadHomeFeedGlimpse() {
         if (OpenVibeHome.glimpse !== true) { section.hidden = true; return; }
         try {
             OpenVibeHome.feed(list, {
-                glimpse: 4,
-                moreLabel: 'Show more of the feed',
-                onMore: () => {
-                    if (window.OpenVibeNavbar && typeof OpenVibeNavbar.openSearch === 'function') { OpenVibeNavbar.openSearch('', 'feed'); return; }
-                    location.href = 'https://openvibe.network/feed';
-                },
+                glimpse: window.matchMedia && window.matchMedia('(min-width: 1400px)').matches ? 4 : 2,
+                moreLabel: 'Open the feed',
+                onMore: openHomeFeed,
                 mountIcons: (scope) => { try { if (window.OpenVibeIcons) OpenVibeIcons.mount(scope); } catch { /* the marks stay letters */ } },
                 feedMissing: () => { section.hidden = true; },
             });

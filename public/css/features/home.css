@@ -1591,9 +1591,23 @@ html[data-ov-motion=off] .ovnet-sky i{opacity: .45}html[data-ov-motion=off] .ovn
 .home-feed-glimpse[hidden] { display: none; }
 .home-feed-glimpse-list { min-height: 240px; }
 .home-feed-glimpse-list.ovfd { min-height: 0; }
+/* 11-23 (the owner: "fade out really early and bring people to the actual feed menu"): a peek, not a page. The cards fade
+   out after about one card's top and the "Open the feed" button sits over the fade (the menu's Feed holds the rest). */
+.home-feed-glimpse-list .ovfd-list {
+    max-height: 340px; overflow: hidden; cursor: default;
+    -webkit-mask-image: linear-gradient(to bottom, #000 38%, transparent 94%);
+    mask-image: linear-gradient(to bottom, #000 38%, transparent 94%);
+}
+.home-feed-glimpse-list .ovfd-more { position: relative; z-index: 1; margin: -72px auto 0; display: flex; justify-content: center; }
+.home-feed-glimpse-list .ovfd-glimpse-more {
+    background: color-mix(in srgb, var(--accent) 20%, var(--bg-primary));
+    border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+    box-shadow: 0 8px 24px color-mix(in srgb, var(--bg-primary) 70%, transparent);
+}
+.home-feed-glimpse-list .ovfd-glimpse-more:hover { background: color-mix(in srgb, var(--accent) 30%, var(--bg-primary)); }
 @media (min-width: 900px) {
-    .home-feed-glimpse-list .ovfd-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; align-items: start; }
-    .home-feed-glimpse-list .ovfd-more { max-width: 420px; margin: 12px auto 0; }
+    .home-feed-glimpse-list .ovfd-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; align-items: start; max-height: 300px; }
+    .home-feed-glimpse-list .ovfd-more { max-width: 420px; }
 }
 @media (min-width: 1400px) {
     .home-feed-glimpse-list .ovfd-list { grid-template-columns: repeat(4, minmax(0, 1fr)); }
