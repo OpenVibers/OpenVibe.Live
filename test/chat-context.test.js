@@ -1131,6 +1131,26 @@ const waitFor = async (pred, what, ms = 3000) => {
                 const n4 = seen.length;
                 assert.strictEqual((await hw({ from_user_id: viewer, command: 'say:hi' })).body.reason, 'bot.command_not_allowed');
                 assert.strictEqual(seen.length - n4, 1, 'say is never pressed as a button');
+                // !drive / !join / !line / !turn get in the robot's line and !leave gets out (11-23): Bot's queue route as
+                // the viewer, its answer in chat words; on a robot that takes no turns the word is pressed as a button.
+                answer = (b) => ({ status: 200, body: { robot_id: ROBOT, queue: { active: false, position: 3, turn_ends_at: null } } });
+                await pause();
+                const n5 = seen.length;
+                const lined = await hw({ from_user_id: viewer, command: 'button:drive' });
+                assert.deepStrictEqual([lined.body.ok, lined.body.result], [true, 'join'], JSON.stringify(lined.body));
+                assert.strictEqual(seen[n5].url, `/api/v1/robots/${ROBOT}/queue/join`);
+                assert.strictEqual(seen[n5].subject, 'usr_01J9ZZZZZZZZZZZZZZZZZZZZZZ', 'as the viewer');
+                assert.match(lined.body.message, /#3 in line/);
+                const left = await hw({ from_user_id: viewer, command: 'button:leave' });
+                assert.strictEqual(seen.at(-1).url, `/api/v1/robots/${ROBOT}/queue/leave`);
+                assert.match(left.body.message, /left the line/);
+                assert.strictEqual((await hw({ from_anon: 'anon1', command: 'button:join' })).body.reason, 'login_required', 'a guest in chat signs in first');
+                answer = (b) => (b.kind === 'button' ? { status: 200, body: { result: 'ack' } } : { status: 409, body: { code: 'bot.not_a_queue', detail: 'no turns' } });
+                await pause();
+                const n6 = seen.length;
+                const pressedLine = await hw({ from_user_id: viewer, command: 'button:line' });
+                assert.strictEqual(pressedLine.body.ok, true, 'no line here: the word is its button');
+                assert.deepStrictEqual(seen.slice(n6).map((x) => x.url.replace(`/api/v1/robots/${ROBOT}/`, '')), ['queue/join', 'commands']);
                 await d.prepare('UPDATE channels SET bot_robot_id = NULL WHERE id = ?').run(channel.id);
             } finally {
                 stub.close();

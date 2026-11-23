@@ -72,6 +72,8 @@ async function post(robotId, route, subject, body) {
 
 const command = (robotId, subject, { id, kind, value, ms }) => post(robotId, 'commands', subject, { id, kind, value, ms });
 const controlTicket = (robotId, subject) => post(robotId, 'control-ticket', subject, {});
+// A robot's line, as the viewer (Bot's POST /robots/:id/queue/join|leave, 11-23): their own view of it back.
+const queue = (robotId, subject, action) => post(robotId, `queue/${action === 'leave' ? 'leave' : 'join'}`, subject, {});
 
 // The role a person holds on a robot, for the element deck's operator-only buttons. Bot answers the
 // service that may control the robot (the same capability as a command); a miss or an unreachable Bot is
@@ -103,4 +105,4 @@ async function role(robotId, subject) {
     return value;
 }
 
-module.exports = { command, controlTicket, role, BotRefusal, BotUnavailable, AUDIENCE, _resetRoles: () => _roles.clear() };
+module.exports = { command, controlTicket, queue, role, BotRefusal, BotUnavailable, AUDIENCE, _resetRoles: () => _roles.clear() };

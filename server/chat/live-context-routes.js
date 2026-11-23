@@ -540,9 +540,12 @@ effectsRouter.post('/bench-vote', async (req, res) => {
 });
 // What a refusal from Bot means, in chat words (Bot's codes, OpenVibe.Bot docs/protocol.md §2).
 const ROBOT_REFUSALS = {
-    'bot.not_an_operator': 'You cannot drive this robot. Its owner decides who may.',
+    'bot.not_an_operator': 'You cannot drive this robot. Its owner decides who may. If it takes turns, type !drive to get in line.',
     'bot.not_your_turn': 'It is not your turn at the robot yet.',
-    'bot.turn_budget': 'Your turn at the robot is used up.',
+    'bot.turn_budget': 'You have used this turn\'s presses. You can still drive until the turn ends.',
+    'bot.robot_not_ready': 'Your turn is paused and keeps its time: the robot is not ready.',
+    'bot.not_a_queue': 'This robot does not take turns: its owner decides who drives.',
+    'bot.sign_in': 'Sign in to take a turn driving the robot.',
     'bot.cooldown': null,
     'bot.device_offline': 'The robot is offline.',
     'bot.command_not_allowed': 'This robot does not do that.',
@@ -568,8 +571,46 @@ async function pressButton(bot, robotId, subject, name) {
     return out;
 }
 
+// !drive / !join / !line / !turn get the viewer in the robot's line, and !leave takes them out (11-23, LOOI viewer turns),
+// on a robot that takes turns: OpenVibe.Chat sends an unknown !word as button:<word>, and these words are the line's
+// before any button of the same name. Bot then tells them, through Network's notifications, when their turn starts.
+const LINE_WORDS = { drive: 'join', join: 'join', line: 'join', turn: 'join', leave: 'leave' };
+function lineWords(queue, action) {
+    if (action === 'leave') return 'You left the line for the robot.';
+    if (queue && queue.active) {
+        const left = queue.turn_ends_at ? Math.max(0, Math.round((Date.parse(queue.turn_ends_at) - Date.now()) / 1000)) : null;
+        return `It is your turn at the robot${left != null ? ` for ${left} s` : ''}: drive with !forward, !backward, !turn_left and !turn_right, or the controls under the stream.`;
+    }
+    if (queue && queue.position > 0) return `You are #${queue.position} in line for the robot. We will tell you when your turn starts.`;
+    return 'You are in line for the robot.';
+}
+
 effectsRouter.post('/hardware', async (req, res) => {
     const command = String(req.body?.command || '');
+    const lineWord = /^button:([a-z]+)$/.exec(command);
+    const lineAction = lineWord && Object.prototype.hasOwnProperty.call(LINE_WORDS, lineWord[1]) ? LINE_WORDS[lineWord[1]] : null;
+    if (lineAction) {
+        const owner = await db.getUserById(int(req.body.streamer_user_id));
+        const ch = owner ? await db.getChannelByUserId(owner.id) : null;
+        if (!ch || !ch.bot_robot_id) return res.json({ ok: false, reason: 'no_robot', message: 'This channel has no robot. Its owner can bind one from OpenVibe.Bot.' });
+        let who = SUBJECT_RE.test(String(req.body.from_subject || '')) ? String(req.body.from_subject) : null;
+        if (!who && int(req.body.from_user_id)) who = await require('../auth/identity-sync').subjectOf(int(req.body.from_user_id));
+        if (!who) return res.json({ ok: false, reason: 'login_required', message: 'Sign in to take a turn driving the robot.' });
+        const bot = require('../bot/bot-client');
+        try {
+            const out = await bot.queue(ch.bot_robot_id, who, lineAction);
+            return res.json({ ok: true, result: lineAction, message: lineWords(out && out.queue, lineAction) });
+        } catch (err) {
+            // A robot that does not take turns: the word may still be one of its buttons (fall through to press it).
+            if (!(err instanceof bot.BotRefusal) || err.code !== 'bot.not_a_queue') {
+                if (err instanceof bot.BotRefusal) {
+                    const message = Object.prototype.hasOwnProperty.call(ROBOT_REFUSALS, err.code) ? ROBOT_REFUSALS[err.code] : (err.message || 'The robot refused that.');
+                    return res.json({ ok: false, reason: err.code, ...(message ? { message } : {}) });
+                }
+                return res.json({ ok: false, reason: 'robot_unavailable', message: 'The robot service did not answer. Try again in a moment.' });
+            }
+        }
+    }
     const say = /^say:([\s\S]{1,200})$/.exec(command);
     const button = /^button:(.+)$/.exec(command);
     if (button && !BUTTON_NAME_RE.test(button[1])) return fail(res, 400, 'unknown command');
