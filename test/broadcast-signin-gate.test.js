@@ -111,7 +111,7 @@ const NAMES = [['bc', '_broadcastSignInGate'], ['bc', 'loadBroadcastPage'], ['ws
     assert.ok(gate[1].includes('href="/api/auth/sso/login?next=%2Fbroadcast"'), 'the gate signs in and comes back to /broadcast');
     assert.ok(fragment.indexOf('id="bc-signin-gate"') < fragment.indexOf('id="bc-workspace"'), 'the gate sits above the workspace');
     const css = read('public/css/features/broadcast.css');
-    assert.ok(/#bc-stream-manager\.bc-guest > :not\(h2\):not\(\.bc-signin-gate\)\s*\{\s*display:\s*none/.test(css), 'the guest class hides the workspace');
+    assert.ok(/#bc-stream-manager\.bc-guest > :not\(h1\):not\(h2\):not\(\.bc-signin-gate\)\s*\{\s*display:\s*none/.test(css), 'the guest class hides the workspace');
 
     // ── The server creates nothing for a guest ──────────────────────────────────────
     process.env.NODE_ENV = 'test';

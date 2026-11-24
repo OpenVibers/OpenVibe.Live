@@ -1,5 +1,8 @@
 # OpenVibe.Live Documentation
 
+How OpenVibe.Live works and how to build on it: going live from your browser or OBS, the WHIP and stream APIs, chat and
+moderation, recordings and clips, the dashboard, and running your own copy.
+
 ## Getting Started
 - [Onboarding Guide](onboarding.md) — New user walkthrough
 - [Broadcasting Guide](broadcasting.md) — Stream setup for WebRTC, RTMP, WHIP, and JSMPEG
