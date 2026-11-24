@@ -1272,7 +1272,7 @@
     width: 100%;
 }
 
-#bc-stream-manager h2 {
+#bc-stream-manager > h1, #bc-stream-manager h2 {
     font-size: 1.3rem;
     color: var(--accent);
     margin-bottom: 16px;
@@ -1535,7 +1535,7 @@
 }
 
 /* Guests get the sign-in gate and nothing else of the Go Live workspace (broadcast.js). */
-#bc-stream-manager.bc-guest > :not(h2):not(.bc-signin-gate) { display: none !important; }
+#bc-stream-manager.bc-guest > :not(h1):not(h2):not(.bc-signin-gate) { display: none !important; }
 .bc-signin-gate {
     max-width: 520px;
     margin: 24px auto;
@@ -2449,15 +2449,15 @@
 #bc-stream-manager { max-width: 1480px; padding: 4px clamp(0px, 1vw, 12px) 28px; flex: none; min-height: auto; overflow: visible; }
 /* The head: the page's name, and Streamer setup as a quiet pill at the row's end (it was a boxed button pressed
    against the name). The line under it never leaves one word on a line of its own. */
-#bc-stream-manager > h2 { margin: 0 0 4px; font-size: 1.22rem; gap: 8px; min-width: 0; }
-#bc-stream-manager > h2 .gl-head-t { flex: 0 1 auto; min-width: 0; }
-#bc-stream-manager > h2 .glw-open-btn { all: unset; box-sizing: border-box; flex: none; margin-left: auto; display: inline-flex; align-items: center; gap: 7px; min-height: 36px; padding: 0 13px; border-radius: 999px; cursor: pointer;
+#bc-stream-manager > h1 { margin: 0 0 4px; font-size: 1.22rem; gap: 8px; min-width: 0; }
+#bc-stream-manager > h1 .gl-head-t { flex: 0 1 auto; min-width: 0; }
+#bc-stream-manager > h1 .glw-open-btn { all: unset; box-sizing: border-box; flex: none; margin-left: auto; display: inline-flex; align-items: center; gap: 7px; min-height: 36px; padding: 0 13px; border-radius: 999px; cursor: pointer;
     font-size: 0.82rem; font-weight: 700; letter-spacing: 0; color: var(--text-secondary); border: 1px solid var(--border); background: color-mix(in srgb, var(--text-primary) 5%, transparent);
     transition: color var(--ov-dur-2, .15s), border-color var(--ov-dur-2, .15s), background-color var(--ov-dur-2, .15s); }
-#bc-stream-manager > h2 .glw-open-btn i { font-size: 0.82rem; color: var(--accent); }
-#bc-stream-manager > h2 .glw-open-btn:hover { color: var(--text-primary); border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); }
-#bc-stream-manager > h2 .glw-open-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-@media (pointer: coarse) { #bc-stream-manager > h2 .glw-open-btn { min-height: 44px; } }
+#bc-stream-manager > h1 .glw-open-btn i { font-size: 0.82rem; color: var(--accent); }
+#bc-stream-manager > h1 .glw-open-btn:hover { color: var(--text-primary); border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); }
+#bc-stream-manager > h1 .glw-open-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (pointer: coarse) { #bc-stream-manager > h1 .glw-open-btn { min-height: 44px; } }
 #bc-stream-manager > .bc-page-subtitle { margin: 0 0 12px; font-size: 0.86rem; text-wrap: balance; }
 .bc-workspace { flex: none; border: 0; border-radius: 0; background: transparent; overflow: visible; gap: 14px; align-items: flex-start; margin-top: 6px; }
 .bc-ws-sidebar, .bc-ws-main {
