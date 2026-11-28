@@ -207,8 +207,11 @@
             var deck = await call('/channels/' + encodeURIComponent(name) + '/elements');
             if (username() !== name) return;   // the page moved to another channel while this was in flight
             state.username = name;
+            // A deck with no elements list is an empty deck (11-28, RUM: the tick read state.data.elements.forEach of one).
+            if (!deck || typeof deck !== 'object') deck = {};
+            if (!Array.isArray(deck.elements)) deck.elements = [];
             // Keep a local cooldown the server has not seen yet (a press answered a moment ago).
-            (deck.elements || []).forEach(function (el) {
+            deck.elements.forEach(function (el) {
                 if (state.cooldowns[el.id] && state.cooldowns[el.id] > Date.now()) el.can_press = false;
             });
             state.data = deck;

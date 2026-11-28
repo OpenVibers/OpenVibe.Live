@@ -35,5 +35,7 @@ assert.match(css, /@media \(max-width: 1180px\)/);
 const alerts = read('public/obs/alerts.html');
 assert.match(alerts, /element: \{ icon:/, 'the OBS alerts page draws an element moment');
 
+// A deck answer with no elements list is an empty deck, not one the tick reads .forEach of (11-28, RUM).
+assert.match(deck, /if \(!Array\.isArray\(deck\.elements\)\) deck\.elements = \[\];/);
 console.log('elements page: the deck markup, script and styles are wired');
 process.exit(0);
