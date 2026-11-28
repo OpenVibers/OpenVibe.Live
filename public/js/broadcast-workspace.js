@@ -3493,7 +3493,7 @@ function _wsShowRestreamForm(existing) {
                         </select>
                     </div>
                 </div>
-                <p class="muted" style="font-size:0.74rem;margin:6px 0 0">Browser and WHIP sources are re-encoded on the server with these settings; an OBS/RTMP source is forwarded as-is (codec copy), so only the destination sees them.</p>
+                <p class="muted" style="font-size:.75rem;margin:6px 0 0">Browser and WHIP sources are re-encoded on the server with these settings; an OBS/RTMP source is forwarded as-is (codec copy), so only the destination sees them.</p>
             </details>
         </div>
         <div class="bc-ws-confirm-actions" style="margin-top:16px">

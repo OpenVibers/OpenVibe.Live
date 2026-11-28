@@ -227,7 +227,7 @@
             'border-top-color:#4f7cff;border-right-color:#8b5cf6;animation:ov-freeze-turn .9s linear infinite}',
             '.ov-freeze-notice-text{flex:0 1 auto;min-width:0;display:grid;gap:1px}',
             '.ov-freeze-notice b{display:block;font-size:13px;font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
-            '.ov-freeze-notice small{display:block;font-size:11.5px;opacity:.72;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
+            '.ov-freeze-notice small{display:block;font-size:12px;opacity:.72;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
             '.ov-freeze-notice small:empty{display:none}',
             '.ov-freeze-notice button{flex:none;display:inline-grid;place-items:center;width:32px;height:32px;padding:0;border:0;border-radius:50%;',
             'background:rgba(255,255,255,.12);color:#fff;cursor:pointer}',
