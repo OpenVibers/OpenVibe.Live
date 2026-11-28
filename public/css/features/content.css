@@ -523,3 +523,7 @@ a.cf-recap-band:hover .cf-recap-sub { text-decoration: underline; text-underline
 }
 /* Design rule 201 (the owner, 11-14): a page starts within 12 px of the bar, 8 px on a phone. */
 @media (max-width: 640px) { .cf-wrap { padding-top: 8px; } }
+
+/* 11-28: the site's footer waits for a feed's end (content-feed.js marks the page while more pages load by themselves),
+   so a page loading above it never pushes it out of view (tablet CLS 0.58-1.0 on /moments, /vods, /content). */
+html[data-feed-more] #ov-footer { display: none; }

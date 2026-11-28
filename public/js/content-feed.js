@@ -283,10 +283,16 @@
     }
     function clearSkeletons() { for (const sk of S.skels || []) sk.remove(); S.skels = []; }
 
+    // The site's footer waits for the list's end (11-28: on a tablet, reaching the bottom showed the footer, then the next
+    // page loaded above it and pushed it out of view: CLS 0.58-1.0 on /moments, /vods and /content, the "other" pages'
+    // tablet p75 of 0.36). While more pages load by themselves the footer is hidden; at the end, an error, a "Load more"
+    // or an empty list it shows, below the last cards, where nothing moves.
+    const feedMore = (on) => { try { document.documentElement.toggleAttribute('data-feed-more', !!on); } catch { /* */ } };
     function foot(kind, detail) {
         const f = S.footEl;
         f.replaceChildren();
         f.dataset.state = kind || '';
+        feedMore(!kind && !S.done);
         if (kind === 'empty') {
             const [ic, title, sub] = S.cfg.empty[S.type] || S.cfg.empty.all;
             f.append(el('div', { class: 'cf-empty' }, icon(ic, 'cf-empty-icon'), el('p', { class: 'cf-empty-title', text: title }), el('p', { class: 'cf-empty-sub', text: sub })));
@@ -548,6 +554,7 @@
         st.clips = clipController(scope);
         // Leaving the route: stop the fetch, the players and the observers; this state is dead.
         scope.onDispose(() => {
+            if (S === st) feedMore(false);
             try { st.abort.abort(); } catch { /* */ }
             if (st.sel && typeof _selSetContext === 'function') _selSetContext(false);
             if (S === st) S = null;
