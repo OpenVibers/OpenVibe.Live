@@ -760,7 +760,15 @@
         } catch { /* the overlay shows "waiting for the first step" */ }
     }
 
+    // The stream this page shows (the plays controls below need it too; they are bound once, at load).
+    let shownId = null;
+    const streamIdNow = () => {
+        if (shownId) return shownId;
+        const m = /^\/@[^/]+\/agents\/([^/?#]+)/.exec(location.pathname);
+        return m ? decodeURIComponent(m[1]) : null;
+    };
     async function loadAgentStreamPage(username, publicId) {
+        shownId = publicId || null;
         stop();
         const owner = $('agent-owner');
         if (owner) owner.hidden = true;
@@ -794,6 +802,8 @@
         const box = $('agent-plays-timebox');
         const cap = $('agent-plays-cap');
         if (!go && !wipe) return;
+        // 11-28: these used a name only the page loader had ("publicId is not defined"), so the controls never turned on.
+        if (!streamIdNow()) return;
         const tell = (text) => { const line = $('agent-plays-state'); if (line) line.textContent = text; };
         // The mode waits for a sandbox worker: until one is registered and healthy the controls stay grey and
         // the note says so.
@@ -806,7 +816,7 @@
         setReady(false);
         (async () => {
             try {
-                const res = await fetch(`/api/streams/agent/${encodeURIComponent(publicId)}/plays/worker`, { credentials: 'same-origin' });
+                const res = await fetch(`/api/streams/agent/${encodeURIComponent(streamIdNow() || '')}/plays/worker`, { credentials: 'same-origin' });
                 if (!res.ok) return;
                 const data = await res.json();
                 setReady(!!(data && data.worker && data.worker.ready));
@@ -816,7 +826,7 @@
             const box = $('agent-plays-timebox');
             const cap = $('agent-plays-cap');
             try {
-                const res = await fetch(`/api/streams/agent/${encodeURIComponent(publicId)}/plays`, {
+                const res = await fetch(`/api/streams/agent/${encodeURIComponent(streamIdNow() || '')}/plays`, {
                     method: 'PUT', credentials: 'same-origin',
                     headers: { 'content-type': 'application/json' },
                     body: JSON.stringify({
@@ -833,7 +843,7 @@
         });
         if (wipe) wipe.addEventListener('click', async () => {
             try {
-                const res = await fetch(`/api/streams/agent/${encodeURIComponent(publicId)}/control`, {
+                const res = await fetch(`/api/streams/agent/${encodeURIComponent(streamIdNow() || '')}/control`, {
                     method: 'POST', credentials: 'same-origin',
                     headers: { 'content-type': 'application/json' },
                     body: JSON.stringify({ control: 'wipe' }),
