@@ -194,7 +194,10 @@ function createRum({ now = () => Date.now() } = {}) {
 
     /** The reservoirs and error counts as plain numbers, to survive a restart (server/index.js keeps them in app_state). */
     function state() {
-        return { v: 1, at: now(), pages: Object.fromEntries(buckets), errors: [...errors].map(([m, c]) => [m, c, errorLast.get(m) || null]) };
+        // What moved and the slow taps are kept too (11-28: Live deploys several times a day, and a restart emptied them
+        // before a tablet's shifts could be read).
+        return { v: 1, at: now(), pages: Object.fromEntries(buckets), errors: [...errors].map(([m, c]) => [m, c, errorLast.get(m) || null]),
+            shifts: [...shifts].map(([k, s]) => [k, s.n, s.worst]), slow: [...slow].map(([k, s]) => [k, s.n, s.worst]) };
     }
     /** Put a saved state back under what arrived since boot (a beacon can land before the read). Older than 14 days,
      *  malformed or out-of-range parts are left out. */
@@ -219,6 +222,18 @@ function createRum({ now = () => Date.now() } = {}) {
             errors.set(k, (errors.get(k) || 0) + (Number(c) || 0));
             errorLast.set(k, Math.max(errorLast.get(k) || 0, seen));
         }
+        const putBack = (map, rows, max, keyOk, worstMax) => {
+            for (const [k, n, worst] of Array.isArray(rows) ? rows.slice(0, max) : []) {
+                if (typeof k !== 'string' || !keyOk(k) || !(Number(n) > 0)) continue;
+                const cur = map.get(k) || (map.size < max ? { n: 0, worst: 0 } : null);
+                if (!cur) continue;
+                cur.n += Math.round(Number(n));
+                cur.worst = Math.max(cur.worst, Math.min(worstMax, Number(worst) || 0));
+                map.set(k, cur);
+            }
+        };
+        putBack(shifts, s.shifts, MAX_SHIFTS, (k) => { const p = k.split('|'); return p.length === 3 && /^[a-z]+$/.test(p[0]) && /^(phone|tablet|desktop)$/.test(p[1]) && ON_RE.test(p[2]); }, METRICS.cls);
+        putBack(slow, s.slow, MAX_SLOW, (k) => /^[a-z]+\|[a-z]{2,20}( [a-z][a-z0-9]{0,15}([#.][A-Za-z][\w-]{0,40})?)?$/.test(k), METRICS.inp);
         return true;
     }
 
