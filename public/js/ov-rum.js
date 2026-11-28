@@ -99,6 +99,9 @@
         // The first picture again under the path that showed it (WebRTC, HLS, FLV or JSMpeg), so each has its own p75.
         const via = String(window.__ovFirstFrameVia || '');
         if (/^(webrtc|hls|flv|jsmpeg)$/.test(via) && window.__ovFirstFrameAt) body['ttff_' + via] = r(window.__ovFirstFrameAt);
+        // A WebRTC viewer's steps (stream-player.js _rtcMark): socket open, attached, media connected, first track.
+        const rtc = window.__ovRtcAt || {};
+        for (const step of ['ws', 'ready', 'ice', 'track']) if (rtc[step] > 0) body['rtc_' + step] = r(rtc[step]);
         navigator.sendBeacon('/api/rum', JSON.stringify(body));
     };
     addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') send(); });

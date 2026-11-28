@@ -60,6 +60,13 @@ const { createRum, pageKind, deviceClass } = require('../server/web/rum');
     assert.strictEqual(split.tplayer.p50, 900, 'the player started at 900 ms');
     assert.strictEqual(split.ttff_hls.p50, 2600, 'HLS showed its first picture at 2.6 s');
     assert.strictEqual(split.ttff_webrtc, undefined, 'no WebRTC sample, no WebRTC number');
+    // A WebRTC viewer's steps (11-28): socket open, attached, media connected, first track, each from navigation.
+    await beacon({ path: '/@goosely', w: 1440, ttff: 5200, tplayer: 1200, ttff_webrtc: 5200, rtc_ws: 1500, rtc_ready: 1900, rtc_ice: 4100, rtc_track: 2300 }, '10.0.1.8');
+    const steps = rum.snapshot().pages['channel|desktop'];
+    assert.deepStrictEqual([steps.rtc_ws.p50, steps.rtc_ready.p50, steps.rtc_ice.p50, steps.rtc_track.p50], [1500, 1900, 4100, 2300], 'each WebRTC step is kept');
+    const player = require('fs').readFileSync(require('path').join(__dirname, '..', 'public', 'js', 'stream-player.js'), 'utf8');
+    for (const step of ['ws', 'ready', 'ice', 'track']) assert.ok(player.includes(`_rtcMark('${step}')`), `the player marks ${step}`);
+    assert.ok(require('fs').readFileSync(require('path').join(__dirname, '..', 'public', 'js', 'ov-rum.js'), 'utf8').includes("body['rtc_' + step]"), 'the beacon sends them');
     // Before the first paint (11-20): the HTML in, the last render-blocking stylesheet in, the browser's round trip.
     await beacon({ path: '/', w: 1440, fcp: 1300, thtml: 420, tcss: 1100, rtt: 250 }, '10.0.1.6');
     await beacon({ path: '/', w: 1440, fcp: 600, thtml: 300, tcss: 0, rtt: 0 }, '10.0.1.7');
