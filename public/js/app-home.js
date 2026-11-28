@@ -865,12 +865,21 @@ async function loadHeroData() {
         await apiSWR('/home/hero', (data) => _renderHeroData(data), { ttl: 15 * 60 * 1000 });
     } catch { _renderHeroData(null); }
 }
+// The hero is drawn from last visit's copy, then again when the fresh one lands (apiSWR). The collage places its cards
+// at random, so the same pictures drawn twice jumped to new places, and a tablet spent ~30 ms on it each time (11-28,
+// a profile of the home): it is drawn again only when its pictures change.
+let _heroMediaKey = '';
 function _renderHeroData(data) {
     startHeroRotation(_cleanAudiences(data && data.slogans && data.slogans.audiences));
     startHeroQuips(data && data.slogans && data.slogans.quips);
     startSloganCountdown(data && data.slogans && data.slogans.next_at);
     if (data && data.stats) renderHeroStats(data.stats);
-    if (data && data.media) { renderHeroBackground(data.media, data.moments); renderHeroCollage(data.media); }
+    if (data && data.media) {
+        let key = '';
+        try { key = JSON.stringify([data.media, data.moments || null]); } catch { key = String(Date.now()); }
+        const drawn = document.querySelector('#hero-collage > *');   // a rebuilt page has an empty collage: draw it
+        if (key !== _heroMediaKey || !drawn) { _heroMediaKey = key; renderHeroBackground(data.media, data.moments); renderHeroCollage(data.media); }
+    }
 }
 
 // Playful countdown to the next AI slogan/label batch (regenerates every 12h).
