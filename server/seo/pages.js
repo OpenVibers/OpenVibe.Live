@@ -652,7 +652,7 @@ async function _homeMeta() {
     // Pull the actual live content so the source has real, crawlable text. The home page is the owner's clean
     // page (L1): a stream labelled 18+ is never listed here, whatever a viewer's prefs say.
     let live = [];
-    try { live = (await db.getLiveStreams() || []).filter((s) => !(require('../labels').labelsOf(s).labels.includes('18+'))).slice(0, 12); } catch { /* */ }
+    try { live = require('../streaming/media-seen').withMedia(await db.getLiveStreams() || []).filter((s) => !(require('../labels').labelsOf(s).labels.includes('18+'))).slice(0, 12); } catch { /* */ }
     // Each rail waits at most LIST_WAIT_MS: a slow upstream leaves its rail out, never the page.
     // VODs, clips and pastes are counted by the services that hold them (Media, Community), not Live's frozen tables.
     let homeStats = null;

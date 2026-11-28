@@ -57,6 +57,8 @@ const { TAG_FILTER_RE, TAG_STOP_WORDS } = require('../server/streaming/tags');
     await stream(frank, { live: true, startedAgo: 9 * DAY, viewers: 2, tags: ['marathon'], aiTags: ['outdoors'], category: 'other' });
 
     const app = express();
+    // These streams have sent their picture: a browser stream is listed once it has (server/streaming/media-seen.js).
+    app.use('/api/streams', async (req, res, next) => { (await db.all('SELECT id FROM streams')).forEach((r) => require('../server/streaming/media-seen')._seen.add(Number(r.id))); next(); });
     app.use('/api/streams', require('../server/streaming/routes'));
     const server = await new Promise((resolve) => { const s = http.createServer(app).listen(0, '127.0.0.1', () => resolve(s)); });
     const base = `http://127.0.0.1:${server.address().port}`;

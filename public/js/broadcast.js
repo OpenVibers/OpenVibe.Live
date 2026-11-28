@@ -4523,6 +4523,17 @@ function _applyIngestHealth(streamId, ss, msg) {
         toast('Viewers aren\'t getting your camera. Switch the camera off and on, or close any other app that uses it.', 'warning');
     }
     if (!ss.ingestNoPicture) ss._ingestWarned = false;
+    // Nothing at all (11-28: streams 3080, 3096 and 3097 sent no picture and no sound for minutes while they counted as
+    // live): with the camera off too, three reports in a row (~15 s) with neither picture nor sound say what to do, once.
+    // A camera that is on is the warning above; sound or a picture arriving clears this one.
+    const audio = msg.audio || {};
+    const nothing = !video.present && !audio.present;
+    ss._ingestEmpty = nothing ? (ss._ingestEmpty || 0) + 1 : 0;
+    if (!camOn && ss._ingestEmpty >= 3 && !ss._emptyWarned && broadcastState.activeStreamId === streamId) {
+        ss._emptyWarned = true;
+        toast('You\'re live, but no picture or sound is reaching viewers yet. Turn on your camera or microphone, or share your screen.', 'warning');
+    }
+    if (!nothing) ss._emptyWarned = false;
 }
 
 async function handleSignalingMessage(streamId, msg) {

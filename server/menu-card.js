@@ -80,7 +80,7 @@ function cardFrom(rows, at = Date.now()) {
  * A card cache with the 30 s ttl. `load` and `now` are injectable so the test can run the whole file without a
  * database; the running server uses the defaults.
  */
-function createMenuCard({ load = () => db.getLiveStreams(), now = Date.now } = {}) {
+function createMenuCard({ load = async () => require('./streaming/media-seen').withMedia(await db.getLiveStreams()), now = Date.now } = {}) {
     let cached = null;
     let cachedAt = 0;
     let pending = null;

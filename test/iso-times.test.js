@@ -38,6 +38,8 @@ assert.deepStrictEqual(
     const express = require('express');
     const app = express();
     app.use(isoJsonTimes);
+    // These streams have sent their picture: a browser stream is listed once it has (server/streaming/media-seen.js).
+    app.use('/api/streams', async (req, res, next) => { (await db.all('SELECT id FROM streams')).forEach((r) => require('../server/streaming/media-seen')._seen.add(Number(r.id))); next(); });
     app.use('/api/streams', require('../server/streaming/routes'));
     const server = http.createServer(app).listen(0, '127.0.0.1');
     await new Promise((r) => server.once('listening', r));

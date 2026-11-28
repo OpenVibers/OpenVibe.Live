@@ -198,6 +198,8 @@ console.log('OK I: geometry persists, hide is recoverable, audio defaults to mut
 {
     const app = express();
     app.use(express.json());
+    // These streams have sent their picture: a browser stream is listed once it has (server/streaming/media-seen.js).
+    app.use('/api/streams', async (req, res, next) => { (await db.all('SELECT id FROM streams')).forEach((r) => require('../server/streaming/media-seen')._seen.add(Number(r.id))); next(); });
     app.use('/api/streams', require('../server/streaming/routes'));
     const server = await new Promise((r) => { const s = http.createServer(app).listen(0, '127.0.0.1', () => r(s)); });
     const base = `http://127.0.0.1:${server.address().port}/api/streams`;
@@ -255,6 +257,8 @@ console.log('OK I: geometry persists, hide is recoverable, audio defaults to mut
 {
     // Slot 10 (owner, live as 502) lists 11 (owner's webcam, live as 500) and 12 (someone else's, live as 501).
     const app = express();
+    // These streams have sent their picture: a browser stream is listed once it has (server/streaming/media-seen.js).
+    app.use('/api/streams', async (req, res, next) => { (await db.all('SELECT id FROM streams')).forEach((r) => require('../server/streaming/media-seen')._seen.add(Number(r.id))); next(); });
     app.use('/api/streams', require('../server/streaming/routes'));
     const server = await new Promise((r) => { const s = http.createServer(app).listen(0, '127.0.0.1', () => r(s)); });
     try {
