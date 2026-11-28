@@ -261,7 +261,7 @@ async function loadPasteViewer(slug) {
                 </div>`;
             document.getElementById('nsfw-continue-btn').addEventListener('click', () => {
                 sessionStorage.setItem('nsfw-ok-' + p.slug, '1');
-                renderPasteView(slug); // re-render without gate
+                loadPasteViewer(slug); // re-render without gate (11-28: it called renderPasteView, which never existed)
             });
             return;
         }

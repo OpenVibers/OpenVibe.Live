@@ -449,7 +449,6 @@ async function endStreamById(streamId) {
         if (activeStreamData && activeStreamData.id === streamId) activeStreamData = null;
         activeStreams = activeStreams.filter(s => s.id !== streamId);
         loadDashActiveStreams();
-        loadDashControls();
     } catch (e) { toast(e.message, 'error'); }
 }
 

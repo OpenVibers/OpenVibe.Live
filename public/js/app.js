@@ -625,7 +625,6 @@ function showModal(id) {
         'stream-key': streamKeyModal(),
         'add-goal': addGoalModal(),
         'add-reward': () => addRewardModal(),
-        'redeem-reward': (data) => redeemRewardModal(data),
         'create-managed-stream': createManagedStreamModal,
     };
     content.innerHTML = typeof templates[id] === 'function' ? templates[id]() : (templates[id] || `<p>Unknown modal: ${id}</p>`);
