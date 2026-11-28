@@ -498,20 +498,8 @@ app.use((err, req, res, next) => {
     next(err);
 });
 
-// Rate limiting
-// The SPA makes a lot of legitimate read-only API requests (channel data,
-// media strip, weather, VOD pagination, polling, etc.), so GET/HEAD need a
-// much higher ceiling than write operations.
-const apiLimiter = rateLimit({
-    windowMs: 60 * 1000, // 1 minute
-    max: (req) => {
-        if (req.method === 'GET' || req.method === 'HEAD') return 900;
-        return 180;
-    },
-    standardHeaders: true,
-    legacyHeaders: false,
-    message: { error: 'Too many requests, slow down partner' },
-});
+// Rate limiting: /api/'s options, and why our own services on this host are not limited, are in web/api-limits.js.
+const apiLimiter = rateLimit(require('./web/api-limits').apiLimiterOptions());
 const authLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
     max: 20,
