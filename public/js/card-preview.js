@@ -160,8 +160,15 @@
 
     // A touch screen: the card whose picture sits nearest the middle, fully in view, once the scroll settles.
     let settleTimer = 0;
+    // A panel over the page hides the cards: nothing to play, and measuring every card behind it cost a tablet ~40 ms per
+    // settled scroll inside the panel (11-28, the home's "Open the feed" tap profiled at 4x: 161 ms in settle). Shared
+    // marks it two ways: panels.js's ov-panel-open, and the menu and search sheets' scroll lock (surfaces.js fixes the
+    // body in place).
+    const covered = () => !!(document.body && ((document.body.classList && document.body.classList.contains('ov-panel-open'))
+        || (document.body.style && document.body.style.position === 'fixed')));
     function settle() {
         if (FINE.matches || !scrollAllowed() || document.hidden) return;
+        if (covered()) { stop(); return; }
         const mid = window.innerHeight / 2;
         let best = null;
         let bestD = Infinity;
@@ -178,6 +185,7 @@
     window.addEventListener('scroll', () => {
         if (FINE.matches) return;
         clearTimeout(settleTimer);
+        if (covered()) return;
         if (current && current.card) {
             const r = current.card.getBoundingClientRect();
             if (r.bottom < 0 || r.top > window.innerHeight) stop();

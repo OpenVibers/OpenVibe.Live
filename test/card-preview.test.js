@@ -26,6 +26,25 @@ vm.createContext(ctx);
 vm.runInContext(src, ctx);
 
 const { previewAttrs } = win.cardPreview;
+
+// 11-28: a panel over the page (the body's ov-panel-open, Shared's panels.js) hides the cards: a settled scroll inside it
+// measures none of them (the home's "Open the feed" tap spent 161 ms at 4x in settle).
+{
+    let asked = 0;
+    const qsa = doc.querySelectorAll;
+    doc.querySelectorAll = (...a) => { asked++; return qsa(...a); };
+    doc.body = { classList: { contains: (c) => c === 'ov-panel-open' } };
+    win.cardPreview.settle();
+    assert.strictEqual(asked, 0, 'a panel is open: no card is measured');
+    doc.body = { classList: { contains: () => false }, style: { position: 'fixed' } };
+    win.cardPreview.settle();
+    assert.strictEqual(asked, 0, 'the menu or search sheet holds the page still (surfaces.js): no card is measured');
+    doc.body = { classList: { contains: () => false }, style: { position: '' } };
+    win.cardPreview.settle();
+    assert.strictEqual(asked, 1, 'no panel: the cards are measured as before');
+    delete doc.body;
+    doc.querySelectorAll = qsa;
+}
 assert.strictEqual(typeof win.previewAttrs, 'function', 'renderers call the global previewAttrs');
 
 // A recording or clip: the MP4 with the WebM beside it.
