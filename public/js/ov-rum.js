@@ -29,13 +29,22 @@
     const shown = (t) => (t < firstHidden ? Math.max(0, t - activation) : 0);   // 0 = not measured (dropped server-side)
     watch('paint', (e) => { if (e.name === 'first-contentful-paint') m.fcp = shown(e.startTime); });
     watch('largest-contentful-paint', (e) => { const t = shown(e.startTime); if (t) m.lcp = t; });
-    // CLS as web-vitals defines it: the worst window of shifts under 1 s apart, at most 5 s long.
-    let win = 0, first = 0, last = 0;
+    // CLS as web-vitals defines it: the worst window of shifts under 1 s apart, at most 5 s long. And what moved most in
+    // that window (11-28: the home's tablet CLS p75 was 0.345 while the lab measured 0.001 at four sizes, and nothing
+    // said which element moved): the node of its biggest shift's largest source, named at send time by what() below.
+    let win = 0, first = 0, last = 0, top = 0, topNode = null;
+    const area = (r) => (r ? r.width * r.height : 0);
+    const biggest = (srcs) => {
+        let node = null, size = -1;
+        (srcs || []).forEach((s) => { const z = Math.max(area(s.previousRect), area(s.currentRect)); if (s.node && z > size) { size = z; node = s.node; } });
+        return node;
+    };
     watch('layout-shift', (e) => {
         if (e.hadRecentInput) return;
-        if (e.startTime - last > 1000 || e.startTime - first > 5000) { win = 0; first = e.startTime; }
+        if (e.startTime - last > 1000 || e.startTime - first > 5000) { win = 0; first = e.startTime; top = 0; topNode = null; }
         win += e.value; last = e.startTime;
-        if (win > m.cls) m.cls = win;
+        if (e.value > top) { top = e.value; topNode = biggest(e.sources); }
+        if (win > m.cls) { m.cls = win; m.clsNode = topNode; }
     });
     watch('longtask', (e) => { if (m.fcp && e.startTime > m.fcp) m.tbt += Math.max(0, e.duration - 50); });
     // The slowest interaction, and what it was on (2026-11-20: the Go live page's INP p75 was 232 ms on phones and
@@ -82,6 +91,11 @@
             fcp: r(m.fcp), lcp: r(m.lcp), cls: Math.round(m.cls * 1000) / 1000, inp: r(m.inp), tbt: r(m.tbt), errs: early ? early.filter((x) => !/^ResizeObserver loop/.test(x)).slice(0, 3) : m.errs,
         };
         if (m.inpOn) body.inp_on = m.inpOn;
+        // What moved, for a shift worth naming: a text node is named by its element (tag, id or first class, never words).
+        if (m.cls >= 0.05 && m.clsNode) {
+            const on = what(m.clsNode.nodeType === 1 ? m.clsNode : m.clsNode.parentElement);
+            if (on) body.cls_on = on;
+        }
         // The first picture again under the path that showed it (WebRTC, HLS, FLV or JSMpeg), so each has its own p75.
         const via = String(window.__ovFirstFrameVia || '');
         if (/^(webrtc|hls|flv|jsmpeg)$/.test(via) && window.__ovFirstFrameAt) body['ttff_' + via] = r(window.__ovFirstFrameAt);

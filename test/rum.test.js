@@ -98,9 +98,22 @@ const { createRum, pageKind, deviceClass } = require('../server/web/rum');
         { page: 'broadcast', on: 'click button#bc-go-live', count: 2, worst: 450 },
         { page: 'home', on: 'pointerdown div.ovh-card', count: 1, worst: 600 },
     ]);
+    // What moved is named (11-28, the tablet home's CLS): page, device and element, for a CLS of 0.05 or more; anything
+    // else in cls_on is not kept.
+    rum.record({ path: '/', w: 820, cls: 0.34, cls_on: 'section#home-live' });
+    rum.record({ path: '/', w: 820, cls: 0.12, cls_on: 'section#home-live' });
+    rum.record({ path: '/', w: 820, cls: 0.02, cls_on: 'section#home-live' });
+    rum.record({ path: '/', w: 390, cls: 0.2, cls_on: 'img.ovh-thumb' });
+    rum.record({ path: '/', w: 820, cls: 0.5, cls_on: 'div <b>hello</b>' });
+    rum.record({ path: '/', w: 820, cls: 0.5, cls_on: 'Hello there' });
+    assert.deepStrictEqual(rum.snapshot().shifts, [
+        { page: 'home', device: 'tablet', on: 'section#home-live', count: 2, worst: 0.34 },
+        { page: 'home', device: 'phone', on: 'img.ovh-thumb', count: 1, worst: 0.2 },
+    ]);
     // The browser side writes only a tag, an id or a first class (ov-rum.js what()).
     const rumJs = require('fs').readFileSync(require('path').join(__dirname, '..', 'public', 'js', 'ov-rum.js'), 'utf8');
     assert.match(rumJs, /m\.inpOn = `\$\{e\.name\} \$\{what\(e\.target\)\}`/);
+    assert.match(rumJs, /const on = what\(m\.clsNode\.nodeType === 1 \? m\.clsNode : m\.clsNode\.parentElement\);/, 'what moved is named by what() too');
     assert.ok(!/textContent|innerText|value/.test(rumJs.slice(rumJs.indexOf('const what'), rumJs.indexOf('watch(\'event\''))), 'never the words on it');
     server.close();
 

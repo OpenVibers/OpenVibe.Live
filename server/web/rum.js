@@ -59,6 +59,12 @@ function createRum({ now = () => Date.now() } = {}) {
     // slow tap is named (2026-11-20). Kept in memory: counts and the worst.
     const slow = new Map();      // "page|on" -> { n, worst }
     const MAX_SLOW = 200;
+    // What moved most in a page's worst window of layout shifts (ov-rum.js cls_on: a tag with its id or first class), by
+    // page and device class, for a CLS of 0.05 or more (11-28: the home's tablet p75 was 0.345 and nothing said what
+    // moved). Kept in memory, like slow taps: counts and the worst.
+    const shifts = new Map();    // "page|device|on" -> { n, worst }
+    const MAX_SHIFTS = 200;
+    const ON_RE = /^[a-z][a-z0-9]{0,15}([#.][A-Za-z][\w-]{0,40})?$/;
 
     function record(body) {
         if (!body || typeof body !== 'object') return false;
@@ -80,6 +86,13 @@ function createRum({ now = () => Date.now() } = {}) {
             const k = `${pageKind(body.path)}|${on}`;
             const s = slow.get(k) || (slow.size < MAX_SLOW ? { n: 0, worst: 0 } : null);
             if (s) { s.n++; s.worst = Math.max(s.worst, Math.round(inp)); slow.set(k, s); }
+        }
+        const clsOn = String(body.cls_on || '');
+        const cls = Number(body.cls);
+        if (cls >= 0.05 && cls <= METRICS.cls && ON_RE.test(clsOn)) {
+            const k = `${key}|${clsOn}`;
+            const s = shifts.get(k) || (shifts.size < MAX_SHIFTS ? { n: 0, worst: 0 } : null);
+            if (s) { s.n++; s.worst = Math.max(s.worst, Math.round(cls * 1000) / 1000); shifts.set(k, s); }
         }
         for (const raw of Array.isArray(body.errs) ? body.errs.slice(0, 3) : []) {
             const msg = String(raw || '').replace(/\s+/g, ' ').trim().slice(0, 140);
@@ -132,7 +145,9 @@ function createRum({ now = () => Date.now() } = {}) {
             .map(([message, count]) => ({ message, count, last: errorLast.has(message) ? new Date(errorLast.get(message)).toISOString() : null }));
         const slowTaps = [...slow.entries()].sort((a, b) => b[1].n - a[1].n || b[1].worst - a[1].worst).slice(0, 25)
             .map(([k, s]) => { const i = k.indexOf('|'); return { page: k.slice(0, i), on: k.slice(i + 1), count: s.n, worst: s.worst }; });
-        return { pages, errors: errs, slow: slowTaps };
+        const moved = [...shifts.entries()].sort((a, b) => b[1].n - a[1].n || b[1].worst - a[1].worst).slice(0, 25)
+            .map(([k, s]) => { const [page, device, ...on] = k.split('|'); return { page, device, on: on.join('|'), count: s.n, worst: s.worst }; });
+        return { pages, errors: errs, slow: slowTaps, shifts: moved };
     }
 
     function p75Gauge() {
