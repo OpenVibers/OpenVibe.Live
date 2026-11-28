@@ -44,7 +44,7 @@
     "multer": "^1.4.5-lts.1",
     "node-media-server": "^2.7.1",
     "onnxruntime-node": "^1.20.0",
-    "openvibe-contracts": "https://git.openvibe.codes/api/v1/repos/openvibers/openvibe.contracts/archive/v0.449.0.tar.gz",
+    "openvibe-contracts": "https://git.openvibe.codes/api/v1/repos/openvibers/openvibe.contracts/archive/v0.454.0.tar.gz",
     "openvibe-sdk": "https://git.openvibe.codes/api/v1/repos/openvibers/openvibe.sdk/archive/v0.190.0.tar.gz",
     "openvibe-shared": "https://git.openvibe.codes/api/v1/repos/openvibers/openvibe.shared/archive/v4.337.0.tar.gz",
     "pg": "^8.23.1",
