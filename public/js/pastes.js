@@ -572,8 +572,8 @@ function renderPasteComment(c) {
         repliesHtml = `<div class="comment-replies">${c.replies.map(r => renderPasteComment(r)).join('')}</div>`;
     }
 
-    const anonBadge = isAnon ? '<span class="badge" style="font-size:0.65rem;padding:1px 4px;background:#555;margin-left:4px">ANON</span>' : '';
-    const adminBadge = !isAnon && c.role === 'admin' ? '<span class="badge" style="font-size:0.7rem;padding:1px 5px">ADMIN</span>' : '';
+    const anonBadge = isAnon ? '<span class="badge" style="font-size:.75rem;padding:1px 4px;background:#555;margin-left:4px">ANON</span>' : '';
+    const adminBadge = !isAnon && c.role === 'admin' ? '<span class="badge" style="font-size:.75rem;padding:1px 5px">ADMIN</span>' : '';
     const avatarHtml = !isAnon && c.avatar_url
         ? `<img src="${escapeHtml(c.avatar_url)}" class="comment-avatar" style="width:32px;height:32px;border-radius:50%;object-fit:cover" alt="">`
         : `<div class="comment-avatar" style="background:${escapeHtml(color)}">${initial}</div>`;
