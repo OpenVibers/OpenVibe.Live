@@ -21,6 +21,10 @@ console.warn = () => {};
         if (ids[0] === 3063) throw new Error('Media down');
         return new Map(ids.filter((id) => vods[id]).map((id) => [id, vods[id]]));
     };
+    const db = require('../server/db/database');
+    const streams = { 3064: { id: 3064, user_id: 7, is_live: 0 }, 3065: { id: 3065, user_id: 7, is_live: 1 }, 3066: { id: 3066, user_id: 8, is_live: 0 } };
+    db.getStreamById = async (id) => streams[id] || null;
+    db.getUserById = async (id) => (id === 7 ? { id: 7, avatar_url: 'https://openvibe.network/avatars/7.png' } : { id, avatar_url: null });
     const auth = require('../server/auth/auth');
     auth.optionalAuth = (req, res, next) => next();
 
@@ -37,9 +41,13 @@ console.warn = () => {};
         assert.match(ended.headers.get('cache-control') || '', /max-age=300/);
 
         assert.strictEqual((await get('/api/thumbnails/stream-3062-1795193618087.jpg')).status, 404, 'a recording with no picture: 404');
-        assert.strictEqual((await get('/api/thumbnails/stream-3064-1795193618087.jpg')).status, 404, 'no public recording: 404');
+        const noRec = await get('/api/thumbnails/stream-3064-1795193618087.jpg');
+        assert.strictEqual(noRec.status, 302, 'an ended stream with no recording: the streamer\'s picture, not a 404 (stream 3083)');
+        assert.strictEqual(noRec.headers.get('location'), 'https://openvibe.network/avatars/7.png');
+        assert.strictEqual((await get('/api/thumbnails/stream-3065-1795193618087.jpg')).status, 404, 'a live stream with no frame yet: still 404');
+        assert.strictEqual((await get('/api/thumbnails/stream-3066-1795193618087.jpg')).status, 404, 'no recording and no picture: 404');
         assert.strictEqual((await get('/api/thumbnails/stream-3063-1795193618087.jpg')).status, 404, 'Media down: 404, never a 500');
-        assert.deepStrictEqual(asked, [3061, 3062, 3064, 3063], 'each stream id is asked about once per request');
+        assert.deepStrictEqual(asked, [3061, 3062, 3064, 3065, 3066, 3063], 'each stream id is asked about once per request');
     } finally {
         server.close();
     }

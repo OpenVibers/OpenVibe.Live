@@ -195,6 +195,17 @@ router.get('/:filename', async (req, res) => {
                 const pic = vod && vod.thumbnail_url ? media.publicUrl(vod.thumbnail_url) : null;
                 if (/^https:\/\//.test(pic || '')) { res.set('Cache-Control', 'public, max-age=300'); return res.redirect(302, pic); }
             } catch { /* Media slow or down: the page's own fallback, as below */ }
+            // An ended stream with no recording to show (its streamer deleted it, or none was made): the streamer's own
+            // picture, which is what the page's fallback would draw, without a 404 in every visitor's console (11-28:
+            // stream 3083 kept Run's /chat check failing after #1052). A live stream with no frame yet keeps the 404.
+            try {
+                const s = await db.getStreamById(Number(named[1]));
+                if (s && !s.is_live) {
+                    const u = await db.getUserById(s.user_id);
+                    const pic = u && u.avatar_url;
+                    if (/^https:\/\//.test(pic || '')) { res.set('Cache-Control', 'public, max-age=300'); return res.redirect(302, pic); }
+                }
+            } catch { /* the page's own fallback, as below */ }
         }
         // No frame at all: a 404, so the page's own fallback shows (the streamer's avatar on openvibe.network, Live's
         // handleThumbnailError). Until 2026-10-22 this was a 1×1 pixel answered 200, which every card drew as an empty
