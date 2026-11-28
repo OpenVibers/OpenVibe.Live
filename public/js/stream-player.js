@@ -651,6 +651,16 @@ function _hidePlayerPlaceholder(surface = (playerType === 'jsmpeg' ? 'canvas' : 
     }
 }
 
+/** Real-user measurements of a WebRTC viewer's steps (2026-11-28: on phones the first picture came 12.5 s after
+ *  opening at p50, 8 s of it after the player started, and nothing said which step): when the signaling socket opened
+ *  (ws), the server attached the viewer to the stream (ready), the media connection came up (ice) and the first track
+ *  arrived (track), each from navigation, once, for a channel opened directly. js/ov-rum.js sends them as rtc_*. */
+function _rtcMark(step) {
+    const at = window.__ovRtcAt = window.__ovRtcAt || {};
+    if (at[step] != null) return;
+    try { const nav = performance.getEntriesByType('navigation')[0]; if (nav && new URL(nav.name).pathname === location.pathname) at[step] = Math.round(performance.now()); } catch { /* not measured */ }
+}
+
 function _isVideoPlaybackLive(video) {
     return !!video && !video.paused && !video.ended && video.readyState >= 3 && (video.currentTime > 0 || video.readyState >= 4);
 }
@@ -1328,6 +1338,7 @@ async function initWebRTC(stream) {
 
         ws.onopen = () => {
             console.log('[Player] Broadcast signaling connected');
+            _rtcMark('ws');
             _updateStatus('Looking for the live feed', {
                 phase: 'queue',
                 detail: 'The viewer session is open. Waiting for a live source to be attached.',
@@ -1396,6 +1407,7 @@ async function initWebRTC(stream) {
                     case 'sfu-viewer-ready':
                         // Server has SFU producers — use mediasoup-client RecvTransport
                         console.log('[Player] SFU viewer ready — starting mediasoup-client flow');
+                        _rtcMark('ready');
                         _updateStatus('Starting playback', {
                             phase: 'engine',
                             detail: 'The server has a healthy live source. Preparing the low-latency viewer engine.',
@@ -1685,6 +1697,7 @@ async function handleSfuViewerReady(msg, ws, video, updateStatus, scheduleRewatc
             if (!player || player._sfuRecvTransport !== recvTransport) return;
             console.log(`[Player] SFU recv transport state: ${state}`);
             if (state === 'connected') {
+                _rtcMark('ice');
                 // The ladder only escalates while the transport is up; the first frame (or the
                 // first 1.5 s without one) decides what happens next.
                 if (player._viewerHealth) { try { player._viewerHealth.connected(); } catch { /* */ } }
@@ -1816,6 +1829,7 @@ async function handleSfuViewerReady(msg, ws, video, updateStatus, scheduleRewatc
                 kind: consumerParams.kind,
                 rtpParameters: consumerParams.rtpParameters,
             });
+            _rtcMark('track');
 
             // Playout buffering. This used to force BOTH receivers to 0, which removed the
             // very slack playback depends on:
