@@ -59,6 +59,11 @@
         "player",
         "channel",
         "chatUI"
+      ],
+      "stubs": [
+        "openHomeAbout",
+        "toggleHomeAbout",
+        "toggleHomeChangelog"
       ]
     },
     "feeds": {
@@ -168,7 +173,11 @@
         "/js/agent-cards.js"
       ],
       "stubs": [
-        "toggleChannelChat"
+        "editAboutFromTab",
+        "loadMoreChannelAgents",
+        "switchChannelTab",
+        "toggleChannelChat",
+        "toggleMobileChat"
       ]
     },
     "voice": {
@@ -193,7 +202,10 @@
         "vcSwitchCam",
         "vcOnInputModeChange",
         "vcOnPttKeyChange",
-        "vcOnVadChange", "vcToggleScreen", "vcDockCycleSize", "vcOpenFullCall"
+        "vcOnVadChange",
+        "vcToggleScreen",
+        "vcDockCycleSize",
+        "vcOpenFullCall"
       ]
     },
     "chatpage": {
@@ -207,6 +219,12 @@
       ],
       "js": [
         "/js/app-chatpage.js"
+      ],
+      "stubs": [
+        "_gaiTlOnScroll",
+        "_gaiTlPeriod",
+        "_gaiTlSearchDebounced",
+        "toggleGlobalAiPanel"
       ]
     },
     "aiViewers": {
@@ -248,7 +266,44 @@
         "setupNextUp"
       ]
     },
-    "broadcast": {"stubs": ["showCreateManagedStreamModal"], 
+    "broadcast": {
+      "stubs": [
+        "cancelTTS",
+        "closeCameraSwitcher",
+        "copyToClipboard",
+        "copyWhipToken",
+        "createBroadcastClip",
+        "endSetupStream",
+        "mediaPipSkip",
+        "mediaPipStartNext",
+        "mediaPopout",
+        "openCameraSwitcher",
+        "openViewerPreview",
+        "popoutBroadcastChat",
+        "saveRobotStreamerIntegration",
+        "setBroadcastClipLast30",
+        "setBroadcastClipMark",
+        "showCreateManagedStreamModal",
+        "showCreateStreamPanel",
+        "stopBroadcast",
+        "switchBroadcastTopTab",
+        "syncExternalTTSSetting",
+        "testTTS",
+        "toggleBroadcastClipPanel",
+        "toggleBroadcastMobileChat",
+        "toggleBroadcastPreview",
+        "toggleBroadcastStats",
+        "toggleBroadcastViewerPlaces",
+        "toggleCameraOverlay",
+        "toggleMediaPip",
+        "toggleScreenShare",
+        "toggleScreenShareMic",
+        "toggleWhipToken",
+        "updateBroadcastSetting",
+        "validateRobotStreamerIntegration",
+        "wsFirstAppStream",
+        "wsFirstBrowserStream"
+      ],
       "fragment": "broadcast",
       "css": [
         "/css/features/broadcast.css",
@@ -272,7 +327,8 @@
         "/js/broadcast-workspace.js",
         "/js/broadcast.js",
         "/js/broadcast-cam-pip.js",
-        "/shared/ov-float.js", "/js/broadcast-studio.js"
+        "/shared/ov-float.js",
+        "/js/broadcast-studio.js"
       ]
     },
     "pastes": {
@@ -319,10 +375,38 @@
         "/js/bench-stream-dashboard.js"
       ],
       "stubs": [
-        "regenerateDashStreamKey"
+        "copyDashObsOverlayUrl",
+        "dashBulkActionByAge",
+        "dashPurgeChatRange",
+        "dashRecycleBucks",
+        "loadDashChatLogs",
+        "onOfflineTypeChange",
+        "openDashObsOverlay",
+        "regenerateDashStreamKey",
+        "saveAiDerivationSetting",
+        "saveBotEmbedSetting",
+        "saveClipSettings",
+        "saveOfflineScreen",
+        "saveSettingsProfile",
+        "showBucksLogs",
+        "showCreateTokenModal",
+        "switchDashContentTab",
+        "switchDashTab",
+        "updateDashScenes",
+        "uploadOfflineScreen",
+        "uploadSettingsAvatar"
       ]
     },
-    "rundown": {"fragment": "rundown", "css": ["/css/features/rundown.css", "/shared/kit.css"], "js": ["/js/rundown.js"]},
+    "rundown": {
+      "fragment": "rundown",
+      "css": [
+        "/css/features/rundown.css",
+        "/shared/kit.css"
+      ],
+      "js": [
+        "/js/rundown.js"
+      ]
+    },
     "recap": {
       "css": [
         "/css/recap.css",
@@ -342,6 +426,11 @@
       ],
       "js": [
         "/js/app-docs.js"
+      ],
+      "stubs": [
+        "copyDocSection",
+        "copyDocsForAI",
+        "showDocTab"
       ]
     },
     "statsNerds": {
@@ -443,8 +532,24 @@
         "recap"
       ]
     },
-    {"path": "^/rundown", "features": ["rundown"]}, {"path": "^/arena", "features": ["rundown"]},
-    {"path": "^/updates/?$", "features": ["updates"]},
+    {
+      "path": "^/rundown",
+      "features": [
+        "rundown"
+      ]
+    },
+    {
+      "path": "^/arena",
+      "features": [
+        "rundown"
+      ]
+    },
+    {
+      "path": "^/updates/?$",
+      "features": [
+        "updates"
+      ]
+    },
     {
       "path": "^/documentation",
       "features": [

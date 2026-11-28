@@ -31,6 +31,10 @@ process.env.NODE_ENV = 'test';
         assert.deepStrictEqual(await get('/vod/12'), { status: 301, location: 'https://openvibe.video/v/12' });
         assert.deepStrictEqual(await get('/vod/12/'), { status: 301, location: 'https://openvibe.video/v/12' });
         assert.deepStrictEqual(await get('/vod/12?t=95'), { status: 301, location: 'https://openvibe.video/v/12?t=95' });
+        // An item under the feed (an old link's shape, 11-28: a 404 and "loadContentPage is not defined") goes there too.
+        assert.deepStrictEqual(await get('/vods/6707'), { status: 301, location: 'https://openvibe.video/v/6707' });
+        assert.deepStrictEqual(await get('/vods/6707?t=95'), { status: 301, location: 'https://openvibe.video/v/6707?t=95' });
+        assert.strictEqual((await get('/clips/12')).status, 301);
         assert.deepStrictEqual(await get('/vod/12?t=1:35'), { status: 301, location: 'https://openvibe.video/v/12?t=95' });
         assert.deepStrictEqual(await get('/vod/12?t=1:01:35'), { status: 301, location: 'https://openvibe.video/v/12?t=3695' });
         assert.deepStrictEqual(await get('/clip/7'), { status: 301, location: 'https://openvibe.video/c/7' });

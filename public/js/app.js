@@ -1255,6 +1255,10 @@ function routeFromURL() {
         // Home: /
         showPage('home');
         whenRouteReady('home', () => loadHome());
+    } else if ((segments[0] === 'vods' || segments[0] === 'clips') && /^\d{1,15}$/.test(segments[1] || '')) {
+        // An item under the feed (/vods/6707: an old link's shape) is its page on OpenVibe.Video: the server sends it on.
+        location.replace(`/${segments[0] === 'vods' ? 'vod' : 'clip'}/${segments[1]}${location.search}`);
+        return;
     } else if (segments[0] === 'content' || segments[0] === 'vods' || segments[0] === 'clips') {
         // What people made (public/js/content-feed.js). /vods and /clips are it with a filter.
         showPage('content');
