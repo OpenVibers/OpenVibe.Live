@@ -22,7 +22,7 @@
 .tour::after { content: ''; position: absolute; left: 10%; right: 10%; top: 0; height: 1px; background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--accent) 70%, transparent), transparent); pointer-events: none; }
 .tour > * { position: relative; }
 .tour-head { text-align: center; margin-bottom: 18px; }
-.tour-kicker { display: inline-flex; align-items: center; gap: 6px; font-size: 0.68rem; font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent-light, var(--accent)); margin-bottom: 6px; }
+.tour-kicker { display: inline-flex; align-items: center; gap: 6px; font-size: .75rem; font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent-light, var(--accent)); margin-bottom: 6px; }
 .tour-head h2 { margin: 0 0 6px; font-size: clamp(1.35rem, 3vw, 1.9rem); font-weight: 900; letter-spacing: -0.01em; }
 .tour-head p { margin: 0 auto; max-width: 620px; color: var(--text-secondary); font-size: 0.92rem; line-height: 1.55; }
 
@@ -38,7 +38,7 @@
 .tour-wires.hot-twitch .tour-wire--twitch, .tour-wires.hot-youtube .tour-wire--youtube, .tour-wires.hot-kick .tour-wire--kick, .tour-wires.hot-rs .tour-wire--rs, .tour-wires.hot-rtmp .tour-wire--rtmp { stroke: var(--c); stroke-width: 2.6; stroke-dasharray: none; filter: drop-shadow(0 0 6px var(--c)); }
 
 .tour-col { display: grid; gap: 8px; align-content: center; position: relative; z-index: 1; }
-.tour-col-label { font-size: 0.64rem; font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase; color: var(--text-muted); margin-bottom: 2px; }
+.tour-col-label { font-size: .75rem; font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase; color: var(--text-muted); margin-bottom: 2px; }
 .tour-col--src .tour-col-label { text-align: right; }
 .tour-col--src .tour-node { justify-self: end; flex-direction: row-reverse; text-align: right; }
 .tour-node { --c: var(--text-primary); display: inline-flex; align-items: center; gap: 9px; padding: 6px 12px 6px 6px; border-radius: 999px; max-width: 100%;
@@ -49,7 +49,7 @@
 .tour-node-ico { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; flex: none; font-size: 0.86rem; color: var(--c); background: color-mix(in srgb, var(--c) 14%, transparent); border: 1px solid color-mix(in srgb, var(--c) 35%, transparent); }
 .tour-node-text { display: grid; line-height: 1.15; min-width: 0; }
 .tour-node-text b { font-size: 0.84rem; font-weight: 800; white-space: nowrap; }
-.tour-node-text small { font-size: 0.66rem; color: var(--text-muted); font-weight: 600; }
+.tour-node-text small { font-size: .75rem; color: var(--text-muted); font-weight: 600; }
 .tour-node-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--c); box-shadow: 0 0 8px var(--c); margin-left: 2px; animation: tourDot 1.8s var(--ov-ease-in-out, ease-in-out) infinite; }
 @keyframes tourDot { 0%, 100% { opacity: 0.5; transform: scale(0.85); } 50% { opacity: 1; transform: scale(1.15); } }
 
@@ -231,7 +231,7 @@ html[data-ov-motion=off] .tour-feat{opacity: 1;transform: none}
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ovg-quest-count { text-align: right; line-height: 1.05; font-variant-numeric: tabular-nums; }
 .ovg-quest-count b { font-size: 1.06rem; font-weight: 900; color: var(--q); }
-.ovg-quest-count i { font-style: normal; font-size: 0.72rem; color: var(--text-secondary); text-shadow: 0 1px 3px rgba(0,0,0,0.45); }
+.ovg-quest-count i { font-style: normal; font-size: .75rem; color: var(--text-secondary); text-shadow: 0 1px 3px rgba(0,0,0,0.45); }
 .ovg-quest-go { color: var(--q); opacity: 0.55; font-size: 0.8rem; transition: transform var(--ov-dur-2, 0.2s), opacity var(--ov-dur-2, 0.2s); }
 .ovg-quest:hover .ovg-quest-go { opacity: 1; transform: translateX(3px); }
 
@@ -367,7 +367,7 @@ html[data-ov-motion=off] .tour-feat{opacity: 1;transform: none}
     .ovg-quest { grid-template-columns: auto 1fr auto; gap: 10px; padding: 11px 12px; }
     .ovg-quest-go { display: none; }
     .ovg-quest-text b { font-size: 0.88rem; }
-    .ovg-quest-text small { font-size: 0.72rem; }
+    .ovg-quest-text small { font-size: .75rem; }
     .ovg-join { padding: 15px 14px 14px; border-radius: 16px; }
     .ovg-join-perks { grid-template-columns: 1fr; gap: 9px; }
     .ovg-join-cta .btn { width: 100%; justify-content: center; }
@@ -436,7 +436,7 @@ html[data-ov-motion=off] .tour-feat{opacity: 1;transform: none}
 }
 .ovg-launch-text { position: relative; z-index: 2; min-width: 0; display: grid; gap: 2px; }
 .ovg-launch-text b { font-size: 0.95rem; font-weight: 800; letter-spacing: -0.01em; }
-.ovg-launch-text small { font-size: 0.74rem; color: var(--text-muted); }
+.ovg-launch-text small { font-size: .75rem; color: var(--text-muted); }
 .ovg-launch-go { position: relative; z-index: 2; color: var(--accent); transition: transform var(--ov-dur-2, 0.2s); }
 .ovg-launch:hover .ovg-launch-go { transform: translateX(3px); }
 
@@ -473,7 +473,7 @@ html[data-ov-motion=off] .tour-feat{opacity: 1;transform: none}
 @media (max-width: 560px) {
     .ovg-launch { grid-template-columns: auto 1fr auto; gap: 10px; padding: 11px 12px; }
     .ovg-launch-ico { width: 34px; height: 34px; }
-    .ovg-launch-text small { font-size: 0.7rem; }
+    .ovg-launch-text small { font-size: .75rem; }
 }
 .rs-lite .ovg-launch-aura, .rs-lite .ovg-firstlive-ring { animation: none !important; }
 
@@ -500,7 +500,7 @@ html[data-ov-motion=off] .tour-feat{opacity: 1;transform: none}
     backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
     box-shadow: 0 8px 22px rgba(0,0,0,0.28), inset 0 1px 0 rgba(255,255,255,0.05); }
 .hero-quest-slot .ovg-quest-text b { font-size: 0.9rem; }
-.hero-quest-slot .ovg-quest-text small { font-size: 0.73rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hero-quest-slot .ovg-quest-text small { font-size: .75rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .hero-quest-slot .ovg-quest-ico { width: 38px; height: 38px; }
 @media (max-width: 640px) {
     .hero-quest-slot { margin-top: 10px; }
