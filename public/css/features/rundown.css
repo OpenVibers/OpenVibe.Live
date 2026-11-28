@@ -84,14 +84,14 @@ a.rd-use:hover b { color: var(--accent); }
 .rd-take-text { flex: 1; min-width: 0; }
 .rd-what { margin: 0 0 8px; color: var(--text-primary); line-height: 1.55; }
 .rd-their { margin: 0 0 8px; line-height: 1.5; }
-.rd-their span { margin-right: 6px; font-size: 0.72rem; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-secondary); }
+.rd-their span { margin-right: 6px; font-size: .75rem; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-secondary); }
 .rd-quote { margin: 10px 0; padding: 10px 14px; border-left: 3px solid var(--accent); border-radius: 0 12px 12px 0; background: var(--bg-tertiary); }
 .rd-quote p { margin: 0; font-size: 1.04rem; font-style: italic; line-height: 1.5; }
 .rd-quote .rd-quote-en, .rd-quote-en { margin: 4px 0 0; font-style: normal; font-size: 0.9rem; color: var(--text-secondary); }
 .rd-quote footer { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 6px; font-size: 0.86rem; color: var(--text-secondary); }
 .rd-quip { margin: 8px 0 0; color: var(--text-secondary); font-style: italic; line-height: 1.5; }
 .rd-desk { display: inline-block; margin-right: 6px; padding: 1px 7px; border-radius: 6px; background: var(--text-primary); color: var(--bg-card);
-  font-size: 0.68rem; font-weight: 900; font-style: normal; letter-spacing: 0.08em; text-transform: uppercase; vertical-align: 1px; }
+  font-size: .75rem; font-weight: 900; font-style: normal; letter-spacing: 0.08em; text-transform: uppercase; vertical-align: 1px; }
 .rd-cross { margin: 8px 0 0; font-size: 0.88rem; color: var(--text-secondary); }
 .rd-card-foot { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border); }
 .rd-kicker { font-size: 0.75rem; font-weight: 900; letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent-light, var(--accent)); }
@@ -119,7 +119,7 @@ a.rd-use:hover b { color: var(--accent); }
 .rd-issue-meta { margin: 0 0 2px; font-size: 0.86rem; color: var(--text-secondary); }
 .rd-issue-meta time { color: var(--text-muted); }
 .rd-issue-head .rd-logline { margin: 4px 0 0; font-size: 0.96rem; color: var(--text-secondary); }
-.rd-live-tag { display: inline-block; padding: 1px 7px; border-radius: 6px; background: var(--live-red, #ef4444); color: #fff; font-size: 0.7rem; font-weight: 900;
+.rd-live-tag { display: inline-block; padding: 1px 7px; border-radius: 6px; background: var(--live-red, #ef4444); color: #fff; font-size: .75rem; font-weight: 900;
   letter-spacing: 0.08em; text-transform: uppercase; vertical-align: 1px; }
 .rd-briefs { padding: 4px 16px; }
 .rd-brief { display: grid; grid-template-columns: 4.6em minmax(0, 1fr); gap: 10px; padding: 12px 0; border-top: 1px dashed var(--border); }
@@ -131,7 +131,7 @@ a.rd-use:hover b { color: var(--accent); }
 .rd-brief-chip { margin: 0 0 6px; }
 .rd-brief-title { margin: 0 0 4px; font-size: 1.04rem; line-height: 1.3; font-weight: 800; }
 .rd-brief-quote { margin: 0 0 4px; font-size: 1rem; font-style: italic; line-height: 1.45; }
-.rd-brief-quote .rd-speak { width: 24px; height: 24px; margin-left: 4px; vertical-align: -3px; font-size: 0.7rem; font-style: normal; }
+.rd-brief-quote .rd-speak { width: 24px; height: 24px; margin-left: 4px; vertical-align: -3px; font-size: .75rem; font-style: normal; }
 .rd-brief-what { margin: 0 0 4px; color: var(--text-secondary); line-height: 1.5; }
 .rd-brief .rd-quip { margin-top: 4px; font-size: 0.92rem; }
 .rd-brief .rd-react { margin-top: 8px; }
@@ -292,7 +292,7 @@ a.rd-use:hover b { color: var(--accent); }
   background: color-mix(in srgb, var(--accent) 16%, transparent); border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
   color: var(--text-primary); font-size: 0.85rem; font-weight: 700; }
 .rd-active-x { display: grid; place-items: center; width: 22px; height: 22px; padding: 0; border: 0; border-radius: 50%;
-  background: none; color: var(--text-secondary); cursor: pointer; font-size: 0.72rem; }
+  background: none; color: var(--text-secondary); cursor: pointer; font-size: .75rem; }
 .rd-active-x:hover { color: var(--text-primary); background: var(--bg-tertiary); }
 .rd-clear-all { font-size: 0.85rem; }
 
@@ -550,7 +550,7 @@ body.rd-sheet-open { overflow: hidden; }
 .rd-day .rd-h2 { margin-top: 14px; }
 .rd-day-sum { margin: 0 0 12px; padding: 14px 16px; border-radius: 16px; border: 1px solid var(--border); background: radial-gradient(120% 120% at 100% 0%, color-mix(in srgb, var(--accent) 14%, transparent), transparent 60%), var(--bg-card); }
 .rd-day-sum p { margin: 0 0 6px; line-height: 1.5; }
-.rd-day-sum .rd-day-sum-k { font-size: 0.74rem; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: color-mix(in srgb, var(--accent-light, var(--accent)) 60%, var(--text-primary)); }
+.rd-day-sum .rd-day-sum-k { font-size: .75rem; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: color-mix(in srgb, var(--accent-light, var(--accent)) 60%, var(--text-primary)); }
 .rd-day-sum .rd-day-sum-by { margin: 8px 0 0; font-size: 0.8rem; color: var(--text-muted); }
 .rd-day-rail { list-style: none; margin: 0; padding: 14px 0 8px; display: grid; grid-auto-flow: column; grid-auto-columns: min(80%, 300px); gap: 12px; overflow-x: auto; scroll-snap-type: x proximity; scrollbar-width: thin; }
 .rd-day-it { position: relative; scroll-snap-align: start; display: grid; align-content: start; gap: 6px; min-width: 0; padding: 14px; border-radius: 14px; border: 1px solid var(--border); background: var(--bg-card); }

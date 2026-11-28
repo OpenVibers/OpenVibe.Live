@@ -118,7 +118,7 @@
 /* ── Rename submenu ── */
 .ctx-rename-group { position: relative; }
 .ctx-rename-group > .ctx-btn { justify-content: flex-start; }
-.ctx-rename-arrow { margin-left: auto; font-size: 0.65rem; transition: transform var(--ov-dur-2, 0.15s); }
+.ctx-rename-arrow { margin-left: auto; font-size: .75rem; transition: transform var(--ov-dur-2, 0.15s); }
 .ctx-rename-group.open .ctx-rename-arrow { transform: rotate(90deg); }
 .ctx-rename-submenu {
     display: none; flex-direction: column;
@@ -461,7 +461,7 @@
 .chat-friendly-group.is-open > .chat-msg { display: block; animation: chatRowIn var(--ov-dur-2, 180ms) var(--ov-ease-out, ease-out); }
 .chat-friendly-toggle {
     display: inline-flex; align-items: center; gap: 7px; max-width: 100%;
-    padding: 3px 10px; border-radius: 999px; cursor: pointer; font: inherit; font-size: 0.74rem;
+    padding: 3px 10px; border-radius: 999px; cursor: pointer; font: inherit; font-size: .75rem;
     color: var(--text-muted); background: color-mix(in srgb, var(--text-primary, #fff) 5%, transparent);
     border: 1px dashed color-mix(in srgb, var(--text-primary, #fff) 16%, transparent);
     transition: color var(--ov-dur-2, 0.15s), border-color var(--ov-dur-2, 0.15s);
@@ -474,7 +474,7 @@
 .csp-friendly-label { flex: 1; display: flex; align-items: center; justify-content: space-between; gap: 8px; cursor: pointer; }
 .csp-info-btn { background: none; border: 0; padding: 2px 4px; color: var(--text-muted); cursor: pointer; font-size: 0.85rem; }
 .csp-info-btn:hover, .csp-info-btn[aria-expanded="true"] { color: var(--accent-light, #a78bfa); }
-.csp-info-text { margin: 2px 0 8px; padding: 8px 10px; border-radius: 8px; font-size: 0.74rem; line-height: 1.45; color: var(--text-secondary); background: color-mix(in srgb, var(--accent, #8b5cf6) 9%, transparent); }
+.csp-info-text { margin: 2px 0 8px; padding: 8px 10px; border-radius: 8px; font-size: .75rem; line-height: 1.45; color: var(--text-secondary); background: color-mix(in srgb, var(--accent, #8b5cf6) 9%, transparent); }
 
 /* Spoilers (||text|| or /spoiler): hidden until clicked; emotes and links inside stay hidden too. */
 .chat-spoiler {

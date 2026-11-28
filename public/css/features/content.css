@@ -185,7 +185,7 @@ a.cf-media:hover img.cf-thumb { transform: scale(1.03); }
     gap: 6px;
     padding: 4px 9px;
     border-radius: var(--radius-pill, 999px);
-    font-size: 0.72rem;
+    font-size: .75rem;
     font-weight: 700;
     letter-spacing: 0.02em;
     line-height: 1.2;
@@ -204,7 +204,7 @@ a.cf-media:hover img.cf-thumb { transform: scale(1.03); }
     z-index: 2;
     padding: 3px 8px;
     border-radius: 7px;
-    font-size: 0.74rem;
+    font-size: .75rem;
     font-weight: 700;
     font-variant-numeric: tabular-nums;
     color: #fff;
@@ -331,7 +331,7 @@ a.cf-chan:hover .cf-name { color: var(--text-primary); text-decoration: underlin
     display: grid;
     place-items: center;
     overflow: hidden;
-    font-size: 0.72rem;
+    font-size: .75rem;
     font-weight: 800;
     color: #fff;
     background: var(--accent-dark);
