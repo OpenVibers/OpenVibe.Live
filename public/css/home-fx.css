@@ -69,14 +69,15 @@
     content: ''; position: absolute; top: 0; bottom: 0; left: -65%; width: 55%; z-index: 0;
     pointer-events: none;
     background: linear-gradient(100deg, transparent, color-mix(in srgb, var(--c) 34%, transparent) 50%, transparent);
-    animation: hbWave var(--hb-wave) linear infinite;
-    animation-delay: calc(var(--i, 0) * var(--hb-step));
-    animation-play-state: paused;
 }
-/* home-fx.js adds .fx-live when the row scrolls into view and restarts it, so the wave always
-   plays when someone arrives at the buttons instead of running unseen on a page-load clock. */
-#page-home .hero-cta.fx-live .hb::before { animation-play-state: running; }
-#page-home .hero-cta.fx-live .hb-ico { animation-play-state: running; }
+/* home-fx.js adds .fx-live when the row scrolls into view and takes it away when it leaves, so the wave plays when
+   someone arrives at the buttons instead of running unseen on a page-load clock. 2026-11-28: three waves, then the row
+   rests until the next arrival (the animations exist only while .fx-live, so each arrival starts them from the top).
+   Endless, the wave, the pulse and the spark kept the home restyling every frame while it sat still (a tablet at 4x CPU:
+   ~1 s of every 10 s). */
+#page-home .hero-cta.fx-live .hb::before { animation: hbWave var(--hb-wave) linear 3; animation-delay: calc(var(--i, 0) * var(--hb-step)); }
+#page-home .hero-cta.fx-live .hb-ico { animation: hbPulse var(--hb-wave) var(--ov-ease-in-out, ease-in-out) 3; animation-delay: calc(var(--i, 0) * var(--hb-step)); }
+#page-home .hero-cta .hb:is(:hover, :focus-visible) .hb-ico { animation: none; }
 .hb::after {
     content: ''; position: absolute; inset: -1px; border-radius: inherit; z-index: 0; padding: 1px;
     background: conic-gradient(from var(--a, 0deg), transparent 0 70%, var(--c) 85%, transparent 100%);
@@ -94,8 +95,6 @@
     border: 1px solid color-mix(in srgb, var(--c) 40%, transparent);
     box-shadow: 0 2px 6px rgba(0,0,0,0.35) inset;
     transition: transform var(--ov-dur-3, 0.35s) var(--ov-ease-spring, cubic-bezier(.2,1.6,.3,1)), background var(--ov-dur-2, 0.25s), color var(--ov-dur-2, 0.25s), box-shadow var(--ov-dur-2, 0.25s);
-    animation: hbPulse var(--hb-wave) var(--ov-ease-in-out, ease-in-out) infinite; animation-delay: calc(var(--i, 0) * var(--hb-step));
-    animation-play-state: paused;
 }
 .hb-ico, .hb-label, .hb-go { position: relative; z-index: 1; }
 .hb-label { flex: 1; text-align: left; }
@@ -159,13 +158,22 @@
 #page-home .stream-card.hfx-tilting { box-shadow: 0 24px 50px rgba(0,0,0,0.45), 0 0 0 1px color-mix(in srgb, var(--accent) 40%, transparent); z-index: 2; }
 
 /* Live section header dot + Star section shimmer accent */
-#page-home .section-header h2 .live-dot { animation: hfxLive 1.4s var(--ov-ease-in-out, ease-in-out) infinite; }
-@keyframes hfxLive { 0%,100% { transform: scale(1); filter: drop-shadow(0 0 0 rgba(231,76,60,0)); } 50% { transform: scale(1.25); filter: drop-shadow(0 0 8px rgba(231,76,60,0.9)); } }
+/* 2026-11-28: the glow is a layer of its own that only fades (the compositor draws it). An animated drop-shadow filter
+   re-layered the whole home page every frame while it sat still (a tablet at 4x CPU: 2.3 s of every 10 s). */
+#page-home .section-header h2 .live-dot { position: relative; animation: hfxLive 1.4s var(--ov-ease-in-out, ease-in-out) infinite; }
+/* (The glyph kit turns every icon's ::after off with !important: this one is the glow, so it stays.) */
+#page-home .section-header h2 .live-dot::after {
+    content: '' !important; display: block !important; position: absolute; inset: -85%; border-radius: 50%; pointer-events: none; opacity: 0;
+    background: radial-gradient(closest-side, rgba(231,76,60,0.5), rgba(231,76,60,0.2) 55%, rgba(231,76,60,0));
+    animation: hfxLiveGlow 1.4s var(--ov-ease-in-out, ease-in-out) infinite;
+}
+@keyframes hfxLive { 0%,100% { transform: scale(1); } 50% { transform: scale(1.25); } }
+@keyframes hfxLiveGlow { 0%,100% { opacity: 0; } 50% { opacity: 1; } }
 
 html[data-ov-motion=off] .hfx-sparks,html[data-ov-motion=off] .hfx-spot{display: none}html[data-ov-motion=off] .hfx-reveal{opacity: 1;transform: none}
 
 .rs-lite .hfx-sparks, .rs-lite .hfx-spot { display: none; }
-.rs-lite .hfx-shimmer, .rs-lite .hfx-glow, .rs-lite .hb::after, .rs-lite #page-home .section-header h2 .live-dot { animation: none !important; text-shadow: none; }
+.rs-lite .hfx-shimmer, .rs-lite .hfx-glow, .rs-lite .hb::after, .rs-lite #page-home .section-header h2 .live-dot, .rs-lite #page-home .section-header h2 .live-dot::after { animation: none !important; text-shadow: none; }
 .rs-lite .hb { --hb-wave: 8s; }
 .rs-lite #page-home .stream-card { transition: none; }
 
@@ -232,7 +240,7 @@ html[data-ov-motion=off] .hfx-sparks,html[data-ov-motion=off] .hfx-spot{display:
 .hb-vibe .hb-ico::after {
     content: ''; position: absolute; top: 2px; right: 1px; width: 5px; height: 5px; border-radius: 50%;
     background: radial-gradient(circle, #fff, var(--c) 60%, transparent 70%);
-    opacity: 0; animation: hbSpark 4.4s var(--ov-ease-out, ease-out) infinite;
+    opacity: 0;
 }
 @keyframes hbSpark {
     0% { opacity: 0; transform: translate(0, 0) scale(0.4); }
@@ -241,8 +249,9 @@ html[data-ov-motion=off] .hfx-sparks,html[data-ov-motion=off] .hfx-spot{display:
     100% { opacity: 0; transform: translate(9px, -12px) scale(0.5); }
 }
 .hb-vibe:hover { box-shadow: 0 6px 20px color-mix(in srgb, var(--c) 32%, transparent), 0 0 0 1px color-mix(in srgb, var(--c) 55%, transparent); }
-#page-home .hero-cta .hb-vibe, #page-home .hero-cta .hb-vibe .hb-ico::after { animation-play-state: paused; }
-#page-home .hero-cta.fx-live .hb-vibe, #page-home .hero-cta.fx-live .hb-vibe .hb-ico::after { animation-play-state: running; }
+#page-home .hero-cta .hb-vibe { animation-play-state: paused; }
+#page-home .hero-cta.fx-live .hb-vibe { animation-play-state: running; }
+#page-home .hero-cta.fx-live .hb-vibe .hb-ico::after { animation: hbSpark 4.4s var(--ov-ease-out, ease-out) 3; }
 @media (max-width: 520px) { .hb-label small { display: none; } #page-home .hero-primary .hb-label small { display: inline; } }
 /* The very narrowest phones: Go live alone, so the label never squeezes. */
 @media (max-width: 340px) { #page-home .hero-primary .hb-label small { display: none; } }
