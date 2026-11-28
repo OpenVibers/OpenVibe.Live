@@ -1421,7 +1421,10 @@ async function loadHome() {
     // around under the reader's thumb. Placeholders are cleared by whoever renders real content,
     // with a backstop below so nothing shimmers forever after a failed request.
     if (window.OVSkeleton) {
-        OVSkeleton.cards('stream-grid-live');
+        // The server sized the live grid when it rendered the page (data-live-now: that many placeholders, or the
+        // "No one is streaming" panel already showing); one fetched as a fragment still gets them here.
+        const liveGrid = document.getElementById('stream-grid-live');
+        if (!liveGrid || !liveGrid.hasAttribute('data-live-now')) OVSkeleton.cards('stream-grid-live');
         OVSkeleton.block('home-digest', { rows: 3 });
         OVSkeleton.block('home-star-section', { rows: 4, height: 140 });
         setTimeout(() => OVSkeleton.clearAll(), 9000);

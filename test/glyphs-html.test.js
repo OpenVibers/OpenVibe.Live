@@ -41,6 +41,14 @@ assert.strictEqual(render('<p>no icons</p>'), '<p>no icons</p>');
 assert.ok(STYLE.includes('.ovg::before,.ovg::after{content:none!important'), 'Font Awesome\'s glyph never shows');
 assert.ok(STYLE.includes('html[data-ov-icons=solid]{--ovg-pref:99999px}html[data-ov-icons=line]{--ovg-pref:0px}'), 'the person\'s preference');
 assert.ok(STYLE.includes('var(--ovg-pref, var(--ovg-solid-below, 18.4px))'), 'wins over the switch point');
+// The weights and sizes are in the first-paint rules, the same as openvibe-shared's ov-glyphs.js (2026-11-28: a fa-3x
+// icon painted at 1em until that sheet arrived, then tripled and moved the page under it).
+{
+    const shared = require('fs').readFileSync(require('path').join(__dirname, '..', 'node_modules', 'openvibe-shared', 'ov-glyphs.js'), 'utf8');
+    const rules = shared.match(/\.ovg\.fa-(?:thin|light|solid|\d*x[sl]?|xs|sm|lg|xl)\{[^}]*\}/g) || [];
+    assert.ok(rules.length >= 19, `ov-glyphs.js names the weights and sizes (${rules.length})`);
+    rules.forEach((r) => assert.ok(STYLE.includes(r), `first paint has ${r}`));
+}
 
 // assets.rewriteHtml draws them and adds the rules once.
 const assets = require('../server/web/assets');

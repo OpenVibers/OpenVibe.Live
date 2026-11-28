@@ -52,6 +52,11 @@ const STYLE = '.ovg::before,.ovg::after{content:none!important;display:none!impo
     + '.ovg>svg.has-s{stroke-width:min(var(--ovg-stroke,2) * 1px + max(0px, (18.4px - 1.15em) * .25), max(0px, (1.15em - var(--ovg-pref, var(--ovg-solid-below, 18.4px))) * 999))}'
     + '.ovg>svg>.ovg-s{fill:currentColor;stroke:none;clip-path:inset(max(0px, (1.15em - var(--ovg-pref, var(--ovg-solid-below, 18.4px))) * 999))}'
     + '.ovg>svg>.ovg-s .ln{fill:none;stroke:currentColor;stroke-width:2.6px}'
-    + '.ovg.fa-fw{width:1.25em;text-align:center}';
+    + '.ovg.fa-fw{width:1.25em;text-align:center}'
+    // The weights and sizes, as ov-glyphs.js (2026-11-28): a server-drawn fa-3x icon painted at 1em until that sheet
+    // arrived, then tripled (the home's "No one is streaming" tower grew 18 -> 55 px and moved the page under it), and
+    // a fa-solid one painted as lines first. test/glyphs-html.test.js checks these against openvibe-shared's copy.
+    + '.ovg.fa-thin{--ovg-stroke:1}.ovg.fa-light{--ovg-stroke:1.5}.ovg.fa-solid{--ovg-solid-below:99999px}'
+    + '.ovg.fa-2xs{font-size:.625em}.ovg.fa-xs{font-size:.75em}.ovg.fa-sm{font-size:.875em}.ovg.fa-lg{font-size:1.25em}.ovg.fa-xl{font-size:1.5em}.ovg.fa-2xl{font-size:2em}.ovg.fa-1x{font-size:1em}.ovg.fa-2x{font-size:2em}.ovg.fa-3x{font-size:3em}.ovg.fa-4x{font-size:4em}.ovg.fa-5x{font-size:5em}.ovg.fa-6x{font-size:6em}.ovg.fa-7x{font-size:7em}.ovg.fa-8x{font-size:8em}.ovg.fa-9x{font-size:9em}.ovg.fa-10x{font-size:10em}';
 
 module.exports = { render, STYLE };
