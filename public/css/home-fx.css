@@ -31,10 +31,10 @@
 }
 #page-home .hero-primary .hb-stream .hb-ico { width: 40px; height: 40px; font-size: 1rem; }
 #page-home .hero-primary .hb-label { flex: 0 0 auto; white-space: nowrap; }
-#page-home .hero-primary .hb-label small { margin-left: 4px; font-size: 0.74rem; font-weight: 600; opacity: 0.82; }
+#page-home .hero-primary .hb-label small { margin-left: 4px; font-size: .75rem; font-weight: 600; opacity: 0.82; }
 #page-home .hero-golive-note { margin: 0; gap: 6px 18px; font-size: 0.86rem; }
 #page-home .hero-golive-note a { display: inline-flex; align-items: center; gap: 6px; }
-#page-home .hero-golive-note a i { color: inherit; font-size: 0.7rem; transition: transform var(--ov-dur-2, 0.2s); }
+#page-home .hero-golive-note a i { color: inherit; font-size: .75rem; transition: transform var(--ov-dur-2, 0.2s); }
 #page-home .hero-golive-note a:hover i, #page-home .hero-golive-note a:focus-visible i { transform: translateX(3px); }
 /* The rest: sized to their labels on one centred row (it fits from tablets up). */
 #page-home .hero-links { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; width: 100%; }
@@ -100,7 +100,7 @@
 .hb-ico, .hb-label, .hb-go { position: relative; z-index: 1; }
 .hb-label { flex: 1; text-align: left; }
 /* Chevron appears on hover/focus: an explicit "this goes somewhere" cue. */
-.hb-go { width: 0; opacity: 0; font-size: 0.72rem; color: var(--c); transition: width var(--ov-dur-2, 0.22s), opacity var(--ov-dur-2, 0.22s), transform var(--ov-dur-2, 0.22s); transform: translateX(-4px); }
+.hb-go { width: 0; opacity: 0; font-size: .75rem; color: var(--c); transition: width var(--ov-dur-2, 0.22s), opacity var(--ov-dur-2, 0.22s), transform var(--ov-dur-2, 0.22s); transform: translateX(-4px); }
 .hb:hover, .hb:focus-visible {
     transform: translateY(-3px);
     border-color: color-mix(in srgb, var(--c) 78%, transparent);
@@ -131,7 +131,7 @@
     #page-home .hero-links { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; }
     #page-home .hero-links > .hb {
         flex-direction: column; justify-content: center; gap: 5px; min-height: 66px; padding: 8px 4px;
-        border-radius: 16px; font-size: 0.72rem; letter-spacing: 0;
+        border-radius: 16px; font-size: .75rem; letter-spacing: 0;
     }
     #page-home .hero-links .hb-ico { width: 30px; height: 30px; }
     #page-home .hero-links .hb-label { flex: 0 0 auto; text-align: center; }
@@ -214,7 +214,7 @@ html[data-ov-motion=off] .hfx-sparks,html[data-ov-motion=off] .hfx-spot{display:
    extend, so it is allowed to be the loudest: a drifting gradient wash, a sparkle that pops off
    the wand, and a secondary "API docs" label that keeps the destination honest without the
    button reading like documentation. All of it pauses with the rest of the row when off-screen. */
-.hb-label small { font-size: 0.68rem; font-weight: 600; opacity: 0.62; margin-left: 5px; letter-spacing: 0.01em; }
+.hb-label small { font-size: .75rem; font-weight: 600; opacity: 0.62; margin-left: 5px; letter-spacing: 0.01em; }
 /* The wash used to slide background-position, which repaints the button on every frame of an
    11-second loop for the whole time the row is on screen. The gradient now lives on a pseudo-
    element twice the width and simply translates, which the compositor handles without a repaint. */
