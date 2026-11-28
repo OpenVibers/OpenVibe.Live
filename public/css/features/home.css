@@ -1634,3 +1634,28 @@ html[data-ov-motion=off] .ovnet-switch-go > i { animation: none; }
         mask-image: linear-gradient(to bottom, #000 45%, transparent 96%);
     }
 }
+
+/* The go-live pill in the "No one is streaming" panel, at first paint (2026-11-28). The server draws that panel when no
+   one is live (server/seo/pages.js _liveGrid), and home-tour.css, which styles the pill, loads without blocking: without
+   its size the panel grew 20-25 px when that file landed and moved everything under it. These are home-tour.css's own
+   values as the browser computes them (measured equal at 360-1280 px), in the home's first-paint subset
+   (critical-home.json); change both together. */
+.empty-state .ovg-firstlive {
+    position: relative; overflow: hidden; isolation: isolate;
+    display: inline-flex; align-items: center; gap: 11px;
+    width: auto; max-width: min(340px, 100%);
+    margin: 10px auto 0; padding: 9px 16px 9px 10px;
+    font-family: inherit; font-size: 0.92rem; font-weight: 800; line-height: 1.2; text-align: left;
+    color: var(--text-primary);
+    border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--border)); border-radius: 16px;
+    background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 12%, var(--bg-card)), var(--bg-secondary));
+    vertical-align: middle;
+}
+.empty-state .ovg-firstlive i { margin: 0; opacity: 1; }
+.empty-state .ovg-firstlive > i:first-of-type { width: 32px; height: 32px; flex: none; display: grid; place-items: center; font-size: 0.86rem; border: 1px solid transparent; border-radius: 10px; }
+.empty-state .ovg-firstlive > span { flex: 1 1 auto; white-space: nowrap; }
+.empty-state .ovg-firstlive-go { flex: none; font-size: 0.82rem; }
+@media (max-width: 420px) {
+    .empty-state .ovg-firstlive { font-size: 0.86rem; padding: 8px 13px 8px 8px; gap: 9px; }
+    .empty-state .ovg-firstlive > i:first-of-type { width: 29px; height: 29px; font-size: 0.8rem; }
+}

@@ -721,7 +721,7 @@ async function _homeMeta() {
     // painted with the first render instead of after app-home.js asks /api/home/hero for it (LCP 2.9 s → ~FCP).
     let heroImage = null;
     try { const first = (await require('../home/routes').heroMoments())[0]; heroImage = first && /^https:\/\/[^\s"'()<>\\]+$/.test(first.thumbnail || '') ? first.thumbnail : null; } catch { heroImage = null; }
-    return { title, description, canonicalPath: '/', image: DEFAULT_OG_IMAGE, ogType: 'website', robots: 'index,follow', jsonLd, snapshot, heroImage, cacheTtlMs: track.partial ? SHORT_CACHE_MS : undefined };
+    return { title, description, canonicalPath: '/', image: DEFAULT_OG_IMAGE, ogType: 'website', robots: 'index,follow', jsonLd, snapshot, heroImage, liveNow: live.length, cacheTtlMs: track.partial ? SHORT_CACHE_MS : undefined };
 }
 
 /**
@@ -971,6 +971,27 @@ function _headBlock(meta) {
     return '\n' + parts.map(x => '    ' + x).join('\n') + '\n';
 }
 
+/**
+ * The home's Live Now grid at first paint, the size it will be (2026-11-28; tablets' field CLS p75 was 0.345): the
+ * fragment holds four placeholder cards, two rows on a tablet, and when no one was live they gave way to the 209 px
+ * "No one is streaming" panel about a second in, moving everything under them up by 340 px. The server knows how many
+ * streams are live, so the grid starts with that many placeholders (at most four) or with the panel itself, and says so
+ * (data-live-now) so app-home.js adds none of its own. A count up to five minutes old (the page cache) only sizes them.
+ */
+const LIVE_GRID_OPEN = '<div class="stream-grid" id="stream-grid-live">';
+const NO_LIVE_HIDDEN = '<div class="empty-state" id="no-live-streams" style="display:none">';
+function _liveGrid(html, liveNow) {
+    const open = html.indexOf(LIVE_GRID_OPEN);
+    const empty = open === -1 ? -1 : html.indexOf(NO_LIVE_HIDDEN, open);
+    if (empty === -1) return html;
+    const n = Math.max(0, Math.min(4, Math.floor(liveNow) || 0));
+    const from = open + LIVE_GRID_OPEN.length;
+    let kept = 0;
+    const cards = html.slice(from, empty).split('\n').filter((line) => !line.includes('ovsk-card') || ++kept <= n).join('\n');
+    const panel = n ? NO_LIVE_HIDDEN : '<div class="empty-state" id="no-live-streams">';
+    return `${html.slice(0, open)}<div class="stream-grid" id="stream-grid-live" data-live-now="${n}">${cards}${panel}${html.slice(empty + NO_LIVE_HIDDEN.length)}`;
+}
+
 // The page body below is visually hidden while the SPA boots (it removes it, public/js/app.js).
 // Without JavaScript nothing boots, so the body is shown instead of the empty app shell.
 const PRERENDER_STYLE = 'position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:normal;border:0;';
@@ -994,6 +1015,7 @@ function render(meta, urlPath) {
     let html = _base();
     if (!html) return null;
     html = assets.renderRoute(html, urlPath || meta.canonicalPath || '/');
+    if (typeof meta.liveNow === 'number') html = _liveGrid(html, meta.liveNow);
     if (meta.rundownBody) {
         // The fragment's loading state is the shared spinner (an ov-mark since the 2026-11 loading look); replace the
         // one inside #page-rundown only, since the shell holds the same spinner for other pages.
