@@ -115,6 +115,24 @@ const near = (a, b) => Math.abs(a - b) < 0.001;
     assert.ok(near(ratio(box), 1.3333), 'switching channels starts from that channel\'s shape');
 }
 
+// ── The server's shape (2026-11-28): a first visit to a portrait stream opens portrait, for that channel only ──
+{
+    const { api } = load({ store: { ov_player_shape: JSON.stringify({ tallone: 1.7778 }) } });
+    const video = element('video');
+    const box = element('div');
+    box.dataset.shapeHint = '0.5625';
+    box.dataset.shapeKey = 'TallOne';
+    api.watch(video, box, { key: 'tallone' });
+    assert.ok(near(ratio(box), 0.5625), 'the live picture the server read wins over an old remembered shape (names match in any case)');
+    api.watch(video, box, { key: 'someoneelse' });
+    assert.ok(near(ratio(box), 16 / 9), 'another channel (an in-page move) never takes it');
+    const odd = element('div');
+    odd.dataset.shapeHint = 'nope';
+    odd.dataset.shapeKey = 'x';
+    api.watch(element('video'), odd, { key: 'x' });
+    assert.ok(near(ratio(odd), 16 / 9), 'a hint that is not a number is ignored');
+}
+
 // ── A JSMPEG stream: the canvas's size ──
 {
     const { api, mutate } = load();

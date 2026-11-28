@@ -10,8 +10,9 @@
      "The player takes the stream's shape"): a wide picture fills the box exactly, a tall one is as tall as allowed.
    - A size change that keeps the ratio within SAME (WebRTC lowering 720p to 360p on a weak network) moves nothing; a
      real turn eases to the new shape (the CSS transition) instead of jumping.
-   - The first paint already has the shape: the ratio this browser last saw on the channel, else the stream's thumbnail
-     (hint()), until the picture says otherwise.
+   - The first paint already has the shape: the ratio the server read from the stream's live picture (data-shape-hint),
+     else the one this browser last saw on the channel, else the stream's thumbnail (hint()), until the picture says
+     otherwise.
    - Where the box is wider than the picture (a portrait stream on a wide screen), a soft blurred copy of the picture
      fills the sides instead of black bars: a 48 px sample every 0.7 s while it plays and is on screen; none for reduced
      motion or data saver.
@@ -44,6 +45,14 @@
             for (const k of keys.slice(0, Math.max(0, keys.length - 40))) delete all[k];
             localStorage.setItem(STORE, JSON.stringify(all));
         } catch { /* private mode, storage full: the shape still follows the picture */ }
+    }
+
+    /** The shape the server read from this channel's live picture (data-shape-hint, server/streaming/live-shape.js): a
+     *  first visit starts in it, so a portrait stream does not lay the page out again when its picture arrives (2026-11-28:
+     *  the chat moved 238 px on phones). Only for the channel the page was served for. */
+    function served(box, key) {
+        const r = Number(box.dataset && box.dataset.shapeHint);
+        return key && box.dataset.shapeKey && box.dataset.shapeKey.toLowerCase() === String(key).toLowerCase() && r > 0 ? clamp(r) : null;
     }
 
     function apply(box, ratio) {
@@ -130,7 +139,7 @@
         if (key !== st.key || !st.ratio) {
             st.key = key;
             st.fromPicture = false;
-            apply(box, remembered(key) || DEFAULT);
+            apply(box, served(box, key) || remembered(key) || DEFAULT);
         } else st.update();
         return st;
     }
