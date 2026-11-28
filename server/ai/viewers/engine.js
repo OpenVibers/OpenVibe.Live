@@ -29,7 +29,35 @@ function clip(str, n) { return (str || '').toString().replace(/\s+/g, ' ').trim(
 function norm(t) { return String(t || '').toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim(); }
 
 class AiViewersEngineV3 {
-    constructor() { this.workers = new Map(); this.version = 'v3'; }
+    constructor() { this.workers = new Map(); this.waiting = new Map(); this.version = 'v3'; }
+
+    /**
+     * A browser stream counts as live before its camera reaches us, and sometimes it never does (11-25: streams 3096
+     * and 3097 sent no picture and no sound for minutes while twelve AI viewers chatted at an empty page). So a webrtc
+     * stream with no producer yet waits for its first picture or sound (the SFU's producer-added), then starts; the wait
+     * ends with the stream (stopForStream) or after 30 minutes. → true when it is waiting (the caller does not start).
+     */
+    _waitsForMedia(stream, sfu = null) {
+        if (String((stream && stream.protocol) || '') !== 'webrtc') return false;
+        if (!sfu) { try { sfu = require('../../streaming/webrtc-sfu'); } catch { return false; } }
+        if (!sfu || typeof sfu.findProducerByKind !== 'function' || typeof sfu.on !== 'function') return false;
+        const room = `stream-${stream.id}`;
+        if (sfu.findProducerByKind(room, 'video') || sfu.findProducerByKind(room, 'audio')) return false;
+        if (this.waiting.has(stream.id)) return true;
+        let timer = null;
+        const onProducer = (ev) => {
+            if (!ev || ev.roomId !== room) return;
+            cleanup();
+            this.startForStream(stream).catch(() => {});
+        };
+        const cleanup = () => { sfu.removeListener('producer-added', onProducer); if (timer) clearTimeout(timer); this.waiting.delete(stream.id); };
+        timer = setTimeout(cleanup, 30 * 60000);
+        if (typeof timer.unref === 'function') timer.unref();
+        sfu.on('producer-added', onProducer);
+        this.waiting.set(stream.id, cleanup);
+        console.log(`[AI-Viewers v3] stream ${stream.id}: waiting for its first picture or sound before starting`);
+        return true;
+    }
 
     hasWorker(streamId) { return this.workers.has(streamId); }
     workerForUser(userId) { for (const w of this.workers.values()) if (w.userId === userId) return w; return null; }
@@ -47,6 +75,7 @@ class AiViewersEngineV3 {
             const settings = await settingsMod.getSettings(stream.user_id, cfg);
             let full = stream;
             try { full = await db.getStreamById(stream.id) || stream; } catch { /* */ }
+            if (this._waitsForMedia(full)) return;
             if (full.managed_stream_id && settings.slots && settings.slots[String(full.managed_stream_id)] === false) {
                 console.log(`[AI-Viewers] slot ${full.managed_stream_id} has AI viewers off — not starting for stream ${stream.id}`);
                 return;
@@ -85,6 +114,8 @@ class AiViewersEngineV3 {
     }
 
     async stopForStream(streamId) {
+        const waiting = this.waiting.get(streamId);
+        if (waiting) waiting();
         const w = this.workers.get(streamId);
         if (!w) return;
         w.stopped = true;
