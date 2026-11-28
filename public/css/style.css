@@ -3091,6 +3091,10 @@ html[data-ov-motion=off] .ov-rail-track{scroll-behavior: auto}
     padding: 4px 0 0;
     flex-wrap: wrap;
 }
+/* 11-28: the chat's composer and its tools arrive after the first paint (the input row 48 → 56 px, the tools row 4 → 38),
+   and the bottom-anchored messages above moved up by 42 px: /chat's desktop CLS p75 was 0.29. Their room is kept. */
+.chat-input-area .chat-input-row { min-height: 56px; }
+.chat-input-area .chat-tools-row { min-height: 38px; box-sizing: border-box; }
 .gif-btn-text {
     font-size: .75rem;
     font-weight: 800;
