@@ -86,6 +86,10 @@ body {
     background-image: linear-gradient(180deg, var(--bg-secondary) 0%, var(--bg-primary) 42%);
     background-attachment: fixed;
 }
+
+/* 11-28, the owner's 12 px floor: a <small> with no size of its own was the browser's "smaller" (10-10.7 px under 12-13 px
+   text: the home's digest line, Shared's footer). At least 12 px, else the usual "smaller". */
+small { font-size: max(.75rem, 83%); }
 /* Ambient corner glows. These were fixed-position squares with filter: blur(70px). Fixed makes each
    one a composited layer, and main#app — which paints on top of them — then had to be promoted to
    its own layer for overlapping them: a single 12.8MP texture of the entire app, re-rasterised as
