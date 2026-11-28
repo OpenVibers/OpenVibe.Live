@@ -187,6 +187,14 @@ router.get('/:filename', async (req, res) => {
             const current = await liveThumbs.getStreamThumbnailState(Number(named[1]));
             if (current.exists && path.basename(current.thumbUrl) !== filename) return res.redirect(302, current.thumbUrl);
             if (/^https:\/\//.test(current.thumbUrl || '')) return res.redirect(302, current.thumbUrl);
+            // An ended stream with a public recording: its recording's picture (11-28: the chat page's go-live cards and
+            // other kept lists named thumbnails of streams long over, so every visit fetched four 404s and Run's page
+            // check failed /chat). Media is asked once per stream every five minutes (lookups.publicVodsForStreams).
+            try {
+                const vod = (await require('./lookups').publicVodsForStreams([Number(named[1])], { budgetMs: 1500 })).get(Number(named[1]));
+                const pic = vod && vod.thumbnail_url ? media.publicUrl(vod.thumbnail_url) : null;
+                if (/^https:\/\//.test(pic || '')) { res.set('Cache-Control', 'public, max-age=300'); return res.redirect(302, pic); }
+            } catch { /* Media slow or down: the page's own fallback, as below */ }
         }
         // No frame at all: a 404, so the page's own fallback shows (the streamer's avatar on openvibe.network, Live's
         // handleThumbnailError). Until 2026-10-22 this was a 1×1 pixel answered 200, which every card drew as an empty
