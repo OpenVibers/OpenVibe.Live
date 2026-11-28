@@ -9894,7 +9894,8 @@ body.ov-panel-open #floating-chat-fab { opacity: 0; pointer-events: none; transf
 .global-chat-main .chat-input-row .ovc-v2 textarea.chat-textarea,
 .offline-global-chat .chat-input-row .ovc-v2 textarea.chat-textarea,
 .fcw-input-area .chat-input-row .ovc-v2 textarea.chat-textarea {
-    flex: 1 1 0; display: block; width: auto; min-width: 0; height: auto; min-height: 40px; max-height: 40vh;
+    /* 120 px (about five lines): the shared composer grows the box, this keeps it the size chat.js gave it. */
+    flex: 1 1 0; display: block; width: auto; min-width: 0; height: auto; min-height: 40px; max-height: 120px;
     padding: 9px 4px; margin: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none;
     font-size: 16px; line-height: 1.4; overflow-y: auto; writing-mode: horizontal-tb;
 }

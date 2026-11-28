@@ -3733,6 +3733,11 @@ function scrollToReplyTarget(headerEl) {
  */
 function _autoResizeTextarea(el) {
     if (!el || el.tagName !== 'TEXTAREA') return;
+    // 2026-11-28: setting the height to auto lays the whole page out again (a phone's live channel page: ~40 ms per key
+    // at 4x CPU, half of each keystroke). While the words still fit and nothing was taken away, there is nothing to measure.
+    const len = el.value.length, before = el._ovLen || 0;
+    el._ovLen = len;
+    if (len >= before && el.style.height && el.scrollHeight <= el.clientHeight) return;
     el.style.height = 'auto';
     // Clamp to max-height set in CSS (~120px = 5 lines)
     el.style.height = Math.min(el.scrollHeight, 120) + 'px';
@@ -3826,6 +3831,9 @@ let _autoResizeTimer = null;
 document.addEventListener('input', (e) => {
     if (!e.target.classList.contains('chat-textarea')) return;
     const el = e.target;
+    // The shared composer (form.ovc-v2) grows its own box on input; a second resize 40 ms later laid the page out again
+    // and pulled the box back to 120 px after the composer had grown it (2026-11-28). style.css caps it at 120 px instead.
+    if (el.closest('form.ovc-v2')) return;
     clearTimeout(_autoResizeTimer);
     _autoResizeTimer = setTimeout(() => _autoResizeTextarea(el), 40);
 }, true);
