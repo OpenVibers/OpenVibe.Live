@@ -94,7 +94,7 @@ a.rd-use:hover b { color: var(--accent); }
   font-size: 0.68rem; font-weight: 900; font-style: normal; letter-spacing: 0.08em; text-transform: uppercase; vertical-align: 1px; }
 .rd-cross { margin: 8px 0 0; font-size: 0.88rem; color: var(--text-secondary); }
 .rd-card-foot { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border); }
-.rd-kicker { font-size: 0.74rem; font-weight: 900; letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent-light, var(--accent)); }
+.rd-kicker { font-size: 0.75rem; font-weight: 900; letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent-light, var(--accent)); }
 .rd-kicker-k { color: var(--rd-k, var(--accent)); }
 .rd-logline { margin: 0 0 8px; font-size: 1.02rem; line-height: 1.5; }
 .rd-read { font-weight: 800; text-decoration: none; }
