@@ -160,11 +160,20 @@
 }
 /* A single slow pulse ring on the count, only while the board is closed and only on screens that
    want motion — once it is open the count has done its job. */
-.dsc-wrap:not(.is-open) .dsc-toggle-count { animation: dscPulse 2.8s var(--ov-ease-out, ease-out) infinite; }
+/* 2026-11-28: the ring is its own layer that only grows and fades (the compositor draws it). It was a box-shadow that
+   changed every frame, and on a channel page that repainted and re-layered the whole page ~20 times a second while it sat
+   still: idle at 4x CPU, 8.5 s of every 10 s on the main thread, 2.7 s without it and the other loops.
+   The halo sits behind the count (the toggle is its own stacking context, so it stays above the toggle's background). */
+.dsc-toggle { isolation: isolate; }
+.dsc-toggle-count { position: relative; }
+.dsc-wrap:not(.is-open) .dsc-toggle-count::after {
+    content: ''; position: absolute; inset: 0; z-index: -1; border-radius: inherit; pointer-events: none;
+    background: color-mix(in srgb, var(--accent) 55%, transparent);
+    animation: dscPulse 2.8s var(--ov-ease-out, ease-out) infinite;
+}
 @keyframes dscPulse {
-    0%   { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 55%, transparent); }
-    70%  { box-shadow: 0 0 0 9px transparent; }
-    100% { box-shadow: 0 0 0 0 transparent; }
+    0%   { transform: scale(1); opacity: 1; }
+    70%, 100% { transform: scale(1.6, 1.75); opacity: 0; }
 }
 .dsc-toggle-chev { flex: none; color: var(--text-muted); transition: transform var(--ov-dur-3, .3s) var(--ov-ease-out, cubic-bezier(.22,1,.36,1)), color var(--ov-dur-2, .2s); }
 .dsc-wrap.is-open .dsc-toggle-chev { transform: rotate(180deg); color: var(--accent); }
@@ -180,4 +189,4 @@
     .dsc-toggle-text b { font-size: 0.83rem; }
     .dsc-toggle-text small { font-size: .75rem; }
 }
-.rs-lite .dsc-toggle-count { animation: none !important; }
+.rs-lite .dsc-toggle-count::after { animation: none !important; opacity: 0; }
