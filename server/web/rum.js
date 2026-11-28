@@ -121,6 +121,31 @@ function createRum({ now = () => Date.now() } = {}) {
     }
 
     const router = express.Router();
+
+    // The public summary (11-28, plan AD.37 "Reflect via Watch"): the p75 of what real visitors felt, per page kind and
+    // device class, for every reading with at least SUMMARY_MIN samples. Numbers only: no error messages, no element
+    // names, nothing about a visitor, so a Watch (a json source) or openvibe.report can follow a page's speed after a fix.
+    const SUMMARY_MIN = 20;
+    const VITALS = ['ttfb', 'fcp', 'lcp', 'inp', 'cls', 'tbt', 'ttff'];
+    function summary() {
+        const pages = {};
+        for (const [key, b] of buckets) {
+            const out = {};
+            for (const m of VITALS) {
+                const arr = b.samples[m] || [];
+                if (arr.length < SUMMARY_MIN) continue;
+                const s = [...arr].sort((x, y) => x - y);
+                out[m] = { p75: round(pct(s, 0.75), m), n: s.length };
+            }
+            if (Object.keys(out).length) pages[key] = out;
+        }
+        return { generated_at: new Date(now()).toISOString(), min_samples: SUMMARY_MIN, units: { cls: 'score', other: 'ms' }, pages };
+    }
+    router.get('/summary', (req, res) => {
+        res.set('Cache-Control', 'public, max-age=300');
+        res.set('Access-Control-Allow-Origin', '*');
+        res.json(summary());
+    });
     router.post('/', express.text({ type: () => true, limit: '4kb' }), (req, res) => {
         res.status(204).end();
         const addr = req.headers['cf-connecting-ip'] || req.ip || '';
@@ -197,7 +222,7 @@ function createRum({ now = () => Date.now() } = {}) {
         return true;
     }
 
-    return { router, record, snapshot, p75Gauge, errorsGauge, state, restore };
+    return { router, record, snapshot, summary, p75Gauge, errorsGauge, state, restore };
 }
 
 module.exports = { createRum, pageKind, deviceClass };
