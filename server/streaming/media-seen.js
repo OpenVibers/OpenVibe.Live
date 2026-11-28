@@ -6,7 +6,8 @@
  * _waitsForMedia). So a browser stream is listed once its room has had a picture or sound, and one that has had media
  * keeps its card through a reconnect (its producers come and go; the card does not flicker).
  *
- * No listener and no timer: the answer is read when a list is built (drill mode, test/drill-mode.test.js). The set
+ * Only while the SFU runs (sfu.ready): in tests and a restore drill nothing is hidden. No listener and no timer: the
+ * answer is read when a list is built (drill mode, test/drill-mode.test.js). The set
  * holds only streams that have had media; withMedia() forgets the ones no longer live when it grows.
  */
 const seen = new Set();
@@ -21,7 +22,8 @@ function hasMedia(stream, sfu = sfuOf()) {
     const id = Number(stream.id);
     if (!Number.isFinite(id)) return true;
     if (seen.has(id)) return true;
-    if (!sfu || typeof sfu.findProducerByKind !== 'function') return true;   // no SFU here: never hide a stream
+    // No SFU running here (tests, a restore drill, a host without mediasoup): never hide a stream.
+    if (!sfu || typeof sfu.findProducerByKind !== 'function' || sfu.ready === false) return true;
     const room = `stream-${id}`;
     let has;
     try { has = !!(sfu.findProducerByKind(room, 'video') || sfu.findProducerByKind(room, 'audio')); } catch { has = true; }

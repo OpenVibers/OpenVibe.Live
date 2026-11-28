@@ -36,6 +36,7 @@ const sfuWith = (rooms) => ({ findProducerByKind: (room, kind) => ((rooms[room] 
     assert.deepStrictEqual(m.withMedia([{ id: 9, protocol: 'webrtc' }], null).map((s) => s.id), [9], 'no SFU here: nothing is hidden');
     assert.deepStrictEqual(m.withMedia([{ id: 9, protocol: 'webrtc' }], { findProducerByKind() { throw new Error('room gone'); } }).map((s) => s.id), [9], 'an SFU that throws hides nothing');
     assert.deepStrictEqual(m.withMedia(null), [], 'no list is an empty list');
+    assert.deepStrictEqual(m.withMedia([{ id: 9, protocol: 'webrtc' }], { ready: false, findProducerByKind: () => null }).map((s) => s.id), [9], 'an SFU that is not running (tests, a restore drill) hides nothing');
 }
 {
     // The set forgets streams no longer live once it is large.
