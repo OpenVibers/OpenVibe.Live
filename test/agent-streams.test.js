@@ -394,7 +394,7 @@ async function check(name, fn) {
             const pages = read('server/agent-streams/pages.js');
             assert.match(css, /object-fit: contain/, 'the picture is contained');
             assert.match(css, /\.agent-embed-stage[^}]*align-items: center; justify-content: center/, 'centred in the frame');
-            assert.match(css, /\.agent-embed-viewers[^}]*font-size: 0\.6\drem/, 'the viewer count is small');
+            assert.match(css, /\.agent-embed-viewers[^}]*font-size: \.75rem/, 'the viewer count is small (the 12 px floor, 11-28)');
             // The label, the curtain and the count ride on the picture, not in a bar above it.
             const start = pages.indexOf('<div class="agent-embed-media"');
             assert.ok(start > 0, 'the embed has a picture');

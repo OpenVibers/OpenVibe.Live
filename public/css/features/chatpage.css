@@ -42,7 +42,7 @@ html[data-ov-motion="off"] .global-ai-strip .gai-t { animation: none !important;
 .gai-tl-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
 .gai-tl-search { flex: 1; max-width: 200px; padding: 5px 10px; font-size: 0.78rem; border-radius: 999px; border: 1px solid var(--border); background: var(--bg-input, var(--bg-tertiary)); color: var(--text-primary); }
 .gai-tl-periods { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 12px; }
-.gai-tl-chip { border: 1px solid var(--border); background: var(--bg-secondary); color: var(--text-secondary); font-size: 0.72rem; font-weight: 600; padding: 3px 11px; border-radius: 999px; cursor: pointer; transition: background var(--ov-dur-2, .15s), color var(--ov-dur-2, .15s), border-color var(--ov-dur-2, .15s); }
+.gai-tl-chip { border: 1px solid var(--border); background: var(--bg-secondary); color: var(--text-secondary); font-size: .75rem; font-weight: 600; padding: 3px 11px; border-radius: 999px; cursor: pointer; transition: background var(--ov-dur-2, .15s), color var(--ov-dur-2, .15s), border-color var(--ov-dur-2, .15s); }
 .gai-memory { font-size: 0.85rem; line-height: 1.5; color: var(--text-secondary); white-space: pre-wrap; }
 .vc-sidebar {
     width: 300px;
@@ -125,7 +125,7 @@ html[data-ov-motion="off"] .global-ai-strip .gai-t { animation: none !important;
     text-overflow: ellipsis;
 }
 .vc-channel-mode {
-    font-size: 0.63rem;
+    font-size: .75rem;
     padding: 1px 5px;
     border-radius: 8px;
     background: var(--bg-tertiary);
@@ -166,13 +166,13 @@ html[data-ov-motion="off"] .global-ai-strip .gai-t { animation: none !important;
     max-width: 130px;
 }
 .vc-participant-muted {
-    font-size: 0.6rem;
+    font-size: .75rem;
     color: var(--danger-text, var(--danger));
     opacity: 0.75;
     flex-shrink: 0;
 }
 .vc-participant-more {
-    font-size: 0.7rem;
+    font-size: .75rem;
     color: var(--text-muted);
     opacity: 0.65;
     padding-left: 2px;
@@ -184,7 +184,7 @@ html[data-ov-motion="off"] .global-ai-strip .gai-t { animation: none !important;
     border-radius: 50%;
     background: var(--bg-tertiary);
     border: 1px solid var(--border);
-    font-size: 0.52rem;
+    font-size: .75rem;
     font-weight: 700;
     display: flex;
     align-items: center;
@@ -236,7 +236,7 @@ html[data-ov-motion="off"] .global-ai-strip .gai-t { animation: none !important;
     gap: 2px;
 }
 .vc-connected-badge {
-    font-size: 0.72rem;
+    font-size: .75rem;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.05em;

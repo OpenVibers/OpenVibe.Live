@@ -37,7 +37,7 @@
     border-radius: 10px;
     background: var(--danger);
     color: #fff;
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 700;
     display: flex;
     align-items: center;
@@ -207,7 +207,7 @@
     flex-shrink: 0;
 }
 .msg-conv-time {
-    font-size: 11px;
+    font-size: 12px;
     color: var(--text-muted);
     white-space: nowrap;
 }
@@ -218,7 +218,7 @@
     border-radius: 9px;
     background: var(--accent-strong, var(--accent, #3472d8));
     color: var(--on-accent-strong, var(--on-accent, #fff));
-    font-size: 10px;
+    font-size: 12px;
     font-weight: 700;
     display: flex;
     align-items: center;
@@ -314,13 +314,13 @@
     border-bottom-left-radius: 4px;
 }
 .msg-bubble-sender {
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 600;
     color: var(--accent-light);
     margin-bottom: 2px;
 }
 .msg-bubble-time {
-    font-size: 10px;
+    font-size: 12px;
     color: var(--text-muted);
     margin-top: 2px;
     text-align: right;
@@ -332,7 +332,7 @@
 /* Date separator */
 .msg-date-sep {
     text-align: center;
-    font-size: 11px;
+    font-size: 12px;
     color: var(--text-muted);
     padding: 8px 0;
     position: relative;
@@ -445,7 +445,7 @@
 }
 .msg-search-chip .remove-chip {
     cursor: pointer;
-    font-size: 10px;
+    font-size: 12px;
     opacity: 0.7;
     transition: opacity var(--ov-dur-2, 0.15s);
 }
@@ -719,7 +719,7 @@
     height: 22px;
     border-radius: 4px;
     cursor: pointer;
-    font-size: 10px;
+    font-size: 12px;
     display: none;
     align-items: center;
     justify-content: center;
@@ -746,7 +746,7 @@
     border-bottom: none;
 }
 .msg-settings-section-title {
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.6px;
@@ -780,7 +780,7 @@
     min-width: 0;
 }
 .msg-settings-hint {
-    font-size: 11px;
+    font-size: 12px;
     color: var(--text-muted);
     font-weight: 400;
 }
@@ -884,7 +884,7 @@
     padding: 3px 10px;
     border-radius: 6px;
     cursor: pointer;
-    font-size: 11px;
+    font-size: 12px;
     white-space: nowrap;
 }
 .msg-blocked-unblock:hover {

@@ -23,11 +23,11 @@
     width: auto;
     min-height: 0;
     aspect-ratio: 1;
-    font-size: 0.7rem;
+    font-size: .75rem;
 }
 .vc-dock-grid .call-participant-tile.has-video { aspect-ratio: 16 / 9; }
 .vc-dock-grid .call-avatar { width: 46%; height: auto; aspect-ratio: 1; font-size: 1.1rem; }
-.vc-dock-grid .call-participant-label { font-size: 0.68rem; padding: 2px 6px; }
+.vc-dock-grid .call-participant-label { font-size: .75rem; padding: 2px 6px; }
 
 /* A picture is shown whole (a screen keeps its text, a camera its framing), on black. */
 .vc-dock-grid .has-video .call-video,

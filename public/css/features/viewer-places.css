@@ -10,7 +10,7 @@
 @keyframes ovp-in { from { opacity: 0; transform: translateY(4px); } }
 .ovp-head {
     display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 0 14px 6px;
-    font-size: 0.74rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: rgba(255, 255, 255, 0.65);
+    font-size: .75rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: rgba(255, 255, 255, 0.65);
     border-bottom: 1px solid color-mix(in srgb, var(--text-primary, #fff) 10%, transparent);
 }
 .ovp-total { display: inline-flex; align-items: center; gap: 6px; font-size: 0.9rem; letter-spacing: 0; text-transform: none; color: #fff; }
@@ -24,13 +24,13 @@
 }
 .ovp-link:hover .ovp-name, .ovp-link:focus-visible .ovp-name { text-decoration: underline; }
 .ovp-link:focus-visible { outline: 2px solid #93c5fd; outline-offset: 2px; border-radius: 4px; }
-.ovp-out { font-size: 0.68rem; opacity: 0.55; }
+.ovp-out { font-size: .75rem; opacity: 0.55; }
 .ovp-n { margin-left: auto; padding-left: 12px; font-weight: 700; }
-.ovp-n.is-live { font-size: 0.72rem; font-weight: 700; color: #fca5a5; text-transform: uppercase; letter-spacing: 0.05em; }
+.ovp-n.is-live { font-size: .75rem; font-weight: 700; color: #fca5a5; text-transform: uppercase; letter-spacing: 0.05em; }
 /* A section under the places (the live studio's restreams): each with a state dot, and a way to manage them. */
 .ovp-extra { margin-top: 4px; padding-top: 4px; border-top: 1px solid color-mix(in srgb, var(--text-primary, #fff) 10%, transparent); }
 .ovp-extra[hidden] { display: none; }
-.ovp-sub { padding: 4px 14px 0; font-size: 0.7rem; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: rgba(255, 255, 255, 0.55); }
+.ovp-sub { padding: 4px 14px 0; font-size: .75rem; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: rgba(255, 255, 255, 0.55); }
 .ovp-sdot { width: 8px; height: 8px; border-radius: 50%; background: #9ca3af; }
 .ovp-state.is-ok .ovp-sdot { background: #22c55e; }
 .ovp-state.is-warn .ovp-sdot { background: #f59e0b; }

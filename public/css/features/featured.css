@@ -21,12 +21,12 @@
 .hf-top-end { margin-left: auto; display: inline-flex; gap: 6px; pointer-events: auto; }
 .hf-live {
     display: inline-flex; align-items: center; gap: 6px;
-    padding: 4px 10px; border-radius: 999px; font-size: 0.7rem; font-weight: 800; letter-spacing: 0.08em; color: #fff;
+    padding: 4px 10px; border-radius: 999px; font-size: .75rem; font-weight: 800; letter-spacing: 0.08em; color: #fff;
     background: #ef4444; box-shadow: 0 4px 14px rgba(239, 68, 68, 0.45);
 }
 .hf-live i { font-size: 0.5rem; animation: hfBlink 1.6s var(--ov-ease-in-out, ease-in-out) infinite; }
 @keyframes hfBlink { 50% { opacity: 0.35; } }
-.hf-viewers { display: inline-flex; align-items: center; gap: 5px; padding: 4px 9px; border-radius: 999px; font-size: 0.72rem; color: #fff; background: rgba(0, 0, 0, 0.55); backdrop-filter: blur(6px); }
+.hf-viewers { display: inline-flex; align-items: center; gap: 5px; padding: 4px 9px; border-radius: 999px; font-size: .75rem; color: #fff; background: rgba(0, 0, 0, 0.55); backdrop-filter: blur(6px); }
 .hf-sound, .hf-hide {
     display: grid; place-items: center; width: 34px; height: 34px; padding: 0; border-radius: 50%; cursor: pointer;
     border: 1px solid rgba(255, 255, 255, 0.22); background: rgba(0, 0, 0, 0.55); color: #fff; font: inherit; font-size: 0.82rem;
@@ -35,7 +35,7 @@
 }
 .hf-sound:hover, .hf-hide:hover { background: rgba(0, 0, 0, 0.8); transform: translateY(-1px); }
 .hf-sound[aria-pressed="true"] { background: var(--accent); border-color: transparent; }
-.hf-preview-note { padding: 4px 9px; border-radius: 999px; font-size: 0.68rem; color: #e5e7eb; background: rgba(0, 0, 0, 0.5); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); white-space: nowrap; }
+.hf-preview-note { padding: 4px 9px; border-radius: 999px; font-size: .75rem; color: #e5e7eb; background: rgba(0, 0, 0, 0.5); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); white-space: nowrap; }
 .hf-media-link { position: absolute; inset: 0; z-index: 1; }
 .hf-cap {
     position: absolute; left: 0; right: 0; bottom: 0; z-index: 2; pointer-events: none; display: grid; gap: 6px;
@@ -48,7 +48,7 @@
 .hf-who { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; font-size: 0.84rem; color: rgba(255, 255, 255, 0.85); min-width: 0; }
 .hf-who .stream-card-avatar { width: 24px; height: 24px; font-size: 0.7rem; box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.35); }
 .hf-who b { color: #fff; overflow-wrap: anywhere; }
-.hf-up { margin-left: auto; font-size: 0.74rem; white-space: nowrap; color: rgba(255, 255, 255, 0.8); }
+.hf-up { margin-left: auto; font-size: .75rem; white-space: nowrap; color: rgba(255, 255, 255, 0.8); }
 /* A wide screen has the panel beside the picture: the title and who head it there, and the picture carries only its
    chips. A phone stacks them: the title and who ride on the picture (.hf-cap) and the panel starts with Right now. */
 .hf-head { display: grid; gap: 8px; }
@@ -61,7 +61,7 @@
 @media (min-width: 861px) { .hf-cap { display: none; } }
 @media (max-width: 860px) { .hf-head { display: none; } }
 .hf-tag .cat-inferred { opacity: .78; }
-.hf-tag { font-size: 0.68rem; padding: 2px 8px; border-radius: 999px; background: rgba(255, 255, 255, 0.16); color: #fff; -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
+.hf-tag { font-size: .75rem; padding: 2px 8px; border-radius: 999px; background: rgba(255, 255, 255, 0.16); color: #fff; -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
 .hf-now {
     position: relative; padding: 10px 12px 10px 14px; border-radius: 12px; font-size: 0.84rem; line-height: 1.5; color: var(--text-secondary);
     background: color-mix(in srgb, #22d3ee 7%, transparent); border: 1px solid color-mix(in srgb, #22d3ee 22%, transparent);
@@ -69,7 +69,7 @@
 }
 .hf-now::before { content: ''; position: absolute; left: 0; top: 10px; bottom: 10px; width: 3px; border-radius: 3px; background: #22d3ee; }
 /* "Right now · 23m ago" runs into the note's first line instead of taking a line of its own. */
-.hf-now-head { display: inline; margin-right: 6px; font-size: 0.66rem; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: #22d3ee; white-space: nowrap; }
+.hf-now-head { display: inline; margin-right: 6px; font-size: .75rem; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: #22d3ee; white-space: nowrap; }
 .hf-now-head i { margin-right: 3px; }
 .hf-now-head span { margin-left: 4px; font-weight: 600; letter-spacing: 0; text-transform: none; color: var(--text-muted); }
 .hf-now-head span:not(:empty)::before { content: '· '; }
@@ -91,13 +91,13 @@
 }
 .hf-next:hover { color: var(--text-primary); border-color: color-mix(in srgb, var(--accent) 50%, var(--border)); }
 .hf-next small { color: var(--text-muted); font-weight: 500; }
-.hf-chat { display: flex; align-items: center; gap: 6px; margin-top: -2px; font-size: 0.74rem; color: var(--text-muted); }
+.hf-chat { display: flex; align-items: center; gap: 6px; margin-top: -2px; font-size: .75rem; color: var(--text-muted); }
 .hf-chat i { color: var(--accent); }
 
 /* The Live Now header gets a small way back in once the featured stream is hidden. */
 .home-featured-toggle {
     display: inline-flex; align-items: center; gap: 6px; margin-left: 8px; padding: 4px 10px; border-radius: 999px; cursor: pointer;
-    font: inherit; font-size: 0.72rem; color: var(--text-muted); background: transparent; border: 1px dashed color-mix(in srgb, var(--text-primary) 18%, transparent);
+    font: inherit; font-size: .75rem; color: var(--text-muted); background: transparent; border: 1px dashed color-mix(in srgb, var(--text-primary) 18%, transparent);
 }
 .home-featured-toggle:hover { color: var(--text-primary); border-color: var(--accent); }
 .home-featured-toggle[hidden] { display: none; }

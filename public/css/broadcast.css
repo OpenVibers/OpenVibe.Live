@@ -296,7 +296,7 @@
     left: 8px;
     padding: 2px 10px;
     border-radius: 10px;
-    font-size: 0.7rem;
+    font-size: .75rem;
     font-weight: 600;
     z-index: 10;
 }
@@ -352,7 +352,7 @@
 }
 
 .bc-source-btn small {
-    font-size: 0.68rem;
+    font-size: .75rem;
     color: var(--text-muted);
     line-height: 1.1;
 }
@@ -1294,7 +1294,7 @@
     align-items: center;
     justify-content: center;
     gap: 5px;
-    font-size: 0.72rem;
+    font-size: .75rem;
     color: var(--text-secondary);
     margin-top: 6px;
     padding-top: 6px;
@@ -1309,7 +1309,7 @@
 
 .bc-card-sm-hint {
     display: block;
-    font-size: 0.72rem;
+    font-size: .75rem;
     color: var(--text-muted);
     margin-top: 2px;
 }
@@ -1858,7 +1858,7 @@
 .bc-perm-step span {
     flex-shrink: 0; width: 21px; height: 21px; border-radius: 50%;
     background: color-mix(in srgb, var(--text-primary, #fff) 9%, transparent); display: grid; place-items: center;
-    font-size: .72rem; font-weight: 700;
+    font-size: .75rem; font-weight: 700;
 }
 .bc-perm-step p { margin: 0; font-size: .85rem; line-height: 1.45; color: var(--text-muted, #9aa3b2); }
 

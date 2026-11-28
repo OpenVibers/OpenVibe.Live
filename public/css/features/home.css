@@ -1145,7 +1145,7 @@ html[data-ov-motion=off] .star-petals{display: none}
 /* "vs 24h" / "7d" suffixes live in the tooltip; the pill keeps the number and the arrow. */
 .hero-stat-strip .hero-stat-delta em { display: none; }
 .hero-stat-strip .hero-stat-trend { margin-left: 4px; padding-left: 4px; }
-.hero-stat-strip .hero-stat-chart-hint { font-size: 0.5rem; margin-left: 2px; }   /* a glyph, not text: the 12 px floor is for words */
+.hero-stat-strip .hero-stat-chart-hint { font-size: .75rem; margin-left: 2px; }   /* a glyph, not text: the 12 px floor is for words */
 /* Nine across, a card is ~127 px: beside the icon the pill had ~67 px and "+3.7k ▲ 431%" lost its end, and
    "STREAMERS" its last letters (measured 2026-10-24 at 1280 px). The pill takes the card's whole width on its own
    line, and the labels are set a little tighter. */

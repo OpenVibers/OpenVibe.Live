@@ -13,12 +13,12 @@ body.ovg-lock { overflow: hidden; }
 .ovg-close { position: absolute; top: 10px; right: 10px; width: 36px; height: 36px; border-radius: 50%; border: 1px solid var(--border); background: var(--bg-tertiary); color: var(--text-secondary); cursor: pointer; z-index: 2; }
 .ovg-close:hover { color: var(--text-primary); border-color: var(--accent); }
 .ovg-head { display: flex; align-items: center; gap: 12px; padding: 18px 56px 8px 20px; }
-.ovg-kicker { font-size: 0.66rem; font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent-light, var(--accent)); }
+.ovg-kicker { font-size: .75rem; font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent-light, var(--accent)); }
 .ovg-title { font-size: 1.25rem; font-weight: 900; line-height: 1.15; }
 .ovg-steps { --p: 0%; list-style: none; margin: 8px 20px 0; padding: 0 0 12px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; position: relative; }
 .ovg-steps::before { content: ''; position: absolute; left: 12%; right: 12%; top: 15px; height: 3px; background: var(--bg-tertiary); border-radius: 2px; }
 .ovg-steps::after { content: ''; position: absolute; left: 12%; top: 15px; height: 3px; width: calc(76% * var(--p) / 100%); background: linear-gradient(90deg, var(--accent), #22d3ee); border-radius: 2px; transition: width var(--ov-dur-4, .5s) var(--ov-ease-out, cubic-bezier(.2,.9,.3,1)); }
-.ovg-steps li { position: relative; z-index: 1; display: grid; justify-items: center; gap: 5px; font-size: 0.68rem; font-weight: 700; color: var(--text-muted); text-align: center; }
+.ovg-steps li { position: relative; z-index: 1; display: grid; justify-items: center; gap: 5px; font-size: .75rem; font-weight: 700; color: var(--text-muted); text-align: center; }
 .ovg-step-dot { width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; background: var(--bg-tertiary); border: 2px solid var(--border); font-size: 0.8rem; color: var(--text-muted); transition: all var(--ov-dur-3, .3s); }
 .ovg-steps li.now .ovg-step-dot { background: var(--accent-strong, var(--accent, #3472d8)); border-color: var(--accent-strong, var(--accent, #3472d8)); color: var(--on-accent-strong, var(--on-accent, #fff)); box-shadow: 0 0 0 5px color-mix(in srgb, var(--accent) 22%, transparent); transform: scale(1.08); }
 .ovg-steps li.now { color: var(--text-primary); }
@@ -41,8 +41,8 @@ body.ovg-lock { overflow: hidden; }
 .ovg-pick-ico { width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; flex: none; font-size: 1.05rem; color: var(--c); background: color-mix(in srgb, var(--c) 14%, transparent); }
 .ovg-pick.on .ovg-pick-ico { background: var(--c); color: #fff; }
 .ovg-pick-body { display: grid; gap: 2px; min-width: 0; }
-.ovg-pick-body b { font-size: 0.92rem; } .ovg-pick-body small { font-size: 0.74rem; color: var(--text-muted); line-height: 1.35; }
-.ovg-tag { font-style: normal; font-size: 0.62rem; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; color: var(--c); margin-left: 6px; }
+.ovg-pick-body b { font-size: 0.92rem; } .ovg-pick-body small { font-size: .75rem; color: var(--text-muted); line-height: 1.35; }
+.ovg-tag { font-style: normal; font-size: .75rem; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; color: var(--c); margin-left: 6px; }
 .ovg-form { display: grid; gap: 10px; } .ovg-form.is-hidden { display: none; }
 .ovg-form label { display: grid; gap: 6px; font-size: 0.8rem; font-weight: 700; color: var(--text-secondary); }
 .ovg-chips { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -55,11 +55,11 @@ body.ovg-lock { overflow: hidden; }
 .ovg-kv { display: grid; grid-template-columns: 90px 1fr auto auto; align-items: center; gap: 8px; padding: 8px 0; border-top: 1px dashed var(--border); font-size: 0.84rem; }
 .ovg-kv span { color: var(--text-muted); font-weight: 700; }
 .ovg-kv code { padding: 6px 9px; border-radius: 8px; background: var(--bg-tertiary); color: var(--text-primary); font-size: 0.8rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ovg-copy { padding: 5px 9px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-tertiary); color: var(--text-primary); font: inherit; font-size: 0.74rem; font-weight: 700; cursor: pointer; white-space: nowrap; }
+.ovg-copy { padding: 5px 9px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-tertiary); color: var(--text-primary); font: inherit; font-size: .75rem; font-weight: 700; cursor: pointer; white-space: nowrap; }
 .ovg-copy:hover { border-color: var(--accent); }
 .ovg-obs { margin: 10px 0 6px; padding-left: 0; list-style: none; display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; counter-reset: obs; }
 .ovg-obs li { counter-increment: obs; display: flex; gap: 10px; align-items: center; font-size: 0.86rem; }
-.ovg-obs li::before { content: counter(obs); width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; font-size: 0.7rem; font-weight: 800; color: var(--on-accent-strong, var(--on-accent, #fff)); background: var(--accent-strong, var(--accent, #3472d8)); flex: none; }
+.ovg-obs li::before { content: counter(obs); width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; font-size: .75rem; font-weight: 800; color: var(--on-accent-strong, var(--on-accent, #fff)); background: var(--accent-strong, var(--accent, #3472d8)); flex: none; }
 .ovg-tips { margin: 8px 0 0; padding-left: 18px; font-size: 0.8rem; color: var(--text-muted); }
 .ovg-fine { font-size: 0.76rem; }
 .ovg-seg { display: inline-flex; gap: 4px; padding: 4px; border-radius: 999px; background: var(--bg-tertiary); border: 1px solid var(--border); margin: 4px 0 8px; }
@@ -75,7 +75,7 @@ body.ovg-lock { overflow: hidden; }
 .ovg-sum-row { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 12px; background: var(--bg-secondary); border: 1px solid var(--border); animation: ovgRise var(--ov-dur-3, .35s) both; }
 .ovg-sum-row:nth-child(2) { animation-delay: .06s; } .ovg-sum-row:nth-child(3) { animation-delay: .12s; }
 .ovg-sum-row > i { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); flex: none; }
-.ovg-sum-row span { display: grid; min-width: 0; } .ovg-sum-row b { font-size: 0.9rem; } .ovg-sum-row small { color: var(--text-muted); font-size: 0.74rem; }
+.ovg-sum-row span { display: grid; min-width: 0; } .ovg-sum-row b { font-size: 0.9rem; } .ovg-sum-row small { color: var(--text-muted); font-size: .75rem; }
 .ovg-launch { text-align: center; padding: 8px 0 4px; }
 .ovg-big { font-size: 1.1rem; padding: 14px 28px; box-shadow: 0 12px 34px color-mix(in srgb, var(--accent) 45%, transparent); animation: ovgPulse 2.2s var(--ov-ease-out, ease-out) infinite; }
 @keyframes ovgPulse { 0% { box-shadow: 0 12px 34px color-mix(in srgb, var(--accent) 45%, transparent), 0 0 0 0 color-mix(in srgb, var(--accent) 50%, transparent); } 100% { box-shadow: 0 12px 34px color-mix(in srgb, var(--accent) 45%, transparent), 0 0 0 20px transparent; } }
@@ -89,7 +89,7 @@ body.ovg-lock { overflow: hidden; }
 .ovg-live-badge { font-size: 0.8rem; font-weight: 900; letter-spacing: 0.14em; padding: 4px 12px; border-radius: 6px; background: #e0245e; color: #fff; animation: ovgPulse 1.6s var(--ov-ease-out, ease-out) infinite; }
 .ovg-live h3 { margin: 0; font-size: 1.6rem; font-weight: 900; } .ovg-live p { margin: 0 0 8px; color: var(--text-secondary); }
 .ovg-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 20px 16px; border-top: 1px solid var(--border); background: var(--bg-card); }
-.ovg-foot-note { font-size: 0.74rem; color: var(--text-muted); font-weight: 700; }
+.ovg-foot-note { font-size: .75rem; color: var(--text-muted); font-weight: 700; }
 .ovg-confetti { position: fixed; inset: 0; pointer-events: none; z-index: 22000; overflow: hidden; }
 .ovg-confetti span { position: absolute; top: -14px; width: 9px; height: 14px; border-radius: 2px; animation: ovgFall linear forwards; }
 @keyframes ovgFall { to { transform: translateY(105vh) rotate(720deg); opacity: 0.9; } }
@@ -106,8 +106,8 @@ body.ovg-lock { overflow: hidden; }
     .ovg-foot { padding-bottom: calc(14px + env(safe-area-inset-bottom, 0px)); }
     @keyframes ovgSheet { from { transform: translateY(40px); opacity: 0; } to { transform: none; opacity: 1; } }
     .ovg-grid, .ovg-grid--3 { grid-template-columns: 1fr; }
-    .ovg-steps { grid-template-columns: repeat(4, 1fr); } .ovg-step-label { font-size: 0.6rem; }
-    .ovg-kv { grid-template-columns: 1fr; } .ovg-kv span { font-size: 0.7rem; }
+    .ovg-steps { grid-template-columns: repeat(4, 1fr); } .ovg-step-label { font-size: .75rem; }
+    .ovg-kv { grid-template-columns: 1fr; } .ovg-kv span { font-size: .75rem; }
     .ovg-foot { padding: 10px 14px calc(14px + env(safe-area-inset-bottom, 0px)); }
 }
 
@@ -132,13 +132,13 @@ body.ovg-lock { overflow: hidden; }
 .ovg-ring { --pct: 0; width: 96px; height: 96px; border-radius: 50%; display: grid; place-items: center; background: conic-gradient(var(--accent) calc(var(--pct) * 1%), var(--bg-tertiary) 0); position: relative; }
 .ovg-ring::before { content: ''; position: absolute; inset: 9px; border-radius: 50%; background: var(--bg-card); }
 .ovg-ring span { position: relative; font-size: 1.5rem; font-weight: 900; } .ovg-ring small { font-size: 0.75rem; color: var(--text-muted); font-weight: 700; }
-.ovg-hub-group h4 { margin: 12px 0 6px; font-size: 0.72rem; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-muted); }
+.ovg-hub-group h4 { margin: 12px 0 6px; font-size: .75rem; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-muted); }
 .ovg-tasks { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; }
 .ovg-tasks li { display: grid; grid-template-columns: 34px 1fr auto; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 12px; background: var(--bg-secondary); border: 1px solid var(--border); }
 .ovg-tasks li.focus { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 20%, transparent); }
 .ovg-tasks li.done { opacity: 0.8; } .ovg-tasks li.done .ovg-task-ico { background: color-mix(in srgb, #06d6a0 20%, transparent); color: #06d6a0; }
 .ovg-task-ico { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); }
-.ovg-task-body { display: grid; min-width: 0; } .ovg-task-body b { font-size: 0.88rem; } .ovg-task-body b small { color: var(--text-muted); font-weight: 700; } .ovg-task-body small { font-size: 0.74rem; color: var(--text-muted); line-height: 1.35; }
+.ovg-task-body { display: grid; min-width: 0; } .ovg-task-body b { font-size: 0.88rem; } .ovg-task-body b small { color: var(--text-muted); font-weight: 700; } .ovg-task-body small { font-size: .75rem; color: var(--text-muted); line-height: 1.35; }
 .ovg-mini-ring { --pct: 0; display: inline-block; width: 18px; height: 18px; border-radius: 50%; background: conic-gradient(#fff calc(var(--pct) * 1%), rgba(255,255,255,0.25) 0); vertical-align: -3px; margin-right: 4px; position: relative; }
 .ovg-mini-ring::before { content: ''; position: absolute; inset: 4px; border-radius: 50%; background: var(--accent); }
 .btn.is-ready small { opacity: 0.75; font-weight: 600; margin-left: 4px; }
@@ -147,7 +147,7 @@ body.ovg-lock { overflow: hidden; }
 .ovg-spot.is-on { opacity: 1; }
 .ovg-spot-hole { position: fixed; border-radius: 14px; pointer-events: none; box-shadow: 0 0 0 9999px rgba(3,3,8,0.68), 0 0 0 3px var(--accent), 0 0 30px color-mix(in srgb, var(--accent) 60%, transparent); transition: left var(--ov-dur-2, .25s), top var(--ov-dur-2, .25s), width var(--ov-dur-2, .25s), height var(--ov-dur-2, .25s), opacity var(--ov-dur-2, .25s); }
 .ovg-spot-card { position: fixed; pointer-events: auto; width: 380px; max-width: calc(100vw - 24px); padding: 16px 18px; border-radius: 16px; color: #fff; background: linear-gradient(160deg, #17132b, #0c0c12 60%); border: 1px solid rgba(255,255,255,0.14); box-shadow: 0 30px 70px rgba(0,0,0,0.6); transition: top var(--ov-dur-2, .25s), left var(--ov-dur-2, .25s); }
-.ovg-spot-step { font-size: 0.68rem; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent-light, var(--accent)); margin-bottom: 4px; }
+.ovg-spot-step { font-size: .75rem; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent-light, var(--accent)); margin-bottom: 4px; }
 .ovg-spot-card h4 { margin: 0 0 6px; font-size: 1.05rem; font-weight: 900; } .ovg-spot-card p { margin: 0 0 12px; font-size: 0.86rem; line-height: 1.5; color: #e2e8f0; }
 .ovg-spot-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 @media (max-width: 640px) { .ovg-hub-top { grid-template-columns: 76px 1fr; } .ovg-ring { width: 76px; height: 76px; } .ovg-ring span { font-size: 1.2rem; } .ovg-profile { grid-template-columns: 1fr; justify-items: center; } .ovg-tasks li { grid-template-columns: 30px 1fr; } .ovg-tasks li .btn { grid-column: 2; justify-self: start; } }
@@ -172,7 +172,7 @@ body.ovg-lock { overflow: hidden; }
 /* A labelled rule between the two methods — neither is a footnote to the other. */
 .ovg-or { display: flex; align-items: center; gap: 10px; margin: 14px 0 10px; }
 .ovg-or::before, .ovg-or::after { content: ''; height: 1px; flex: 1; background: var(--border); }
-.ovg-or span { font-size: 0.68rem; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-muted); }
+.ovg-or span { font-size: .75rem; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-muted); }
 .ovg-nooauth { display: flex; align-items: flex-start; gap: 7px; margin: 0 0 10px; }
 .ovg-nooauth i { color: var(--accent); margin-top: 2px; }
 /* Design rule 201: the intro is one line on a computer, at most two on a phone. */

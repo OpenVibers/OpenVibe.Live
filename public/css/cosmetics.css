@@ -22,7 +22,7 @@
 .chat-particle {
     position: absolute;
     pointer-events: none;
-    font-size: 10px;
+    font-size: 12px;
     opacity: 0;
     animation: chatParticleFloat 1.8s var(--ov-ease-out, ease-out) forwards;
 }
@@ -215,14 +215,14 @@
     margin-bottom: 2px;
 }
 .cosmetic-desc {
-    font-size: 0.7rem;
+    font-size: .75rem;
     color: #c8962e88;
 }
 .cosmetic-badge {
     display: inline-block;
     padding: 2px 6px;
     border-radius: 4px;
-    font-size: 0.65rem;
+    font-size: .75rem;
     font-weight: 700;
     margin-top: 4px;
 }
@@ -243,7 +243,7 @@
 .cosmetic-btn {
     padding: 4px 10px;
     border-radius: 6px;
-    font-size: 0.72rem;
+    font-size: .75rem;
     font-weight: 600;
     border: 1px solid;
     cursor: pointer;

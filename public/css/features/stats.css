@@ -16,7 +16,7 @@
 .sn-head { display: grid; grid-template-columns: auto 1fr auto auto; align-items: start; gap: 10px; }
 .sn-title-wrap { min-width: 0; }
 .sn-kicker {
-    display: inline-flex; align-items: center; gap: 6px; font-size: 0.68rem; font-weight: 800;
+    display: inline-flex; align-items: center; gap: 6px; font-size: .75rem; font-weight: 800;
     letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted);
 }
 .sn-kicker i { color: var(--accent); flex: none; width: 1.5em; text-align: center; }
@@ -50,10 +50,10 @@
 
 .sn-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; margin-bottom: 12px; }
 .sn-tile { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border-radius: 12px; background: color-mix(in srgb, var(--text-primary) 4%, transparent); border: 1px solid color-mix(in srgb, var(--border) 70%, transparent); }
-.sn-tile-label { font-size: 0.7rem; color: var(--text-muted); font-weight: 600; }
+.sn-tile-label { font-size: .75rem; color: var(--text-muted); font-weight: 600; }
 .sn-tile-value { font-size: 1.35rem; font-weight: 700; color: var(--text-primary); line-height: 1.15; }
-.sn-tile-sub { font-size: 0.72rem; color: var(--text-secondary); }
-.sn-delta { display: inline-flex; align-items: center; gap: 4px; font-size: 0.72rem; font-weight: 600; color: var(--text-secondary); }
+.sn-tile-sub { font-size: .75rem; color: var(--text-secondary); }
+.sn-delta { display: inline-flex; align-items: center; gap: 4px; font-size: .75rem; font-weight: 600; color: var(--text-secondary); }
 .sn-delta i { font-size: 0.7rem; }
 .sn-delta.is-up i { color: var(--success-text, var(--success, #2ecc71)); }
 .sn-delta.is-down i { color: var(--error-text, var(--error, #e74c3c)); }
@@ -64,7 +64,7 @@
 .sn-plot:focus-visible { box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 60%, transparent); }
 .sn-svg { display: block; width: 100%; height: auto; overflow: visible; touch-action: pan-y; }
 .sn-grid { stroke: color-mix(in srgb, var(--text-primary) 9%, transparent); stroke-width: 1; shape-rendering: crispEdges; }
-.sn-axis { fill: var(--text-muted); font-size: 10.5px; font-variant-numeric: tabular-nums; }
+.sn-axis { fill: var(--text-muted); font-size: 12px; font-variant-numeric: tabular-nums; }
 .sn-bar { fill: var(--accent); transform-box: fill-box; transform-origin: bottom; animation: snGrow var(--ov-dur-4, 520ms) var(--ov-ease-out, cubic-bezier(0.2, 0.8, 0.3, 1)) both; transition: fill var(--dur-fast, 160ms); }
 .sn-bar.is-hot { fill: color-mix(in srgb, var(--accent) 70%, #fff); }
 .sn-line { fill: none; stroke: var(--accent); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
@@ -73,7 +73,7 @@
 .sn-marks .sn-line:not(.sn-line--context) { stroke-dasharray: 4000; stroke-dashoffset: 4000; animation: snDraw 900ms var(--ov-ease-out, cubic-bezier(0.3, 0.7, 0.2, 1)) forwards; }
 .sn-dot { fill: var(--accent); stroke: var(--bg-card); stroke-width: 2; }
 .sn-cross { stroke: color-mix(in srgb, var(--text-primary) 35%, transparent); stroke-width: 1; shape-rendering: crispEdges; pointer-events: none; }
-.sn-legend { display: flex; gap: 14px; justify-content: flex-end; font-size: 0.72rem; color: var(--text-secondary); padding: 2px 4px 0; }
+.sn-legend { display: flex; gap: 14px; justify-content: flex-end; font-size: .75rem; color: var(--text-secondary); padding: 2px 4px 0; }
 .sn-legend-item { display: inline-flex; align-items: center; gap: 6px; }
 .sn-key { display: inline-block; width: 14px; height: 0; border-top: 2px solid var(--accent); border-radius: 2px; }
 .sn-key--peak { border-top: 1.5px solid color-mix(in srgb, var(--text-primary) 32%, transparent); }
@@ -86,8 +86,8 @@
     transition: transform var(--ov-dur-1, 70ms) linear;
 }
 .sn-tip-value { font-size: 1rem; font-weight: 700; color: var(--text-primary); }
-.sn-tip-label { font-size: 0.72rem; color: var(--text-secondary); }
-.sn-tip-extra { font-size: 0.72rem; color: var(--text-muted); }
+.sn-tip-label { font-size: .75rem; color: var(--text-secondary); }
+.sn-tip-extra { font-size: .75rem; color: var(--text-muted); }
 
 .sn-table { max-height: 300px; overflow: auto; border: 1px solid var(--border); border-radius: 12px; }
 .sn-table table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
@@ -97,11 +97,11 @@
 .sn-table td.num { color: var(--text-primary); }
 
 .sn-swipe-hint { display: none; }
-.sn-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 10px; font-size: 0.72rem; color: var(--text-muted); }
-.sn-csv { background: none; border: 0; color: var(--text-secondary); cursor: pointer; font: inherit; font-size: 0.74rem; display: inline-flex; align-items: center; gap: 6px; padding: 4px 6px; border-radius: 8px; }
+.sn-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 10px; font-size: .75rem; color: var(--text-muted); }
+.sn-csv { background: none; border: 0; color: var(--text-secondary); cursor: pointer; font: inherit; font-size: .75rem; display: inline-flex; align-items: center; gap: 6px; padding: 4px 6px; border-radius: 8px; }
 .sn-csv:hover { color: var(--text-primary); background: color-mix(in srgb, var(--text-primary) 6%, transparent); }
 /* Every site's numbers (openvibe.network/stats), beside the CSV download. */
-.sn-all { margin-left: auto; color: var(--text-secondary); text-decoration: none; font-size: 0.74rem; display: inline-flex; align-items: center; gap: 6px; padding: 4px 6px; border-radius: 8px; white-space: nowrap; }
+.sn-all { margin-left: auto; color: var(--text-secondary); text-decoration: none; font-size: .75rem; display: inline-flex; align-items: center; gap: 6px; padding: 4px 6px; border-radius: 8px; white-space: nowrap; }
 .sn-all:hover, .sn-all:focus-visible { color: var(--text-primary); background: color-mix(in srgb, var(--text-primary) 6%, transparent); outline: none; }
 .sn-all + .sn-csv { margin-left: 0; }
 
