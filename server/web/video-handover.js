@@ -9,7 +9,10 @@
  * 301 and openvibe.video is the one canonical home. OpenVibe.Video reads the items from Live's API and owns their pages:
  * the player, AI chapters and captions, the chat replay, comments, clipping, and the owner's visibility and delete.
  *
- * /vods and /clips stay on Live: they are the Content feed with a filter (public/js/content-feed.js), linking out.
+ * /vods and /clips stay on Live: they are the Content feed with a filter (public/js/content-feed.js), linking out. An
+ * item under them (/vods/6707, /clips/12: an old link's shape) is the item's page on OpenVibe.Video, the same as /vod/
+ * and /clip/ (11-28: it was a 404 here and, inside the app, the feed without its script, "loadContentPage is not
+ * defined").
  */
 const { videoUrl, VIDEO_BASE } = require('./video-url');
 const { communityUrl } = require('./paste-handover');
@@ -48,7 +51,7 @@ function register(app) {
         const to = unglue(req.path, q >= 0 ? req.originalUrl.slice(q) : '', req.get('host'));
         return to ? res.redirect(301, to) : next();
     });
-    for (const [prefix, kind] of [['vod', 'vod'], ['clip', 'clip']]) {
+    for (const [prefix, kind] of [['vod', 'vod'], ['clip', 'clip'], ['vods', 'vod'], ['clips', 'clip']]) {
         app.get([`/${prefix}/:id`, `/${prefix}/:id/`], (req, res, next) => {
             const to = ID_RE.test(req.params.id) ? videoUrl(kind, req.params.id, secondsOf(req.query && req.query.t)) : null;
             return to ? res.redirect(301, to) : next();
