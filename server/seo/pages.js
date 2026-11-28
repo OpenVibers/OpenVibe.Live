@@ -437,6 +437,9 @@ async function _channelMeta(username, page = 1) {
         // A live channel's player library starts downloading with the page, not after the stream's data has come back
         // and the player has started (2026-11-19: a live picture took 8-10 s at p75; the library was the last step).
         playerPreload: page === 1 && liveNow && !acct.banned ? (PLAYER_PRELOAD[liveNow.protocol] ? liveNow.protocol : null) : null,
+        // The live picture's shape (streaming/live-shape.js): the player box starts in it, so a portrait stream does not
+        // lay the page out again a few seconds in (2026-11-28: the chat moved 238 px on phones).
+        playerShape: page === 1 && liveNow && !acct.banned ? require('../streaming/live-shape').liveShape(liveNow.thumbnail_url) : null,
         // The channel's own data starts with the page too (CHANNEL_EARLY), and an offline channel's picture with it.
         channelEarly: page === 1 && !acct.banned,
         heroImage: page === 1 && !liveNow && !acct.banned && acct.offlineImage ? acct.offlineImage : null,
@@ -1025,6 +1028,8 @@ function render(meta, urlPath) {
     // The channel page's Ask your agent chip (openvibe-shared 4.135.0, plan Z3): the channel fragment leaves a slot,
     // filled here where the channel and its stream are known. kit.askAgent escapes the text; other routes have no slot.
     if (meta.askText) html = html.replace('<span id="ch-ask-slot"></span>', `<span id="ch-ask-slot">${kit.askAgent({ text: meta.askText })}</span>`);
+    // The live player's first shape (player-shape.js reads it for this channel only).
+    if (meta.playerShape > 0 && meta.channelUsername) html = html.replace('<div class="video-container" id="video-container" tabindex="-1">', `<div class="video-container" id="video-container" tabindex="-1" data-shape-hint="${Number(meta.playerShape).toFixed(4)}" data-shape-key="${esc(meta.channelUsername)}">`);
     if (meta.rails) {
         for (const [id, cards] of Object.entries(meta.rails)) {
             const open = new RegExp(`<div[^>]*\\bid="${id}"[^>]*>`).exec(html);
