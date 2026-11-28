@@ -36,6 +36,25 @@ const off = { localStream: cam(false) };
 apply(off, { video: { present: false } }); apply(off, { video: { present: false } });
 assert.strictEqual(off.ingestNoPicture, false, 'a camera the streamer turned off is not a problem');
 
+// 11-28: nothing at all with the camera off (streams 3080, 3096, 3097): the third report says what to do, once, and
+// sound arriving clears it.
+const silent = { localStream: cam(false) };
+const nothingAt = { video: { present: false }, audio: { present: false } };
+const before = toasts.length;
+apply(silent, nothingAt); apply(silent, nothingAt);
+assert.strictEqual(toasts.length, before, 'two reports: not yet (a camera may still be starting)');
+apply(silent, nothingAt);
+assert.strictEqual(toasts.length, before + 1, 'the third report: said');
+assert.match(toasts[before][0], /no picture or sound is reaching viewers yet/);
+apply(silent, nothingAt);
+assert.strictEqual(toasts.length, before + 1, 'once while it lasts');
+apply(silent, { video: { present: false }, audio: { present: true, kbps: 40 } });
+assert.strictEqual(silent._emptyWarned, false, 'sound arrives: all clear');
+const camNothing = { localStream: cam() };
+const before2 = toasts.length;
+apply(camNothing, nothingAt); apply(camNothing, nothingAt); apply(camNothing, nothingAt);
+assert.strictEqual(toasts.length, before2 + 1, 'a camera that is on gets the camera warning only, not both');
+
 // The health pill takes the server's word.
 assert.match(bc, /if \(ss\.ingestNoPicture\) \{ health = 'No picture'; color = '#ef4444'; \}/);
 assert.match(read('public/js/broadcast-studio.js'), /'no picture': \['is-bad', 'No picture'\]/);

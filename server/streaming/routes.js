@@ -1209,7 +1209,8 @@ router.get('/', optionalAuth, async (req, res) => {
         // since 2026-10-26, so a robot camera shown as a PIP vanished from Live Now while it was the featured stream).
         // The home page is the owner's one clean page (L1): nothing labelled 18+ is listed there, whatever a
         // viewer's prefs say. Every other surface shows it with its chips; this is the only place a label hides.
-        let streams = (await db.getLiveStreams()).filter((s) => !contentLabels.labelsOf(s).labels.includes('18+'));
+        // A browser stream is listed once its picture or sound has reached us (media-seen.js, 11-28).
+        let streams = require('./media-seen').withMedia((await db.getLiveStreams()).filter((s) => !contentLabels.labelsOf(s).labels.includes('18+')));
         require('../media-proxy/live-preview').attach(streams);
         require('./live-thumb-cadence').markListed(streams.map((x) => x.id));
         // Filters narrow the list in place, so its order (viewer_count DESC, started_at DESC) is untouched.

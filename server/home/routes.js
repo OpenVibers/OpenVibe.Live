@@ -94,7 +94,7 @@ function _pasteThumb(p) {
 async function heroMedia() {
     const items = [];
     try {
-        for (const s of (await db.getLiveStreams() || []).slice(0, 8)) {
+        for (const s of require('../streaming/media-seen').withMedia(await db.getLiveStreams() || []).slice(0, 8)) {
             items.push({ kind: 'live', title: s.title || 'Live now', thumbnail: s.thumbnail_url || null, href: `/@${s.username}`, username: s.username });
         }
     } catch { /* */ }
@@ -276,7 +276,7 @@ router.get('/featured', async (req, res) => {
     try {
         // The same streams Live Now lists (streaming/routes.js GET /): nothing labelled 18+ on the home page.
         const labels = require('../labels');
-        const live = (await db.getLiveStreams() || []).filter((s) => !s.is_nsfw && !labels.labelsOf(s).labels.includes('18+'));
+        const live = require('../streaming/media-seen').withMedia(await db.getLiveStreams() || []).filter((s) => !s.is_nsfw && !labels.labelsOf(s).labels.includes('18+'));
         require('../media-proxy/live-preview').attach(live);
         require('../streaming/live-thumb-cadence').markListed(live.map((x) => x.id));
         if (!live.length) return res.json({ stream: null, count: 0 });
@@ -730,7 +730,7 @@ router.get('/discover', optionalAuth, async (req, res) => {
         const exclude = me ? me.id : null;
         const media = require('../media-client');
         const strip = (s) => { if (!s) return s; const { stream_key, managed_stream_key, ...rest } = s; return rest; };
-        const live = (await db.getLiveStreams() || []).filter(s => s.user_id !== exclude).slice(0, 6).map(strip);
+        const live = require('../streaming/media-seen').withMedia(await db.getLiveStreams() || []).filter(s => s.user_id !== exclude).slice(0, 6).map(strip);
         let clips = [];
         try {
             const co = await media.listClips({ order: 'views', limit: 40 });
