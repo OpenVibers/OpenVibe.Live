@@ -128,6 +128,14 @@ const { createRum, pageKind, deviceClass } = require('../server/web/rum');
     assert.strictEqual(homeNext.lcp.n, 11, 'the saved samples, then the new one');
     assert.deepStrictEqual(next.p75Gauge().find((x) => x.labels.metric === 'lcp' && x.labels.page === 'home').value, 8000);
     assert.ok(next.snapshot().errors.some((e) => e.message === 'TypeError: x is undefined'));
+    // What moved and the slow taps come back too (11-28: deploys emptied them before a tablet's shifts could be read).
+    assert.ok(rum.snapshot().shifts.length && rum.snapshot().slow.length, 'the first process had both');
+    assert.deepStrictEqual(next.snapshot().shifts, rum.snapshot().shifts);
+    assert.deepStrictEqual(next.snapshot().slow, rum.snapshot().slow);
+    const junkShifts = createRum({ now: () => t });
+    junkShifts.restore({ ...saved, shifts: [['home|tablet|<b>x</b>', 3, 0.5], ['home|watch|div', 2, 0.2], ['home|phone|div.ok', 2, 99]], slow: [['home|click <img>', 4, 900]] });
+    assert.deepStrictEqual(junkShifts.snapshot().shifts, [{ page: 'home', device: 'phone', on: 'div.ok', count: 2, worst: 10 }], 'only well-formed rows, worst within range');
+    assert.deepStrictEqual(junkShifts.snapshot().slow, []);
     assert.strictEqual(createRum({ now: () => t + 15 * 86400000 }).restore(saved), false, 'older than 14 days: start empty');
     // Each error says when it was last seen, and one unseen for a week is not put back (11-20: errors fixed weeks ago
     // read as current); a save from before last-seen ages out a week after it is put back.
